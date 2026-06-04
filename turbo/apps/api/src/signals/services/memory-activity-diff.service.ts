@@ -205,15 +205,21 @@ function loadVersionFiles(
  * Load both memory versions from S3 and compute their net change set. Reads the
  * per-file hash from each version's manifest and the file bodies from its
  * archive, then delegates to the pure `computeChangeSet`.
+ *
+ * A null `fromS3Key` means there was no baseline version (the user's memory
+ * first appeared in the window), so the from-side is empty and every file in
+ * `toS3Key` is classified as `learned`.
  */
 export function computeMemoryChangeSet(
-  fromS3Key: string,
+  fromS3Key: string | null,
   toS3Key: string,
 ): Computed<Promise<MemoryChangeSet>> {
   return computed(async (get): Promise<MemoryChangeSet> => {
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const [fromFiles, toFiles] = await Promise.all([
-      get(loadVersionFiles(bucket, fromS3Key)),
+      fromS3Key === null
+        ? Promise.resolve<MemoryFileMap>(new Map())
+        : get(loadVersionFiles(bucket, fromS3Key)),
       get(loadVersionFiles(bucket, toS3Key)),
     ]);
     return computeChangeSet(fromFiles, toFiles);

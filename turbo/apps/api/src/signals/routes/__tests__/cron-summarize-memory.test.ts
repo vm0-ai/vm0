@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { cronSummarizeMemoryContract } from "@vm0/api-contracts/contracts/cron";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
 import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
+import { storageVersions } from "@vm0/db/schema/storage";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
@@ -28,14 +31,36 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-// Fixed clock: the closed local (UTC) days before "today" (2999-01-03) are
-// 2999-01-01 and 2999-01-02. Single-day tests target 2999-01-02; the multi-day
-// backfill test spans both.
+// Fixed clock: "today" in UTC is 2999-01-03, so the single most-recently-closed
+// local day ("yesterday") the cron summarizes is 2999-01-02. The day before
+// that (2999-01-01) is where baseline versions are seeded.
 const FIXED_NOW_ISO = "2999-01-03T12:00:00.000Z";
-const CLOSED_DATE = "2999-01-02";
+const YESTERDAY = "2999-01-02";
 
-const track = createFixtureTracker<MemoryFixture>((fixture) => {
-  return store.set(deleteMemoryForFixture$, fixture, context.signal);
+/**
+ * Enable the Memory Viewer feature for a fixture's org/user. The cron only
+ * processes users who can see the Memory page; fixtures use random org IDs that
+ * do not match the staff-org rollout, so tests opt in via a DB override exactly
+ * as the platform's per-user feature-switch overrides do.
+ */
+async function enableMemoryViewer(fixture: MemoryFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db
+    .insert(userFeatureSwitches)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: { [FeatureSwitchKey.MemoryViewer]: true },
+    })
+    .onConflictDoNothing();
+}
+
+const track = createFixtureTracker<MemoryFixture>(async (fixture) => {
+  await store.set(deleteMemoryForFixture$, fixture, context.signal);
+  const db = store.set(writeDb$);
+  await db
+    .delete(userFeatureSwitches)
+    .where(eq(userFeatureSwitches.orgId, fixture.orgId));
 });
 
 function apiClient() {
@@ -67,9 +92,10 @@ interface SeededMemory {
 }
 
 /**
- * Seed a memory artifact with two versions both inside the closed day, mock
- * their S3 content, and register the fixture for cleanup. The first version
- * establishes the baseline; the second version is the day's net result.
+ * Seed a memory artifact whose baseline (v1) predates yesterday and whose v2
+ * lands during yesterday, mock their S3 content, and register the fixture for
+ * cleanup. v1 is the version current at the start of yesterday; v2 is
+ * yesterday's net result, so the cron diffs v1 -> v2.
  */
 async function seedTwoVersions(
   files1: readonly MemoryFile[],
@@ -78,6 +104,7 @@ async function seedTwoVersions(
   const fixture = await track(
     store.set(seedMemoryFixture$, undefined, context.signal),
   );
+  await enableMemoryViewer(fixture);
   const base = `orgs/${fixture.orgId}/users/${fixture.userId}/memory`;
   const v1Key = `${base}/v1`;
   const v2Key = `${base}/v2`;
@@ -92,7 +119,7 @@ async function seedTwoVersions(
       s3Key: v1Key,
       headVersionId: v1Id,
       fileCount: files1.length,
-      updatedAt: new Date("2999-01-02T03:00:00.000Z"),
+      updatedAt: new Date("2999-01-01T03:00:00.000Z"),
     },
     context.signal,
   );
@@ -102,6 +129,13 @@ async function seedTwoVersions(
     fixture.orgId,
     context.signal,
   );
+  // Re-stamp the head version (v1) to the day before yesterday so it is the
+  // baseline current at the start of yesterday, not an implicit wall-clock now.
+  const db = store.set(writeDb$);
+  await db
+    .update(storageVersions)
+    .set({ createdAt: new Date("2999-01-01T03:00:00.000Z") })
+    .where(eq(storageVersions.id, v1Id));
   await store.set(
     seedMemoryVersion$,
     {
@@ -138,9 +172,11 @@ async function seedTwoVersionsNoMock(): Promise<{
   const fixture = await track(
     store.set(seedMemoryFixture$, undefined, context.signal),
   );
+  await enableMemoryViewer(fixture);
   const base = `orgs/${fixture.orgId}/users/${fixture.userId}/memory`;
   const v1Key = `${base}/v1`;
   const v2Key = `${base}/v2`;
+  const v1Id = `v1-${randomUUID()}`;
   const v2Id = `v2-${randomUUID()}`;
 
   await store.set(
@@ -149,9 +185,9 @@ async function seedTwoVersionsNoMock(): Promise<{
       orgId: fixture.orgId,
       userId: fixture.userId,
       s3Key: v1Key,
-      headVersionId: `v1-${randomUUID()}`,
+      headVersionId: v1Id,
       fileCount: 1,
-      updatedAt: new Date("2999-01-02T03:00:00.000Z"),
+      updatedAt: new Date("2999-01-01T03:00:00.000Z"),
     },
     context.signal,
   );
@@ -161,6 +197,12 @@ async function seedTwoVersionsNoMock(): Promise<{
     fixture.orgId,
     context.signal,
   );
+  // Baseline (v1) predates yesterday; v2 lands during yesterday.
+  const db = store.set(writeDb$);
+  await db
+    .update(storageVersions)
+    .set({ createdAt: new Date("2999-01-01T03:00:00.000Z") })
+    .where(eq(storageVersions.id, v1Id));
   await store.set(
     seedMemoryVersion$,
     {
@@ -193,6 +235,7 @@ async function seedVersions(versions: readonly DayVersion[]): Promise<{
   const fixture = await track(
     store.set(seedMemoryFixture$, undefined, context.signal),
   );
+  await enableMemoryViewer(fixture);
   const base = `orgs/${fixture.orgId}/users/${fixture.userId}/memory`;
   const [first, ...rest] = versions;
   if (!first) {
@@ -200,13 +243,14 @@ async function seedVersions(versions: readonly DayVersion[]): Promise<{
   }
 
   const firstKey = `${base}/v1`;
+  const firstId = `v1-${randomUUID()}`;
   await store.set(
     seedMemoryStorage$,
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
       s3Key: firstKey,
-      headVersionId: `v1-${randomUUID()}`,
+      headVersionId: firstId,
       fileCount: first.files.length,
       updatedAt: first.createdAt,
     },
@@ -218,6 +262,13 @@ async function seedVersions(versions: readonly DayVersion[]): Promise<{
     fixture.orgId,
     context.signal,
   );
+  // Stamp the first version to its intended createdAt (the storage head
+  // version otherwise defaults to wall-clock now) so day boundaries are exact.
+  const db = store.set(writeDb$);
+  await db
+    .update(storageVersions)
+    .set({ createdAt: first.createdAt })
+    .where(eq(storageVersions.id, firstId));
 
   const content: { s3Key: string; files: readonly MemoryFile[] }[] = [
     { s3Key: firstKey, files: first.files },
@@ -260,7 +311,7 @@ async function findSummary(
       and(
         eq(memoryChangeSummaries.orgId, fixture.orgId),
         eq(memoryChangeSummaries.userId, fixture.userId),
-        eq(memoryChangeSummaries.date, CLOSED_DATE),
+        eq(memoryChangeSummaries.date, YESTERDAY),
       ),
     )
     .limit(1);
@@ -550,24 +601,40 @@ describe("GET /api/cron/summarize-memory", () => {
     await expect(findSummary(broken.fixture)).resolves.toBeNull();
   });
 
-  it("backfills every closed day when the cron missed earlier runs", async () => {
+  it("emits only yesterday's delta for a long-history user and never backfills", async () => {
     const llm = mockLlm();
-    // Three versions across two closed days: 2999-01-01 (v1 -> v2) and
-    // 2999-01-02 (v2 -> v3). A single run must summarize both days.
+    // A user with months of accumulated memory. The baseline must be the state
+    // at the START of yesterday, so the card reflects only the day-over-day
+    // change — never the whole history dump that the buggy run produced.
     const { fixture } = await seedVersions([
       {
-        createdAt: new Date("2999-01-01T03:00:00.000Z"),
-        files: [{ path: "facts/pets.md", content: "Has a dog" }],
+        // Long ago: three established facts.
+        createdAt: new Date("2998-12-30T09:00:00.000Z"),
+        files: [
+          { path: "facts/a.md", content: "fact a" },
+          { path: "facts/b.md", content: "fact b" },
+          { path: "facts/c.md", content: "fact c" },
+        ],
       },
       {
+        // The day before yesterday: a fourth fact lands.
         createdAt: new Date("2999-01-01T09:00:00.000Z"),
-        files: [{ path: "facts/pets.md", content: "Has a dog and a cat" }],
+        files: [
+          { path: "facts/a.md", content: "fact a" },
+          { path: "facts/b.md", content: "fact b" },
+          { path: "facts/c.md", content: "fact c" },
+          { path: "facts/d.md", content: "fact d" },
+        ],
       },
       {
+        // Yesterday: only `e.md` is new.
         createdAt: new Date("2999-01-02T09:00:00.000Z"),
         files: [
-          { path: "facts/pets.md", content: "Has a dog and a cat" },
-          { path: "facts/coffee.md", content: "Drinks oat milk lattes" },
+          { path: "facts/a.md", content: "fact a" },
+          { path: "facts/b.md", content: "fact b" },
+          { path: "facts/c.md", content: "fact c" },
+          { path: "facts/d.md", content: "fact d" },
+          { path: "facts/e.md", content: "fact e" },
         ],
       },
     ]);
@@ -577,8 +644,8 @@ describe("GET /api/cron/summarize-memory", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ summarized: 2 });
-    expect(llm.calls).toBe(2);
+    expect(response.body).toStrictEqual({ summarized: 1 });
+    expect(llm.calls).toBe(1);
 
     const db = store.set(writeDb$);
     const summaries = await db
@@ -590,18 +657,95 @@ describe("GET /api/cron/summarize-memory", () => {
       .where(eq(memoryChangeSummaries.orgId, fixture.orgId))
       .orderBy(asc(memoryChangeSummaries.date));
 
+    // Exactly one row, for yesterday — no row for 2999-01-01 (no backfill).
     expect(
       summaries.map((row) => {
         return row.date;
       }),
-    ).toStrictEqual(["2999-01-01", "2999-01-02"]);
-    // Day one: pets.md updated (the cat). Day two re-diffs from the day-one
-    // baseline, so only coffee.md is new.
+    ).toStrictEqual([YESTERDAY]);
+    // The card is the yesterday-only delta: just `e.md`, NOT a,b,c,d.
     await expect(findItems(summaries[0]?.id ?? "")).resolves.toStrictEqual([
-      { kind: "updated", filePath: "facts/pets.md" },
+      { kind: "learned", filePath: "facts/e.md" },
     ]);
-    await expect(findItems(summaries[1]?.id ?? "")).resolves.toStrictEqual([
+  });
+
+  it("treats memory that first appeared yesterday as learned (null baseline)", async () => {
+    const llm = mockLlm();
+    // The user's very first memory version lands during yesterday — there is no
+    // baseline before yesterday's start, so everything is learned yesterday.
+    const { fixture } = await seedVersions([
+      {
+        createdAt: new Date("2999-01-02T09:00:00.000Z"),
+        files: [{ path: "facts/coffee.md", content: "Drinks oat milk lattes" }],
+      },
+    ]);
+
+    const response = await accept(
+      apiClient().summarize({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ summarized: 1 });
+    expect(llm.calls).toBe(1);
+
+    const summary = await findSummary(fixture);
+    expect(summary).not.toBeNull();
+    await expect(findItems(summary?.id ?? "")).resolves.toStrictEqual([
       { kind: "learned", filePath: "facts/coffee.md" },
     ]);
+  });
+
+  it("only summarizes users for whom the memory viewer feature is enabled", async () => {
+    const llm = mockLlm();
+    // Both users changed memory yesterday. Only the enabled user is processed;
+    // the disabled user gets no row and burns no LLM call. Both share a single
+    // combined S3 mock so neither user's content clobbers the other's.
+    const enabled = await seedTwoVersionsNoMock();
+    const disabled = await seedTwoVersionsNoMock();
+
+    // The disabled user has no feature-switch override, so MemoryViewer is off
+    // for their random (non-staff) org.
+    const db = store.set(writeDb$);
+    await db
+      .delete(userFeatureSwitches)
+      .where(eq(userFeatureSwitches.orgId, disabled.fixture.orgId));
+
+    mockMemoryVersions(context, [
+      {
+        s3Key: enabled.v1Key,
+        files: [{ path: "facts/pets.md", content: "Has a dog" }],
+      },
+      {
+        s3Key: enabled.v2Key,
+        files: [
+          { path: "facts/pets.md", content: "Has a dog" },
+          { path: "facts/coffee.md", content: "Drinks oat milk lattes" },
+        ],
+      },
+      {
+        s3Key: disabled.v1Key,
+        files: [{ path: "facts/pets.md", content: "Has a dog" }],
+      },
+      {
+        s3Key: disabled.v2Key,
+        files: [
+          { path: "facts/pets.md", content: "Has a dog" },
+          { path: "facts/coffee.md", content: "Drinks oat milk lattes" },
+        ],
+      },
+    ]);
+
+    const response = await accept(
+      apiClient().summarize({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ summarized: 1 });
+    expect(llm.calls).toBe(1);
+
+    const enabledSummary = await findSummary(enabled.fixture);
+    expect(enabledSummary).not.toBeNull();
+    expect(enabledSummary?.toVersionId).toBe(enabled.v2Id);
+    await expect(findSummary(disabled.fixture)).resolves.toBeNull();
   });
 });

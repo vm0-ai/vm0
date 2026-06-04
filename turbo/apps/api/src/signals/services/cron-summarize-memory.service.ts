@@ -1,13 +1,16 @@
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
 import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
 import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { command, computed, type Computed } from "ccstate";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import {
   localDateLabel,
   localMidnightUtc,
@@ -21,11 +24,6 @@ import { generateMemoryDaySummary } from "./memory-activity-summarize.service";
 import { settle } from "../utils";
 
 const L = logger("CronSummarizeMemory");
-
-// Most closed local days a single run will summarize. Bounds missed-cron
-// recovery (and guards against pathologically old windows) so one run stays
-// cheap; older un-summarized days are simply not backfilled.
-const MAX_RECOVERY_DAYS = 14;
 
 type SummarizeMemoryResult =
   | { readonly skipped: true }
@@ -43,56 +41,11 @@ interface MemoryVersionRow {
   readonly createdAt: Date;
 }
 
-interface LastSummaryRow {
-  readonly date: string;
-  readonly toVersionId: string;
-}
-
-interface ClosedDayWindow {
-  readonly targetDate: string;
-  readonly dayEnd: Date;
-}
-
-/** The next calendar date (YYYY-MM-DD) after `dateLabel`. */
-function nextDateLabel(dateLabel: string): string {
-  const next = new Date(`${dateLabel}T00:00:00Z`);
-  next.setUTCDate(next.getUTCDate() + 1);
-  return next.toISOString().slice(0, 10);
-}
-
-/**
- * The closed (already-elapsed) local days in `[windowStart, now)`, one window
- * per day. The current local day is excluded because it is still open. Each
- * window's `dayEnd` is the UTC instant of the next local midnight, so a version
- * is "in" the day when its createdAt is strictly before dayEnd.
- *
- * Iteration is by calendar date (stable across hosts), capped at the recovery
- * window so a stale/never-summarized baseline can't expand into a huge list.
- */
-function closedLocalDays(
-  timezone: string,
-  windowStart: Date,
-  now: Date,
-): ClosedDayWindow[] {
-  const currentDate = localDateLabel(timezone, now);
-  const earliest = new Date(
-    localMidnightUtc(timezone, currentDate).getTime() -
-      MAX_RECOVERY_DAYS * 24 * 3_600_000,
-  );
-  const effectiveStart = windowStart > earliest ? windowStart : earliest;
-
-  const windows: ClosedDayWindow[] = [];
-  let date = localDateLabel(timezone, effectiveStart);
-  while (date < currentDate) {
-    const nextDate = nextDateLabel(date);
-    windows.push({
-      targetDate: date,
-      dayEnd: localMidnightUtc(timezone, nextDate),
-    });
-    date = nextDate;
-  }
-
-  return windows;
+/** The previous calendar date (YYYY-MM-DD) before `dateLabel`. */
+function previousDateLabel(dateLabel: string): string {
+  const prev = new Date(`${dateLabel}T00:00:00Z`);
+  prev.setUTCDate(prev.getUTCDate() - 1);
+  return prev.toISOString().slice(0, 10);
 }
 
 async function loadMemoryStorages(
@@ -134,28 +87,26 @@ async function loadVersions(
   return rows;
 }
 
-async function loadLastSummary(
+async function summaryExists(
   db: Db,
   orgId: string,
   userId: string,
+  date: string,
   signal: AbortSignal,
-): Promise<LastSummaryRow | null> {
+): Promise<boolean> {
   const [row] = await db
-    .select({
-      date: memoryChangeSummaries.date,
-      toVersionId: memoryChangeSummaries.toVersionId,
-    })
+    .select({ id: memoryChangeSummaries.id })
     .from(memoryChangeSummaries)
     .where(
       and(
         eq(memoryChangeSummaries.orgId, orgId),
         eq(memoryChangeSummaries.userId, userId),
+        eq(memoryChangeSummaries.date, date),
       ),
     )
-    .orderBy(desc(memoryChangeSummaries.date))
     .limit(1);
   signal.throwIfAborted();
-  return row ?? null;
+  return row !== undefined;
 }
 
 /** The latest version whose createdAt is strictly before `instant`. */
@@ -180,7 +131,7 @@ async function persistSummary(
     readonly orgId: string;
     readonly userId: string;
     readonly date: string;
-    readonly fromVersionId: string;
+    readonly fromVersionId: string | null;
     readonly toVersionId: string;
     readonly summary: string | null;
     readonly changeSet: MemoryChangeSet;
@@ -239,6 +190,18 @@ async function persistSummary(
   signal.throwIfAborted();
 }
 
+/**
+ * Summarize a single user's memory for the most-recently-closed local day
+ * ("yesterday"). Each run considers only that one day — there is no multi-day
+ * catch-up. The cron runs hourly, so a closed day has many chances to be
+ * captured before it rolls off.
+ *
+ * The baseline is the version current at the *start* of yesterday (the last
+ * version strictly before yesterday's local midnight), so a long-time user's
+ * card reflects only the day-over-day delta, never their full history. A null
+ * baseline only happens for a user whose memory first appeared yesterday —
+ * that is a legitimate "learned yesterday", not a backfill.
+ */
 function summarizeUserMemory(
   db: Db,
   storage: MemoryStorageRow,
@@ -247,96 +210,95 @@ function summarizeUserMemory(
   signal: AbortSignal,
 ): Computed<Promise<number>> {
   return computed(async (get): Promise<number> => {
-    const versions = await loadVersions(db, storage.storageId, signal);
-    const firstVersion = versions[0];
-    if (!firstVersion) {
+    const todayLabel = localDateLabel(timezone, now);
+    const yesterdayLabel = previousDateLabel(todayLabel);
+
+    // Idempotent: if yesterday already has a summary row, do nothing.
+    if (
+      await summaryExists(
+        db,
+        storage.orgId,
+        storage.userId,
+        yesterdayLabel,
+        signal,
+      )
+    ) {
       return 0;
     }
 
-    const lastSummary = await loadLastSummary(
+    const yesterdayStart = localMidnightUtc(timezone, yesterdayLabel);
+    const yesterdayEnd = localMidnightUtc(timezone, todayLabel);
+
+    const versions = await loadVersions(db, storage.storageId, signal);
+
+    // State at the end of yesterday. Null means the user had no memory through
+    // yesterday — nothing to summarize.
+    const toVersion = lastVersionBefore(versions, yesterdayEnd);
+    if (!toVersion) {
+      return 0;
+    }
+
+    // State at the start of yesterday (= end of the day before). Null means the
+    // user's memory first appeared during yesterday.
+    const baseline = lastVersionBefore(versions, yesterdayStart);
+
+    // No new version landed during yesterday: nothing changed that day.
+    if (baseline?.id === toVersion.id) {
+      return 0;
+    }
+
+    const changeSet = await get(
+      computeMemoryChangeSet(baseline?.s3Key ?? null, toVersion.s3Key),
+    );
+    signal.throwIfAborted();
+
+    if (!changeSet.changed) {
+      return 0;
+    }
+
+    const summaryResult = await settle(generateMemoryDaySummary(changeSet));
+    if (!summaryResult.ok) {
+      L.warn("Memory day summary generation failed", {
+        orgId: storage.orgId,
+        userId: storage.userId,
+        date: yesterdayLabel,
+        err: summaryResult.error,
+      });
+    }
+
+    await persistSummary(
       db,
-      storage.orgId,
-      storage.userId,
+      {
+        orgId: storage.orgId,
+        userId: storage.userId,
+        date: yesterdayLabel,
+        fromVersionId: baseline?.id ?? null,
+        toVersionId: toVersion.id,
+        summary: summaryResult.ok ? summaryResult.value : null,
+        changeSet,
+        createdAt: now,
+      },
       signal,
     );
+    return 1;
+  });
+}
 
-    const latestVersion = versions[versions.length - 1] ?? firstVersion;
-    if (lastSummary && latestVersion.id === lastSummary.toVersionId) {
-      // Memory has not advanced since the last summary: nothing new can fall
-      // into a newly-closed day. Skip without any S3 work.
-      return 0;
-    }
-
-    // Baseline = version current at the start of the window. On the first ever
-    // run it's the user's first version (older memory is not re-emitted as
-    // "learned today"); otherwise it's the previous summary's toVersion. The
-    // window starts at the first version's day, or the day after the last
-    // summarized day.
-    let baseline = firstVersion;
-    let windowStart = firstVersion.createdAt;
-    if (lastSummary) {
-      const prior = versions.find((version) => {
-        return version.id === lastSummary.toVersionId;
-      });
-      if (prior) {
-        baseline = prior;
-      }
-      // Resume from the local day after the one already summarized.
-      windowStart = localMidnightUtc(timezone, nextDateLabel(lastSummary.date));
-    }
-
-    const days = closedLocalDays(timezone, windowStart, now);
-    let summarized = 0;
-
-    for (const day of days) {
-      const toVersion = lastVersionBefore(versions, day.dayEnd);
-      if (!toVersion || toVersion.id === baseline.id) {
-        // No version through this day's close, or unchanged since the
-        // baseline: skip entirely (no LLM call, no row).
-        continue;
-      }
-
-      const changeSet = await get(
-        computeMemoryChangeSet(baseline.s3Key, toVersion.s3Key),
-      );
-      signal.throwIfAborted();
-
-      const fromVersionId = baseline.id;
-      // Carry the baseline forward so a quiet later day re-diffs from here.
-      baseline = toVersion;
-
-      if (!changeSet.changed) {
-        continue;
-      }
-
-      const summaryResult = await settle(generateMemoryDaySummary(changeSet));
-      if (!summaryResult.ok) {
-        L.warn("Memory day summary generation failed", {
-          orgId: storage.orgId,
-          userId: storage.userId,
-          date: day.targetDate,
-          err: summaryResult.error,
-        });
-      }
-
-      await persistSummary(
-        db,
-        {
-          orgId: storage.orgId,
-          userId: storage.userId,
-          date: day.targetDate,
-          fromVersionId,
-          toVersionId: toVersion.id,
-          summary: summaryResult.ok ? summaryResult.value : null,
-          changeSet,
-          createdAt: now,
-        },
-        signal,
-      );
-      summarized++;
-    }
-
-    return summarized;
+/**
+ * Whether the Memory Viewer feature is enabled for this org/user. Generation
+ * must match UI visibility exactly: a user who cannot see the Memory page must
+ * not have summaries generated (and burn LLM credits). The context mirrors what
+ * the platform `featureSwitch$` signal evaluates — registry identity plus the
+ * per-(org,user) DB overrides — so a manually enabled override is honored too.
+ */
+function memoryViewerEnabled(
+  db: Db,
+  orgId: string,
+  userId: string,
+): Computed<Promise<boolean>> {
+  return computed(async (): Promise<boolean> => {
+    const ctx = await loadUserFeatureSwitchContext(db, orgId, userId);
+    return isFeatureEnabled(FeatureSwitchKey.MemoryViewer, ctx);
   });
 }
 
@@ -359,10 +321,27 @@ export const summarizeMemory$ = command(
       signal,
     );
 
+    // Cache the feature-switch evaluation per distinct org/user so a user with
+    // several artifacts (or a repeated org) is only evaluated once.
+    const enabledCache = new Map<string, boolean>();
+
     let summarized = 0;
     for (const storage of memoryStorages) {
-      const timezone =
-        timezoneMap.get(`${storage.orgId}:${storage.userId}`) ?? "UTC";
+      const cacheKey = `${storage.orgId}:${storage.userId}`;
+      let enabled = enabledCache.get(cacheKey);
+      if (enabled === undefined) {
+        enabled = await get(
+          memoryViewerEnabled(db, storage.orgId, storage.userId),
+        );
+        signal.throwIfAborted();
+        enabledCache.set(cacheKey, enabled);
+      }
+      if (!enabled) {
+        // User cannot see the Memory page: skip generation entirely.
+        continue;
+      }
+
+      const timezone = timezoneMap.get(cacheKey) ?? "UTC";
       // Isolate each user: one user's malformed data (e.g. invalid memory
       // frontmatter) must not abort the whole run for everyone. AbortError
       // still propagates through `settle`, so a genuine cancellation stops the
