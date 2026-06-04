@@ -76,6 +76,7 @@ import { coingecko } from "./connectors/coingecko";
 import { coresignal } from "./connectors/coresignal";
 import { cronlytic } from "./connectors/cronlytic";
 import { crustdata } from "./connectors/crustdata";
+import { cursor } from "./connectors/cursor";
 import { customerIo } from "./connectors/customer-io";
 import { db9 } from "./connectors/db9";
 import { deel } from "./connectors/deel";
@@ -932,6 +933,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...coresignal,
   ...cronlytic,
   ...crustdata,
+  ...cursor,
   ...customerIo,
   ...db9,
   ...deel,

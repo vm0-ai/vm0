@@ -99,6 +99,7 @@ const CONNECTOR_ICON_COLORFUL = {
   coresignal: true,
   cronlytic: true,
   crustdata: true,
+  cursor: true,
   "customer-io": true,
   deepseek: true,
   defillama: true,

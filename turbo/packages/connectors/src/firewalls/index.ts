@@ -93,6 +93,7 @@ import { coingeckoFirewall } from "./coingecko.generated";
 import { coresignalFirewall } from "./coresignal.generated";
 import { cronlyticFirewall } from "./cronlytic.generated";
 import { crustdataFirewall } from "./crustdata.generated";
+import { cursorFirewall } from "./cursor.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
 import { doubaoFirewall } from "./doubao.generated";
@@ -349,6 +350,7 @@ const CONNECTOR_FIREWALLS = {
   coresignal: coresignalFirewall,
   cronlytic: cronlyticFirewall,
   crustdata: crustdataFirewall,
+  cursor: cursorFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,
   defillama: defillamaFirewall,

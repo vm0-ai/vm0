@@ -69,6 +69,7 @@
     "generate:coresignal": "tsx src/index.ts coresignal",
     "generate:cronlytic": "tsx src/index.ts cronlytic",
     "generate:crustdata": "tsx src/index.ts crustdata",
+    "generate:cursor": "tsx src/index.ts cursor",
     "generate:customer-io": "tsx src/index.ts customer-io",
     "generate:deepseek": "tsx src/index.ts deepseek",
     "generate:doubao": "tsx src/index.ts doubao",

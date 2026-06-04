@@ -55,6 +55,7 @@ import { generate as generateCoingecko } from "./coingecko";
 import { generate as generateCoresignal } from "./coresignal";
 import { generate as generateCronlytic } from "./cronlytic";
 import { generate as generateCrustdata } from "./crustdata";
+import { generate as generateCursor } from "./cursor";
 import { generate as generateCustomerIo } from "./customer-io";
 import { generate as generateDeepseek } from "./deepseek";
 import { generate as generateDoubao } from "./doubao";
@@ -294,6 +295,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   coresignal: generateCoresignal,
   cronlytic: generateCronlytic,
   crustdata: generateCrustdata,
+  cursor: generateCursor,
   "customer-io": generateCustomerIo,
   deel: generateDeel,
   defillama: generateDefillama,
