@@ -3,6 +3,7 @@ import { zeroMemoryActivityContract } from "@vm0/api-contracts/contracts/zero-me
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { queryOf } from "../context/request";
 import type { RouteEntry } from "../route";
 import { zeroMemoryActivity } from "../services/zero-memory-activity.service";
 
@@ -11,9 +12,19 @@ const memoryAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
+const memoryActivityQuery$ = queryOf(zeroMemoryActivityContract.get);
+
 const getMemoryActivityInner$ = computed(async (get): Promise<unknown> => {
   const auth = get(organizationAuthContext$);
-  const activity = await get(zeroMemoryActivity(auth.orgId, auth.userId));
+  const query = get(memoryActivityQuery$);
+  const activity = await get(
+    zeroMemoryActivity({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      limit: query.limit,
+      cursor: query.cursor,
+    }),
+  );
   return {
     status: 200 as const,
     body: activity,

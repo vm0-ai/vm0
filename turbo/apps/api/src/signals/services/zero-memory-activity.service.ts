@@ -4,7 +4,7 @@ import {
   type MemoryChangeDiff,
 } from "@vm0/db/schema/memory-change-item";
 import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt } from "drizzle-orm";
 
 import { db$ } from "../external/db";
 
@@ -23,6 +23,14 @@ interface MemoryActivityEntry {
 
 interface MemoryActivityResult {
   readonly entries: readonly MemoryActivityEntry[];
+  readonly nextCursor: string | null;
+}
+
+interface MemoryActivityParams {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly limit: number;
+  readonly cursor?: string;
 }
 
 /**
@@ -34,12 +42,19 @@ interface MemoryActivityResult {
  * when they have deterministic change items to display.
  */
 export function zeroMemoryActivity(
-  orgId: string,
-  userId: string,
+  params: MemoryActivityParams,
 ): Computed<Promise<MemoryActivityResult>> {
   return computed(async (get): Promise<MemoryActivityResult> => {
-    const summaries = await get(db$)
-      .select({
+    const filters = [
+      eq(memoryChangeSummaries.orgId, params.orgId),
+      eq(memoryChangeSummaries.userId, params.userId),
+    ];
+    if (params.cursor !== undefined) {
+      filters.push(lt(memoryChangeSummaries.date, params.cursor));
+    }
+
+    const summaryPage = await get(db$)
+      .selectDistinct({
         id: memoryChangeSummaries.id,
         date: memoryChangeSummaries.date,
         summary: memoryChangeSummaries.summary,
@@ -47,16 +62,24 @@ export function zeroMemoryActivity(
         toVersionId: memoryChangeSummaries.toVersionId,
       })
       .from(memoryChangeSummaries)
-      .where(
-        and(
-          eq(memoryChangeSummaries.orgId, orgId),
-          eq(memoryChangeSummaries.userId, userId),
-        ),
+      .innerJoin(
+        memoryChangeItems,
+        eq(memoryChangeItems.summaryId, memoryChangeSummaries.id),
       )
-      .orderBy(desc(memoryChangeSummaries.date));
+      .where(and(...filters))
+      .orderBy(desc(memoryChangeSummaries.date))
+      .limit(params.limit + 1);
+
+    const hasMore = summaryPage.length > params.limit;
+    const summaries = hasMore
+      ? summaryPage.slice(0, params.limit)
+      : summaryPage;
+    const nextCursor = hasMore
+      ? (summaries[summaries.length - 1]?.date ?? null)
+      : null;
 
     if (summaries.length === 0) {
-      return { entries: [] };
+      return { entries: [], nextCursor: null };
     }
 
     const summaryIds = summaries.map((summary) => {
@@ -103,6 +126,6 @@ export function zeroMemoryActivity(
       });
     }
 
-    return { entries };
+    return { entries, nextCursor };
   });
 }

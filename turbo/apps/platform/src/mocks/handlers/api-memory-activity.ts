@@ -5,7 +5,10 @@ import {
 
 import { mockApi } from "../msw-contract.ts";
 
-const EMPTY_ACTIVITY: MemoryActivityResponse = { entries: [] };
+const EMPTY_ACTIVITY: MemoryActivityResponse = {
+  entries: [],
+  nextCursor: null,
+};
 
 let mockMemoryActivity: MemoryActivityResponse = { ...EMPTY_ACTIVITY };
 

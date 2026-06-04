@@ -1,6 +1,7 @@
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import type { MouseEvent } from "react";
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
+import { IconChevronDown, IconLoader2 } from "@tabler/icons-react";
 import type { MemoryDetailResponse } from "@vm0/api-contracts/contracts/zero-memory";
 import type { MemoryActivityResponse } from "@vm0/api-contracts/contracts/zero-memory-activity";
 import { cn } from "@vm0/ui";
@@ -8,7 +9,14 @@ import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 
 import {
   expandedMemoryItems$,
+  loadMoreMemoryActivity$,
   memoryActivity$,
+  memoryActivityExtraEntries$,
+  memoryActivityExtraHasMore$,
+  memoryActivityHasLoadedExtraPages$,
+  memoryActivityLatestCursor$,
+  memoryActivityLoadMoreError$,
+  memoryActivityLoadingMore$,
   memoryDetail$,
   memoryTab$,
   selectedMemoryFilePath$,
@@ -17,6 +25,8 @@ import {
   toggleMemoryItemExpanded$,
   type MemoryTab,
 } from "../../signals/memory-page/memory-signals.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { Markdown } from "../components/markdown.tsx";
 
 const PREFERRED_FILE = "MEMORY.md";
@@ -502,6 +512,15 @@ function formatLineStatsText(stats: {
 
 function MemoryUpdates() {
   const activityLoadable = useLoadable(memoryActivity$);
+  const extraEntries = useLastResolved(memoryActivityExtraEntries$) ?? [];
+  const hasLoadedExtraPages =
+    useLastResolved(memoryActivityHasLoadedExtraPages$) ?? false;
+  const extraHasMore = useLastResolved(memoryActivityExtraHasMore$) ?? false;
+  const latestCursor = useLastResolved(memoryActivityLatestCursor$);
+  const loadingMore = useLastResolved(memoryActivityLoadingMore$) ?? false;
+  const loadMoreError = useLastResolved(memoryActivityLoadMoreError$) ?? null;
+  const loadMore = useSet(loadMoreMemoryActivity$);
+  const pageSignal = useGet(pageSignal$);
 
   if (activityLoadable.state === "loading") {
     return <MemoryUpdatesSkeleton />;
@@ -510,9 +529,22 @@ function MemoryUpdates() {
     return <MemoryEmptyState errored />;
   }
 
-  const entries = activityLoadable.data.entries;
+  const entries = [...activityLoadable.data.entries, ...extraEntries];
   if (entries.length === 0) {
     return <MemoryUpdatesEmptyState />;
+  }
+  const cursorForLoadMore = hasLoadedExtraPages
+    ? latestCursor
+    : activityLoadable.data.nextCursor;
+  const hasMore = hasLoadedExtraPages
+    ? extraHasMore
+    : activityLoadable.data.nextCursor !== null;
+
+  function handleLoadMore() {
+    if (!cursorForLoadMore || loadingMore) {
+      return;
+    }
+    detach(loadMore(cursorForLoadMore, pageSignal), Reason.DomCallback);
   }
 
   return (
@@ -520,6 +552,42 @@ function MemoryUpdates() {
       {entries.map((entry) => {
         return <MemoryUpdateCard key={entry.toVersionId} entry={entry} />;
       })}
+      {hasMore ? (
+        <MemoryUpdatesLoadMore
+          loading={loadingMore}
+          error={loadMoreError}
+          onLoadMore={handleLoadMore}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function MemoryUpdatesLoadMore({
+  loading,
+  error,
+  onLoadMore,
+}: {
+  readonly loading: boolean;
+  readonly error: string | null;
+  readonly onLoadMore: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 flex-col items-center gap-2 py-1">
+      <button
+        type="button"
+        disabled={loading}
+        onClick={onLoadMore}
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border/70 bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-accent/50 disabled:pointer-events-none disabled:opacity-50"
+      >
+        {loading ? (
+          <IconLoader2 size={14} className="animate-spin" />
+        ) : (
+          <IconChevronDown size={14} />
+        )}
+        <span>{loading ? "Loading..." : "Load more"}</span>
+      </button>
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>
   );
 }

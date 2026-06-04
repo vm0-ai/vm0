@@ -4,6 +4,9 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const MEMORY_ACTIVITY_DEFAULT_LIMIT = 20;
+export const MEMORY_ACTIVITY_MAX_LIMIT = 50;
+
 const memoryActivityDiffLineSchema = z.object({
   op: z.enum(["context", "add", "remove"]),
   beforeLine: z.number().int().positive().nullable(),
@@ -55,6 +58,7 @@ const memoryActivityEntrySchema = z.object({
  */
 export const memoryActivityResponseSchema = z.object({
   entries: z.array(memoryActivityEntrySchema),
+  nextCursor: z.string().nullable(),
 });
 
 export type MemoryActivityResponse = z.infer<
@@ -71,6 +75,15 @@ export const zeroMemoryActivityContract = c.router({
     method: "GET",
     path: "/api/zero/memory/activity",
     headers: authHeadersSchema,
+    query: z.object({
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(MEMORY_ACTIVITY_MAX_LIMIT)
+        .default(MEMORY_ACTIVITY_DEFAULT_LIMIT),
+      cursor: z.string().min(1).optional(),
+    }),
     responses: {
       200: memoryActivityResponseSchema,
       401: apiErrorSchema,

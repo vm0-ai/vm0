@@ -4,12 +4,14 @@ import {
   type MemoryDetailResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
 import {
+  MEMORY_ACTIVITY_DEFAULT_LIMIT,
   zeroMemoryActivityContract,
   type MemoryActivityResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-activity";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { settle } from "../utils.ts";
 
 export type MemoryTab = "updates" | "raw";
 
@@ -63,5 +65,151 @@ export const memoryActivity$ = computed(
     const client = get(zeroClient$)(zeroMemoryActivityContract);
     const result = await accept(client.get(), [200], { toast: false });
     return result.body;
+  },
+);
+
+type MemoryActivityEntries = MemoryActivityResponse["entries"];
+
+interface MemoryActivityExtraPage {
+  readonly entries: MemoryActivityEntries;
+  readonly nextCursor: string | null;
+}
+
+interface MemoryActivityPaginationState {
+  readonly key: string;
+  readonly pages: readonly MemoryActivityExtraPage[];
+}
+
+interface MemoryActivityLoadMoreErrorState {
+  readonly key: string;
+  readonly message: string;
+}
+
+function paginationKey(page: MemoryActivityResponse): string {
+  const tailVersionId =
+    page.entries[page.entries.length - 1]?.toVersionId ?? "";
+  return `${page.nextCursor ?? ""}:${tailVersionId}`;
+}
+
+function matchesPaginationKey<T extends { readonly key: string }>(
+  state: T | null,
+  key: string,
+): state is T {
+  return state !== null && state.key === key;
+}
+
+const extraMemoryActivityPages$ = state<MemoryActivityPaginationState | null>(
+  null,
+);
+const loadingMoreMemoryActivity$ = state<string | null>(null);
+const loadMoreMemoryActivityError$ =
+  state<MemoryActivityLoadMoreErrorState | null>(null);
+
+export const memoryActivityExtraEntries$ = computed(async (get) => {
+  const firstPage = await get(memoryActivity$);
+  const key = paginationKey(firstPage);
+  const state = get(extraMemoryActivityPages$);
+  if (!matchesPaginationKey(state, key)) {
+    return [];
+  }
+  return state.pages.flatMap((page) => {
+    return page.entries;
+  });
+});
+
+export const memoryActivityHasLoadedExtraPages$ = computed(async (get) => {
+  const firstPage = await get(memoryActivity$);
+  const state = get(extraMemoryActivityPages$);
+  return matchesPaginationKey(state, paginationKey(firstPage));
+});
+
+export const memoryActivityExtraHasMore$ = computed(async (get) => {
+  const firstPage = await get(memoryActivity$);
+  const key = paginationKey(firstPage);
+  const state = get(extraMemoryActivityPages$);
+  if (!matchesPaginationKey(state, key) || state.pages.length === 0) {
+    return false;
+  }
+  return state.pages[state.pages.length - 1]!.nextCursor !== null;
+});
+
+export const memoryActivityLatestCursor$ = computed(async (get) => {
+  const firstPage = await get(memoryActivity$);
+  const key = paginationKey(firstPage);
+  const state = get(extraMemoryActivityPages$);
+  if (!matchesPaginationKey(state, key) || state.pages.length === 0) {
+    return null;
+  }
+  return state.pages[state.pages.length - 1]!.nextCursor;
+});
+
+export const memoryActivityLoadingMore$ = computed(async (get) => {
+  const firstPage = await get(memoryActivity$);
+  return get(loadingMoreMemoryActivity$) === paginationKey(firstPage);
+});
+
+export const memoryActivityLoadMoreError$ = computed(async (get) => {
+  const firstPage = await get(memoryActivity$);
+  const key = paginationKey(firstPage);
+  const error = get(loadMoreMemoryActivityError$);
+  return matchesPaginationKey(error, key) ? error.message : null;
+});
+
+export const loadMoreMemoryActivity$ = command(
+  async ({ get, set }, cursor: string, signal: AbortSignal): Promise<void> => {
+    const firstPage = await get(memoryActivity$);
+    signal.throwIfAborted();
+    const key = paginationKey(firstPage);
+    if (get(loadingMoreMemoryActivity$) === key) {
+      return;
+    }
+
+    set(loadingMoreMemoryActivity$, key);
+    set(loadMoreMemoryActivityError$, null);
+
+    const client = get(zeroClient$)(zeroMemoryActivityContract);
+    const settled = await settle(
+      accept(
+        client.get({
+          query: {
+            cursor,
+            limit: MEMORY_ACTIVITY_DEFAULT_LIMIT,
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+        { toast: false },
+      ),
+      signal,
+    );
+
+    set(loadingMoreMemoryActivity$, (current) => {
+      return current === key ? null : current;
+    });
+
+    if (!settled.ok) {
+      set(loadMoreMemoryActivityError$, {
+        key,
+        message:
+          settled.error instanceof Error
+            ? settled.error.message
+            : "Failed to load more updates",
+      });
+      return;
+    }
+
+    set(extraMemoryActivityPages$, (current) => {
+      const pages = matchesPaginationKey(current, key) ? current.pages : [];
+      return {
+        key,
+        pages: [
+          ...pages,
+          {
+            entries: settled.value.body.entries,
+            nextCursor: settled.value.body.nextCursor,
+          },
+        ],
+      };
+    });
   },
 );

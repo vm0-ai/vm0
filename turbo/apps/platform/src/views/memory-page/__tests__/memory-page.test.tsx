@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import {
+  MEMORY_ACTIVITY_DEFAULT_LIMIT,
   zeroMemoryActivityContract,
   type MemoryActivityResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-activity";
@@ -22,6 +23,7 @@ const context = testContext();
 const mockApi = createMockApi(context);
 type MemoryActivityDiff =
   MemoryActivityResponse["entries"][number]["items"][number]["diff"];
+type MemoryActivityEntry = MemoryActivityResponse["entries"][number];
 
 async function clickTab(name: string): Promise<void> {
   const tab = await waitFor(() => {
@@ -69,6 +71,31 @@ function updatedDiff(
           { op: "remove", beforeLine: 1, afterLine: null, text: beforeText },
           { op: "add", beforeLine: null, afterLine: 1, text: afterText },
         ],
+      },
+    ],
+  };
+}
+
+function memoryActivityEntry({
+  date,
+  summary,
+  toVersionId,
+  filePath,
+}: {
+  readonly date: string;
+  readonly summary: string;
+  readonly toVersionId: string;
+  readonly filePath: string;
+}): MemoryActivityEntry {
+  return {
+    date,
+    summary,
+    fromVersionId: null,
+    toVersionId,
+    items: [
+      {
+        filePath,
+        diff: addedDiff(summary),
       },
     ],
   };
@@ -153,6 +180,7 @@ describe("memory page", () => {
           ],
         },
       ],
+      nextCursor: null,
     });
 
     detachedSetupPage({
@@ -219,6 +247,61 @@ describe("memory page", () => {
     expect(screen.queryByTestId("memory-loading")).not.toBeInTheDocument();
   });
 
+  it("loads more daily activity entries when a next cursor is available", async () => {
+    const firstEntry = memoryActivityEntry({
+      date: "2024-03-02",
+      summary: "First page update",
+      toVersionId: "v2",
+      filePath: "first.md",
+    });
+    const secondEntry = memoryActivityEntry({
+      date: "2024-03-01",
+      summary: "Second page update",
+      toVersionId: "v1",
+      filePath: "second.md",
+    });
+    server.use(
+      mockApi(zeroMemoryActivityContract.get, ({ query, respond }) => {
+        expect(query.limit).toBe(MEMORY_ACTIVITY_DEFAULT_LIMIT);
+        if (query.cursor === "2024-03-02") {
+          return respond(200, { entries: [secondEntry], nextCursor: null });
+        }
+        expect(query.cursor).toBeUndefined();
+        return respond(200, {
+          entries: [firstEntry],
+          nextCursor: "2024-03-02",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("First page update")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Second page update")).not.toBeInTheDocument();
+
+    const loadMoreButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.includes("Load more");
+    });
+    expect(loadMoreButton).toBeDefined();
+    click(loadMoreButton!);
+
+    await waitFor(() => {
+      expect(screen.getByText("Second page update")).toBeInTheDocument();
+    });
+    expect(screen.getByText("First page update")).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").some((button) => {
+        return button.textContent?.includes("Load more");
+      }),
+    ).toBeFalsy();
+  });
+
   it("falls back to a deterministic summary line when the LLM summary is null", async () => {
     setMockMemoryActivity({
       entries: [
@@ -243,6 +326,7 @@ describe("memory page", () => {
           ],
         },
       ],
+      nextCursor: null,
     });
 
     detachedSetupPage({

@@ -116,7 +116,7 @@ describe("GET /api/zero/memory/activity", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ entries: [] });
+    expect(response.body).toStrictEqual({ entries: [], nextCursor: null });
   });
 
   it("returns entries most-recent-day first with their items", async () => {
@@ -221,7 +221,89 @@ describe("GET /api/zero/memory/activity", () => {
           ],
         },
       ],
+      nextCursor: null,
     });
+  });
+
+  it("paginates summaries with a date cursor", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    for (const date of ["2025-05-01", "2025-05-03"]) {
+      await store.set(
+        seedMemoryActivitySummary$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          date,
+          toVersionId: `v-${date}`,
+          summary: `Summary for ${date}`,
+          items: [
+            {
+              filePath: `${date}.md`,
+              diff: addedDiff(date),
+            },
+          ],
+        },
+        context.signal,
+      );
+    }
+    for (const date of ["2025-05-02", "2025-05-04"]) {
+      await store.set(
+        seedMemoryActivitySummary$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          date,
+          toVersionId: `empty-${date}`,
+          summary: `Empty summary for ${date}`,
+        },
+        context.signal,
+      );
+    }
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const firstPage = await accept(
+      activityClient().get({
+        headers: authHeaders(),
+        query: { limit: 1 },
+      }),
+      [200],
+    );
+
+    expect(
+      firstPage.body.entries.map((entry) => {
+        return entry.date;
+      }),
+    ).toStrictEqual(["2025-05-03"]);
+    expect(firstPage.body.entries[0]?.items).toStrictEqual([
+      {
+        filePath: "2025-05-03.md",
+        diff: addedDiff("2025-05-03"),
+      },
+    ]);
+    expect(firstPage.body.nextCursor).toBe("2025-05-03");
+
+    const secondPage = await accept(
+      activityClient().get({
+        headers: authHeaders(),
+        query: { limit: 1, cursor: firstPage.body.nextCursor ?? "" },
+      }),
+      [200],
+    );
+
+    expect(
+      secondPage.body.entries.map((entry) => {
+        return entry.date;
+      }),
+    ).toStrictEqual(["2025-05-01"]);
+    expect(secondPage.body.entries[0]?.items).toStrictEqual([
+      {
+        filePath: "2025-05-01.md",
+        diff: addedDiff("2025-05-01"),
+      },
+    ]);
+    expect(secondPage.body.nextCursor).toBeNull();
   });
 
   it("omits entries with no items", async () => {
@@ -247,6 +329,7 @@ describe("GET /api/zero/memory/activity", () => {
     );
 
     expect(response.body.entries).toStrictEqual([]);
+    expect(response.body.nextCursor).toBeNull();
   });
 
   it("orders a summary's items deterministically by file_path", async () => {
