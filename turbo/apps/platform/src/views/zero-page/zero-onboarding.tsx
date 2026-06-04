@@ -84,6 +84,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
 import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
+import { clerk$ } from "../../signals/auth.ts";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 
 // ---------------------------------------------------------------------------
@@ -1135,13 +1136,28 @@ function OnboardingAccountDropdown() {
   return <AccountDropdown onAccountAction={onAccountAction} hidePreferences />;
 }
 
+function OnboardingOrgSwitcher() {
+  const clerkLoadable = useLastLoadable(clerk$);
+  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
+  const orgCount = clerk?.user?.organizationMemberships?.length ?? 0;
+
+  // Only surface the switcher when there is more than one org to switch between.
+  if (orgCount <= 1) {
+    return null;
+  }
+
+  return (
+    <div className="absolute top-4 left-4 z-20 w-[240px]">
+      <ZeroOrgSwitcher />
+    </div>
+  );
+}
+
 function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="zero-app flex h-dvh bg-muted/30 relative">
-      {/* Org switcher — top left */}
-      <div className="absolute top-4 left-4 z-20 w-[240px]">
-        <ZeroOrgSwitcher />
-      </div>
+      {/* Org switcher — top left (only when the user has multiple orgs) */}
+      <OnboardingOrgSwitcher />
 
       {/* Left panel — brand / illustration */}
       <OnboardingIllustrationPanel />
