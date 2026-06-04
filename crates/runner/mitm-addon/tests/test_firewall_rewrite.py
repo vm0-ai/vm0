@@ -353,7 +353,8 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+        assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
         assert flow.metadata["auth_url_rewrite"] is True
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["auth_resolved_secrets"] == ["WEBHOOK"]
@@ -386,8 +387,9 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 500
         assert flow.response.content == b'{"error":"upstream"}'
@@ -668,8 +670,9 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         get_headers.assert_not_called()
         mock_forward.assert_not_called()
         assert flow.response is not None
@@ -723,8 +726,9 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "log_proxy_entry", mock_log),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert mock_forward.call_count == 1
         assert flow.response is not None
         assert flow.response.status_code == 413
@@ -765,8 +769,9 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "get_firewall_headers", get_headers),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
         assert get_headers.await_count == 1
         assert flow.response is None
         assert flow.request.headers["Authorization"] == "Bearer real-token"
@@ -811,7 +816,8 @@ class TestAuthBaseUrlRewriteEdgeCases:
             patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         failed_url = mock_forward.call_args[0][0]
         failed_query = parse_qs(urlparse(failed_url).query, keep_blank_values=True)
         failed_headers = mock_forward.call_args[0][2]

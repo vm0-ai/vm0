@@ -715,7 +715,9 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
 
         # Headers injected
         assert flow.request.headers["Authorization"] == "Bearer real-token"
@@ -776,8 +778,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.metadata["firewall_action"] == "ALLOW"
@@ -985,8 +988,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.metadata["firewall_action"] == "ALLOW"
@@ -1021,8 +1025,9 @@ class TestHandleFirewallRequest:
             ),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.metadata["firewall_action"] == "ALLOW"
@@ -1205,8 +1210,9 @@ class TestHandleFirewallRequest:
         allow = _allow(api_entry)
 
         with mitm_ctx():
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.metadata["firewall_action"] == "ALLOW"

@@ -41,6 +41,7 @@ import registry
 import response_streaming
 import usage
 from auth import (
+    FirewallAuthHandlingResult,
     clear_cached_firewall_headers,
     handle_firewall_request,
     is_billable_firewall,
@@ -575,10 +576,8 @@ async def request(flow: http.HTTPFlow) -> None:
                     is_billable_firewall(result.name, vm_info),
                     _is_model_provider_usage_observable(result.name, vm_info),
                 )
-                await handle_firewall_request(flow, result, vm_info)
-                if flow.response is not None and not flow.metadata.get(
-                    metadata_keys.AUTH_URL_REWRITE
-                ):
+                auth_result = await handle_firewall_request(flow, result, vm_info)
+                if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
                     # Local firewall/auth errors never reach a provider. They only
                     # need pre-tracking to keep shutdown from racing while auth is
                     # resolving, so release as soon as the local response exists.
