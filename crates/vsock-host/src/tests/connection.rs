@@ -8,7 +8,7 @@ use vsock_proto::{
 };
 
 use super::support::{
-    MockGuest, drop_idle_request_write_guard, drop_started_request_write_guard,
+    MockGuest, await_mock_guest, drop_idle_request_write_guard, drop_started_request_write_guard,
     fence_normal_operations, host_from_stream, is_connected, make_pair, normal_operation_readiness,
     poison_connection, setup_host_and_mock_guest,
 };
@@ -92,7 +92,7 @@ async fn test_shutdown() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     assert!(host.shutdown(Duration::from_secs(2)).await);
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -115,7 +115,7 @@ async fn quiesce_operations_sends_request_and_accepts_empty_ack() {
     host.quiesce_operations(Duration::from_secs(2))
         .await
         .unwrap();
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -138,7 +138,7 @@ async fn resume_operations_sends_request_and_accepts_empty_ack() {
     host.resume_operations(Duration::from_secs(2))
         .await
         .unwrap();
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -240,7 +240,7 @@ async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
         host.try_fence_normal_operations().unwrap_err(),
         NormalOperationFenceRejection::Closed
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 
     let (poisoned_host, _guest) = setup_host_and_mock_guest().await;
     poison_connection(&poisoned_host);
@@ -271,7 +271,7 @@ async fn quiesce_operations_surfaces_guest_error() {
         .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::Other);
     assert_eq!(err.to_string(), "guest operations still pending: 1");
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -298,7 +298,7 @@ async fn quiesce_operations_rejects_wrong_ack_type() {
         err.to_string()
             .contains("unexpected lifecycle response type")
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -325,7 +325,7 @@ async fn quiesce_operations_rejects_non_empty_ack_payload() {
         err.to_string()
             .contains("operations_quiesced payload must be empty")
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -365,7 +365,7 @@ async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
     host.resume_operations(Duration::from_secs(2))
         .await
         .unwrap();
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -384,7 +384,7 @@ async fn test_connection_closed_returns_error() {
     let host = host_from_stream(host_stream).await.unwrap();
     let err = host.exec("echo hi", 5000, &[], false).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 /// Request made after connection is already closed returns ConnectionReset
@@ -425,7 +425,7 @@ async fn test_request_after_close_returns_immediately() {
         "expected ConnectionReset or BrokenPipe, got {:?}",
         err.kind()
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -456,7 +456,7 @@ async fn lifecycle_request_after_connection_close_returns_immediately() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Closed
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -478,7 +478,7 @@ async fn connection_close_marks_normal_operations_closed() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Closed
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -505,7 +505,7 @@ async fn late_poison_after_connection_close_does_not_reclassify_readiness() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Closed
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -525,10 +525,7 @@ async fn connection_poison_marks_normal_operations_not_parkable() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
     );
-    tokio::time::timeout(Duration::from_secs(5), guest_task)
-        .await
-        .unwrap()
-        .unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -609,7 +606,7 @@ async fn test_concurrent_execs() {
     assert_eq!(out1, "reply:cmd-a");
     assert_eq!(out2, "reply:cmd-b");
     drop(host);
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 /// Verify that post-handshake request seq starts at 2 (seq=1 is used by handshake ping).
@@ -639,7 +636,7 @@ async fn test_seq_starts_at_2() {
     let host = host_from_stream(host_stream).await.unwrap();
     let result = host.exec("test", 5000, &[], false).await.unwrap();
     assert_eq!(result.exit_code, 0);
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 /// Regression for #10076: the guest writes the exec response and then
@@ -684,5 +681,5 @@ async fn test_response_then_close_returns_ok() {
     let result = result.expect("response delivered before close must not be lost");
     assert_eq!(result.exit_code, 0);
     assert_eq!(result.stdout, b"race-survived");
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }

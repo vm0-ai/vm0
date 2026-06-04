@@ -8,9 +8,9 @@ use tokio::sync::oneshot;
 use vsock_proto::{ExecTermination, MSG_EXEC_START, MSG_WRITE_FILE};
 
 use super::super::support::{
-    MockGuest, assert_connection_accepts_exec_operation, host_from_stream, make_pair,
-    normal_operation_readiness, operation_count, pending_request_count, read_guest_message,
-    send_exec_result, setup_host_and_guest,
+    MockGuest, assert_connection_accepts_exec_operation, await_mock_guest, host_from_stream,
+    make_pair, normal_operation_readiness, operation_count, pending_request_count,
+    read_guest_message, send_exec_result, setup_host_and_guest,
 };
 use super::support::{
     ChunkedWriteTempPath, expect_write_file, send_guest_error, send_write_file_failure,
@@ -790,5 +790,5 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
         .expect("cleanup sender dropped");
     assert!(cleanup_command.contains("rm -f --"));
 
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }

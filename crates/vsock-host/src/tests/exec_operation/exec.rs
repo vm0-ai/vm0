@@ -5,8 +5,8 @@ use tokio::io::AsyncWriteExt;
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_EXEC_START};
 
 use super::super::support::{
-    MockGuest, host_from_stream, make_pair, normal_operation_readiness, read_guest_message,
-    send_exec_result, setup_host_and_guest, wait_for_operation_count,
+    MockGuest, await_mock_guest, host_from_stream, make_pair, normal_operation_readiness,
+    read_guest_message, send_exec_result, setup_host_and_guest, wait_for_operation_count,
 };
 use super::start_capture_operation;
 use crate::operation_tracker::NormalOperationReadiness;
@@ -48,7 +48,7 @@ async fn test_exec() {
     assert_eq!(result.exit_code, 0);
     assert_eq!(result.stdout, b"hello\n");
     assert!(result.stderr.is_empty());
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
@@ -116,7 +116,7 @@ async fn test_exec_error_response() {
     let host = host_from_stream(host_stream).await.unwrap();
     let err = host.exec("badcmd", 5000, &[], false).await.unwrap_err();
     assert!(err.to_string().contains("command not found"));
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]

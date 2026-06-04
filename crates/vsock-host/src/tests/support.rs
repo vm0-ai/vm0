@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use vsock_proto::{
     ExecCapturedOutput, ExecControlNonce, ExecControlStatus, ExecOutputStream, ExecTermination,
@@ -19,6 +20,13 @@ use crate::{ConnectionState, NormalOperationFence, VsockHost};
 
 pub(crate) fn make_pair() -> (UnixStream, UnixStream) {
     UnixStream::pair().unwrap()
+}
+
+pub(crate) async fn await_mock_guest(task: JoinHandle<()>) {
+    tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("mock guest task did not finish")
+        .expect("mock guest task panicked");
 }
 
 pub(crate) struct MockGuest {

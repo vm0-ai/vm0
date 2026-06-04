@@ -7,8 +7,8 @@ use tokio::io::AsyncWriteExt;
 use vsock_proto::MSG_EXEC_START;
 
 use super::super::support::{
-    MockGuest, assert_connection_accepts_exec_operation, host_from_stream, make_pair,
-    normal_operation_readiness, pending_request_count, setup_host_and_guest,
+    MockGuest, assert_connection_accepts_exec_operation, await_mock_guest, host_from_stream,
+    make_pair, normal_operation_readiness, pending_request_count, setup_host_and_guest,
 };
 use super::support::{
     expect_write_file, send_guest_error, send_write_file_failure, send_write_file_success,
@@ -290,7 +290,7 @@ async fn write_file_after_connection_close_returns_immediately_without_not_parka
         normal_operation_readiness(&host),
         NormalOperationReadiness::Closed
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
