@@ -1675,7 +1675,16 @@ impl SessionWorkspaceCache {
             );
             return Ok(false);
         }
-        let image_metadata = fs::metadata(input.active_image).await?;
+        let image_metadata = fs::symlink_metadata(input.active_image).await?;
+        if !image_metadata.is_file() {
+            info!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                active_image = %input.active_image.display(),
+                "workspace image cache promotion skipped because active image is not a file"
+            );
+            return Ok(false);
+        }
         let active_allocated = allocated_bytes(&image_metadata);
         if active_allocated > budget.max_entry_bytes {
             info!(
@@ -1722,7 +1731,7 @@ impl SessionWorkspaceCache {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e);
         }
-        let tmp_metadata = match fs::metadata(&tmp).await {
+        let tmp_metadata = match fs::symlink_metadata(&tmp).await {
             Ok(metadata) => metadata,
             Err(e) => {
                 let _ = remove_workspace_cache_path_if_exists(&tmp).await;
@@ -2557,6 +2566,7 @@ async fn sparse_copy_with_timeout(src: &Path, dst: &Path, timeout: Duration) -> 
     let mut command = tokio::process::Command::new("cp");
     command
         .arg("--sparse=always")
+        .arg("--no-dereference")
         .arg("--")
         .arg(src)
         .arg(dst)
@@ -2586,7 +2596,7 @@ async fn sparse_copy_with_timeout(src: &Path, dst: &Path, timeout: Duration) -> 
             let _ = child.wait().await;
             let _ = stderr_task.await;
             return Err(RunnerError::Internal(format!(
-                "cp --sparse=always {} {} timed out after {}ms",
+                "cp --sparse=always --no-dereference {} {} timed out after {}ms",
                 src.display(),
                 dst.display(),
                 timeout.as_millis()
@@ -2602,7 +2612,7 @@ async fn sparse_copy_with_timeout(src: &Path, dst: &Path, timeout: Duration) -> 
     }
     let stderr = String::from_utf8_lossy(&stderr);
     Err(RunnerError::Internal(format!(
-        "cp --sparse=always {} {} failed: {}",
+        "cp --sparse=always --no-dereference {} {} failed: {}",
         src.display(),
         dst.display(),
         stderr.trim()
@@ -5514,6 +5524,62 @@ mod tests {
             .unwrap_err();
 
         assert!(err.to_string().contains("timed out after"));
+    }
+
+    #[tokio::test]
+    async fn promote_skips_symlink_active_image_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let session_id = "sess-active-symlink";
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: false,
+            })
+            .await;
+        let active_image = paths.active_workspace_image(&sandbox_id);
+        tokio::fs::create_dir_all(active_image.parent().unwrap())
+            .await
+            .unwrap();
+        let outside_image = dir.path().join("outside-active.ext4");
+        tokio::fs::write(&outside_image, b"image").await.unwrap();
+        std::os::unix::fs::symlink(&outside_image, &active_image).unwrap();
+
+        let promoted = lease
+            .promote(
+                run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-05-01T00:00:00.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap();
+
+        let cache_key = session_workspace_cache_key(session_id, "/workspace");
+        assert!(!promoted);
+        assert!(
+            !paths
+                .session_workspace_cache_current_image(&cache_key)
+                .exists()
+        );
+        assert_eq!(tokio::fs::read(&outside_image).await.unwrap(), b"image");
+        assert!(
+            tokio::fs::symlink_metadata(&active_image)
+                .await
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 
     #[tokio::test]
