@@ -651,6 +651,45 @@ describe("apiBackend routing", () => {
     ]);
   });
 
+  it("routes the recovered first-party routes (memory-activity, org-logo, voice stt/tts) to api", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    function capture(method: "get" | "post" | "delete", pattern: string): void {
+      server.use(
+        http[method](pattern, ({ request }) => {
+          hosts.push(`${method.toUpperCase()} ${new URL(request.url).host}`);
+          return new Response(null, { status: 200 });
+        }),
+      );
+    }
+    capture("get", "*/api/zero/memory/activity");
+    capture("post", "*/api/zero/org/logo");
+    capture("get", "*/api/zero/org/logo");
+    capture("post", "*/api/zero/voice-io/stt");
+    capture("post", "*/api/zero/voice-io/tts");
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/memory/activity");
+    await fch("/api/zero/org/logo", { method: "POST" });
+    await fch("/api/zero/org/logo");
+    await fch("/api/zero/voice-io/stt", { method: "POST" });
+    await fch("/api/zero/voice-io/tts", { method: "POST" });
+
+    expect(hosts).toStrictEqual([
+      "GET api.vm0.ai",
+      "POST api.vm0.ai",
+      "GET api.vm0.ai",
+      "POST api.vm0.ai",
+      "POST api.vm0.ai",
+    ]);
+  });
+
   it("does not let a :param template over-match a shorter parent path", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({

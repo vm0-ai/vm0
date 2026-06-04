@@ -99,6 +99,7 @@ const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
   { methods: ["GET", "POST"], pathname: "/api/zero/me/model-providers" },
   { methods: ["DELETE"], pathname: "/api/zero/me/model-providers/:type" },
   { methods: ["GET"], pathname: "/api/zero/memory" },
+  { methods: ["GET"], pathname: "/api/zero/memory/activity" },
   { methods: ["GET", "POST"], pathname: "/api/zero/model-providers" },
   { methods: ["DELETE"], pathname: "/api/zero/model-providers/:type" },
   { methods: ["POST"], pathname: "/api/zero/onboarding/setup" },
@@ -107,6 +108,7 @@ const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
   { methods: ["POST"], pathname: "/api/zero/org/delete" },
   { methods: ["POST", "DELETE"], pathname: "/api/zero/org/invite" },
   { methods: ["POST"], pathname: "/api/zero/org/leave" },
+  { methods: ["GET", "POST", "DELETE"], pathname: "/api/zero/org/logo" },
   { methods: ["GET", "PATCH", "DELETE"], pathname: "/api/zero/org/members" },
   {
     methods: ["POST", "DELETE"],
@@ -143,6 +145,8 @@ const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
   { methods: ["GET", "POST"], pathname: "/api/zero/variables" },
   { methods: ["DELETE"], pathname: "/api/zero/variables/:name" },
   { methods: ["GET"], pathname: "/api/zero/voice-io/quota" },
+  { methods: ["POST"], pathname: "/api/zero/voice-io/stt" },
+  { methods: ["POST"], pathname: "/api/zero/voice-io/tts" },
 ];
 
 function normalizeMethod(method: string): string {
