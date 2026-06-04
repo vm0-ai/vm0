@@ -1221,7 +1221,7 @@ export type ConnectorRevokeInputValues<
   Record<Extract<keyof ConnectorRevokeInputsFor<Type, Method>, string>, string>
 >;
 
-export type ConnectorAuthMethodClientConfig<
+export type ConnectorAuthClientConfigForMethod<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,
 > = "client" extends keyof ConnectorAuthMethodsOf<Type>[Method]

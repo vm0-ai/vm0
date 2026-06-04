@@ -23,7 +23,7 @@ import {
   isStaticConfidentialConnectorAuthClient,
   resolveConnectorAuthClientForMethod,
   type ConnectorAuthClientForMethod,
-  type ConnectorAuthMethodClientRefByGrantKind,
+  type ConnectorResolvedAuthMethodClientByGrantKind,
   type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
 import type {
@@ -447,31 +447,32 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
 const CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY: ConnectorAuthMethodProviderRegistry =
   CONNECTOR_AUTH_METHOD_PROVIDERS;
 
-type ConnectorAuthCodeMethodClientRef =
-  ConnectorAuthMethodClientRefByGrantKind<"auth-code">;
+type ConnectorAuthCodeResolvedMethodClient =
+  ConnectorResolvedAuthMethodClientByGrantKind<"auth-code">;
 
-type ConnectorDeviceAuthMethodClientRef =
-  ConnectorAuthMethodClientRefByGrantKind<"device-auth">;
+type ConnectorDeviceAuthResolvedMethodClient =
+  ConnectorResolvedAuthMethodClientByGrantKind<"device-auth">;
 
 type ConnectorAuthCodeAuthorizationUrlArgs =
-  ConnectorAuthCodeMethodClientRef & {
+  ConnectorAuthCodeResolvedMethodClient & {
     readonly redirectUri: string;
     readonly state: string;
   };
 
-type ConnectorAuthCodeExchangeCallArgs = ConnectorAuthCodeMethodClientRef & {
-  readonly code: string;
-  readonly redirectUri: string;
-  readonly state: string | undefined;
-  readonly codeVerifier: string | undefined;
-  readonly oauthContext: string | undefined;
-};
+type ConnectorAuthCodeExchangeCallArgs =
+  ConnectorAuthCodeResolvedMethodClient & {
+    readonly code: string;
+    readonly redirectUri: string;
+    readonly state: string | undefined;
+    readonly codeVerifier: string | undefined;
+    readonly oauthContext: string | undefined;
+  };
 
 type ConnectorDeviceAuthorizationStartCallArgs =
-  ConnectorDeviceAuthMethodClientRef;
+  ConnectorDeviceAuthResolvedMethodClient;
 
 type ConnectorDeviceAuthorizationPollCallArgs =
-  ConnectorDeviceAuthMethodClientRef & {
+  ConnectorDeviceAuthResolvedMethodClient & {
     readonly deviceCode: string;
   };
 

@@ -15,8 +15,8 @@ import {
   connectorAuthMethodRefHasGrantKind,
   getConnectorAuthMethod,
   getConnectorAuthMethodIdsForGrantKind,
-  resolveConnectorAuthMethodClientRefByGrantKind,
-  type ConnectorAuthMethodClientRefByGrantKind,
+  resolveConnectorResolvedAuthMethodClientByGrantKind,
+  type ConnectorResolvedAuthMethodClientByGrantKind,
   type ConnectorAuthMethodRef,
   type ConnectorAuthMethodRefByGrantKind,
 } from "@vm0/connectors/connector-utils";
@@ -85,10 +85,10 @@ const encryptedProviderStateSchema = z.object({
 type EncryptedProviderState = z.infer<typeof encryptedProviderStateSchema>;
 
 type DeviceAuthMethodRef = ConnectorAuthMethodRefByGrantKind<"device-auth">;
-type DeviceAuthMethodClientRef =
-  ConnectorAuthMethodClientRefByGrantKind<"device-auth">;
+type DeviceAuthResolvedMethodClient =
+  ConnectorResolvedAuthMethodClientByGrantKind<"device-auth">;
 
-type PollClaimedSessionArgs = DeviceAuthMethodClientRef & {
+type PollClaimedSessionArgs = DeviceAuthResolvedMethodClient & {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -246,15 +246,15 @@ function resolveStoredDeviceAuthMethod(
 
 function resolveRequiredAuthClient(
   method: DeviceAuthMethodRef,
-): DeviceAuthMethodClientRef | ReturnType<typeof internalServerError> {
-  const clientRef = resolveConnectorAuthMethodClientRefByGrantKind(
+): DeviceAuthResolvedMethodClient | ReturnType<typeof internalServerError> {
+  const resolvedClient = resolveConnectorResolvedAuthMethodClientByGrantKind(
     method,
     optionalEnv,
   );
-  if (!clientRef) {
+  if (!resolvedClient) {
     return internalServerError(`${method.type} auth client not configured`);
   }
-  return clientRef;
+  return resolvedClient;
 }
 
 async function lockDeviceAuthSessionOwner(
@@ -743,12 +743,12 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       return connectorOauthDeviceAuthDisabled;
     }
 
-    const authClientRef = resolveRequiredAuthClient(resolvedMethod);
-    if ("status" in authClientRef) {
-      return authClientRef;
+    const resolvedClient = resolveRequiredAuthClient(resolvedMethod);
+    if ("status" in resolvedClient) {
+      return resolvedClient;
     }
 
-    const startResult = await startConnectorDeviceAuthorization(authClientRef);
+    const startResult = await startConnectorDeviceAuthorization(resolvedClient);
     signal.throwIfAborted();
 
     const sessionToken = generateSessionToken();
@@ -872,9 +872,9 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       return connectorOauthDeviceAuthDisabled;
     }
 
-    const authClientRef = resolveRequiredAuthClient(resolvedMethod);
-    if ("status" in authClientRef) {
-      return authClientRef;
+    const resolvedClient = resolveRequiredAuthClient(resolvedMethod);
+    if ("status" in resolvedClient) {
+      return resolvedClient;
     }
 
     if (session.status === "complete") {
@@ -926,7 +926,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
     }
 
     return await pollClaimedSession({
-      ...authClientRef,
+      ...resolvedClient,
       writeDb,
       orgId: args.orgId,
       userId: args.userId,

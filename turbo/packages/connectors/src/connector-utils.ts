@@ -13,7 +13,7 @@ import {
   type ConnectorTypesByAccessKind,
   type ConnectorTypesByGrantKind,
   type ConnectorTypesByRevokeKind,
-  type ConnectorAuthMethodClientConfig,
+  type ConnectorAuthClientConfigForMethod,
   type ConnectorAuthMethodConfigFor,
   type RefreshTokenAccessConnectorType,
   type ConnectorAccessConfig,
@@ -189,14 +189,14 @@ function getManualGrantFields(
   return method.grant.fields;
 }
 
-export interface ManualGrantFieldNames {
+export interface ConnectorManualGrantFieldNames {
   readonly secrets: readonly string[];
   readonly variables: readonly string[];
 }
 
 function manualGrantFieldNames(
   fields: Record<string, ConnectorManualGrantFieldConfig>,
-): ManualGrantFieldNames {
+): ConnectorManualGrantFieldNames {
   const secretNames: string[] = [];
   const variableNames: string[] = [];
   for (const [name, cfg] of Object.entries(fields)) {
@@ -212,14 +212,14 @@ function manualGrantFieldNames(
 export function getConnectorManualGrantFieldNamesForAuthMethod(
   type: ConnectorType,
   authMethod: string,
-): ManualGrantFieldNames | null {
+): ConnectorManualGrantFieldNames | null {
   const fields = getManualGrantFields(getConnectorAuthMethod(type, authMethod));
   return fields ? manualGrantFieldNames(fields) : null;
 }
 
 export function getConnectorManualGrantFieldNames(
   type: ConnectorType,
-): ManualGrantFieldNames | null {
+): ConnectorManualGrantFieldNames | null {
   const secretNames = new Set<string>();
   const variableNames = new Set<string>();
   for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
@@ -276,9 +276,11 @@ export type ConnectorAuthMethodAccessMetadata =
     }
   | {
       readonly kind: "refresh-token";
-      readonly inputs: Readonly<Record<string, ConnectorRefreshInputMetadata>>;
+      readonly inputs: Readonly<
+        Record<string, ConnectorRefreshTokenInputMetadata>
+      >;
       readonly outputs: Readonly<
-        Record<string, ConnectorRefreshOutputMetadata>
+        Record<string, ConnectorRefreshTokenOutputMetadata>
       >;
       readonly refreshableSecrets: readonly string[];
       readonly envBindings: ConnectorEnvBindings;
@@ -295,7 +297,7 @@ export type ConnectorRefreshTokenAccessMetadata = Extract<
   { readonly kind: "refresh-token" }
 >;
 
-export interface ConnectorRefreshInputMetadata {
+export interface ConnectorRefreshTokenInputMetadata {
   readonly valueRef: string;
   readonly source: Extract<
     ConnectorRuntimeBindingSource,
@@ -303,14 +305,16 @@ export interface ConnectorRefreshInputMetadata {
   >;
 }
 
-export interface ConnectorRefreshOutputMetadata {
+export interface ConnectorRefreshTokenOutputMetadata {
   readonly valueRef: string;
   readonly secretName: string;
 }
 
-export interface ConnectorRefreshMetadata {
-  readonly inputs: Readonly<Record<string, ConnectorRefreshInputMetadata>>;
-  readonly outputs: Readonly<Record<string, ConnectorRefreshOutputMetadata>>;
+export interface ConnectorRefreshTokenMetadata {
+  readonly inputs: Readonly<Record<string, ConnectorRefreshTokenInputMetadata>>;
+  readonly outputs: Readonly<
+    Record<string, ConnectorRefreshTokenOutputMetadata>
+  >;
   readonly refreshableSecrets: readonly string[];
 }
 
@@ -392,7 +396,7 @@ function connectorVariableNameFromValueRef(
 
 function connectorRefreshInputMetadata(
   valueRef: ConnectorRefreshTokenInputValueRef,
-): ConnectorRefreshInputMetadata {
+): ConnectorRefreshTokenInputMetadata {
   if (isConnectorSecretValueRef(valueRef)) {
     return {
       valueRef,
@@ -412,7 +416,7 @@ function connectorRefreshInputMetadata(
 
 function connectorRefreshOutputMetadata(
   valueRef: ConnectorSecretValueRef,
-): ConnectorRefreshOutputMetadata {
+): ConnectorRefreshTokenOutputMetadata {
   return { valueRef, secretName: connectorSecretNameFromValueRef(valueRef) };
 }
 
@@ -432,7 +436,7 @@ function connectorRefreshMetadata(args: {
   readonly inputs: ConnectorRefreshTokenInputBindings;
   readonly outputs: ConnectorRefreshTokenOutputBindings;
   readonly refreshableSecrets: readonly string[];
-}): ConnectorRefreshMetadata {
+}): ConnectorRefreshTokenMetadata {
   return {
     inputs: Object.fromEntries(
       Object.entries(args.inputs).map(([name, valueRef]) => {
@@ -945,7 +949,9 @@ export type ConnectorAuthClientForConfig<
 export type ConnectorAuthClientForMethod<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,
-> = ConnectorAuthClientForConfig<ConnectorAuthMethodClientConfig<Type, Method>>;
+> = ConnectorAuthClientForConfig<
+  ConnectorAuthClientConfigForMethod<Type, Method>
+>;
 
 export type ConnectorAuthClientIdentityForConfig<
   Client extends ConnectorAuthClientConfig,
@@ -961,10 +967,10 @@ export type ConnectorAuthClientIdentityForMethod<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,
 > = ConnectorAuthClientIdentityForConfig<
-  ConnectorAuthMethodClientConfig<Type, Method>
+  ConnectorAuthClientConfigForMethod<Type, Method>
 >;
 
-export type ConnectorAuthMethodClientRef<
+export type ConnectorResolvedAuthMethodClient<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,
 > = {
@@ -973,27 +979,27 @@ export type ConnectorAuthMethodClientRef<
   readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
 };
 
-export type ConnectorAuthClientGrantKind = "auth-code" | "device-auth";
+export type ConnectorGrantKindWithAuthClient = "auth-code" | "device-auth";
 
-export type ConnectorAuthMethodClientRefByGrantKind<
-  Kind extends ConnectorAuthClientGrantKind,
+export type ConnectorResolvedAuthMethodClientByGrantKind<
+  Kind extends ConnectorGrantKindWithAuthClient,
 > = {
   readonly [Type in ConnectorTypesByGrantKind<Kind>]: {
     readonly [Method in ConnectorAuthMethodIdsByGrantKind<
       Type,
       Kind
-    >]: ConnectorAuthMethodClientRef<Type, Method>;
+    >]: ConnectorResolvedAuthMethodClient<Type, Method>;
   }[ConnectorAuthMethodIdsByGrantKind<Type, Kind>];
 }[ConnectorTypesByGrantKind<Kind>];
 
-export type ConnectorAuthMethodClientRefByAccessKind<
+export type ConnectorResolvedAuthMethodClientByAccessKind<
   Kind extends "refresh-token",
 > = {
   readonly [Type in ConnectorTypesByAccessKind<Kind>]: {
     readonly [Method in ConnectorAuthMethodIdsByAccessKind<
       Type,
       Kind
-    >]: ConnectorAuthMethodClientRef<Type, Method>;
+    >]: ConnectorResolvedAuthMethodClient<Type, Method>;
   }[ConnectorAuthMethodIdsByAccessKind<Type, Kind>];
 }[ConnectorTypesByAccessKind<Kind>];
 
@@ -1056,7 +1062,7 @@ export function getConnectorAuthClientConfigForMethod<
 >(
   type: Type,
   authMethod: Method,
-): ConnectorAuthMethodClientConfig<Type, Method> | undefined;
+): ConnectorAuthClientConfigForMethod<Type, Method> | undefined;
 export function getConnectorAuthClientConfigForMethod(
   type: ConnectorType,
   authMethod: string,
@@ -1145,16 +1151,16 @@ export function resolveConnectorAuthClientForMethod(
   return resolveConnectorAuthClient(clientConfig, readEnv);
 }
 
-type ResolvedConnectorAuthMethodClientRef = {
+type AnyConnectorResolvedAuthMethodClient = {
   readonly type: ConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
   readonly authClient: ConnectorAuthClient;
 };
 
-function resolveConnectorAuthMethodClientRef(
+function resolveConnectorResolvedAuthMethodClient(
   authMethodRef: ConnectorAuthMethodRef,
   readEnv: ConnectorEnvReader,
-): ResolvedConnectorAuthMethodClientRef | undefined {
+): AnyConnectorResolvedAuthMethodClient | undefined {
   const authClient = resolveConnectorAuthClientForMethod(
     authMethodRef.type,
     authMethodRef.authMethod,
@@ -1170,30 +1176,30 @@ function resolveConnectorAuthMethodClientRef(
   };
 }
 
-export function resolveConnectorAuthMethodClientRefByGrantKind(
+export function resolveConnectorResolvedAuthMethodClientByGrantKind(
   authMethodRef: ConnectorAuthMethodRefByGrantKind<"auth-code">,
   readEnv: ConnectorEnvReader,
-): ConnectorAuthMethodClientRefByGrantKind<"auth-code"> | undefined;
-export function resolveConnectorAuthMethodClientRefByGrantKind(
+): ConnectorResolvedAuthMethodClientByGrantKind<"auth-code"> | undefined;
+export function resolveConnectorResolvedAuthMethodClientByGrantKind(
   authMethodRef: ConnectorAuthMethodRefByGrantKind<"device-auth">,
   readEnv: ConnectorEnvReader,
-): ConnectorAuthMethodClientRefByGrantKind<"device-auth"> | undefined;
-export function resolveConnectorAuthMethodClientRefByGrantKind(
-  authMethodRef: ConnectorAuthMethodRefByGrantKind<ConnectorAuthClientGrantKind>,
+): ConnectorResolvedAuthMethodClientByGrantKind<"device-auth"> | undefined;
+export function resolveConnectorResolvedAuthMethodClientByGrantKind(
+  authMethodRef: ConnectorAuthMethodRefByGrantKind<ConnectorGrantKindWithAuthClient>,
   readEnv: ConnectorEnvReader,
-): ResolvedConnectorAuthMethodClientRef | undefined {
-  return resolveConnectorAuthMethodClientRef(authMethodRef, readEnv);
+): AnyConnectorResolvedAuthMethodClient | undefined {
+  return resolveConnectorResolvedAuthMethodClient(authMethodRef, readEnv);
 }
 
-export function resolveConnectorAuthMethodClientRefByAccessKind(
+export function resolveConnectorResolvedAuthMethodClientByAccessKind(
   authMethodRef: ConnectorAuthMethodRefByAccessKind<"refresh-token">,
   readEnv: ConnectorEnvReader,
-): ConnectorAuthMethodClientRefByAccessKind<"refresh-token"> | undefined;
-export function resolveConnectorAuthMethodClientRefByAccessKind(
+): ConnectorResolvedAuthMethodClientByAccessKind<"refresh-token"> | undefined;
+export function resolveConnectorResolvedAuthMethodClientByAccessKind(
   authMethodRef: ConnectorAuthMethodRefByAccessKind<"refresh-token">,
   readEnv: ConnectorEnvReader,
-): ResolvedConnectorAuthMethodClientRef | undefined {
-  return resolveConnectorAuthMethodClientRef(authMethodRef, readEnv);
+): AnyConnectorResolvedAuthMethodClient | undefined {
+  return resolveConnectorResolvedAuthMethodClient(authMethodRef, readEnv);
 }
 
 function hasRuntimeAvailableAuthMethod(

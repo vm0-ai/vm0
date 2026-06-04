@@ -19,7 +19,7 @@ import {
   getRuntimeAvailableConnectorTypes,
   type ConnectorAuthMethodRef,
   type ConnectorAuthMethodRefByRevokeKind,
-  type ManualGrantFieldNames,
+  type ConnectorManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
 import { revokeConnectorAuthMethodAccessToken } from "@vm0/connectors/auth-providers";
 import {
@@ -626,7 +626,7 @@ async function deleteManualGrantConnectorLocalState(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly fields: ManualGrantFieldNames | null;
+  readonly fields: ConnectorManualGrantFieldNames | null;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
   if (!args.fields) {

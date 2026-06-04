@@ -12,18 +12,18 @@ import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodStorageMetadata,
   getConnectorRuntimeBindingSecretName,
-  resolveConnectorAuthMethodClientRefByAccessKind,
+  resolveConnectorResolvedAuthMethodClientByAccessKind,
   connectorAuthMethodRefHasAccessKind,
-  type ConnectorAuthMethodClientRefByAccessKind,
+  type ConnectorResolvedAuthMethodClientByAccessKind,
   type ConnectorAuthMethodRef,
   type ConnectorAuthMethodRefByAccessKind,
   type ConnectorAuthMethodAccessMetadata,
-  type ConnectorRefreshInputMetadata,
+  type ConnectorRefreshTokenInputMetadata,
   type ConnectorAuthMethodStorageMetadata,
   type ConnectorAuthClientForMethod,
 } from "@vm0/connectors/connector-utils";
 import {
-  type ConnectorAuthMethodClientConfig,
+  type ConnectorAuthClientConfigForMethod,
   type ConnectorAuthMethodIdsByAccessKind,
   connectorAuthMethodIdSchema,
   connectorTypeSchema,
@@ -334,8 +334,8 @@ type PreparedRefreshTokenContext =
   | ConnectorPreparedRefreshTokenContext
   | ModelProviderPreparedRefreshTokenContext;
 
-type ConnectorRefreshTokenAccessClientRef =
-  ConnectorAuthMethodClientRefByAccessKind<"refresh-token">;
+type ConnectorRefreshTokenAccessResolvedClient =
+  ConnectorResolvedAuthMethodClientByAccessKind<"refresh-token">;
 
 type ConnectorRefreshTokenAccessMethodRef =
   ConnectorAuthMethodRefByAccessKind<"refresh-token">;
@@ -345,7 +345,7 @@ type ConnectorRefreshTokenAccessClientMethodRef = {
     readonly [Method in ConnectorAuthMethodIdsByAccessKind<
       Type,
       "refresh-token"
-    >]: [ConnectorAuthMethodClientConfig<Type, Method>] extends [never]
+    >]: [ConnectorAuthClientConfigForMethod<Type, Method>] extends [never]
       ? never
       : {
           readonly type: Type;
@@ -359,7 +359,7 @@ type ConnectorRefreshTokenAccessNoClientMethodRef = {
     readonly [Method in ConnectorAuthMethodIdsByAccessKind<
       Type,
       "refresh-token"
-    >]: [ConnectorAuthMethodClientConfig<Type, Method>] extends [never]
+    >]: [ConnectorAuthClientConfigForMethod<Type, Method>] extends [never]
       ? {
           readonly type: Type;
           readonly authMethod: Method;
@@ -376,7 +376,7 @@ type ConnectorPreparedRefreshTokenContextFor<
   readonly type: Type;
   readonly authMethod: Method;
   readonly context: RefreshTokenContext;
-} & ([ConnectorAuthMethodClientConfig<Type, Method>] extends [never]
+} & ([ConnectorAuthClientConfigForMethod<Type, Method>] extends [never]
   ? unknown
   : { readonly authClient: ConnectorAuthClientForMethod<Type, Method> });
 
@@ -396,10 +396,10 @@ type ModelProviderPreparedRefreshTokenContext = {
   readonly context: RefreshTokenContext;
 };
 
-function resolveRefreshTokenAccessClientRef(
+function resolveRefreshTokenAccessResolvedClient(
   authMethodRef: ConnectorRefreshTokenAccessClientMethodRef,
-): ConnectorRefreshTokenAccessClientRef | undefined {
-  return resolveConnectorAuthMethodClientRefByAccessKind(
+): ConnectorRefreshTokenAccessResolvedClient | undefined {
+  return resolveConnectorResolvedAuthMethodClientByAccessKind(
     authMethodRef,
     (name) => {
       return optionalEnv(name);
@@ -425,12 +425,12 @@ function connectorRefreshTokenAccessMethodHasNoClient(
 }
 
 function connectorPreparedRefreshTokenContextWithClient(args: {
-  readonly authClientRef: ConnectorRefreshTokenAccessClientRef;
+  readonly resolvedClient: ConnectorRefreshTokenAccessResolvedClient;
   readonly context: RefreshTokenContext;
 }): ConnectorPreparedRefreshTokenContext {
   return {
     sourceType: "connector",
-    ...args.authClientRef,
+    ...args.resolvedClient,
     context: args.context,
   };
 }
@@ -1013,7 +1013,7 @@ function modelProviderSourceLookup(args: {
 }
 
 function refreshInputSourceFromConnectorMetadata(
-  metadata: ConnectorRefreshInputMetadata,
+  metadata: ConnectorRefreshTokenInputMetadata,
 ): RefreshInputSource {
   switch (metadata.source.kind) {
     case "connector-secret": {
@@ -1310,8 +1310,9 @@ function prepareRefreshTokenContext(
   };
 
   if (connectorRefreshTokenAccessMethodHasClient(authMethodRef)) {
-    const authClientRef = resolveRefreshTokenAccessClientRef(authMethodRef);
-    if (!authClientRef) {
+    const resolvedClient =
+      resolveRefreshTokenAccessResolvedClient(authMethodRef);
+    if (!resolvedClient) {
       L.debug(
         `${args.connectorType} connector client not configured, skipping token refresh`,
       );
@@ -1321,7 +1322,7 @@ function prepareRefreshTokenContext(
     return {
       ok: true,
       prepared: connectorPreparedRefreshTokenContextWithClient({
-        authClientRef,
+        resolvedClient,
         context,
       }),
     };
