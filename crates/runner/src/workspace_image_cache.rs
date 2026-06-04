@@ -645,6 +645,44 @@ impl SessionWorkspaceCache {
             }
         };
 
+        let entry_dir = self.session_workspace_cache_entry_dir(&cache_key);
+        match remove_non_directory_workspace_cache_entry(&entry_dir).await {
+            Ok(true) => {
+                info!(
+                    run_id = %request.run_id,
+                    cache_key,
+                    path = %entry_dir.display(),
+                    "removed non-directory workspace image cache entry before checkout"
+                );
+                return workspace_drive(
+                    WorkspaceCacheCheckoutResult::Miss,
+                    None,
+                    None,
+                    Some(lock),
+                    Some(cache_key),
+                    true,
+                );
+            }
+            Ok(false) => {}
+            Err(e) => {
+                warn!(
+                    run_id = %request.run_id,
+                    cache_key,
+                    path = %entry_dir.display(),
+                    error = %e,
+                    "failed to remove non-directory workspace image cache entry before checkout"
+                );
+                return workspace_drive(
+                    WorkspaceCacheCheckoutResult::InvalidMetadata,
+                    None,
+                    None,
+                    Some(lock),
+                    Some(cache_key),
+                    true,
+                );
+            }
+        }
+
         let metadata_path = self.session_workspace_cache_metadata(&cache_key);
         let current_path = self.session_workspace_cache_current_image(&cache_key);
         let hit = match self
@@ -1579,7 +1617,7 @@ impl SessionWorkspaceCache {
         let metadata_path = self.session_workspace_cache_metadata(cache_key);
         let tmp = metadata_path.with_file_name(format!("metadata.json.tmp.{run_id}"));
         if let Some(parent) = metadata_path.parent() {
-            fs::create_dir_all(parent).await?;
+            ensure_workspace_cache_entry_dir(parent).await?;
         }
         let bytes = serde_json::to_vec_pretty(&metadata)
             .map_err(|e| RunnerError::Internal(format!("serialize workspace metadata: {e}")))?;
@@ -1618,6 +1656,15 @@ impl SessionWorkspaceCache {
     }
 
     async fn promote_locked(&self, input: WorkspaceImagePromotionInput<'_>) -> RunnerResult<bool> {
+        let cache_dir = self.session_workspace_cache_entry_dir(input.cache_key);
+        if remove_non_directory_workspace_cache_entry(&cache_dir).await? {
+            info!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                path = %cache_dir.display(),
+                "removed non-directory workspace image cache entry before promotion"
+            );
+        }
         let metadata_path = self.session_workspace_cache_metadata(input.cache_key);
         match self
             .read_valid_metadata(
@@ -1723,8 +1770,7 @@ impl SessionWorkspaceCache {
             return Ok(false);
         }
 
-        let cache_dir = self.session_workspace_cache_entry_dir(input.cache_key);
-        fs::create_dir_all(&cache_dir).await?;
+        ensure_workspace_cache_entry_dir(&cache_dir).await?;
         let tmp = self.session_workspace_cache_tmp_image(input.cache_key, input.run_id);
         let _ = remove_workspace_cache_path_if_exists(&tmp).await;
         if let Err(e) = sparse_copy(input.active_image, &tmp).await {
@@ -2533,6 +2579,32 @@ async fn remove_workspace_cache_path_if_exists(path: &Path) -> std::io::Result<b
         fs::remove_file(path).await?;
     }
     Ok(true)
+}
+
+async fn remove_non_directory_workspace_cache_entry(path: &Path) -> RunnerResult<bool> {
+    let metadata = match fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e.into()),
+    };
+    if metadata.is_dir() {
+        return Ok(false);
+    }
+    remove_workspace_cache_path_if_exists(path).await?;
+    Ok(true)
+}
+
+async fn ensure_workspace_cache_entry_dir(path: &Path) -> RunnerResult<()> {
+    remove_non_directory_workspace_cache_entry(path).await?;
+    fs::create_dir_all(path).await?;
+    let metadata = fs::symlink_metadata(path).await?;
+    if metadata.is_dir() {
+        return Ok(());
+    }
+    Err(RunnerError::Internal(format!(
+        "workspace image cache entry is not a directory: {}",
+        path.display()
+    )))
 }
 
 fn has_copy_headroom(stats: FsStats, budget: CacheBudget, allocated_bytes: u64) -> bool {
@@ -3518,6 +3590,78 @@ mod tests {
         let entry = &inspection.entries[0];
         assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
         assert_eq!(entry.reason.as_deref(), Some("missing or invalid metadata"));
+    }
+
+    #[tokio::test]
+    async fn prepare_removes_symlink_cache_entry_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let session_id = "sess-entry-symlink";
+        let key = cache.scoped_cache_key(TEST_PROFILE_NAME, session_id, "/workspace", 5);
+        let outside_entry = dir.path().join("outside-cache-entry");
+        fs::create_dir_all(&outside_entry).await.unwrap();
+        let outside_current = outside_entry.join("current.ext4");
+        fs::write(&outside_current, b"image").await.unwrap();
+        let current_metadata = fs::metadata(&outside_current).await.unwrap();
+        let metadata = WorkspaceCacheMetadata {
+            format_version: CACHE_FORMAT_VERSION,
+            key_version: CACHE_KEY_VERSION,
+            cache_scope: cache.inner.cache_scope.clone(),
+            profile_name: TEST_PROFILE_NAME.into(),
+            session_id: session_id.into(),
+            working_dir: "/workspace".into(),
+            last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+            last_used_at: "2026-05-01T00:00:00.000Z".into(),
+            last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+            workspace_trust: WorkspaceTrust::Clean,
+            logical_image_size_bytes: current_metadata.len(),
+            allocated_bytes: allocated_bytes(&current_metadata),
+            current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+            drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+            storage_fingerprints: StorageFingerprints::default(),
+            state: WorkspaceCacheState::Current,
+        };
+        fs::write(
+            outside_entry.join("metadata.json"),
+            serde_json::to_vec_pretty(&metadata).unwrap(),
+        )
+        .await
+        .unwrap();
+        let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+        fs::create_dir_all(entry_dir.parent().unwrap())
+            .await
+            .unwrap();
+        std::os::unix::fs::symlink(&outside_entry, &entry_dir).unwrap();
+
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: true,
+            })
+            .await;
+
+        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
+        assert!(
+            lease
+                .workspace_drive_config()
+                .expect("workspace drive should stay enabled")
+                .seed_image
+                .is_none()
+        );
+        assert!(matches!(
+            fs::symlink_metadata(&entry_dir).await,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound
+        ));
+        assert_eq!(fs::read(&outside_current).await.unwrap(), b"image");
     }
 
     #[test]
@@ -5579,6 +5723,71 @@ mod tests {
                 .unwrap()
                 .file_type()
                 .is_symlink()
+        );
+    }
+
+    #[tokio::test]
+    async fn promote_replaces_symlink_cache_entry_dir_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let session_id = "sess-promote-entry-symlink";
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: false,
+            })
+            .await;
+        let active_image = paths.active_workspace_image(&sandbox_id);
+        tokio::fs::create_dir_all(active_image.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&active_image, b"image").await.unwrap();
+        let cache_key = session_workspace_cache_key(session_id, "/workspace");
+        let entry_dir = paths.session_workspace_cache_entry_dir(&cache_key);
+        let outside_entry = dir.path().join("outside-promotion-entry");
+        tokio::fs::create_dir_all(&outside_entry).await.unwrap();
+        tokio::fs::write(outside_entry.join("marker"), b"marker")
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(entry_dir.parent().unwrap())
+            .await
+            .unwrap();
+        std::os::unix::fs::symlink(&outside_entry, &entry_dir).unwrap();
+
+        let promoted = lease
+            .promote(
+                run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-05-01T00:00:00.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap();
+
+        let entry_metadata = fs::symlink_metadata(&entry_dir).await.unwrap();
+        assert!(promoted);
+        assert!(entry_metadata.is_dir());
+        assert!(!entry_metadata.file_type().is_symlink());
+        assert_eq!(
+            fs::read(paths.session_workspace_cache_current_image(&cache_key))
+                .await
+                .unwrap(),
+            b"image"
+        );
+        assert!(!outside_entry.join("current.ext4").exists());
+        assert_eq!(
+            fs::read(outside_entry.join("marker")).await.unwrap(),
+            b"marker"
         );
     }
 
