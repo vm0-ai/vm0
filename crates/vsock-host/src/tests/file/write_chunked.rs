@@ -741,33 +741,42 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
 
         loop {
             let msg = guest.read_message().await;
-            if msg.msg_type == MSG_WRITE_FILE {
-                let (path, _chunk, _sudo, _append) =
-                    vsock_proto::decode_write_file(&msg.payload).unwrap();
-                if let Some(temp_path) = &temp_path {
-                    assert_eq!(path, temp_path);
-                    continue;
-                }
+            match msg.msg_type {
+                MSG_WRITE_FILE => {
+                    let (path, _chunk, _sudo, _append) =
+                        vsock_proto::decode_write_file(&msg.payload).unwrap();
+                    if let Some(temp_path) = &temp_path {
+                        assert_eq!(path, temp_path);
+                        continue;
+                    }
 
-                assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
-                temp_path = Some(path.to_string());
-                send_write_file_success(guest.stream_mut(), msg.seq).await;
-                if let Some(tx) = first_chunk_tx.take() {
-                    let _ = tx.send(());
+                    assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                    temp_path = Some(path.to_string());
+                    send_write_file_success(guest.stream_mut(), msg.seq).await;
+                    if let Some(tx) = first_chunk_tx.take() {
+                        let _ = tx.send(());
+                    }
                 }
-            } else if msg.msg_type == MSG_EXEC_START {
-                let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
-                let temp_path = temp_path.as_ref().expect("temp path");
-                assert!(decoded.command.contains("rm -f --"));
-                assert!(decoded.command.contains(temp_path));
-                assert_eq!(decoded.label, "exec-cleanup");
-                if let Some(tx) = cleanup_tx.take() {
-                    let _ = tx.send(decoded.command.to_string());
+                MSG_EXEC_START => {
+                    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
+                    let temp_path = temp_path.as_ref().expect("temp path");
+                    assert!(decoded.command.contains("rm -f --"));
+                    assert!(decoded.command.contains(temp_path));
+                    assert_eq!(decoded.label, "exec-cleanup");
+                    if let Some(tx) = cleanup_tx.take() {
+                        let _ = tx.send(decoded.command.to_string());
+                    }
+                    guest
+                        .send_exec_result(
+                            msg.seq,
+                            ExecTermination::Exited { exit_code: 0 },
+                            &[],
+                            &[],
+                        )
+                        .await;
+                    return;
                 }
-                guest
-                    .send_exec_result(msg.seq, ExecTermination::Exited { exit_code: 0 }, &[], &[])
-                    .await;
-                return;
+                _ => panic!("unexpected guest message type {:#04x}", msg.msg_type),
             }
         }
     });
