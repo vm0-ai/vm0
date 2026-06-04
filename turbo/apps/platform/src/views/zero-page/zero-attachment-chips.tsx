@@ -1054,7 +1054,7 @@ function ArtifactPreviewDialogContent({
     <div
       ref={dialogRef}
       tabIndex={-1}
-      className={`fixed inset-0 z-[9999] isolate flex items-center justify-center bg-gray-900/45 outline-none transition-opacity duration-[180ms] ease ${
+      className={`fixed inset-0 z-[9999] isolate flex items-center justify-center bg-gray-900/45 outline-none transition-opacity duration-[180ms] ease animate-in fade-in ${
         visible
           ? "pointer-events-auto opacity-100"
           : "pointer-events-none opacity-0"
@@ -1067,13 +1067,14 @@ function ArtifactPreviewDialogContent({
     >
       <LightboxBodyScrollLock />
       <div
-        className={`flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)] transition-transform duration-[180ms] ease ${
+        className={`flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)] transition-transform duration-[180ms] ease animate-in slide-in-from-bottom-2 ${
           visible ? "translate-y-0" : "translate-y-2"
         } ${
           fullscreen
             ? "h-dvh w-dvw rounded-none"
             : "h-[min(700px,86vh)] w-[min(980px,92vw)] rounded-2xl"
         }`}
+        data-testid="attachment-lightbox-panel"
       >
         <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/70 pl-4 pr-3">
           <div className="min-w-0 flex-1">

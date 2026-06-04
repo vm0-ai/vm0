@@ -1654,6 +1654,10 @@ describe("zero chat thread page display - artifacts drawer", () => {
 
     const lightbox = await screen.findByTestId("attachment-lightbox");
     expect(lightbox).toBeInTheDocument();
+    expect(lightbox).toHaveClass("animate-in", "fade-in");
+    expect(
+      within(lightbox).getByTestId("attachment-lightbox-panel"),
+    ).toHaveClass("animate-in", "slide-in-from-bottom-2");
     expect(screen.getByRole("dialog", { name: "chart.png preview" })).toBe(
       lightbox,
     );
