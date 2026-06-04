@@ -221,7 +221,15 @@ async function latestSessionIdForThread(
     .select({ result: agentRuns.result })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(eq(zeroRuns.chatThreadId, threadId))
+    // D7 session-continuity exclusion (see latestSessionIdForThread in
+    // zero-chat-messages.ts): only web-source runs join the chain, so a
+    // scheduled run never bleeds into web-chat session continuity.
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        eq(zeroRuns.triggerSource, "web"),
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(5);
 

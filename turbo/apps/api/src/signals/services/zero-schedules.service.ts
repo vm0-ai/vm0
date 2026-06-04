@@ -8,13 +8,18 @@ import {
   ScheduleListResponse,
   ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type {
   ScheduleCronCallbackPayload,
   ScheduleLoopCallbackPayload,
 } from "@vm0/api-contracts/contracts/internal-callbacks-schedule";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -35,12 +40,29 @@ import {
 } from "./zero-model-selection.service";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import {
+  postScheduleUserMessage,
+  resolveScheduleChatThreadModelPin,
+} from "../routes/zero-chat-messages";
 
 const log = logger("api:zero:schedules");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 const LIGHTWEIGHT_MODEL = "google/gemini-3.1-flash-lite-preview";
 const MAX_CONSECUTIVE_FAILURES = 3;
+
+/**
+ * A schedule runs in chat mode (renders as a web-chat turn in a linked thread)
+ * iff it is linked to a chat thread. Run routing keys off this, NOT the feature
+ * switch — the switch only gates creation/UI/CLI surfaces.
+ */
+function isChatMode(
+  schedule: typeof zeroAgentSchedules.$inferSelect,
+): schedule is typeof zeroAgentSchedules.$inferSelect & {
+  chatThreadId: string;
+} {
+  return schedule.chatThreadId !== null;
+}
 
 async function scheduleResponse(
   schedule: typeof zeroAgentSchedules.$inferSelect,
@@ -73,6 +95,7 @@ async function scheduleResponse(
     lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
     retryStartedAt: schedule.retryStartedAt?.toISOString() ?? null,
     consecutiveFailures: schedule.consecutiveFailures,
+    chatThreadId: schedule.chatThreadId,
     createdAt: schedule.createdAt.toISOString(),
     updatedAt: schedule.updatedAt.toISOString(),
   };
@@ -416,6 +439,34 @@ async function findExistingSchedule(
   return existing ?? null;
 }
 
+/**
+ * A chat thread may be linked to a schedule only if it exists, is owned by the
+ * same user, and belongs to the same agent. (No cross-org sharing; chat threads
+ * carry only a userId, so org isolation is enforced via the user.)
+ */
+async function isChatThreadLinkable(
+  db: Db,
+  args: {
+    readonly chatThreadId: string;
+    readonly userId: string;
+    readonly agentId: string;
+  },
+): Promise<boolean> {
+  const [thread] = await db
+    .select({
+      userId: chatThreads.userId,
+      agentComposeId: chatThreads.agentComposeId,
+    })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, args.chatThreadId))
+    .limit(1);
+  return (
+    thread !== undefined &&
+    thread.userId === args.userId &&
+    thread.agentComposeId === args.agentId
+  );
+}
+
 async function updateExistingSchedule(
   db: Db,
   args: {
@@ -462,6 +513,9 @@ async function insertNewSchedule(
     readonly triggerType: "cron" | "once" | "loop";
     readonly nextRunAt: Date | null;
     readonly currentTime: Date;
+    // Resolved chat-thread link (null = legacy). Computed in deploySchedule$
+    // after the switch + ownership checks — NOT read from the request body.
+    readonly chatThreadId: string | null;
   },
 ): Promise<typeof zeroAgentSchedules.$inferSelect> {
   const [created] = await db
@@ -482,6 +536,7 @@ async function insertNewSchedule(
       vars: null,
       encryptedSecrets: null,
       volumeVersions: args.request.volumeVersions ?? null,
+      chatThreadId: args.chatThreadId,
       enabled: args.request.enabled ?? false,
       nextRunAt: args.nextRunAt,
       consecutiveFailures: 0,
@@ -538,6 +593,49 @@ export const deploySchedule$ = command(
     });
     signal.throwIfAborted();
 
+    // Chat-mode linkage (locked: create-only / immutable; gated by the
+    // ScheduledChat switch). The CLI/UI default chatThreadId to the current
+    // thread ($ZERO_CHAT_THREAD_ID), so this field is commonly present even for
+    // would-be legacy schedules. When the switch is OFF we therefore IGNORE it
+    // (create a legacy schedule) rather than reject, to avoid breaking schedule
+    // creation from inside any thread. Changing the link after creation is not
+    // allowed (immutable).
+    let chatThreadIdToLink: string | null = null;
+    if (args.body.chatThreadId !== undefined) {
+      if (existing) {
+        return {
+          kind: "bad_request",
+          message:
+            "chatThreadId is immutable: a schedule's chat thread can only be set when it is first created",
+        };
+      }
+      const overrides = await get(
+        userFeatureSwitchOverrides(args.orgId, args.userId),
+      );
+      signal.throwIfAborted();
+      const chatModeEnabled = isFeatureEnabled(FeatureSwitchKey.ScheduledChat, {
+        orgId: args.orgId,
+        userId: args.userId,
+        overrides,
+      });
+      if (chatModeEnabled) {
+        const linkable = await isChatThreadLinkable(db, {
+          chatThreadId: args.body.chatThreadId,
+          userId: args.userId,
+          agentId: args.body.agentId,
+        });
+        signal.throwIfAborted();
+        if (!linkable) {
+          return {
+            kind: "bad_request",
+            message:
+              "Chat thread not found, not owned by this user, or belongs to a different agent",
+          };
+        }
+        chatThreadIdToLink = args.body.chatThreadId;
+      }
+    }
+
     const effectiveBody =
       existing && args.body.enabled === undefined
         ? { ...args.body, enabled: existing.enabled }
@@ -573,6 +671,7 @@ export const deploySchedule$ = command(
           triggerType,
           nextRunAt,
           currentTime,
+          chatThreadId: chatThreadIdToLink,
         });
     signal.throwIfAborted();
 
@@ -857,7 +956,10 @@ async function recordSchedulePreRunFailure(
 }
 
 export const executeDueSchedules$ = command(
-  async ({ set }, signal: AbortSignal): Promise<ExecuteDueSchedulesResult> => {
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<ExecuteDueSchedulesResult> => {
     const db = set(writeDb$);
     const currentTime = nowDate();
     log.debug("Checking for due schedules", {
@@ -925,6 +1027,40 @@ export const executeDueSchedules$ = command(
         continue;
       }
 
+      // Feature-switch-OFF skip (locked): a chat-mode schedule whose owner does
+      // NOT have the ScheduledChat switch enabled must not fire. The CAS above
+      // already nulled next_run_at; re-advance it inline so there is no
+      // catch-up burst when the switch is re-enabled. Legacy (unlinked)
+      // schedules are unaffected — they fall through and run normally.
+      if (isChatMode(claimed)) {
+        const overrides = await get(
+          userFeatureSwitchOverrides(claimed.orgId, claimed.userId),
+        );
+        signal.throwIfAborted();
+        const chatModeEnabled = isFeatureEnabled(
+          FeatureSwitchKey.ScheduledChat,
+          { userId: claimed.userId, orgId: claimed.orgId, overrides },
+        );
+        if (!chatModeEnabled) {
+          const skipNextRunAt = nextRunAfterPreRunFailure({
+            schedule: claimed,
+            failureTime: currentTime,
+            shouldDisable: false,
+          });
+          await db
+            .update(zeroAgentSchedules)
+            .set({ nextRunAt: skipNextRunAt, updatedAt: currentTime })
+            .where(eq(zeroAgentSchedules.id, claimed.id));
+          signal.throwIfAborted();
+          log.debug("Skipping chat-mode schedule: feature switch off", {
+            scheduleId: claimed.id,
+            scheduleName: claimed.name,
+          });
+          skipped++;
+          continue;
+        }
+      }
+
       const runResult = await settle(
         set(
           runScheduleNow$,
@@ -979,19 +1115,20 @@ function generateCallbackSecret(): string {
 
 function buildScheduleCallbacks(
   schedule: typeof zeroAgentSchedules.$inferSelect,
-) {
+): { url: string; secret: string; payload: unknown }[] {
+  const callbacks: { url: string; secret: string; payload: unknown }[] = [];
+
   if (schedule.triggerType === "loop") {
     const payload: ScheduleLoopCallbackPayload = { scheduleId: schedule.id };
-    return [
-      {
-        url: `${apiUrl()}/api/internal/callbacks/schedule/loop`,
-        secret: generateCallbackSecret(),
-        payload,
-      },
-    ];
-  }
-
-  if (schedule.triggerType === "cron" || schedule.triggerType === "once") {
+    callbacks.push({
+      url: `${apiUrl()}/api/internal/callbacks/schedule/loop`,
+      secret: generateCallbackSecret(),
+      payload,
+    });
+  } else if (
+    schedule.triggerType === "cron" ||
+    schedule.triggerType === "once"
+  ) {
     const payload: ScheduleCronCallbackPayload = {
       scheduleId: schedule.id,
       ...(schedule.cronExpression && {
@@ -999,27 +1136,158 @@ function buildScheduleCallbacks(
       }),
       timezone: schedule.timezone,
     };
-    return [
-      {
-        url: `${apiUrl()}/api/internal/callbacks/schedule/cron`,
-        secret: generateCallbackSecret(),
-        payload,
-      },
-    ];
+    callbacks.push({
+      url: `${apiUrl()}/api/internal/callbacks/schedule/cron`,
+      secret: generateCallbackSecret(),
+      payload,
+    });
   }
 
-  return [];
+  // Chat mode: also drive the chat callback so the run renders as a web-chat
+  // turn (summary/title/lifecycle + autoSend). The reschedule callback above is
+  // retained for next_run_at / consecutive-failure bookkeeping; only the chat
+  // callback writes the run summary (D9), so callback dispatch order is safe.
+  if (isChatMode(schedule)) {
+    callbacks.push({
+      url: `${apiUrl()}/api/internal/callbacks/chat`,
+      secret: generateCallbackSecret(),
+      payload: { threadId: schedule.chatThreadId, agentId: schedule.agentId },
+    });
+  }
+
+  return callbacks;
 }
 
 function buildScheduleAppendSystemPrompt(
   schedule: typeof zeroAgentSchedules.$inferSelect,
 ): string {
-  const integrationContext = buildSchedulePrompt(schedule.triggerType);
+  const integrationContext = isChatMode(schedule)
+    ? [
+        buildSchedulePrompt(schedule.triggerType),
+        "",
+        "This scheduled run is linked to a web chat thread. Everything you output is automatically shown to the user as a chat message in that thread, so you do not normally need to send a message explicitly.",
+        'If you must send an extra message to the user\'s web chat, target this thread: `zero chat message send -t $ZERO_CHAT_THREAD_ID --text "<message>"`.',
+      ].join("\n")
+    : buildSchedulePrompt(schedule.triggerType);
   const baseAppendPrompt = schedule.appendSystemPrompt ?? undefined;
   return baseAppendPrompt
     ? `${integrationContext}\n\n${baseAppendPrompt}`
     : integrationContext;
 }
+
+// Chat mode: render the scheduled run as a web-chat turn in the linked thread.
+// Model comes from the thread pin (org default if unpinned); the session is
+// always fresh (no sessionId); the chat callback owns the summary while the
+// reschedule callback advances next_run_at (D9).
+const runScheduleChatModeNow$ = command(
+  async (
+    { set },
+    args: {
+      readonly schedule: typeof zeroAgentSchedules.$inferSelect & {
+        readonly chatThreadId: string;
+      };
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<RunScheduleNowResult> => {
+    const db = set(writeDb$);
+    const { schedule } = args;
+
+    const threadModelPin = await resolveScheduleChatThreadModelPin({
+      db,
+      orgId: schedule.orgId,
+      userId: schedule.userId,
+      threadId: schedule.chatThreadId,
+    });
+    signal.throwIfAborted();
+    if ("status" in threadModelPin) {
+      // No user is present to receive a model-config error; surface it as a
+      // run_error (normalized to 400) so it feeds consecutiveFailures / the
+      // manual run-now response.
+      return {
+        kind: "run_error",
+        response: { status: 400, body: threadModelPin.body },
+      };
+    }
+
+    const providerAdmission = await resolveModelFirstProviderAdmission({
+      db,
+      orgId: schedule.orgId,
+      userId: schedule.userId,
+      modelPin: threadModelPin,
+      requestedModelProvider: undefined,
+    });
+    signal.throwIfAborted();
+    if (providerAdmission.error) {
+      return { kind: "run_error", response: providerAdmission.error };
+    }
+
+    const result = await set(
+      createZeroRun$,
+      {
+        auth: {
+          orgId: schedule.orgId,
+          orgRole: "member",
+          userId: schedule.userId,
+          tokenType: "session",
+        },
+        body: {
+          prompt: schedule.prompt,
+          agentId: schedule.agentId,
+          ...(providerAdmission.effectiveModelProvider
+            ? { modelProvider: providerAdmission.effectiveModelProvider }
+            : {}),
+        },
+        apiStartTime: args.apiStartTime,
+        triggerSource: "schedule",
+        chatThreadId: schedule.chatThreadId,
+        modelProviderId: threadModelPin.modelProviderId ?? undefined,
+        modelProviderCredentialScope:
+          threadModelPin.modelProviderCredentialScope ?? undefined,
+        selectedModelOverride: threadModelPin.selectedModel ?? undefined,
+        appendSystemPrompt: buildScheduleAppendSystemPrompt(schedule),
+        callbacks: buildScheduleCallbacks(schedule),
+        zeroRunMetadata: { scheduleId: schedule.id },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status !== 201) {
+      return { kind: "run_error", response: result };
+    }
+
+    await postScheduleUserMessage({
+      db,
+      threadId: schedule.chatThreadId,
+      userId: schedule.userId,
+      runId: result.body.runId,
+      prompt: schedule.prompt,
+      appendQueueMarker: result.body.status === "queued",
+    });
+    signal.throwIfAborted();
+
+    await db
+      .update(zeroRuns)
+      .set({
+        modelProvider: providerAdmission.effectiveModelProvider,
+        modelProviderId: threadModelPin.modelProviderId,
+        modelProviderCredentialScope:
+          threadModelPin.modelProviderCredentialScope,
+        selectedModel: threadModelPin.selectedModel,
+      })
+      .where(eq(zeroRuns.id, result.body.runId));
+    signal.throwIfAborted();
+
+    await db
+      .update(zeroAgentSchedules)
+      .set({ lastRunId: result.body.runId })
+      .where(eq(zeroAgentSchedules.id, schedule.id));
+    signal.throwIfAborted();
+
+    return { kind: "ok", runId: result.body.runId };
+  },
+);
 
 export const runScheduleNow$ = command(
   async (
@@ -1065,6 +1333,14 @@ export const runScheduleNow$ = command(
           message: "Previous run is still active",
         };
       }
+    }
+
+    if (isChatMode(schedule)) {
+      return await set(
+        runScheduleChatModeNow$,
+        { schedule, apiStartTime: args.apiStartTime },
+        signal,
+      );
     }
 
     const modelPin = await resolveDefaultModelFirstPin(

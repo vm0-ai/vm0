@@ -13,6 +13,10 @@ import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { writeDb$ } from "../../external/db";
 import {
   type SchedulesFixture,
   type SchedulesScenarioValues,
@@ -95,6 +99,113 @@ async function seedFixture(
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return fixture;
 }
+
+async function enableChatMode(fixture: SchedulesFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    switches: { [FeatureSwitchKey.ScheduledChat]: true },
+  });
+}
+
+async function seedThread(
+  fixture: SchedulesFixture,
+  userId: string = fixture.userId,
+): Promise<string> {
+  const db = store.set(writeDb$);
+  const threadId = randomUUID();
+  await db.insert(chatThreads).values({
+    id: threadId,
+    userId,
+    agentComposeId: fixture.composeId,
+    title: "linked thread",
+  });
+  return threadId;
+}
+
+describe("POST /api/zero/schedules — chat-mode linkage", () => {
+  it("links a chat thread when the ScheduledChat switch is on", async () => {
+    const fixture = await seedFixture();
+    await enableChatMode(fixture);
+    const threadId = await seedThread(fixture);
+
+    const response = await deploySchedule({
+      name: "chat-sched",
+      agentId: fixture.composeId,
+      cronExpression: "0 9 * * *",
+      prompt: "daily report",
+      description: "d",
+      chatThreadId: threadId,
+    });
+
+    expect(response.status).toBe(201);
+    const body = deployScheduleResponseSchema.parse(response.body);
+    expect(body.schedule.chatThreadId).toBe(threadId);
+  });
+
+  it("ignores the chat thread (legacy) when the switch is off", async () => {
+    const fixture = await seedFixture();
+    const threadId = await seedThread(fixture);
+
+    const response = await deploySchedule({
+      name: "legacy-sched",
+      agentId: fixture.composeId,
+      cronExpression: "0 9 * * *",
+      prompt: "daily report",
+      description: "d",
+      chatThreadId: threadId,
+    });
+
+    expect(response.status).toBe(201);
+    const body = deployScheduleResponseSchema.parse(response.body);
+    expect(body.schedule.chatThreadId).toBeNull();
+  });
+
+  it("rejects changing the chat thread on an existing schedule", async () => {
+    const fixture = await seedFixture();
+    await enableChatMode(fixture);
+    const threadId = await seedThread(fixture);
+
+    const created = await deploySchedule({
+      name: "immutable-sched",
+      agentId: fixture.composeId,
+      cronExpression: "0 9 * * *",
+      prompt: "daily report",
+      description: "d",
+    });
+    expect(created.status).toBe(201);
+
+    const redeploy = await deploySchedule({
+      name: "immutable-sched",
+      agentId: fixture.composeId,
+      cronExpression: "0 10 * * *",
+      prompt: "daily report",
+      description: "d",
+      chatThreadId: threadId,
+    });
+    expect(redeploy.status).toBe(400);
+    expectErrorCode(redeploy, "BAD_REQUEST");
+  });
+
+  it("rejects a chat thread owned by a different user", async () => {
+    const fixture = await seedFixture();
+    await enableChatMode(fixture);
+    const otherThreadId = await seedThread(fixture, `user_${randomUUID()}`);
+
+    const response = await deploySchedule({
+      name: "cross-user-sched",
+      agentId: fixture.composeId,
+      cronExpression: "0 9 * * *",
+      prompt: "daily report",
+      description: "d",
+      chatThreadId: otherThreadId,
+    });
+
+    expect(response.status).toBe(400);
+    expectErrorCode(response, "BAD_REQUEST");
+  });
+});
 
 describe("GET /api/zero/schedules", () => {
   it("returns 401 when the request is unauthenticated", async () => {

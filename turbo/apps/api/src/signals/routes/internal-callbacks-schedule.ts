@@ -7,6 +7,7 @@ import {
   type ScheduleLoopCallbackPayload,
 } from "@vm0/api-contracts/contracts/internal-callbacks-schedule";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
 import {
@@ -136,21 +137,35 @@ function createScheduleCallbackHandler(
     signal.throwIfAborted();
 
     if (callback.status === "completed" && schedule.prompt) {
-      const resultText = await getBestEffortRunOutputText(
-        callback.runId,
-        signal,
-      );
-      await set(
-        saveRunSummary$,
-        {
-          runId: callback.runId,
-          triggerSource: "schedule",
-          prompt: schedule.prompt,
-          resultText: resultText ?? "",
-        },
-        signal,
-      );
+      // In chat mode the chat callback owns the run summary (triggerSource
+      // "chat"); the reschedule callback must NOT write a second one (D9). Key
+      // the skip off the RUN's chat_thread_id — set atomically at creation and
+      // never changed — rather than the (possibly since-unlinked/deleted)
+      // schedule row, which would be a TOCTOU bug.
+      const [run] = await writeDb
+        .select({ chatThreadId: zeroRuns.chatThreadId })
+        .from(zeroRuns)
+        .where(eq(zeroRuns.id, callback.runId))
+        .limit(1);
       signal.throwIfAborted();
+
+      if (run === undefined || run.chatThreadId === null) {
+        const resultText = await getBestEffortRunOutputText(
+          callback.runId,
+          signal,
+        );
+        await set(
+          saveRunSummary$,
+          {
+            runId: callback.runId,
+            triggerSource: "schedule",
+            prompt: schedule.prompt,
+            resultText: resultText ?? "",
+          },
+          signal,
+        );
+        signal.throwIfAborted();
+      }
     }
 
     return successResponse();

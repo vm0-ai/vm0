@@ -25,6 +25,7 @@ function mockScheduleBase() {
     consecutiveFailures: 0,
     nextRunAt: null,
     lastRunAt: null,
+    chatThreadId: null,
   };
 }
 

@@ -697,7 +697,19 @@ async function latestSessionIdForThread(
     .select({ result: agentRuns.result })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(eq(zeroRuns.chatThreadId, threadId))
+    // D7: only web-source runs join the thread's session-continuity chain, so a
+    // chat-mode scheduled run (triggerSource "schedule") never resumes a web
+    // session and a later web turn never resumes a scheduled one. The 'web'
+    // filter (before .limit) is mirrored in latestSessionIdForThreadFromDb
+    // (internal-callbacks-chat.ts) and latestSessionIdForThread
+    // (chat-thread-v1-send.service.ts) — keep them in sync. This is a
+    // continuity filter ONLY; it must NOT be copied into activeRunExistsForThread.
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        eq(zeroRuns.triggerSource, "web"),
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(5);
 
@@ -1028,6 +1040,38 @@ async function resolveStoredModelFirstPin(params: {
       selectedModel: params.pin.selectedModel,
     },
   });
+}
+
+/**
+ * Resolve the model pin for a chat-mode scheduled run from its linked thread:
+ * the thread's stored pin, else its first-run pin, else the org default. This
+ * is deliberately decoupled from session state (a scheduled run is always
+ * fresh) — do NOT route schedules through `resolveRunModelPin`, which falls
+ * back to the org default whenever the session is fresh.
+ */
+export async function resolveScheduleChatThreadModelPin(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly threadId: string;
+}): Promise<
+  | ThreadModelPin
+  | ReturnType<typeof providerDeleted>
+  | ReturnType<typeof badRequestMessage>
+> {
+  const existing = await existingModelFirstThreadPin(
+    params.db,
+    params.threadId,
+  );
+  if (existing) {
+    return resolveStoredModelFirstPin({
+      db: params.db,
+      orgId: params.orgId,
+      userId: params.userId,
+      pin: existing,
+    });
+  }
+  return resolveDefaultModelFirstPin(params.db, params.orgId, params.userId);
 }
 
 async function persistThreadPinIfUnset(
@@ -1428,6 +1472,17 @@ function appendUnassociatedUserMessage(params: {
   });
 }
 
+async function clearThreadDraft(
+  tx: Pick<Db, "update">,
+  threadId: string,
+  userId: string,
+): Promise<void> {
+  await tx
+    .update(chatThreads)
+    .set({ draftContent: null, draftAttachments: null })
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
+}
+
 async function appendAssociatedUserMessage(params: {
   readonly db: Db;
   readonly threadId: string;
@@ -1439,17 +1494,14 @@ async function appendAssociatedUserMessage(params: {
   readonly revokesMessageId: string | undefined;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
+  // When false, the thread's in-progress draft is preserved. Scheduled posts
+  // are not user-initiated typing, so they must not clear the user's draft.
+  readonly clearDraft: boolean;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
-    await tx
-      .update(chatThreads)
-      .set({ draftContent: null, draftAttachments: null })
-      .where(
-        and(
-          eq(chatThreads.id, params.threadId),
-          eq(chatThreads.userId, params.userId),
-        ),
-      );
+    if (params.clearDraft) {
+      await clearThreadDraft(tx, params.threadId, params.userId);
+    }
     const explicitId = params.clientMessageId ?? undefined;
     const fileIds = attachFileIds(params.attachFiles);
     const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
@@ -1994,6 +2046,7 @@ function scheduleAssociatedUserMessage(params: {
         revokesMessageId: params.body.revokesMessageId,
         generationTemplate: params.body.generationTemplate,
         appendQueueMarker: params.appendQueueMarker,
+        clearDraft: true,
       });
       await publishUserSignal(
         [params.userId],
@@ -2006,6 +2059,45 @@ function scheduleAssociatedUserMessage(params: {
       await publishThreadListChanged(params.userId);
     })(),
   );
+}
+
+/**
+ * Post a scheduled run's prompt as a user chat message into its linked thread
+ * and publish the realtime signals so the client surfaces the run. Mirrors the
+ * web user-message path but (a) preserves the thread draft (the post is not
+ * user-initiated typing, per the chat-mode schedule design) and (b) is awaited
+ * rather than fire-and-forget, so cron/run-now sees the message persisted.
+ */
+export async function postScheduleUserMessage(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly runId: string;
+  readonly prompt: string;
+  readonly appendQueueMarker: boolean;
+}): Promise<void> {
+  await appendAssociatedUserMessage({
+    db: params.db,
+    threadId: params.threadId,
+    userId: params.userId,
+    prompt: params.prompt,
+    runId: params.runId,
+    attachFiles: undefined,
+    clientMessageId: undefined,
+    revokesMessageId: undefined,
+    generationTemplate: undefined,
+    appendQueueMarker: params.appendQueueMarker,
+    clearDraft: false,
+  });
+  await publishUserSignal(
+    [params.userId],
+    `chatThreadMessageCreated:${params.threadId}`,
+  );
+  await publishUserSignal(
+    [params.userId],
+    `chatThreadRunCreated:${params.threadId}`,
+  );
+  await publishThreadListChanged(params.userId);
 }
 
 function scheduleCreatedChatRunSideEffects(params: {

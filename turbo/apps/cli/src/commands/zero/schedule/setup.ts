@@ -137,6 +137,7 @@ interface SetupOptions {
   prompt?: string;
   promptFile?: string;
   enable?: boolean;
+  thread?: string;
 }
 
 interface ExistingScheduleDefaults {
@@ -498,6 +499,7 @@ async function buildAndDeploy(params: {
   timezone: string;
   prompt: string;
   existingEnabled: boolean | undefined;
+  chatThreadId: string | undefined;
 }): Promise<DeployResult> {
   let cronExpression: string | undefined;
   let atTimeISO: string | undefined;
@@ -531,6 +533,9 @@ async function buildAndDeploy(params: {
     prompt: params.prompt,
     ...(params.existingEnabled !== undefined && {
       enabled: params.existingEnabled,
+    }),
+    ...(params.chatThreadId !== undefined && {
+      chatThreadId: params.chatThreadId,
     }),
   });
 
@@ -654,6 +659,10 @@ export const setupCommand = new Command()
     "Read prompt from file (cannot be used with --prompt)",
   )
   .option("-e, --enable", "Enable schedule immediately after creation")
+  .option(
+    "--thread <thread-id>",
+    "Link this schedule to an existing chat thread (chat mode); defaults to $ZERO_CHAT_THREAD_ID when omitted",
+  )
   .addHelpText(
     "after",
     `
@@ -751,6 +760,7 @@ Notes:
         timezone,
         prompt: promptText_,
         existingEnabled: existingSchedule?.enabled,
+        chatThreadId: options.thread ?? process.env.ZERO_CHAT_THREAD_ID,
       });
 
       // 8. Display deployment result

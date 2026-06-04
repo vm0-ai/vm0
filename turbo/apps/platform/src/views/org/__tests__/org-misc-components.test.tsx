@@ -162,6 +162,7 @@ function testSchedule(
     consecutiveFailures: 0,
     nextRunAt: null,
     lastRunAt: null,
+    chatThreadId: null,
     ...overrides,
   };
 }

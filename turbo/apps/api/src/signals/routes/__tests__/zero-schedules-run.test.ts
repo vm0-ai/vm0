@@ -11,6 +11,8 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -230,6 +232,73 @@ describe("POST /api/zero/schedules/run", () => {
       /\/api\/internal\/callbacks\/schedule\/cron$/,
     );
     expect(callback?.payload).toMatchObject({ scheduleId });
+  });
+
+  it("runs in chat mode: posts a user message + adds the chat callback", async () => {
+    const fixture = await seedFixture();
+    const scheduleId = fixture.scheduleIds[0];
+    if (!scheduleId) {
+      throw new Error("Expected schedule fixture");
+    }
+    const db = store.set(writeDb$);
+    const threadId = randomUUID();
+    await db.insert(chatThreads).values({
+      id: threadId,
+      userId: fixture.userId,
+      agentComposeId: fixture.composeId,
+      title: "linked thread",
+    });
+    await db
+      .update(zeroAgentSchedules)
+      .set({ chatThreadId: threadId })
+      .where(eq(zeroAgentSchedules.id, scheduleId));
+
+    const response = await rawPostRun({ scheduleId });
+    expect(response.status).toBe(201);
+    const body = runResponseSchema.parse(response.body);
+
+    // The run is bound to the thread but still identified as a scheduled run.
+    const [zeroRun] = await db
+      .select({
+        triggerSource: zeroRuns.triggerSource,
+        chatThreadId: zeroRuns.chatThreadId,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, body.runId));
+    expect(zeroRun).toStrictEqual({
+      triggerSource: "schedule",
+      chatThreadId: threadId,
+    });
+
+    // The prompt was posted as a user chat message bound to the run.
+    const messages = await db
+      .select({ content: chatMessages.content, role: chatMessages.role })
+      .from(chatMessages)
+      .where(eq(chatMessages.runId, body.runId));
+    expect(
+      messages.some((message) => {
+        return message.role === "user" && message.content === "Manual run test";
+      }),
+    ).toBeTruthy();
+
+    // Both the reschedule callback and the chat callback are registered.
+    const callbacks = await db
+      .select({ url: agentRunCallbacks.url })
+      .from(agentRunCallbacks)
+      .where(eq(agentRunCallbacks.runId, body.runId));
+    const urls = callbacks.map((callback) => {
+      return callback.url;
+    });
+    expect(
+      urls.some((url) => {
+        return url.endsWith("/callbacks/schedule/cron");
+      }),
+    ).toBeTruthy();
+    expect(
+      urls.some((url) => {
+        return url.endsWith("/callbacks/chat");
+      }),
+    ).toBeTruthy();
   });
 
   it("resolves user grants for the schedule owner", async () => {

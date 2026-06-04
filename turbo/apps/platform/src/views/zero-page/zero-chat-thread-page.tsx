@@ -40,6 +40,7 @@ import {
   IconPresentation,
   IconTag,
   IconX,
+  IconClock,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -154,6 +155,8 @@ import {
   githubPrTrackingLabelOptions$,
   setGithubPrTrackingOpenThreadId$,
 } from "../../signals/chat-page/github-pr-tracking.ts";
+import { chatThreadSchedules$ } from "../../signals/chat-page/chat-thread-schedules.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 
@@ -917,6 +920,66 @@ function GithubPrTrackingButton({
   );
 }
 
+function ScheduleMenuButton({ thread }: { thread: ChatThreadSignals }) {
+  const features = useLastResolved(featureSwitch$);
+  // Gate the whole feature — and its per-thread fetch — on the switch, so a
+  // switch-off thread open incurs no schedules request.
+  if (!(features?.[FeatureSwitchKey.ScheduledChat] ?? false)) {
+    return null;
+  }
+  return <ScheduleMenuButtonInner thread={thread} />;
+}
+
+function ScheduleMenuButtonInner({ thread }: { thread: ChatThreadSignals }) {
+  const schedulesLoadable = useLastLoadable(
+    chatThreadSchedules$(thread.threadId),
+  );
+  const navigate = useSet(detachedNavigateTo$);
+
+  // Hide the icon until we know there is at least one linked schedule.
+  if (
+    schedulesLoadable.state !== "hasData" ||
+    schedulesLoadable.data.length === 0
+  ) {
+    return null;
+  }
+  const schedules = schedulesLoadable.data;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
+          aria-label="Linked schedules"
+        >
+          <IconClock size={18} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        {schedules.map((schedule) => {
+          return (
+            <DropdownMenuItem
+              key={schedule.id}
+              onClick={() => {
+                navigate("/schedules/:scheduleId", {
+                  pathParams: { scheduleId: schedule.id },
+                });
+              }}
+            >
+              <IconClock
+                size={15}
+                className="mr-2 shrink-0 text-muted-foreground"
+              />
+              <span className="truncate">{schedule.name}</span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function GithubPrTrackingDock({ thread }: { thread: ChatThreadSignals }) {
   const setOpenThreadId = useSet(setGithubPrTrackingOpenThreadId$);
 
@@ -988,6 +1051,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
         <ArtifactsButton thread={thread} />
+        <ScheduleMenuButton thread={thread} />
         {githubPrTrackingEnabled && agentId && (
           <GithubPrTrackingButton thread={thread} agentId={agentId} />
         )}

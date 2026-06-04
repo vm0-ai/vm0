@@ -34,6 +34,7 @@ export function createMockScheduleResponse(
     lastRunAt: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
+    chatThreadId: null,
     createdAt: "2026-03-01T00:00:00Z",
     updatedAt: "2026-03-01T00:00:00Z",
     ...overrides,
@@ -79,6 +80,7 @@ export const apiSchedulesHandlers = [
       lastRunAt: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
+      chatThreadId: body.chatThreadId ?? null,
       createdAt: now,
       updatedAt: now,
     };

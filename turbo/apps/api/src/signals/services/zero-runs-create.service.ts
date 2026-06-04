@@ -767,7 +767,14 @@ export const createZeroRun$ = command(
         selectedModelOverride:
           args.selectedModelOverride ?? agent.selectedModel ?? undefined,
         chatThreadId: args.chatThreadId,
-        extraEnvironment: { ZERO_AGENT_ID: agent.id },
+        extraEnvironment: {
+          ZERO_AGENT_ID: agent.id,
+          // Chat-mode scheduled (and web) runs carry their thread id so the
+          // in-sandbox CLI can target it: zero chat message send -t $ZERO_CHAT_THREAD_ID.
+          ...(args.chatThreadId
+            ? { ZERO_CHAT_THREAD_ID: args.chatThreadId }
+            : {}),
+        },
         callbacks: [
           ...(callbacksForTriggerAgent(triggerAgentId) ?? []),
           ...(args.callbacks ?? []),
