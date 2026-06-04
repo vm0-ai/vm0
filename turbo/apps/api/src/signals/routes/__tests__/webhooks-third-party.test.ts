@@ -3108,24 +3108,27 @@ describe("POST /api/webhooks/stripe", () => {
       ).toStrictEqual(paidThrough);
     });
 
-    it("syncs trial credit expiry when the Stripe trial period is extended", async () => {
+    it("does not sync trial period or credit expiry from subscription updates", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
       mockStripeWebhookEnv();
       const subId = stripeId("sub");
+      const existingPeriodEnd = new Date("2026-01-01T00:00:00.000Z");
+      const existingExpiresAt = new Date("2026-01-02T00:00:00.000Z");
       const extendedPeriodEnd = 1_900_000_000;
       const extendedTrialEnd = 1_900_086_400;
       await updateStripeOrg(fixture, {
         stripeSubscriptionId: subId,
         subscriptionStatus: "trialing",
         tier: "pro",
+        currentPeriodEnd: existingPeriodEnd,
       });
       await insertStripeCreditExpiresRecord(fixture, {
         stripeInvoiceId: stripeId("inv_trial"),
         amount: 20_000,
         remaining: 15_000,
-        expiresAt: new Date("2026-01-01T00:00:00.000Z"),
+        expiresAt: existingExpiresAt,
       });
 
       const response = await postStripeWebhookEvent({
@@ -3149,13 +3152,9 @@ describe("POST /api/webhooks/stripe", () => {
       expect(response.status).toBe(200);
       const billing = await selectStripeBilling(fixture);
       const records = await selectStripeCreditExpiresRecords(fixture);
-      expect(billing.currentPeriodEnd).toStrictEqual(
-        new Date(extendedPeriodEnd * 1000),
-      );
+      expect(billing.currentPeriodEnd).toStrictEqual(existingPeriodEnd);
       expect(records).toHaveLength(1);
-      expect(records[0]?.expiresAt).toStrictEqual(
-        new Date(extendedTrialEnd * 1000),
-      );
+      expect(records[0]?.expiresAt).toStrictEqual(existingExpiresAt);
     });
 
     it("does not extend paid-through from a failed payment update", async () => {
@@ -3274,6 +3273,81 @@ describe("POST /api/webhooks/stripe", () => {
         stripeInvoiceId: invId,
       });
       expect(records[0]?.expiresAt).toStrictEqual(new Date(trialEnd * 1000));
+    });
+
+    it("refreshes trial expiry from later trial invoices without granting duplicate credits", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const firstInvId = stripeId("inv");
+      const secondInvId = stripeId("inv");
+      const firstPeriodEnd = 1_800_000_000;
+      const firstTrialEnd = 1_800_086_400;
+      const extendedPeriodEnd = 1_900_000_000;
+      const extendedTrialEnd = 1_900_086_400;
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        onboardingPaymentPending: true,
+      });
+      context.mocks.stripe.subscriptions.retrieve
+        .mockResolvedValueOnce({
+          id: subId,
+          status: "trialing",
+          trial_end: firstTrialEnd,
+          cancel_at_period_end: false,
+          items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+        })
+        .mockResolvedValueOnce({
+          id: subId,
+          status: "trialing",
+          trial_end: extendedTrialEnd,
+          cancel_at_period_end: false,
+          items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+        });
+
+      const firstResponse = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: firstInvId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(firstPeriodEnd),
+          parent: { subscription_details: { subscription: subId } },
+        },
+      });
+      const secondResponse = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: secondInvId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(extendedPeriodEnd),
+          parent: { subscription_details: { subscription: subId } },
+        },
+      });
+
+      expect(firstResponse.status).toBe(200);
+      expect(secondResponse.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      const records = await selectStripeCreditExpiresRecords(fixture);
+      expect(billing.credits).toBe(20_000);
+      expect(billing.tier).toBe("pro");
+      expect(billing.subscriptionStatus).toBe("trialing");
+      expect(billing.lastProcessedInvoiceId).toBe(secondInvId);
+      expect(billing.currentPeriodEnd).toStrictEqual(
+        new Date(extendedPeriodEnd * 1000),
+      );
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        amount: 20_000,
+        remaining: 20_000,
+        stripeInvoiceId: firstInvId,
+      });
+      expect(records[0]?.expiresAt).toStrictEqual(
+        new Date(extendedTrialEnd * 1000),
+      );
     });
 
     it("expires old credits before granting new ones", async () => {

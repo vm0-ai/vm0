@@ -81,6 +81,16 @@ interface InvoicePaidOrg {
   readonly tier: string;
 }
 
+type LockedInvoicePaidOrg = InvoicePaidOrg;
+
+interface SubscriptionInvoiceDetails {
+  readonly subscription: SubscriptionInput;
+  readonly tier: SubscriptionCheckoutTier;
+  readonly credits: number;
+  readonly periodEndDate: Date;
+  readonly expiresAt: Date;
+}
+
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
   return typeof periodEndUnix === "number"
@@ -225,6 +235,68 @@ async function createExpiresRecord(
     .returning({ id: creditExpiresRecord.id });
 
   return rows.length > 0;
+}
+
+async function lockInvoicePaidOrg(
+  tx: WriteTx,
+  orgId: string,
+): Promise<LockedInvoicePaidOrg | null> {
+  const [org] = await tx
+    .select({
+      orgId: orgMetadata.orgId,
+      lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      tier: orgMetadata.tier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .for("update")
+    .limit(1);
+
+  return org ?? null;
+}
+
+async function existingTrialPlanCredits(
+  tx: WriteTx,
+  args: {
+    readonly orgId: string;
+    readonly credits: number;
+  },
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: creditExpiresRecord.id })
+    .from(creditExpiresRecord)
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, args.orgId),
+        eq(creditExpiresRecord.source, "subscription_renewal"),
+        eq(creditExpiresRecord.amount, args.credits),
+      ),
+    )
+    .for("update");
+
+  return rows.length > 0;
+}
+
+async function refreshTrialPlanCredits(
+  tx: WriteTx,
+  args: {
+    readonly orgId: string;
+    readonly credits: number;
+    readonly expiresAt: Date;
+  },
+): Promise<void> {
+  await tx
+    .update(creditExpiresRecord)
+    .set({ expiresAt: args.expiresAt })
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, args.orgId),
+        eq(creditExpiresRecord.source, "subscription_renewal"),
+        eq(creditExpiresRecord.amount, args.credits),
+        gt(creditExpiresRecord.remaining, 0),
+      ),
+    );
 }
 
 async function expireCredits(tx: WriteTx, orgId: string): Promise<number> {
@@ -688,6 +760,192 @@ function invoiceWouldReplaceWithSameOrLowerTier(args: {
   );
 }
 
+function subscriptionIdFromInvoice(invoice: InvoiceInput): string | null {
+  const subscription = invoice.parent?.subscription_details?.subscription;
+  return typeof subscription === "string"
+    ? subscription
+    : (subscription?.id ?? null);
+}
+
+function customerIdFromInvoice(invoice: InvoiceInput): string | null {
+  return typeof invoice.customer === "string"
+    ? invoice.customer
+    : (invoice.customer?.id ?? null);
+}
+
+function subscriptionPeriodEndFromInvoice(
+  invoice: InvoiceInput,
+  orgId: string,
+): Date {
+  const subscriptionLine = invoice.lines.data.find((line) => {
+    return line.parent?.type === "subscription_item_details";
+  });
+  const periodEndUnix = subscriptionLine?.period.end;
+  if (!periodEndUnix) {
+    throw new Error(
+      `invoice.paid has no subscription line item with period.end (invoiceId=${invoice.id}, orgId=${orgId})`,
+    );
+  }
+  return new Date(periodEndUnix * 1000);
+}
+
+async function subscriptionInvoiceDetails(
+  invoice: InvoiceInput,
+  args: {
+    readonly subscriptionId: string;
+    readonly orgId: string;
+  },
+): Promise<SubscriptionInvoiceDetails | null> {
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(args.subscriptionId);
+  const priceId = subscription.items.data[0]?.price?.id;
+  if (!priceId) {
+    L.warn("subscription has no price ID for credit grant", {
+      subscriptionId: args.subscriptionId,
+    });
+    return null;
+  }
+
+  const tier = tierFromPriceId(priceId);
+  const credits = monthlyCreditsForTier(tier);
+  if (credits <= 0) {
+    L.warn("no credits to grant for tier", {
+      tier,
+      invoiceId: invoice.id,
+      orgId: args.orgId,
+    });
+    return null;
+  }
+
+  const periodEndDate = subscriptionPeriodEndFromInvoice(invoice, args.orgId);
+  return {
+    subscription,
+    tier,
+    credits,
+    periodEndDate,
+    expiresAt: subscriptionCreditExpiresAt(subscription, periodEndDate),
+  };
+}
+
+async function updateSubscriptionInvoiceMetadata(
+  tx: WriteTx,
+  args: {
+    readonly orgId: string;
+    readonly invoiceId: string;
+    readonly subscriptionId: string;
+    readonly details: SubscriptionInvoiceDetails;
+  },
+): Promise<void> {
+  await tx
+    .update(orgMetadata)
+    .set({
+      tier: args.details.tier,
+      stripeSubscriptionId: args.subscriptionId,
+      subscriptionStatus: args.details.subscription.status,
+      cancelAtPeriodEnd: subscriptionWillCancel(args.details.subscription),
+      onboardingPaymentPending: false,
+      lastProcessedInvoiceId: args.invoiceId,
+      currentPeriodEnd: args.details.periodEndDate,
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.orgId, args.orgId));
+}
+
+async function processSubscriptionInvoicePaid(
+  tx: WriteTx,
+  args: {
+    readonly invoice: InvoiceInput;
+    readonly customerId: string;
+    readonly subscriptionId: string;
+    readonly orgId: string;
+    readonly details: SubscriptionInvoiceDetails;
+  },
+): Promise<void> {
+  const lockedOrg = await lockInvoicePaidOrg(tx, args.orgId);
+  if (!lockedOrg) {
+    return;
+  }
+
+  if (lockedOrg.lastProcessedInvoiceId === args.invoice.id) {
+    L.debug("invoice.paid already processed by concurrent delivery", {
+      invoiceId: args.invoice.id,
+      orgId: args.orgId,
+    });
+    return;
+  }
+
+  if (
+    invoiceWouldReplaceWithSameOrLowerTier({
+      currentSubscriptionId: lockedOrg.stripeSubscriptionId,
+      subscriptionId: args.subscriptionId,
+      currentTier: lockedOrg.tier,
+      targetTier: args.details.tier,
+    })
+  ) {
+    L.warn("invoice.paid rejected tier replacement", {
+      customerId: args.customerId,
+      invoiceId: args.invoice.id,
+      subscriptionId: args.subscriptionId,
+      currentSubscriptionId: lockedOrg.stripeSubscriptionId,
+      currentTier: lockedOrg.tier,
+      targetTier: args.details.tier,
+      reason: checkoutTierConflictMessage({
+        currentTier: lockedOrg.tier,
+        targetTier: args.details.tier,
+      }),
+    });
+    return;
+  }
+
+  const trialingExistingSubscription =
+    args.details.subscription.status === "trialing" &&
+    lockedOrg.stripeSubscriptionId === args.subscriptionId &&
+    lockedOrg.tier === args.details.tier &&
+    (await existingTrialPlanCredits(tx, {
+      orgId: args.orgId,
+      credits: args.details.credits,
+    }));
+
+  if (trialingExistingSubscription) {
+    await refreshTrialPlanCredits(tx, {
+      orgId: args.orgId,
+      credits: args.details.credits,
+      expiresAt: args.details.expiresAt,
+    });
+    await updateSubscriptionInvoiceMetadata(tx, {
+      orgId: args.orgId,
+      invoiceId: args.invoice.id,
+      subscriptionId: args.subscriptionId,
+      details: args.details,
+    });
+    return;
+  }
+
+  await expireCredits(tx, args.orgId);
+
+  const inserted = await createExpiresRecord(tx, args.orgId, {
+    source: "subscription_renewal",
+    stripeInvoiceId: args.invoice.id,
+    amount: args.details.credits,
+    expiresAt: args.details.expiresAt,
+  });
+  if (!inserted) {
+    L.debug("invoice.paid already processed by concurrent delivery", {
+      invoiceId: args.invoice.id,
+      orgId: args.orgId,
+    });
+    return;
+  }
+
+  await grantOrgCredits(tx, args.orgId, args.details.credits);
+  await updateSubscriptionInvoiceMetadata(tx, {
+    orgId: args.orgId,
+    invoiceId: args.invoice.id,
+    subscriptionId: args.subscriptionId,
+    details: args.details,
+  });
+}
+
 async function handleCheckoutCompleted(
   db: Db,
   session: CheckoutSessionInput,
@@ -740,9 +998,7 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     return;
   }
 
-  const subscription = invoice.parent?.subscription_details?.subscription;
-  const subscriptionId =
-    typeof subscription === "string" ? subscription : subscription?.id;
+  const subscriptionId = subscriptionIdFromInvoice(invoice);
   if (!subscriptionId) {
     L.warn("invoice.paid without subscription; skipping", {
       invoiceId: invoice.id,
@@ -750,10 +1006,7 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     return;
   }
 
-  const customerId =
-    typeof invoice.customer === "string"
-      ? invoice.customer
-      : invoice.customer?.id;
+  const customerId = customerIdFromInvoice(invoice);
   if (!customerId) {
     L.warn("invoice.paid without customer ID", { invoiceId: invoice.id });
     return;
@@ -779,97 +1032,22 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     return;
   }
 
-  const stripe = getStripeClient();
-  const subscriptionRecord =
-    await stripe.subscriptions.retrieve(subscriptionId);
-  const priceId = subscriptionRecord.items.data[0]?.price?.id;
-  if (!priceId) {
-    L.warn("subscription has no price ID for credit grant", {
-      subscriptionId,
-    });
-    return;
-  }
-
-  const tier = tierFromPriceId(priceId);
-  if (
-    invoiceWouldReplaceWithSameOrLowerTier({
-      currentSubscriptionId: org.stripeSubscriptionId,
-      subscriptionId,
-      currentTier: org.tier,
-      targetTier: tier,
-    })
-  ) {
-    L.warn("invoice.paid rejected tier replacement", {
-      customerId,
-      invoiceId: invoice.id,
-      subscriptionId,
-      currentSubscriptionId: org.stripeSubscriptionId,
-      currentTier: org.tier,
-      targetTier: tier,
-      reason: checkoutTierConflictMessage({
-        currentTier: org.tier,
-        targetTier: tier,
-      }),
-    });
-    return;
-  }
-
-  const credits = monthlyCreditsForTier(tier);
-  if (credits <= 0) {
-    L.warn("no credits to grant for tier", {
-      tier,
-      invoiceId: invoice.id,
-      orgId: org.orgId,
-    });
-    return;
-  }
-
-  const subscriptionLine = invoice.lines.data.find((line) => {
-    return line.parent?.type === "subscription_item_details";
+  const details = await subscriptionInvoiceDetails(invoice, {
+    subscriptionId,
+    orgId: org.orgId,
   });
-  const periodEndUnix = subscriptionLine?.period.end;
-  if (!periodEndUnix) {
-    throw new Error(
-      `invoice.paid has no subscription line item with period.end (invoiceId=${invoice.id}, orgId=${org.orgId})`,
-    );
+  if (!details) {
+    return;
   }
-  const periodEndDate = new Date(periodEndUnix * 1000);
-  const expiresAt = subscriptionCreditExpiresAt(
-    subscriptionRecord,
-    periodEndDate,
-  );
 
   await db.transaction(async (tx) => {
-    await expireCredits(tx, org.orgId);
-
-    const inserted = await createExpiresRecord(tx, org.orgId, {
-      source: "subscription_renewal",
-      stripeInvoiceId: invoice.id,
-      amount: credits,
-      expiresAt,
+    await processSubscriptionInvoicePaid(tx, {
+      invoice,
+      customerId,
+      subscriptionId,
+      orgId: org.orgId,
+      details,
     });
-    if (!inserted) {
-      L.debug("invoice.paid already processed by concurrent delivery", {
-        invoiceId: invoice.id,
-        orgId: org.orgId,
-      });
-      return;
-    }
-
-    await grantOrgCredits(tx, org.orgId, credits);
-    await tx
-      .update(orgMetadata)
-      .set({
-        tier,
-        stripeSubscriptionId: subscriptionId,
-        subscriptionStatus: subscriptionRecord.status,
-        cancelAtPeriodEnd: subscriptionWillCancel(subscriptionRecord),
-        onboardingPaymentPending: false,
-        lastProcessedInvoiceId: invoice.id,
-        currentPeriodEnd: periodEndDate,
-        updatedAt: nowDate(),
-      })
-      .where(eq(orgMetadata.orgId, org.orgId));
   });
 }
 
@@ -877,42 +1055,19 @@ async function handleSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
 ): Promise<void> {
-  const periodEnd =
-    subscription.status === "trialing"
-      ? subscriptionPeriodEnd(subscription)
-      : subscriptionWillCancel(subscription)
-        ? subscriptionScheduledEnd(subscription)
-        : null;
+  const periodEnd = subscriptionWillCancel(subscription)
+    ? subscriptionScheduledEnd(subscription)
+    : null;
 
-  await db.transaction(async (tx) => {
-    const rows = await tx
-      .update(orgMetadata)
-      .set({
-        subscriptionStatus: subscription.status,
-        cancelAtPeriodEnd: subscriptionWillCancel(subscription),
-        updatedAt: nowDate(),
-        ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
-      })
-      .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
-      .returning({ orgId: orgMetadata.orgId });
-
-    if (subscription.status !== "trialing") {
-      return;
-    }
-    const trialEnd = requiredSubscriptionTrialEnd(subscription);
-    for (const row of rows) {
-      await tx
-        .update(creditExpiresRecord)
-        .set({ expiresAt: trialEnd })
-        .where(
-          and(
-            eq(creditExpiresRecord.orgId, row.orgId),
-            eq(creditExpiresRecord.source, "subscription_renewal"),
-            gt(creditExpiresRecord.remaining, 0),
-          ),
-        );
-    }
-  });
+  await db
+    .update(orgMetadata)
+    .set({
+      subscriptionStatus: subscription.status,
+      cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+      updatedAt: nowDate(),
+      ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+    })
+    .where(eq(orgMetadata.stripeSubscriptionId, subscription.id));
 }
 
 async function handleSubscriptionDeleted(
