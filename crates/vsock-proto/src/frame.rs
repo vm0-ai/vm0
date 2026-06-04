@@ -308,6 +308,35 @@ mod tests {
     }
 
     #[test]
+    fn decode_with_preserves_partial_frame_after_complete_frame() {
+        let first = encode(MSG_PING, 1, b"first").unwrap();
+        let second = encode(MSG_PONG, 2, b"second").unwrap();
+        let mut data = first;
+        data.extend_from_slice(&second[..7]);
+        let mut dec = Decoder::new();
+        let mut visited = Vec::new();
+
+        dec.decode_with(&data, |msg| {
+            visited.push(msg.to_owned_message());
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+        assert_eq!(visited.len(), 1);
+        assert_eq!(visited[0].msg_type, MSG_PING);
+        assert_eq!(visited[0].payload, b"first");
+
+        dec.decode_with(&second[7..], |msg| {
+            visited.push(msg.to_owned_message());
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+        assert_eq!(visited.len(), 2);
+        assert_eq!(visited[1].msg_type, MSG_PONG);
+        assert_eq!(visited[1].seq, 2);
+        assert_eq!(visited[1].payload, b"second");
+    }
+
+    #[test]
     fn decode_with_handles_multiple_messages() {
         let mut data = encode(MSG_PING, 1, b"a").unwrap();
         data.extend_from_slice(&encode(MSG_PONG, 2, b"b").unwrap());
