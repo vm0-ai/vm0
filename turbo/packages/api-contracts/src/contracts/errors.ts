@@ -161,10 +161,15 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE,
 ] as const;
 
-function parseJsonObjectAt(
+function parseNextJsonObject(
   errorMessage: string,
-  bodyStart: number,
+  searchStart: number,
 ): { readonly value?: unknown; readonly endIndex: number } | undefined {
+  const bodyStart = errorMessage.indexOf("{", searchStart);
+  if (bodyStart === -1) {
+    return undefined;
+  }
+
   let depth = 0;
   let inString = false;
   let escaped = false;
@@ -219,16 +224,14 @@ function isCodexOAuthReconnectRequiredRunErrorObject(value: unknown): boolean {
 }
 
 function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
-  let bodyStart = errorMessage.indexOf("{");
-  while (bodyStart !== -1) {
-    const parsed = parseJsonObjectAt(errorMessage, bodyStart);
+  let searchStart = 0;
+  let parsed = parseNextJsonObject(errorMessage, searchStart);
+  while (parsed !== undefined) {
     if (isCodexOAuthReconnectRequiredRunErrorObject(parsed?.value)) {
       return true;
     }
-    bodyStart = errorMessage.indexOf(
-      "{",
-      parsed === undefined ? bodyStart + 1 : parsed.endIndex,
-    );
+    searchStart = parsed.endIndex;
+    parsed = parseNextJsonObject(errorMessage, searchStart);
   }
   return false;
 }

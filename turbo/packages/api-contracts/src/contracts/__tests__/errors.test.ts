@@ -179,6 +179,20 @@ describe("formatRunErrorForExternalSurface", () => {
     expect(isGenericRunErrorForDisplay(rawRunError)).toBe(true);
   });
 
+  it("does not match nested debug objects inside unrelated metadata bodies", () => {
+    const rawRunError =
+      'unexpected status 502 Bad Gateway: {"traceId":"abc","debug":{"error":"TOKEN_REFRESH_FAILED","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}}';
+
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: rawRunError,
+      }),
+    ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
+    expect(isActionableRunError(rawRunError)).toBe(false);
+    expect(isGenericRunErrorForDisplay(rawRunError)).toBe(true);
+  });
+
   it("keeps upstream Codex token refresh failures generic", () => {
     const rawRunError =
       'unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token refresh failed for: codex-oauth-token.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"],"failureReason":"upstream_provider"}, url: https://chatgpt.com/backend-api/codex/responses';
