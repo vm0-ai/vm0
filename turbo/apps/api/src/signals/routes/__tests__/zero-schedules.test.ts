@@ -225,6 +225,80 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
   });
 });
 
+describe("chat-mode schedule realtime signals", () => {
+  it("publishes chatThreadSchedulesChanged when a chat-mode schedule is created", async () => {
+    const fixture = await seedFixture();
+    await enableChatMode(fixture);
+    const threadId = await seedThread(fixture);
+
+    const response = await deploySchedule({
+      name: "chat-sched",
+      agentId: fixture.composeId,
+      cronExpression: "0 9 * * *",
+      prompt: "daily report",
+      description: "d",
+      chatThreadId: threadId,
+    });
+    expect(response.status).toBe(201);
+
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadSchedulesChanged:${threadId}`,
+      null,
+    );
+  });
+
+  it("does not publish chatThreadSchedulesChanged for a legacy schedule", async () => {
+    const fixture = await seedFixture();
+    const threadId = await seedThread(fixture);
+
+    const response = await deploySchedule({
+      name: "legacy-sched",
+      agentId: fixture.composeId,
+      cronExpression: "0 9 * * *",
+      prompt: "daily report",
+      description: "d",
+      chatThreadId: threadId,
+    });
+    expect(response.status).toBe(201);
+
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      expect.stringContaining("chatThreadSchedulesChanged:"),
+      expect.anything(),
+    );
+  });
+
+  it("publishes chatThreadSchedulesChanged when a chat-mode schedule is deleted", async () => {
+    const fixture = await seedFixture();
+    await enableChatMode(fixture);
+    const threadId = await seedThread(fixture);
+
+    await deploySchedule({
+      name: "chat-sched",
+      agentId: fixture.composeId,
+      cronExpression: "0 9 * * *",
+      prompt: "daily report",
+      description: "d",
+      chatThreadId: threadId,
+    });
+    context.mocks.ably.publish.mockClear();
+
+    const app = createApp({ signal: context.signal });
+    const del = await app.request(
+      `/api/zero/schedules/chat-sched?agentId=${fixture.composeId}`,
+      {
+        method: "DELETE",
+        headers: { authorization: "Bearer clerk-session" },
+      },
+    );
+    expect(del.status).toBe(204);
+
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadSchedulesChanged:${threadId}`,
+      null,
+    );
+  });
+});
+
 describe("GET /api/zero/schedules", () => {
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await listSchedules({});

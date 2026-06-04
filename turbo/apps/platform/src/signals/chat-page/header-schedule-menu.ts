@@ -7,6 +7,7 @@ import { zeroClient$ } from "../api-client.ts";
 interface HeaderScheduleEntry {
   readonly id: string;
   readonly name: string;
+  readonly chatThreadId: string | null;
 }
 
 const headerScheduleMenuReload$ = state(0);
@@ -18,7 +19,9 @@ export const reloadHeaderScheduleMenu$ = command(({ get, set }) => {
 
 /**
  * All of the user's schedules, for the chat-thread header schedule menu. Read
- * via useLastLoadable; refetched on every menu open via reloadHeaderScheduleMenu$.
+ * via useLastLoadable; refetched on every menu open via reloadHeaderScheduleMenu$
+ * and on realtime chatThreadSchedulesChanged signals. Consumers filter this to
+ * the schedules linked to the current chat thread (see schedulesForThread).
  */
 export const headerScheduleMenu$ = computed(
   async (get): Promise<readonly HeaderScheduleEntry[]> => {
@@ -30,7 +33,21 @@ export const headerScheduleMenu$ = computed(
       { toast: false },
     );
     return result.body.schedules.map((schedule) => {
-      return { id: schedule.id, name: schedule.name };
+      return {
+        id: schedule.id,
+        name: schedule.name,
+        chatThreadId: schedule.chatThreadId,
+      };
     });
   },
 );
+
+/** Schedules linked to a specific chat thread, for the header schedule menu. */
+export function schedulesForThread(
+  schedules: readonly HeaderScheduleEntry[],
+  threadId: string,
+): readonly HeaderScheduleEntry[] {
+  return schedules.filter((schedule) => {
+    return schedule.chatThreadId === threadId;
+  });
+}

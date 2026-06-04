@@ -9,6 +9,7 @@ import {
 import { animationFrame, delay } from "signal-timers";
 import { onRef, resetSignal, setLoop } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { reloadHeaderScheduleMenu$ } from "./header-schedule-menu.ts";
 import {
   createScrollSignals,
   type ScrollStepDirection,
@@ -1548,13 +1549,22 @@ function createRunTracking({
       return false;
     });
 
+    const onSchedulesChanged$ = command(({ set }) => {
+      L.debug("onSchedulesChanged$ fired", { threadId });
+      set(reloadHeaderScheduleMenu$);
+      return false;
+    });
+
     L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
     await Promise.all([
       set(backfillHistoryBoundary$, signal),
       set(markThreadReadIfNeeded$, signal),
       set(
         dataSource.subscribeRealtime$,
-        { threadId, handlers: { onMessageCreated$, onRunChanged$ } },
+        {
+          threadId,
+          handlers: { onMessageCreated$, onRunChanged$, onSchedulesChanged$ },
+        },
         signal,
       ),
     ]);

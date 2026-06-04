@@ -44,6 +44,7 @@ import {
   postScheduleUserMessage,
   resolveScheduleChatThreadModelPin,
 } from "../routes/zero-chat-messages";
+import { publishChatThreadSchedulesChangedSafely } from "../external/realtime";
 
 const log = logger("api:zero:schedules");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -725,6 +726,15 @@ export const deploySchedule$ = command(
         });
     signal.throwIfAborted();
 
+    // Notify the linked chat thread so its header schedule menu refreshes the
+    // thread-scoped list in real time (chat-mode schedules only).
+    if (schedule.chatThreadId) {
+      await publishChatThreadSchedulesChangedSafely(
+        args.userId,
+        schedule.chatThreadId,
+      );
+    }
+
     const featureSwitchOverrides = await get(
       userFeatureSwitchOverrides(args.orgId, args.userId),
     );
@@ -777,6 +787,13 @@ export const disableSchedule$ = command(
       return { kind: "not_found" };
     }
 
+    if (updated.chatThreadId) {
+      await publishChatThreadSchedulesChangedSafely(
+        args.userId,
+        updated.chatThreadId,
+      );
+    }
+
     const featureSwitchOverrides = await get(
       userFeatureSwitchOverrides(args.orgId, args.userId),
     );
@@ -811,6 +828,7 @@ export const deleteSchedule$ = command(
       return { kind: "not_found" };
     }
 
+    const chatThreadId = ownership.schedule.chatThreadId;
     const [deleted] = await db
       .delete(zeroAgentSchedules)
       .where(eq(zeroAgentSchedules.id, ownership.schedule.id))
@@ -818,6 +836,12 @@ export const deleteSchedule$ = command(
     signal.throwIfAborted();
     if (!deleted) {
       return { kind: "not_found" };
+    }
+
+    // Notify the linked chat thread so its header schedule menu drops the
+    // deleted entry in real time (chat-mode schedules only).
+    if (chatThreadId) {
+      await publishChatThreadSchedulesChangedSafely(args.userId, chatThreadId);
     }
 
     return { kind: "ok" };
@@ -876,6 +900,13 @@ export const enableSchedule$ = command(
     signal.throwIfAborted();
     if (!updated) {
       return { kind: "not_found" };
+    }
+
+    if (updated.chatThreadId) {
+      await publishChatThreadSchedulesChangedSafely(
+        args.userId,
+        updated.chatThreadId,
+      );
     }
 
     const featureSwitchOverrides = await get(

@@ -10,6 +10,7 @@ import type { ChatThread } from "../agent-chat.ts";
 export interface ChatThreadRealtimeHandlers {
   onMessageCreated$: Command<Promise<boolean>, [AbortSignal]>;
   onRunChanged$: Command<Promise<boolean>, [AbortSignal]>;
+  onSchedulesChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
 }
 
 export interface InitialPage {

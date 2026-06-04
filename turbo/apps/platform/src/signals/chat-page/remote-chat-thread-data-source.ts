@@ -259,6 +259,12 @@ const subscribeRealtime$ = command(
         handlers.onRunChanged$,
         signal,
       ),
+      set(
+        setAblyLoop$,
+        `chatThreadSchedulesChanged:${threadId}`,
+        handlers.onSchedulesChanged$,
+        signal,
+      ),
     ]);
     signal.throwIfAborted();
   },

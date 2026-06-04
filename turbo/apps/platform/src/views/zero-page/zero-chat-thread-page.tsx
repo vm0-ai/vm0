@@ -184,6 +184,7 @@ import {
 import {
   headerScheduleMenu$,
   reloadHeaderScheduleMenu$,
+  schedulesForThread,
 } from "../../signals/chat-page/header-schedule-menu.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
@@ -956,21 +957,24 @@ function GithubPrTrackingButton({
   );
 }
 
-function ScheduleMenuButton() {
+function ScheduleMenuButton({ threadId }: { threadId: string }) {
   const features = useLastResolved(featureSwitch$);
-  // Shown whenever the ScheduledChat switch is on (independent of any thread).
+  // Shown whenever the ScheduledChat switch is on. The list is scoped to the
+  // schedules linked to this chat thread.
   if (!(features?.[FeatureSwitchKey.ScheduledChat] ?? false)) {
     return null;
   }
-  return <ScheduleMenuButtonInner />;
+  return <ScheduleMenuButtonInner threadId={threadId} />;
 }
 
-function ScheduleMenuButtonInner() {
+function ScheduleMenuButtonInner({ threadId }: { threadId: string }) {
   const navigate = useSet(detachedNavigateTo$);
   const reloadSchedules = useSet(reloadHeaderScheduleMenu$);
   const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
   const schedules =
-    schedulesLoadable.state === "hasData" ? schedulesLoadable.data : [];
+    schedulesLoadable.state === "hasData"
+      ? schedulesForThread(schedulesLoadable.data, threadId)
+      : [];
 
   return (
     <DropdownMenu
@@ -1087,7 +1091,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        <ScheduleMenuButton />
+        <ScheduleMenuButton threadId={thread.threadId} />
         <ArtifactsButton thread={thread} />
         {githubPrTrackingEnabled && agentId && (
           <GithubPrTrackingButton thread={thread} agentId={agentId} />
