@@ -3,7 +3,6 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
-  type ArtifactEntry,
   type SecretConnectorMetadata,
   type StorageManifest,
   type StoredExecutionContext,
@@ -189,14 +188,8 @@ interface ContextArtifact {
   readonly generatedBy?: "apiAutoMemory";
 }
 
-interface StorageContextArtifact extends ContextArtifact {
-  readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
-}
-
 interface RunArtifacts {
   readonly artifacts: readonly ContextArtifact[];
-  // Index into `artifacts` for API-managed memory checkpoint policy.
-  readonly autoMemoryPolicyArtifactIndex: number | undefined;
 }
 
 interface ComposeArtifact {
@@ -648,21 +641,6 @@ function withoutSupersededAutoMemoryArtifacts(
   });
 }
 
-function storageArtifactsForRun(
-  artifacts: readonly ContextArtifact[],
-  autoMemoryPolicyArtifactIndex: number | undefined,
-): readonly StorageContextArtifact[] {
-  return artifacts.map((artifact, index) => {
-    if (index === autoMemoryPolicyArtifactIndex) {
-      return {
-        ...artifact,
-        missingRootPolicy: "preserveParentVersion",
-      };
-    }
-    return artifact;
-  });
-}
-
 function resolveComposeArtifactMountPath(artifact: ComposeArtifact): string {
   return expandMountPath(artifact.mount_path);
 }
@@ -707,7 +685,6 @@ function artifactsForRun(args: {
   if (autoMemorySlotArtifactIndex === undefined) {
     return {
       artifacts: [...artifacts, autoMemoryArtifact(args.framework)],
-      autoMemoryPolicyArtifactIndex: artifacts.length,
     };
   }
 
@@ -719,13 +696,11 @@ function artifactsForRun(args: {
         args.framework,
         autoMemorySlotArtifactIndex,
       ),
-      autoMemoryPolicyArtifactIndex: undefined,
     };
   }
 
   return {
     artifacts,
-    autoMemoryPolicyArtifactIndex: autoMemorySlotArtifactIndex,
   };
 }
 
@@ -3238,7 +3213,6 @@ function buildRunnerJobPayload(
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
     readonly artifacts: readonly ContextArtifact[];
-    readonly autoMemoryPolicyArtifactIndex: number | undefined;
     readonly framework: SupportedFramework;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
@@ -3286,10 +3260,7 @@ function buildRunnerJobPayload(
           agentOrgId: args.resolved.orgId,
           runtimeOrgId: args.orgId,
           userId: args.userId,
-          artifacts: storageArtifactsForRun(
-            args.artifacts,
-            args.autoMemoryPolicyArtifactIndex,
-          ),
+          artifacts: args.artifacts,
           volumeVersionOverrides: body.volumeVersions,
           additionalVolumes: args.additionalVolumes,
           framework: args.framework,
@@ -3350,7 +3321,6 @@ function dispatchRun(
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
     readonly artifacts: readonly ContextArtifact[];
-    readonly autoMemoryPolicyArtifactIndex: number | undefined;
     readonly framework: SupportedFramework;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
@@ -3423,7 +3393,6 @@ function enqueueRunForConcurrency(
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
     readonly artifacts: readonly ContextArtifact[];
-    readonly autoMemoryPolicyArtifactIndex: number | undefined;
     readonly framework: SupportedFramework;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
@@ -3532,7 +3501,6 @@ interface PreparedRunContext {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly artifacts: readonly ContextArtifact[];
-  readonly autoMemoryPolicyArtifactIndex: number | undefined;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -3854,8 +3822,6 @@ function prepareRunContext(
         connectorContext,
         customConnectorContext,
         artifacts: runArtifacts.artifacts,
-        autoMemoryPolicyArtifactIndex:
-          runArtifacts.autoMemoryPolicyArtifactIndex,
         additionalVolumes,
         userTimezone,
         featureSwitchContext,
@@ -3928,8 +3894,6 @@ function completeQueuedRun(input: {
             resolved: input.context.resolved,
             body: input.context.body,
             artifacts: input.context.artifacts,
-            autoMemoryPolicyArtifactIndex:
-              input.context.autoMemoryPolicyArtifactIndex,
             framework: input.context.framework,
             modelProvider: input.context.modelProvider,
             connectorContext: input.context.connectorContext,
@@ -3975,8 +3939,6 @@ function completePendingRun(input: {
             resolved: input.context.resolved,
             body: input.context.body,
             artifacts: input.context.artifacts,
-            autoMemoryPolicyArtifactIndex:
-              input.context.autoMemoryPolicyArtifactIndex,
             framework: input.context.framework,
             modelProvider: input.context.modelProvider,
             connectorContext: input.context.connectorContext,

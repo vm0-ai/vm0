@@ -34,11 +34,9 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::ids::RunId;
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
-use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
-
-use crate::ids::RunId;
 
 /// Maximum wall-clock time for a single job (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
@@ -2194,9 +2192,12 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
     }
 }
 
-/// Filter a storage manifest by nulling `archive_url` for entries whose
-/// version matches the previous turn's fingerprints. `guest-download`
-/// skips entries without a valid URL, so unchanged storages stay on disk.
+/// Filter a storage manifest for VM reuse.
+///
+/// Unchanged storages have `archive_url` nulled so `guest-download` skips them.
+/// Unchanged artifacts keep their archive URL so `guest-download` can repair a
+/// cached artifact whose mount root is missing, while still skipping it when
+/// the root is present.
 fn filter_unchanged_storages(
     manifest: &GuestDownloadManifest,
     prev: &StorageFingerprints,
@@ -2247,11 +2248,8 @@ fn filter_unchanged_storages(
                            prev_ver: Option<&(String, String)>,
                            skipped: &mut usize,
                            cleanup: &mut Vec<String>| {
-        let preserve_missing_root =
-            a.missing_root_policy == Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion);
         let same = prev_ver.is_some_and(|fingerprint| {
-            !preserve_missing_root
-                && !StorageFingerprints::fingerprint_is_tainted(fingerprint)
+            !StorageFingerprints::fingerprint_is_tainted(fingerprint)
                 && fingerprint.0.as_str() == a.vas_storage_name.as_str()
                 && fingerprint.1.as_str() == a.vas_version_id.as_str()
         });
@@ -2261,7 +2259,7 @@ fn filter_unchanged_storages(
             cleanup.push(a.mount_path.clone());
         }
         GuestDownloadArtifactEntry {
-            archive_url: if same { None } else { a.archive_url.clone() },
+            archive_url: a.archive_url.clone(),
             cached: same,
             ..a.clone()
         }
@@ -7847,7 +7845,7 @@ mod tests {
     }
 
     #[test]
-    fn filter_same_artifact_version_nulls_url() {
+    fn filter_same_artifact_version_keeps_url_for_mount_repair() {
         let manifest = GuestDownloadManifest {
             storages: vec![],
             artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
@@ -7858,7 +7856,12 @@ mod tests {
             artifacts: art_fp("/workspace", "my-art", "v1"),
         };
         let result = filter_unchanged_storages(&manifest, &prev);
-        assert!(result.artifacts[0].archive_url.is_none());
+        assert_eq!(
+            result.artifacts[0].archive_url.as_deref(),
+            Some("https://s3/v1")
+        );
+        assert!(result.artifacts[0].cached);
+        assert!(!result.cleanup_paths.contains(&"/workspace".to_string()));
     }
 
     #[test]
@@ -7925,7 +7928,7 @@ mod tests {
     }
 
     #[test]
-    fn filter_all_unchanged_nulls_all_urls() {
+    fn filter_all_unchanged_nulls_storage_urls_and_keeps_artifact_urls() {
         let manifest = GuestDownloadManifest {
             storages: vec![guest_storage(
                 "/data",
@@ -7945,7 +7948,10 @@ mod tests {
         let result = filter_unchanged_storages(&manifest, &prev);
         assert!(result.storages[0].archive_url.is_none());
         assert!(result.storages[0].cached);
-        assert!(result.artifacts[0].archive_url.is_none());
+        assert_eq!(
+            result.artifacts[0].archive_url.as_deref(),
+            Some("https://s3/v1")
+        );
         assert!(result.artifacts[0].cached);
     }
 
@@ -7988,8 +7994,11 @@ mod tests {
         assert!(result.artifacts[0].archive_url.is_some());
         assert!(!result.artifacts[0].cached);
         assert!(result.cleanup_paths.contains(&"/workspace".to_string()));
-        // art-b unchanged → URL nulled, cached
-        assert!(result.artifacts[1].archive_url.is_none());
+        // art-b unchanged -> URL retained for missing-root repair, still cached.
+        assert_eq!(
+            result.artifacts[1].archive_url.as_deref(),
+            Some("https://s3/b-v1")
+        );
         assert!(result.artifacts[1].cached);
     }
 
@@ -8129,7 +8138,7 @@ mod tests {
     }
 
     #[test]
-    fn filter_preserve_missing_root_artifact_keeps_url_even_when_version_matches() {
+    fn filter_unchanged_artifact_policy_does_not_force_redownload() {
         let manifest = GuestDownloadManifest {
             storages: vec![],
             artifacts: vec![guest_art_with_policy(
@@ -8151,8 +8160,8 @@ mod tests {
             result.artifacts[0].archive_url.as_deref(),
             Some("https://s3/memory")
         );
-        assert!(!result.artifacts[0].cached);
-        assert!(result.cleanup_paths.contains(&"/workspace".to_string()));
+        assert!(result.artifacts[0].cached);
+        assert!(!result.cleanup_paths.contains(&"/workspace".to_string()));
     }
 
     #[test]
