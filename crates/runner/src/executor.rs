@@ -2428,7 +2428,7 @@ fn redact_url_query_token(token: &str) -> String {
 ///
 /// Dispatches on `cli_agent_type`:
 /// - `claude-code` (or empty, the default) → plain `.jsonl` under `~/.claude/projects/-{project}/`.
-/// - `codex` → plain `.jsonl` under `~/.codex/sessions/YYYY/MM/DD/`.
+/// - `codex` → canonical rollout `.jsonl` under `~/.codex/sessions/YYYY/MM/DD/`.
 /// - anything else → skipped with a warning (forward-compatible with future agents).
 async fn restore_session(
     sandbox: &dyn Sandbox,
@@ -4785,7 +4785,21 @@ mod tests {
         let session = ResumeSession {
             session_id: session_id.into(),
             session_history: format!(
-                r#"{{"timestamp":"2026-06-04T07:18:08.001Z","type":"session_meta","payload":{{"id":"{session_id}","timestamp":"2026-06-04T07:18:08.000Z","cwd":"/workspace","originator":"test","cli_version":"0.137.0","source":"cli","model_provider":"test-provider","base_instructions":null}}}}"#
+                "{}\n",
+                serde_json::json!({
+                    "timestamp": "2026-06-04T07:18:08.001Z",
+                    "type": "session_meta",
+                    "payload": {
+                        "id": session_id,
+                        "timestamp": "2026-06-04T07:18:08.000Z",
+                        "cwd": "/workspace",
+                        "originator": "test",
+                        "cli_version": "0.137.0",
+                        "source": "cli",
+                        "model_provider": "test-provider",
+                        "base_instructions": null,
+                    },
+                }),
             ),
         };
         restore_session(&sandbox, &ctx, &session).await.unwrap();
