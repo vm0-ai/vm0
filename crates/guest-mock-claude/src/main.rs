@@ -160,8 +160,8 @@ fn run_echo_jsonl_mode(payload: &str) -> ExitCode {
         }
     };
 
-    let session_id = echo_session_id(&events);
-    if let Some(session_id) = session_id
+    let session_id = echo_session_id(&events).map(str::to_owned);
+    if let Some(session_id) = session_id.as_deref()
         && !is_valid_session_history_id(session_id)
     {
         eprintln!("invalid @ECHO@ session_id: {session_id:?}");
@@ -169,10 +169,10 @@ fn run_echo_jsonl_mode(payload: &str) -> ExitCode {
     }
 
     let mut transcript = JsonlTranscript::default();
-    for (line, _) in &events {
-        transcript.emit_raw_line(line.clone());
+    for (line, _) in events {
+        transcript.emit_raw_line(line);
     }
-    if let Some(session_id) = session_id {
+    if let Some(session_id) = session_id.as_deref() {
         transcript.write_session_history(session_id);
     }
     let _ = std::io::stdout().flush();

@@ -118,6 +118,26 @@ fn stream_json_shell_writes_matching_session_history() -> Result<(), Box<dyn std
             "result/success",
         ]
     );
+    assert_eq!(
+        events[2]
+            .pointer("/message/content/0/input/command")
+            .and_then(Value::as_str),
+        Some("printf hello")
+    );
+    assert_eq!(
+        events[3]
+            .pointer("/message/content/0/content")
+            .and_then(Value::as_str),
+        Some("hello")
+    );
+    assert_eq!(
+        events[4].get("result").and_then(Value::as_str),
+        Some("hello")
+    );
+    assert_eq!(
+        events[4].get("is_error").and_then(Value::as_bool),
+        Some(false)
+    );
     Ok(())
 }
 
@@ -146,6 +166,26 @@ fn exit_after_result_writes_init_and_result_history() -> Result<(), Box<dyn std:
     assert_eq!(
         events.iter().map(event_kind).collect::<Vec<_>>(),
         ["system/init", "result/success"]
+    );
+    assert_eq!(
+        events[0].get("model").and_then(Value::as_str),
+        Some("mock-claude")
+    );
+    assert_eq!(
+        events[0]
+            .get("tools")
+            .and_then(Value::as_array)
+            .and_then(|tools| tools.first())
+            .and_then(Value::as_str),
+        Some("Bash")
+    );
+    assert_eq!(
+        events[1].get("result").and_then(Value::as_str),
+        Some("Done.")
+    );
+    assert_eq!(
+        events[1].get("is_error").and_then(Value::as_bool),
+        Some(false)
     );
     Ok(())
 }
