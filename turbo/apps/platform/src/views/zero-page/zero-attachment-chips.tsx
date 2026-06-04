@@ -12,6 +12,7 @@ import {
   IconArrowsDiagonalMinimize2,
   IconColumns2,
   IconDownload,
+  IconFileMusic,
   IconPhoto,
   IconLoader2,
   IconShare,
@@ -53,6 +54,7 @@ import {
   closeLightboxWithDialogExit$,
   lightboxDialogFullscreen$,
   lightboxDialogVisible$,
+  openAudioLightbox$,
   openDocumentLightbox$,
   openImageLightbox$,
   lightboxDialogRef$,
@@ -606,6 +608,95 @@ function VideoLightbox({ filename, url }: { filename: string; url: string }) {
   );
 }
 
+function AudioLightbox({ filename, url }: { filename: string; url: string }) {
+  const dialogRef = useSet(lightboxDialogRef$);
+  const closeLightbox = useSet(closeLightbox$);
+  const pageSignal = useGet(pageSignal$);
+  const audioUrl = publicAttachmentUrl(url);
+
+  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      closeLightbox();
+    }
+  };
+
+  return createPortal(
+    <div
+      ref={dialogRef}
+      tabIndex={-1}
+      className={ATTACHMENT_LIGHTBOX_OVERLAY_CLASS}
+      style={{ pointerEvents: "auto" }}
+      onClick={handleBackdropClick}
+      role="dialog"
+      aria-modal="true"
+      data-testid="attachment-lightbox"
+    >
+      <LightboxBodyScrollLock />
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            detach(
+              copyAttachmentLinkToClipboard(url),
+              Reason.DomCallback,
+              "attachment copy link",
+            );
+          }}
+          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
+          aria-label="Share"
+        >
+          <IconShare size={20} stroke={2} />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            detach(
+              downloadAttachmentUrl(url, pageSignal, filename),
+              Reason.DomCallback,
+              "attachment download",
+            );
+          }}
+          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
+          aria-label="Download"
+        >
+          <IconDownload size={20} stroke={2} />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            closeLightbox();
+          }}
+          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+          aria-label="Close"
+        >
+          <IconX size={20} stroke={2} />
+        </button>
+      </div>
+      <div
+        className={`relative z-10 flex w-[min(92vw,560px)] min-w-0 flex-col items-center gap-4 overflow-hidden rounded-2xl bg-background p-6 shadow-2xl ${ATTACHMENT_LIGHTBOX_PANEL_CLASS}`}
+        data-testid="attachment-lightbox-panel"
+      >
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/50 text-muted-foreground">
+          <IconFileMusic size={28} stroke={1.6} />
+        </span>
+        <div className="max-w-full truncate text-sm font-medium text-foreground">
+          {filename}
+        </div>
+        <audio
+          src={audioUrl}
+          controls
+          autoPlay
+          preload="metadata"
+          className="w-full"
+          aria-label={`Audio preview for ${filename}`}
+          data-testid="attachment-lightbox-audio"
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function artifactDialogFilename(preview: AttachmentLightboxState): string {
   return "filename" in preview && preview.filename
     ? preview.filename
@@ -948,6 +1039,30 @@ function ArtifactDialogBody({
     );
   }
 
+  if (preview.kind === "audio") {
+    return (
+      <ArtifactDialogStage centered>
+        <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/50 text-muted-foreground">
+            <IconFileMusic size={28} stroke={1.6} />
+          </span>
+          <p className="max-w-full truncate text-sm text-muted-foreground">
+            {filename}
+          </p>
+          <audio
+            src={publicAttachmentUrl(preview.url)}
+            controls
+            autoPlay
+            preload="metadata"
+            className="w-full"
+            aria-label={`Audio preview for ${filename}`}
+            data-testid="artifact-dialog-audio"
+          />
+        </div>
+      </ArtifactDialogStage>
+    );
+  }
+
   if (
     preview.kind === "markdown" ||
     preview.kind === "text" ||
@@ -1260,6 +1375,10 @@ export function AttachmentLightbox() {
 
   if (preview.kind === "video") {
     return <VideoLightbox filename={preview.filename} url={preview.url} />;
+  }
+
+  if (preview.kind === "audio") {
+    return <AudioLightbox filename={preview.filename} url={preview.url} />;
   }
 
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -1587,6 +1706,36 @@ export function PreviewableFileAttachmentChip({
       <FileChipBody
         filename={filename}
         contentType={contentTypeForDocumentAttachmentPreviewKind(kind)}
+        testId="attachment-chip-file-icon"
+      />
+    </button>
+  );
+}
+
+export function PreviewableAudioAttachmentChip({
+  contentType,
+  filename,
+  url,
+}: {
+  contentType?: string;
+  filename: string;
+  url: string;
+}) {
+  const openAudioLightbox = useSet(openAudioLightbox$);
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        openAudioLightbox({ url, filename });
+      }}
+      title={filename}
+      aria-label={`Open audio preview for ${filename}`}
+      className={`${FILE_CHIP_CLASSES} hover:bg-foreground/10`}
+    >
+      <FileChipBody
+        filename={filename}
+        contentType={contentType}
         testId="attachment-chip-file-icon"
       />
     </button>

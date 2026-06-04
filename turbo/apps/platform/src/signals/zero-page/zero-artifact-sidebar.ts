@@ -12,6 +12,7 @@ import {
 } from "../chat-page/parse-body-blocks.ts";
 import {
   type AttachmentArtifactMetadata,
+  openAudioLightbox$ as openAudioLightboxModal$,
   openDocumentLightbox$ as openDocumentLightboxModal$,
   openImageLightbox$ as openImageLightboxModal$,
   openVideoLightbox$ as openVideoLightboxModal$,
@@ -237,6 +238,19 @@ export const openVideoLightboxOrArtifact$ = command(
     },
   ) => {
     set(openVideoLightboxModal$, value);
+  },
+);
+
+export const openAudioLightboxOrArtifact$ = command(
+  (
+    { set },
+    value: {
+      url: string;
+      filename: string;
+      artifact?: AttachmentArtifactMetadata;
+    },
+  ) => {
+    set(openAudioLightboxModal$, value);
   },
 );
 

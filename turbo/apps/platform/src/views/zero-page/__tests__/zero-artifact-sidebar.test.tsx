@@ -178,6 +178,9 @@ describe("chatArtifactSidebar: sidebar slot rendering", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fnotes.txt",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatArtifactSidebar]: false,
+      },
       withoutRender: true,
     });
     context.store.set(setPageSignal$, context.signal);

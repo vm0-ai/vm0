@@ -6,7 +6,7 @@
  * via render rather than direct calls.
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   fireEvent,
   render,
@@ -16,16 +16,41 @@ import {
 } from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
 import { computed } from "ccstate";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import {
+  clearMockedAuth,
+  mockOrganization,
+  mockUser,
+} from "../../../__tests__/mock-auth.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { fetchPreviewText } from "../../../signals/chat-page/parse-body-blocks.ts";
-import { lightboxUrl$ } from "../../../signals/zero-page/zero-attachment-chips.ts";
+import { reloadFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
+import {
+  closeLightbox$,
+  lightboxUrl$,
+} from "../../../signals/zero-page/zero-attachment-chips.ts";
 import { AttachmentPreview } from "../zero-attachment-preview.tsx";
 
 const context = testContext();
+
+beforeEach(async () => {
+  mockUser({ id: "test-user-123", fullName: "Test User" }, { token: "test" });
+  mockOrganization({
+    activeOrg: { id: "org_default", name: "Default Org" },
+    memberships: [{ id: "org_default" }],
+  });
+  context.signal.addEventListener("abort", () => {
+    clearMockedAuth();
+  });
+  setMockFeatureSwitches({ [FeatureSwitchKey.ChatArtifactSidebar]: false });
+  await context.store.set(reloadFeatureSwitch$, context.signal);
+  context.store.set(closeLightbox$);
+});
 
 // =============================================================================
 // AttachmentPreview component — render matrix
@@ -122,11 +147,22 @@ describe("attachment preview component", () => {
       url: "https://example.com/clip.mp3",
     });
     const preview = screen.getByTestId("attachment-preview-audio");
+
     expect(preview).toBeInTheDocument();
-    expect(screen.getByLabelText("Audio preview for clip.mp3")).toHaveAttribute(
-      "src",
-      "https://example.com/clip.mp3",
-    );
+    expect(preview).toHaveAttribute("type", "button");
+    expect(preview.firstElementChild).toHaveClass("aspect-[4/3]");
+    expect(
+      within(preview).getByTestId("attachment-preview-audio-icon"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(preview);
+
+    expect(context.store.get(lightboxUrl$)).toStrictEqual({
+      kind: "audio",
+      filename: "clip.mp3",
+      url: "https://example.com/clip.mp3",
+    });
+    context.store.set(closeLightbox$);
   });
 
   it("should render null for image files (.svg)", () => {
@@ -623,6 +659,8 @@ describe("document thumbnail preview", () => {
         />
       </StoreProvider>,
     );
+
+    context.store.set(closeLightbox$);
 
     fireEvent.click(screen.getByTestId("attachment-preview-html"), {
       metaKey: true,

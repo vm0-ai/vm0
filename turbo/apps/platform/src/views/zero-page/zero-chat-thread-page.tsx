@@ -74,6 +74,7 @@ import type {
 import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import { IN_VITEST } from "../../env.ts";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -110,6 +111,7 @@ import {
   FileAttachmentChip,
   getAttachmentRawUrl,
   parseCsvRows,
+  PreviewableAudioAttachmentChip,
   PreviewableFileAttachmentChip,
   publicAttachmentUrl,
   TextPreviewLoader,
@@ -156,6 +158,7 @@ import {
   currentArtifactRef$,
   openArtifactFromInbox$,
   openArtifactInbox$,
+  openAudioLightboxOrArtifact$ as openAttachmentAudioLightbox$,
   setArtifactInboxQuery$,
   setArtifactInboxSection$,
   openDocumentLightboxOrArtifact$ as openAttachmentDocumentLightbox$,
@@ -1326,14 +1329,54 @@ function ArtifactFileIcon({
 }
 
 function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
-  if (getArtifactPreviewKind(file) === "image") {
+  const previewKind = getArtifactPreviewKind(file);
+  const publicUrl = publicAttachmentUrl(file.url);
+
+  if (previewKind === "image") {
     return (
       <img
-        src={file.url}
+        src={publicUrl}
         alt=""
         aria-hidden="true"
         className="h-full w-full object-cover"
       />
+    );
+  }
+
+  if (previewKind === "video") {
+    return (
+      <video
+        src={videoPosterFrameUrl(publicUrl)}
+        preload="metadata"
+        muted
+        playsInline
+        aria-hidden="true"
+        className="h-full w-full object-cover"
+        data-testid="artifact-video-preview-badge"
+      />
+    );
+  }
+
+  if (getArtifactDocumentPreviewKind(file) === "html") {
+    return (
+      <span
+        className="relative block h-full w-full overflow-hidden bg-background"
+        aria-hidden="true"
+        data-testid="artifact-html-preview-badge"
+      >
+        <iframe
+          src={IN_VITEST ? undefined : publicUrl}
+          srcDoc={
+            IN_VITEST ? "<!doctype html><html><body></body></html>" : undefined
+          }
+          title={`${file.filename} artifact thumbnail`}
+          sandbox="allow-scripts"
+          tabIndex={-1}
+          loading="lazy"
+          scrolling="no"
+          className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25] border-0 bg-background"
+        />
+      </span>
     );
   }
 
@@ -2053,6 +2096,38 @@ function ChatVideoPreviewButton({
   );
 }
 
+function ArtifactAudioPreviewButton({
+  file,
+  onOpen,
+}: {
+  file: ChatThreadArtifactFile;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.currentTarget.blur();
+        onOpen();
+      }}
+      className="group/audio-preview flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-br from-slate-900 via-stone-900 to-cyan-950 px-8 text-white"
+      aria-label={`Preview ${file.filename}`}
+      title={file.filename}
+      data-testid="artifact-audio-preview-button"
+    >
+      <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-sm transition-transform group-hover/audio-preview:scale-105">
+        <ArtifactFileIcon file={file} size="md" />
+      </span>
+      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/audio-preview:scale-105">
+        <IconPlayerPlay size={20} stroke={1.8} />
+      </span>
+      <span className="max-w-[260px] truncate text-sm font-medium">
+        {file.filename}
+      </span>
+    </button>
+  );
+}
+
 function ArtifactPreviewFrame({
   agentId,
   item,
@@ -2067,6 +2142,7 @@ function ArtifactPreviewFrame({
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openDocumentLightbox = useSet(openAttachmentDocumentLightbox$);
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
+  const openAudioLightbox = useSet(openAttachmentAudioLightbox$);
   const { file } = item;
   const previewKind = getArtifactPreviewKind(file);
   const artifact = artifactLightboxMetadataFromItem({
@@ -2118,15 +2194,16 @@ function ArtifactPreviewFrame({
 
   if (previewKind === "audio") {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-muted/40 px-8">
-        <audio
-          src={file.url}
-          controls
-          preload="metadata"
-          className="w-full max-w-[480px]"
-          aria-label={`Audio preview for ${file.filename}`}
-        />
-      </div>
+      <ArtifactAudioPreviewButton
+        file={file}
+        onOpen={() => {
+          openAudioLightbox({
+            url: file.url,
+            filename: file.filename,
+            artifact,
+          });
+        }}
+      />
     );
   }
 
@@ -2500,7 +2577,6 @@ function ArtifactInboxRow({
   onOpen: () => void;
 }) {
   const { file } = item;
-  const live = getArtifactDocumentPreviewKind(file) === "html";
 
   return (
     <button
@@ -2527,11 +2603,6 @@ function ArtifactInboxRow({
           <span>{formatArtifactTime(file.createdAt)}</span>
         </span>
       </span>
-      {live && (
-        <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-          Live
-        </span>
-      )}
       <IconChevronRight
         size={16}
         className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
@@ -5369,6 +5440,16 @@ function UserMessageAttachments({
               filename={a.filename}
               url={a.url}
               kind={a.kind}
+            />
+          );
+        }
+        if (a.kind === "audio") {
+          return (
+            <PreviewableAudioAttachmentChip
+              key={a.url}
+              filename={a.filename}
+              url={a.url}
+              contentType={a.contentType}
             />
           );
         }

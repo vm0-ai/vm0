@@ -36,6 +36,12 @@ import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
+function chatArtifactSidebarOff() {
+  return {
+    [FeatureSwitchKey.ChatArtifactSidebar]: false,
+  };
+}
+
 function queryRoleByText(
   role: Parameters<typeof queryAllByRoleFast>[0],
   text: string,
@@ -155,6 +161,7 @@ describe("zero chat thread page display - permission action card", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const card = await waitFor(() => {
@@ -190,6 +197,7 @@ describe("zero chat thread page display - permission action card", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const card = await waitFor(() => {
@@ -218,6 +226,7 @@ describe("zero chat thread page display - permission action card", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const card = await waitFor(() => {
@@ -248,7 +257,11 @@ describe("zero chat thread page display - attachment image preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     const previewLink = await waitFor(() => {
       return screen.getByLabelText("Preview photo.png");
@@ -274,7 +287,8 @@ describe("zero chat thread page display - attachment image preview", () => {
 });
 
 describe("zero chat thread page display - attachment audio chip", () => {
-  it("renders audio attachment as a compact download chip", async () => {
+  it("renders audio attachment as a compact preview chip", async () => {
+    const user = userEvent.setup();
     mockChatLifecycle({
       chatMessages: [
         {
@@ -294,16 +308,27 @@ describe("zero chat thread page display - attachment audio chip", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    const download = await waitFor(() => {
-      return screen.getByLabelText("Download clip.mp3");
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
-    expect(download).toHaveAttribute("type", "button");
-    expect(download).not.toHaveAttribute("href");
+
+    const preview = await waitFor(() => {
+      return screen.getByLabelText("Open audio preview for clip.mp3");
+    });
+    expect(preview).toHaveAttribute("type", "button");
+    expect(preview).not.toHaveAttribute("href");
     expect(
-      within(download).getByTestId("attachment-chip-file-icon"),
+      within(preview).getByTestId("attachment-chip-file-icon"),
     ).toBeInTheDocument();
+
+    await user.click(preview);
+
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    expect(
+      within(lightbox).getByLabelText("Audio preview for clip.mp3"),
+    ).toHaveAttribute("src", "https://example.com/clip.mp3");
   });
 });
 
@@ -331,7 +356,11 @@ describe("zero chat thread page display - attachment document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     await waitFor(() => {
       expect(
@@ -379,7 +408,11 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     await waitFor(() => {
       expect(
@@ -413,7 +446,11 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     await waitFor(() => {
       expect(screen.getByText("notes")).toBeInTheDocument();
@@ -467,7 +504,11 @@ describe("zero chat thread page display - body link document preview", () => {
         ],
       });
 
-      detachedSetupPage({ context, path: "/chats/thread-test-1" });
+      detachedSetupPage({
+        context,
+        path: "/chats/thread-test-1",
+        featureSwitches: chatArtifactSidebarOff(),
+      });
 
       const preview = await screen.findByTestId("attachment-preview-file");
       expect(
@@ -733,7 +774,11 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-json")).toBeInTheDocument();
@@ -770,7 +815,11 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-pdf")).toBeInTheDocument();
@@ -855,7 +904,11 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
@@ -914,7 +967,11 @@ describe("zero chat thread page display - body link document preview", () => {
         ],
       });
 
-      detachedSetupPage({ context, path: "/chats/thread-test-1" });
+      detachedSetupPage({
+        context,
+        path: "/chats/thread-test-1",
+        featureSwitches: chatArtifactSidebarOff(),
+      });
 
       await waitFor(() => {
         const textPreview = screen.getByTestId("attachment-preview-text");
@@ -941,7 +998,11 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     await waitFor(() => {
       const preview = screen.getByTestId("attachment-preview-file");
@@ -1129,7 +1190,11 @@ describe("zero chat thread page display - attachment video preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     const previewButton = await waitFor(() => {
       return screen.getByLabelText("Preview clip.mp4");
@@ -1406,6 +1471,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const button = await waitFor(() => {
@@ -1509,6 +1575,14 @@ describe("zero chat thread page display - artifacts drawer", () => {
                   createdAt: "2026-03-10T00:00:00Z",
                 },
                 {
+                  id: "file-video",
+                  filename: "demo.mp4",
+                  contentType: "video/mp4",
+                  size: 16_384,
+                  url: "https://example.com/demo.mp4",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+                {
                   id: "file-site",
                   filename: "landing.html",
                   contentType: "text/html",
@@ -1551,6 +1625,15 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(
       getRoleByAriaLabel("button", "Open artifact landing.html"),
     ).toBeInTheDocument();
+    const videoRow = getRoleByAriaLabel("button", "Open artifact demo.mp4");
+    expect(
+      within(videoRow).getByTestId("artifact-video-preview-badge"),
+    ).toHaveAttribute("src", "https://example.com/demo.mp4#t=0.001");
+    const siteRow = getRoleByAriaLabel("button", "Open artifact landing.html");
+    expect(
+      within(siteRow).getByTestId("artifact-html-preview-badge"),
+    ).toBeInTheDocument();
+    expect(within(inbox).queryByText("Live")).not.toBeInTheDocument();
 
     await user.click(getRoleByText("tab", "Sites"));
     expect(
@@ -1814,6 +1897,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
 
     click(
@@ -1875,6 +1959,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
 
     click(
@@ -1938,6 +2023,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
 
     click(
@@ -1998,6 +2084,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
 
     click(
@@ -2184,6 +2271,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const button = await waitFor(() => {
@@ -2353,6 +2441,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const button = await waitFor(() => {
@@ -2464,6 +2553,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
+      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const button = await waitFor(() => {

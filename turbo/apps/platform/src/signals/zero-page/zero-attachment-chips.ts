@@ -34,7 +34,7 @@ export type AttachmentLightboxState =
       artifact?: AttachmentArtifactMetadata;
     }
   | {
-      kind: "video";
+      kind: "audio" | "video";
       url: string;
       filename: string;
       artifact?: AttachmentArtifactMetadata;
@@ -142,6 +142,24 @@ export const openVideoLightbox$ = command(
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
     set(internalLightboxState$, { kind: "video", ...value });
+  },
+);
+
+export const openAudioLightbox$ = command(
+  (
+    { set },
+    value: {
+      url: string;
+      filename: string;
+      artifact?: AttachmentArtifactMetadata;
+    },
+  ) => {
+    set(internalLightboxDialogCloseToken$, (value) => {
+      return value + 1;
+    });
+    set(internalLightboxDialogVisible$, true);
+    set(internalLightboxDialogFullscreen$, false);
+    set(internalLightboxState$, { kind: "audio", ...value });
   },
 );
 
