@@ -1511,7 +1511,7 @@ impl SessionWorkspaceCache {
         working_dir: &str,
         image_size_bytes: u64,
     ) -> RunnerResult<Option<WorkspaceCacheMetadata>> {
-        let metadata = match self.read_metadata_file(metadata_path).await {
+        let mut metadata = match self.read_metadata_file(metadata_path).await {
             Ok(metadata) => metadata,
             Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(None);
@@ -1538,6 +1538,7 @@ impl SessionWorkspaceCache {
             image_size_bytes,
         )?;
         validate_current_image_identity(&metadata, &current_metadata)?;
+        metadata.allocated_bytes = allocated_bytes(&current_metadata);
         Ok(Some(metadata))
     }
 
@@ -4569,26 +4570,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checkout_invalidates_stale_current_when_cache_hit_copy_lacks_headroom() {
+    async fn checkout_uses_current_allocated_bytes_when_cache_hit_copy_lacks_headroom() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let setup_cache = SessionWorkspaceCache::new(paths.clone());
         let run_id = RunId::new_v4();
         let sandbox_id = sandbox::SandboxId::new_v4();
-        let cache_key = cache.scoped_cache_key(
+        let image = vec![1_u8; 4096];
+        let cache_key = setup_cache.scoped_cache_key(
             TEST_PROFILE_NAME,
             "sess-1",
             "/workspace",
-            b"old image".len() as u64,
+            image.len() as u64,
         );
         tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&cache_key))
             .await
             .unwrap();
         let current = paths.session_workspace_cache_current_image(&cache_key);
-        tokio::fs::write(&current, b"old image").await.unwrap();
+        tokio::fs::write(&current, &image).await.unwrap();
         let current_metadata = fs::metadata(&current).await.unwrap();
-        cache
+        let actual_allocated_bytes = allocated_bytes(&current_metadata);
+        assert!(
+            actual_allocated_bytes > 0,
+            "test filesystem must report allocated blocks for the cache image"
+        );
+        setup_cache
             .write_metadata(
                 &cache_key,
                 run_id,
@@ -4604,7 +4611,7 @@ mod tests {
                     last_terminal_status: WorkspaceCacheTerminalStatus::Success,
                     workspace_trust: WorkspaceTrust::Clean,
                     logical_image_size_bytes: current_metadata.len(),
-                    allocated_bytes: u64::MAX,
+                    allocated_bytes: 0,
                     current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
                     drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
                     storage_fingerprints: StorageFingerprints::default(),
@@ -4613,6 +4620,18 @@ mod tests {
             )
             .await
             .unwrap();
+        let min_free = CacheBudget::from_fs_stats(FsStats {
+            total_bytes: TEST_FS_TOTAL_BYTES,
+            available_bytes: TEST_FS_TOTAL_BYTES,
+        })
+        .min_free_bytes;
+        let cache = SessionWorkspaceCache::new_with_fs_stats(
+            paths.clone(),
+            FsStats {
+                total_bytes: TEST_FS_TOTAL_BYTES,
+                available_bytes: min_free.saturating_add(actual_allocated_bytes - 1),
+            },
+        );
 
         let lease = cache
             .prepare(WorkspaceImagePrepareRequest {
@@ -4630,7 +4649,7 @@ mod tests {
         assert!(!lease.can_attempt_promotion(Some("sess-1")));
         assert!(
             !tokio::fs::try_exists(&current).await.unwrap(),
-            "old current image must not remain reusable after a cache hit is skipped"
+            "current image must not remain reusable after real allocated bytes make a cache hit unsafe"
         );
         tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
             .await
