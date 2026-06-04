@@ -6,6 +6,7 @@ import {
   slackOrgStatusSchema,
   zeroIntegrationsSlackContract,
 } from "@vm0/api-contracts/contracts/zero-integrations-slack";
+import { connectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
 import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
@@ -136,13 +137,20 @@ const getSlackEnvironment$ = computed(
       ...userSecretList.secrets.map((s) => {
         return s.name;
       }),
-      ...userConnectors.connectorProvidedEnvNames,
+      ...connectorProvidedBindingNames({
+        bindings: userConnectors.connectorProvidedBindings,
+        namespace: "secrets",
+      }),
     ]);
-    const existingVarNames = new Set(
-      userVarList.variables.map((v) => {
+    const existingVarNames = new Set([
+      ...userVarList.variables.map((v) => {
         return v.name;
       }),
-    );
+      ...connectorProvidedBindingNames({
+        bindings: userConnectors.connectorProvidedBindings,
+        namespace: "vars",
+      }),
+    ]);
 
     const missingSecrets = requiredSecrets.filter((name) => {
       return !existingSecretNames.has(name);

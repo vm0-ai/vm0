@@ -74,7 +74,7 @@ describe("GET /api/zero/connectors", () => {
 
     expect(response.body.connectors).toStrictEqual([]);
     expect(Array.isArray(response.body.configuredTypes)).toBeTruthy();
-    expect(Array.isArray(response.body.connectorProvidedEnvNames)).toBeTruthy();
+    expect(Array.isArray(response.body.connectorProvidedBindings)).toBeTruthy();
   });
 
   it("returns connectors when present", async () => {

@@ -38,24 +38,16 @@ describe("zeroConnectorList", () => {
     expect(openai).toBeUndefined();
   });
 
-  it("returns connector-provided env names only for stored connector credentials", async () => {
+  it("returns connector-provided bindings only for stored connector credentials", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
-    await writeDb.insert(connectors).values([
-      {
-        orgId,
-        userId,
-        type: "gitlab",
-        authMethod: "api-token",
-      },
-      {
-        orgId,
-        userId,
-        type: "openai",
-        authMethod: "api-token",
-      },
-    ]);
+    await writeDb.insert(connectors).values({
+      orgId,
+      userId,
+      type: "gitlab",
+      authMethod: "api-token",
+    });
     await writeDb.insert(secrets).values({
       orgId,
       userId,
@@ -66,12 +58,35 @@ describe("zeroConnectorList", () => {
 
     const list = await store.get(zeroConnectorList({ orgId, userId }));
 
-    expect(list.connectorProvidedEnvNames).toContain("GITLAB_TOKEN");
-    expect(list.connectorProvidedEnvNames).not.toContain("GITLAB_HOST");
-    expect(list.connectorProvidedEnvNames).not.toContain("OPENAI_TOKEN");
+    expect(list.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining([
+        {
+          connectorType: "gitlab",
+          authMethod: "api-token",
+          namespace: "secrets",
+          name: "GITLAB_TOKEN",
+          required: true,
+          source: {
+            kind: "connector-secret",
+            name: "GITLAB_TOKEN",
+          },
+        },
+        {
+          connectorType: "gitlab",
+          authMethod: "api-token",
+          namespace: "vars",
+          name: "GITLAB_HOST",
+          required: false,
+          source: {
+            kind: "connector-variable",
+            name: "GITLAB_HOST",
+          },
+        },
+      ]),
+    );
   });
 
-  it("returns connector token env names only when the access secret exists", async () => {
+  it("returns connector token env names from selected auth method metadata", async () => {
     const orgId = `org_${randomUUID()}`;
     const userWithoutSecret = `user_${randomUUID()}`;
     const userWithSecret = `user_${randomUUID()}`;
@@ -105,12 +120,35 @@ describe("zeroConnectorList", () => {
       zeroConnectorList({ orgId, userId: userWithSecret }),
     );
 
-    expect(withoutSecret.connectorProvidedEnvNames).not.toContain("GH_TOKEN");
-    expect(withoutSecret.connectorProvidedEnvNames).not.toContain(
-      "GITHUB_TOKEN",
+    const githubTokenBindings = [
+      {
+        connectorType: "github",
+        authMethod: "oauth",
+        namespace: "secrets",
+        name: "GH_TOKEN",
+        required: true,
+        source: {
+          kind: "connector-secret",
+          name: "GITHUB_ACCESS_TOKEN",
+        },
+      },
+      {
+        connectorType: "github",
+        authMethod: "oauth",
+        namespace: "secrets",
+        name: "GITHUB_TOKEN",
+        required: true,
+        source: {
+          kind: "connector-secret",
+          name: "GITHUB_ACCESS_TOKEN",
+        },
+      },
+    ];
+    expect(withoutSecret.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining(githubTokenBindings),
     );
-    expect(withSecret.connectorProvidedEnvNames).toStrictEqual(
-      expect.arrayContaining(["GH_TOKEN", "GITHUB_TOKEN"]),
+    expect(withSecret.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining(githubTokenBindings),
     );
   });
 
@@ -143,13 +181,29 @@ describe("zeroConnectorList", () => {
 
     const list = await store.get(zeroConnectorList({ orgId, userId }));
 
-    expect(list.connectorProvidedEnvNames).toContain("GOOGLE_ADS_TOKEN");
-    expect(list.connectorProvidedEnvNames).not.toContain(
-      "GOOGLE_ADS_DEVELOPER_TOKEN",
+    expect(list.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining([
+        {
+          connectorType: "google-ads",
+          authMethod: "oauth",
+          namespace: "secrets",
+          name: "GOOGLE_ADS_TOKEN",
+          required: true,
+          source: {
+            kind: "connector-secret",
+            name: "GOOGLE_ADS_ACCESS_TOKEN",
+          },
+        },
+      ]),
+    );
+    expect(list.connectorProvidedBindings).not.toContainEqual(
+      expect.objectContaining({
+        name: "GOOGLE_ADS_DEVELOPER_TOKEN",
+      }),
     );
   });
 
-  it("does not report variable-backed connector env names as provided secrets", async () => {
+  it("reports variable-backed connector env names as structured provided bindings", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
@@ -176,8 +230,21 @@ describe("zeroConnectorList", () => {
 
     const list = await store.get(zeroConnectorList({ orgId, userId }));
 
-    expect(list.connectorProvidedEnvNames).toContain("GITLAB_TOKEN");
-    expect(list.connectorProvidedEnvNames).not.toContain("GITLAB_HOST");
+    expect(list.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining([
+        {
+          connectorType: "gitlab",
+          authMethod: "api-token",
+          namespace: "vars",
+          name: "GITLAB_HOST",
+          required: false,
+          source: {
+            kind: "connector-variable",
+            name: "GITLAB_HOST",
+          },
+        },
+      ]),
+    );
   });
 
   it("returns configuredTypes in sorted order", async () => {

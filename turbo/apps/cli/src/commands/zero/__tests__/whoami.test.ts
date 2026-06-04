@@ -259,7 +259,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github", "google"],
-            connectorProvidedEnvNames: [],
+            connectorProvidedBindings: [],
           });
         }),
       );
@@ -318,7 +318,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["slack"],
-            connectorProvidedEnvNames: [],
+            connectorProvidedBindings: [],
           });
         }),
       );
@@ -397,7 +397,7 @@ describe("zero whoami command", () => {
           return HttpResponse.json({
             connectors: [],
             configuredTypes: [],
-            connectorProvidedEnvNames: [],
+            connectorProvidedBindings: [],
           });
         }),
       );
@@ -449,7 +449,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github"],
-            connectorProvidedEnvNames: [],
+            connectorProvidedBindings: [],
           });
         }),
       );
@@ -514,7 +514,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["slack"],
-            connectorProvidedEnvNames: [],
+            connectorProvidedBindings: [],
           });
         }),
         mockUserPermissionGrantsHandler([
@@ -593,7 +593,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github"],
-            connectorProvidedEnvNames: [],
+            connectorProvidedBindings: [],
           });
         }),
         mockUserPermissionGrantsHandler(),
@@ -652,7 +652,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github"],
-            connectorProvidedEnvNames: [],
+            connectorProvidedBindings: [],
           });
         }),
         http.get(
@@ -730,7 +730,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github"],
-            connectorProvidedEnvNames: [],
+            connectorProvidedBindings: [],
           });
         }),
         mockUserPermissionGrantsHandler([
@@ -817,7 +817,7 @@ describe("zero whoami command", () => {
               },
             ],
             configuredTypes: ["github", "axiom"],
-            connectorProvidedEnvNames: [],
+            connectorProvidedBindings: [],
           });
         }),
       );

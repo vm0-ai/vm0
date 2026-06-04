@@ -1,6 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import type {
   ConnectorListResponse,
+  ConnectorProvidedBinding,
   ConnectorResponse,
   ScopeDiffResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
@@ -68,10 +69,6 @@ type StoredConnectorRow = {
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
-
-interface ConnectorScopedSecretNames {
-  readonly secretNames: ReadonlySet<string>;
-}
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
@@ -343,7 +340,7 @@ export function zeroConnectorList(args: {
 }): Computed<Promise<ConnectorListResponse>> {
   return computed(async (get): Promise<ConnectorListResponse> => {
     const db = get(db$);
-    const [storedRows, connectorSecretRows, overrides] = await Promise.all([
+    const [storedRows, overrides] = await Promise.all([
       db
         .select({
           id: connectors.id,
@@ -364,16 +361,6 @@ export function zeroConnectorList(args: {
             eq(connectors.userId, args.userId),
           ),
         ),
-      db
-        .select({ name: secrets.name })
-        .from(secrets)
-        .where(
-          and(
-            eq(secrets.orgId, args.orgId),
-            eq(secrets.userId, args.userId),
-            eq(secrets.type, "connector"),
-          ),
-        ),
       get(userFeatureSwitchOverrides(args.orgId, args.userId)),
     ]);
     const featureStates = getAllFeatureStates({
@@ -392,34 +379,23 @@ export function zeroConnectorList(args: {
       }
       return [storedConnectorRowToResponse(row, parsed.data)];
     });
-    const connectorScopedSecretNames: ConnectorScopedSecretNames = {
-      secretNames: new Set(
-        connectorSecretRows.map((row) => {
-          return row.name;
-        }),
-      ),
-    };
+    const connectorProvidedBindings =
+      connectorProvidedBindingsForStoredConnectors(connectorList);
 
     return {
       connectors: connectorList,
       configuredTypes: getRuntimeAvailableConnectorTypes((name) => {
         return optionalEnv(name);
       }),
-      connectorProvidedEnvNames: [
-        ...connectorProvidedEnvNamesForStoredConnectors(
-          connectorList,
-          connectorScopedSecretNames,
-        ),
-      ],
+      connectorProvidedBindings,
     };
   });
 }
 
-function connectorProvidedEnvNamesForStoredConnectors(
+function connectorProvidedBindingsForStoredConnectors(
   connectorList: readonly ConnectorResponse[],
-  connectorScopedSecretNames: ConnectorScopedSecretNames,
-): Set<string> {
-  const provided = new Set<string>();
+): ConnectorProvidedBinding[] {
+  const provided: ConnectorProvidedBinding[] = [];
   for (const connector of connectorList) {
     const metadata = getConnectorAuthMethodRuntimeMetadata(
       connector.type,
@@ -428,14 +404,34 @@ function connectorProvidedEnvNamesForStoredConnectors(
     if (!metadata) {
       continue;
     }
-    for (const { envName, source } of metadata.runtimeBindings) {
-      if (source.kind !== "connector-secret") {
-        continue;
+    for (const { envName, required, source } of metadata.runtimeBindings) {
+      switch (source.kind) {
+        case "connector-secret": {
+          provided.push({
+            connectorType: connector.type,
+            authMethod: connector.authMethod,
+            namespace: "secrets",
+            name: envName,
+            required,
+            source,
+          });
+          break;
+        }
+        case "connector-variable": {
+          provided.push({
+            connectorType: connector.type,
+            authMethod: connector.authMethod,
+            namespace: "vars",
+            name: envName,
+            required,
+            source,
+          });
+          break;
+        }
+        case "platform-secret": {
+          break;
+        }
       }
-      if (!connectorScopedSecretNames.secretNames.has(source.name)) {
-        continue;
-      }
-      provided.add(envName);
     }
   }
   return provided;

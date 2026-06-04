@@ -43,7 +43,7 @@ function stubConnectorsWithConfiguredTypes(
     return HttpResponse.json({
       connectors,
       configuredTypes,
-      connectorProvidedEnvNames: [],
+      connectorProvidedBindings: [],
     });
   });
 }

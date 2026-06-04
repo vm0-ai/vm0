@@ -115,13 +115,13 @@ export const apiHandlers = [
   // GET /api/zero/connectors - listZeroConnectors
   http.get("http://localhost:3000/api/zero/connectors", () => {
     return HttpResponse.json(
-      { connectors: [], configuredTypes: [], connectorProvidedEnvNames: [] },
+      { connectors: [], configuredTypes: [], connectorProvidedBindings: [] },
       { status: 200 },
     );
   }),
   http.get("https://www.vm0.ai/api/zero/connectors", () => {
     return HttpResponse.json(
-      { connectors: [], configuredTypes: [], connectorProvidedEnvNames: [] },
+      { connectors: [], configuredTypes: [], connectorProvidedBindings: [] },
       { status: 200 },
     );
   }),

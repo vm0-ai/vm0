@@ -35,7 +35,7 @@ function makeEmptyConnectorResponse(): ConnectorListResponse {
   return {
     connectors: [],
     configuredTypes: [],
-    connectorProvidedEnvNames: [],
+    connectorProvidedBindings: [],
   };
 }
 
@@ -56,7 +56,7 @@ function makeGithubConnectorResponse(): ConnectorListResponse {
       },
     ],
     configuredTypes: ["github"],
-    connectorProvidedEnvNames: [],
+    connectorProvidedBindings: [],
   };
 }
 
@@ -80,7 +80,7 @@ function makeTestOauthConnectorResponse(
       },
     ],
     configuredTypes: ["test-oauth"],
-    connectorProvidedEnvNames: [],
+    connectorProvidedBindings: [],
   };
 }
 

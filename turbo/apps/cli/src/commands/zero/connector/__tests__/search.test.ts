@@ -36,7 +36,7 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
       configuredTypes: connectors.map((c) => {
         return c.type as string;
       }),
-      connectorProvidedEnvNames: [],
+      connectorProvidedBindings: [],
     });
   });
 }

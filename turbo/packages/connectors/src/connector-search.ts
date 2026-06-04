@@ -4,6 +4,7 @@ import {
   type ConnectorAccessConfig,
   type ConnectorAuthMethodConfig,
   type ConnectorConfig,
+  type ConnectorEnvBindingValue,
   type ConnectorType,
 } from "./connectors";
 import { getConnectorEnvBindingEntries } from "./connector-utils";
@@ -48,7 +49,7 @@ function tokenize(input: string): Set<string> {
 
 function connectorAccessEnvBindings(
   access: ConnectorAccessConfig,
-): Record<string, string> {
+): Record<string, ConnectorEnvBindingValue> {
   switch (access.kind) {
     case "static":
     case "refresh-token":
@@ -64,6 +65,10 @@ function getManualGrantFields(
   return method.grant.kind === "manual" ? method.grant.fields : undefined;
 }
 
+function connectorEnvBindingValueRef(value: ConnectorEnvBindingValue): string {
+  return typeof value === "string" ? value : value.valueRef;
+}
+
 function listSecretNames(config: ConnectorConfig): string[] {
   const names: string[] = [];
   for (const method of Object.values(config.authMethods)) {
@@ -73,8 +78,9 @@ function listSecretNames(config: ConnectorConfig): string[] {
     for (const valueRef of Object.values(
       connectorAccessEnvBindings(method.access),
     )) {
-      if (valueRef.startsWith("$secrets.")) {
-        names.push(valueRef.slice("$secrets.".length));
+      const ref = connectorEnvBindingValueRef(valueRef);
+      if (ref.startsWith("$secrets.")) {
+        names.push(ref.slice("$secrets.".length));
       }
     }
   }

@@ -17,7 +17,7 @@ describe("mockApi contract helper", () => {
         return respond(200, {
           connectors: [],
           configuredTypes: [],
-          connectorProvidedEnvNames: [],
+          connectorProvidedBindings: [],
         });
       }),
     );
@@ -27,7 +27,7 @@ describe("mockApi contract helper", () => {
     await expect(response.json()).resolves.toStrictEqual({
       connectors: [],
       configuredTypes: [],
-      connectorProvidedEnvNames: [],
+      connectorProvidedBindings: [],
     });
   });
 

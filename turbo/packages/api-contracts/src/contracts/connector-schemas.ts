@@ -20,13 +20,63 @@ export const connectorResponseSchema = z.object({
 
 export type ConnectorResponse = z.infer<typeof connectorResponseSchema>;
 
+export const connectorProvidedBindingNamespaceSchema = z.enum([
+  "secrets",
+  "vars",
+]);
+
+export const connectorProvidedBindingSourceSchema = z.discriminatedUnion(
+  "kind",
+  [
+    z.object({
+      kind: z.literal("connector-secret"),
+      name: z.string(),
+    }),
+    z.object({
+      kind: z.literal("connector-variable"),
+      name: z.string(),
+    }),
+  ],
+);
+
+export const connectorProvidedBindingSchema = z.object({
+  connectorType: connectorTypeSchema,
+  authMethod: z.string(),
+  namespace: connectorProvidedBindingNamespaceSchema,
+  name: z.string(),
+  required: z.boolean(),
+  source: connectorProvidedBindingSourceSchema,
+});
+
+export type ConnectorProvidedBinding = z.infer<
+  typeof connectorProvidedBindingSchema
+>;
+export type ConnectorProvidedBindingNamespace = z.infer<
+  typeof connectorProvidedBindingNamespaceSchema
+>;
+
+export function connectorProvidedBindingNames(args: {
+  readonly bindings: readonly ConnectorProvidedBinding[];
+  readonly namespace: ConnectorProvidedBindingNamespace;
+}): Set<string> {
+  const names = new Set<string>();
+  for (const binding of args.bindings) {
+    if (binding.namespace === args.namespace && binding.required) {
+      names.add(binding.name);
+    }
+  }
+  return names;
+}
+
 /**
  * List connectors response
  */
 export const connectorListResponseSchema = z.object({
   connectors: z.array(connectorResponseSchema),
   configuredTypes: z.array(connectorTypeSchema),
-  connectorProvidedEnvNames: z.array(z.string()),
+  connectorProvidedBindings: z
+    .array(connectorProvidedBindingSchema)
+    .default([]),
 });
 
 export type ConnectorListResponse = z.infer<typeof connectorListResponseSchema>;

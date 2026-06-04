@@ -35,6 +35,7 @@ import {
   type ConnectorRevokeKind,
   type ConnectorSecretValueRef,
   type ConnectorVariableValueRef,
+  type ConnectorEnvBindingValue,
   type ConnectorType,
   type AuthCodeGrantConnectorType,
   type DeviceAuthGrantConnectorType,
@@ -256,6 +257,12 @@ function connectorAccessEnvBindings(
   }
 }
 
+function connectorAccessRuntimeEnvBindings(
+  access: ConnectorAccessConfig,
+): ConnectorRuntimeEnvBindings {
+  return connectorRuntimeEnvBindings(connectorAccessEnvBindings(access));
+}
+
 function connectorAccessPlatformSecrets(
   access: ConnectorAccessConfig,
 ): readonly ConnectorPlatformSecretName[] {
@@ -271,7 +278,7 @@ function connectorAccessPlatformSecrets(
 export type ConnectorAuthMethodAccessMetadata =
   | {
       readonly kind: "static";
-      readonly envBindings: ConnectorEnvBindings;
+      readonly envBindings: ConnectorRuntimeEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     }
   | {
@@ -283,12 +290,12 @@ export type ConnectorAuthMethodAccessMetadata =
         Record<string, ConnectorRefreshTokenOutputMetadata>
       >;
       readonly refreshableSecrets: readonly string[];
-      readonly envBindings: ConnectorEnvBindings;
+      readonly envBindings: ConnectorRuntimeEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     }
   | {
       readonly kind: "none";
-      readonly envBindings: ConnectorEnvBindings;
+      readonly envBindings: ConnectorRuntimeEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     };
 
@@ -365,6 +372,7 @@ export type ConnectorRuntimeBindingSource =
 export interface ConnectorRuntimeBindingEntry {
   readonly envName: string;
   readonly valueRef: string;
+  readonly required: boolean;
   readonly source: ConnectorRuntimeBindingSource;
 }
 
@@ -473,7 +481,7 @@ export function getConnectorAuthMethodAccessMetadata(
     case "static": {
       return {
         kind: "static",
-        envBindings: method.access.envBindings,
+        envBindings: connectorAccessRuntimeEnvBindings(method.access),
         platformSecrets: method.access.platformSecrets ?? [],
       };
     }
@@ -481,7 +489,7 @@ export function getConnectorAuthMethodAccessMetadata(
       return {
         kind: "refresh-token",
         ...connectorRefreshMetadata(method.access),
-        envBindings: method.access.envBindings,
+        envBindings: connectorAccessRuntimeEnvBindings(method.access),
         platformSecrets: method.access.platformSecrets ?? [],
       };
     case "none":
@@ -610,12 +618,41 @@ function connectorPlatformSecretSource(
   });
 }
 
+export type ConnectorRuntimeEnvBindings = Record<
+  string,
+  ConnectorRefreshTokenInputValueRef
+>;
+
+function connectorEnvBindingValueRef(
+  binding: ConnectorEnvBindingValue,
+): ConnectorRefreshTokenInputValueRef {
+  return typeof binding === "string" ? binding : binding.valueRef;
+}
+
+function connectorEnvBindingRequired(
+  binding: ConnectorEnvBindingValue,
+): boolean {
+  return typeof binding === "string" ? true : (binding.required ?? true);
+}
+
+function connectorRuntimeEnvBindings(
+  envBindings: ConnectorEnvBindings,
+): ConnectorRuntimeEnvBindings {
+  return Object.fromEntries(
+    Object.entries(envBindings).map(([envName, binding]) => {
+      return [envName, connectorEnvBindingValueRef(binding)];
+    }),
+  );
+}
+
 function connectorRuntimeBindingEntries(args: {
   readonly envBindings: ConnectorEnvBindings;
   readonly platformSecrets: readonly ConnectorPlatformSecretName[];
 }): ConnectorRuntimeBindingEntry[] {
   const entries: ConnectorRuntimeBindingEntry[] = [];
-  for (const [envName, valueRef] of Object.entries(args.envBindings)) {
+  for (const [envName, binding] of Object.entries(args.envBindings)) {
+    const valueRef = connectorEnvBindingValueRef(binding);
+    const required = connectorEnvBindingRequired(binding);
     if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
       const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
       const platformSecret = connectorPlatformSecretSource(
@@ -625,6 +662,7 @@ function connectorRuntimeBindingEntries(args: {
       entries.push({
         envName,
         valueRef,
+        required,
         source: platformSecret
           ? { kind: "platform-secret", name: platformSecret }
           : { kind: "connector-secret", name: secretName },
@@ -636,6 +674,7 @@ function connectorRuntimeBindingEntries(args: {
       entries.push({
         envName,
         valueRef,
+        required,
         source: {
           kind: "connector-variable",
           name: valueRef.slice(CONNECTOR_VARIABLE_REF_PREFIX.length),
@@ -1292,9 +1331,9 @@ function connectorAuthMethodOwnedVariableNames(
 export function getConnectorAuthMethodEnvBindings(
   type: ConnectorType,
   authMethod: string,
-): ConnectorEnvBindings {
+): ConnectorRuntimeEnvBindings {
   const method = getConnectorAuthMethod(type, authMethod);
-  return method ? connectorAccessEnvBindings(method.access) : {};
+  return method ? connectorAccessRuntimeEnvBindings(method.access) : {};
 }
 
 export interface ConnectorEnvBindingEntry {

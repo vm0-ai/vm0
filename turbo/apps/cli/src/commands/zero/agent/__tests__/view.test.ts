@@ -28,7 +28,7 @@ function mockConnectorListHandler(
     return HttpResponse.json({
       connectors,
       configuredTypes,
-      connectorProvidedEnvNames: [],
+      connectorProvidedBindings: [],
     });
   });
 }

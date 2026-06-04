@@ -1409,7 +1409,7 @@ agents:
           return HttpResponse.json({
             connectors: [],
             configuredTypes: [],
-            connectorProvidedEnvNames: [],
+            connectorProvidedBindings: [],
           });
         }),
       );
@@ -2508,6 +2508,85 @@ agents:
       expect(logCalls).toContain("Missing secrets/variables detected");
       expect(logCalls).toContain("API_KEY");
       expect(logCalls).toContain("REGION");
+    });
+
+    it("should not show missing items for required connector-provided bindings", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "vm0.yaml"),
+        yaml.stringify({
+          version: "1.0",
+          agents: {
+            test: {
+              framework: "claude-code",
+              environment: {
+                GH_TOKEN: "${{ secrets.GH_TOKEN }}",
+                REGION: "${{ vars.REGION }}",
+                GITLAB_HOST: "${{ vars.GITLAB_HOST }}",
+              },
+            },
+          },
+        }),
+      );
+
+      server.use(
+        composeApiHandler,
+        orgApiHandler,
+        http.get("http://localhost:3000/api/zero/secrets", () => {
+          return HttpResponse.json({ secrets: [] });
+        }),
+        http.get("http://localhost:3000/api/zero/variables", () => {
+          return HttpResponse.json({ variables: [] });
+        }),
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json({
+            connectors: [],
+            configuredTypes: [],
+            connectorProvidedBindings: [
+              {
+                connectorType: "github",
+                authMethod: "oauth",
+                namespace: "secrets",
+                name: "GH_TOKEN",
+                required: true,
+                source: {
+                  kind: "connector-secret",
+                  name: "GITHUB_ACCESS_TOKEN",
+                },
+              },
+              {
+                connectorType: "gitlab",
+                authMethod: "api-token",
+                namespace: "vars",
+                name: "REGION",
+                required: true,
+                source: {
+                  kind: "connector-variable",
+                  name: "GITLAB_REGION",
+                },
+              },
+              {
+                connectorType: "gitlab",
+                authMethod: "api-token",
+                namespace: "vars",
+                name: "GITLAB_HOST",
+                required: false,
+                source: {
+                  kind: "connector-variable",
+                  name: "GITLAB_HOST",
+                },
+              },
+            ],
+          });
+        }),
+      );
+
+      await composeCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Missing secrets/variables detected");
+      expect(logCalls).not.toContain("GH_TOKEN");
+      expect(logCalls).not.toContain("REGION");
+      expect(logCalls).toContain("GITLAB_HOST");
     });
 
     it("should not include missing items in JSON output", async () => {

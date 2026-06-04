@@ -353,8 +353,6 @@ export type ConnectorGrantConfig =
 
 export type ConnectorAccessKind = "static" | "refresh-token" | "none";
 
-export type ConnectorEnvBindings = Record<string, string>;
-
 export const CONNECTOR_PLATFORM_SECRET_NAMES = [
   "GOOGLE_ADS_DEVELOPER_TOKEN",
 ] as const;
@@ -366,6 +364,13 @@ export type ConnectorVariableValueRef = `$vars.${string}`;
 export type ConnectorRefreshTokenInputValueRef =
   | ConnectorSecretValueRef
   | ConnectorVariableValueRef;
+export type ConnectorEnvBindingValue =
+  | ConnectorRefreshTokenInputValueRef
+  | {
+      readonly valueRef: ConnectorRefreshTokenInputValueRef;
+      readonly required?: boolean;
+    };
+export type ConnectorEnvBindings = Record<string, ConnectorEnvBindingValue>;
 
 export type ConnectorGrantOutputBindings = Record<
   string,
@@ -650,13 +655,26 @@ type ConnectorRefreshOutputValueRef<Storage> =
 type ConnectorRevokeInputValueRef<Storage> =
   `$secrets.${ConnectorStorageSecretName<Storage>}`;
 
+type ValidatedConnectorEnvBindingValue<Binding, Storage, Access> =
+  Binding extends { readonly valueRef: infer ValueRef }
+    ? Binding & {
+        readonly valueRef: ValueRef extends ConnectorRuntimeValueRef<
+          Storage,
+          Access
+        >
+          ? ValueRef
+          : ConnectorRuntimeValueRef<Storage, Access>;
+      }
+    : Binding extends ConnectorRuntimeValueRef<Storage, Access>
+      ? Binding
+      : ConnectorRuntimeValueRef<Storage, Access>;
+
 type ValidatedConnectorEnvBindings<EnvBindings, Storage, Access> = {
-  readonly [EnvName in keyof EnvBindings]: EnvBindings[EnvName] extends ConnectorRuntimeValueRef<
+  readonly [EnvName in keyof EnvBindings]: ValidatedConnectorEnvBindingValue<
+    EnvBindings[EnvName],
     Storage,
     Access
-  >
-    ? EnvBindings[EnvName]
-    : ConnectorRuntimeValueRef<Storage, Access>;
+  >;
 };
 
 type ValidatedConnectorRefreshInputs<Inputs, Storage> = {

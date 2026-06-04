@@ -718,6 +718,7 @@ export {
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
   type ConnectorEnvBindings,
+  type ConnectorEnvBindingValue,
 } from "@vm0/connectors/connectors";
 export {
   getConnectorOwnedSecretNames,
@@ -727,10 +728,16 @@ export {
 export {
   connectorResponseSchema,
   connectorListResponseSchema,
+  connectorProvidedBindingNames,
+  connectorProvidedBindingNamespaceSchema,
+  connectorProvidedBindingSchema,
+  connectorProvidedBindingSourceSchema,
   scopeDiffResponseSchema,
   type ScopeDiffResponse,
   type ConnectorResponse,
   type ConnectorListResponse,
+  type ConnectorProvidedBinding,
+  type ConnectorProvidedBindingNamespace,
 } from "./connector-schemas";
 
 export {

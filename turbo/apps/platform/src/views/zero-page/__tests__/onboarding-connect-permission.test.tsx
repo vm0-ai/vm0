@@ -43,7 +43,7 @@ function makeGithubConnectedResponse(): ConnectorListResponse {
       },
     ],
     configuredTypes: ["github"],
-    connectorProvidedEnvNames: [],
+    connectorProvidedBindings: [],
   };
 }
 

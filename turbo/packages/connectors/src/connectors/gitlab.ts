@@ -35,7 +35,10 @@ export const gitlab = {
           kind: "static",
           envBindings: {
             GITLAB_TOKEN: "$secrets.GITLAB_TOKEN",
-            GITLAB_HOST: "$vars.GITLAB_HOST",
+            GITLAB_HOST: {
+              valueRef: "$vars.GITLAB_HOST",
+              required: false,
+            },
           },
         },
         revoke: { kind: "none" },

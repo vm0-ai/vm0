@@ -4,6 +4,7 @@ import { readFile, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { parse as parseYaml } from "yaml";
+import { connectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import {
   getComposeByName,
@@ -208,19 +209,22 @@ async function checkAndPromptMissingItems(
     }),
   );
 
-  // Connector-provided environment names (e.g., GH_TOKEN from GitHub connector)
-  // Use server-computed list to avoid CLI/server version skew issues
-  const connectorProvidedEnvNames = new Set(
-    connectorsResponse.connectorProvidedEnvNames,
-  );
+  const connectorProvidedSecretNames = connectorProvidedBindingNames({
+    bindings: connectorsResponse.connectorProvidedBindings,
+    namespace: "secrets",
+  });
+  const connectorProvidedVarNames = connectorProvidedBindingNames({
+    bindings: connectorsResponse.connectorProvidedBindings,
+    namespace: "vars",
+  });
 
   const missingSecrets = [...requiredSecrets].filter((name) => {
     return (
-      !existingSecretNames.has(name) && !connectorProvidedEnvNames.has(name)
+      !existingSecretNames.has(name) && !connectorProvidedSecretNames.has(name)
     );
   });
   const missingVars = [...requiredVars].filter((name) => {
-    return !existingVarNames.has(name);
+    return !existingVarNames.has(name) && !connectorProvidedVarNames.has(name);
   });
 
   if (missingSecrets.length === 0 && missingVars.length === 0) {

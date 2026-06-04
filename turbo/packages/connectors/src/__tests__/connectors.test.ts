@@ -2122,6 +2122,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GH_TOKEN",
           valueRef: "$secrets.GITHUB_ACCESS_TOKEN",
+          required: true,
           source: {
             kind: "connector-secret",
             name: "GITHUB_ACCESS_TOKEN",
@@ -2130,6 +2131,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GITHUB_TOKEN",
           valueRef: "$secrets.GITHUB_ACCESS_TOKEN",
+          required: true,
           source: {
             kind: "connector-secret",
             name: "GITHUB_ACCESS_TOKEN",
@@ -2151,6 +2153,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "STRIPE_TOKEN",
           valueRef: "$secrets.STRIPE_TOKEN",
+          required: true,
           source: {
             kind: "connector-secret",
             name: "STRIPE_TOKEN",
@@ -2176,6 +2179,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "SLOCK_TOKEN",
           valueRef: "$secrets.SLOCK_ACCESS_TOKEN",
+          required: true,
           source: {
             kind: "connector-secret",
             name: "SLOCK_ACCESS_TOKEN",
@@ -2184,6 +2188,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "SLOCK_SERVER_ID",
           valueRef: "$secrets.SLOCK_SERVER_ID",
+          required: true,
           source: {
             kind: "connector-secret",
             name: "SLOCK_SERVER_ID",
@@ -2205,6 +2210,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GOOGLE_ADS_TOKEN",
           valueRef: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
+          required: true,
           source: {
             kind: "connector-secret",
             name: "GOOGLE_ADS_ACCESS_TOKEN",
@@ -2213,6 +2219,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GOOGLE_ADS_DEVELOPER_TOKEN",
           valueRef: "$secrets.GOOGLE_ADS_DEVELOPER_TOKEN",
+          required: true,
           source: {
             kind: "platform-secret",
             name: "GOOGLE_ADS_DEVELOPER_TOKEN",
@@ -2220,6 +2227,63 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         },
       ],
     });
+  });
+
+  it("preserves optional runtime binding requiredness", () => {
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("agora", "api-token"),
+    ).toMatchObject({
+      runtimeBindings: expect.arrayContaining([
+        {
+          envName: "AGORA_APP_CERTIFICATE",
+          valueRef: "$secrets.AGORA_APP_CERTIFICATE",
+          required: false,
+          source: {
+            kind: "connector-secret",
+            name: "AGORA_APP_CERTIFICATE",
+          },
+        },
+      ]),
+    });
+  });
+
+  it("marks runtime bindings for optional manual fields as optional", () => {
+    for (const type of connectorTypeSchema.options) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
+        const method = getConnectorAuthMethod(type, authMethod);
+        const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
+          type,
+          authMethod,
+        );
+        if (!method || !runtimeMetadata || method.grant.kind !== "manual") {
+          continue;
+        }
+
+        for (const [fieldName, field] of Object.entries(method.grant.fields)) {
+          if (field.required !== false) {
+            continue;
+          }
+          const sourceKind =
+            field.storage === "variable"
+              ? "connector-variable"
+              : "connector-secret";
+          const runtimeBindings = runtimeMetadata.runtimeBindings.filter(
+            (binding) => {
+              return (
+                binding.source.kind === sourceKind &&
+                binding.source.name === fieldName
+              );
+            },
+          );
+          for (const binding of runtimeBindings) {
+            expect(
+              binding.required,
+              `${type}/${authMethod}: optional field ${fieldName} must not be marked as a required runtime binding`,
+            ).toBe(false);
+          }
+        }
+      }
+    }
   });
 });
 
