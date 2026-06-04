@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.19](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.18...guest-download-v0.20.19) (2026-06-04)
+
+
+### Bug Fixes
+
+* materialize cached artifact mount roots ([#16083](https://github.com/vm0-ai/vm0/issues/16083)) ([d6a4ed3](https://github.com/vm0-ai/vm0/commit/d6a4ed307b5c4aeac8edb400aec1f65369d5f781))
+
 ## [0.20.18](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.17...guest-download-v0.20.18) (2026-06-03)
 
 

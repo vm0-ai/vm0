@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.98.4](https://github.com/vm0-ai/vm0/compare/api-v1.98.3...api-v1.98.4) (2026-06-04)
+
+
+### Bug Fixes
+
+* materialize cached artifact mount roots ([#16083](https://github.com/vm0-ai/vm0/issues/16083)) ([d6a4ed3](https://github.com/vm0-ai/vm0/commit/d6a4ed307b5c4aeac8edb400aec1f65369d5f781))
+
 ## [1.98.3](https://github.com/vm0-ai/vm0/compare/api-v1.98.2...api-v1.98.3) (2026-06-04)
 
 

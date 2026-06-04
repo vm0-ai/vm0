@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.108.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.10...runner-rs-v0.108.0) (2026-06-04)
+
+
+### Features
+
+* add workspace image cache inspection ([#15941](https://github.com/vm0-ai/vm0/issues/15941)) ([7cf129c](https://github.com/vm0-ai/vm0/commit/7cf129c0193c716f2a3d20eb9b12ea1d3937be4e))
+
+
+### Bug Fixes
+
+* materialize cached artifact mount roots ([#16083](https://github.com/vm0-ai/vm0/issues/16083)) ([d6a4ed3](https://github.com/vm0-ai/vm0/commit/d6a4ed307b5c4aeac8edb400aec1f65369d5f781))
+* **mitm-addon:** avoid quadratic sse line scans ([#16082](https://github.com/vm0-ai/vm0/issues/16082)) ([1230752](https://github.com/vm0-ai/vm0/commit/1230752fddb62c60f26554bcdf0a47de1ae48e20))
+
+
+### Refactoring
+
+* clarify local queue job lookup ([#16074](https://github.com/vm0-ai/vm0/issues/16074)) ([2483cd4](https://github.com/vm0-ai/vm0/commit/2483cd44526cbe74363dd054f0bc121c89966558))
+
 ## [0.107.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.9...runner-rs-v0.107.10) (2026-06-04)
 
 

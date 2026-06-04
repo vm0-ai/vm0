@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.407.3](https://github.com/vm0-ai/vm0/compare/app-v0.407.2...app-v0.407.3) (2026-06-04)
+
+
+### Bug Fixes
+
+* **onboarding:** scale trial gallery on large screens ([#15433](https://github.com/vm0-ai/vm0/issues/15433)) ([1dbc85e](https://github.com/vm0-ai/vm0/commit/1dbc85eccd510c1780fb620cab0bfb2b875999f5))
+
 ## [0.407.2](https://github.com/vm0-ai/vm0/compare/app-v0.407.1...app-v0.407.2) (2026-06-04)
 
 

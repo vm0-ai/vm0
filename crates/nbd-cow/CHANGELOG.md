@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.31](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.30...nbd-cow-v0.4.31) (2026-06-04)
+
+
+### Refactoring
+
+* share nbd cow block spans ([#16076](https://github.com/vm0-ai/vm0/issues/16076)) ([4532704](https://github.com/vm0-ai/vm0/commit/45327045e27dc8545dfa42a2051d054d722d47f5))
+
 ## [0.4.30](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.29...nbd-cow-v0.4.30) (2026-06-03)
 
 

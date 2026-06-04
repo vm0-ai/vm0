@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.9...guest-agent-v0.34.10) (2026-06-04)
+
+
+### Bug Fixes
+
+* materialize cached artifact mount roots ([#16083](https://github.com/vm0-ai/vm0/issues/16083)) ([d6a4ed3](https://github.com/vm0-ai/vm0/commit/d6a4ed307b5c4aeac8edb400aec1f65369d5f781))
+
 ## [0.34.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.8...guest-agent-v0.34.9) (2026-06-04)
 
 

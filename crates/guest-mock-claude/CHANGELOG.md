@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.5](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.4...guest-mock-claude-v0.18.5) (2026-06-04)
+
+
+### Refactoring
+
+* share mock Claude JSONL transcript ([#16077](https://github.com/vm0-ai/vm0/issues/16077)) ([6531014](https://github.com/vm0-ai/vm0/commit/653101427baff326d2b63da8b5cae0b1e8f18f70))
+
 ## [0.18.4](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.3...guest-mock-claude-v0.18.4) (2026-06-03)
 
 ## [0.18.3](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.2...guest-mock-claude-v0.18.3) (2026-06-03)

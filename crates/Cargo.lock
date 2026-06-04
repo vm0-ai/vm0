@@ -1263,7 +1263,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.34.9"
+version = "0.34.10"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -1307,7 +1307,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.18"
+version = "0.20.19"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1330,7 +1330,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.18.4"
+version = "0.18.5"
 dependencies = [
  "api-contracts",
  "libc",
@@ -2067,7 +2067,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.30"
+version = "0.4.31"
 dependencies = [
  "bitvec",
  "libc",
@@ -2558,7 +2558,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.107.10"
+version = "0.108.0"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2774,7 +2774,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.5"
+version = "0.37.6"
 dependencies = [
  "async-trait",
  "base64",
