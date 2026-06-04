@@ -117,23 +117,19 @@ def _compile_registry(
     return compiled_firewall_registry, compiled_policy_registry
 
 
-def _invalid_vm_entry(reason: str, message: str) -> InvalidVmEntry:
-    return InvalidVmEntry(reason=reason, message=message)
-
-
 def _classify_registry_vms(raw_registry: dict) -> tuple[dict, dict[str, InvalidVmEntry]]:
     new_registry: dict = {}
     invalid_vms: dict[str, InvalidVmEntry] = {}
     for client_ip, vm in raw_registry.items():
         if not isinstance(vm, dict):
-            invalid_vms[client_ip] = _invalid_vm_entry(
+            invalid_vms[client_ip] = InvalidVmEntry(
                 "invalid_vm_entry",
                 "proxy registry VM entry must be an object",
             )
             continue
 
         if "runId" not in vm:
-            invalid_vms[client_ip] = _invalid_vm_entry(
+            invalid_vms[client_ip] = InvalidVmEntry(
                 "missing_run_id",
                 "proxy registry VM entry is missing runId",
             )
@@ -141,13 +137,13 @@ def _classify_registry_vms(raw_registry: dict) -> tuple[dict, dict[str, InvalidV
 
         run_id = vm["runId"]
         if not isinstance(run_id, str):
-            invalid_vms[client_ip] = _invalid_vm_entry(
+            invalid_vms[client_ip] = InvalidVmEntry(
                 "invalid_run_id",
                 "proxy registry VM entry runId must be a string",
             )
             continue
         if not run_id.strip():
-            invalid_vms[client_ip] = _invalid_vm_entry(
+            invalid_vms[client_ip] = InvalidVmEntry(
                 "empty_run_id",
                 "proxy registry VM entry runId must be non-empty",
             )
