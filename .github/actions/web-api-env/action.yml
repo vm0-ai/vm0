@@ -254,6 +254,10 @@ runs:
           add_env E2E_TELEGRAM_MOCK_ENABLED "1"
         fi
         add_env PLAUSIBLE_SCRIPT_URL "$plausible_script_url"
+        if [[ "$INPUT_APP" == "web" && "$INPUT_ENVIRONMENT" == "production" ]]; then
+          add_var POSTHOG_KEY POSTHOG_KEY
+          add_var POSTHOG_HOST POSTHOG_HOST
+        fi
         add_secret SENTRY_DSN_WEB SENTRY_DSN_WEB
         if [[ "$INPUT_APP" == "api" ]]; then
           sentry_dsn="$(first_non_empty "$(repo_secret SENTRY_DSN_API)" "$(repo_secret SENTRY_DSN_WEB)" "$(repo_secret SENTRY_DSN)")"
