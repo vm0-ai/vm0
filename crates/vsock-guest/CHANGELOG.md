@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.21](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.20...vsock-guest-v0.18.21) (2026-06-04)
+
+
+### Documentation
+
+* document exec control registry lifecycle ([#16133](https://github.com/vm0-ai/vm0/issues/16133)) ([6e233b5](https://github.com/vm0-ai/vm0/commit/6e233b539a7f7e468a6b6db8180a6dfe193e8b81))
+
 ## [0.18.20](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.19...vsock-guest-v0.18.20) (2026-06-04)
 
 ## [0.18.19](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.18...vsock-guest-v0.18.19) (2026-06-02)

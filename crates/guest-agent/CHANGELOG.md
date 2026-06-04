@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.34.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.11...guest-agent-v0.34.12) (2026-06-04)
+
+
+### Bug Fixes
+
+* log session metadata write results ([#16118](https://github.com/vm0-ai/vm0/issues/16118)) ([30587a4](https://github.com/vm0-ai/vm0/commit/30587a4f0d248920f3e0a7db60c3460e9e1017e4))
+
+
+### Documentation
+
+* document artifact archive validation invariants ([#16132](https://github.com/vm0-ai/vm0/issues/16132)) ([6ad9dbe](https://github.com/vm0-ai/vm0/commit/6ad9dbe0b5f103c99eb00693928701a3ed0a0fcb))
+
 ## [0.34.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.10...guest-agent-v0.34.11) (2026-06-04)
 
 ## [0.34.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.9...guest-agent-v0.34.10) (2026-06-04)

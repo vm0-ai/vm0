@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.410.0](https://github.com/vm0-ai/vm0/compare/app-v0.409.0...app-v0.410.0) (2026-06-04)
+
+
+### Features
+
+* **platform:** refine recommended follow-ups styling ([#16057](https://github.com/vm0-ai/vm0/issues/16057)) ([9c79927](https://github.com/vm0-ai/vm0/commit/9c79927c36cc353a574751576331d27a8bd9eee1))
+* refine chat template picker ([#16131](https://github.com/vm0-ai/vm0/issues/16131)) ([8772de3](https://github.com/vm0-ai/vm0/commit/8772de3b296638bbd0ace61356b2bdecbce1fed7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.6
+    * @vm0/connectors bumped to 1.46.1
+    * @vm0/core bumped to 8.309.9
+
 ## [0.409.0](https://github.com/vm0-ai/vm0/compare/app-v0.408.0...app-v0.409.0) (2026-06-04)
 
 

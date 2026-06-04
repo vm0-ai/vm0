@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.98.7](https://github.com/vm0-ai/vm0/compare/api-v1.98.6...api-v1.98.7) (2026-06-04)
+
+
+### Refactoring
+
+* normalize connector type naming ([#16115](https://github.com/vm0-ai/vm0/issues/16115)) ([507236c](https://github.com/vm0-ai/vm0/commit/507236c5006123dc4d8aef21624243ff4b18c037))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.6
+    * @vm0/connectors bumped to 1.46.1
+    * @vm0/core bumped to 8.309.9
+    * @vm0/db bumped to 1.28.7
+
 ## [1.98.6](https://github.com/vm0-ai/vm0/compare/api-v1.98.5...api-v1.98.6) (2026-06-04)
 
 

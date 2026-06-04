@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.108.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.1...runner-rs-v0.108.2) (2026-06-04)
+
+
+### Bug Fixes
+
+* **mitm-addon:** guard content length response size fallback ([#16104](https://github.com/vm0-ai/vm0/issues/16104)) ([95d44d6](https://github.com/vm0-ai/vm0/commit/95d44d6801868530954bc262497525e4421e370e))
+* reject invalid registry vm entries before auth ([#16108](https://github.com/vm0-ai/vm0/issues/16108)) ([238ffc2](https://github.com/vm0-ai/vm0/commit/238ffc239283aaf1bdeac808bbbdfbe9abda3f67))
+
+
+### Refactoring
+
+* clarify idle pool lifecycle state ([#16135](https://github.com/vm0-ai/vm0/issues/16135)) ([a5e63e6](https://github.com/vm0-ai/vm0/commit/a5e63e6b5e19c6ac99f49549d42d2238dcab06d6))
+
 ## [0.108.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.0...runner-rs-v0.108.1) (2026-06-04)
 
 
