@@ -2740,7 +2740,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
               sessionError={sessionError}
               skeletonVisible={skeletonVisible}
             />
-            <ChatScrollToBottomButton
+            <ScrollToBottomButton
               thread={thread}
               skeletonVisible={skeletonVisible}
               sessionError={sessionError}
@@ -2756,7 +2756,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatScrollToBottomButton({
+function ScrollToBottomButton({
   thread,
   skeletonVisible,
   sessionError,
@@ -2765,13 +2765,10 @@ function ChatScrollToBottomButton({
   skeletonVisible: boolean;
   sessionError: string | null;
 }) {
-  const features = useLastResolved(featureSwitch$);
-  const enabled =
-    features?.[FeatureSwitchKey.ChatScrollToBottomButton] ?? false;
   const awayFromBottom = useGet(thread.awayFromBottom$);
   const scrollToBottom = useSet(thread.scrollToBottom$);
 
-  if (!enabled || !awayFromBottom || skeletonVisible || sessionError) {
+  if (!awayFromBottom || skeletonVisible || sessionError) {
     return null;
   }
 
