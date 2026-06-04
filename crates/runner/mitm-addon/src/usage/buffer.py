@@ -129,6 +129,8 @@ class UsageEventBuffer:
         timer_factory: _TimerFactory | None = None,
     ) -> None:
         self._lock = threading.Lock()
+        # Serializes snapshot/enqueue ownership. Ordinary flushes defer if busy;
+        # shutdown waits so daemon timer work cannot outlive process teardown.
         self._flush_owner_lock = threading.Lock()
         self._buffer_id = str(uuid.uuid4())
         self._flush_sequence = 0
