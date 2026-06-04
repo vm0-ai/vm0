@@ -237,7 +237,7 @@ function parseNextJsonObject(
     }
   }
 
-  return { endIndex: bodyStart + 1 };
+  return { endIndex: errorMessage.length };
 }
 
 function isCodexOAuthReconnectRequiredRunErrorObject(value: unknown): boolean {
