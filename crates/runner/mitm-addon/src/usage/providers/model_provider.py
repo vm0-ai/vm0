@@ -18,6 +18,7 @@ from typing import TypeGuard
 
 from mitmproxy import http
 
+import flow_metadata
 import flow_metadata_keys as metadata_keys
 from auth import get_api_url
 from logging_utils import log_proxy_entry
@@ -35,7 +36,7 @@ MODEL_USAGE_KIND = "model"
 
 def is_model_provider_usage_observable(flow: http.HTTPFlow) -> bool:
     """Return whether model-provider token usage should be extracted/reported."""
-    firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
+    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
     if not firewall_name.startswith("model-provider:"):
         return False
     return bool(
@@ -64,7 +65,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     """
     if not run_id:
         return False
-    firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
+    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
     if not firewall_name.startswith("model-provider:"):
         return False
     if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
