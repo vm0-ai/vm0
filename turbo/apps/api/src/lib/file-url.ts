@@ -3,6 +3,16 @@ import { env } from "./env";
 const ARTIFACTS_PREFIX = "artifacts";
 const CLERK_USER_ID_PREFIX = "user_";
 
+/**
+ * Sanitize a user-supplied filename for use in an artifact object key.
+ * Replaces characters that are unsafe or problematic in URLs / object storage
+ * (spaces, non-ASCII, etc.) with underscores so the key is stable and
+ * predictable across upload, message storage, and retrieval.
+ */
+export function sanitizeArtifactFilename(filename: string): string {
+  return filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
 function publicArtifactsBaseUrl(): string {
   return env("PUBLIC_ARTIFACTS_BASE_URL").replace(/\/+$/, "");
 }

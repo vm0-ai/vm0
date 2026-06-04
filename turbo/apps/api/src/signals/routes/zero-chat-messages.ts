@@ -45,7 +45,10 @@ import {
   providerDeleted,
 } from "../../lib/error";
 import { env } from "../../lib/env";
-import { buildArtifactKey } from "../../lib/file-url";
+import {
+  buildArtifactKey,
+  sanitizeArtifactFilename,
+} from "../../lib/file-url";
 import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import {
@@ -485,12 +488,13 @@ function attachFileMetadata(
   attachFiles: readonly AttachFile[] | undefined,
 ): ChatMessageAttachFileMetadata[] | null {
   const metadata = attachFiles?.map((file) => {
+    const sanitized = sanitizeArtifactFilename(file.filename);
     return {
       id: file.id,
       filename: file.filename,
       contentType: file.contentType,
       size: file.size,
-      objectKey: buildArtifactKey(userId, file.id, file.filename),
+      objectKey: buildArtifactKey(userId, file.id, sanitized),
     };
   });
   return metadata && metadata.length > 0 ? metadata : null;
