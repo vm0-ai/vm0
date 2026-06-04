@@ -340,12 +340,30 @@ pub(crate) fn capture_session_metadata(event: &Value) {
     }
 
     log_info!(LOG_TAG, "Captured session ID: {session_id}");
-    let _ = std::fs::write(paths::session_id_file(), &session_id);
-    let _ = std::fs::write(paths::session_history_path_file(), &history_path_payload);
-    log_info!(
-        LOG_TAG,
-        "Session history will be at: {history_path_payload}"
-    );
+    match std::fs::write(paths::session_id_file(), &session_id) {
+        Ok(()) => log_info!(
+            LOG_TAG,
+            "Session ID written to {}",
+            paths::session_id_file()
+        ),
+        Err(e) => log_error!(
+            LOG_TAG,
+            "Failed to write session ID to {}: {e}",
+            paths::session_id_file()
+        ),
+    }
+    match std::fs::write(paths::session_history_path_file(), &history_path_payload) {
+        Ok(()) => log_info!(
+            LOG_TAG,
+            "Session history marker written to {}: {history_path_payload}",
+            paths::session_history_path_file()
+        ),
+        Err(e) => log_error!(
+            LOG_TAG,
+            "Failed to write session history marker to {}: {e}",
+            paths::session_history_path_file()
+        ),
+    }
 }
 
 /// Claude variant — matches `system/init` and computes the project-scoped

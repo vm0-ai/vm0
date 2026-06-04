@@ -59,6 +59,10 @@ async fn send_event_captures_session_metadata_before_masking() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
     let _session_files = SessionCheckpointFilesGuard::new();
+    let tmp = tempfile::tempdir().unwrap();
+    let system_log_path = tmp.path().join("system.log");
+    let system_log_path = system_log_path.to_string_lossy().into_owned();
+    let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
 
     let sid_file = guest_agent::paths::session_id_file();
     let hist_file = guest_agent::paths::session_history_path_file();
@@ -98,6 +102,15 @@ async fn send_event_captures_session_metadata_before_masking() {
     assert!(
         !history.contains("***"),
         "history path must not be built from masked metadata, got: {history}"
+    );
+    let system_log = std::fs::read_to_string(&system_log_path).unwrap();
+    assert!(
+        system_log.contains(&format!("Session ID written to {sid_file}")),
+        "system log should confirm session ID file creation, got: {system_log}"
+    );
+    assert!(
+        system_log.contains(&format!("Session history marker written to {hist_file}:")),
+        "system log should confirm session history marker creation, got: {system_log}"
     );
 
     mock.delete_async().await;
