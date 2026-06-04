@@ -277,6 +277,26 @@ class TestResponseHandler:
         entry = json.loads(lines[0])
         assert entry["response_size"] == 50000
 
+    def test_response_size_accepts_max_safe_content_length(self, tmp_path, real_flow, mitm_ctx):
+        """response_size should accept the largest exactly representable JavaScript integer."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-length": "9007199254740991"})
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 9007199254740991
+
     def test_response_size_is_zero_without_stream_state_or_content_length(
         self, tmp_path, real_flow, mitm_ctx
     ):
