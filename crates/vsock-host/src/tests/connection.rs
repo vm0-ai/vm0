@@ -197,7 +197,7 @@ async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
     let (host_stream, guest) = make_pair();
     let release_exec = Arc::new(tokio::sync::Notify::new());
     let (request_seen_tx, request_seen_rx) = tokio::sync::oneshot::channel();
-    let guest_task = {
+    let mut guest_task = {
         let release_exec = Arc::clone(&release_exec);
         tokio::spawn(async move {
             let mut guest = MockGuest::new(guest);
@@ -222,10 +222,24 @@ async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.exec("sleep", 5000, &[], false).await })
     };
-    tokio::time::timeout(Duration::from_secs(2), request_seen_rx)
-        .await
-        .expect("guest should receive exec start before busy assertion")
-        .unwrap();
+    tokio::select! {
+        result = tokio::time::timeout(Duration::from_secs(2), request_seen_rx) => {
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(_)) => {
+                    match (&mut guest_task).await {
+                        Ok(()) => panic!("mock guest finished before exec request"),
+                        Err(err) => panic!("mock guest task panicked before exec request: {err}"),
+                    }
+                }
+                Err(_) => panic!("guest should receive exec start before busy assertion"),
+            }
+        }
+        result = &mut guest_task => {
+            result.expect("mock guest task panicked before exec request");
+            panic!("mock guest finished before exec request");
+        }
+    }
     assert_eq!(
         host.try_fence_normal_operations().unwrap_err(),
         NormalOperationFenceRejection::Busy
@@ -334,7 +348,7 @@ async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
     let (quiesce_seen_tx, quiesce_seen_rx) = tokio::sync::oneshot::channel();
     let (send_late_ack, receive_late_ack) = tokio::sync::oneshot::channel();
 
-    let guest_task = tokio::spawn(async move {
+    let mut guest_task = tokio::spawn(async move {
         let mut guest = MockGuest::new(guest);
         guest.complete_handshake().await;
 
@@ -356,10 +370,24 @@ async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
     let err = host.quiesce_operations(Duration::ZERO).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
 
-    tokio::time::timeout(Duration::from_secs(2), quiesce_seen_rx)
-        .await
-        .unwrap()
-        .unwrap();
+    tokio::select! {
+        result = tokio::time::timeout(Duration::from_secs(2), quiesce_seen_rx) => {
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(_)) => {
+                    match (&mut guest_task).await {
+                        Ok(()) => panic!("mock guest finished before quiesce request"),
+                        Err(err) => panic!("mock guest task panicked before quiesce request: {err}"),
+                    }
+                }
+                Err(_) => panic!("guest should receive quiesce request before late ack"),
+            }
+        }
+        result = &mut guest_task => {
+            result.expect("mock guest task panicked before quiesce request");
+            panic!("mock guest finished before quiesce request");
+        }
+    }
     assert!(is_connected(&host));
     send_late_ack.send(()).unwrap();
     host.resume_operations(Duration::from_secs(2))

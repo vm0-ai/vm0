@@ -731,7 +731,7 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
     let (first_chunk_tx, first_chunk_rx) = oneshot::channel::<()>();
     let (cleanup_tx, cleanup_rx) = oneshot::channel::<String>();
 
-    let guest_task = tokio::spawn(async move {
+    let mut guest_task = tokio::spawn(async move {
         let mut guest = MockGuest::new(guest);
         guest.complete_handshake().await;
 
@@ -785,7 +785,18 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
     let mut write = Box::pin(host.write_file("/tmp/big.bin", &content, false));
     tokio::select! {
         _ = &mut write => panic!("chunked write completed before cancellation"),
-        result = first_chunk_rx => result.unwrap(),
+        result = first_chunk_rx => {
+            if result.is_err() {
+                match (&mut guest_task).await {
+                    Ok(()) => panic!("mock guest finished before first chunk"),
+                    Err(err) => panic!("mock guest task panicked before first chunk: {err}"),
+                }
+            }
+        }
+        result = &mut guest_task => {
+            result.expect("mock guest task panicked before first chunk");
+            panic!("mock guest finished before first chunk");
+        }
     }
     drop(write);
     assert_eq!(
@@ -793,10 +804,25 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
         NormalOperationReadiness::NotParkable
     );
 
-    let cleanup_command = tokio::time::timeout(Duration::from_secs(2), cleanup_rx)
-        .await
-        .expect("cleanup command was not sent after cancellation")
-        .expect("cleanup sender dropped");
+    let cleanup_command = tokio::select! {
+        biased;
+        result = tokio::time::timeout(Duration::from_secs(2), cleanup_rx) => {
+            match result {
+                Ok(Ok(command)) => command,
+                Ok(Err(_)) => {
+                    match (&mut guest_task).await {
+                        Ok(()) => panic!("mock guest finished before cleanup command"),
+                        Err(err) => panic!("mock guest task panicked before cleanup command: {err}"),
+                    }
+                }
+                Err(_) => panic!("cleanup command was not sent after cancellation"),
+            }
+        }
+        result = &mut guest_task => {
+            result.expect("mock guest task panicked before cleanup command");
+            panic!("mock guest finished before cleanup command");
+        }
+    };
     assert!(cleanup_command.contains("rm -f --"));
 
     await_mock_guest(guest_task).await;
