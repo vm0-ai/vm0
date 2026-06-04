@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.407.2](https://github.com/vm0-ai/vm0/compare/app-v0.407.1...app-v0.407.2) (2026-06-04)
+
+
+### Bug Fixes
+
+* show skill folders in viewer ([#16052](https://github.com/vm0-ai/vm0/issues/16052)) ([6541bc3](https://github.com/vm0-ai/vm0/commit/6541bc354f392ab6caba5e4bf9c09308ee355cf2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.3
+    * @vm0/core bumped to 8.309.6
+
 ## [0.407.1](https://github.com/vm0-ai/vm0/compare/app-v0.407.0...app-v0.407.1) (2026-06-04)
 
 

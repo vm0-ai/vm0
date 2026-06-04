@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.107.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.9...runner-rs-v0.107.10) (2026-06-04)
+
+
+### Bug Fixes
+
+* include byok model usage in rankings ([#15979](https://github.com/vm0-ai/vm0/issues/15979)) ([09e8919](https://github.com/vm0-ai/vm0/commit/09e8919abf68a3c5d2662ff061b7892a54d29c29))
+
 ## [0.107.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.8...runner-rs-v0.107.9) (2026-06-03)
 
 
