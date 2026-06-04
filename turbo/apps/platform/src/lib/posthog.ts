@@ -167,3 +167,51 @@ export const captureFirstSkeletonHide$ = command(({ get, set }) => {
     duration_ms: Math.round(performance.now() - startMark),
   });
 });
+
+interface RecommendedFollowupTelemetryItem {
+  readonly kind: string;
+  readonly generationType?: string;
+}
+
+function recommendedFollowupGenerationTypes(
+  followups: readonly RecommendedFollowupTelemetryItem[],
+): string[] {
+  return followups.flatMap((followup) => {
+    return followup.generationType ? [followup.generationType] : [];
+  });
+}
+
+export function captureRecommendedFollowupsShown(args: {
+  readonly messageId: string;
+  readonly followups: readonly RecommendedFollowupTelemetryItem[];
+}): void {
+  if (!POSTHOG_KEY) {
+    return;
+  }
+  posthog.capture("chat_recommended_followups_shown", {
+    assistant_message_id: args.messageId,
+    followup_count: args.followups.length,
+    followup_kinds: args.followups.map((followup) => {
+      return followup.kind;
+    }),
+    generation_types: recommendedFollowupGenerationTypes(args.followups),
+  });
+}
+
+export function captureRecommendedFollowupSelected(args: {
+  readonly messageId: string;
+  readonly followupIndex: number;
+  readonly followupCount: number;
+  readonly followup: RecommendedFollowupTelemetryItem;
+}): void {
+  if (!POSTHOG_KEY) {
+    return;
+  }
+  posthog.capture("chat_recommended_followup_selected", {
+    assistant_message_id: args.messageId,
+    followup_index: args.followupIndex,
+    followup_count: args.followupCount,
+    followup_kind: args.followup.kind,
+    generation_type: args.followup.generationType,
+  });
+}

@@ -93,6 +93,10 @@ import {
 } from "../../signals/api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import {
+  captureRecommendedFollowupSelected,
+  captureRecommendedFollowupsShown,
+} from "../../lib/posthog.ts";
+import {
   AttachmentLightbox,
   CsvPreviewTable,
   downloadAttachmentUrl,
@@ -2840,6 +2844,38 @@ function RecommendedFollowupIcon({
   return <IconPackage size={14} stroke={1.8} />;
 }
 
+function recommendedFollowupShownKey(
+  source: RecommendedFollowupSource,
+): string {
+  return [
+    source.messageId,
+    source.followups.length,
+    ...source.followups.map((followup) => {
+      return `${followup.kind}:${followup.generationType ?? ""}`;
+    }),
+  ].join("|");
+}
+
+function reportRecommendedFollowupsShown(
+  element: HTMLDivElement | null,
+  source: RecommendedFollowupSource,
+): void {
+  if (!element) {
+    return;
+  }
+
+  const shownKey = recommendedFollowupShownKey(source);
+  if (element.dataset.recommendedFollowupsShownKey === shownKey) {
+    return;
+  }
+  element.dataset.recommendedFollowupsShownKey = shownKey;
+
+  captureRecommendedFollowupsShown({
+    messageId: source.messageId,
+    followups: source.followups,
+  });
+}
+
 function RecommendedFollowupList({
   thread,
   source,
@@ -2850,8 +2886,20 @@ function RecommendedFollowupList({
   const [, sendMessage] = useLoadableSet(thread.sendMessage$);
   const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
   const rootSignal = useGet(rootSignal$);
+  const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
+    reportRecommendedFollowupsShown(element, source);
+  };
 
-  const handleSelect = (followup: RecommendedFollowup) => {
+  const handleSelect = (
+    followup: RecommendedFollowup,
+    followupIndex: number,
+  ) => {
+    captureRecommendedFollowupSelected({
+      messageId: source.messageId,
+      followupIndex,
+      followupCount: source.followups.length,
+      followup,
+    });
     detach(
       sendMessage(
         followup.prompt,
@@ -2867,15 +2915,18 @@ function RecommendedFollowupList({
   };
 
   return (
-    <div className="-mx-2 divide-y divide-border/60">
-      {source.followups.map((followup) => {
+    <div
+      ref={handleRecommendedFollowupsRef}
+      className="-mx-2 divide-y divide-border/60"
+    >
+      {source.followups.map((followup, followupIndex) => {
         return (
           <button
             key={followup.prompt}
             type="button"
             className="group flex min-h-10 w-full items-center gap-2 px-2 py-2 text-left transition-colors first:rounded-t-lg last:rounded-b-lg hover:bg-muted/40"
             onClick={() => {
-              handleSelect(followup);
+              handleSelect(followup, followupIndex);
             }}
           >
             <span className="shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground">
