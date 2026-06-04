@@ -64,6 +64,12 @@ impl MockGuest {
         message
     }
 
+    pub(crate) async fn expect_eof(&mut self) {
+        let mut buf = [0u8; 1];
+        let n = self.stream.read(&mut buf).await.unwrap();
+        assert_eq!(n, 0, "expected guest stream EOF, got {n} byte(s)");
+    }
+
     pub(crate) async fn send_response(&mut self, msg_type: u8, seq: u32, payload: &[u8]) {
         let frame = vsock_proto::encode(msg_type, seq, payload).unwrap();
         self.stream.write_all(&frame).await.unwrap();

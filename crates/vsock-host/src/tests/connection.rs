@@ -2,7 +2,6 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::io::AsyncReadExt;
 use vsock_proto::{
     ExecTermination, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
     MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
@@ -516,8 +515,7 @@ async fn connection_poison_marks_normal_operations_not_parkable() {
     let guest_task = tokio::spawn(async move {
         let mut guest = MockGuest::new(guest);
         guest.complete_handshake().await;
-        let mut buf = [0u8; 1];
-        let _ = guest.stream_mut().read(&mut buf).await;
+        guest.expect_eof().await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
@@ -588,8 +586,7 @@ async fn test_concurrent_execs() {
                 .await;
         }
 
-        let mut discard = [0u8; 1];
-        let _ = guest.stream_mut().read(&mut discard).await;
+        guest.expect_eof().await;
     });
 
     let host = Arc::new(host_from_stream(host_stream).await.unwrap());
