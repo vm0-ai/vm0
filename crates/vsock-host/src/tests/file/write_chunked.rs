@@ -3,12 +3,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
-use vsock_proto::{Decoder, ExecTermination, MSG_EXEC_START, MSG_WRITE_FILE};
+use vsock_proto::{ExecTermination, MSG_EXEC_START, MSG_WRITE_FILE};
 
 use super::super::support::{
-    assert_connection_accepts_exec_operation, host_from_stream, make_pair, mock_handshake,
+    MockGuest, assert_connection_accepts_exec_operation, host_from_stream, make_pair,
     normal_operation_readiness, operation_count, pending_request_count, read_guest_message,
     send_exec_result, setup_host_and_guest,
 };
@@ -724,7 +724,7 @@ async fn test_write_file_chunked_cleans_up_on_mv_failure() {
 
 #[tokio::test]
 async fn test_write_file_chunked_cleans_up_when_cancelled() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
     let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
     let content = vec![0xABu8; chunk_limit + 100];
@@ -732,54 +732,42 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
     let (cleanup_tx, cleanup_rx) = oneshot::channel::<String>();
 
     let guest_task = tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
-        let mut buf = vec![0u8; chunk_limit + 4096];
         let mut temp_path = None::<String>;
         let mut first_chunk_tx = Some(first_chunk_tx);
         let mut cleanup_tx = Some(cleanup_tx);
 
         loop {
-            let n = guest.read(&mut buf).await.unwrap();
-            if n == 0 {
-                break;
-            }
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            for msg in msgs {
-                if msg.msg_type == MSG_WRITE_FILE {
-                    let (path, _chunk, _sudo, _append) =
-                        vsock_proto::decode_write_file(&msg.payload).unwrap();
-                    if let Some(temp_path) = &temp_path {
-                        assert_eq!(path, temp_path);
-                        continue;
-                    }
-
-                    assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
-                    temp_path = Some(path.to_string());
-                    send_write_file_success(&mut guest, msg.seq).await;
-                    if let Some(tx) = first_chunk_tx.take() {
-                        let _ = tx.send(());
-                    }
-                } else if msg.msg_type == MSG_EXEC_START {
-                    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
-                    let temp_path = temp_path.as_ref().expect("temp path");
-                    assert!(decoded.command.contains("rm -f --"));
-                    assert!(decoded.command.contains(temp_path));
-                    assert_eq!(decoded.label, "exec-cleanup");
-                    if let Some(tx) = cleanup_tx.take() {
-                        let _ = tx.send(decoded.command.to_string());
-                    }
-                    send_exec_result(
-                        &mut guest,
-                        msg.seq,
-                        ExecTermination::Exited { exit_code: 0 },
-                        &[],
-                        &[],
-                    )
-                    .await;
-                    return;
+            let msg = guest.read_message().await;
+            if msg.msg_type == MSG_WRITE_FILE {
+                let (path, _chunk, _sudo, _append) =
+                    vsock_proto::decode_write_file(&msg.payload).unwrap();
+                if let Some(temp_path) = &temp_path {
+                    assert_eq!(path, temp_path);
+                    continue;
                 }
+
+                assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                temp_path = Some(path.to_string());
+                send_write_file_success(guest.stream_mut(), msg.seq).await;
+                if let Some(tx) = first_chunk_tx.take() {
+                    let _ = tx.send(());
+                }
+            } else if msg.msg_type == MSG_EXEC_START {
+                let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
+                let temp_path = temp_path.as_ref().expect("temp path");
+                assert!(decoded.command.contains("rm -f --"));
+                assert!(decoded.command.contains(temp_path));
+                assert_eq!(decoded.label, "exec-cleanup");
+                if let Some(tx) = cleanup_tx.take() {
+                    let _ = tx.send(decoded.command.to_string());
+                }
+                guest
+                    .send_exec_result(msg.seq, ExecTermination::Exited { exit_code: 0 }, &[], &[])
+                    .await;
+                return;
             }
         }
     });
