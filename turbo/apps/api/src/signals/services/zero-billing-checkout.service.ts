@@ -1,17 +1,13 @@
 import { command } from "ccstate";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Stripe } from "stripe";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../external/time";
-import { writeDb$, type Db } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
-
-type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
@@ -153,119 +149,8 @@ function stripeObjectId(
   return value?.id ?? null;
 }
 
-function subscriptionPeriodEnd(subscription: Stripe.Subscription): Date | null {
-  const periodEndUnix = subscription.items.data[0]?.current_period_end;
-  return typeof periodEndUnix === "number"
-    ? new Date(periodEndUnix * 1000)
-    : null;
-}
-
-function subscriptionTrialEnd(subscription: Stripe.Subscription): Date | null {
-  return typeof subscription.trial_end === "number"
-    ? new Date(subscription.trial_end * 1000)
-    : null;
-}
-
-function requiredSubscriptionTrialEnd(subscription: Stripe.Subscription): Date {
-  const trialEnd = subscriptionTrialEnd(subscription);
-  if (!trialEnd) {
-    throw new Error(
-      `trialing subscription has no trial_end (subscriptionId=${subscription.id})`,
-    );
-  }
-  return trialEnd;
-}
-
 function subscriptionWillCancel(subscription: Stripe.Subscription): boolean {
-  return (
-    subscription.cancel_at_period_end ||
-    typeof subscription.cancel_at === "number"
-  );
-}
-
-function monthlyCreditsForTier(tier: OrgTier): number {
-  switch (tier) {
-    case "free": {
-      return 0;
-    }
-    case "pro-suspend": {
-      return 0;
-    }
-    case "pro": {
-      return 20_000;
-    }
-    case "team": {
-      return 120_000;
-    }
-  }
-}
-
-async function grantOrgCredits(
-  tx: WriteTx,
-  orgId: string,
-  amount: number,
-): Promise<void> {
-  await tx.execute(
-    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
-        VALUES (${orgId}, ${amount}, now(), now())
-        ON CONFLICT (org_id)
-        DO UPDATE SET credits = org_metadata.credits + ${amount}, updated_at = now()`,
-  );
-}
-
-async function createTrialCredits(
-  tx: WriteTx,
-  args: {
-    readonly orgId: string;
-    readonly sessionId: string;
-    readonly tier: SubscriptionCheckoutTier;
-    readonly expiresAt: Date;
-  },
-): Promise<void> {
-  const amount = monthlyCreditsForTier(args.tier);
-  const existingRows = await tx
-    .select({ id: creditExpiresRecord.id })
-    .from(creditExpiresRecord)
-    .where(
-      and(
-        eq(creditExpiresRecord.orgId, args.orgId),
-        eq(creditExpiresRecord.source, "subscription_renewal"),
-        eq(creditExpiresRecord.amount, amount),
-      ),
-    )
-    .for("update");
-
-  if (existingRows.length > 0) {
-    await tx
-      .update(creditExpiresRecord)
-      .set({ expiresAt: args.expiresAt })
-      .where(
-        and(
-          eq(creditExpiresRecord.orgId, args.orgId),
-          eq(creditExpiresRecord.source, "subscription_renewal"),
-          eq(creditExpiresRecord.amount, amount),
-          gt(creditExpiresRecord.remaining, 0),
-        ),
-      );
-    return;
-  }
-
-  const rows = await tx
-    .insert(creditExpiresRecord)
-    .values({
-      orgId: args.orgId,
-      source: "subscription_renewal",
-      stripeInvoiceId: args.sessionId,
-      amount,
-      remaining: amount,
-      expiresAt: args.expiresAt,
-    })
-    .onConflictDoNothing()
-    .returning({ id: creditExpiresRecord.id });
-
-  if (rows.length > 0) {
-    await grantOrgCredits(tx, args.orgId, amount);
-  }
+  return subscription.cancel_at_period_end || subscription.cancel_at !== null;
 }
 
 function customUnitAmountParams(
@@ -414,47 +299,24 @@ export const completeCheckoutSession$ = command(
     }
     const alreadyPaidSubscription =
       org.stripeSubscriptionId === subscription.id && org.tier === tier;
-    const trialingSubscription = subscription.status === "trialing";
-    const periodEnd = subscriptionPeriodEnd(subscription);
 
-    await db.transaction(async (tx) => {
-      await tx
-        .update(orgMetadata)
-        .set({
-          ...(trialingSubscription ? { tier } : {}),
-          stripeSubscriptionId: subscription.id,
-          subscriptionStatus: subscription.status,
-          cancelAtPeriodEnd: subscriptionWillCancel(subscription),
-          ...(trialingSubscription ? { onboardingPaymentPending: false } : {}),
-          ...(trialingSubscription && periodEnd
-            ? { currentPeriodEnd: periodEnd }
-            : {}),
-          updatedAt: nowDate(),
-        })
-        .where(
-          and(
-            eq(orgMetadata.orgId, args.orgId),
-            eq(orgMetadata.stripeCustomerId, customerId),
-          ),
-        );
-
-      if (trialingSubscription) {
-        await createTrialCredits(tx, {
-          orgId: args.orgId,
-          sessionId: args.sessionId,
-          tier,
-          expiresAt: requiredSubscriptionTrialEnd(subscription),
-        });
-      }
-    });
+    await db
+      .update(orgMetadata)
+      .set({
+        stripeSubscriptionId: subscription.id,
+        subscriptionStatus: subscription.status,
+        cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(orgMetadata.orgId, args.orgId),
+          eq(orgMetadata.stripeCustomerId, customerId),
+        ),
+      );
     signal.throwIfAborted();
 
-    return {
-      status:
-        alreadyPaidSubscription || trialingSubscription
-          ? "completed"
-          : "pending",
-    };
+    return { status: alreadyPaidSubscription ? "completed" : "pending" };
   },
 );
 
