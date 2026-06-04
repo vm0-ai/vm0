@@ -473,9 +473,8 @@ class TestResponseHandler:
         assert "#frag" not in entry["message"]
 
     def test_pops_start_time_even_when_run_id_absent(self, real_flow, mitm_ctx):
-        # If the request handler tracked this flow's start time but the
-        # metadata ended up without vm_run_id (registry missing runId),
-        # response() must still pop the timing state.
+        # If a partially initialized flow reaches response() without
+        # vm_run_id, response() must still pop the timing state.
         flow = real_flow(with_response=False)
         flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 
