@@ -370,6 +370,25 @@ def _block_registry_unavailable(
     )
 
 
+def _block_invalid_registry_vm(
+    flow: http.HTTPFlow,
+    invalid_vm: registry.InvalidVmEntry,
+) -> None:
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = "invalid_registry_vm"
+    flow.response = http.Response.make(
+        503,
+        json.dumps(
+            {
+                "error": "invalid_registry_vm",
+                "message": invalid_vm.message,
+                "reason": invalid_vm.reason,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
 # ============================================================================
 # TLS ClientHello Handler
 # ============================================================================
@@ -389,7 +408,7 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
     if isinstance(registry_state, registry.RegistryUnavailable):
         return
 
-    if client_ip not in registry_state.vms:
+    if client_ip not in registry_state.vms and client_ip not in registry_state.invalid_vms:
         # Not a registered VM - pass through without MITM interception
         # This is critical for CIDR-based rules where all VM traffic is redirected
         data.ignore_connection = True
@@ -427,6 +446,10 @@ async def request(flow: http.HTTPFlow) -> None:
     # the registry file loaded successfully; unavailable registry is blocked above.
     vm_info = registry_state.vms.get(client_ip)
     if vm_info is None:
+        invalid_vm = registry_state.invalid_vms.get(client_ip)
+        if invalid_vm is not None:
+            _block_invalid_registry_vm(flow, invalid_vm)
+            return
         # Not a registered VM, pass through without proxying
         return
     compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
@@ -911,6 +934,8 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
 
     vm_info = registry_state.vms.get(client_ip)
     if not vm_info:
+        if client_ip in registry_state.invalid_vms:
+            flow.kill()
         return
 
     flow.metadata[metadata_keys.VM_RUN_ID] = vm_info.get("runId", "")

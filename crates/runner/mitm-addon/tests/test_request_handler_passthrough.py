@@ -2,9 +2,12 @@
 
 import json
 
+import pytest
+
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import registry
+from tests.auth_state_helpers import has_auth_state
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
 
@@ -120,6 +123,64 @@ async def test_registry_unavailable_blocks_before_auth_injection(tmp_path, real_
     assert flow.metadata["firewall_action"] == "BLOCK"
     assert flow.metadata["firewall_error"] == "registry_unavailable"
     assert "firewall_base" not in flow.metadata
+
+
+@pytest.mark.parametrize(
+    ("run_id_value", "expected_reason", "expected_message"),
+    [
+        ("", "empty_run_id", "proxy registry VM entry runId must be non-empty"),
+        (None, "missing_run_id", "proxy registry VM entry is missing runId"),
+    ],
+)
+async def test_invalid_registered_vm_blocks_before_auth_injection(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    run_id_value,
+    expected_reason,
+    expected_message,
+):
+    vm_info = _single_firewall_vm(
+        tmp_path,
+        api_entry={
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer secret"}},
+            "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+        },
+        network_policy={
+            "allow": ["full-access"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        },
+    )
+    if run_id_value is None:
+        del vm_info["runId"]
+    else:
+        vm_info["runId"] = run_id_value
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+    flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 503
+    assert json.loads(flow.response.content) == {
+        "error": "invalid_registry_vm",
+        "message": expected_message,
+        "reason": expected_reason,
+    }
+    auth_fetch.assert_not_called()
+    assert not has_auth_state(("", "https://api.github.com"))
+    assert "vm_run_id" not in flow.metadata
+    assert "firewall_base" not in flow.metadata
+    assert flow.metadata["firewall_action"] == "BLOCK"
+    assert flow.metadata["firewall_error"] == "invalid_registry_vm"
 
 
 async def test_tracks_start_time(registry_file, real_flow, mitm_ctx):

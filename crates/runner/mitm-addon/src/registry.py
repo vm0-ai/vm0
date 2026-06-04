@@ -22,8 +22,17 @@ class _RegistryFormatError(ValueError):
 
 
 @dataclass(frozen=True)
+class InvalidVmEntry:
+    """Registry entry present for an IP but invalid for runtime VM context use."""
+
+    reason: str
+    message: str
+
+
+@dataclass(frozen=True)
 class _RegistrySnapshot:
     vms: dict
+    invalid_vms: dict[str, InvalidVmEntry]
     compiled_firewalls: dict[str, matching.CompiledFirewallSet]
     compiled_network_policies: dict[str, matching.CompiledNetworkPolicies]
     loaded_key: _RegistryCacheKey | None
@@ -41,7 +50,7 @@ RegistryState = _RegistrySnapshot | RegistryUnavailable
 
 
 def _empty_snapshot() -> _RegistrySnapshot:
-    return _RegistrySnapshot({}, {}, {}, None)
+    return _RegistrySnapshot({}, {}, {}, {}, None)
 
 
 @dataclass
@@ -108,9 +117,45 @@ def _compile_registry(
     return compiled_firewall_registry, compiled_policy_registry
 
 
-def _normalize_registry_vms(raw_registry: dict) -> tuple[dict, int]:
-    new_registry = {client_ip: vm for client_ip, vm in raw_registry.items() if isinstance(vm, dict)}
-    return new_registry, len(raw_registry) - len(new_registry)
+def _invalid_vm_entry(reason: str, message: str) -> InvalidVmEntry:
+    return InvalidVmEntry(reason=reason, message=message)
+
+
+def _classify_registry_vms(raw_registry: dict) -> tuple[dict, dict[str, InvalidVmEntry]]:
+    new_registry: dict = {}
+    invalid_vms: dict[str, InvalidVmEntry] = {}
+    for client_ip, vm in raw_registry.items():
+        if not isinstance(vm, dict):
+            invalid_vms[client_ip] = _invalid_vm_entry(
+                "invalid_vm_entry",
+                "proxy registry VM entry must be an object",
+            )
+            continue
+
+        if "runId" not in vm:
+            invalid_vms[client_ip] = _invalid_vm_entry(
+                "missing_run_id",
+                "proxy registry VM entry is missing runId",
+            )
+            continue
+
+        run_id = vm["runId"]
+        if not isinstance(run_id, str):
+            invalid_vms[client_ip] = _invalid_vm_entry(
+                "invalid_run_id",
+                "proxy registry VM entry runId must be a string",
+            )
+            continue
+        if not run_id:
+            invalid_vms[client_ip] = _invalid_vm_entry(
+                "empty_run_id",
+                "proxy registry VM entry runId must be non-empty",
+            )
+            continue
+
+        new_registry[client_ip] = vm
+
+    return new_registry, invalid_vms
 
 
 def _read_registry_vms(path: Path) -> dict:
@@ -190,9 +235,9 @@ def load_registry_state(registry_path: str) -> RegistryState:
         ctx.log.warn(f"Failed to parse proxy registry: {message}")
         return _mark_unavailable(state, reason="parse_failed", message=message)
 
-    new_registry, malformed_vm_count = _normalize_registry_vms(raw_registry)
-    if malformed_vm_count:
-        ctx.log.warn(f"Skipped {malformed_vm_count} malformed proxy registry VM entries")
+    new_registry, invalid_vms = _classify_registry_vms(raw_registry)
+    if invalid_vms:
+        ctx.log.warn(f"Rejected {len(invalid_vms)} invalid proxy registry VM entries")
     new_compiled_registry, new_compiled_policy_registry = _compile_registry(new_registry)
 
     # Evict cache entries for runs no longer in the registry.
@@ -205,6 +250,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
 
     state.snapshot = _RegistrySnapshot(
         new_registry,
+        invalid_vms,
         new_compiled_registry,
         new_compiled_policy_registry,
         key,
