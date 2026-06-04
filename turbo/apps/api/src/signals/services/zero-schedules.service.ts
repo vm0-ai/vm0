@@ -1009,6 +1009,7 @@ export const migrateScheduleToChat$ = command(
     }
 
     await publishChatThreadSchedulesChangedSafely(args.userId, thread.id);
+    signal.throwIfAborted();
 
     return {
       kind: "ok",
