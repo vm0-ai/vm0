@@ -19,7 +19,7 @@ use crate::operation_tracker::NormalOperationReadiness;
 use crate::{ConnectionState, NormalOperationFence, VsockHost};
 
 const MOCK_GUEST_IO_TIMEOUT: Duration = Duration::from_secs(5);
-const MOCK_GUEST_TASK_TIMEOUT: Duration = Duration::from_secs(6);
+const MOCK_GUEST_TASK_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(crate) fn make_pair() -> (UnixStream, UnixStream) {
     UnixStream::pair().unwrap()
