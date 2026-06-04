@@ -184,10 +184,10 @@ def load_registry_state(registry_path: str) -> RegistryState:
     publishes raw and compiled registry state together in a snapshot keyed by
     file identity metadata. Registry file stat/read/parse failures publish a
     separate unavailable state instead of returning a stale snapshot for
-    enforcement. Malformed registry input is recorded separately as a failed key
-    so repeated reads of the same bad bytes do not reparse or re-warn. File read
-    errors keep retrying that key, and internal compile/eviction errors are
-    allowed to propagate.
+    enforcement. Malformed registry document input is recorded separately as a
+    failed key so repeated reads of the same bad bytes do not reparse or
+    re-warn. File read errors keep retrying that key, and internal
+    compile/eviction errors are allowed to propagate.
     """
     path = Path(registry_path)
     path_key = _path_key(path)

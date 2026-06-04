@@ -542,7 +542,7 @@ class TestLoadRegistry:
         assert not has_auth_state(("run-abc-123", "api-0"))
 
     def test_registry_entries_without_run_id_do_not_keep_header_cache(self, registry_file):
-        """Registry entries with missing/empty runId are not active cache owners."""
+        """Registry entries with missing or blank runId are not active cache owners."""
         registry.load_registry(str(registry_file))
 
         set_cached_headers(("", "api-0"), headers={})
@@ -638,8 +638,8 @@ class TestLoadRegistry:
         assert recovered_state.invalid_vms == {}
         assert registry.get_vm_info("10.200.0.1", str(path)) == {"runId": "run-recovered"}
 
-    def test_malformed_vm_entries_do_not_block_header_cache_eviction(self, registry_file):
-        """Malformed VM entries are not active cache owners."""
+    def test_invalid_vm_entries_do_not_block_header_cache_eviction(self, registry_file):
+        """Invalid VM entries are not active cache owners."""
         registry.load_registry(str(registry_file))
 
         set_cached_headers(("run-old", "api-0"), headers={})
