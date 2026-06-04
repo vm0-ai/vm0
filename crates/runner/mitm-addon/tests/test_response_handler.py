@@ -255,9 +255,18 @@ class TestResponseHandler:
         entry = json.loads(lines[0])
         assert entry["response_size"] == len(body)
 
-    @pytest.mark.parametrize("content_length", ["50000", " 50000\t"])
+    @pytest.mark.parametrize(
+        ("content_length", "expected_size"),
+        [
+            pytest.param("50000", 50000, id="plain"),
+            pytest.param(" 50000\t", 50000, id="optional-whitespace"),
+            pytest.param("10, 10", 10, id="joined-consistent"),
+            pytest.param("00042, 42", 42, id="joined-leading-zero-consistent"),
+            pytest.param("0" * 32 + "42", 42, id="leading-zero-safe-integer"),
+        ],
+    )
     def test_response_size_uses_content_length_without_stream_state(
-        self, tmp_path, real_flow, mitm_ctx, content_length
+        self, tmp_path, real_flow, mitm_ctx, content_length, expected_size
     ):
         """response_size should fall back to Content-Length without stream metadata."""
         flow = real_flow(with_response=False, host="api.example.com")
@@ -276,7 +285,7 @@ class TestResponseHandler:
 
         lines = Path(log_path).read_text().splitlines()
         entry = json.loads(lines[0])
-        assert entry["response_size"] == 50000
+        assert entry["response_size"] == expected_size
 
     def test_response_size_accepts_max_safe_content_length(self, tmp_path, real_flow, mitm_ctx):
         """response_size should accept the largest exactly representable JavaScript integer."""
@@ -323,18 +332,24 @@ class TestResponseHandler:
     @pytest.mark.parametrize(
         "content_length",
         [
-            "",
-            " ",
-            "\t",
-            "not-an-int",
-            "-1",
-            "+1",
-            "1, 2",
-            "1,",
-            ",1",
-            "\u0661\u0662",
-            "9007199254740992",
-            "1" * 257,
+            pytest.param("", id="empty"),
+            pytest.param(" ", id="space"),
+            pytest.param("\t", id="tab"),
+            pytest.param("not-an-int", id="malformed"),
+            pytest.param("-1", id="negative"),
+            pytest.param("+1", id="signed"),
+            pytest.param("1.5", id="fractional"),
+            pytest.param("1e3", id="exponential"),
+            pytest.param("1, 2", id="joined-conflicting"),
+            pytest.param("1,", id="joined-trailing-empty"),
+            pytest.param(",1", id="joined-leading-empty"),
+            pytest.param("10,,10", id="joined-empty-part"),
+            pytest.param("10, abc", id="joined-invalid"),
+            pytest.param("\u0661\u0662", id="unicode-digits"),
+            pytest.param("9007199254740992", id="above-max-safe-integer"),
+            pytest.param("0" * 32 + str(1 << 53), id="leading-zero-above-max-safe-integer"),
+            pytest.param("1" * 257, id="too-many-safe-digits"),
+            pytest.param("9" * 4301, id="too-many-digits"),
         ],
     )
     def test_response_size_is_zero_for_invalid_content_length(
@@ -381,6 +396,29 @@ class TestResponseHandler:
         lines = Path(log_path).read_text().splitlines()
         entry = json.loads(lines[0])
         assert entry["response_size"] == 50000
+
+    def test_response_size_rejects_conflicting_repeated_content_length(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Repeated conflicting Content-Length values should not be logged as a size."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers([(b"content-length", b"50000"), (b"content-length", b"50001")]),
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 0
 
     def test_response_size_keeps_zero_streamed_bytes(self, tmp_path, real_flow, mitm_ctx):
         """response_size should not treat a streamed byte count of 0 as missing."""

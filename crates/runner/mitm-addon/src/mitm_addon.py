@@ -69,8 +69,7 @@ _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 # Network log size fields are consumed as JavaScript numbers downstream.
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
-# Bound untrusted log-only header parsing before splitting comma lists.
-_MAX_CONTENT_LENGTH_HEADER_CHARS = 256
+_MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))
 
 # Runner-triggered usage drain protocol:
 # - Rust writes `usage-flush-request` with the active usageStateId and a fresh
@@ -645,28 +644,48 @@ def _response_size(flow: http.HTTPFlow) -> int:
 def _content_length_response_size(content_length: str | None) -> int:
     if content_length is None:
         return 0
-    if len(content_length) > _MAX_CONTENT_LENGTH_HEADER_CHARS:
-        return 0
 
     response_size: int | None = None
-    for value in content_length.split(","):
-        parsed_size = _single_content_length_response_size(value)
+    start = 0
+    while True:
+        comma = content_length.find(",", start)
+        end = len(content_length) if comma == -1 else comma
+        parsed_size = _single_content_length_response_size(content_length, start, end)
         if parsed_size is None:
             return 0
         if response_size is None:
             response_size = parsed_size
         elif response_size != parsed_size:
             return 0
+        if comma == -1:
+            break
+        start = comma + 1
 
     return response_size if response_size is not None else 0
 
 
-def _single_content_length_response_size(content_length: str) -> int | None:
-    content_length = content_length.strip(" \t")
-    if not content_length.isascii() or not content_length.isdigit():
+def _single_content_length_response_size(content_length: str, start: int, end: int) -> int | None:
+    while start < end and content_length[start] in (" ", "\t"):
+        start += 1
+    while end > start and content_length[end - 1] in (" ", "\t"):
+        end -= 1
+    if start == end:
         return None
 
-    response_size = int(content_length)
+    while start < end and content_length[start] == "0":
+        start += 1
+    if start == end:
+        return 0
+
+    significant_start = start
+    if end - significant_start > _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS:
+        return None
+    for index in range(significant_start, end):
+        char = content_length[index]
+        if char < "0" or char > "9":
+            return None
+
+    response_size = int(content_length[significant_start:end])
     if response_size > _MAX_SAFE_NETWORK_LOG_SIZE:
         return None
     return response_size
