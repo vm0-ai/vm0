@@ -72,9 +72,11 @@ _TimerFactory = Callable[[float, Callable[[], None]], _TimerHandle]
 
 
 class _FlushOwnerLock(Protocol):
-    def acquire(self, blocking: bool = True) -> bool: ...
+    def acquire(self, blocking: bool = True) -> bool:
+        raise NotImplementedError
 
-    def release(self) -> None: ...
+    def release(self) -> None:
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
