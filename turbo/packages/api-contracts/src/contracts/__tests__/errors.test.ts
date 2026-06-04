@@ -149,6 +149,22 @@ describe("formatRunErrorForExternalSurface", () => {
     expect(isGenericRunErrorForDisplay(rawRunError)).toBe(false);
   });
 
+  it("skips non-JSON brace templates before the reconnect-required error body", () => {
+    const rawRunError =
+      'request template {response_id: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: codex-oauth-token.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses';
+
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: rawRunError,
+      }),
+    ).toBe(
+      "ChatGPT session needs reconnection. Reconnect ChatGPT (Codex) in Model Providers, then retry.",
+    );
+    expect(isActionableRunError(rawRunError)).toBe(true);
+    expect(isGenericRunErrorForDisplay(rawRunError)).toBe(false);
+  });
+
   it("shows reconnect guidance for firewall auth API error envelopes", () => {
     const rawRunError =
       'unexpected status 502 Bad Gateway: {"error":{"message":"Access token expired and refresh failed for: codex-oauth-token.","code":"TOKEN_REFRESH_FAILED","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}}';

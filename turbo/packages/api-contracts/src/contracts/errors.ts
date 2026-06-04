@@ -161,11 +161,35 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE,
 ] as const;
 
+function isJsonWhitespace(char: string | undefined): boolean {
+  return char === " " || char === "\n" || char === "\r" || char === "\t";
+}
+
+function findNextJsonObjectStart(
+  errorMessage: string,
+  searchStart: number,
+): number {
+  let bodyStart = errorMessage.indexOf("{", searchStart);
+  while (bodyStart !== -1) {
+    let nextNonWhitespace = bodyStart + 1;
+    while (isJsonWhitespace(errorMessage[nextNonWhitespace])) {
+      nextNonWhitespace += 1;
+    }
+
+    const firstToken = errorMessage[nextNonWhitespace];
+    if (firstToken === '"' || firstToken === "}") {
+      return bodyStart;
+    }
+    bodyStart = errorMessage.indexOf("{", bodyStart + 1);
+  }
+  return -1;
+}
+
 function parseNextJsonObject(
   errorMessage: string,
   searchStart: number,
 ): { readonly value?: unknown; readonly endIndex: number } | undefined {
-  const bodyStart = errorMessage.indexOf("{", searchStart);
+  const bodyStart = findNextJsonObjectStart(errorMessage, searchStart);
   if (bodyStart === -1) {
     return undefined;
   }
@@ -213,7 +237,7 @@ function parseNextJsonObject(
     }
   }
 
-  return undefined;
+  return { endIndex: bodyStart + 1 };
 }
 
 function isCodexOAuthReconnectRequiredRunErrorObject(value: unknown): boolean {
