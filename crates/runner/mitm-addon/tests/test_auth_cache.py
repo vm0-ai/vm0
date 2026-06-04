@@ -103,16 +103,32 @@ class TestFirewallHeaderCache:
         """Failed fetch should not populate cache; next caller retries independently."""
         endpoint = FakeAuthEndpoint()
         endpoint.queue_response(500, body=b"not-json")
+        endpoint.queue_json_response(
+            {
+                "headers": {"Authorization": "Bearer retry"},
+                "expiresAt": time.time() + 3600,
+            }
+        )
 
-        with (
-            endpoint.run(),
-            mitm_ctx(api_url=endpoint.api_url),
-            pytest.raises(urllib.error.HTTPError),
-        ):
-            await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+        with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+            with pytest.raises(urllib.error.HTTPError):
+                await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
-        assert endpoint.request_count == 1
-        assert cached_headers(("run-1", "api-1")) is None
+            assert endpoint.request_count == 1
+            assert cached_headers(("run-1", "api-1")) is None
+
+            retry = await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+            assert retry["headers"] == {"Authorization": "Bearer retry"}
+            assert retry["cache_hit"] is False
+            assert endpoint.request_count == 2
+            assert require_cached_headers(("run-1", "api-1")).payload.headers == {
+                "Authorization": "Bearer retry"
+            }
+
+            cached = await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+            assert cached["headers"] == {"Authorization": "Bearer retry"}
+            assert cached["cache_hit"] is True
+            assert endpoint.request_count == 2
 
     def test_registry_eviction_cleans_locks(self, tmp_path, mitm_ctx):
         """When a run is evicted from registry, its locks should be cleaned up too."""
