@@ -666,11 +666,7 @@ def _single_content_length_response_size(content_length: str) -> int | None:
     if not content_length.isascii() or not content_length.isdigit():
         return None
 
-    try:
-        response_size = int(content_length)
-    except ValueError:
-        return None
-
+    response_size = int(content_length)
     if response_size > _MAX_SAFE_NETWORK_LOG_SIZE:
         return None
     return response_size
