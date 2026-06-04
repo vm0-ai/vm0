@@ -862,7 +862,7 @@ async def _apply_resolved_firewall_auth(
 async def handle_firewall_request(
     flow: http.HTTPFlow, allow: matching.FirewallAllow, vm_info: dict
 ) -> FirewallAuthHandlingResult:
-    """Handle a firewall-matched request: fetch resolved headers, inject into request."""
+    """Handle firewall auth and return who owns the next response lifecycle."""
     _prepare_firewall_metadata(flow, allow, vm_info)
     api_entry = allow.api_entry
     firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]

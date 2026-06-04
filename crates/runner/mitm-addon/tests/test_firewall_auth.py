@@ -1096,8 +1096,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 424
         assert flow.metadata["firewall_action"] == "BLOCK"
@@ -1125,8 +1126,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 402
         assert flow.metadata["firewall_action"] == "BLOCK"
