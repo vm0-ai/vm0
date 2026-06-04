@@ -1,6 +1,7 @@
 import type {
   AuthCodeGrantConnectorType,
   ConnectorAuthCodeGrantAuthMethodId,
+  ConnectorAuthMethodClientConfig,
   ConnectorAuthMethodIds,
   ConnectorAuthMethodIdsByAccessKind,
   ConnectorAuthMethodIdsByRevokeKind,
@@ -71,10 +72,18 @@ export type ConnectorAuthProviderRefreshArgs<
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token"> =
     ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
 > = {
-  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
   readonly inputs: ConnectorRefreshInputValues<T, Method>;
   readonly signal: AbortSignal;
-};
+} & ConnectorRefreshAuthClientArgs<T, Method>;
+
+type ConnectorRefreshAuthClientArgs<
+  T extends RefreshTokenAccessConnectorType,
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
+> = [ConnectorAuthMethodClientConfig<T, Method>] extends [never]
+  ? Record<never, never>
+  : {
+      readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+    };
 
 export interface ConnectorAuthProviderRefreshResultBase {
   readonly outputs: Readonly<Record<string, string | undefined>>;

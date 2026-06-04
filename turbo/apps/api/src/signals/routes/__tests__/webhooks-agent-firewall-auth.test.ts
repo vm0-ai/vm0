@@ -10,6 +10,7 @@ import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhoo
 import type { ConnectorAuthClientConfig } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import {
+  testOauthApiTokenProvider,
   testOauthApiProvider,
   testOauthProvider,
 } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
@@ -497,6 +498,69 @@ async function seedExpiredTestOAuthApiConnector(
   });
 }
 
+async function seedTestOAuthApiTokenConnector(
+  fixture: FirewallFixture,
+  args: {
+    readonly accessToken?: string;
+    readonly tokenExpiresAt?: Date | null;
+    readonly inputSecret?: string | undefined;
+    readonly inputVariable?: string | undefined;
+  } = {},
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "test-oauth",
+    authMethod: "api-token",
+    externalId: "test-oauth-api-token-user",
+    externalUsername: "test-oauth-api-token-user",
+    externalEmail: "test-oauth-api-token@example.com",
+    oauthScopes: JSON.stringify([]),
+    tokenExpiresAt:
+      args.tokenExpiresAt === undefined
+        ? new Date(now() - 60_000)
+        : args.tokenExpiresAt,
+  });
+
+  const inputSecret =
+    "inputSecret" in args
+      ? args.inputSecret
+      : "test-oauth-api-token-input-secret";
+  if (inputSecret !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "TEST_OAUTH_TOKEN",
+      value: inputSecret,
+      type: "connector",
+    });
+  }
+
+  const inputVariable =
+    "inputVariable" in args
+      ? args.inputVariable
+      : "test-oauth-api-token-input-variable";
+  if (inputVariable !== undefined) {
+    await seedVariable({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+      value: inputVariable,
+    });
+  }
+
+  if (args.accessToken !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+      value: args.accessToken,
+      type: "connector",
+    });
+  }
+}
+
 async function seedStripeApiTokenConnector(
   fixture: FirewallFixture,
   args: { readonly token?: string } = {},
@@ -565,6 +629,11 @@ type CapturedOAuthRefresh = {
   readonly tenantId?: string;
 };
 
+type CapturedInputOnlyRefresh = {
+  readonly inputSecret: string;
+  readonly inputVariable: string;
+};
+
 type TestOAuthApiRefreshOutputs = {
   readonly refreshedAccessToken: string;
   readonly refreshedRefreshToken?: string;
@@ -607,6 +676,21 @@ function useMalformedTestOAuthApiRefresh(args: {
   return {
     refreshes,
     restore: configureMalformedTestOAuthApiRefresh(refreshes, args.outputs),
+  };
+}
+
+function useTestOAuthApiTokenRefresh(
+  args: {
+    readonly accessToken?: string;
+  } = {},
+): {
+  readonly refreshes: readonly CapturedInputOnlyRefresh[];
+  readonly restore: () => void;
+} {
+  const refreshes: CapturedInputOnlyRefresh[] = [];
+  return {
+    refreshes,
+    restore: configureTestOAuthApiTokenRefresh(refreshes, args.accessToken),
   };
 }
 
@@ -682,6 +766,33 @@ function configureDynamicTestOAuthApiRefresh(
 
   return () => {
     Object.assign(method, { client: originalClient });
+    access.refresh = originalRefresh;
+  };
+}
+
+function configureTestOAuthApiTokenRefresh(
+  refreshes: CapturedInputOnlyRefresh[],
+  accessToken?: string,
+): () => void {
+  const access = testOauthApiTokenProvider.access;
+  const originalRefresh = access.refresh;
+
+  access.refresh = (args) => {
+    refreshes.push({
+      inputSecret: args.inputs.inputSecret,
+      inputVariable: args.inputs.inputVariable,
+    });
+    return Promise.resolve({
+      outputs: {
+        accessToken:
+          accessToken ??
+          `fresh-test-oauth-api-token:${args.inputs.inputSecret}:${args.inputs.inputVariable}`,
+      },
+      expiresIn: 3600,
+    });
+  };
+
+  return () => {
     access.refresh = originalRefresh;
   };
 }
@@ -2245,6 +2356,210 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         type: "connector",
       }),
     ).resolves.toBe("test-oauth-api-refresh-token");
+  });
+
+  it("resolves a missing input-only connector access secret through refresh metadata", async () => {
+    const inputOnlyRefresh = useTestOAuthApiTokenRefresh();
+    restoreDynamicTestOAuthRefresh = inputOnlyRefresh.restore;
+    const fixture = await track(seedFixture());
+    await seedTestOAuthApiTokenConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_API_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_API_TOKEN: "test-oauth",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(inputOnlyRefresh.refreshes).toStrictEqual([
+      {
+        inputSecret: "test-oauth-api-token-input-secret",
+        inputVariable: "test-oauth-api-token-input-variable",
+      },
+    ]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-test-oauth-api-token:test-oauth-api-token-input-secret:test-oauth-api-token-input-variable",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
+    expect(response.body.refreshedSecrets).toStrictEqual([
+      "TEST_OAUTH_API_TOKEN",
+    ]);
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe(
+      "fresh-test-oauth-api-token:test-oauth-api-token-input-secret:test-oauth-api-token-input-variable",
+    );
+  });
+
+  it("reuses current input-only connector access without refreshing", async () => {
+    const inputOnlyRefresh = useTestOAuthApiTokenRefresh();
+    restoreDynamicTestOAuthRefresh = inputOnlyRefresh.restore;
+    const fixture = await track(seedFixture());
+    await seedTestOAuthApiTokenConnector(fixture, {
+      accessToken: "current-test-oauth-api-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_API_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_API_TOKEN: "test-oauth",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(inputOnlyRefresh.refreshes).toStrictEqual([]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-test-oauth-api-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("refreshes expired input-only connector access", async () => {
+    const inputOnlyRefresh = useTestOAuthApiTokenRefresh({
+      accessToken: "fresh-expired-test-oauth-api-token",
+    });
+    restoreDynamicTestOAuthRefresh = inputOnlyRefresh.restore;
+    const fixture = await track(seedFixture());
+    await seedTestOAuthApiTokenConnector(fixture, {
+      accessToken: "stale-test-oauth-api-token",
+      tokenExpiresAt: new Date(now() - 60_000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            TEST_OAUTH_API_TOKEN: "stale-test-oauth-api-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_API_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_API_TOKEN: "test-oauth",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(inputOnlyRefresh.refreshes).toStrictEqual([
+      {
+        inputSecret: "test-oauth-api-token-input-secret",
+        inputVariable: "test-oauth-api-token-input-variable",
+      },
+    ]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-expired-test-oauth-api-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
+    expect(response.body.refreshedSecrets).toStrictEqual([
+      "TEST_OAUTH_API_TOKEN",
+    ]);
+  });
+
+  it("force refreshes current input-only connector access", async () => {
+    const inputOnlyRefresh = useTestOAuthApiTokenRefresh({
+      accessToken: "fresh-forced-test-oauth-api-token",
+    });
+    restoreDynamicTestOAuthRefresh = inputOnlyRefresh.restore;
+    const fixture = await track(seedFixture());
+    await seedTestOAuthApiTokenConnector(fixture, {
+      accessToken: "current-test-oauth-api-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            TEST_OAUTH_API_TOKEN: "current-test-oauth-api-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_API_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_API_TOKEN: "test-oauth",
+          },
+          forceRefresh: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(inputOnlyRefresh.refreshes).toStrictEqual([
+      {
+        inputSecret: "test-oauth-api-token-input-secret",
+        inputVariable: "test-oauth-api-token-input-variable",
+      },
+    ]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-forced-test-oauth-api-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
+    expect(response.body.refreshedSecrets).toStrictEqual([
+      "TEST_OAUTH_API_TOKEN",
+    ]);
+  });
+
+  it("returns refresh failure when input-only connector refresh variables are missing", async () => {
+    const inputOnlyRefresh = useTestOAuthApiTokenRefresh();
+    restoreDynamicTestOAuthRefresh = inputOnlyRefresh.restore;
+    const fixture = await track(seedFixture());
+    await seedTestOAuthApiTokenConnector(fixture, {
+      inputVariable: undefined,
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_API_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_API_TOKEN: "test-oauth",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["test-oauth"],
+      failureReason: "reconnect_required",
+    });
+    expect(inputOnlyRefresh.refreshes).toStrictEqual([]);
+    await expect(connectorState(fixture, "test-oauth")).resolves.toMatchObject({
+      needsReconnect: true,
+    });
   });
 
   it("returns refresh failure when provider output omits the runtime token", async () => {

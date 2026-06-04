@@ -2,6 +2,7 @@ import type {
   ConnectorAuthClientConfig,
   ConnectorAuthCodeGrantConfig,
   ConnectorConfig,
+  ConnectorManualGrantConfig,
   ConnectorRevokeConfig,
 } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
@@ -30,6 +31,23 @@ const TEST_OAUTH_API_AUTH_CODE_GRANT = {
     initialRefreshToken: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
   },
 } as const satisfies ConnectorAuthCodeGrantConfig;
+
+const TEST_OAUTH_API_TOKEN_MANUAL_GRANT = {
+  kind: "manual",
+  fields: {
+    TEST_OAUTH_TOKEN: {
+      label: "API Token",
+      required: true,
+      placeholder: "test-oauth-token",
+    },
+    TEST_OAUTH_API_TOKEN_INPUT_VAR: {
+      label: "Input Variable",
+      required: true,
+      placeholder: "test-input-variable",
+      storage: "variable",
+    },
+  },
+} as const satisfies ConnectorManualGrantConfig;
 
 const TEST_OAUTH_REVOKE = { kind: "none" } satisfies ConnectorRevokeConfig;
 
@@ -95,6 +113,32 @@ export const testOauth = {
           refreshableSecrets: ["TEST_OAUTH_API_ACCESS_TOKEN"],
           envBindings: {
             TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
+          },
+        },
+        revoke: TEST_OAUTH_REVOKE,
+      },
+      "api-token": {
+        featureFlag: FeatureSwitchKey.TestOauthConnector,
+        label: "API Token",
+        helpText:
+          "Test-only manual method used to exercise refreshable access without a platform auth client.",
+        storage: {
+          secrets: ["TEST_OAUTH_TOKEN", "TEST_OAUTH_API_TOKEN_ACCESS_TOKEN"],
+          variables: ["TEST_OAUTH_API_TOKEN_INPUT_VAR"],
+        },
+        grant: TEST_OAUTH_API_TOKEN_MANUAL_GRANT,
+        access: {
+          kind: "refresh-token",
+          inputs: {
+            inputSecret: "$secrets.TEST_OAUTH_TOKEN",
+            inputVariable: "$vars.TEST_OAUTH_API_TOKEN_INPUT_VAR",
+          },
+          outputs: {
+            accessToken: "$secrets.TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+          },
+          refreshableSecrets: ["TEST_OAUTH_API_TOKEN_ACCESS_TOKEN"],
+          envBindings: {
+            TEST_OAUTH_API_TOKEN: "$secrets.TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
           },
         },
         revoke: TEST_OAUTH_REVOKE,

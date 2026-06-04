@@ -33,6 +33,13 @@ interface TestOAuthApiRefreshResult {
   readonly expiresIn?: number;
 }
 
+interface TestOAuthApiTokenRefreshResult {
+  readonly outputs: {
+    readonly accessToken: string;
+  };
+  readonly expiresIn?: number;
+}
+
 interface TestOAuthTokenExchange {
   readonly accessToken: string;
   readonly refreshToken: string | null;
@@ -198,6 +205,25 @@ function createTestOauthApiAccess(): RefreshTokenAccessProvider<
   };
 }
 
+function createTestOauthApiTokenAccess(): RefreshTokenAccessProvider<
+  "test-oauth",
+  "api-token"
+> {
+  return {
+    kind: "refresh-token",
+    refresh: async (refreshArgs) => {
+      refreshArgs.signal.throwIfAborted();
+      const providerResult: TestOAuthApiTokenRefreshResult = {
+        outputs: {
+          accessToken: `fresh-test-oauth-api-token:${refreshArgs.inputs.inputSecret}:${refreshArgs.inputs.inputVariable}`,
+        },
+        expiresIn: 3600,
+      };
+      return providerResult;
+    },
+  };
+}
+
 export const testOauthProvider: AuthCodeConnectorAuthProvider<
   "test-oauth",
   "oauth"
@@ -214,4 +240,10 @@ export const testOauthApiProvider: AuthCodeConnectorAuthProvider<
   grant: createTestOauthApiGrant(),
   access: createTestOauthApiAccess(),
   revoke: { kind: "none" },
+};
+
+export const testOauthApiTokenProvider = {
+  access: createTestOauthApiTokenAccess(),
+} as const satisfies {
+  readonly access: RefreshTokenAccessProvider<"test-oauth", "api-token">;
 };

@@ -9,6 +9,7 @@ import {
   type DeviceAuthGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByRevokeKind,
+  type ConnectorAuthMethodClientConfig,
   type ConnectorRefreshInputValues,
   type ConnectorRevokeInputValues,
   type RefreshTokenAccessConnectorType,
@@ -23,7 +24,6 @@ import {
   isStaticConfidentialConnectorAuthClient,
   resolveConnectorAuthClientForMethod,
   type ConnectorAuthClientForMethod,
-  type ConnectorAuthMethodClientRefByAccessKind,
   type ConnectorAuthMethodClientRefByGrantKind,
   type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
@@ -93,6 +93,7 @@ import { xProvider } from "./oauth/providers/x-provider";
 import { xeroProvider } from "./oauth/providers/xero-provider";
 import { zoomProvider } from "./oauth/providers/zoom-provider";
 import {
+  testOauthApiTokenProvider,
   testOauthApiProvider,
   testOauthProvider,
 } from "./oauth/providers/test-oauth-provider";
@@ -297,6 +298,15 @@ function deviceAuthRefreshProviderEntry<
   return { grant: provider.grant, access: provider.access };
 }
 
+function refreshProviderEntry<
+  Type extends RefreshTokenAccessConnectorType,
+  Method extends ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
+>(provider: {
+  readonly access: RefreshTokenAccessProvider<Type, Method>;
+}): ConnectorRefreshTokenAccessProviderEntry<Type, Method> {
+  return { access: provider.access };
+}
+
 function connectorRefreshTokenAccessProviderFor<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
@@ -418,6 +428,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   supabase: { oauth: authCodeRefreshProviderEntry(supabaseProvider) },
   "test-oauth": {
     oauth: authCodeRefreshProviderEntry(testOauthProvider),
+    "api-token": refreshProviderEntry(testOauthApiTokenProvider),
     api: authCodeRefreshProviderEntry(testOauthApiProvider),
   },
   "test-oauth-device": {
@@ -442,9 +453,6 @@ type ConnectorAuthCodeMethodClientRef =
 type ConnectorDeviceAuthMethodClientRef =
   ConnectorAuthMethodClientRefByGrantKind<"device-auth">;
 
-type ConnectorRefreshTokenAccessMethodClientRef =
-  ConnectorAuthMethodClientRefByAccessKind<"refresh-token">;
-
 type ConnectorAuthCodeAuthorizationUrlArgs =
   ConnectorAuthCodeMethodClientRef & {
     readonly redirectUri: string;
@@ -467,11 +475,39 @@ type ConnectorDeviceAuthorizationPollCallArgs =
     readonly deviceCode: string;
   };
 
-type ConnectorRefreshTokenAccessCallArgs =
-  ConnectorRefreshTokenAccessMethodClientRef & {
-    readonly inputs: Readonly<Record<string, string>>;
-    readonly signal: AbortSignal;
-  };
+type ConnectorRefreshTokenAccessCallArgs<
+  T extends RefreshTokenAccessConnectorType,
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
+  Inputs extends Readonly<Record<string, string>> = ConnectorRefreshInputValues<
+    T,
+    Method
+  >,
+> = {
+  readonly type: T;
+  readonly authMethod: Method;
+  readonly inputs: Inputs;
+  readonly signal: AbortSignal;
+} & ConnectorRefreshTokenAccessClientArgs<T, Method>;
+
+type ConnectorRefreshTokenAccessClientArgs<
+  T extends RefreshTokenAccessConnectorType,
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
+> = [ConnectorAuthMethodClientConfig<T, Method>] extends [never]
+  ? Record<never, never>
+  : { readonly authClient: ConnectorAuthClientForMethod<T, Method> };
+
+type ConnectorRefreshTokenAccessDynamicCallArgs = {
+  readonly [Type in RefreshTokenAccessConnectorType]: {
+    readonly [Method in ConnectorAuthMethodIdsByAccessKind<
+      Type,
+      "refresh-token"
+    >]: ConnectorRefreshTokenAccessCallArgs<
+      Type,
+      Method,
+      Readonly<Record<string, string>>
+    >;
+  }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
+}[RefreshTokenAccessConnectorType];
 
 export function buildConnectorAuthCodeAuthorizationUrl<
   T extends AuthCodeGrantConnectorType,
@@ -623,26 +659,15 @@ export async function pollConnectorDeviceAuthorization<
 export function refreshConnectorAuthProviderAccessToken<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
->(args: {
-  readonly type: T;
-  readonly authMethod: Method;
-  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
-  readonly inputs: ConnectorRefreshInputValues<T, Method>;
-  readonly signal: AbortSignal;
-}): Promise<ConnectorAuthProviderRefreshResult<T, Method>>;
+>(
+  args: ConnectorRefreshTokenAccessCallArgs<T, Method>,
+): Promise<ConnectorAuthProviderRefreshResult<T, Method>>;
 export function refreshConnectorAuthProviderAccessToken(
-  args: ConnectorRefreshTokenAccessCallArgs,
+  args: ConnectorRefreshTokenAccessDynamicCallArgs,
 ): Promise<ConnectorAuthProviderRefreshResultBase>;
-export async function refreshConnectorAuthProviderAccessToken<
-  T extends RefreshTokenAccessConnectorType,
-  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
->(args: {
-  readonly type: T;
-  readonly authMethod: Method;
-  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
-  readonly inputs: ConnectorRefreshInputValues<T, Method>;
-  readonly signal: AbortSignal;
-}): Promise<ConnectorAuthProviderRefreshResult<T, Method>> {
+export async function refreshConnectorAuthProviderAccessToken(
+  args: ConnectorRefreshTokenAccessDynamicCallArgs,
+): Promise<ConnectorAuthProviderRefreshResultBase> {
   const accessMetadata = getConnectorAuthMethodAccessMetadata(
     args.type,
     args.authMethod,
@@ -651,11 +676,7 @@ export async function refreshConnectorAuthProviderAccessToken<
     args.type,
     args.authMethod,
   );
-  const result = await access.refresh({
-    authClient: args.authClient,
-    inputs: args.inputs,
-    signal: args.signal,
-  });
+  const result = await access.refresh(args);
   const declaredOutputs = new Set(Object.keys(accessMetadata.outputs));
   for (const outputName of Object.keys(result.outputs)) {
     if (!declaredOutputs.has(outputName)) {
