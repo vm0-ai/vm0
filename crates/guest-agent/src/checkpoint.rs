@@ -18,7 +18,6 @@ use std::io::ErrorKind;
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const API_AUTO_MEMORY_GENERATED_BY: &str = "apiAutoMemory";
 
 #[derive(Clone, Copy)]
 enum CheckpointMode {
@@ -66,32 +65,12 @@ fn fail(
 
 /// Shape one entry of the `artifactSnapshots` payload. Keys are the
 /// camelCase names the web Zod receiver (`artifactSnapshotsSchema`) expects.
-fn build_artifact_snapshot_entry(
-    name: &str,
-    version: &str,
-    mount_path: &str,
-    generated_by: Option<&str>,
-) -> serde_json::Value {
-    let mut entry = json!({
+fn build_artifact_snapshot_entry(name: &str, version: &str, mount_path: &str) -> serde_json::Value {
+    json!({
         "name": name,
         "version": version,
         "mountPath": mount_path,
-    });
-    if let Some(generated_by) = generated_by
-        && let Some(object) = entry.as_object_mut()
-    {
-        object.insert("generatedBy".to_string(), json!(generated_by));
-    }
-    entry
-}
-
-fn artifact_snapshot_generated_by(entry: &env::ArtifactEnv) -> Option<&'static str> {
-    match entry.missing_root_policy {
-        Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion) => {
-            Some(API_AUTO_MEMORY_GENERATED_BY)
-        }
-        _ => None,
-    }
+    })
 }
 
 struct ArtifactSnapshotPlan<'a> {
@@ -193,7 +172,7 @@ async fn upload_session_history(
 
 /// Snapshot artifact entries. Memory rides in `VM0_ARTIFACTS` post-#10602, so
 /// there is no longer a separate memory arm. Payload shape is
-/// `Array<{name, version, mountPath, generatedBy?}>`, matching the webhook
+/// `Array<{name, version, mountPath}>`, matching the webhook
 /// receiver's canonical artifact snapshot schema.
 async fn snapshot_artifact_entries(
     http: &HttpClient,
@@ -239,7 +218,6 @@ async fn snapshot_artifact_entries(
                         &entry.name,
                         &entry.version_id,
                         &entry.mount_path,
-                        artifact_snapshot_generated_by(entry),
                     ),
                 ));
                 continue;
@@ -288,7 +266,6 @@ async fn snapshot_artifact_entries(
                 &entry.name,
                 &entry.version_id,
                 &entry.mount_path,
-                artifact_snapshot_generated_by(entry),
             ));
             continue;
         }
@@ -322,7 +299,6 @@ async fn snapshot_artifact_entries(
             &entry.name,
             &snapshot.version_id,
             &entry.mount_path,
-            artifact_snapshot_generated_by(entry),
         ));
     }
     Ok(Some(serde_json::Value::Array(results)))
@@ -577,7 +553,7 @@ mod tests {
 
     #[test]
     fn artifact_snapshot_entry_shape_matches_receiver_schema() {
-        let entry = build_artifact_snapshot_entry("workspace", "v-abc-123", "/workspace", None);
+        let entry = build_artifact_snapshot_entry("workspace", "v-abc-123", "/workspace");
         assert_eq!(
             entry,
             json!({
@@ -590,7 +566,7 @@ mod tests {
 
     #[test]
     fn artifact_snapshot_entry_uses_camel_case_keys() {
-        let entry = build_artifact_snapshot_entry("n", "v", "/m", None);
+        let entry = build_artifact_snapshot_entry("n", "v", "/m");
         let obj = entry.as_object().expect("entry must be a JSON object");
         // Contract-boundary invariant: the web Zod receiver requires camelCase
         // `mountPath`; a snake_case slip would silently cause a 400 on the
@@ -757,7 +733,6 @@ mod tests {
                 "name": "memory",
                 "version": "old-memory-version",
                 "mountPath": missing_mount.to_string_lossy(),
-                "generatedBy": "apiAutoMemory",
             }]))
         );
         prepare.assert_calls(0);

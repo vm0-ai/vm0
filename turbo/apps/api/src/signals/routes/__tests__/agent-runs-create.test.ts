@@ -1507,8 +1507,11 @@ describe("POST /api/agent/runs", () => {
     expect(
       session?.artifacts.find((artifact) => {
         return artifact.name === "memory";
-      })?.generatedBy,
-    ).toBe("apiAutoMemory");
+      }),
+    ).toStrictEqual({
+      name: "memory",
+      mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+    });
 
     const [job] = await db
       .select({ executionContext: runnerJobQueue.executionContext })
@@ -1520,8 +1523,8 @@ describe("POST /api/agent/runs", () => {
         readonly artifacts: readonly {
           readonly mountPath: string;
           readonly vasStorageName: string;
-          readonly archiveUrl: string;
-          readonly manifestUrl?: string;
+          readonly vasStorageId: string;
+          readonly vasVersionId: string;
           readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
         }[];
       };
@@ -1548,7 +1551,7 @@ describe("POST /api/agent/runs", () => {
     ]);
     expect(
       executionContext.storageManifest.artifacts.every((artifact) => {
-        return artifact.archiveUrl && artifact.manifestUrl;
+        return artifact.vasStorageId && artifact.vasVersionId;
       }),
     ).toBeTruthy();
     const memoryArtifact = executionContext.storageManifest.artifacts.find(
@@ -1622,7 +1625,7 @@ describe("POST /api/agent/runs", () => {
     ]);
   });
 
-  it("keeps user-authored canonical memory artifacts strict", async () => {
+  it("applies auto memory policy to canonical memory artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
 
@@ -1666,7 +1669,7 @@ describe("POST /api/agent/runs", () => {
     });
     expect(
       executionContext.storageManifest.artifacts[0]?.missingRootPolicy,
-    ).toBeUndefined();
+    ).toBe("preserveParentVersion");
   });
 
   it("keeps user-authored canonical memory mount overrides strict", async () => {
@@ -1734,7 +1737,7 @@ describe("POST /api/agent/runs", () => {
     ]);
   });
 
-  it("keeps continued user-authored canonical memory artifacts strict", async () => {
+  it("keeps auto memory policy for continued canonical memory artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
 
@@ -1795,7 +1798,7 @@ describe("POST /api/agent/runs", () => {
           artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
         );
       })?.missingRootPolicy,
-    ).toBeUndefined();
+    ).toBe("preserveParentVersion");
   });
 
   it("includes compose artifacts and volumes in the runner storage manifest", async () => {
@@ -2476,7 +2479,7 @@ describe("POST /api/agent/runs", () => {
     expect(run?.resumedFromCheckpointId).toBe(checkpoint.id);
   });
 
-  it("preserves auto memory policy when resuming checkpoint artifacts", async () => {
+  it("applies auto memory policy when resuming legacy checkpoint artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
     const first = await accept(
@@ -2506,7 +2509,6 @@ describe("POST /api/agent/runs", () => {
           {
             name: "memory",
             mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-            generatedBy: "apiAutoMemory",
           },
         ],
       })
@@ -2548,7 +2550,7 @@ describe("POST /api/agent/runs", () => {
     ).toBe("preserveParentVersion");
   });
 
-  it("keeps user-authored canonical memory checkpoint artifacts strict", async () => {
+  it("applies auto memory policy to canonical memory checkpoint artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
     const first = await accept(
@@ -2625,10 +2627,10 @@ describe("POST /api/agent/runs", () => {
           artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
         );
       })?.missingRootPolicy,
-    ).toBeUndefined();
+    ).toBe("preserveParentVersion");
   });
 
-  it("keeps continued canonical body memory checkpoint artifacts strict", async () => {
+  it("applies auto memory policy to continued canonical memory checkpoint artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
     const first = await accept(
@@ -2731,6 +2733,6 @@ describe("POST /api/agent/runs", () => {
           artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
         );
       })?.missingRootPolicy,
-    ).toBeUndefined();
+    ).toBe("preserveParentVersion");
   });
 });

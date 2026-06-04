@@ -584,13 +584,11 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         name: "memory",
         version: "version-bbb",
         mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-        generatedBy: "apiAutoMemory" as const,
       },
       {
         name: "memory",
         version: "version-codex",
         mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
-        generatedBy: "apiAutoMemory" as const,
       },
       {
         name: "artifact-c",
@@ -609,13 +607,11 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         name: "memory",
         version: "version-bbb",
         mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-        generatedBy: "apiAutoMemory" as const,
       },
       {
         name: "memory",
         version: "version-codex",
         mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
-        generatedBy: "apiAutoMemory" as const,
       },
       {
         name: "artifact-c",
@@ -679,7 +675,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     expect(session?.artifacts).toStrictEqual(originalSessionArtifacts);
   });
 
-  it("strips canonical memory provenance unless the session expects api auto memory", async () => {
+  it("strips canonical memory provenance from stored checkpoint snapshots", async () => {
     const fixture = await track(seedFixture());
     const artifactSnapshots = [
       {

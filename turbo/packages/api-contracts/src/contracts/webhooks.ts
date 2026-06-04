@@ -158,8 +158,8 @@ const artifactSnapshotsSchema = z.array(
     name: z.string(),
     version: z.string(),
     mountPath: z.string(),
-    // Internal provenance used by run creation to decide checkpoint-time
-    // behavior on a later resume. It is not exposed by public checkpoint APIs.
+    // Legacy internal provenance accepted for older guest agents. Run creation
+    // decides checkpoint-time behavior from the canonical artifact slot.
     generatedBy: z.literal("apiAutoMemory").optional(),
   }),
 );
