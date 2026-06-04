@@ -27,7 +27,7 @@ import type {
   ConnectorAuthProviderRevokeArgs,
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
-} from "./oauth/types";
+} from "./provider-flow-types";
 import type { ConnectorAuthProviderGrantResultForMethod } from "./grant-result";
 import type { ProviderEnv } from "./provider-env";
 

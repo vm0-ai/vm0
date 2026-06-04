@@ -82,7 +82,7 @@ import type { ConnectorAuthProviderRefreshArgs } from "../auth-providers/types";
 import {
   TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME,
   TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME,
-} from "../auth-providers/oauth/providers/test-oauth-device";
+} from "../auth-providers/connectors/test-oauth-device/oauth";
 import {
   GOOGLE_OAUTH_CONNECTOR_TYPES,
   isGoogleOAuthConnector,

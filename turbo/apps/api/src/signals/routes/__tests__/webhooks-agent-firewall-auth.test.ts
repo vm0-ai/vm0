@@ -13,7 +13,7 @@ import {
   testOauthApiTokenProvider,
   testOauthApiProvider,
   testOauthProvider,
-} from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
+} from "@vm0/connectors/auth-providers/connectors/test-oauth/provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { modelProviders } from "@vm0/db/schema/model-provider";

@@ -8,7 +8,7 @@ import {
 
 import { and, eq } from "drizzle-orm";
 import { buildConnectorAuthCodeAuthorizationUrl } from "@vm0/connectors/auth-providers";
-import type { AuthUrlResult } from "@vm0/connectors/auth-providers/oauth/types";
+import type { AuthUrlResult } from "@vm0/connectors/auth-providers/provider-flow-types";
 import {
   connectorAuthMethodHasGrantKind,
   resolveConnectorAuthClientForMethod,

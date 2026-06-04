@@ -3,11 +3,11 @@ import type {
   ModelProviderRefreshTokenAuthProvider,
 } from "./types";
 import type { ProviderEnv } from "./provider-env";
-import { codexOauthProvider } from "./oauth/providers/codex-oauth-provider";
+import { codexOauthProvider } from "./model-providers/codex-oauth/provider";
 import {
   getChatgptRefreshSecretName,
   getChatgptSecretName,
-} from "./oauth/providers/codex-oauth";
+} from "./model-providers/codex-oauth/oauth";
 
 export const MODEL_PROVIDER_REFRESH_PROVIDER_KEYS = [
   "codex-oauth-token",
