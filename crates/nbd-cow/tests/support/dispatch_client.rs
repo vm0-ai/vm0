@@ -85,7 +85,11 @@ impl DispatchClient {
             .into());
         }
 
-        let chunk = vec![byte; chunk_size];
+        if total == 0 {
+            return Ok(());
+        }
+
+        let chunk = vec![byte; chunk_size.min(total)];
         let mut sent = 0usize;
         while sent < total {
             let to_send = chunk.len().min(total - sent);
@@ -221,15 +225,16 @@ pub async fn spawn_dispatch_with_shutdown(
     shutdown: CancellationToken,
 ) -> TestResult<(DispatchClient, JoinHandle<NbdResult<()>>)> {
     let (client_fd, server_fd) = socketpair()?;
-    let cow_clone = cow.clone();
-    let shutdown_clone = shutdown.clone();
-    let task = tokio::spawn(async move { dispatch(server_fd, cow_clone, shutdown_clone).await });
 
     let client_std =
         unsafe { std::os::unix::net::UnixStream::from_raw_fd(client_fd.into_raw_fd()) };
     client_std.set_nonblocking(true)?;
     let client_stream = UnixStream::from_std(client_std)?;
     let (reader, writer) = client_stream.into_split();
+
+    let cow_clone = cow.clone();
+    let shutdown_clone = shutdown.clone();
+    let task = tokio::spawn(async move { dispatch(server_fd, cow_clone, shutdown_clone).await });
 
     Ok((DispatchClient { reader, writer }, task))
 }
