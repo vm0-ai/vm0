@@ -460,6 +460,37 @@ class TestResponseHandler:
         assert cached_headers(cache_key) is None
         assert force_refresh_pending(cache_key)
 
+    def test_invalid_content_length_with_network_log_does_not_block_401_cache_invalidation(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Malformed network-log response size metadata must not block 401 auth recovery."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-conn-invalid-length-log"
+
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_base"] = "https://api.github.com"
+        flow.metadata["firewall_api_id"] = "run-conn-invalid-length-log:0"
+        flow.metadata["original_url"] = "https://api.github.com/repos"
+
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-length": "not-an-int"}),
+        )
+
+        cache_key = ("run-conn-invalid-length-log", "run-conn-invalid-length-log:0")
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 0
+        assert cached_headers(cache_key) is None
+        assert force_refresh_pending(cache_key)
+
     def test_401_without_existing_state_marks_force_refresh(self, real_flow, mitm_ctx, headers):
         """401 should request a forced refresh even if no cache entry exists yet."""
         flow = real_flow(with_response=False, host="api.github.com")
