@@ -704,6 +704,11 @@ describe("connector selected auth method capability checks", () => {
       "test-oauth",
       "api-token"
     >;
+    type DefaultRefreshArgs = ConnectorAuthProviderRefreshArgs<"test-oauth">;
+    type DefaultInputOnlyRefreshArgs = Exclude<
+      DefaultRefreshArgs,
+      { readonly authClient: unknown }
+    >;
 
     expectTypeOf<ClientBackedRefreshArgs["authClient"]>().toEqualTypeOf<
       ConnectorAuthClientForMethod<"test-oauth", "oauth">
@@ -712,6 +717,13 @@ describe("connector selected auth method capability checks", () => {
       keyof InputOnlyRefreshArgs
     >();
     expectTypeOf<InputOnlyRefreshArgs["inputs"]>().toEqualTypeOf<{
+      readonly inputSecret: string;
+      readonly inputVariable: string;
+    }>();
+    expectTypeOf<"authClient">().not.toMatchTypeOf<
+      keyof DefaultInputOnlyRefreshArgs
+    >();
+    expectTypeOf<DefaultInputOnlyRefreshArgs["inputs"]>().toEqualTypeOf<{
       readonly inputSecret: string;
       readonly inputVariable: string;
     }>();

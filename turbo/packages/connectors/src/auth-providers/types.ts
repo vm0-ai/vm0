@@ -71,10 +71,13 @@ export type ConnectorAuthProviderRefreshArgs<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token"> =
     ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
-> = {
-  readonly inputs: ConnectorRefreshInputValues<T, Method>;
-  readonly signal: AbortSignal;
-} & ConnectorRefreshAuthClientArgs<T, Method>;
+> =
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">
+    ? {
+        readonly inputs: ConnectorRefreshInputValues<T, Method>;
+        readonly signal: AbortSignal;
+      } & ConnectorRefreshAuthClientArgs<T, Method>
+    : never;
 
 type ConnectorRefreshAuthClientArgs<
   T extends RefreshTokenAccessConnectorType,

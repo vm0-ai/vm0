@@ -482,17 +482,23 @@ type ConnectorRefreshTokenAccessCallArgs<
     T,
     Method
   >,
-> = {
-  readonly type: T;
-  readonly authMethod: Method;
-  readonly inputs: Inputs;
-  readonly signal: AbortSignal;
-} & ConnectorRefreshTokenAccessClientArgs<T, Method>;
+> =
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">
+    ? {
+        readonly type: T;
+        readonly authMethod: Method;
+        readonly inputs: Inputs;
+        readonly signal: AbortSignal;
+      } & ConnectorRefreshTokenAccessClientArgs<T, Method>
+    : never;
 
 type ConnectorRefreshTokenAccessClientArgs<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
-> = Omit<ConnectorAuthProviderRefreshArgs<T, Method>, "inputs" | "signal">;
+> =
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">
+    ? Omit<ConnectorAuthProviderRefreshArgs<T, Method>, "inputs" | "signal">
+    : never;
 
 type ConnectorRefreshTokenAccessDynamicCallArgs = {
   readonly [Type in RefreshTokenAccessConnectorType]: {
