@@ -2,7 +2,11 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_EXEC_START};
+use tokio::io::AsyncWriteExt;
+use vsock_proto::{
+    ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_EXEC_OUTPUT,
+    MSG_EXEC_RESULT, MSG_EXEC_START,
+};
 
 use super::super::support::{
     assert_connection_accepts_exec_operation, operation_count, read_guest_message,
@@ -388,6 +392,59 @@ async fn exec_operation_stream_dispatches_stdout_stderr_and_closes_on_result() {
     )
     .await;
     let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert!(!result.stream_overflowed);
+    assert!(rx.recv().await.is_none());
+}
+
+#[tokio::test]
+async fn exec_operation_stream_handles_output_and_result_from_one_write() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let mut handle = host
+        .exec_operation_stream(ExecStreamRequest {
+            timeout_ms: 5000,
+            command: "stream",
+            env: &[],
+            sudo: false,
+            label: "stream-coalesced",
+            stdout: ExecOutputPolicy::Stream {
+                limit_bytes: 1024,
+                chunk_limit_bytes: 16,
+            },
+            stderr: ExecOutputPolicy::Discard,
+            expected_exit_codes: &[],
+            stdin_bytes: None,
+            stream_queue_capacity: None,
+        })
+        .await
+        .unwrap();
+    let mut rx = handle.take_stream_receiver().unwrap();
+
+    let msg = read_guest_message(&mut guest).await;
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let output_payload =
+        vsock_proto::encode_exec_output(ExecOutputStream::Stdout, 0, b"coalesced", false).unwrap();
+    let result_payload = vsock_proto::encode_exec_result(
+        ExecTermination::Exited { exit_code: 0 },
+        12,
+        ExecCapturedOutput::Discarded,
+        ExecCapturedOutput::Discarded,
+        "",
+    )
+    .unwrap();
+    let mut frames = vsock_proto::encode(MSG_EXEC_OUTPUT, msg.seq, &output_payload).unwrap();
+    frames.extend_from_slice(
+        &vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &result_payload).unwrap(),
+    );
+    guest.write_all(&frames).await.unwrap();
+
+    let event = rx.recv().await.unwrap();
+    assert_eq!(event.stream, ExecOutputStream::Stdout);
+    assert_eq!(event.output_seq, 0);
+    assert_eq!(event.chunk, b"coalesced");
+    assert!(!event.truncated);
+
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     assert!(!result.stream_overflowed);
     assert!(rx.recv().await.is_none());
 }

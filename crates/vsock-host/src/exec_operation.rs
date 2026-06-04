@@ -15,10 +15,10 @@ use crate::{
     operation_tracker::{NormalOperationToken, NormalOperationTransitionHandle},
 };
 use vsock_proto::{
-    ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecControlStatus,
+    BorrowedRawMessage, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecControlStatus,
     ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy,
     MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT,
-    MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED, RawMessage,
+    MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
 };
 
 pub(crate) const DEFAULT_EXEC_CAPTURE_LIMIT_BYTES: u32 = 1024 * 1024;
@@ -1743,7 +1743,10 @@ fn owned_result(
 
 /// Returns true when exec handling consumed the frame; false lets the normal
 /// pending-response dispatcher handle it.
-pub(crate) fn dispatch_incoming_frame(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
+pub(crate) fn dispatch_incoming_frame(
+    shared: &Arc<Shared>,
+    msg: BorrowedRawMessage<'_>,
+) -> io::Result<bool> {
     match msg.msg_type {
         MSG_ERROR => dispatch_error(shared, msg),
         MSG_EXEC_OUTPUT => dispatch_output(shared, msg).map(|_| true),
@@ -1754,14 +1757,14 @@ pub(crate) fn dispatch_incoming_frame(shared: &Arc<Shared>, msg: &RawMessage) ->
     }
 }
 
-fn dispatch_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
     let mut first_output_slow = None;
     {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         if let ConnectionState::Connected { operations, .. } = &mut *guard
             && let Some(operation) = operations.get_mut(msg.seq)
         {
-            let decoded = vsock_proto::decode_exec_output(&msg.payload)
+            let decoded = vsock_proto::decode_exec_output(msg.payload)
                 .map_err(exec_operation_protocol_error)?;
             if !operation.allows_output() {
                 return Err(exec_operation_protocol_error(
@@ -1796,7 +1799,7 @@ fn dispatch_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
     Ok(())
 }
 
-fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_started(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
     let start = {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -1804,7 +1807,7 @@ fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
                 let Some(operation) = operations.get_mut(msg.seq) else {
                     return Ok(());
                 };
-                let decoded = vsock_proto::decode_exec_started(&msg.payload)
+                let decoded = vsock_proto::decode_exec_started(msg.payload)
                     .map_err(exec_operation_protocol_error)?;
                 let lifecycle =
                     std::mem::replace(&mut operation.lifecycle, ExecOperationLifecycle::OneShot);
@@ -1844,7 +1847,7 @@ fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
     Ok(())
 }
 
-fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_result(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
     let Some((
         diagnostic,
         result_tx,
@@ -1857,7 +1860,7 @@ fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
-                let decoded = vsock_proto::decode_exec_result(&msg.payload)
+                let decoded = vsock_proto::decode_exec_result(msg.payload)
                     .map_err(exec_operation_protocol_error)?;
                 let Some(operation) = operations.get_mut(msg.seq) else {
                     return Ok(());
@@ -1924,7 +1927,7 @@ fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
     Ok(())
 }
 
-fn dispatch_control_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_control_result(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
     let Some(pending) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -1936,7 +1939,7 @@ fn dispatch_control_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
     }) else {
         return Ok(());
     };
-    let decoded = vsock_proto::decode_exec_control_result(&msg.payload)
+    let decoded = vsock_proto::decode_exec_control_result(msg.payload)
         .map_err(exec_operation_protocol_error)?;
 
     if decoded.control_nonce != pending.control_nonce {
@@ -1974,12 +1977,12 @@ fn dispatch_control_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
     Ok(())
 }
 
-fn dispatch_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
+fn dispatch_error(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<bool> {
     let Some((diagnostic, result_tx, start_tx, err)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
-                let err = vsock_proto::decode_error(&msg.payload)
+                let err = vsock_proto::decode_error(msg.payload)
                     .map(|message| io::Error::other(message.to_string()))
                     .map_err(exec_operation_protocol_error)?;
                 let Some(operation) = operations.take(msg.seq) else {
@@ -2018,7 +2021,7 @@ fn dispatch_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
     Ok(true)
 }
 
-fn dispatch_control_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
+fn dispatch_control_error(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<bool> {
     let Some(pending) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -2030,7 +2033,7 @@ fn dispatch_control_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<
     }) else {
         return Ok(false);
     };
-    let message = vsock_proto::decode_error(&msg.payload)
+    let message = vsock_proto::decode_error(msg.payload)
         .map(|message| message.to_owned())
         .map_err(exec_operation_protocol_error)?;
     pending
@@ -2964,6 +2967,7 @@ mod tests {
     use tracing::{Event, Level, Subscriber};
     use tracing_subscriber::layer::{Context, Layer};
     use tracing_subscriber::prelude::*;
+    use vsock_proto::RawMessage;
 
     #[derive(Clone, Debug)]
     struct CapturedEvent {
@@ -3415,7 +3419,7 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         tracing::subscriber::with_default(subscriber, || {
             tracing::callsite::rebuild_interest_cache();
-            dispatch_result(&shared, &msg).unwrap();
+            dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
         let events = captured.events();
@@ -3577,7 +3581,7 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         tracing::subscriber::with_default(subscriber, || {
             tracing::callsite::rebuild_interest_cache();
-            dispatch_result(&shared, &msg).unwrap();
+            dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
         let events = captured.events();
@@ -3636,7 +3640,7 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         tracing::subscriber::with_default(subscriber, || {
             tracing::callsite::rebuild_interest_cache();
-            dispatch_result(&shared, &msg).unwrap();
+            dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
         let events = captured.events();

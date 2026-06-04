@@ -43,9 +43,9 @@ use operation_tracker::{
     NormalOperationTransitionError, NormalOperationTransitionHandle,
 };
 use vsock_proto::{
-    Decoder, MSG_ERROR, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG,
-    MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
-    RawMessage,
+    BorrowedRawMessage, DecodeWithError, Decoder, MSG_ERROR, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_READY,
+    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, RawMessage,
 };
 
 pub use exec_operation::{
@@ -449,51 +449,14 @@ async fn reader_loop(
             Ok(n) => n,
         };
         // n <= READ_BUF_SIZE guaranteed by read()
-        let messages = match decoder.decode(buf.get(..n).unwrap_or_default()) {
-            Ok(msgs) => msgs,
-            Err(_) => break,
-        };
-        for msg in messages {
-            match exec_operation::dispatch_incoming_frame(&shared, &msg) {
-                Ok(true) => {
-                    continue;
-                }
-                Ok(false) => {}
-                Err(_) => {
-                    shared.poison_connection();
-                    return;
-                }
-            }
-
-            let mut normal_operation_transition_failed = false;
-            let pending_response = {
-                let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-                match &mut *guard {
-                    ConnectionState::Connected { pending, .. } => {
-                        if let Some(mut pending_response) = pending.remove(&msg.seq) {
-                            if pending_response
-                                .normal_terminal_msg_types
-                                .contains(&msg.msg_type)
-                                && let Some(normal_operation) =
-                                    pending_response.normal_operation.take()
-                                && complete_pending_normal_operation(normal_operation).is_err()
-                            {
-                                normal_operation_transition_failed = true;
-                            }
-                            Some(pending_response)
-                        } else {
-                            None
-                        }
-                    }
-                    ConnectionState::Closed => None,
-                }
-            };
-            if normal_operation_transition_failed {
+        match decoder.decode_with(buf.get(..n).unwrap_or_default(), |msg| {
+            dispatch_reader_frame(&shared, msg)
+        }) {
+            Ok(()) => {}
+            Err(DecodeWithError::Protocol(_)) => break,
+            Err(DecodeWithError::Visitor(_)) => {
                 shared.poison_connection();
                 return;
-            }
-            if let Some(pending_response) = pending_response {
-                let _ = pending_response.response_tx.send(msg);
             }
         }
     }
@@ -503,6 +466,42 @@ async fn reader_loop(
     shared.close();
 }
 
+fn dispatch_reader_frame(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+    match exec_operation::dispatch_incoming_frame(shared, msg) {
+        Ok(true) => {
+            return Ok(());
+        }
+        Ok(false) => {}
+        Err(error) => {
+            return Err(error);
+        }
+    }
+
+    let pending_response = {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Connected { pending, .. } => {
+                if let Some(mut pending_response) = pending.remove(&msg.seq) {
+                    if pending_response
+                        .normal_terminal_msg_types
+                        .contains(&msg.msg_type)
+                        && let Some(normal_operation) = pending_response.normal_operation.take()
+                    {
+                        complete_pending_normal_operation(normal_operation)?;
+                    }
+                    Some(pending_response)
+                } else {
+                    None
+                }
+            }
+            ConnectionState::Closed => None,
+        }
+    };
+    if let Some(pending_response) = pending_response {
+        let _ = pending_response.response_tx.send(msg.to_owned_message());
+    }
+    Ok(())
+}
 /// Send a request and wait for a response with matching sequence number.
 async fn request_on_shared(
     shared: &Arc<Shared>,
