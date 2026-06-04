@@ -886,6 +886,48 @@ def test_same_base_specific_deny_blocks_earlier_broad_allow():
     assert result.reason == "permission_denied"
 
 
+def test_same_base_specific_deny_discards_earlier_broad_deny_permissions():
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.example.com",
+                "auth": {"headers": {"Authorization": "Bearer broad"}},
+                "permissions": [
+                    {"name": "broad", "rules": ["ANY /{path+}"]},
+                ],
+            },
+            {
+                "base": "https://api.example.com",
+                "auth": {"headers": {"Authorization": "Bearer admin"}},
+                "permissions": [
+                    {"name": "admin", "rules": ["GET /admin/delete"]},
+                ],
+            },
+        ],
+        name="example",
+    )
+    policies = {
+        "example": {
+            "allow": [],
+            "deny": ["broad", "admin"],
+            "unknownPolicy": "deny",
+        }
+    }
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com/admin/delete",
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.base == "https://api.example.com"
+    assert result.path == "/admin/delete"
+    assert result.permissions == ("admin",)
+    assert result.reason == "permission_denied"
+
+
 # Malformed policy precedence
 
 
