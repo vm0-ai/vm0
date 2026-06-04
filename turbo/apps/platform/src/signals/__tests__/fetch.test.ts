@@ -574,6 +574,45 @@ describe("apiBackend routing", () => {
     expect(hosts).toStrictEqual(["api.vm0.ai"]);
   });
 
+  it("routes newly-migrated billing/onboarding/attribution paths to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    function capture(method: "get" | "post", pattern: string): void {
+      server.use(
+        http[method](pattern, ({ request }) => {
+          hosts.push(`${method.toUpperCase()} ${new URL(request.url).host}`);
+          return new Response(null, { status: 200 });
+        }),
+      );
+    }
+    capture("get", "*/api/zero/billing/status");
+    capture("post", "*/api/zero/billing/checkout");
+    capture("post", "*/api/zero/billing/redeem/:campaign");
+    capture("post", "*/api/zero/onboarding/setup");
+    capture("post", "*/api/zero/attribution/signup");
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/billing/status");
+    await fch("/api/zero/billing/checkout", { method: "POST" });
+    await fch("/api/zero/billing/redeem/spring", { method: "POST" });
+    await fch("/api/zero/onboarding/setup", { method: "POST" });
+    await fch("/api/zero/attribution/signup", { method: "POST" });
+
+    expect(hosts).toStrictEqual([
+      "GET api.vm0.ai",
+      "POST api.vm0.ai",
+      "POST api.vm0.ai",
+      "POST api.vm0.ai",
+      "POST api.vm0.ai",
+    ]);
+  });
+
   it("does not let a :param template over-match a shorter parent path", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
