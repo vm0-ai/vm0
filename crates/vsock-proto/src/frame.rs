@@ -102,21 +102,11 @@ impl Decoder {
         data: &[u8],
         mut visitor: impl FnMut(BorrowedRawMessage<'_>) -> Result<(), E>,
     ) -> Result<(), DecodeWithError<E>> {
-        #[derive(Clone, Copy)]
-        struct CompleteFrame {
-            msg_type: u8,
-            seq: u32,
-            payload_start: usize,
-            payload_end: usize,
-            next_offset: usize,
-        }
-
         self.buf.extend_from_slice(data);
-        let mut offset = 0;
-        let mut frames = Vec::new();
+        let mut verified_offset = 0;
 
-        while offset + HEADER_SIZE <= self.buf.len() {
-            let length = match read_u32_at(&self.buf, offset) {
+        while verified_offset + HEADER_SIZE <= self.buf.len() {
+            let length = match read_u32_at(&self.buf, verified_offset) {
                 Some(v) => v as usize,
                 None => break,
             };
@@ -135,10 +125,21 @@ impl Decoder {
             }
 
             let total = HEADER_SIZE + length;
-            if offset + total > self.buf.len() {
+            if verified_offset + total > self.buf.len() {
                 break;
             }
 
+            verified_offset += total;
+        }
+
+        let mut offset = 0;
+        while offset < verified_offset {
+            let length = match read_u32_at(&self.buf, offset) {
+                Some(v) => v as usize,
+                None => break,
+            };
+            let total = HEADER_SIZE + length;
+            let next_offset = offset + total;
             let msg_type = match read_u8_at(&self.buf, offset + HEADER_SIZE) {
                 Some(v) => v,
                 None => break,
@@ -147,38 +148,23 @@ impl Decoder {
                 Some(v) => v,
                 None => break,
             };
-            let next_offset = offset + total;
             let payload_start = offset + HEADER_SIZE + MIN_BODY_SIZE;
-            let payload_end = next_offset;
-            frames.push(CompleteFrame {
+            let payload = self.buf.get(payload_start..next_offset).unwrap_or_default();
+            let result = visitor(BorrowedRawMessage {
                 msg_type,
                 seq,
-                payload_start,
-                payload_end,
-                next_offset,
-            });
-            offset = next_offset;
-        }
-
-        for frame in frames {
-            let payload = self
-                .buf
-                .get(frame.payload_start..frame.payload_end)
-                .unwrap_or_default();
-            let result = visitor(BorrowedRawMessage {
-                msg_type: frame.msg_type,
-                seq: frame.seq,
                 payload,
             });
             if let Err(error) = result {
-                self.buf.drain(..frame.next_offset);
+                self.buf.drain(..next_offset);
                 return Err(DecodeWithError::Visitor(error));
             }
+            offset = next_offset;
         }
 
         // Compact: remove consumed bytes once at the end
-        if offset > 0 {
-            self.buf.drain(..offset);
+        if verified_offset > 0 {
+            self.buf.drain(..verified_offset);
         }
 
         Ok(())
