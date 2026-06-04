@@ -209,6 +209,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn snapshot_artifact_paths_lists_required_output_artifacts() {
+        let output = SnapshotOutputPaths::new(PathBuf::from("/data/images/test-snapshot"));
+
+        assert_eq!(
+            snapshot_artifact_paths(&output),
+            [
+                output.snapshot(),
+                output.memory(),
+                output.cow(),
+                output.cow_bitmap(),
+            ]
+        );
+    }
+
     #[tokio::test]
     async fn prepare_snapshot_output_removes_snapshot_artifacts_only() {
         let dir = tempfile::tempdir().expect("tempdir");
