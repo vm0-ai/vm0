@@ -5,10 +5,11 @@ through the X firewall and buffers them for aggregate platform upload.
 """
 
 import json
+import re
 import urllib.parse
 import uuid
 from collections.abc import Callable, Iterable
-from typing import TypedDict
+from typing import Literal, NamedTuple, TypedDict
 
 from mitmproxy import http
 
@@ -96,6 +97,11 @@ _REQUEST_QUERY_HINT_VALUE_MAX_BYTES = 16 * 1024
 _REQUEST_ID_LIKE_QUERY_KEYS = frozenset({"ids", "usernames"})
 _REQUEST_MAX_RESULTS_QUERY_KEY = "max_results"
 _ASCII_CODEPOINT_LIMIT = 128
+_MAX_UNKNOWN_INCLUDE_CATEGORIES = 64
+_MAX_USAGE_CATEGORY_CHARS = 100
+_SYNTHETIC_INCLUDE_CATEGORY_PREFIX = "includes."
+_INCLUDES_OVERFLOW_CATEGORY = "includes.__overflow__"
+_SAFE_SYNTHETIC_INCLUDE_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 _X_JSON_RESULT_COUNT_FIELDS = {
     ("meta", "result_count"): ScalarField("int", max_bytes=64),
@@ -103,8 +109,33 @@ _X_JSON_RESULT_COUNT_FIELDS = {
 }
 
 
+class _IncludeBillingCategory(NamedTuple):
+    category: str
+    kind: Literal["known", "synthetic", "overflow"]
+
+
 def _as_non_bool_int(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _synthetic_include_category(key: str) -> str | None:
+    max_key_chars = _MAX_USAGE_CATEGORY_CHARS - len(_SYNTHETIC_INCLUDE_CATEGORY_PREFIX)
+    if not key or len(key) > max_key_chars:
+        return None
+    if _SAFE_SYNTHETIC_INCLUDE_KEY_RE.fullmatch(key) is None:
+        return None
+    return f"{_SYNTHETIC_INCLUDE_CATEGORY_PREFIX}{key}"
+
+
+def _include_billing_category(key: str) -> _IncludeBillingCategory:
+    bucket = classify_includes_bucket(key)
+    if bucket is not None:
+        return _IncludeBillingCategory(bucket, "known")
+
+    category = _synthetic_include_category(key)
+    if category is None:
+        return _IncludeBillingCategory(_INCLUDES_OVERFLOW_CATEGORY, "overflow")
+    return _IncludeBillingCategory(category, "synthetic")
 
 
 def _create_x_json_selective_extractor() -> JsonSelectiveExtractor:
@@ -164,6 +195,8 @@ class _NdjsonState(TypedDict):
     """Number of lines whose top-level ``data`` is a dict (one tweet per line)."""
     includes: dict[str, int]
     """Running sum of ``len(includes.<key>)`` across all lines, per key."""
+    unknown_includes_overflow_count: int
+    """Unknown include quantities routed to the bounded overflow category."""
     lines_parsed: int
     """JSON-parseable non-blank lines."""
     lines_failed: int
@@ -186,7 +219,11 @@ class _NdjsonExtractor:
       dict (one tweet per line).  Lines whose ``data`` is an array or
       absent contribute 0 to this counter but still bump ``lines_parsed``.
     - ``includes``: dict[str, int] — running sum across all lines of
-      ``len(includes.<key>)`` for each expansion resource key.
+      ``len(includes.<key>)`` for known expansion keys and the first bounded
+      set of safe unknown keys.
+    - ``unknown_includes_overflow_count``: int — running sum of unknown
+      include quantities that are unsafe for category emission or exceed the
+      per-stream unknown-category budget.
     - ``lines_parsed``: int — JSON-parseable non-blank lines.
     - ``lines_failed``: int — lines that failed JSON decoding or exceeded
       the single-line safety cap.
@@ -203,9 +240,11 @@ class _NdjsonExtractor:
         self.state: _NdjsonState = {
             "data_count": 0,
             "includes": {},
+            "unknown_includes_overflow_count": 0,
             "lines_parsed": 0,
             "lines_failed": 0,
         }
+        self._unknown_include_keys: set[str] = set()
         self._line_buf = bytearray()
         self._discarding_overlong_line = False
         self._finished = False
@@ -276,7 +315,26 @@ class _NdjsonExtractor:
         if isinstance(inc, dict):
             for k, v in inc.items():
                 if isinstance(v, list):
-                    self.state["includes"][k] = self.state["includes"].get(k, 0) + len(v)
+                    self._record_include_count(k, len(v))
+
+    def _record_include_count(self, key: str, count: int) -> None:
+        if count <= 0:
+            return
+
+        billing_category = _include_billing_category(key)
+        if billing_category.kind == "known":
+            self.state["includes"][key] = self.state["includes"].get(key, 0) + count
+            return
+
+        if billing_category.kind == "synthetic" and (
+            key in self._unknown_include_keys
+            or len(self._unknown_include_keys) < _MAX_UNKNOWN_INCLUDE_CATEGORIES
+        ):
+            self._unknown_include_keys.add(key)
+            self.state["includes"][key] = self.state["includes"].get(key, 0) + count
+            return
+
+        self.state["unknown_includes_overflow_count"] += count
 
 
 class _XJsonResponseExtractor:
@@ -510,6 +568,9 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
         result["response_data_count"] = ndjson_state["data_count"]
         if ndjson_state["includes"]:
             result["response_includes"] = dict(ndjson_state["includes"])
+        unknown_includes_overflow_count = ndjson_state.get("unknown_includes_overflow_count", 0)
+        if unknown_includes_overflow_count:
+            result["response_unknown_includes_overflow_count"] = unknown_includes_overflow_count
         result["ndjson_lines_parsed"] = ndjson_state["lines_parsed"]
         result["ndjson_lines_failed"] = ndjson_state["lines_failed"]
         return result
@@ -569,10 +630,10 @@ def _compute_billable_counts(
       ``max(ids_count, max_results, 1)``.  When the URL also carries
       no hints we emit no ``usage_event`` row; :func:`report_usage`
       detects that state and writes an error log so ops can audit.
-    - **Includes**: each ``includes.<key>`` is mapped to a billing
-      bucket via :func:`classify_includes_bucket`.  Unknown keys emit
-      a synthetic ``includes.<key>`` category for server-side fallback
-      pricing.  Counts at the same bucket are summed.
+    - **Includes**: each ``includes.<key>`` is normalized to a billing
+      bucket via :func:`classify_includes_bucket`, a bounded safe synthetic
+      ``includes.<key>`` category, or the fixed overflow category used for
+      server-side fallback pricing.  Counts at the same bucket are summed.
     """
     if method != "GET":
         return {endpoint_bucket: 1}
@@ -617,22 +678,53 @@ def _compute_billable_counts(
     if req_meta.get("is_count_endpoint"):
         return counts
 
+    overflow_includes_count = 0
+    synthetic_include_categories: set[str] = set()
     includes = resp_meta.get("response_includes") or {}
     for key, n in includes.items():
         if n <= 0:
             continue
-        bucket = classify_includes_bucket(key)
-        if bucket is None:
+        include_category = _include_billing_category(key)
+        if include_category.kind == "synthetic":
+            if (
+                include_category.category in synthetic_include_categories
+                or len(synthetic_include_categories) < _MAX_UNKNOWN_INCLUDE_CATEGORIES
+            ):
+                synthetic_include_categories.add(include_category.category)
+            else:
+                overflow_includes_count += n
+                continue
             # Emit a synthetic per-key category so the billing processor
             # can apply its server-side fallback price and ops can track
             # each unknown type independently in ``usage_event``.
-            bucket = f"includes.{key}"
             log_warn(
                 "X includes key unrecognised — "
                 "emitting synthetic category for server-side fallback",
-                {"includes_key": key, "includes_count": n, "category": bucket},
+                {
+                    "includes_key": key,
+                    "includes_count": n,
+                    "category": include_category.category,
+                },
             )
-        counts[bucket] = counts.get(bucket, 0) + n
+
+        if include_category.kind == "overflow":
+            overflow_includes_count += n
+            continue
+
+        counts[include_category.category] = counts.get(include_category.category, 0) + n
+
+    overflow_includes_count += resp_meta.get("response_unknown_includes_overflow_count") or 0
+    if overflow_includes_count > 0:
+        counts[_INCLUDES_OVERFLOW_CATEGORY] = (
+            counts.get(_INCLUDES_OVERFLOW_CATEGORY, 0) + overflow_includes_count
+        )
+        log_warn(
+            "X includes overflow — emitting bounded category for server-side fallback",
+            {
+                "includes_count": overflow_includes_count,
+                "category": _INCLUDES_OVERFLOW_CATEGORY,
+            },
+        )
 
     return counts
 

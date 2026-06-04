@@ -33,8 +33,8 @@ Design:
   will cause under- or over-charging until an override is corrected.
 
 - ``_INCLUDES_TO_BUCKET`` maps X v2 ``includes.<key>`` resource types
-  to buckets.  Unknown keys return ``None`` and the caller emits a
-  synthetic ``includes.<key>`` category; the billing processor applies
+  to buckets.  Unknown keys return ``None`` and the caller routes them
+  to a bounded synthetic or overflow category; the billing processor applies
   a server-side fallback price for these.
 
 - Scopes that are not billable (e.g. the ``"app-only"`` group for

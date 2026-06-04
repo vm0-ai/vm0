@@ -220,6 +220,41 @@ class TestNdjsonExtractor:
         )
         assert state["includes"] == {"users": 1, "tweets": 2, "media": 1}
 
+    def test_unknown_include_keys_are_bounded_and_known_keys_continue(self, real_flow):
+        parse, state = self._stream_parser(real_flow)
+
+        for index in range(70):
+            parse(
+                b'{"data":{"id":"'
+                + str(index).encode()
+                + b'"},"includes":{"future_'
+                + str(index).encode()
+                + b'":[{"id":"u"}]}}\n'
+            )
+        parse(b'{"data":{"id":"known"},"includes":{"users":[{"id":"user"}]}}\n')
+
+        unknown_keys = [key for key in state["includes"] if key.startswith("future_")]
+        assert len(unknown_keys) == 64
+        assert state["unknown_includes_overflow_count"] == 6
+        assert state["includes"]["users"] == 1
+        assert state["data_count"] == 71
+        assert state["lines_failed"] == 0
+
+    def test_unsafe_unknown_include_keys_overflow(self, real_flow):
+        parse, state = self._stream_parser(real_flow)
+        overlong_key = b"x" * 92
+
+        parse(
+            b'{"data":{"id":"1"},"includes":{"'
+            + overlong_key
+            + b'":[{"id":"long"}],"bad/key":[{"id":"one"},{"id":"two"}]}}\n'
+        )
+
+        assert state["includes"] == {}
+        assert state["unknown_includes_overflow_count"] == 3
+        assert state["data_count"] == 1
+        assert state["lines_failed"] == 0
+
     def test_data_array_not_counted(self, real_flow):
         """Line where top-level ``data`` is an array (not a dict) contributes 0 to data_count."""
         parse, state = self._stream_parser(real_flow)

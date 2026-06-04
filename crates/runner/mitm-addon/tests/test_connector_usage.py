@@ -271,8 +271,8 @@ class TestReportConnectorUsage:
         assert by_cat["posts.read"]["quantity"] == 1
         assert by_cat["user.read"]["quantity"] == 1
 
-    def test_splits_usage_event_batches_at_server_limit(self, tmp_path, real_flow):
-        """Large synthetic category sets are chunked to match the webhook contract."""
+    def test_bounds_unknown_include_categories_before_buffering(self, tmp_path, real_flow):
+        """Unknown includes cannot create unbounded synthetic usage categories."""
         body = json.dumps(
             {
                 "data": [],
@@ -286,17 +286,42 @@ class TestReportConnectorUsage:
             usage.flush_usage_events(trigger="test")
 
         bodies = webhook.json_bodies()
-        assert [len(body["events"]) for body in bodies] == [100, 1]
+        assert [len(body["events"]) for body in bodies] == [65]
         assert {body["runId"] for body in bodies} == {"run-abc-123"}
         assert all(
             event["kind"] == "connector" and event["provider"] == "x"
             for body in bodies
             for event in body["events"]
         )
-        categories = {event["category"] for body in bodies for event in body["events"]}
-        assert len(categories) == 101
-        assert "includes.future_0" in categories
-        assert "includes.future_100" in categories
+        by_cat = {
+            event["category"]: event["quantity"] for body in bodies for event in body["events"]
+        }
+        assert len(by_cat) == 65
+        assert "includes.future_0" in by_cat
+        assert "includes.future_63" in by_cat
+        assert "includes.future_64" not in by_cat
+        assert by_cat["includes.__overflow__"] == 37
+        assert all(len(category) <= 100 for category in by_cat)
+
+    def test_overlong_unknown_include_key_uses_overflow_category(self, tmp_path, real_flow):
+        """Unsafe synthetic categories are folded into the fallback-priced overflow bucket."""
+        overlong_key = "x" * 92
+        body = json.dumps(
+            {
+                "data": [{"id": "1"}],
+                "includes": {
+                    overlong_key: [{"id": "long"}],
+                    "bad/key": [{"id": "unsafe"}, {"id": "unsafe-2"}],
+                },
+            }
+        ).encode()
+        flow = self._make_x_flow(real_flow, tmp_path, query="expansions=future", body=body)
+
+        payloads = self._call_and_get_billing(flow)
+        by_cat = {p["category"]: p["quantity"] for p in payloads}
+
+        assert by_cat == {"posts.read": 1, "includes.__overflow__": 3}
+        assert all(len(category) <= 100 for category in by_cat)
 
     def test_empty_search_emits_no_billing(self, tmp_path, real_flow):
         """Search returning zero results emits no usage_event row."""
@@ -1869,6 +1894,56 @@ class TestReportConnectorUsage:
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
         assert by_cat == {"posts.read": 1, "media.read": 1}
+
+    def test_full_streaming_pipeline_bounds_unknown_include_categories(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
+        """Long-lived streams fold unknown include overflow into one fallback-priced bucket."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
+        flow.response = tutils.tresp(status_code=200)
+        flow.response.headers = header_map({"content-type": "application/json"})
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        for index in range(70):
+            callback(
+                b'{"data":{"id":"'
+                + str(index).encode()
+                + b'"},"includes":{"future_'
+                + str(index).encode()
+                + b'":[{"id":"u"}]}}\n'
+            )
+        callback(b'{"data":{"id":"known"},"includes":{"users":[{"id":"user"}]}}\n')
+        state = flow.metadata["x_ndjson_state"]
+        assert state["unknown_includes_overflow_count"] == 6
+        assert state["includes"]["users"] == 1
+
+        with self._usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        payloads = webhook.usage_events()
+        by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
+        assert by_cat["posts.read"] == 71
+        assert by_cat["user.read"] == 1
+        assert by_cat["includes.future_0"] == 1
+        assert by_cat["includes.future_63"] == 1
+        assert "includes.future_64" not in by_cat
+        assert by_cat["includes.__overflow__"] == 6
+        assert len(by_cat) == 67
+        assert all(len(category) <= 100 for category in by_cat)
 
     def test_response_logs_incremental_x_json_parse_error(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
