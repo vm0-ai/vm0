@@ -34,6 +34,7 @@ import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
   chatThreadArtifactsContract,
+  type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -403,7 +404,10 @@ export interface ChatThreadSignals {
       AbortSignal,
     ]
   >;
-  queueMessage$: Command<Promise<void>, [string, AbortSignal]>;
+  queueMessage$: Command<
+    Promise<void>,
+    [string, GenerationTemplateRequest | undefined, AbortSignal]
+  >;
   recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
@@ -1567,6 +1571,7 @@ function createRunTracking({
 interface SendMessageOptions {
   readonly revokesMessageId?: string;
   readonly includeDraftAttachments?: boolean;
+  readonly generationTemplate?: GenerationTemplateRequest;
 }
 
 function prepareTextOnlyUserMessage(prompt: string) {
@@ -1588,6 +1593,14 @@ function sendMessageRevocationPatch(options: SendMessageOptions | undefined): {
   return options?.revokesMessageId
     ? { revokesMessageId: options.revokesMessageId }
     : {};
+}
+
+function hasVisualDraftAttachments(
+  attachments: readonly { contentType: string; filename: string }[],
+): boolean {
+  return attachments.some((attachment) => {
+    return isVisualAttachment(attachment);
+  });
 }
 
 interface SendMessageDeps {
@@ -1626,10 +1639,8 @@ function createSendMessage(deps: SendMessageDeps) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
       }
-      const hasVisualAttachments = get(draft.attachments$).some(
-        (attachment) => {
-          return isVisualAttachment(attachment);
-        },
+      const hasVisualAttachments = hasVisualDraftAttachments(
+        get(draft.attachments$),
       );
       let effectiveSelectedModel = modelSelection?.selectedModel;
       if (!effectiveSelectedModel && hasVisualAttachments) {
@@ -1643,7 +1654,6 @@ function createSendMessage(deps: SendMessageDeps) {
             policies,
           })?.selectedModel ?? undefined;
       }
-
       const result =
         options?.includeDraftAttachments === false
           ? prepareTextOnlyUserMessage(prompt)
@@ -1688,13 +1698,8 @@ function createSendMessage(deps: SendMessageDeps) {
         { signal },
       );
 
-      // Model-first lets the user swap models mid-thread (the picker stays
-      // editable). When the new selection differs from the thread's pinned
-      // model, signal the server to start a fresh CLI session — resuming the
-      // existing sessionId across providers/models triggers
-      // PROVIDER_INCOMPATIBLE (or "Invalid signature in thinking block") on
-      // the runner side. The server then injects prior chat messages into
-      // the system prompt so the agent still has conversation context.
+      // Model-first starts a fresh session when a mid-thread model change
+      // would make the existing CLI session incompatible.
       const forceNewSession = shouldForceNewSessionForModelChange(
         thread,
         effectiveSelectedModel,
@@ -1712,6 +1717,7 @@ function createSendMessage(deps: SendMessageDeps) {
               hasTextContent: result.hasTextContent,
               clientMessageId,
               modelSelection,
+              generationTemplate: options?.generationTemplate,
               attachFiles: result.attachFiles,
               ...sendMessageRevocationPatch(options),
               ...(forceNewSession ? { forceNewSession: true } : {}),
@@ -1767,84 +1773,92 @@ function createQueueMessage(deps: QueueMessageDeps) {
     dataSource,
   } = deps;
 
-  return command(async ({ get, set }, prompt: string, signal: AbortSignal) => {
-    L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
-    const thread = await get(threadData$);
-    signal.throwIfAborted();
-    if (!thread) {
-      L.debug("queueMessage$ no thread data, abort", { threadId });
-      return;
-    }
+  return command(
+    async (
+      { get, set },
+      prompt: string,
+      generationTemplate: GenerationTemplateRequest | undefined,
+      signal: AbortSignal,
+    ) => {
+      L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      if (!thread) {
+        L.debug("queueMessage$ no thread data, abort", { threadId });
+        return;
+      }
 
-    const modelSelection = await get(modelSelection$);
-    signal.throwIfAborted();
-    const forceNewSession = shouldForceNewSessionForModelChange(
-      thread,
-      modelSelection?.selectedModel,
-    );
-    const result = await set(
-      prepareUserMessageFromDraft$,
-      draft,
-      prompt,
-      {
-        excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
-          modelSelection?.selectedModel,
-        ),
-      },
-      signal,
-    );
-    if (!result) {
-      L.debug("queueMessage$ prepare returned null, abort", { threadId });
-      return;
-    }
-    signal.throwIfAborted();
-
-    set(cancelDraftSync$);
-    set(draft.clear$);
-
-    const clientMessageId = crypto.randomUUID();
-    const nowIso = new Date().toISOString();
-    set(appendOptimisticChatMessage$, {
-      threadId,
-      optimisticUserMessageAssociation: "queue",
-      message: {
-        id: clientMessageId,
-        role: "user",
-        content: result.prompt,
-        attachFiles: result.attachments,
-        createdAt: nowIso,
-      },
-      ...(forceNewSession ? { forceNewSession: true } : {}),
-    });
-    animationFrame(
-      () => {
-        set(scrollToBottom$);
-      },
-      { signal },
-    );
-
-    await Promise.all([
-      set(flushDraftClear$, signal),
-      set(
-        dataSource.appendQueuedMessage$,
+      const modelSelection = await get(modelSelection$);
+      signal.throwIfAborted();
+      const forceNewSession = shouldForceNewSessionForModelChange(
+        thread,
+        modelSelection?.selectedModel,
+      );
+      const result = await set(
+        prepareUserMessageFromDraft$,
+        draft,
+        prompt,
         {
-          threadId,
-          agentId: thread.agentId,
-          content: result.prompt,
-          attachments: result.attachments ?? null,
-          clientMessageId,
-          hasTextContent: result.hasTextContent,
-          modelSelection,
-          ...(forceNewSession ? { forceNewSession: true } : {}),
+          excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
+            modelSelection?.selectedModel,
+          ),
         },
         signal,
-      ),
-    ]);
-    signal.throwIfAborted();
+      );
+      if (!result) {
+        L.debug("queueMessage$ prepare returned null, abort", { threadId });
+        return;
+      }
+      signal.throwIfAborted();
 
-    set(reloadChatThreads$);
-    L.debug("queueMessage$ done", { threadId });
-  });
+      set(cancelDraftSync$);
+      set(draft.clear$);
+
+      const clientMessageId = crypto.randomUUID();
+      const nowIso = new Date().toISOString();
+      set(appendOptimisticChatMessage$, {
+        threadId,
+        optimisticUserMessageAssociation: "queue",
+        message: {
+          id: clientMessageId,
+          role: "user",
+          content: result.prompt,
+          attachFiles: result.attachments,
+          createdAt: nowIso,
+        },
+        ...(forceNewSession ? { forceNewSession: true } : {}),
+      });
+      animationFrame(
+        () => {
+          set(scrollToBottom$);
+        },
+        { signal },
+      );
+
+      await Promise.all([
+        set(flushDraftClear$, signal),
+        set(
+          dataSource.appendQueuedMessage$,
+          {
+            threadId,
+            agentId: thread.agentId,
+            content: result.prompt,
+            attachments: result.attachments ?? null,
+            clientMessageId,
+            hasTextContent: result.hasTextContent,
+            modelSelection,
+            generationTemplate,
+            ...(forceNewSession ? { forceNewSession: true } : {}),
+          },
+          signal,
+        ),
+      ]);
+      signal.throwIfAborted();
+
+      set(reloadChatThreads$);
+      L.debug("queueMessage$ done", { threadId });
+    },
+  );
 }
 
 interface RecallMessageDeps {

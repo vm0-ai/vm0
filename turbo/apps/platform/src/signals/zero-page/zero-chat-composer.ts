@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -79,3 +80,53 @@ export const modelPickerOpen$ = computed((get) => {
 export const setModelPickerOpen$ = command(({ set }, open: boolean) => {
   set(internalModelPickerOpen$, open);
 });
+
+// -- Template picker open/category state ------------------------------------
+
+const internalTemplatePickerOpen$ = state(false);
+export const templatePickerOpen$ = computed((get) => {
+  return get(internalTemplatePickerOpen$);
+});
+export const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
+  set(internalTemplatePickerOpen$, open);
+});
+
+const internalTemplatePickerCategory$ = state("slides");
+export const templatePickerCategory$ = computed((get) => {
+  return get(internalTemplatePickerCategory$);
+});
+export const setTemplatePickerCategory$ = command(
+  ({ set }, category: string) => {
+    set(internalTemplatePickerCategory$, category);
+  },
+);
+
+// -- Per-message generation template selections --------------------------------
+
+const internalNewThreadGenerationTemplate$ = state<
+  GenerationTemplateRequest | undefined
+>(undefined);
+export const newThreadGenerationTemplate$ = computed((get) => {
+  return get(internalNewThreadGenerationTemplate$);
+});
+export const setNewThreadGenerationTemplate$ = command(
+  ({ set }, value: GenerationTemplateRequest | undefined) => {
+    set(internalNewThreadGenerationTemplate$, value);
+  },
+);
+
+interface ThreadGenerationTemplateState {
+  readonly threadId: string;
+  readonly value: GenerationTemplateRequest | undefined;
+}
+
+const internalThreadGenerationTemplate$ =
+  state<ThreadGenerationTemplateState | null>(null);
+export const threadGenerationTemplate$ = computed((get) => {
+  return get(internalThreadGenerationTemplate$);
+});
+export const setThreadGenerationTemplate$ = command(
+  ({ set }, threadId: string, value: GenerationTemplateRequest | undefined) => {
+    set(internalThreadGenerationTemplate$, { threadId, value });
+  },
+);

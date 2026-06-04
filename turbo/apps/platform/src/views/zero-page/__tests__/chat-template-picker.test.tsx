@@ -1,0 +1,211 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import {
+  chatMessagesContract,
+  type GenerationTemplateRequest,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import {
+  mockChatLifecycle,
+  sendMessageInUI,
+  PLACEHOLDER,
+} from "./chat-test-helpers.ts";
+
+const context = testContext();
+const mockApi = createMockApi(context);
+const THREAD_ID = "thread-template-picker";
+const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+
+beforeEach(() => {
+  const values = new Map<string, string>();
+  const storage = {
+    get length() {
+      return values.size;
+    },
+    getItem: (key: string) => {
+      return values.get(key) ?? null;
+    },
+    key: (index: number) => {
+      return [...values.keys()][index] ?? null;
+    },
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+  };
+  vi.stubGlobal("localStorage", storage);
+});
+
+function captureSendGenerationTemplate() {
+  let capturedGenerationTemplate: GenerationTemplateRequest | undefined;
+  server.use(
+    mockApi(chatMessagesContract.send, ({ body, respond }) => {
+      if ("generationTemplate" in body) {
+        capturedGenerationTemplate = body.generationTemplate;
+      }
+      return respond(201, {
+        runId: "run-template-picker",
+        threadId: body.threadId ?? THREAD_ID,
+        status: "pending",
+        createdAt: "2026-03-10T00:00:00Z",
+      });
+    }),
+  );
+  return {
+    generationTemplate: () => {
+      return capturedGenerationTemplate;
+    },
+  };
+}
+
+async function openPickerAndSelectTemplate(
+  user: ReturnType<typeof userEvent.setup>,
+) {
+  const templateButton = await waitFor(() => {
+    return screen.getByLabelText("Template");
+  });
+  click(templateButton);
+
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+  const pptTab = queryAllByRoleFast("tab").find((tab) => {
+    return tab.textContent === "PPT";
+  });
+  expect(pptTab).toBeEnabled();
+
+  await user.click(screen.getByLabelText(`Select template ${template.title}`));
+
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  await waitFor(() => {
+    expect(screen.getByLabelText("Template")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+  expect(
+    screen.getByLabelText("Remove template Pitch deck"),
+  ).toBeInTheDocument();
+}
+
+function expectPresentationTemplate(
+  style: GenerationTemplateRequest | undefined,
+) {
+  expect(style).toStrictEqual({
+    type: "presentation",
+    selection: {
+      designSystemId: template.designSystemId,
+      templateId: template.templateId,
+    },
+  });
+}
+
+describe("zero chat template picker", () => {
+  it("hides the Template button while the feature switch is off", async () => {
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Attach")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Template")).not.toBeInTheDocument();
+  });
+
+  it("shows the Template button and opens the picker while enabled", async () => {
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    const templateButton = await waitFor(() => {
+      return screen.getByLabelText("Template");
+    });
+    click(templateButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    expect(screen.getByText(template.title)).toBeInTheDocument();
+  });
+
+  it("sends selected generation template from the new-thread composer and clears it", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+    const sendCapture = captureSendGenerationTemplate();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    await openPickerAndSelectTemplate(user);
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Create a launch deck");
+
+    await waitFor(() => {
+      expectPresentationTemplate(sendCapture.generationTemplate());
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+  });
+
+  it("sends selected generation template from an existing-thread composer and clears it", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle({ threadId: THREAD_ID });
+    const sendCapture = captureSendGenerationTemplate();
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    await openPickerAndSelectTemplate(user);
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Use this style");
+
+    await waitFor(() => {
+      expectPresentationTemplate(sendCapture.generationTemplate());
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+  });
+});

@@ -17,6 +17,7 @@ import {
 } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   Button,
   Tooltip,
@@ -55,6 +56,10 @@ import {
   chatPageTaglineIndex$,
   suggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
+import {
+  newThreadGenerationTemplate$,
+  setNewThreadGenerationTemplate$,
+} from "../../signals/zero-page/zero-chat-composer.ts";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
@@ -469,6 +474,8 @@ export function AgentChatPage() {
   );
 
   const sendNewThread = useSet(sendNewThreadOptimistically$);
+  const generationTemplate = useGet(newThreadGenerationTemplate$);
+  const setGenerationTemplate = useSet(setNewThreadGenerationTemplate$);
   const rootSignal = useGet(rootSignal$);
   const pageSignal = useGet(pageSignal$);
   const {
@@ -479,20 +486,27 @@ export function AgentChatPage() {
   } = useAgentChatComposerModel(pageSignal);
   const resetModelSelection = useSet(resetChatPageModelSelection$);
 
-  const handleSendMessage = (message: string) => {
+  const handleSendMessage = (
+    message: string,
+    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
+  ) => {
     if (!currentChatAgentId) {
       return;
     }
 
     detach(
-      sendNewThread(
-        {
-          agentId: currentChatAgentId,
-          prompt: message,
-          modelSelection,
-        },
-        rootSignal,
-      ),
+      (async () => {
+        await sendNewThread(
+          {
+            agentId: currentChatAgentId,
+            prompt: message,
+            modelSelection,
+            generationTemplate: selectedGenerationTemplate,
+          },
+          rootSignal,
+        );
+        setGenerationTemplate(undefined);
+      })(),
       Reason.DomCallback,
     );
   };
@@ -514,10 +528,13 @@ export function AgentChatPage() {
 
   const lightboxUrl = useGet(attachmentLightboxUrl$);
 
-  const handleSend = (text: string) => {
+  const handleSend = (
+    text: string,
+    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
+  ) => {
     startTiming();
     setInput("");
-    handleSendMessage(text);
+    handleSendMessage(text, selectedGenerationTemplate);
     resetModelSelection();
   };
 
@@ -552,6 +569,10 @@ export function AgentChatPage() {
             displayName={currentChatAgentDisplayName ?? ""}
             autoFocus
             modelPicker={modelPicker}
+            templatePicker={{
+              value: generationTemplate,
+              onChange: setGenerationTemplate,
+            }}
             modelPickerLoading={modelPickerLoading}
             submitBlocker={submitBlockerProps}
           />

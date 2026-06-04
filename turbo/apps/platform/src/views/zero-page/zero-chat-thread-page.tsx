@@ -62,6 +62,7 @@ import {
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
   ChatThreadArtifactFile,
+  GenerationTemplateRequest,
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -162,6 +163,10 @@ import {
   ZeroChatComposer,
   type QueuedComposerItem,
 } from "./zero-chat-composer.tsx";
+import {
+  setThreadGenerationTemplate$,
+  threadGenerationTemplate$,
+} from "../../signals/zero-page/zero-chat-composer.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
@@ -3090,6 +3095,76 @@ function useChatComposerModel(
   };
 }
 
+function useChatThreadComposerSendState({
+  thread,
+  modelSelection,
+  setInput,
+}: {
+  thread: ChatThreadSignals;
+  modelSelection: ModelProviderSelection | null;
+  setInput: (text: string) => void;
+}) {
+  const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
+  const [, queueMessage] = useLoadableSet(thread.queueMessage$);
+  const rootSignal = useGet(rootSignal$);
+  const generationTemplateState = useGet(threadGenerationTemplate$);
+  const generationTemplate =
+    generationTemplateState?.threadId === thread.threadId
+      ? generationTemplateState.value
+      : undefined;
+  const setGenerationTemplate = useSet(setThreadGenerationTemplate$);
+  const clearGenerationTemplate = () => {
+    setGenerationTemplate(thread.threadId, undefined);
+  };
+
+  const handleSend = (
+    text: string,
+    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
+  ) => {
+    setInput("");
+    detach(
+      (async () => {
+        await send(
+          text,
+          modelSelection,
+          selectedGenerationTemplate
+            ? { generationTemplate: selectedGenerationTemplate }
+            : undefined,
+          rootSignal,
+        );
+        clearGenerationTemplate();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const handleQueue = (
+    text: string,
+    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
+  ) => {
+    setInput("");
+    detach(
+      (async () => {
+        await queueMessage(text, selectedGenerationTemplate, rootSignal);
+        clearGenerationTemplate();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return {
+    handleSend,
+    handleQueue,
+    sendLoading: sendLoadable.state === "loading",
+    templatePicker: {
+      value: generationTemplate,
+      onChange: (value: GenerationTemplateRequest | undefined) => {
+        setGenerationTemplate(thread.threadId, value);
+      },
+    },
+  };
+}
+
 function ChatThreadComposer({
   thread,
   autoFocus: autoFocusProp = true,
@@ -3109,17 +3184,12 @@ function ChatThreadComposer({
   const allFinishedResolvedValue = useLastResolved(thread.allFinished$);
   const allFinishedResolved = allFinishedResolvedValue !== undefined;
   const allFinished = allFinishedResolvedValue ?? false;
-  const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
-  const [, queueMessage] = useLoadableSet(thread.queueMessage$);
-  const sending =
-    (allFinishedResolved && !allFinished) || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
   const pageSignal = useGet(pageSignal$);
-  const rootSignal = useGet(rootSignal$);
 
   const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
     thread,
@@ -3131,6 +3201,13 @@ function ChatThreadComposer({
     submitBlockerProps,
     modelSelection,
   } = useChatComposerModel(thread, pageSignal);
+  const { handleSend, handleQueue, sendLoading, templatePicker } =
+    useChatThreadComposerSendState({
+      thread,
+      modelSelection,
+      setInput,
+    });
+  const sending = (allFinishedResolved && !allFinished) || sendLoading;
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const lastGroup = groups[groups.length - 1];
   const lastIsAssistant = lastGroup?.role === "assistant";
@@ -3152,21 +3229,6 @@ function ChatThreadComposer({
 
   const handleDraftChange = () => {
     detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
-  };
-
-  const handleSend = (text: string) => {
-    setInput("");
-    // Use rootSignal so in-run page navigation (e.g. IPA internal nav) doesn't
-    // cancel the pending send.
-    detach(
-      send(text, modelSelection, undefined, rootSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  const handleQueue = (text: string) => {
-    setInput("");
-    detach(queueMessage(text, rootSignal), Reason.DomCallback);
   };
 
   return (
@@ -3205,6 +3267,7 @@ function ChatThreadComposer({
             setInputRef={setInputRef}
             actionsLoading={skeletonVisible}
             modelPicker={modelPicker}
+            templatePicker={templatePicker}
             modelPickerLoading={modelPickerLoading || !messagesResolved}
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}

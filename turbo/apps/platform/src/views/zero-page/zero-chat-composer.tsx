@@ -1,7 +1,11 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import type React from "react";
-import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
+import type {
+  ChangeEvent,
+  ClipboardEvent,
+  DragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import {
   useGet,
   useSet,
@@ -19,6 +23,7 @@ import {
   IconPlayerStop,
   IconPlug,
   IconPlus,
+  IconTemplate,
   IconX,
 } from "@tabler/icons-react";
 import {
@@ -36,6 +41,9 @@ import {
   PopoverContent,
   PopoverTrigger,
   Skeleton,
+  Tabs,
+  TabsList,
+  TabsTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -70,8 +78,16 @@ import {
   composerFileInput$ as singletonComposerFileInput$,
   setComposerFileInput$ as singletonSetComposerFileInput$,
 } from "../../signals/chat-page/chat-message.ts";
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  GenerationTemplateRequest,
+  PersistedAttachment,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
+import {
+  PRESENTATION_TEMPLATE_ITEMS,
+  type PresentationTemplateItem,
+} from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
@@ -96,6 +112,7 @@ import {
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   zeroAuthorizedConnectors$,
   authorizeConnector$,
@@ -117,6 +134,10 @@ import {
   setPopoverSortOrder$,
   modelPickerOpen$,
   setModelPickerOpen$,
+  templatePickerOpen$,
+  setTemplatePickerOpen$,
+  templatePickerCategory$,
+  setTemplatePickerCategory$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -152,8 +173,14 @@ function isIOSDevice(): boolean {
 interface ZeroChatComposerProps {
   input: string;
   onInputChange: (value: string) => void;
-  onSend: (message: string) => void;
-  onQueue?: (message: string) => void;
+  onSend: (
+    message: string,
+    generationTemplate: GenerationTemplateRequest | undefined,
+  ) => void;
+  onQueue?: (
+    message: string,
+    generationTemplate: GenerationTemplateRequest | undefined,
+  ) => void;
   sending?: boolean;
   queueWhileSending?: boolean;
   /**
@@ -202,6 +229,10 @@ interface ZeroChatComposerProps {
     /** Effective default model from user preference, then workspace default. */
     defaultSelection?: ModelProviderSelection | null;
   };
+  templatePicker?: {
+    value: GenerationTemplateRequest | undefined;
+    onChange: (value: GenerationTemplateRequest | undefined) => void;
+  };
   /** When true, render a skeleton in the model picker slot. */
   modelPickerLoading?: boolean;
   submitBlocker?: {
@@ -225,6 +256,9 @@ export interface QueuedComposerItem {
 }
 
 type ComposerModelPicker = NonNullable<ZeroChatComposerProps["modelPicker"]>;
+type ComposerTemplatePicker = NonNullable<
+  ZeroChatComposerProps["templatePicker"]
+>;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -393,6 +427,319 @@ function QueuedMessagesStrip({
 // ---------------------------------------------------------------------------
 // Connector sub-components
 // ---------------------------------------------------------------------------
+
+function isSelectedPresentationTemplate(
+  item: PresentationTemplateItem,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return (
+    value?.type === "presentation" &&
+    value.selection.designSystemId === item.designSystemId &&
+    value.selection.templateId === item.templateId
+  );
+}
+
+function toPresentationGenerationTemplate(
+  item: PresentationTemplateItem,
+): GenerationTemplateRequest {
+  return {
+    type: "presentation",
+    selection: {
+      designSystemId: item.designSystemId,
+      templateId: item.templateId,
+    },
+  };
+}
+
+function selectedTemplateTitle(
+  value: GenerationTemplateRequest | undefined,
+): string | undefined {
+  return selectedPresentationTemplateItem(value)?.title;
+}
+
+function selectedPresentationTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): PresentationTemplateItem | undefined {
+  if (value?.type !== "presentation") {
+    return undefined;
+  }
+  return PRESENTATION_TEMPLATE_ITEMS.find((item) => {
+    return isSelectedPresentationTemplate(item, value);
+  });
+}
+
+function formatPresentationTemplateKind(templateId: string): string {
+  const label = templateId
+    .replace(/^template:/, "")
+    .replace(/^html-ppt-/, "")
+    .replace(/-/g, " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function TemplatePickerDialog({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: GenerationTemplateRequest | undefined;
+  onChange: (value: GenerationTemplateRequest | undefined) => void;
+  onClose: () => void;
+}) {
+  const category = useGet(templatePickerCategory$);
+  const setCategory = useSet(setTemplatePickerCategory$);
+
+  const handleSelect = (item: PresentationTemplateItem) => {
+    onChange(toPresentationGenerationTemplate(item));
+    onClose();
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent
+        className="max-w-4xl p-0 gap-0 overflow-hidden"
+        aria-describedby={undefined}
+      >
+        <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
+          <DialogTitle>Templates</DialogTitle>
+        </DialogHeader>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3">
+          <Tabs value={category} onValueChange={setCategory}>
+            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+              <TabsTrigger value="slides">PPT</TabsTrigger>
+              <TabsTrigger value="website" disabled>
+                Website
+              </TabsTrigger>
+              <TabsTrigger value="illustration" disabled>
+                Illustration
+              </TabsTrigger>
+              <TabsTrigger value="report" disabled>
+                Report
+              </TabsTrigger>
+              <TabsTrigger value="workflow" disabled>
+                Workflow
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {value && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 shrink-0 rounded-md px-2 text-xs"
+              onClick={() => {
+                onChange(undefined);
+              }}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+        {category === "slides" && (
+          <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+            <div className="mb-4 flex items-center gap-2">
+              <h3 className="text-xs font-semibold uppercase text-muted-foreground">
+                VM0 templates
+              </h3>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                {PRESENTATION_TEMPLATE_ITEMS.length}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {PRESENTATION_TEMPLATE_ITEMS.map((item) => {
+                const selected = isSelectedPresentationTemplate(item, value);
+                return (
+                  <div
+                    key={item.slug}
+                    className={cn(
+                      "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+                      selected
+                        ? "border-primary ring-1 ring-primary"
+                        : "border-border",
+                    )}
+                  >
+                    <div className="relative aspect-[16/9] overflow-hidden bg-muted">
+                      {item.previewImage ? (
+                        <img
+                          src={item.previewImage}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-muted-foreground">
+                          <IconTemplate size={28} stroke={1.5} />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center gap-0 bg-black/0 opacity-0 transition-opacity group-hover:bg-black/10 group-hover:opacity-100 group-focus-within:bg-black/10 group-focus-within:opacity-100">
+                        <button
+                          type="button"
+                          aria-label={`Select template ${item.title}`}
+                          aria-pressed={selected}
+                          onClick={() => {
+                            handleSelect(item);
+                          }}
+                          className="h-9 rounded-l-full bg-foreground px-6 text-sm font-semibold text-background shadow-lg transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          Use
+                        </button>
+                        <a
+                          href={item.embedUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`View template ${item.title}`}
+                          className="flex h-9 items-center rounded-r-full bg-background px-6 text-sm font-semibold text-foreground shadow-lg transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                          }}
+                        >
+                          View
+                        </a>
+                      </div>
+                    </div>
+                    <div className="px-3.5 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {item.title}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {formatPresentationTemplateKind(item.templateId)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SelectedTemplateChip({
+  item,
+  onRemove,
+}: {
+  item: PresentationTemplateItem;
+  onRemove: () => void;
+}) {
+  const label = formatPresentationTemplateKind(item.templateId);
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+            <img
+              src={item.previewImage}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          </span>
+          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+            Template
+          </span>
+          <span className="h-3.5 w-px shrink-0 bg-border/70" />
+          <span className="min-w-0 truncate text-xs font-medium">{label}</span>
+          <button
+            type="button"
+            aria-label={`Remove template ${label}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
+function SelectedTemplateChipSlot({
+  picker,
+  onDraftChange,
+}: {
+  picker: ComposerTemplatePicker | undefined;
+  onDraftChange: (() => void) | undefined;
+}) {
+  const selectedItem = selectedPresentationTemplateItem(picker?.value);
+  if (!selectedItem || !picker) {
+    return null;
+  }
+  return (
+    <SelectedTemplateChip
+      item={selectedItem}
+      onRemove={() => {
+        picker.onChange(undefined);
+        onDraftChange?.();
+      }}
+    />
+  );
+}
+
+function TemplatePickerButton({ picker }: { picker: ComposerTemplatePicker }) {
+  const open = useGet(templatePickerOpen$);
+  const setOpen = useSet(setTemplatePickerOpen$);
+  const selectedTitle = selectedTemplateTitle(picker.value);
+
+  return (
+    <>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
+                picker.value && "bg-accent text-foreground",
+              )}
+              aria-label="Template"
+              aria-pressed={picker.value !== undefined}
+              onClick={() => {
+                setOpen(true);
+              }}
+            >
+              <IconTemplate size={18} stroke={1.5} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">
+            {selectedTitle ? `Template: ${selectedTitle}` : "Template"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      {open && (
+        <TemplatePickerDialog
+          value={picker.value}
+          onChange={picker.onChange}
+          onClose={() => {
+            setOpen(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function ComposerTemplatePickerSlot({
+  picker,
+}: {
+  picker: ComposerTemplatePicker | undefined;
+}) {
+  const features = useLastResolved(featureSwitch$);
+  if (!picker || !features?.[FeatureSwitchKey.ChatTemplatePicker]) {
+    return null;
+  }
+  return <TemplatePickerButton picker={picker} />;
+}
 
 function ConnectorTriggerIcons({
   connectors,
@@ -1007,6 +1354,7 @@ export function ZeroChatComposer({
   onDraftChange,
   actionsLoading = false,
   modelPicker,
+  templatePicker,
   modelPickerLoading = false,
   submitBlocker,
   queuedItems,
@@ -1257,11 +1605,11 @@ export function ZeroChatComposer({
     if (sendAction === "send") {
       // Fire-and-forget: request push permission on first send, never blocks
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
-      onSend(input.trim());
+      onSend(input.trim(), templatePicker?.value);
       return;
     }
     if (sendAction === "queue") {
-      onQueue?.(input.trim());
+      onQueue?.(input.trim(), templatePicker?.value);
     }
   };
 
@@ -1277,7 +1625,7 @@ export function ZeroChatComposer({
       return;
     }
     if (sending && queueWhileSending && onQueue) {
-      onQueue(input.trim());
+      onQueue(input.trim(), templatePicker?.value);
     } else {
       handleSend();
     }
@@ -1289,7 +1637,7 @@ export function ZeroChatComposer({
   const toggleSidebar = useSet(toggleSidebarOff$);
   const newChat = useSet(navigateToNewChat$);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (window.matchMedia("(pointer: coarse)").matches) {
       return;
     }
@@ -1385,6 +1733,10 @@ export function ZeroChatComposer({
         >
           <CardContent className="p-0">
             <div className="flex flex-col">
+              <SelectedTemplateChipSlot
+                picker={templatePicker}
+                onDraftChange={onDraftChange}
+              />
               {visibleAttachments.length > 0 && (
                 <AttachmentChips
                   attachments={visibleAttachments}
@@ -1446,6 +1798,7 @@ export function ZeroChatComposer({
                     }}
                     onToggle={handleToggle}
                   />
+                  <ComposerTemplatePickerSlot picker={templatePicker} />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
                   <ComposerModelPickerSlot

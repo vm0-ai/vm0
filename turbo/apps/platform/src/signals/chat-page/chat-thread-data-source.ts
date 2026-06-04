@@ -1,6 +1,7 @@
 import type { Command, Computed } from "ccstate";
 import type {
   ModelSelectionRequest,
+  GenerationTemplateRequest,
   PagedChatMessage,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -32,6 +33,7 @@ export interface AppendQueuedMessageArgs {
   clientMessageId: string;
   hasTextContent: boolean;
   modelSelection: ModelSelectionRequest | null;
+  generationTemplate: GenerationTemplateRequest | undefined;
   forceNewSession?: boolean;
 }
 

@@ -285,6 +285,7 @@ describe("optimistic chat thread (local mode)", () => {
         agentId: AGENT_ID,
         prompt: "blocked by credits",
         modelSelection: null,
+        generationTemplate: undefined,
       },
       context.signal,
     );

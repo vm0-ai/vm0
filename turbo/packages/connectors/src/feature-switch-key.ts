@@ -51,6 +51,7 @@ export enum FeatureSwitchKey {
   SessionWorkspaceImageCache = "sessionWorkspaceImageCache",
   ChatArtifactSidebar = "chatArtifactSidebar",
   ChatGithubPrTracking = "chatGithubPrTracking",
+  ChatTemplatePicker = "chatTemplatePicker",
   MemoryViewer = "memoryViewer",
   ChatScrollToBottomButton = "chatScrollToBottomButton",
   ChatRecommendedFollowups = "chatRecommendedFollowups",
