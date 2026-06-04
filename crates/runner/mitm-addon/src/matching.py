@@ -1205,8 +1205,39 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
     return _CompiledRule(method, rule_str, pattern, _path_specificity(pattern))
 
 
+# Compiled matcher contract
+#
+# Registry loading stores these compiled objects and request handling later
+# converts FirewallBlock into a 403, so the compile phase deliberately
+# distinguishes inputs that cannot match from malformed inputs that can still
+# match a base and must fail closed at match time.
+#
+# compile_firewalls skips raw entries that cannot participate in base matching:
+# non-object firewalls, firewalls whose "apis" is not a list, non-object APIs,
+# non-string bases, and bases that cannot compile into matcher data. Once an
+# API base compiles, the API is retained and records malformed state for:
+# firewall name, base syntax/authority/params, auth config, and
+# permission/rule config.
+#
+# compile_network_policies preserves malformed policy state for a present
+# non-object top-level networkPolicies payload, non-object per-firewall grants,
+# malformed allow/deny/ask permission sets, and malformed unknownPolicy.
+#
+# match_compiled_firewall_request applies retained malformed state only after a
+# request matches a compiled base. The relevant fail-closed reasons are
+# "malformed_firewall_config", "malformed_network_policy", and "unsafe_path".
+# Malformed config for an unrelated base does not block unrelated traffic.
+#
+# Preserve current decision precedence when changing this code or these docs:
+# unsafe paths block immediately after base match; explicit allow/deny rule
+# decisions resolve before retained malformed state; if no allow/deny resolved,
+# malformed network policy resolves before malformed firewall config; malformed
+# unknownPolicy only affects unknown-endpoint resolution.
 def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
-    """Compile raw firewall config into immutable matcher-side data."""
+    """Compile firewall data and retain selected malformed state.
+
+    See the compiled matcher contract above for skipped versus retained inputs.
+    """
     if not vm_firewalls:
         return None
 
@@ -1321,7 +1352,10 @@ def _compile_permission_set(raw_value: object | None) -> tuple[frozenset[str], b
 
 
 def compile_network_policies(raw_network_policies: object | None) -> CompiledNetworkPolicies:
-    """Compile raw networkPolicies into immutable matcher-side data."""
+    """Compile networkPolicies and retain selected malformed policy state.
+
+    See the compiled matcher contract above for match-time fail-closed semantics.
+    """
     if raw_network_policies is None:
         return CompiledNetworkPolicies(MappingProxyType({}), False)
     if not isinstance(raw_network_policies, dict):
@@ -1678,6 +1712,13 @@ def match_compiled_firewall_request(
     network_policies: object | None = None,
 ) -> FirewallAllow | FirewallBlock | None:
     """Match request against production precompiled firewall permissions.
+
+    Retained malformed state from the compile functions applies only after the
+    request matches a compiled base. It can surface as FirewallBlock reasons
+    ``malformed_firewall_config`` or ``malformed_network_policy``; unsafe paths
+    use ``unsafe_path`` after base match. Explicit allow/deny rule decisions
+    keep their current precedence over retained malformed state, and malformed
+    ``unknownPolicy`` only affects unknown-endpoint resolution.
 
     Returns:
       FirewallAllow — granted permission matched or unknown endpoint allowed
