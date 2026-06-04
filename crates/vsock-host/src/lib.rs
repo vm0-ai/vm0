@@ -17,6 +17,48 @@
 //! stream exclusively. All public methods take `&self` and can be called
 //! concurrently. Responses are dispatched to callers via oneshot channels
 //! keyed by sequence number.
+//!
+//! ## Exec Operation Lifecycle
+//!
+//! [`VsockHost`] supports one-shot exec operations with
+//! [`VsockHost::start_exec_operation`] and supervised exec operations with
+//! [`VsockHost::start_supervised_exec`]. One-shot exec is request-scoped: the
+//! guest sends a terminal result for the original request sequence.
+//! Supervised exec first acknowledges a started guest process and then keeps a
+//! lifecycle registration until a terminal result arrives, the connection
+//! closes, or the host explicitly abandons the registration.
+//!
+//! [`ExecOperationHandle`] owns a one-shot terminal result registration.
+//! Dropping it removes only host-side registration and never sends
+//! `MSG_EXEC_CANCEL`; use [`ExecOperationHandle::wait`] to observe the
+//! terminal result or [`ExecOperationHandle::cancel_and_wait`] to send
+//! cancellation and wait for the cancelled terminal result. A plain wait
+//! timeout does not cancel the guest. If terminal proof is abandoned after a
+//! request may have reached the guest, the connection can remain open while
+//! later normal operations become unavailable on that connection. A timeout
+//! after an explicit cancel was sent poisons the connection because the guest
+//! process state is no longer known.
+//!
+//! [`SupervisedExecHandle`] owns the terminal result for a supervised process.
+//! Dropping it does not cancel the guest and does not remove the lifecycle
+//! registration; the host keeps tracking the operation until terminal result
+//! dispatch, connection close, or an explicit wait timeout. Use
+//! [`SupervisedExecHandle::cancel_and_wait`] to send cancellation and consume
+//! the terminal result. [`SupervisedExecCancelHandle::cancel`] sends only the
+//! cancel frame and leaves terminal result ownership with the paired
+//! [`SupervisedExecHandle`].
+//!
+//! Streaming exec operations expose a bounded receiver through
+//! `take_stream_receiver`. Guest-side stream or capture truncation is reported
+//! on individual output/captured-output values, while host-side bounded queue
+//! overflow is reported on [`ExecOperationResult::stream_overflowed`].
+//!
+//! Supervised operations can opt into exec control with
+//! [`SupervisedExecControl::Enabled`]. [`ExecControlHandle::control`] requires
+//! a delivered acknowledgement, while
+//! [`ExecControlHandle::control_with_write_observer`] exposes the raw
+//! [`ExecControlOutcome`] so callers can distinguish delivered requests from
+//! guest statuses and guest error responses.
 
 mod exec_operation;
 mod file;

@@ -786,7 +786,9 @@ impl ExecOperationDiagnostic {
 ///
 /// Dropping the handle removes the host-side registration only. It never sends
 /// `MSG_EXEC_CANCEL`; callers that need remote cancellation must call
-/// [`ExecOperationHandle::cancel_and_wait`].
+/// [`ExecOperationHandle::cancel_and_wait`]. See the crate-level exec
+/// operation lifecycle docs for the cross-handle ownership contract.
+#[must_use = "dropping this handle does not cancel the guest; call wait or cancel_and_wait"]
 pub struct ExecOperationHandle {
     shared: Arc<Shared>,
     seq: Option<u32>,
@@ -809,7 +811,9 @@ impl ExecOperationHandle {
     /// Wait for the terminal exec result.
     ///
     /// On timeout, this removes the host-side operation registration but does
-    /// not cancel the guest-side exec operation.
+    /// not cancel the guest-side exec operation. If the request may have
+    /// reached the guest, normal operations can become unavailable on this
+    /// connection even though the connection itself may still be open.
     pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         self.wait_with_timeout(timeout, false).await
     }
@@ -817,7 +821,9 @@ impl ExecOperationHandle {
     /// Send an explicit cancel request and wait for a cancelled terminal result.
     ///
     /// If the terminal result is already available before cancel is sent, this
-    /// returns that result without sending a duplicate cancel frame.
+    /// returns that result without sending a duplicate cancel frame. If cancel
+    /// is sent but the terminal result does not arrive before `timeout`, the
+    /// connection is poisoned because guest process state is no longer known.
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         let cancel_label_log = self.diagnostic.label_log.clone();
         let registered_at = self.diagnostic.registered_at;
@@ -968,7 +974,10 @@ impl Drop for ExecOperationHandle {
 /// Dropping this handle never sends `MSG_EXEC_CANCEL` and does not remove the
 /// operation lifecycle registration. The host keeps the registration until a
 /// terminal exec result arrives, the connection closes, or a caller explicitly
-/// waits with a timeout that abandons the operation.
+/// waits with a timeout that abandons the operation. See the crate-level exec
+/// operation lifecycle docs for how supervised handles share cancellation and
+/// terminal result ownership.
+#[must_use = "dropping this handle does not cancel the guest or remove lifecycle registration"]
 pub struct SupervisedExecHandle {
     shared: Arc<Shared>,
     seq: Option<u32>,
@@ -981,6 +990,11 @@ pub struct SupervisedExecHandle {
 }
 
 /// One-shot handle that sends `MSG_EXEC_CANCEL` for a supervised exec operation.
+///
+/// Dropping this handle without calling [`SupervisedExecCancelHandle::cancel`]
+/// does not send cancellation. The paired [`SupervisedExecHandle`] owns the
+/// terminal result.
+#[must_use = "dropping this cancel handle does not send MSG_EXEC_CANCEL"]
 pub struct SupervisedExecCancelHandle {
     shared: Arc<Shared>,
     seq: u32,
@@ -991,7 +1005,9 @@ impl SupervisedExecCancelHandle {
     /// Send the cancel frame without consuming the terminal exec result.
     ///
     /// The paired [`SupervisedExecHandle`] still owns the result receiver and must
-    /// be waited or abandoned by its caller.
+    /// be waited or abandoned by its caller. If this times out before the
+    /// cancel frame is written, the paired handle can still observe the
+    /// terminal result.
     pub async fn cancel(self, timeout: Duration) -> io::Result<()> {
         tokio::time::timeout(
             timeout,
@@ -1076,8 +1092,8 @@ impl SupervisedExecHandle {
     ///
     /// On timeout, this abandons the host-side operation registration but does
     /// not send `MSG_EXEC_CANCEL`. Because the terminal proof is abandoned
-    /// after a guest write, the connection should not be reused for later
-    /// normal operations.
+    /// after a guest write, later normal operations become unavailable on this
+    /// connection.
     pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         self.wait_with_timeout(timeout, false).await
     }
@@ -1085,7 +1101,9 @@ impl SupervisedExecHandle {
     /// Send `MSG_EXEC_CANCEL` and wait for the terminal exec result.
     ///
     /// If the terminal result is already available before cancel is sent, this
-    /// returns that result without sending a duplicate cancel frame.
+    /// returns that result without sending a duplicate cancel frame. If cancel
+    /// is sent but the terminal result does not arrive before `timeout`, the
+    /// connection is poisoned because guest process state is no longer known.
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         let cancel_label_log = self.diagnostic.label_log.clone();
         let registered_at = self.diagnostic.registered_at;
@@ -1224,6 +1242,16 @@ pub struct ExecControlHandle {
 
 impl ExecControlHandle {
     /// Send an exec-control request and require a delivered acknowledgement.
+    ///
+    /// `message_id` must be non-empty and fit the protocol string length
+    /// bound. `payload` must fit the exec-control payload limit. Invalid
+    /// inputs fail before the request frame is written. The timeout is encoded
+    /// for guest-side control delivery and also bounds the host wait for a
+    /// response.
+    ///
+    /// Only [`ExecControlOutcome::Delivered`] is returned as an
+    /// [`ExecControlAck`]. Guest statuses and guest error responses are
+    /// converted into `io::Error` values.
     pub async fn control(
         &self,
         message_id: &str,
@@ -1241,6 +1269,11 @@ impl ExecControlHandle {
     }
 
     /// Send an exec-control request and return the raw guest outcome.
+    ///
+    /// This has the same parameter and timeout contract as
+    /// [`ExecControlHandle::control`], but returns [`ExecControlOutcome`] so
+    /// callers can distinguish delivered requests, non-delivered guest
+    /// statuses, and guest error responses.
     pub async fn control_with_write_observer(
         &self,
         message_id: &str,
