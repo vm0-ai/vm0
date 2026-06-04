@@ -992,14 +992,11 @@ impl SessionWorkspaceCache {
             }
         };
         let metadata_path = self.session_workspace_cache_metadata(&cache_key);
-        let metadata = match self.read_metadata_file(&metadata_path).await {
-            Ok(metadata) => Some(metadata),
-            Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(RunnerError::Internal(_)) => None,
-            Err(e) => {
-                drop(lock);
-                return Err(e);
-            }
+        let (metadata, metadata_read_error) = match self.read_metadata_file(&metadata_path).await {
+            Ok(metadata) => (Some(metadata), None),
+            Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => (None, None),
+            Err(RunnerError::Internal(_)) => (None, None),
+            Err(e) => (None, Some(e.to_string())),
         };
         let current_allocated_bytes = match current_metadata.as_ref() {
             Some(metadata) if metadata.is_dir() => directory_tree_allocated_bytes(&current).await,
@@ -1029,15 +1026,20 @@ impl SessionWorkspaceCache {
                     temporary,
                 )
             }
-            (Some(current_metadata), None) => workspace_image_cache_inspection_entry(
-                cache_key,
-                WorkspaceImageCacheInspectionStatus::Invalid,
-                Some("missing or invalid metadata".into()),
-                None,
-                Some(&current_metadata),
-                current_allocated_bytes,
-                temporary,
-            ),
+            (Some(current_metadata), None) => {
+                let reason = metadata_read_error
+                    .map(|error| format!("metadata read failed: {error}"))
+                    .unwrap_or_else(|| "missing or invalid metadata".into());
+                workspace_image_cache_inspection_entry(
+                    cache_key,
+                    WorkspaceImageCacheInspectionStatus::Invalid,
+                    Some(reason),
+                    None,
+                    Some(&current_metadata),
+                    current_allocated_bytes,
+                    temporary,
+                )
+            }
             (Some(current_metadata), Some(metadata)) => {
                 let reason = self
                     .unusable_current_entry_reason(&cache_key, &metadata, &current_metadata)
@@ -1198,22 +1200,14 @@ impl SessionWorkspaceCache {
             };
             let metadata_path = self.session_workspace_cache_metadata(&cache_key);
             let reason = match self.read_metadata_file(&metadata_path).await {
-                Ok(metadata) => {
-                    self.unusable_current_entry_reason(&cache_key, &metadata, &current_metadata)
-                }
+                Ok(metadata) => self
+                    .unusable_current_entry_reason(&cache_key, &metadata, &current_metadata)
+                    .map(str::to_owned),
                 Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
-                    Some("missing metadata")
+                    Some("missing metadata".into())
                 }
-                Err(RunnerError::Internal(_)) => Some("invalid metadata"),
-                Err(e) => {
-                    warn!(
-                        cache_key,
-                        error = %e,
-                        "failed to inspect workspace image cache metadata during GC"
-                    );
-                    drop(lock);
-                    continue;
-                }
+                Err(RunnerError::Internal(_)) => Some("invalid metadata".into()),
+                Err(e) => Some(format!("metadata read failed: {e}")),
             };
             let Some(reason) = reason else {
                 drop(lock);
@@ -3460,7 +3454,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn inspect_propagates_metadata_io_errors() {
+    async fn inspect_reports_metadata_io_errors_as_invalid_entry() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         let cache = SessionWorkspaceCache::new(paths.clone());
@@ -3475,12 +3469,19 @@ mod tests {
             .await
             .unwrap();
 
-        let err = cache.inspect().await.unwrap_err();
+        let inspection = cache.inspect().await.unwrap();
 
-        match err {
-            RunnerError::Io(e) => assert_eq!(e.kind(), std::io::ErrorKind::IsADirectory),
-            other => panic!("unexpected error: {other}"),
-        }
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert!(
+            entry
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.starts_with("metadata read failed:")),
+            "unexpected reason: {:?}",
+            entry.reason,
+        );
     }
 
     #[test]
@@ -4957,6 +4958,35 @@ mod tests {
         assert!(
             !paths.session_workspace_cache_entry_dir(&key).exists(),
             "current images without metadata are not reusable and should not accumulate"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_removes_unusable_current_entry_with_unreadable_metadata_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        tokio::fs::write(
+            paths.session_workspace_cache_current_image(&key),
+            b"orphan image",
+        )
+        .await
+        .unwrap();
+        tokio::fs::create_dir(paths.session_workspace_cache_metadata(&key))
+            .await
+            .unwrap();
+
+        let freed = cache.gc(false).await.unwrap();
+
+        assert!(freed > 0);
+        assert!(
+            !paths.session_workspace_cache_entry_dir(&key).exists(),
+            "unreadable metadata paths make entries unusable and should not block cache GC"
         );
     }
 

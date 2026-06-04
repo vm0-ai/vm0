@@ -35,7 +35,7 @@ fn is_current_inode(lock: &Flock<File>, path: &Path) -> bool {
     let Ok(path_meta) = std::fs::metadata(path) else {
         return false;
     };
-    lock_meta.ino() == path_meta.ino()
+    lock_meta.dev() == path_meta.dev() && lock_meta.ino() == path_meta.ino()
 }
 
 #[derive(Clone, Copy)]
