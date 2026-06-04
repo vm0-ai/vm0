@@ -1212,10 +1212,12 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
 # distinguishes inputs that cannot match from malformed inputs that can still
 # match a base and must fail closed at match time.
 #
-# compile_firewalls skips raw inputs that cannot participate in base matching:
-# missing, empty, or non-list firewalls payloads; non-object firewall entries;
-# firewalls whose "apis" is not a list; non-object APIs; non-string bases; bases
-# that cannot compile into matcher data; and firewalls with no compiled APIs.
+# Registry loading rejects explicit non-null, non-list firewalls payloads for
+# registered VMs before request handling. Direct compile_firewalls callers still
+# get None for missing, empty, or non-list payloads. compile_firewalls skips raw
+# entries that cannot participate in base matching: non-object firewall entries,
+# firewalls whose "apis" is not a list, non-object APIs, non-string bases, bases
+# that cannot compile into matcher data, and firewalls with no compiled APIs.
 # Once an API base compiles, the API is retained and records malformed state for:
 # firewall name, base syntax/authority/params, auth config, and permission/rule
 # config.

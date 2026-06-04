@@ -155,6 +155,17 @@ def _classify_registry_vms(raw_registry: dict) -> tuple[dict, dict[str, InvalidV
             )
             continue
 
+        if (
+            "firewalls" in vm
+            and vm["firewalls"] is not None
+            and not isinstance(vm["firewalls"], list)
+        ):
+            invalid_vms[client_ip] = InvalidVmEntry(
+                "invalid_firewalls",
+                "proxy registry VM entry firewalls must be a list",
+            )
+            continue
+
         new_registry[client_ip] = vm
 
     return new_registry, invalid_vms

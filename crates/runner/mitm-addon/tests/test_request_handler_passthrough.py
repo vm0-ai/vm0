@@ -220,6 +220,89 @@ async def test_invalid_registered_vm_non_object_blocks_before_auth_injection(
     assert flow.metadata["firewall_error"] == "invalid_registry_vm"
 
 
+@pytest.mark.parametrize("firewalls", [1, True, {"name": "github"}, "broken"])
+async def test_invalid_registered_vm_firewalls_shape_blocks_before_auth_injection(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    firewalls,
+):
+    vm_info = _single_firewall_vm(
+        tmp_path,
+        api_entry={
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer secret"}},
+            "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+        },
+        network_policy={
+            "allow": ["full-access"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        },
+    )
+    vm_info["firewalls"] = firewalls
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+    flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 503
+    assert json.loads(flow.response.content) == {
+        "error": "invalid_registry_vm",
+        "message": "proxy registry VM entry firewalls must be a list",
+        "reason": "invalid_firewalls",
+    }
+    auth_fetch.assert_not_called()
+    assert "vm_run_id" not in flow.metadata
+    assert "firewall_base" not in flow.metadata
+    assert flow.metadata["firewall_action"] == "BLOCK"
+    assert flow.metadata["firewall_error"] == "invalid_registry_vm"
+
+
+async def test_registered_vm_null_firewalls_passes_through_without_auth_injection(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    vm_info = _single_firewall_vm(
+        tmp_path,
+        api_entry={
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer secret"}},
+            "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+        },
+        network_policy={
+            "allow": ["full-access"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        },
+    )
+    vm_info["firewalls"] = None
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+    flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    auth_fetch.assert_not_called()
+    assert flow.metadata["vm_run_id"] == vm_info["runId"]
+    assert "firewall_base" not in flow.metadata
+    assert flow.metadata["firewall_action"] == "ALLOW"
+
+
 async def test_tracks_start_time(registry_file, real_flow, mitm_ctx):
     flow = real_flow(with_response=False, host="api.anthropic.com")
 
