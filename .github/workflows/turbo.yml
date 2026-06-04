@@ -736,18 +736,18 @@ jobs:
           files: turbo/junit.xml
           report_type: test_results
 
-  # Deploy web application with database
-  deploy-web:
+  # Deploy API application with preview database and E2E bootstrap data
+  deploy-api:
     runs-on: ubuntu-latest-8-cores
     timeout-minutes: 25
     concurrency:
-      group: deploy-web-${{ needs.prepare.outputs.job-ref }}
+      group: deploy-api-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main), not a release-please commit, and web, API, CLI, runner, or platform changed.
-    # Web API-backend proxy changes also deploy API because the web preview points VM0_API_BACKEND_URL at the PR API alias.
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and anything
+    # that needs a live API preview or E2E API token changed.
     # Runs in merge queue too, but skips GitHub Deployment creation (the bobheadxi/deployments action
     # cannot resolve the temporary `gh-readonly-queue/*` ref via the GitHub API).
     if: |
@@ -763,8 +763,7 @@ jobs:
         needs.prepare.outputs.api-backend-needed == 'true'
       )
     outputs:
-      preview-url: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
-      api-preview-url: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
+      preview-url: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
     permissions:
       contents: read
       pull-requests: write
@@ -778,14 +777,6 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
 
-      # Step 1: Setup Vercel CLI and project config (needed by build)
-      - name: Setup Vercel
-        uses: ./.github/actions/vercel-setup
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
-
       - name: Fetch development Doppler OAuth config
         id: doppler-oauth
         uses: dopplerhq/secrets-fetch-action@v2.0.0
@@ -795,29 +786,27 @@ jobs:
           doppler-project: vm0
           doppler-config: dev
 
-      - name: Resolve Web build environment
-        id: web-build-env
+      - name: Resolve API seed environment
+        id: api-seed-env
         uses: ./.github/actions/web-api-env
         with:
-          app: web
+          app: api
           environment: preview
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           web-url: ${{ needs.prepare.outputs.web-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
-          api-url: ${{ needs.prepare.outputs.web-preview-url }}
-          api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
+          api-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
           DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
-      # Step 2: Create Neon branch
       - name: Create Neon Branch
         id: neon
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-          WEB_API_ENV_FILE: ${{ steps.web-build-env.outputs.file }}
+          WEB_API_ENV_FILE: ${{ steps.api-seed-env.outputs.file }}
           DEV_MODEL_ANTHROPIC_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY || 'fake-key' }}
           DEV_MODEL_DEEPSEEK_KEY: fake-key
         run: |
@@ -835,7 +824,7 @@ jobs:
           # BEFORE creating/resetting the preview branch off it. Neon branches are
           # copy-on-write, so a preview branched from an already-migrated parent
           # inherits the up-to-date schema and its own db:migrate below becomes a
-          # near no-op -- this is what keeps preview migrate (and deploy-web) fast.
+          # near no-op -- this is what keeps preview migrate (and deploy-api) fast.
           # Safe by construction: this job has no `environment: production`, so
           # NEON_PROJECT_ID resolves to the Neon TEST project, never production.
           if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
@@ -878,131 +867,8 @@ jobs:
 
           echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
 
-      # Step 3: Build web
-      - name: Build Web
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          WEB_API_ENV_FILE: ${{ steps.web-build-env.outputs.file }}
-          DEV_MODEL_ANTHROPIC_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY || 'fake-key' }}
-          DEV_MODEL_DEEPSEEK_KEY: fake-key
-        run: |
-          while IFS= read -r line; do
-            if [ -n "$line" ]; then
-              key="${line%%=*}"
-              value="${line#*=}"
-              export "$key=$value"
-            fi
-          done < "$WEB_API_ENV_FILE"
-
-          vercel build --token="$VERCEL_TOKEN"
-
-      - name: Resolve Web deploy environment
-        id: web-deploy-env
-        uses: ./.github/actions/web-api-env
-        with:
-          app: web
-          environment: preview
-          database-url: ${{ steps.neon.outputs.database-url }}
-          job-ref: ${{ needs.prepare.outputs.job-ref }}
-          web-url: ${{ needs.prepare.outputs.web-preview-url }}
-          app-url: ${{ needs.prepare.outputs.app-preview-url }}
-          api-url: ${{ needs.prepare.outputs.web-preview-url }}
-          api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
-        env:
-          REPO_VARS_JSON: ${{ toJSON(vars) }}
-          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
-          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
-
-      # Step 4: Deploy prebuilt artifacts with database URL
-      - name: Start deployment
-        id: deployment
-        if: github.event_name != 'merge_group'
-        uses: bobheadxi/deployments@v1
-        with:
-          step: start
-          token: ${{ github.token }}
-          env: web/preview/${{ needs.prepare.outputs.job-ref }}
-          ref: ${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}
-          desc: Deploying preview environment
-
-      - name: Deploy Web to Vercel
-        id: deploy
-        run: |
-          DEPLOY_ARGS=(deploy --prebuilt --archive=tgz "--token=$VERCEL_TOKEN")
-          DEPLOY_ARGS+=(--meta "branch=$META_BRANCH")
-          DEPLOY_ARGS+=(--meta "pr=$META_PR")
-
-          while IFS= read -r line; do
-            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            if [ -n "$line" ]; then
-              KEY="${line%%=*}"
-              VALUE="${line#*=}"
-              DEPLOY_ARGS+=(--env "$KEY=$VALUE")
-            fi
-          done < "$ENV_FILE"
-
-          echo "Deploying to Vercel with timeout: $VERCEL_DEPLOY_TIMEOUT"
-          set +e
-          DEPLOYMENT_URL=$(timeout "$VERCEL_DEPLOY_TIMEOUT" vercel "${DEPLOY_ARGS[@]}")
-          DEPLOY_STATUS=$?
-          set -e
-          if [ "$DEPLOY_STATUS" -ne 0 ]; then
-            if [ "$DEPLOY_STATUS" -eq 124 ]; then
-              echo "::error::Vercel deploy timed out after $VERCEL_DEPLOY_TIMEOUT"
-            else
-              echo "::error::Vercel deploy failed with exit code $DEPLOY_STATUS"
-            fi
-            exit "$DEPLOY_STATUS"
-          fi
-          echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
-          echo "Deployment URL: $DEPLOYMENT_URL"
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_DEPLOY_TIMEOUT: 15m
-          META_BRANCH: ${{ github.head_ref || github.ref_name }}
-          META_PR: ${{ needs.prepare.outputs.job-ref }}
-          ENV_FILE: ${{ steps.web-deploy-env.outputs.file }}
-
-      - name: Finish deployment
-        uses: bobheadxi/deployments@v1
-        if: always() && github.event_name != 'merge_group' && !(github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '')
-        with:
-          step: finish
-          token: ${{ github.token }}
-          status: ${{ job.status }}
-          env: ${{ steps.deployment.outputs.env }}
-          env_url: ${{ steps.deploy.outputs.url }}
-          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-
-      # Step 5: Create stable preview URL alias (when PREVIEW_DOMAIN is configured)
-      - name: Create Vercel Alias
-        id: alias
-        if: vars.PREVIEW_DOMAIN != ''
-        uses: ./.github/actions/vercel-alias
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          deployment-url: ${{ steps.deploy.outputs.url }}
-          app-name: www
-          job-ref: ${{ needs.prepare.outputs.job-ref }}
-          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
-          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
-          deployment-env: ${{ steps.deployment.outputs.env }}
-
       - name: Resolve API deploy environment
         id: api-deploy-env
-        # Web previews are built with VM0_API_BACKEND_URL pointing at the
-        # matching PR/staging API alias, so the API preview must exist whenever
-        # the web preview exists.
-        if: |
-          needs.prepare.outputs.web-changed == 'true' ||
-          needs.prepare.outputs.api-changed == 'true' ||
-          needs.prepare.outputs.cli-changed == 'true' ||
-          needs.prepare.outputs.platform-changed == 'true' ||
-          needs.prepare.outputs.crates-changed == 'true' ||
-          needs.prepare.outputs.ci-changed == 'true' ||
-          needs.prepare.outputs.e2e-changed == 'true' ||
-          needs.prepare.outputs.api-backend-needed == 'true'
         uses: ./.github/actions/web-api-env
         with:
           app: api
@@ -1011,7 +877,7 @@ jobs:
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           web-url: ${{ needs.prepare.outputs.web-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
-          api-url: ${{ needs.prepare.outputs.web-preview-url }}
+          api-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1019,15 +885,6 @@ jobs:
 
       - name: Deploy API to Vercel
         id: api-deploy
-        if: |
-          needs.prepare.outputs.web-changed == 'true' ||
-          needs.prepare.outputs.api-changed == 'true' ||
-          needs.prepare.outputs.cli-changed == 'true' ||
-          needs.prepare.outputs.platform-changed == 'true' ||
-          needs.prepare.outputs.crates-changed == 'true' ||
-          needs.prepare.outputs.ci-changed == 'true' ||
-          needs.prepare.outputs.e2e-changed == 'true' ||
-          needs.prepare.outputs.api-backend-needed == 'true'
         uses: ./.github/actions/vercel-deploy
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -1047,15 +904,6 @@ jobs:
           skip-finish: ${{ github.event_name == 'merge_group' || (github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '') }}
 
       - name: Check API health
-        if: |
-          needs.prepare.outputs.web-changed == 'true' ||
-          needs.prepare.outputs.api-changed == 'true' ||
-          needs.prepare.outputs.cli-changed == 'true' ||
-          needs.prepare.outputs.platform-changed == 'true' ||
-          needs.prepare.outputs.crates-changed == 'true' ||
-          needs.prepare.outputs.ci-changed == 'true' ||
-          needs.prepare.outputs.e2e-changed == 'true' ||
-          needs.prepare.outputs.api-backend-needed == 'true'
         run: |
           set -euo pipefail
           vercel curl /health --deployment "$API_DEPLOYMENT_URL" --token "$VERCEL_TOKEN" -- \
@@ -1072,17 +920,7 @@ jobs:
 
       - name: Create API Vercel Alias
         id: api-alias
-        if: |
-          vars.PREVIEW_DOMAIN != '' && (
-            needs.prepare.outputs.web-changed == 'true' ||
-            needs.prepare.outputs.api-changed == 'true' ||
-            needs.prepare.outputs.cli-changed == 'true' ||
-            needs.prepare.outputs.platform-changed == 'true' ||
-            needs.prepare.outputs.crates-changed == 'true' ||
-            needs.prepare.outputs.ci-changed == 'true' ||
-            needs.prepare.outputs.e2e-changed == 'true' ||
-            needs.prepare.outputs.api-backend-needed == 'true'
-          )
+        if: vars.PREVIEW_DOMAIN != ''
         uses: ./.github/actions/vercel-alias
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -1095,17 +933,7 @@ jobs:
           deployment-env: ${{ steps.api-deploy.outputs.deployment-env }}
 
       - name: Post API preview URL
-        if: |
-          github.event_name == 'pull_request' && (
-            needs.prepare.outputs.web-changed == 'true' ||
-            needs.prepare.outputs.api-changed == 'true' ||
-            needs.prepare.outputs.cli-changed == 'true' ||
-            needs.prepare.outputs.platform-changed == 'true' ||
-            needs.prepare.outputs.crates-changed == 'true' ||
-            needs.prepare.outputs.ci-changed == 'true' ||
-            needs.prepare.outputs.e2e-changed == 'true' ||
-            needs.prepare.outputs.api-backend-needed == 'true'
-          )
+        if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: api-preview
@@ -1177,6 +1005,182 @@ jobs:
             /tmp/e2e-token-runner.json
           retention-days: 1
 
+  # Deploy web application
+  deploy-web:
+    runs-on: ubuntu-latest-8-cores
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-web-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+    needs: [prepare]
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and web-facing changes need a web preview.
+    # Runs in merge queue too, but skips GitHub Deployment creation (the bobheadxi/deployments action
+    # cannot resolve the temporary `gh-readonly-queue/*` ref via the GitHub API).
+    if: |
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.platform-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true' ||
+        needs.prepare.outputs.api-backend-needed == 'true'
+      )
+    outputs:
+      preview-url: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+      pull-requests: write
+      deployments: write
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Setup Vercel
+        uses: ./.github/actions/vercel-setup
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
+
+      - name: Fetch development Doppler OAuth config
+        id: doppler-oauth
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        with:
+          auth-method: oidc
+          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+          doppler-project: vm0
+          doppler-config: dev
+
+      - name: Resolve Web build environment
+        id: web-build-env
+        uses: ./.github/actions/web-api-env
+        with:
+          app: web
+          environment: preview
+          job-ref: ${{ needs.prepare.outputs.job-ref }}
+          web-url: ${{ needs.prepare.outputs.web-preview-url }}
+          app-url: ${{ needs.prepare.outputs.app-preview-url }}
+          api-url: ${{ needs.prepare.outputs.web-preview-url }}
+          api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
+        env:
+          REPO_VARS_JSON: ${{ toJSON(vars) }}
+          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
+
+      - name: Build Web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          WEB_API_ENV_FILE: ${{ steps.web-build-env.outputs.file }}
+          DEV_MODEL_ANTHROPIC_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY || 'fake-key' }}
+          DEV_MODEL_DEEPSEEK_KEY: fake-key
+        run: |
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              key="${line%%=*}"
+              value="${line#*=}"
+              export "$key=$value"
+            fi
+          done < "$WEB_API_ENV_FILE"
+
+          vercel build --token="$VERCEL_TOKEN"
+
+      - name: Resolve Web deploy environment
+        id: web-deploy-env
+        uses: ./.github/actions/web-api-env
+        with:
+          app: web
+          environment: preview
+          job-ref: ${{ needs.prepare.outputs.job-ref }}
+          web-url: ${{ needs.prepare.outputs.web-preview-url }}
+          app-url: ${{ needs.prepare.outputs.app-preview-url }}
+          api-url: ${{ needs.prepare.outputs.web-preview-url }}
+          api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
+        env:
+          REPO_VARS_JSON: ${{ toJSON(vars) }}
+          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
+
+      - name: Start deployment
+        id: deployment
+        if: github.event_name != 'merge_group'
+        uses: bobheadxi/deployments@v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: web/preview/${{ needs.prepare.outputs.job-ref }}
+          ref: ${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}
+          desc: Deploying preview environment
+
+      - name: Deploy Web to Vercel
+        id: deploy
+        run: |
+          DEPLOY_ARGS=(deploy --prebuilt --archive=tgz "--token=$VERCEL_TOKEN")
+          DEPLOY_ARGS+=(--meta "branch=$META_BRANCH")
+          DEPLOY_ARGS+=(--meta "pr=$META_PR")
+
+          while IFS= read -r line; do
+            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [ -n "$line" ]; then
+              KEY="${line%%=*}"
+              VALUE="${line#*=}"
+              DEPLOY_ARGS+=(--env "$KEY=$VALUE")
+            fi
+          done < "$ENV_FILE"
+
+          echo "Deploying to Vercel with timeout: $VERCEL_DEPLOY_TIMEOUT"
+          set +e
+          DEPLOYMENT_URL=$(timeout "$VERCEL_DEPLOY_TIMEOUT" vercel "${DEPLOY_ARGS[@]}")
+          DEPLOY_STATUS=$?
+          set -e
+          if [ "$DEPLOY_STATUS" -ne 0 ]; then
+            if [ "$DEPLOY_STATUS" -eq 124 ]; then
+              echo "::error::Vercel deploy timed out after $VERCEL_DEPLOY_TIMEOUT"
+            else
+              echo "::error::Vercel deploy failed with exit code $DEPLOY_STATUS"
+            fi
+            exit "$DEPLOY_STATUS"
+          fi
+          echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployment URL: $DEPLOYMENT_URL"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_DEPLOY_TIMEOUT: 15m
+          META_BRANCH: ${{ github.head_ref || github.ref_name }}
+          META_PR: ${{ needs.prepare.outputs.job-ref }}
+          ENV_FILE: ${{ steps.web-deploy-env.outputs.file }}
+
+      - name: Finish deployment
+        uses: bobheadxi/deployments@v1
+        if: always() && github.event_name != 'merge_group' && !(github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '')
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: ${{ steps.deploy.outputs.url }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+
+      - name: Create Vercel Alias
+        id: alias
+        if: vars.PREVIEW_DOMAIN != ''
+        uses: ./.github/actions/vercel-alias
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          deployment-url: ${{ steps.deploy.outputs.url }}
+          app-name: www
+          job-ref: ${{ needs.prepare.outputs.job-ref }}
+          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+          deployment-env: ${{ steps.deployment.outputs.env }}
+
   # Deploy app (Vite SPA)
   deploy-app:
     runs-on: ubuntu-latest
@@ -1185,7 +1189,7 @@ jobs:
       cancel-in-progress: true
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
-    needs: [prepare]
+    needs: [prepare, deploy-api]
     # Deploy if job-ref is set (PR or main), not a release-please commit, and platform/e2e/ci changed
     if: >-
       ${{
@@ -1216,7 +1220,7 @@ jobs:
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_VERCEL_ENV=preview
-            VITE_API_URL=${{ needs.prepare.outputs.web-preview-url }}
+            VITE_API_URL=${{ needs.deploy-api.outputs.preview-url }}
             PUBLIC_ARTIFACTS_BASE_URL=${{ vars.PUBLIC_ARTIFACTS_BASE_URL_DEV || vars.PUBLIC_ARTIFACTS_BASE_URL }}
             VITE_ZERO_HOST_DOMAIN=${{ vars.ZERO_HOST_DOMAIN }}
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
@@ -1244,7 +1248,7 @@ jobs:
 
   # Verify device flow authentication works end-to-end
   # This job runs in parallel with E2E tests - it does NOT block them
-  # E2E tests use the token generated by deploy-web instead
+  # API-backed E2E tokens are generated by deploy-api; these browser tests still navigate the web/app previews.
   cli-e2e-02-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -1433,7 +1437,7 @@ jobs:
       [
         prepare,
         build-cli,
-        deploy-web,
+        deploy-api,
         lint-eslint,
         lint-types,
         lint-format,
@@ -1495,7 +1499,7 @@ jobs:
           ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
           echo "CRON_SIMULATOR_PID=$!" >> "$GITHUB_ENV"
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
@@ -1506,7 +1510,7 @@ jobs:
           BATS_TEST_TIMEOUT=30 ./e2e/test/libs/bats/bin/bats -T --report-formatter junit --output e2e/results ./e2e/tests/01-serial/*.bats
           echo "✅ Serial tests passed"
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
@@ -1638,14 +1642,14 @@ jobs:
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image.sh
 
-  # Deploy runner start: generate config with real preview URL and start service
-  # Waits for both deploy-runner-prepare (binaries + image) and deploy-web (preview URL)
+  # Deploy runner start: generate config with real API preview URL and start service
+  # Waits for both deploy-runner-prepare (binaries + image) and deploy-api (preview URL)
   deploy-runner-start:
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-runner-start-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-runner-prepare, deploy-web]
+    needs: [prepare, deploy-runner-prepare, deploy-api]
     outputs:
       total-capacity: ${{ steps.start.outputs.total-capacity }}
     timeout-minutes: 2
@@ -1674,7 +1678,7 @@ jobs:
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
           SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
-          RUNNER_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
+          RUNNER_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           read_host_capacity() {
@@ -1806,7 +1810,7 @@ jobs:
     concurrency:
       group: e2e-runner-bootstrap-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, build-cli, deploy-web]
+    needs: [prepare, build-cli, deploy-api]
     if: |
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
@@ -1868,13 +1872,13 @@ jobs:
           curl -fsS "${headers[@]}" -X PUT -d "$payload" "${VM0_API_URL}/api/zero/model-policies" >/dev/null
           curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null}' "${VM0_API_URL}/api/zero/user-model-preference" >/dev/null
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap test account
         run: |
           zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   # Skip on push to main - runner tests are only needed for PRs
@@ -1887,7 +1891,7 @@ jobs:
       [
         prepare,
         build-cli,
-        deploy-web,
+        deploy-api,
         deploy-runner-prepare,
         deploy-runner-start,
         e2e-runner-bootstrap,
@@ -1943,7 +1947,7 @@ jobs:
           ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
           echo "CRON_SIMULATOR_PID=$!" >> "$GITHUB_ENV"
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
@@ -1963,7 +1967,7 @@ jobs:
         env:
           RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}
           RUNNER_CHUNK_COUNT: ${{ needs.deploy-runner-prepare.outputs.chunk-count }}
-          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
+          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
           USE_MOCK_CODEX: "true"
@@ -2209,6 +2213,7 @@ jobs:
       - test-api
       - test-other
       - build-api
+      - deploy-api
       - deploy-web
       - deploy-app
       - build-cli
@@ -2286,6 +2291,7 @@ jobs:
           # May-skip: 'success' or 'skipped' are both acceptable
           check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
           check_result "build-api" "${{ needs.build-api.result }}" "true"
+          check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
           check_result "deploy-web" "${{ needs.deploy-web.result }}" "true"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "true"
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
