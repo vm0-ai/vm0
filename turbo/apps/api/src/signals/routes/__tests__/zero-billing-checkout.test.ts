@@ -284,7 +284,7 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   });
 
-  it("upgrades active Pro to Team by updating the existing subscription", async () => {
+  it("upgrades active Pro to Team without refreshing local tier before invoice payment", async () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
     const periodEnd = 1_800_000_000;
@@ -361,14 +361,14 @@ describe("POST /api/zero/billing/checkout", () => {
       .limit(1);
 
     expect(row).toStrictEqual({
-      tier: "team",
+      tier: "pro",
       stripeSubscriptionId: subscriptionId,
       subscriptionStatus: "active",
-      currentPeriodEnd: new Date(periodEnd * 1000),
+      currentPeriodEnd: null,
     });
   });
 
-  it("ends Pro trial when upgrading to Team and retains trial credits", async () => {
+  it("ends Pro trial when upgrading to Team and waits for invoice payment before refreshing tier", async () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
     const invoiceId = `inv_${randomUUID().slice(0, 8)}`;
@@ -465,9 +465,9 @@ describe("POST /api/zero/billing/checkout", () => {
       .where(eq(creditExpiresRecord.orgId, fixture.orgId));
 
     expect(row).toStrictEqual({
-      tier: "team",
+      tier: "pro",
       stripeSubscriptionId: subscriptionId,
-      subscriptionStatus: "active",
+      subscriptionStatus: "trialing",
     });
     expect(records).toStrictEqual([
       {

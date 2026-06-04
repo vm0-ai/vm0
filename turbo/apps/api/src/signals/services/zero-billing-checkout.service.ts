@@ -5,7 +5,7 @@ import type { Stripe } from "stripe";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../external/time";
-import { writeDb$, type Db } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 
@@ -160,9 +160,7 @@ function successUrlAfterSubscriptionUpdate(successUrl: string): string {
 }
 
 async function upgradeProSubscriptionToTeam(args: {
-  readonly db: Db;
   readonly stripe: ReturnType<typeof getStripeClient>;
-  readonly orgId: string;
   readonly subscriptionId: string;
   readonly subscriptionStatus: string | null;
   readonly teamPriceId: string;
@@ -182,24 +180,7 @@ async function upgradeProSubscriptionToTeam(args: {
     proration_behavior: "always_invoice",
     ...(args.subscriptionStatus === "trialing" ? { trial_end: "now" } : {}),
   };
-  const updatedSubscription = await args.stripe.subscriptions.update(
-    args.subscriptionId,
-    updateParams,
-  );
-  const periodEnd = subscriptionPeriodEnd(updatedSubscription);
-
-  await args.db
-    .update(orgMetadata)
-    .set({
-      tier: "team",
-      stripeSubscriptionId: updatedSubscription.id,
-      subscriptionStatus: updatedSubscription.status,
-      cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end,
-      onboardingPaymentPending: false,
-      ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
-      updatedAt: nowDate(),
-    })
-    .where(eq(orgMetadata.orgId, args.orgId));
+  await args.stripe.subscriptions.update(args.subscriptionId, updateParams);
 
   return successUrlAfterSubscriptionUpdate(args.successUrl);
 }
@@ -271,9 +252,7 @@ export const createCheckoutSession$ = command(
       org.stripeSubscriptionId
     ) {
       const url = await upgradeProSubscriptionToTeam({
-        db,
         stripe,
-        orgId: args.orgId,
         subscriptionId: org.stripeSubscriptionId,
         subscriptionStatus: org.subscriptionStatus,
         teamPriceId: args.priceId,
