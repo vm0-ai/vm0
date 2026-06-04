@@ -14,7 +14,6 @@ use crate::http::HttpClient;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info};
 use serde::Serialize;
-use serde_json::json;
 
 mod api;
 mod archive;
@@ -33,6 +32,14 @@ pub(crate) struct FileEntry {
     pub(crate) path: String,
     pub(crate) hash: String,
     pub(crate) size: u64,
+}
+
+#[derive(Serialize)]
+struct ArtifactManifest<'a> {
+    version: u8,
+    files: &'a [FileEntry],
+    #[serde(rename = "createdAt")]
+    created_at: String,
 }
 
 pub(crate) struct SnapshotResult {
@@ -260,6 +267,26 @@ fn extract_uploads(uploads: Option<PreparedUploads>) -> Result<PreparedUploads, 
     uploads.ok_or_else(|| AgentError::Checkpoint("No upload URLs in prepare response".into()))
 }
 
+async fn write_manifest_file(
+    manifest_path: PathBuf,
+    files: Vec<FileEntry>,
+) -> Result<(), AgentError> {
+    tokio::task::spawn_blocking(move || {
+        let manifest = ArtifactManifest {
+            version: 1,
+            files: &files,
+            created_at: guest_common::log::timestamp(),
+        };
+        let file = std::fs::File::create(manifest_path)?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer_pretty(&mut writer, &manifest)?;
+        std::io::Write::flush(&mut writer)?;
+        Ok::<(), AgentError>(())
+    })
+    .await
+    .map_err(|e| AgentError::Execution(format!("manifest write task panicked: {e}")))?
+}
+
 async fn create_archive_bundle(
     mount_path: &str,
     files: &[FileEntry],
@@ -285,17 +312,7 @@ async fn create_archive_bundle(
     }
     record_sandbox_op("artifact_archive_create", arc_start.elapsed(), true, None);
 
-    let manifest = json!({
-        "version": 1,
-        "files": files,
-        "createdAt": guest_common::log::timestamp(),
-    });
-    std::fs::write(
-        &manifest_path,
-        serde_json::to_string_pretty(&manifest)
-            .map_err(|e| AgentError::Checkpoint(e.to_string()))?,
-    )
-    .map_err(|e| AgentError::Checkpoint(format!("Failed to write manifest: {e}")))?;
+    write_manifest_file(manifest_path.clone(), files.to_vec()).await?;
 
     Ok(ArchiveBundle {
         _temp_dir: temp_dir,
@@ -324,11 +341,10 @@ async fn upload_archive_bundle(
     }
 
     log_info!(LOG_TAG, "Uploading manifest to S3...");
-    let manifest_data = tokio::fs::read(&archive.manifest_path).await?;
     if let Err(e) = http
-        .put_presigned(
+        .put_presigned_file(
             &uploads.manifest_url,
-            manifest_data.into(),
+            &archive.manifest_path,
             "application/json",
         )
         .await
