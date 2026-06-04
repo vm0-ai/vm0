@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.108.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.5...runner-rs-v0.108.6) (2026-06-04)
+
+
+### Bug Fixes
+
+* drain usage flushes during shutdown ([#16181](https://github.com/vm0-ai/vm0/issues/16181)) ([6ba3593](https://github.com/vm0-ai/vm0/commit/6ba35934834c1d82e4ddac85f959a5e5bfdd666c))
+* **runner:** document and harden mitm matcher malformed inputs ([#16164](https://github.com/vm0-ai/vm0/issues/16164)) ([b839b76](https://github.com/vm0-ai/vm0/commit/b839b76fc640b668ec5051348b2b325dd562b618))
+
 ## [0.108.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.4...runner-rs-v0.108.5) (2026-06-04)
 
 

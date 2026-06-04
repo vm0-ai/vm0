@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.410.0](https://github.com/vm0-ai/vm0/compare/web-v12.409.11...web-v12.410.0) (2026-06-04)
+
+
+### Features
+
+* migrate legacy schedules to chat thread from schedules page ([#16215](https://github.com/vm0-ai/vm0/issues/16215)) ([f103975](https://github.com/vm0-ai/vm0/commit/f103975ad8fe77ab4b350c223740f215a67e92ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.64.0
+    * @vm0/core bumped to 8.310.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.47.1
+
 ## [12.409.11](https://github.com/vm0-ai/vm0/compare/web-v12.409.10...web-v12.409.11) (2026-06-04)
 
 

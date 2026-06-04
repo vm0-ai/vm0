@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.104.0](https://github.com/vm0-ai/vm0/compare/api-v1.103.0...api-v1.104.0) (2026-06-04)
+
+
+### Features
+
+* migrate legacy schedules to chat thread from schedules page ([#16215](https://github.com/vm0-ai/vm0/issues/16215)) ([f103975](https://github.com/vm0-ai/vm0/commit/f103975ad8fe77ab4b350c223740f215a67e92ee))
+
+
+### Bug Fixes
+
+* migrate Lark to refresh-token access ([#16198](https://github.com/vm0-ai/vm0/issues/16198)) ([748faae](https://github.com/vm0-ai/vm0/commit/748faae0abe2ee087ef13923f1aa202f1d623dcc))
+
+
+### Refactoring
+
+* replace connector provided env names ([#16212](https://github.com/vm0-ai/vm0/issues/16212)) ([defceb5](https://github.com/vm0-ai/vm0/commit/defceb5b08717af9228f1c7021bc54fdf7ab7893))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.64.0
+    * @vm0/connectors bumped to 1.47.1
+    * @vm0/core bumped to 8.310.1
+    * @vm0/db bumped to 1.32.0
+
 ## [1.103.0](https://github.com/vm0-ai/vm0/compare/api-v1.102.0...api-v1.103.0) (2026-06-04)
 
 

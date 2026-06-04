@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.181.1](https://github.com/vm0-ai/vm0/compare/cli-v9.181.0...cli-v9.181.1) (2026-06-04)
+
+
+### Refactoring
+
+* replace connector provided env names ([#16212](https://github.com/vm0-ai/vm0/issues/16212)) ([defceb5](https://github.com/vm0-ai/vm0/commit/defceb5b08717af9228f1c7021bc54fdf7ab7893))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.64.0
+    * @vm0/connectors bumped to 1.47.1
+    * @vm0/core bumped to 8.310.1
+
 ## [9.181.0](https://github.com/vm0-ai/vm0/compare/cli-v9.180.17...cli-v9.181.0) (2026-06-04)
 
 
