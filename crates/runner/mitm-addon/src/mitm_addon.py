@@ -67,6 +67,7 @@ _BROWSER_USER_AGENT_MARKERS = (
 )
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
+_MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
 
 # Runner-triggered usage drain protocol:
 # - Rust writes `usage-flush-request` with the active usageStateId and a fresh
@@ -661,9 +662,13 @@ def _single_content_length_response_size(content_length: str) -> int | None:
         return None
 
     try:
-        return int(content_length)
+        response_size = int(content_length)
     except ValueError:
         return None
+
+    if response_size > _MAX_SAFE_NETWORK_LOG_SIZE:
+        return None
+    return response_size
 
 
 def _release_usage_hook_state(flow: http.HTTPFlow, *, release_tracking: bool) -> None:
