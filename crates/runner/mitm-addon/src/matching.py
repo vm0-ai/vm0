@@ -1229,10 +1229,14 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
 # Malformed config for an unrelated base does not block unrelated traffic.
 #
 # Preserve current decision precedence when changing this code or these docs:
-# unsafe paths block immediately after base match; explicit allow/deny rule
-# decisions resolve before retained malformed state; if no allow/deny resolved,
-# malformed network policy resolves before malformed firewall config; malformed
-# unknownPolicy only affects unknown-endpoint resolution.
+# unsafe paths block immediately after base match. APIs with malformed firewall
+# name, base, or auth config record malformed firewall config and then skip rule
+# evaluation for that API. Malformed permission/rule config records malformed
+# firewall config but still lets valid compiled rules on that API participate.
+# Recorded allow/deny rule decisions resolve before retained malformed state; if
+# no allow/deny resolved, malformed network policy resolves before malformed
+# firewall config; malformed unknownPolicy only affects unknown-endpoint
+# resolution.
 def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
     """Compile firewall data and retain selected malformed state.
 
@@ -1716,9 +1720,11 @@ def match_compiled_firewall_request(
     Retained malformed state from the compile functions applies only after the
     request matches a compiled base. It can surface as FirewallBlock reasons
     ``malformed_firewall_config`` or ``malformed_network_policy``; unsafe paths
-    use ``unsafe_path`` after base match. Explicit allow/deny rule decisions
-    keep their current precedence over retained malformed state, and malformed
-    ``unknownPolicy`` only affects unknown-endpoint resolution.
+    use ``unsafe_path`` after base match. APIs with malformed firewall name,
+    base, or auth config do not evaluate their rules; malformed permission/rule
+    config can still leave valid compiled rules eligible. Recorded allow/deny
+    rule decisions keep their current precedence over retained malformed state,
+    and malformed ``unknownPolicy`` only affects unknown-endpoint resolution.
 
     Returns:
       FirewallAllow — granted permission matched or unknown endpoint allowed
