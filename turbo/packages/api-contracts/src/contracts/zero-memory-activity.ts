@@ -49,8 +49,9 @@ const memoryActivityEntrySchema = z.object({
 
 /**
  * Precomputed daily Memory Activity timeline for the current user, ordered
- * most-recent-day first. Each entry is a per-local-day net summary of memory
- * changes with structured diff evidence — served as a pure DB read.
+ * most-recent-day first. Each entry is a per-local-day net summary with at
+ * least one changed memory file and structured diff evidence — served as a
+ * pure DB read.
  */
 export const memoryActivityResponseSchema = z.object({
   entries: z.array(memoryActivityEntrySchema),

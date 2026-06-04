@@ -30,8 +30,8 @@ interface MemoryActivityResult {
  * purely from the precomputed `memory_change_summaries` /
  * `memory_change_items` tables (never touches S3).
  *
- * Summaries are scoped per (orgId, userId) and returned most-recent-day first;
- * each summary's deterministic change items are nested under it.
+ * Summaries are scoped per (orgId, userId) and returned most-recent-day first
+ * when they have deterministic change items to display.
  */
 export function zeroMemoryActivity(
   orgId: string,
@@ -88,15 +88,20 @@ export function zeroMemoryActivity(
       itemsBySummaryId.set(item.summaryId, bucket);
     }
 
-    const entries = summaries.map((summary): MemoryActivityEntry => {
-      return {
+    const entries: MemoryActivityEntry[] = [];
+    for (const summary of summaries) {
+      const summaryItems = itemsBySummaryId.get(summary.id) ?? [];
+      if (summaryItems.length === 0) {
+        continue;
+      }
+      entries.push({
         date: summary.date,
         summary: summary.summary,
         fromVersionId: summary.fromVersionId,
         toVersionId: summary.toVersionId,
-        items: itemsBySummaryId.get(summary.id) ?? [],
-      };
-    });
+        items: summaryItems,
+      });
+    }
 
     return { entries };
   });

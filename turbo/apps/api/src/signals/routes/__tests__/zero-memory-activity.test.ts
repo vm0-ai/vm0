@@ -166,6 +166,18 @@ describe("GET /api/zero/memory/activity", () => {
       },
       context.signal,
     );
+    await store.set(
+      seedMemoryActivitySummary$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: "2025-05-04",
+        fromVersionId: "v2",
+        toVersionId: "v3",
+        summary: null,
+      },
+      context.signal,
+    );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -212,7 +224,7 @@ describe("GET /api/zero/memory/activity", () => {
     });
   });
 
-  it("returns an entry with no items", async () => {
+  it("omits entries with no items", async () => {
     const fixture = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
@@ -234,15 +246,7 @@ describe("GET /api/zero/memory/activity", () => {
       [200],
     );
 
-    expect(response.body.entries).toStrictEqual([
-      {
-        date: "2025-06-01",
-        summary: "A quiet narrative day",
-        fromVersionId: null,
-        toVersionId: "v9",
-        items: [],
-      },
-    ]);
+    expect(response.body.entries).toStrictEqual([]);
   });
 
   it("orders a summary's items deterministically by file_path", async () => {
@@ -330,6 +334,12 @@ describe("GET /api/zero/memory/activity", () => {
         date: "2025-05-12",
         toVersionId: "mine-v1",
         summary: "My memory",
+        items: [
+          {
+            filePath: "mine.md",
+            diff: addedDiff("Visible"),
+          },
+        ],
       },
       context.signal,
     );
@@ -346,7 +356,12 @@ describe("GET /api/zero/memory/activity", () => {
       summary: "My memory",
       fromVersionId: null,
       toVersionId: "mine-v1",
-      items: [],
+      items: [
+        {
+          filePath: "mine.md",
+          diff: addedDiff("Visible"),
+        },
+      ],
     });
   });
 });
