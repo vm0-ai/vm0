@@ -162,10 +162,27 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
     expect(body.schedule.chatThreadId).toBeNull();
   });
 
+  it("requires a chat thread for a new schedule when the switch is on", async () => {
+    const fixture = await seedFixture();
+    await enableChatMode(fixture);
+
+    const response = await deploySchedule({
+      name: "needs-thread",
+      agentId: fixture.composeId,
+      cronExpression: "0 9 * * *",
+      prompt: "daily report",
+      description: "d",
+    });
+
+    expect(response.status).toBe(400);
+    expectErrorCode(response, "BAD_REQUEST");
+  });
+
   it("rejects changing the chat thread on an existing schedule", async () => {
     const fixture = await seedFixture();
     await enableChatMode(fixture);
     const threadId = await seedThread(fixture);
+    const otherThreadId = await seedThread(fixture);
 
     const created = await deploySchedule({
       name: "immutable-sched",
@@ -173,6 +190,7 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
       cronExpression: "0 9 * * *",
       prompt: "daily report",
       description: "d",
+      chatThreadId: threadId,
     });
     expect(created.status).toBe(201);
 
@@ -182,7 +200,7 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
       cronExpression: "0 10 * * *",
       prompt: "daily report",
       description: "d",
-      chatThreadId: threadId,
+      chatThreadId: otherThreadId,
     });
     expect(redeploy.status).toBe(400);
     expectErrorCode(redeploy, "BAD_REQUEST");

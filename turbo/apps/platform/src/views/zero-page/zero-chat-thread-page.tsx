@@ -155,7 +155,10 @@ import {
   githubPrTrackingLabelOptions$,
   setGithubPrTrackingOpenThreadId$,
 } from "../../signals/chat-page/github-pr-tracking.ts";
-import { chatThreadSchedules$ } from "../../signals/chat-page/chat-thread-schedules.ts";
+import {
+  headerScheduleMenu$,
+  reloadHeaderScheduleMenu$,
+} from "../../signals/chat-page/header-schedule-menu.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
@@ -920,61 +923,62 @@ function GithubPrTrackingButton({
   );
 }
 
-function ScheduleMenuButton({ thread }: { thread: ChatThreadSignals }) {
+function ScheduleMenuButton() {
   const features = useLastResolved(featureSwitch$);
-  // Gate the whole feature — and its per-thread fetch — on the switch, so a
-  // switch-off thread open incurs no schedules request.
+  // Shown whenever the ScheduledChat switch is on (independent of any thread).
   if (!(features?.[FeatureSwitchKey.ScheduledChat] ?? false)) {
     return null;
   }
-  return <ScheduleMenuButtonInner thread={thread} />;
+  return <ScheduleMenuButtonInner />;
 }
 
-function ScheduleMenuButtonInner({ thread }: { thread: ChatThreadSignals }) {
-  const schedulesLoadable = useLastLoadable(
-    chatThreadSchedules$(thread.threadId),
-  );
+function ScheduleMenuButtonInner() {
   const navigate = useSet(detachedNavigateTo$);
-
-  // Hide the icon until we know there is at least one linked schedule.
-  if (
-    schedulesLoadable.state !== "hasData" ||
-    schedulesLoadable.data.length === 0
-  ) {
-    return null;
-  }
-  const schedules = schedulesLoadable.data;
+  const reloadSchedules = useSet(reloadHeaderScheduleMenu$);
+  const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
+  const schedules =
+    schedulesLoadable.state === "hasData" ? schedulesLoadable.data : [];
 
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (open) {
+          reloadSchedules();
+        }
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <button
           type="button"
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
-          aria-label="Linked schedules"
+          aria-label="Schedules"
         >
           <IconClock size={18} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        {schedules.map((schedule) => {
-          return (
-            <DropdownMenuItem
-              key={schedule.id}
-              onClick={() => {
-                navigate("/schedules/:scheduleId", {
-                  pathParams: { scheduleId: schedule.id },
-                });
-              }}
-            >
-              <IconClock
-                size={15}
-                className="mr-2 shrink-0 text-muted-foreground"
-              />
-              <span className="truncate">{schedule.name}</span>
-            </DropdownMenuItem>
-          );
-        })}
+        {schedules.length === 0 ? (
+          <DropdownMenuItem disabled>No schedules</DropdownMenuItem>
+        ) : (
+          schedules.map((schedule) => {
+            return (
+              <DropdownMenuItem
+                key={schedule.id}
+                onClick={() => {
+                  navigate("/schedules/:scheduleId", {
+                    pathParams: { scheduleId: schedule.id },
+                  });
+                }}
+              >
+                <IconClock
+                  size={15}
+                  className="mr-2 shrink-0 text-muted-foreground"
+                />
+                <span className="truncate">{schedule.name}</span>
+              </DropdownMenuItem>
+            );
+          })
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1050,8 +1054,8 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
+        <ScheduleMenuButton />
         <ArtifactsButton thread={thread} />
-        <ScheduleMenuButton thread={thread} />
         {githubPrTrackingEnabled && agentId && (
           <GithubPrTrackingButton thread={thread} agentId={agentId} />
         )}

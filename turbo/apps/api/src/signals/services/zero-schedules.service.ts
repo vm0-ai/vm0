@@ -467,6 +467,69 @@ async function isChatThreadLinkable(
   );
 }
 
+type ChatThreadLinkResult =
+  | { readonly ok: true; readonly chatThreadId: string | null }
+  | { readonly ok: false; readonly error: DeployScheduleResult };
+
+/**
+ * Resolve the chat-thread link for a deploy, enforcing the ScheduledChat gate:
+ * switch ON requires a NEW schedule to carry an owned chat thread (immutable
+ * after create); switch OFF ignores the field (legacy schedule).
+ */
+async function resolveScheduleChatThreadLink(args: {
+  readonly db: Db;
+  readonly chatModeEnabled: boolean;
+  readonly chatThreadId: string | undefined;
+  readonly agentId: string;
+  readonly userId: string;
+  readonly existing: boolean;
+  readonly signal: AbortSignal;
+}): Promise<ChatThreadLinkResult> {
+  if (args.chatThreadId !== undefined) {
+    if (args.existing) {
+      return {
+        ok: false,
+        error: {
+          kind: "bad_request",
+          message:
+            "chatThreadId is immutable: a schedule's chat thread can only be set when it is first created",
+        },
+      };
+    }
+    if (!args.chatModeEnabled) {
+      return { ok: true, chatThreadId: null };
+    }
+    const linkable = await isChatThreadLinkable(args.db, {
+      chatThreadId: args.chatThreadId,
+      userId: args.userId,
+      agentId: args.agentId,
+    });
+    args.signal.throwIfAborted();
+    if (!linkable) {
+      return {
+        ok: false,
+        error: {
+          kind: "bad_request",
+          message:
+            "Chat thread not found, not owned by this user, or belongs to a different agent",
+        },
+      };
+    }
+    return { ok: true, chatThreadId: args.chatThreadId };
+  }
+  if (!args.existing && args.chatModeEnabled) {
+    return {
+      ok: false,
+      error: {
+        kind: "bad_request",
+        message:
+          "chatThreadId is required when chat-mode schedules are enabled",
+      },
+    };
+  }
+  return { ok: true, chatThreadId: null };
+}
+
 async function updateExistingSchedule(
   db: Db,
   args: {
@@ -593,48 +656,35 @@ export const deploySchedule$ = command(
     });
     signal.throwIfAborted();
 
-    // Chat-mode linkage (locked: create-only / immutable; gated by the
-    // ScheduledChat switch). The CLI/UI default chatThreadId to the current
-    // thread ($ZERO_CHAT_THREAD_ID), so this field is commonly present even for
-    // would-be legacy schedules. When the switch is OFF we therefore IGNORE it
-    // (create a legacy schedule) rather than reject, to avoid breaking schedule
-    // creation from inside any thread. Changing the link after creation is not
-    // allowed (immutable).
-    let chatThreadIdToLink: string | null = null;
-    if (args.body.chatThreadId !== undefined) {
-      if (existing) {
-        return {
-          kind: "bad_request",
-          message:
-            "chatThreadId is immutable: a schedule's chat thread can only be set when it is first created",
-        };
-      }
-      const overrides = await get(
-        userFeatureSwitchOverrides(args.orgId, args.userId),
-      );
-      signal.throwIfAborted();
-      const chatModeEnabled = isFeatureEnabled(FeatureSwitchKey.ScheduledChat, {
-        orgId: args.orgId,
-        userId: args.userId,
-        overrides,
-      });
-      if (chatModeEnabled) {
-        const linkable = await isChatThreadLinkable(db, {
-          chatThreadId: args.body.chatThreadId,
-          userId: args.userId,
-          agentId: args.body.agentId,
-        });
-        signal.throwIfAborted();
-        if (!linkable) {
-          return {
-            kind: "bad_request",
-            message:
-              "Chat thread not found, not owned by this user, or belongs to a different agent",
-          };
-        }
-        chatThreadIdToLink = args.body.chatThreadId;
-      }
+    // Chat-mode linkage, gated by the ScheduledChat switch:
+    // - Switch ON: a NEW schedule MUST be linked to an owned chat thread. The
+    //   CLI/agent default chatThreadId to $ZERO_CHAT_THREAD_ID, so it is
+    //   normally present; a create without one is rejected. The link is
+    //   create-only / immutable.
+    // - Switch OFF: chatThreadId is ignored (legacy schedule), so creation from
+    //   contexts that auto-send a thread id never breaks.
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    const chatModeEnabled = isFeatureEnabled(FeatureSwitchKey.ScheduledChat, {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides,
+    });
+    const chatLink = await resolveScheduleChatThreadLink({
+      db,
+      chatModeEnabled,
+      chatThreadId: args.body.chatThreadId,
+      agentId: args.body.agentId,
+      userId: args.userId,
+      existing: existing !== null,
+      signal,
+    });
+    if (!chatLink.ok) {
+      return chatLink.error;
     }
+    const chatThreadIdToLink = chatLink.chatThreadId;
 
     const effectiveBody =
       existing && args.body.enabled === undefined
