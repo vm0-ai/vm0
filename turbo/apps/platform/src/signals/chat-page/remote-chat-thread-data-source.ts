@@ -83,6 +83,7 @@ const appendQueuedMessage$ = command(
       role: "user" as const,
       content,
       attachFiles: attachments ?? undefined,
+      generationTemplate,
       createdAt: result.body.createdAt ?? new Date().toISOString(),
     };
   },

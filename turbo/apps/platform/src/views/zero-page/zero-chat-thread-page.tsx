@@ -37,6 +37,7 @@ import {
   IconLoader2,
   IconMessageCircle,
   IconPackage,
+  IconPresentation,
   IconTag,
   IconX,
 } from "@tabler/icons-react";
@@ -65,6 +66,7 @@ import type {
   GenerationTemplateRequest,
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import emptyChatImg from "./assets/empty-chat.webp";
@@ -4880,6 +4882,68 @@ function UserMessageActions({
   );
 }
 
+function formatTemplateIdLabel(templateId: string): string {
+  const label = templateId
+    .replace(/^template:/, "")
+    .replace(/^html-ppt-/, "")
+    .replace(/-/g, " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function generationTemplateLabel(
+  value: GenerationTemplateRequest | undefined,
+): string | null {
+  if (!value) {
+    return null;
+  }
+  const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
+    return (
+      candidate.designSystemId === value.selection.designSystemId &&
+      candidate.templateId === value.selection.templateId
+    );
+  });
+  return item?.title ?? formatTemplateIdLabel(value.selection.templateId);
+}
+
+function generationTemplateTypeLabel(
+  value: GenerationTemplateRequest | undefined,
+): string | null {
+  if (!value) {
+    return null;
+  }
+  return "Slides";
+}
+
+function UserMessageGenerationTemplate({
+  generationTemplate,
+}: {
+  generationTemplate: GenerationTemplateRequest | undefined;
+}) {
+  const features = useLastResolved(featureSwitch$);
+  const templateLabelEnabled =
+    features?.[FeatureSwitchKey.ChatTemplatePicker] ?? false;
+  if (!templateLabelEnabled) {
+    return null;
+  }
+  const label = generationTemplateLabel(generationTemplate);
+  const typeLabel = generationTemplateTypeLabel(generationTemplate);
+  if (!label || !typeLabel) {
+    return null;
+  }
+  return (
+    <div
+      aria-label={`Message template ${label}`}
+      className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
+      title={`${typeLabel} · ${label}`}
+    >
+      <IconPresentation size={15} stroke={1.8} className="shrink-0" />
+      <span className="shrink-0">{typeLabel}</span>
+      <span className="shrink-0">·</span>
+      <span className="min-w-0 truncate">{label}</span>
+    </div>
+  );
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -4937,6 +5001,9 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
+          <UserMessageGenerationTemplate
+            generationTemplate={message.generationTemplate}
+          />
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">

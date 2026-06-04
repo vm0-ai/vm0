@@ -317,6 +317,14 @@ describe("optimistic chat thread (local mode)", () => {
     const thread = context.store.get(currentLeftThread$);
     expect(thread).not.toBeNull();
     const groups = await context.store.get(thread!.groupedChatMessages$);
+    const userMessage = groups
+      .flatMap((group) => {
+        return group.messages;
+      })
+      .find((message) => {
+        return message.role === "user";
+      });
+    expect(userMessage?.generationTemplate).toStrictEqual(generationTemplate);
     expect(
       groups.flatMap((group) => {
         return group.messages.map((message) => {

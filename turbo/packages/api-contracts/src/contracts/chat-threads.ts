@@ -151,6 +151,18 @@ const summaryEntrySchema = z.union([
   textSummaryEntrySchema,
 ]);
 
+const presentationGenerationTemplateRequestSchema = z.object({
+  type: z.literal("presentation"),
+  selection: z.object({
+    designSystemId: z.string().min(1),
+    templateId: z.string().min(1),
+  }),
+});
+
+const generationTemplateRequestSchema = z.discriminatedUnion("type", [
+  presentationGenerationTemplateRequestSchema,
+]);
+
 const pagedChatMessageBaseSchema = z.object({
   id: z.string(),
   content: z.string().nullable(),
@@ -159,6 +171,7 @@ const pagedChatMessageBaseSchema = z.object({
   interruptsRunId: z.string().optional(),
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
+  generationTemplate: generationTemplateRequestSchema.optional(),
   createdAt: z.string(),
 });
 
@@ -267,18 +280,6 @@ const modelSelectionRequestSchema = z
       });
     }
   });
-
-const presentationGenerationTemplateRequestSchema = z.object({
-  type: z.literal("presentation"),
-  selection: z.object({
-    designSystemId: z.string().min(1),
-    templateId: z.string().min(1),
-  }),
-});
-
-const generationTemplateRequestSchema = z.discriminatedUnion("type", [
-  presentationGenerationTemplateRequestSchema,
-]);
 
 /**
  * Chat threads list route contract (/api/chat-threads)

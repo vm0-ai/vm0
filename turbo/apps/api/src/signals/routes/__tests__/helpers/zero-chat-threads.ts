@@ -11,6 +11,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
+  type ChatMessageGenerationTemplate,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -163,6 +164,7 @@ interface SeedChatMessageOptions {
   readonly createdAt?: Date;
   readonly sequenceNumber?: number | null;
   readonly runId?: string | null;
+  readonly generationTemplate?: ChatMessageGenerationTemplate;
 }
 
 export const seedZeroChatMessage$ = command(
@@ -184,6 +186,7 @@ export const seedZeroChatMessage$ = command(
       attachFileMetadata: options.attachFileMetadata
         ? [...options.attachFileMetadata]
         : null,
+      generationTemplate: options.generationTemplate,
       sequenceNumber: options.sequenceNumber ?? null,
       runId: options.runId ?? null,
       createdAt,

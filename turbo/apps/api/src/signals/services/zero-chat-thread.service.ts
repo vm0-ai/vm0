@@ -21,6 +21,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
+  type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowupGenerationType,
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
@@ -106,6 +107,7 @@ type ChatMessageRow = {
   readonly runError: string | null;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
+  readonly generationTemplate: ChatMessageGenerationTemplate | null;
   readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
@@ -200,6 +202,7 @@ const messageColumns = {
   runError: agentRuns.error,
   attachFiles: chatMessages.attachFiles,
   attachFileMetadata: chatMessages.attachFileMetadata,
+  generationTemplate: chatMessages.generationTemplate,
   recommendedFollowups: chatMessages.recommendedFollowups,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
@@ -599,6 +602,7 @@ function toPagedMessage(
       interruptsRunId: row.interruptsRunId ?? undefined,
       error: effectiveError,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
+      generationTemplate: row.generationTemplate ?? undefined,
       createdAt: row.createdAt.toISOString(),
     };
     if (role !== "assistant") {

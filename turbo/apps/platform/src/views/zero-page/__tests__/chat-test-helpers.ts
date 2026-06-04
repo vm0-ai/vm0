@@ -477,6 +477,7 @@ export function mockChatLifecycle(options?: {
       role: "user" as const,
       content: body.prompt ?? "",
       attachFiles,
+      generationTemplate: body.generationTemplate,
       createdAt: now,
     });
     return { runId: null, threadId, createdAt: now };

@@ -160,7 +160,7 @@ function queuedReplayAppendArgs({
     clientMessageId: entry.message.id,
     hasTextContent: hasTextContentForQueuedReplay(entry.message),
     modelSelection,
-    generationTemplate: undefined,
+    generationTemplate: entry.message.generationTemplate,
     ...(entry.forceNewSession ? { forceNewSession: true } : {}),
   };
 }
@@ -517,6 +517,7 @@ const sendNewThreadMessage$ = command(
         role: "user",
         content: prepared.prompt,
         attachFiles: prepared.attachments,
+        generationTemplate,
         createdAt: messageCreatedAt,
       },
     });
