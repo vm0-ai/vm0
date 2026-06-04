@@ -437,4 +437,45 @@ mod tests {
         assert_eq!(visited[0].msg_type, MSG_PONG);
         assert_eq!(visited[0].payload, b"second");
     }
+
+    #[test]
+    fn decode_with_preserves_later_frames_after_mid_batch_visitor_error() {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        enum VisitorError {
+            Stop,
+        }
+
+        let mut data = encode(MSG_PING, 1, b"first").unwrap();
+        data.extend_from_slice(&encode(MSG_PONG, 2, b"second").unwrap());
+        data.extend_from_slice(&encode(MSG_READY, 3, b"third").unwrap());
+        let mut dec = Decoder::new();
+        let mut visited = Vec::new();
+
+        let err = dec
+            .decode_with(&data, |msg| {
+                visited.push((msg.msg_type, msg.seq, msg.payload.to_vec()));
+                if msg.seq == 2 {
+                    Err(VisitorError::Stop)
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap_err();
+        assert!(matches!(err, DecodeWithError::Visitor(VisitorError::Stop)));
+        assert_eq!(
+            visited,
+            vec![
+                (MSG_PING, 1, b"first".to_vec()),
+                (MSG_PONG, 2, b"second".to_vec()),
+            ]
+        );
+
+        visited.clear();
+        dec.decode_with(&[], |msg| {
+            visited.push((msg.msg_type, msg.seq, msg.payload.to_vec()));
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+        assert_eq!(visited, vec![(MSG_READY, 3, b"third".to_vec())]);
+    }
 }
