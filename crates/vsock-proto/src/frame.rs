@@ -22,7 +22,7 @@ impl RawMessage {
     }
 }
 
-/// A raw decoded message that borrows its payload from a decoder buffer.
+/// A raw decoded message that borrows its payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BorrowedRawMessage<'a> {
     pub msg_type: u8,
