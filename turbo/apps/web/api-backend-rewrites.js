@@ -973,6 +973,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/onboarding/status", "/api/zero/onboarding/status"],
   ["/api/zero/usage/insight", "/api/zero/usage/insight"],
   ["/api/zero/usage/members", "/api/zero/usage/members"],
+  ["/api/zero/usage/record", "/api/zero/usage/record"],
   ["/api/zero/usage/runs", "/api/zero/usage/runs"],
   ["/api/zero/video-io/generate", "/api/zero/video-io/generate"],
   ["/api/zero/host/deployments/prepare", "/api/zero/host/deployments/prepare"],

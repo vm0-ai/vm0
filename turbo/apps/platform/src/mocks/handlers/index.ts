@@ -20,6 +20,10 @@ import {
   resetMockUsageInsight,
 } from "./api-usage-insight.ts";
 import {
+  apiUsageRecordHandlers,
+  resetMockUsageRecord,
+} from "./api-usage-record.ts";
+import {
   apiOrgModelProvidersHandlers,
   resetMockOrgModelProviders,
 } from "./api-org-model-providers.ts";
@@ -99,6 +103,7 @@ export const handlers = [
   ...apiOrgMembersHandlers,
   ...apiUsageHandlers,
   ...apiUsageInsightHandlers,
+  ...apiUsageRecordHandlers,
   ...apiOrgModelProvidersHandlers,
   ...apiOrgModelPoliciesHandlers,
   ...apiPersonalModelProvidersHandlers,
@@ -153,6 +158,7 @@ export function resetAllMockHandlers(): void {
   resetMockOrgMembers();
   resetMockUsageMembers();
   resetMockUsageInsight();
+  resetMockUsageRecord();
   resetMockSchedules();
   resetMockTeam();
   resetMockSkills();

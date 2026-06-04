@@ -141,6 +141,7 @@ const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
   { methods: ["POST"], pathname: "/api/zero/uploads/prepare" },
   { methods: ["GET"], pathname: "/api/zero/usage/insight" },
   { methods: ["GET"], pathname: "/api/zero/usage/members" },
+  { methods: ["GET"], pathname: "/api/zero/usage/record" },
   { methods: ["GET", "PUT"], pathname: "/api/zero/user-permission-grants" },
   { methods: ["GET", "POST"], pathname: "/api/zero/user-preferences" },
   { methods: ["GET", "POST"], pathname: "/api/zero/variables" },

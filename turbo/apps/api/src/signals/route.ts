@@ -152,6 +152,7 @@ import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
 import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
+import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
 import { zeroUsageRunsRoutes } from "./routes/zero-usage-runs";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
 import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
@@ -348,6 +349,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...storagesPrepareRoutes,
   ...zeroUsageInsightRoutes,
   ...zeroUsageMembersRoutes,
+  ...zeroUsageRecordRoutes,
   ...zeroUsageRunsRoutes,
   ...chatThreadsV1Routes,
   ...audioTranscriptionsV1Routes,

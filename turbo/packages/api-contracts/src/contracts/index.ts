@@ -1178,6 +1178,12 @@ export {
   type UsageInsightChatRow,
 } from "./zero-usage-insight";
 export {
+  zeroUsageRecordContract,
+  type ZeroUsageRecordContract,
+  type UsageRecordResponse,
+  type UsageRecordChatRow,
+} from "./zero-usage-record";
+export {
   usageContract,
   type UsageContract,
   type DailyUsage,
