@@ -18,6 +18,7 @@ import { generate as generateAlchemy } from "./alchemy";
 import { generate as generateApollo } from "./apollo";
 import { generate as generateApify } from "./apify";
 import { generate as generateAsana } from "./asana";
+import { generate as generateAshby } from "./ashby";
 import { generate as generateAttio } from "./attio";
 import { generate as generateAtlassian } from "./atlassian";
 import { generate as generateAtlascloud } from "./atlascloud";
@@ -261,6 +262,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   apollo: generateApollo,
   apify: generateApify,
   asana: generateAsana,
+  ashby: generateAshby,
   attio: generateAttio,
   atlassian: generateAtlassian,
   atlascloud: generateAtlascloud,

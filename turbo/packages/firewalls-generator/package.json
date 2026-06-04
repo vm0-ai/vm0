@@ -37,6 +37,7 @@
     "generate:apollo": "tsx src/index.ts apollo",
     "generate:apify": "tsx src/index.ts apify",
     "generate:asana": "tsx src/index.ts asana",
+    "generate:ashby": "tsx src/index.ts ashby",
     "generate:attio": "tsx src/index.ts attio",
     "generate:atlassian": "tsx src/index.ts atlassian",
     "generate:atlascloud": "tsx src/index.ts atlascloud",

@@ -37,6 +37,7 @@ import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
 import { apify } from "./connectors/apify";
 import { apollo } from "./connectors/apollo";
 import { asana } from "./connectors/asana";
+import { ashby } from "./connectors/ashby";
 import { atlassian } from "./connectors/atlassian";
 import { attio } from "./connectors/attio";
 import { atlascloud } from "./connectors/atlascloud";
@@ -894,6 +895,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...apify,
   ...apollo,
   ...asana,
+  ...ashby,
   ...atlassian,
   ...attio,
   ...atlascloud,
