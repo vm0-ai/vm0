@@ -153,12 +153,7 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE,
 ] as const;
 
-function parseEmbeddedRunErrorBody(errorMessage: string): unknown {
-  const bodyStart = errorMessage.indexOf("{");
-  if (bodyStart === -1) {
-    return undefined;
-  }
-
+function parseJsonObjectAt(errorMessage: string, bodyStart: number): unknown {
   let depth = 0;
   let inString = false;
   let escaped = false;
@@ -203,9 +198,18 @@ function parseEmbeddedRunErrorBody(errorMessage: string): unknown {
 }
 
 function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
-  return codexOAuthReconnectRequiredRunErrorBodySchema.safeParse(
-    parseEmbeddedRunErrorBody(errorMessage),
-  ).success;
+  let bodyStart = errorMessage.indexOf("{");
+  while (bodyStart !== -1) {
+    if (
+      codexOAuthReconnectRequiredRunErrorBodySchema.safeParse(
+        parseJsonObjectAt(errorMessage, bodyStart),
+      ).success
+    ) {
+      return true;
+    }
+    bodyStart = errorMessage.indexOf("{", bodyStart + 1);
+  }
+  return false;
 }
 
 export function isActionableRunError(errorMessage: string): boolean {
