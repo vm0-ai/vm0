@@ -187,6 +187,23 @@ pub(super) fn create_archive(
     Ok(())
 }
 
+/// Validate archive inputs for a deduplicated snapshot.
+///
+/// This is the deduplicated-snapshot counterpart to [`create_archive`]. When
+/// `/storages/prepare` reports an existing version, callers must run this before
+/// committing that version as HEAD because the deduplicated path does not build
+/// an archive.
+///
+/// The check reopens each listed file through the same Linux no-follow
+/// root/child path opening used for archive creation, then verifies that
+/// manifest paths are still non-empty relative paths with no root, prefix, `.`,
+/// or `..` components, entries are still regular files, and file size plus
+/// SHA-256 still match the pre-walked manifest.
+/// Empty manifests still validate readable artifact-root access through the
+/// no-follow root-opening path.
+///
+/// This validates the current artifact state before commit; it does not freeze
+/// the filesystem after validation returns.
 pub(super) fn validate_archive_inputs(
     dir_path: &str,
     files: &[FileEntry],

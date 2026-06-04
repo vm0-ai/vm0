@@ -2,12 +2,12 @@
 //!
 //! Flow (caller first walks the mount via [`walk_files_for_checkpoint`], then
 //! invokes [`create_snapshot`] with the pre-walked file list):
-//! 1. POST `/storages/prepare` with file list → get presigned URLs
-//! 2. If deduplicated, POST `/storages/commit` to update HEAD
-//! 3. Create tar.gz archive
-//! 4. Create manifest.json
-//! 5. PUT archive + manifest to S3
-//! 6. POST `/storages/commit`
+//! 1. POST `/storages/prepare` with file list to get version/upload metadata
+//! 2. If prepare found an existing version, validate the local archive inputs,
+//!    then POST `/storages/commit` to update HEAD
+//! 3. Otherwise, create tar.gz archive and manifest.json
+//! 4. PUT archive + manifest to S3
+//! 5. POST `/storages/commit`
 
 use crate::error::AgentError;
 use crate::http::HttpClient;
@@ -128,6 +128,8 @@ pub(crate) async fn create_snapshot(
             LOG_TAG,
             "Version already exists (deduplicated), updating HEAD"
         );
+        // Validate the local manifest inputs before committing the existing
+        // version as HEAD, since this branch does not build an archive.
         validate_dedup_snapshot(request.mount_path, &request.files).await?;
         commit_existing_snapshot(http, &request, &version_id).await?;
         return Ok(SnapshotResult { version_id });
