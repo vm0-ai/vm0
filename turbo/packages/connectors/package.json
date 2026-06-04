@@ -72,6 +72,10 @@
       "import": "./src/auth-providers/provider-flow-types.ts",
       "types": "./src/auth-providers/provider-flow-types.ts"
     },
+    "./auth-providers/provider-http-error": {
+      "import": "./src/auth-providers/provider-http-error.ts",
+      "types": "./src/auth-providers/provider-http-error.ts"
+    },
     "./auth-providers/types": {
       "import": "./src/auth-providers/types.ts",
       "types": "./src/auth-providers/types.ts"

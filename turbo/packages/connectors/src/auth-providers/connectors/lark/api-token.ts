@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { ProviderHttpError } from "../../provider-http-error";
+
 const LARK_TENANT_ACCESS_TOKEN_URL =
   "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal";
 
@@ -33,8 +35,9 @@ export async function fetchLarkTenantAccessToken(args: {
   });
 
   if (!response.ok) {
-    throw new Error(
+    throw new ProviderHttpError(
       `Lark tenant access token request failed: ${response.status}`,
+      response.status,
     );
   }
 

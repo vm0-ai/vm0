@@ -2727,6 +2727,59 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     ).resolves.toBeNull();
   });
 
+  it("treats Lark token endpoint HTTP failures as upstream provider failures", async () => {
+    for (const status of [500, 429] as const) {
+      const larkCalls = useLarkTenantAccessTokenEndpoint({
+        status,
+        body: {
+          code: status,
+          msg: "temporary failure",
+        },
+      });
+      const fixture = await track(seedFixture());
+      await seedLarkConnector(fixture);
+
+      const response = await accept(
+        firewallClient().resolve({
+          body: {
+            encryptedSecrets: encryptedSecrets({}),
+            authHeaders: {
+              Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+            },
+            secretConnectorMap: {
+              LARK_TOKEN: "lark",
+            },
+          },
+          headers: authHeaders(fixture),
+        }),
+        [502],
+      );
+
+      expect(larkCalls).toStrictEqual([
+        {
+          app_id: "lark-app-id",
+          app_secret: "lark-app-secret",
+        },
+      ]);
+      expect(response.body.error).toMatchObject({
+        code: "TOKEN_REFRESH_FAILED",
+        connectors: ["lark"],
+        failureReason: "upstream_provider",
+      });
+      await expect(connectorState(fixture, "lark")).resolves.toMatchObject({
+        needsReconnect: false,
+      });
+      await expect(
+        readSecret({
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "LARK_ACCESS_TOKEN",
+          type: "connector",
+        }),
+      ).resolves.toBeNull();
+    }
+  });
+
   it("reuses current input-only connector access without refreshing", async () => {
     const inputOnlyRefresh = useTestOAuthApiTokenRefresh();
     restoreDynamicTestOAuthRefresh = inputOnlyRefresh.restore;
