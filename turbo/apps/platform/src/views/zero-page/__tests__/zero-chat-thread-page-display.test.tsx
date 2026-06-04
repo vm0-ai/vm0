@@ -1670,6 +1670,9 @@ describe("zero chat thread page display - artifacts drawer", () => {
       "min-h-0",
     );
     expect(
+      within(lightbox).getByTestId("artifact-dialog-card"),
+    ).not.toHaveClass("border");
+    expect(
       within(lightbox).getByTestId("artifact-dialog-image-stage"),
     ).toHaveClass("h-full", "overflow-hidden");
     expect(screen.getByRole("dialog", { name: "chart.png preview" })).toBe(

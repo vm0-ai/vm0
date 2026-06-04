@@ -279,6 +279,9 @@ describe("chatArtifactSidebar: image preview zoom controls", () => {
       screen.getByTestId("artifact-sidebar-image-zoom-controls"),
     ).toBeInTheDocument();
     expect(
+      screen.getByTestId("artifact-sidebar-image-reset-zoom"),
+    ).toBeInTheDocument();
+    expect(
       screen.getByTestId("artifact-sidebar-image-zoom-level").textContent,
     ).toBe("100%");
   });
@@ -296,6 +299,9 @@ describe("chatArtifactSidebar: image preview zoom controls", () => {
 
     fireEvent.click(zoomOut);
     expect(level.textContent).toBe("115%");
+
+    fireEvent.click(screen.getByTestId("artifact-sidebar-image-reset-zoom"));
+    expect(level.textContent).toBe("100%");
   });
 
   it("disables zoom out at min zoom and zoom in at max zoom", () => {

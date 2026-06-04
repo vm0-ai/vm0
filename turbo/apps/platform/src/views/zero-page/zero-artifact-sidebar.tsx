@@ -7,6 +7,7 @@ import {
   IconDots,
   IconExternalLink,
   IconLoader2,
+  IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
 import {
@@ -590,8 +591,10 @@ function ArtifactStageCard({
   return (
     <div
       className={cn(
-        "flex w-full flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm",
-        fillHeight ? "h-full min-h-0" : "min-h-[420px]",
+        "flex w-full flex-1 flex-col overflow-hidden rounded-xl",
+        fillHeight
+          ? "h-full min-h-0 bg-transparent"
+          : "min-h-[420px] border border-border/70 bg-background shadow-sm",
       )}
     >
       {children}
@@ -818,6 +821,16 @@ function ArtifactImageZoomControls({
         data-testid="artifact-sidebar-image-zoom-in"
       >
         +
+      </button>
+      <button
+        type="button"
+        onClick={controls.resetZoom}
+        className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-muted/70 hover:text-foreground"
+        aria-label="Reset zoom"
+        title="Reset zoom"
+        data-testid="artifact-sidebar-image-reset-zoom"
+      >
+        <IconZoomReset size={15} stroke={1.8} />
       </button>
     </div>
   );

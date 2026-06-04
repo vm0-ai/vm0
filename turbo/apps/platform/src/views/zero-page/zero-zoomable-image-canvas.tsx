@@ -205,6 +205,8 @@ export function ZoomableArtifactImageCanvas({
       centerZoomedOut
       smooth
       wheel={{ step: 0.008, wheelDisabled: true }}
+      trackPadPanning={{ disabled: false }}
+      panning={{ allowLeftClickPan: true }}
       pinch={{ allowPanning: false, step: 5 }}
       doubleClick={{
         mode: "toggle",

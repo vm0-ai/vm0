@@ -740,8 +740,10 @@ function ArtifactDialogCard({
 }) {
   return (
     <div
-      className={`flex w-full flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm ${
-        fillHeight ? "h-full min-h-0" : "min-h-[420px]"
+      className={`flex w-full flex-1 flex-col overflow-hidden rounded-xl ${
+        fillHeight
+          ? "h-full min-h-0 bg-transparent"
+          : "min-h-[420px] border border-border/70 bg-background shadow-sm"
       }`}
       data-testid="artifact-dialog-card"
     >
@@ -786,11 +788,11 @@ function ArtifactDialogImageZoomControls({
       <button
         type="button"
         onClick={controls.resetZoom}
-        className="rounded-md px-1.5 text-xs font-medium transition-colors hover:bg-muted/70 hover:text-foreground"
+        className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-muted/70 hover:text-foreground"
         aria-label="Reset zoom"
         title="Reset zoom"
       >
-        Reset
+        <IconZoomReset size={15} stroke={1.8} />
       </button>
     </div>
   );
