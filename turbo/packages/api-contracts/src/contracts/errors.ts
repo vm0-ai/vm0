@@ -248,6 +248,14 @@ function isCodexOAuthReconnectRequiredRunErrorObject(value: unknown): boolean {
 }
 
 function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
+  if (
+    !errorMessage.includes("TOKEN_REFRESH_FAILED") ||
+    !errorMessage.includes("codex-oauth-token") ||
+    !errorMessage.includes("reconnect_required")
+  ) {
+    return false;
+  }
+
   let searchStart = 0;
   let parsed = parseNextJsonObject(errorMessage, searchStart);
   while (parsed !== undefined) {
@@ -260,13 +268,17 @@ function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
   return false;
 }
 
-export function isActionableRunError(errorMessage: string): boolean {
+function hasActionableRunErrorSnippet(errorMessage: string): boolean {
   const normalized = errorMessage.toLowerCase();
+  return ACTIONABLE_RUN_ERROR_SNIPPETS.some((snippet) => {
+    return normalized.includes(snippet.toLowerCase());
+  });
+}
+
+export function isActionableRunError(errorMessage: string): boolean {
   return (
     isCodexOAuthReconnectRequiredRunError(errorMessage) ||
-    ACTIONABLE_RUN_ERROR_SNIPPETS.some((snippet) => {
-      return normalized.includes(snippet.toLowerCase());
-    })
+    hasActionableRunErrorSnippet(errorMessage)
   );
 }
 
@@ -314,7 +326,7 @@ export function formatRunErrorForExternalSurface(params: {
     return CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE;
   }
 
-  return isGenericRunErrorForDisplay(errorMessage)
-    ? CHAT_RUN_TRANSIENT_ERROR_MESSAGE
-    : errorMessage;
+  return hasActionableRunErrorSnippet(errorMessage)
+    ? errorMessage
+    : CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
 }
