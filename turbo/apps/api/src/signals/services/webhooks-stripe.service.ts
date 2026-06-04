@@ -69,6 +69,10 @@ interface SubscriptionDeletedInput {
   readonly id: string;
 }
 
+interface SubscriptionPreviousAttributes {
+  readonly trial_end?: number | null;
+}
+
 interface CheckoutSubscriptionContext {
   readonly customerId: string;
   readonly subscriptionId: string;
@@ -1054,20 +1058,53 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
 async function handleSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
+  previousAttributes: SubscriptionPreviousAttributes | undefined,
 ): Promise<void> {
   const periodEnd = subscriptionWillCancel(subscription)
     ? subscriptionScheduledEnd(subscription)
     : null;
+  const trialEnd = subscriptionTrialEnd(subscription);
+  const previousTrialEnd =
+    typeof previousAttributes?.trial_end === "number"
+      ? new Date(previousAttributes.trial_end * 1000)
+      : null;
+  const trialShortened =
+    subscription.status === "trialing" &&
+    trialEnd !== null &&
+    previousTrialEnd !== null &&
+    trialEnd < previousTrialEnd;
 
-  await db
-    .update(orgMetadata)
-    .set({
-      subscriptionStatus: subscription.status,
-      cancelAtPeriodEnd: subscriptionWillCancel(subscription),
-      updatedAt: nowDate(),
-      ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
-    })
-    .where(eq(orgMetadata.stripeSubscriptionId, subscription.id));
+  await db.transaction(async (tx) => {
+    const rows = await tx
+      .update(orgMetadata)
+      .set({
+        subscriptionStatus: subscription.status,
+        cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+        updatedAt: nowDate(),
+        ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+        ...(trialShortened ? { currentPeriodEnd: trialEnd } : {}),
+      })
+      .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
+      .returning({ orgId: orgMetadata.orgId });
+
+    if (!trialShortened) {
+      return;
+    }
+
+    for (const row of rows) {
+      await tx
+        .update(creditExpiresRecord)
+        .set({ expiresAt: trialEnd })
+        .where(
+          and(
+            eq(creditExpiresRecord.orgId, row.orgId),
+            eq(creditExpiresRecord.source, "subscription_renewal"),
+            gt(creditExpiresRecord.expiresAt, trialEnd),
+            gt(creditExpiresRecord.remaining, 0),
+          ),
+        );
+    }
+  });
 }
 
 async function handleSubscriptionDeleted(
@@ -1114,7 +1151,11 @@ export const handleStripeWebhookEvent$ = command(
         break;
       }
       case "customer.subscription.updated": {
-        await handleSubscriptionUpdated(db, event.data.object);
+        await handleSubscriptionUpdated(
+          db,
+          event.data.object,
+          event.data.previous_attributes,
+        );
         signal.throwIfAborted();
         break;
       }

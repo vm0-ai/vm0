@@ -649,12 +649,18 @@ function invoiceLinesWithSubscriptionPeriod(periodEnd: number): {
 async function postStripeWebhookEvent(args: {
   readonly type: string;
   readonly dataObject: Record<string, unknown>;
+  readonly previousAttributes?: Record<string, unknown>;
   readonly body?: string;
 }): Promise<AppResponse> {
   context.mocks.stripe.webhooks.constructEvent.mockReturnValue({
     id: stripeId("evt"),
     type: args.type,
-    data: { object: args.dataObject },
+    data: {
+      object: args.dataObject,
+      ...(args.previousAttributes === undefined
+        ? {}
+        : { previous_attributes: args.previousAttributes }),
+    },
   });
 
   return await postRaw({
@@ -3108,7 +3114,7 @@ describe("POST /api/webhooks/stripe", () => {
       ).toStrictEqual(paidThrough);
     });
 
-    it("does not sync trial period or credit expiry from subscription updates", async () => {
+    it("does not extend trial period or credit expiry from subscription updates", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
@@ -3147,6 +3153,7 @@ describe("POST /api/webhooks/stripe", () => {
             ],
           },
         },
+        previousAttributes: { trial_end: 1_800_000_000 },
       });
 
       expect(response.status).toBe(200);
@@ -3155,6 +3162,68 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.currentPeriodEnd).toStrictEqual(existingPeriodEnd);
       expect(records).toHaveLength(1);
       expect(records[0]?.expiresAt).toStrictEqual(existingExpiresAt);
+    });
+
+    it("clamps trial period and credit expiry when subscription update shortens trial", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const shortenedTrialEnd = 1_800_000_000;
+      const previousTrialEnd = 1_900_000_000;
+      const existingPeriodEnd = new Date(previousTrialEnd * 1000);
+      const existingExpiresAt = new Date(previousTrialEnd * 1000);
+      await updateStripeOrg(fixture, {
+        credits: 20_000,
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "trialing",
+        tier: "pro",
+        currentPeriodEnd: existingPeriodEnd,
+      });
+      await insertStripeCreditExpiresRecord(fixture, {
+        stripeInvoiceId: stripeId("inv_trial"),
+        amount: 20_000,
+        remaining: 15_000,
+        expiresAt: existingExpiresAt,
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.updated",
+        dataObject: {
+          id: subId,
+          status: "trialing",
+          trial_end: shortenedTrialEnd,
+          cancel_at_period_end: false,
+          items: {
+            data: [
+              {
+                price: { id: STRIPE_PRICE_PRO },
+                current_period_end: shortenedTrialEnd,
+              },
+            ],
+          },
+        },
+        previousAttributes: { trial_end: previousTrialEnd },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      const records = await selectStripeCreditExpiresRecords(fixture);
+      expect(billing.credits).toBe(20_000);
+      expect(billing.tier).toBe("pro");
+      expect(billing.subscriptionStatus).toBe("trialing");
+      expect(billing.currentPeriodEnd).toStrictEqual(
+        new Date(shortenedTrialEnd * 1000),
+      );
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        amount: 20_000,
+        remaining: 15_000,
+      });
+      expect(records[0]?.expiresAt).toStrictEqual(
+        new Date(shortenedTrialEnd * 1000),
+      );
     });
 
     it("does not extend paid-through from a failed payment update", async () => {
