@@ -268,6 +268,13 @@ describe("chatArtifactSidebar: image preview zoom controls", () => {
 
   it("renders the zoom toolbar on the image body at 100%", () => {
     renderImageSidebar();
+    expect(screen.getByTestId("artifact-sidebar-stage")).toHaveClass(
+      "overflow-hidden",
+    );
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveClass(
+      "max-h-full",
+      "max-w-full",
+    );
     expect(
       screen.getByTestId("artifact-sidebar-image-zoom-controls"),
     ).toBeInTheDocument();

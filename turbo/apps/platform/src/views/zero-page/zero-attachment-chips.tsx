@@ -121,10 +121,9 @@ function contentTypeForDocumentAttachmentPreviewKind(
 }
 
 const ATTACHMENT_LIGHTBOX_OVERLAY_CLASS =
-  "pointer-events-auto fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-[180ms] ease outline-none";
+  "zero-dialog-enter-overlay pointer-events-auto fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm outline-none";
 
-const ATTACHMENT_LIGHTBOX_PANEL_CLASS =
-  "animate-in slide-in-from-bottom-2 duration-[180ms] ease";
+const ATTACHMENT_LIGHTBOX_PANEL_CLASS = "zero-dialog-enter-content";
 
 // ---------------------------------------------------------------------------
 // AttachmentLightbox — full-screen attachment viewer
@@ -705,18 +704,24 @@ function ArtifactDialogStage({
   children,
   centered = false,
   gap = false,
+  scrollable = true,
 }: {
   children: ReactNode;
   centered?: boolean;
   gap?: boolean;
+  scrollable?: boolean;
 }) {
   return (
     <div
-      className="h-full overflow-auto bg-muted/30 p-5"
+      className={`h-full min-h-0 bg-muted/30 p-5 ${
+        scrollable ? "overflow-auto" : "overflow-hidden"
+      }`}
       data-testid="artifact-dialog-stage"
     >
       <div
-        className={`mx-auto flex min-h-full w-full max-w-[900px] flex-col ${
+        className={`mx-auto flex w-full max-w-[900px] flex-col ${
+          scrollable ? "min-h-full" : "h-full min-h-0"
+        } ${
           centered ? "items-center justify-center" : ""
         } ${gap ? "gap-3" : ""}`}
       >
@@ -726,10 +731,18 @@ function ArtifactDialogStage({
   );
 }
 
-function ArtifactDialogCard({ children }: { children: ReactNode }) {
+function ArtifactDialogCard({
+  children,
+  fillHeight = false,
+}: {
+  children: ReactNode;
+  fillHeight?: boolean;
+}) {
   return (
     <div
-      className="flex min-h-[420px] w-full flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm"
+      className={`flex w-full flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm ${
+        fillHeight ? "h-full min-h-0" : "min-h-[420px]"
+      }`}
       data-testid="artifact-dialog-card"
     >
       {children}
@@ -887,8 +900,8 @@ function ArtifactDialogBody({
 
   if (preview.kind === "image") {
     return (
-      <ArtifactDialogStage>
-        <ArtifactDialogCard>
+      <ArtifactDialogStage scrollable={false}>
+        <ArtifactDialogCard fillHeight>
           <ZoomableArtifactImageCanvas
             src={publicAttachmentUrl(preview.url)}
             alt={filename}
@@ -1107,7 +1120,7 @@ function ArtifactPreviewDialogContent({
     <div
       ref={dialogRef}
       tabIndex={-1}
-      className={`fixed inset-0 z-[9999] isolate flex items-center justify-center bg-gray-900/45 outline-none transition-opacity duration-[180ms] ease animate-in fade-in ${
+      className={`zero-dialog-enter-overlay fixed inset-0 z-[9999] isolate flex items-center justify-center bg-gray-900/45 outline-none transition-opacity duration-[180ms] ease ${
         visible
           ? "pointer-events-auto opacity-100"
           : "pointer-events-none opacity-0"
@@ -1120,7 +1133,7 @@ function ArtifactPreviewDialogContent({
     >
       <LightboxBodyScrollLock />
       <div
-        className={`flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)] transition-transform duration-[180ms] ease animate-in slide-in-from-bottom-2 ${
+        className={`zero-dialog-enter-content flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)] transition-transform duration-[180ms] ease ${
           visible ? "translate-y-0" : "translate-y-2"
         } ${
           fullscreen

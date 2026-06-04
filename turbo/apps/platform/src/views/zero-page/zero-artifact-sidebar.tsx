@@ -551,19 +551,25 @@ function ArtifactStageShell({
   centered = false,
   children,
   gap = false,
+  scrollable = true,
 }: {
   centered?: boolean;
   children: ReactNode;
   gap?: boolean;
+  scrollable?: boolean;
 }) {
   return (
     <div
-      className="h-full overflow-auto bg-muted/30 p-5"
+      className={cn(
+        "h-full min-h-0 bg-muted/30 p-5",
+        scrollable ? "overflow-auto" : "overflow-hidden",
+      )}
       data-testid="artifact-sidebar-stage"
     >
       <div
         className={cn(
-          "mx-auto flex min-h-full w-full max-w-[900px] flex-col",
+          "mx-auto flex w-full max-w-[900px] flex-col",
+          scrollable ? "min-h-full" : "h-full min-h-0",
           centered && "items-center justify-center",
           gap && "gap-3",
         )}
@@ -574,9 +580,20 @@ function ArtifactStageShell({
   );
 }
 
-function ArtifactStageCard({ children }: { children: ReactNode }) {
+function ArtifactStageCard({
+  children,
+  fillHeight = false,
+}: {
+  children: ReactNode;
+  fillHeight?: boolean;
+}) {
   return (
-    <div className="flex min-h-[420px] w-full flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+    <div
+      className={cn(
+        "flex w-full flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm",
+        fillHeight ? "h-full min-h-0" : "min-h-[420px]",
+      )}
+    >
       {children}
     </div>
   );
@@ -746,8 +763,8 @@ function ArtifactImageBody({
   filename: string;
 }) {
   return (
-    <ArtifactStageShell>
-      <ArtifactStageCard>
+    <ArtifactStageShell scrollable={false}>
+      <ArtifactStageCard fillHeight>
         <ZoomableArtifactImageCanvas
           src={publicAttachmentUrl(url)}
           alt={filename}

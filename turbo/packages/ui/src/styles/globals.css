@@ -412,11 +412,21 @@
     animation: zero-dialog-content-out 180ms ease;
   }
 
+  .zero-dialog-enter-overlay {
+    animation: zero-dialog-overlay-in 180ms ease;
+  }
+
+  .zero-dialog-enter-content {
+    animation: zero-dialog-content-in 180ms ease;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .zero-dialog-overlay[data-state="open"],
     .zero-dialog-overlay[data-state="closed"],
     .zero-dialog-content[data-state="open"],
-    .zero-dialog-content[data-state="closed"] {
+    .zero-dialog-content[data-state="closed"],
+    .zero-dialog-enter-overlay,
+    .zero-dialog-enter-content {
       animation: none;
     }
   }
@@ -469,19 +479,19 @@
 
 @keyframes zero-dialog-content-in {
   from {
-    transform: translate(-50%, calc(-50% + 8px));
+    transform: translateY(8px);
   }
   to {
-    transform: translate(-50%, -50%);
+    transform: translateY(0);
   }
 }
 
 @keyframes zero-dialog-content-out {
   from {
-    transform: translate(-50%, -50%);
+    transform: translateY(0);
   }
   to {
-    transform: translate(-50%, calc(-50% + 8px));
+    transform: translateY(8px);
   }
 }
 

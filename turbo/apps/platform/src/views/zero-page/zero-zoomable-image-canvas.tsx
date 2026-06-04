@@ -211,8 +211,8 @@ export function ZoomableArtifactImageCanvas({
       limitToBounds
       centerZoomedOut
       smooth
-      wheel={{ step: 0.008 }}
-      pinch={{ allowPanning: true, step: 2.5 }}
+      wheel={{ step: 0.008, wheelDisabled: true }}
+      pinch={{ allowPanning: false, step: 2.5 }}
       doubleClick={{
         mode: "toggle",
         step: IMAGE_ZOOM_STEP,

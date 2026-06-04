@@ -1154,10 +1154,10 @@ describe("zero chat thread page display - attachment video preview", () => {
     });
     const video = within(lightbox).getByLabelText("Video preview for clip.mp4");
 
-    expect(lightbox).toHaveClass("animate-in", "fade-in", "duration-[180ms]");
+    expect(lightbox).toHaveClass("zero-dialog-enter-overlay");
     expect(
       within(lightbox).getByTestId("attachment-lightbox-panel"),
-    ).toHaveClass("animate-in", "slide-in-from-bottom-2", "duration-[180ms]");
+    ).toHaveClass("zero-dialog-enter-content");
     expect(video).toHaveAttribute("src", videoUrl);
     expect(video).toHaveAttribute("controls");
     expect((video as HTMLVideoElement).autoplay).toBeTruthy();
@@ -1658,10 +1658,20 @@ describe("zero chat thread page display - artifacts drawer", () => {
 
     const lightbox = await screen.findByTestId("attachment-lightbox");
     expect(lightbox).toBeInTheDocument();
-    expect(lightbox).toHaveClass("animate-in", "fade-in");
+    expect(lightbox).toHaveClass("zero-dialog-enter-overlay");
     expect(
       within(lightbox).getByTestId("attachment-lightbox-panel"),
-    ).toHaveClass("animate-in", "slide-in-from-bottom-2");
+    ).toHaveClass("zero-dialog-enter-content");
+    expect(within(lightbox).getByTestId("artifact-dialog-stage")).toHaveClass(
+      "overflow-hidden",
+    );
+    expect(within(lightbox).getByTestId("artifact-dialog-card")).toHaveClass(
+      "h-full",
+      "min-h-0",
+    );
+    expect(
+      within(lightbox).getByTestId("artifact-dialog-image-stage"),
+    ).toHaveClass("h-full", "overflow-hidden");
     expect(screen.getByRole("dialog", { name: "chart.png preview" })).toBe(
       lightbox,
     );
