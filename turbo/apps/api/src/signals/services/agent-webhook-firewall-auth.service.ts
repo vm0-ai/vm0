@@ -396,7 +396,7 @@ type ModelProviderPreparedRefreshTokenContext = {
   readonly context: RefreshTokenContext;
 };
 
-function resolveRefreshTokenAccessResolvedClient(
+function resolveRefreshTokenAccessClient(
   authMethodRef: ConnectorRefreshTokenAccessClientMethodRef,
 ): ConnectorRefreshTokenAccessResolvedClient | undefined {
   return resolveConnectorResolvedAuthMethodClientByAccessKind(
@@ -1310,8 +1310,7 @@ function prepareRefreshTokenContext(
   };
 
   if (connectorRefreshTokenAccessMethodHasClient(authMethodRef)) {
-    const resolvedClient =
-      resolveRefreshTokenAccessResolvedClient(authMethodRef);
+    const resolvedClient = resolveRefreshTokenAccessClient(authMethodRef);
     if (!resolvedClient) {
       L.debug(
         `${args.connectorType} connector client not configured, skipping token refresh`,
