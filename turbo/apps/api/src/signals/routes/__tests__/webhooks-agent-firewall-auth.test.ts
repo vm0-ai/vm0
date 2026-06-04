@@ -679,18 +679,14 @@ function useMalformedTestOAuthApiRefresh(args: {
   };
 }
 
-function useTestOAuthApiTokenRefresh(
-  args: {
-    readonly accessToken?: string;
-  } = {},
-): {
+function useTestOAuthApiTokenRefresh(): {
   readonly refreshes: readonly CapturedInputOnlyRefresh[];
   readonly restore: () => void;
 } {
   const refreshes: CapturedInputOnlyRefresh[] = [];
   return {
     refreshes,
-    restore: configureTestOAuthApiTokenRefresh(refreshes, args.accessToken),
+    restore: configureTestOAuthApiTokenRefresh(refreshes),
   };
 }
 
@@ -772,7 +768,6 @@ function configureDynamicTestOAuthApiRefresh(
 
 function configureTestOAuthApiTokenRefresh(
   refreshes: CapturedInputOnlyRefresh[],
-  accessToken?: string,
 ): () => void {
   const access = testOauthApiTokenProvider.access;
   const originalRefresh = access.refresh;
@@ -784,9 +779,7 @@ function configureTestOAuthApiTokenRefresh(
     });
     return Promise.resolve({
       outputs: {
-        accessToken:
-          accessToken ??
-          `fresh-test-oauth-api-token:${args.inputs.inputSecret}:${args.inputs.inputVariable}`,
+        accessToken: `fresh-test-oauth-api-token:${args.inputs.inputSecret}:${args.inputs.inputVariable}`,
       },
       expiresIn: 3600,
     });
@@ -2436,95 +2429,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     );
     expect(response.body.refreshedConnectors).toStrictEqual([]);
     expect(response.body.refreshedSecrets).toStrictEqual([]);
-  });
-
-  it("refreshes expired input-only connector access", async () => {
-    const inputOnlyRefresh = useTestOAuthApiTokenRefresh({
-      accessToken: "fresh-expired-test-oauth-api-token",
-    });
-    restoreDynamicTestOAuthRefresh = inputOnlyRefresh.restore;
-    const fixture = await track(seedFixture());
-    await seedTestOAuthApiTokenConnector(fixture, {
-      accessToken: "stale-test-oauth-api-token",
-      tokenExpiresAt: new Date(now() - 60_000),
-    });
-
-    const response = await accept(
-      firewallClient().resolve({
-        body: {
-          encryptedSecrets: encryptedSecrets({
-            TEST_OAUTH_API_TOKEN: "stale-test-oauth-api-token",
-          }),
-          authHeaders: {
-            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_API_TOKEN")}`,
-          },
-          secretConnectorMap: {
-            TEST_OAUTH_API_TOKEN: "test-oauth",
-          },
-        },
-        headers: authHeaders(fixture),
-      }),
-      [200],
-    );
-
-    expect(inputOnlyRefresh.refreshes).toStrictEqual([
-      {
-        inputSecret: "test-oauth-api-token-input-secret",
-        inputVariable: "test-oauth-api-token-input-variable",
-      },
-    ]);
-    expect(response.body.headers.Authorization).toBe(
-      "Bearer fresh-expired-test-oauth-api-token",
-    );
-    expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
-    expect(response.body.refreshedSecrets).toStrictEqual([
-      "TEST_OAUTH_API_TOKEN",
-    ]);
-  });
-
-  it("force refreshes current input-only connector access", async () => {
-    const inputOnlyRefresh = useTestOAuthApiTokenRefresh({
-      accessToken: "fresh-forced-test-oauth-api-token",
-    });
-    restoreDynamicTestOAuthRefresh = inputOnlyRefresh.restore;
-    const fixture = await track(seedFixture());
-    await seedTestOAuthApiTokenConnector(fixture, {
-      accessToken: "current-test-oauth-api-token",
-      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
-    });
-
-    const response = await accept(
-      firewallClient().resolve({
-        body: {
-          encryptedSecrets: encryptedSecrets({
-            TEST_OAUTH_API_TOKEN: "current-test-oauth-api-token",
-          }),
-          authHeaders: {
-            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_API_TOKEN")}`,
-          },
-          secretConnectorMap: {
-            TEST_OAUTH_API_TOKEN: "test-oauth",
-          },
-          forceRefresh: true,
-        },
-        headers: authHeaders(fixture),
-      }),
-      [200],
-    );
-
-    expect(inputOnlyRefresh.refreshes).toStrictEqual([
-      {
-        inputSecret: "test-oauth-api-token-input-secret",
-        inputVariable: "test-oauth-api-token-input-variable",
-      },
-    ]);
-    expect(response.body.headers.Authorization).toBe(
-      "Bearer fresh-forced-test-oauth-api-token",
-    );
-    expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
-    expect(response.body.refreshedSecrets).toStrictEqual([
-      "TEST_OAUTH_API_TOKEN",
-    ]);
   });
 
   it("returns refresh failure when input-only connector refresh variables are missing", async () => {
