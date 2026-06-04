@@ -7,7 +7,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::ids::RunId;
-use crate::local_queue::{self, LocalQueue};
+#[cfg(test)]
+use crate::local_queue;
+use crate::local_queue::{CancelTargetState, LocalQueue};
 
 /// Poll interval for scanning local cancel markers.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -45,7 +47,20 @@ impl LocalCancelScanner {
     /// token are kept while a claim/job may still exist, and are deleted only
     /// after they no longer have a pending target.
     pub(super) async fn scan_cancel_files(&self) {
-        let cancel_ids = self.collect_cancel_ids();
+        let queue = self.queue.clone();
+        let cancel_markers =
+            match tokio::task::spawn_blocking(move || queue.collect_cancel_markers_sync()).await {
+                Ok(markers) => markers,
+                Err(e) => {
+                    warn!(error = %e, "local: blocking cancel marker scan failed");
+                    return;
+                }
+            };
+        if cancel_markers.is_empty() {
+            return;
+        }
+
+        let cancel_ids: Vec<RunId> = cancel_markers.iter().map(|marker| marker.run_id).collect();
         if cancel_ids.is_empty() {
             return;
         }
@@ -53,56 +68,35 @@ impl LocalCancelScanner {
         let tokens = self.snapshot_cancel_tokens(&cancel_ids).await;
         let owned_claims = self.snapshot_owned_claims(&cancel_ids).await;
 
-        for run_id in cancel_ids {
+        let mut delete_cancel_ids = Vec::new();
+        for marker in cancel_markers {
+            let run_id = marker.run_id;
             if let Some(token) = tokens.get(&run_id) {
                 let was_cancelled = token.is_cancelled();
                 token.cancel();
                 if !was_cancelled {
                     info!(run_id = %run_id, "local: cancel file detected, cancelling job");
                 }
-                let should_delete =
-                    owned_claims.contains(&run_id) || !self.queue.has_pending_cancel_target(run_id);
+                let should_delete = owned_claims.contains(&run_id)
+                    || marker.target_state == CancelTargetState::NotPending;
                 if should_delete {
-                    let _ = std::fs::remove_file(local_queue::cancel_path(
-                        self.queue.group_dir(),
-                        run_id,
-                    ));
+                    delete_cancel_ids.push(run_id);
                 }
-            } else if !self.queue.has_pending_cancel_target(run_id) {
-                let _ =
-                    std::fs::remove_file(local_queue::cancel_path(self.queue.group_dir(), run_id));
+            } else if marker.target_state == CancelTargetState::NotPending {
+                delete_cancel_ids.push(run_id);
             }
         }
-    }
 
-    fn collect_cancel_ids(&self) -> Vec<RunId> {
-        let cancel_dir = local_queue::cancels_dir(self.queue.group_dir());
-        let entries = match std::fs::read_dir(&cancel_dir) {
-            Ok(e) => e,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
-            Err(e) => {
-                warn!(path = %cancel_dir.display(), error = %e, "local: cannot read cancel dir");
-                return Vec::new();
-            }
-        };
-        let mut cancel_ids = Vec::new();
-        let mut seen = HashSet::new();
-        for entry in entries.filter_map(Result::ok) {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("cancel") {
-                continue;
-            }
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            let Ok(run_id) = stem.parse::<RunId>() else {
-                continue;
-            };
-            if seen.insert(run_id) {
-                cancel_ids.push(run_id);
+        if !delete_cancel_ids.is_empty() {
+            let queue = self.queue.clone();
+            if let Err(e) = tokio::task::spawn_blocking(move || {
+                queue.remove_cancel_files_sync(delete_cancel_ids)
+            })
+            .await
+            {
+                warn!(error = %e, "local: blocking cancel marker cleanup failed");
             }
         }
-        cancel_ids
     }
 
     async fn snapshot_cancel_tokens(

@@ -18,7 +18,9 @@ use tracing::{info, warn};
 use super::local_cancel::{LocalCancelScanner, LocalCancelWatcher};
 use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
 use crate::ids::RunId;
-use crate::local_queue::{self, JobRequest, JobResponse, LocalQueue};
+#[cfg(test)]
+use crate::local_queue::{self, JobRequest, JobResponse};
+use crate::local_queue::{LocalClaimResult, LocalDiscoveredJob, LocalQueue};
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 use sandbox::SandboxId;
 
@@ -99,115 +101,43 @@ impl LocalProvider {
 
 impl LocalProvider {
     /// Find the first unclaimed job in the supported profile partitions.
+    #[cfg(test)]
     fn find_unclaimed_job(&self) -> Option<JobCandidate> {
-        if self.supported_profiles.is_empty() {
-            return None;
-        }
-
         let start = self.profile_cursor.fetch_add(1, Ordering::Relaxed);
-        let profile_count = self.supported_profiles.len();
-        for offset in 0..profile_count {
-            let Some(profile) = self
-                .supported_profiles
-                .get(start.wrapping_add(offset) % profile_count)
-            else {
-                continue;
-            };
-            let profile_dir = match local_queue::profile_jobs_dir(self.queue.group_dir(), profile) {
-                Ok(dir) => dir,
-                Err(e) => {
-                    warn!(profile, error = %e, "local: invalid supported profile");
-                    continue;
-                }
-            };
-            let entries = match std::fs::read_dir(&profile_dir) {
-                Ok(e) => e,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(e) => {
-                    warn!(path = %profile_dir.display(), error = %e, "local: cannot read profile job dir");
-                    continue;
-                }
-            };
-
-            let mut job_paths: Vec<_> = entries
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("job"))
-                .collect();
-            job_paths.sort();
-
-            for path in job_paths {
-                let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                    continue;
-                };
-                let Ok(job_id) = stem.parse::<RunId>() else {
-                    continue;
-                };
-                let claim_path = local_queue::claim_path(self.queue.group_dir(), job_id);
-                if claim_path.exists() {
-                    continue;
-                }
-                if self.result_file_has_content(job_id) {
-                    continue;
-                }
-                return Some(JobCandidate::local(job_id, profile.clone(), path));
-            }
-        }
-        None
+        self.queue
+            .discover_candidate_sync(&self.supported_profiles, start)
+            .map(job_candidate_from_discovered)
     }
 
-    fn result_file_has_content(&self, run_id: RunId) -> bool {
-        self.queue.result_file_has_content(run_id)
-    }
-
+    #[cfg(test)]
     fn write_result(&self, run_id: RunId, exit_code: i32, error: Option<&str>) -> bool {
-        let response = JobResponse {
-            run_id,
-            exit_code,
-            error: error.map(String::from),
-        };
-        let json = match serde_json::to_vec(&response) {
-            Ok(j) => j,
+        self.queue.write_result_sync(run_id, exit_code, error)
+    }
+
+    async fn find_unclaimed_job_blocking(&self) -> Option<JobCandidate> {
+        let start = self.profile_cursor.fetch_add(1, Ordering::Relaxed);
+        let queue = self.queue.clone();
+        let supported_profiles = self.supported_profiles.clone();
+        match tokio::task::spawn_blocking(move || {
+            queue.discover_candidate_sync(&supported_profiles, start)
+        })
+        .await
+        {
+            Ok(discovered) => discovered.map(job_candidate_from_discovered),
             Err(e) => {
-                warn!(run_id = %run_id, error = %e, "local: failed to serialize result");
-                return false;
+                warn!(error = %e, "local: blocking job discovery failed");
+                None
             }
-        };
-
-        let result_dir = local_queue::results_dir(self.queue.group_dir());
-        if let Err(e) = std::fs::create_dir_all(&result_dir) {
-            warn!(path = %result_dir.display(), error = %e, "local: failed to create result dir");
-            return false;
         }
-
-        // Atomic write: tmp then rename, so submit never reads a partial file.
-        let tmp_file = result_dir.join(format!("{run_id}.{}.result.tmp", RunId::new_v4()));
-        let result_file = local_queue::result_path(self.queue.group_dir(), run_id);
-        if let Err(e) = std::fs::write(&tmp_file, &json) {
-            warn!(run_id = %run_id, error = %e, "local: failed to write result file");
-            let _ = std::fs::remove_file(&tmp_file);
-            return false;
-        }
-        if let Err(e) = std::fs::rename(&tmp_file, &result_file) {
-            warn!(run_id = %run_id, error = %e, "local: failed to rename result file");
-            let _ = std::fs::remove_file(&tmp_file);
-            return false;
-        }
-        true
     }
+}
 
-    async fn fail_claimed_job(
-        &self,
-        run_id: RunId,
-        claim_file: &std::path::Path,
-        job_file: &std::path::Path,
-        error: String,
-    ) {
-        if self.write_result(run_id, 1, Some(&error)) {
-            let _ = std::fs::remove_file(job_file);
-        }
-        let _ = std::fs::remove_file(claim_file);
-    }
+fn job_candidate_from_discovered(discovered: LocalDiscoveredJob) -> JobCandidate {
+    JobCandidate::local(
+        discovered.run_id,
+        discovered.profile_name,
+        discovered.job_path,
+    )
 }
 
 #[async_trait::async_trait]
@@ -219,7 +149,7 @@ impl JobProvider for LocalProvider {
             }
             // Check for cancel requests before looking for new jobs.
             self.cancel_scanner.scan_cancel_files().await;
-            if let Some(candidate) = self.find_unclaimed_job() {
+            if let Some(candidate) = self.find_unclaimed_job_blocking().await {
                 info!(
                     run_id = %candidate.run_id(),
                     profile = %candidate.profile_name(),
@@ -242,100 +172,23 @@ impl JobProvider for LocalProvider {
             return None;
         };
 
-        // Atomic claim via O_EXCL — only the first runner to create the file wins.
-        let claim_dir = local_queue::claims_dir(self.queue.group_dir());
-        if let Err(e) = std::fs::create_dir_all(&claim_dir) {
-            warn!(path = %claim_dir.display(), error = %e, "local: failed to create claim dir");
-            return None;
-        }
-        let claim_file = local_queue::claim_path(self.queue.group_dir(), run_id);
-        if std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&claim_file)
-            .is_err()
-        {
-            return None;
-        }
-        if self.result_file_has_content(run_id) {
-            info!(run_id = %run_id, "local: job already has result, skipping claim");
-            let _ = std::fs::remove_file(&claim_file);
-            return None;
-        }
-
-        // Read the job request.
-        let buf = match std::fs::read(&job_file) {
-            Ok(b) => b,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                warn!(run_id = %run_id, error = %e, "local: failed to read job file");
-                let _ = std::fs::remove_file(&claim_file);
-                return None;
-            }
+        let queue = self.queue.clone();
+        let job_file_for_claim = job_file.clone();
+        let claim_result = tokio::task::spawn_blocking(move || {
+            queue.claim_job_sync(run_id, &partition_profile, &job_file_for_claim)
+        })
+        .await;
+        let (req, request_profile) = match claim_result {
+            Ok(LocalClaimResult::Claimed {
+                request,
+                request_profile,
+            }) => (*request, request_profile),
+            Ok(LocalClaimResult::NotClaimed) => return None,
             Err(e) => {
-                warn!(run_id = %run_id, error = %e, "local: unreadable job file, marking job as failed");
-                self.fail_claimed_job(
-                    run_id,
-                    &claim_file,
-                    &job_file,
-                    format!("failed to read job file: {e}"),
-                )
-                .await;
+                warn!(run_id = %run_id, error = %e, "local: blocking claim failed");
                 return None;
             }
         };
-        let req: JobRequest = match serde_json::from_slice(&buf) {
-            Ok(r) => r,
-            Err(e) => {
-                warn!(run_id = %run_id, error = %e, "local: invalid job JSON, marking job as failed");
-                // Submit writes .job atomically (tmp + rename), so a malformed
-                // .job is a permanent error — retrying the parse will just
-                // spin. Keep the claim until after the result attempt so other
-                // local runners do not repeatedly process the same poison job.
-                // If the result write fails, the claim is released and the job
-                // remains retryable. If it succeeds, the result becomes the
-                // durable terminal marker before the bad job is removed.
-                self.fail_claimed_job(
-                    run_id,
-                    &claim_file,
-                    &job_file,
-                    format!("invalid job JSON: {e}"),
-                )
-                .await;
-                return None;
-            }
-        };
-
-        if req.job_id != run_id {
-            let error = format!("job id mismatch: request={}, filename={run_id}", req.job_id);
-            warn!(run_id = %run_id, error = %error, "local: invalid job id");
-            self.fail_claimed_job(run_id, &claim_file, &job_file, error)
-                .await;
-            return None;
-        }
-
-        let request_profile = match req.profile.clone() {
-            Some(profile) => profile,
-            None if partition_profile == crate::profile::DEFAULT_PROFILE => {
-                crate::profile::DEFAULT_PROFILE.to_owned()
-            }
-            None => {
-                let error =
-                    format!("missing job profile in non-default partition: {partition_profile}");
-                warn!(run_id = %run_id, error = %error, "local: invalid job profile");
-                self.fail_claimed_job(run_id, &claim_file, &job_file, error)
-                    .await;
-                return None;
-            }
-        };
-        if request_profile != partition_profile {
-            let error = format!(
-                "job profile mismatch: request={request_profile}, partition={partition_profile}"
-            );
-            warn!(run_id = %run_id, error = %error, "local: invalid job profile");
-            self.fail_claimed_job(run_id, &claim_file, &job_file, error)
-                .await;
-            return None;
-        }
 
         let context = ExecutionContext {
             run_id,
@@ -386,8 +239,14 @@ impl JobProvider for LocalProvider {
                     err.expected_run_id, err.context_run_id
                 );
                 warn!(run_id = %run_id, error = %error, "local: claimed job invariant violation");
-                self.fail_claimed_job(run_id, &claim_file, &job_file, error)
-                    .await;
+                let queue = self.queue.clone();
+                if let Err(e) = tokio::task::spawn_blocking(move || {
+                    queue.fail_claimed_job_sync(run_id, &job_file, error);
+                })
+                .await
+                {
+                    warn!(run_id = %run_id, error = %e, "local: blocking claimed-job failure cleanup failed");
+                }
                 None
             }
         }
@@ -403,19 +262,14 @@ impl JobProvider for LocalProvider {
         _completion_auth: CompletionAuth,
     ) {
         self.cancel_scanner.remove_owned_claim(run_id).await;
-        if !self.write_result(run_id, exit_code, error) {
-            if self.queue.remove_job_file_if_present(run_id) {
-                let _ =
-                    std::fs::remove_file(local_queue::cancel_path(self.queue.group_dir(), run_id));
-                let _ =
-                    std::fs::remove_file(local_queue::claim_path(self.queue.group_dir(), run_id));
-            }
-            return;
+        let queue = self.queue.clone();
+        let error = error.map(str::to_owned);
+        if let Err(e) =
+            tokio::task::spawn_blocking(move || queue.complete_job_sync(run_id, exit_code, error))
+                .await
+        {
+            warn!(run_id = %run_id, error = %e, "local: blocking completion failed");
         }
-        // Best-effort cleanup of cancel file (may have been written after the
-        // last discover() scan but before the job actually finished).
-        let _ = std::fs::remove_file(local_queue::cancel_path(self.queue.group_dir(), run_id));
-        let _ = std::fs::remove_file(local_queue::claim_path(self.queue.group_dir(), run_id));
     }
 
     async fn heartbeat(&self, _state: &HeartbeatState) {}
