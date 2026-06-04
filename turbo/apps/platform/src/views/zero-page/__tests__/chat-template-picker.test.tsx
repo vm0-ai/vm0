@@ -71,6 +71,20 @@ function captureSendGenerationTemplate() {
   };
 }
 
+function captureQueuedGenerationTemplate() {
+  let capturedGenerationTemplate: GenerationTemplateRequest | undefined;
+  return {
+    onQueuedMessageAppend: (body: {
+      generationTemplate?: GenerationTemplateRequest;
+    }) => {
+      capturedGenerationTemplate = body.generationTemplate;
+    },
+    generationTemplate: () => {
+      return capturedGenerationTemplate;
+    },
+  };
+}
+
 async function openPickerAndSelectTemplate(
   user: ReturnType<typeof userEvent.setup>,
 ) {
@@ -206,6 +220,90 @@ describe("zero chat template picker", () => {
         "aria-pressed",
         "false",
       );
+    });
+  });
+
+  it("clears the selected template from the chip", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    await openPickerAndSelectTemplate(user);
+    await user.click(screen.getByLabelText("Remove template Pitch deck"));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Remove template Pitch deck")).toBeNull();
+    });
+    expect(screen.getByLabelText("Template")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("clears the selected template from the picker dialog", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    await openPickerAndSelectTemplate(user);
+    click(screen.getByLabelText("Template"));
+    const clearButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent === "Clear";
+    });
+    expect(clearButton).toBeEnabled();
+    await user.click(clearButton!);
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Remove template Pitch deck")).toBeNull();
+    });
+    expect(screen.getByLabelText("Template")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("queues selected generation template during an active run", async () => {
+    const user = userEvent.setup();
+    const queueCapture = captureQueuedGenerationTemplate();
+    mockChatLifecycle({
+      threadId: THREAD_ID,
+      onQueuedMessageAppend: queueCapture.onQueuedMessageAppend,
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    const firstTextarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, firstTextarea, "Start a deck run");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    await openPickerAndSelectTemplate(user);
+    const queuedTextarea = await waitFor(() => {
+      return screen.getByPlaceholderText(
+        /Type your next message/,
+      ) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, queuedTextarea, "Queue a matching deck");
+
+    await waitFor(() => {
+      expectPresentationTemplate(queueCapture.generationTemplate());
     });
   });
 });
