@@ -18,6 +18,7 @@ import {
   IconAlertTriangle,
   IconArrowUp,
   IconChartBar,
+  IconEye,
   IconLoader2,
   IconMicrophone,
   IconPaperclip,
@@ -506,7 +507,7 @@ function TemplateSectionHeader({
 }) {
   return (
     <div className="mb-4 flex items-center gap-3">
-      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <h3 className="rounded-md bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground">
         {label}
       </h3>
       <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
@@ -533,6 +534,37 @@ function TemplateEmptyPanel({
         <p className="text-sm font-semibold text-muted-foreground">{title}</p>
         <p className="mt-2 text-sm text-muted-foreground/80">{description}</p>
       </div>
+    </div>
+  );
+}
+
+function TemplatePreview({ item }: { item: PresentationTemplateItem }) {
+  return (
+    <div className="relative aspect-[16/9] overflow-hidden bg-muted">
+      {item.previewImage ? (
+        <img
+          src={item.previewImage}
+          alt=""
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center text-muted-foreground">
+          <IconTemplate size={28} stroke={1.5} />
+        </div>
+      )}
+      <a
+        href={item.embedUrl}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`View template ${item.title}`}
+        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md text-background opacity-0 drop-shadow transition-colors hover:text-background group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        <IconEye size={16} stroke={1.8} />
+      </a>
     </div>
   );
 }
@@ -623,46 +655,8 @@ function TemplatePickerDialog({
                           : "border-border",
                       )}
                     >
-                      <div className="relative aspect-[16/9] overflow-hidden bg-muted">
-                        {item.previewImage ? (
-                          <img
-                            src={item.previewImage}
-                            alt=""
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-muted-foreground">
-                            <IconTemplate size={28} stroke={1.5} />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 flex items-center justify-center gap-0 bg-black/0 opacity-0 transition-opacity group-hover:bg-black/10 group-hover:opacity-100 group-focus-within:bg-black/10 group-focus-within:opacity-100">
-                          <button
-                            type="button"
-                            aria-label={`Select template ${item.title}`}
-                            aria-pressed={selected}
-                            onClick={() => {
-                              handleSelect(item);
-                            }}
-                            className="h-9 rounded-l-full bg-foreground px-6 text-sm font-semibold text-background shadow-lg transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            Use
-                          </button>
-                          <a
-                            href={item.embedUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            aria-label={`View template ${item.title}`}
-                            className="flex h-9 items-center rounded-r-full bg-background px-6 text-sm font-semibold text-foreground shadow-lg transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                            }}
-                          >
-                            View
-                          </a>
-                        </div>
-                      </div>
-                      <div className="px-3.5 py-3">
+                      <TemplatePreview item={item} />
+                      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-foreground">
                             {item.title}
@@ -670,6 +664,24 @@ function TemplatePickerDialog({
                           <p className="mt-1 truncate text-xs text-muted-foreground">
                             {formatPresentationTemplateKind(item.templateId)}
                           </p>
+                        </div>
+                        <div className="flex shrink-0 items-center">
+                          <button
+                            type="button"
+                            aria-label={`Select template ${item.title}`}
+                            aria-pressed={selected}
+                            onClick={() => {
+                              handleSelect(item);
+                            }}
+                            className={cn(
+                              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              selected
+                                ? "border-primary/40 bg-primary/10 text-primary"
+                                : "border-border bg-background text-foreground hover:bg-muted",
+                            )}
+                          >
+                            Use
+                          </button>
                         </div>
                       </div>
                     </div>
