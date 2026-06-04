@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import { zeroScheduleMigrateChatContract } from "@vm0/api-contracts/contracts/zero-schedules";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
+import { delay } from "signal-timers";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
@@ -22,6 +24,20 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+function deferred(): {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+} {
+  let resolveDeferred: (() => void) | undefined;
+  const promise = new Promise<void>((resolve) => {
+    resolveDeferred = resolve;
+  });
+  if (!resolveDeferred) {
+    throw new Error("Failed to create deferred promise");
+  }
+  return { promise, resolve: resolveDeferred };
+}
 
 async function enableChatMode(fixture: SchedulesFixture): Promise<void> {
   const db = store.set(writeDb$);
@@ -105,6 +121,58 @@ describe("POST /api/zero/schedules/:name/migrate-to-chat", () => {
 
     expect(first.body.chatThreadId).not.toBeNull();
     expect(second.body.chatThreadId).toBe(first.body.chatThreadId);
+  });
+
+  it("keeps concurrent migrations linked to one chat thread", async () => {
+    const fixture = await seedLegacy("legacy-race");
+    await enableChatMode(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const scheduleId = fixture.scheduleIds[0];
+    if (!scheduleId) {
+      throw new Error("Expected seeded schedule");
+    }
+
+    const db = store.set(writeDb$);
+    const lockReady = deferred();
+    const releaseLock = deferred();
+    const lock = db.transaction(async (tx) => {
+      await tx
+        .select({ id: zeroAgentSchedules.id })
+        .from(zeroAgentSchedules)
+        .where(eq(zeroAgentSchedules.id, scheduleId))
+        .for("update");
+      lockReady.resolve();
+      await releaseLock.promise;
+    });
+    await lockReady.promise;
+
+    const migrate = () => {
+      return accept(
+        client().migrateToChat({
+          headers: { authorization: "Bearer clerk-session" },
+          params: { name: "legacy-race" },
+          body: { agentId: fixture.composeId },
+        }),
+        [200],
+      );
+    };
+
+    const requests = Promise.all([migrate(), migrate()]);
+    await delay(100, { signal: context.signal });
+    releaseLock.resolve();
+    await lock;
+
+    const [first, second] = await requests;
+    expect(first.body.chatThreadId).not.toBeNull();
+    expect(second.body.chatThreadId).toBe(first.body.chatThreadId);
+
+    const threads = await db
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.agentComposeId, fixture.composeId));
+    expect(threads).toHaveLength(1);
+    expect(threads[0]?.id).toBe(first.body.chatThreadId);
   });
 
   it("returns 400 when chat mode is not enabled", async () => {

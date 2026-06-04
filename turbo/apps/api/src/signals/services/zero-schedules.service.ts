@@ -24,7 +24,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { Cron } from "croner";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte } from "drizzle-orm";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -40,7 +40,6 @@ import {
 } from "./zero-model-selection.service";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
-import { createChatThread$ } from "./zero-chat-thread.service";
 import {
   postScheduleUserMessage,
   resolveScheduleChatThreadModelPin,
@@ -986,34 +985,75 @@ export const migrateScheduleToChat$ = command(
       };
     }
 
-    const thread = await set(
-      createChatThread$,
-      {
-        userId: args.userId,
-        agentComposeId: args.agentId,
-        title: schedule.description ?? schedule.name,
-        clientThreadId: undefined,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
+    const migration = await db.transaction(async (tx) => {
+      const [thread] = await tx
+        .insert(chatThreads)
+        .values({
+          userId: args.userId,
+          agentComposeId: args.agentId,
+          title: schedule.description ?? schedule.name,
+        })
+        .returning({ id: chatThreads.id });
+      if (!thread) {
+        throw new Error("Failed to create chat thread");
+      }
 
-    const [updated] = await db
-      .update(zeroAgentSchedules)
-      .set({ chatThreadId: thread.id, updatedAt: nowDate() })
-      .where(eq(zeroAgentSchedules.id, schedule.id))
-      .returning();
+      const [updated] = await tx
+        .update(zeroAgentSchedules)
+        .set({ chatThreadId: thread.id, updatedAt: nowDate() })
+        .where(
+          and(
+            eq(zeroAgentSchedules.id, schedule.id),
+            isNull(zeroAgentSchedules.chatThreadId),
+          ),
+        )
+        .returning();
+
+      if (updated) {
+        return {
+          kind: "linked" as const,
+          schedule: updated,
+          threadId: thread.id,
+        };
+      }
+
+      await tx.delete(chatThreads).where(eq(chatThreads.id, thread.id));
+
+      const [current] = await tx
+        .select()
+        .from(zeroAgentSchedules)
+        .where(eq(zeroAgentSchedules.id, schedule.id))
+        .limit(1);
+      if (!current) {
+        return { kind: "not_found" as const };
+      }
+      if (!current.chatThreadId) {
+        throw new Error(
+          `Failed to link schedule ${schedule.id} to chat thread`,
+        );
+      }
+      return {
+        kind: "already_linked" as const,
+        schedule: current,
+        threadId: current.chatThreadId,
+      };
+    });
     signal.throwIfAborted();
-    if (!updated) {
+    if (migration.kind === "not_found") {
       return { kind: "not_found" };
     }
 
-    await publishChatThreadSchedulesChangedSafely(args.userId, thread.id);
-    signal.throwIfAborted();
+    if (migration.kind === "linked") {
+      await publishChatThreadSchedulesChangedSafely(
+        args.userId,
+        migration.threadId,
+      );
+      signal.throwIfAborted();
+    }
 
     return {
       kind: "ok",
-      response: await scheduleResponse(updated, displayName, {
+      response: await scheduleResponse(migration.schedule, displayName, {
         orgId: args.orgId,
         userId: args.userId,
         overrides,
