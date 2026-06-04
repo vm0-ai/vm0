@@ -14,6 +14,8 @@ from typing import Protocol
 
 _CR = ord("\r")
 _LF = ord("\n")
+_CR_BYTE = b"\r"
+_LF_BYTE = b"\n"
 _SPACE = ord(" ")
 _DATA_FIELD_PREFIX = b"data:"
 
@@ -102,6 +104,7 @@ class SseUsageScanner:
         self._state = "line"
         self._discard_event = False
         self._skip_next_lf = False
+        self._line_ending_hint = _LF
         self._capturing_event = False
         self._captured_data_lines = 0
 
@@ -174,7 +177,7 @@ class SseUsageScanner:
         return i
 
     def _consume_data(self, chunk: bytes, i: int) -> int:
-        line_end = _find_next_line_ending(chunk, i)
+        line_end = _find_next_line_ending(chunk, i, self._line_ending_hint)
         if line_end == -1:
             self._handler.on_data(chunk[i:])
             return len(chunk)
@@ -185,7 +188,7 @@ class SseUsageScanner:
         return line_end + 1
 
     def _consume_discard_line(self, chunk: bytes, i: int) -> int:
-        line_end = _find_next_line_ending(chunk, i)
+        line_end = _find_next_line_ending(chunk, i, self._line_ending_hint)
         if line_end == -1:
             return len(chunk)
 
@@ -197,11 +200,13 @@ class SseUsageScanner:
         self._line_buf.clear()
         self._process_control_line(line)
         self._state = "line"
+        self._line_ending_hint = line_ending
         if line_ending == _CR:
             self._skip_next_lf = True
 
     def _finish_data_or_discard_line(self, line_ending: int) -> None:
         self._state = "line"
+        self._line_ending_hint = line_ending
         if line_ending == _CR:
             self._skip_next_lf = True
 
@@ -285,11 +290,15 @@ def _is_line_ending(byte: int) -> bool:
     return byte in (_LF, _CR)
 
 
-def _find_next_line_ending(chunk: bytes, start: int) -> int:
-    next_lf = chunk.find(b"\n", start)
-    next_cr = chunk.find(b"\r", start)
-    if next_lf == -1:
-        return next_cr
-    if next_cr == -1:
-        return next_lf
-    return min(next_lf, next_cr)
+def _find_next_line_ending(chunk: bytes, start: int, preferred: int) -> int:
+    preferred_byte = _LF_BYTE if preferred == _LF else _CR_BYTE
+    other_byte = _CR_BYTE if preferred == _LF else _LF_BYTE
+
+    next_preferred = chunk.find(preferred_byte, start)
+    if next_preferred == -1:
+        return chunk.find(other_byte, start)
+
+    next_other = chunk.find(other_byte, start, next_preferred)
+    if next_other == -1:
+        return next_preferred
+    return next_other
