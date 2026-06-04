@@ -2478,27 +2478,87 @@ async fn restore_claude_session(
     Ok(())
 }
 
+fn codex_restore_rollout_path(
+    session_id: &str,
+    session_history: &str,
+    fallback_timestamp: chrono::DateTime<chrono::Utc>,
+) -> String {
+    let timestamp = codex_session_meta_timestamp(session_history).unwrap_or(fallback_timestamp);
+    format!(
+        "/home/user/.codex/sessions/{}/{}/{}/rollout-{}-{session_id}.jsonl",
+        timestamp.format("%Y"),
+        timestamp.format("%m"),
+        timestamp.format("%d"),
+        timestamp.format("%Y-%m-%dT%H-%M-%S"),
+    )
+}
+
+fn codex_session_meta_timestamp(session_history: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    for line in session_history.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if value.get("type").and_then(|value| value.as_str()) != Some("session_meta") {
+            continue;
+        }
+
+        if let Some(timestamp) = value
+            .get("payload")
+            .and_then(|payload| payload.get("timestamp"))
+            .and_then(|timestamp| timestamp.as_str())
+            .and_then(parse_codex_rollout_timestamp)
+        {
+            return Some(timestamp);
+        }
+
+        if let Some(timestamp) = value
+            .get("timestamp")
+            .and_then(|timestamp| timestamp.as_str())
+            .and_then(parse_codex_rollout_timestamp)
+        {
+            return Some(timestamp);
+        }
+    }
+
+    None
+}
+
+fn parse_codex_rollout_timestamp(raw: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(raw)
+        .ok()
+        .map(|timestamp| timestamp.with_timezone(&chrono::Utc))
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H-%M-%S")
+                .ok()
+                .map(|timestamp| {
+                    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                        timestamp,
+                        chrono::Utc,
+                    )
+                })
+        })
+}
+
 /// Write a Codex session history file as plain JSONL at
-/// `~/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl`.
+/// `~/.codex/sessions/YYYY/MM/DD/rollout-YYYY-MM-DDThh-mm-ss-{thread_id}.jsonl`.
 ///
-/// The date partition uses today's UTC date — `codex exec resume` walks the
-/// `sessions/` tree and resolves files by thread_id, so the partition is a
-/// hint, not a lookup key.
+/// Codex 0.137 filters filesystem resume candidates through its canonical
+/// rollout filename parser, so a bare `{thread_id}.jsonl` is ignored.
 async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    // Layout matches the real codex CLI (and `guest-mock-codex`):
-    // `/home/user/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl`.
-    let today = chrono::Utc::now().date_naive();
-    let session_dir = format!(
-        "/home/user/.codex/sessions/{}/{}/{}",
-        today.format("%Y"),
-        today.format("%m"),
-        today.format("%d"),
+    let session_path = codex_restore_rollout_path(
+        &session.session_id,
+        &session.session_history,
+        chrono::Utc::now(),
     );
-    let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
 
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
@@ -4721,17 +4781,57 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.cli_agent_type = "codex".into();
+        let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
         let session = ResumeSession {
-            session_id: "01jzm-thread-id".into(),
-            session_history: "{\"type\":\"thread.started\"}\n".into(),
+            session_id: session_id.into(),
+            session_history: format!(
+                r#"{{"timestamp":"2026-06-04T07:18:08.001Z","type":"session_meta","payload":{{"id":"{session_id}","timestamp":"2026-06-04T07:18:08.000Z","cwd":"/workspace","originator":"test","cli_version":"0.137.0","source":"cli","model_provider":"test-provider","base_instructions":null}}}}"#
+            ),
         };
         restore_session(&sandbox, &ctx, &session).await.unwrap();
         let writes = sandbox.write_file_calls();
         assert_eq!(writes.len(), 1);
         assert!(
-            writes[0].path.ends_with("/01jzm-thread-id.jsonl"),
-            "codex resume history must be restored as plain jsonl, got {}",
+            writes[0].path.ends_with(
+                "/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+            ),
+            "codex resume history must be restored as a canonical rollout jsonl, got {}",
             writes[0].path
+        );
+        assert_eq!(writes[0].content, session.session_history.as_bytes());
+    }
+
+    #[tokio::test]
+    async fn restore_session_writes_codex_session_with_canonical_fallback_filename() {
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        let session = ResumeSession {
+            session_id: "019e9154-c304-70f0-adde-36efb1be1701".into(),
+            session_history: "{\"type\":\"thread.started\"}\n{not-json}\n".into(),
+        };
+
+        restore_session(&sandbox, &ctx, &session).await.unwrap();
+
+        let writes = sandbox.write_file_calls();
+        assert_eq!(writes.len(), 1);
+        assert!(
+            writes[0].path.starts_with("/home/user/.codex/sessions/"),
+            "codex resume history must be restored under codex sessions, got {}",
+            writes[0].path
+        );
+        let filename = writes[0]
+            .path
+            .rsplit('/')
+            .next()
+            .expect("restored codex path should have a filename");
+        assert!(
+            filename.starts_with("rollout-"),
+            "codex resume history filename must use rollout prefix, got {filename}"
+        );
+        assert!(
+            filename.ends_with("-019e9154-c304-70f0-adde-36efb1be1701.jsonl"),
+            "codex resume history filename must include the thread id, got {filename}"
         );
         assert_eq!(writes[0].content, session.session_history.as_bytes());
     }
