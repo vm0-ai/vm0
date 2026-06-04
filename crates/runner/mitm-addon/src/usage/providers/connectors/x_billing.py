@@ -56,7 +56,7 @@ from collections.abc import Callable
 from typing import Literal, NamedTuple
 
 import matching
-from host_normalization import normalize_idna_hostname
+from host_normalization import UnsafeIdnaCompatibilityMappingError, normalize_idna_label
 
 from .x_tlds import IANA_TLDS
 
@@ -292,7 +292,6 @@ _DOMAIN_LABEL_RE = re.compile(r"^[a-z0-9-]{1,63}$")
 _MIN_DOMAIN_LABELS = 2
 _URL_TRAILING_PUNCTUATION = ".,:;!?"
 _URL_WRAPPER_CHARS = " \t\r\n<>()[]{}\"'"
-_UNSAFE_IDNA_COMPATIBILITY_MAPPING_ERROR = "unsafe IDNA compatibility mapping"
 _BareDomainClassification = Literal["url", "non_link", "ambiguous"]
 
 
@@ -320,10 +319,6 @@ def _label_is_billing_domain_label(label: str) -> bool:
     )
 
 
-def _is_unsafe_idna_compatibility_error(exc: UnicodeError) -> bool:
-    return str(exc) == _UNSAFE_IDNA_COMPATIBILITY_MAPPING_ERROR
-
-
 def _classify_bare_domain_host(host: str) -> _BareDomainClassification:
     labels = tuple(host.split("."))
     if len(labels) < _MIN_DOMAIN_LABELS or any(not label for label in labels):
@@ -333,16 +328,14 @@ def _classify_bare_domain_host(host: str) -> _BareDomainClassification:
     normalized_labels: list[str | None] = []
     for label in labels:
         try:
-            normalized_label = normalize_idna_hostname(label)
-        except UnicodeError as exc:
+            normalized_label = normalize_idna_label(label)
+        except UnsafeIdnaCompatibilityMappingError:
             # Keep billing conservative for URL-like compatibility aliases,
             # but do not fold them into unrelated ASCII domains.
-            if _is_unsafe_idna_compatibility_error(exc):
-                has_ambiguous_label = True
-                normalized_labels.append(None)
-                continue
-            return "non_link"
-        except ValueError:
+            has_ambiguous_label = True
+            normalized_labels.append(None)
+            continue
+        except UnicodeError:
             return "non_link"
 
         if not _label_is_billing_domain_label(normalized_label):

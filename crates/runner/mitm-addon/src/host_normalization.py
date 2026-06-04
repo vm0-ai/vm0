@@ -101,6 +101,10 @@ _UNSAFE_UTS46_IGNORABLE_RANGES = (
 )
 
 
+class UnsafeIdnaCompatibilityMappingError(UnicodeError):
+    """Raised when IDNA normalization would fold an unsafe compatibility alias."""
+
+
 def _is_ascii(value: str) -> bool:
     return all(ord(char) <= _ASCII_MAX for char in value)
 
@@ -308,7 +312,7 @@ def _validate_normalized_label_text(normalized_label: str) -> None:
 
 def _canonical_punycode_label(label: str) -> str:
     if _has_unsafe_uts46_mapping_chars(label):
-        raise UnicodeError("unsafe IDNA compatibility mapping")
+        raise UnsafeIdnaCompatibilityMappingError("unsafe IDNA compatibility mapping")
     normalized_label = _normalize_label_text(label)
     _validate_normalized_label_text(normalized_label)
 
@@ -324,7 +328,7 @@ def _canonical_punycode_label(label: str) -> str:
 def _encode_unicode_label(label: str) -> str:
     normalized_label = _normalize_label_text(label)
     if _is_ascii(normalized_label):
-        raise UnicodeError("unsafe IDNA compatibility mapping")
+        raise UnsafeIdnaCompatibilityMappingError("unsafe IDNA compatibility mapping")
     return _canonical_punycode_label(label)
 
 
@@ -365,6 +369,11 @@ def _normalize_label(label: str) -> str:
     if not _is_valid_alabel(ascii_label):
         raise UnicodeError("invalid IDNA A-label")
     return ascii_label
+
+
+def normalize_idna_label(label: str) -> str:
+    """Normalize one hostname label with the shared IDNA policy."""
+    return _normalize_label(label)
 
 
 def normalize_idna_hostname(host: str) -> str:

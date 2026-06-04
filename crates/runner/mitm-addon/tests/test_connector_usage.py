@@ -1006,6 +1006,7 @@ class TestReportConnectorUsage:
             "Param url=example.com",
             "Pipe|example.com",
             "Visit EXAMPLE.COM",
+            "Visit 123.com",
             "Visit blog.example.co.uk",
             "Open example.com/path/to/resource?search=foo&lang=en",
             "Open example.com:443/path",
