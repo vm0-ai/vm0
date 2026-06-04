@@ -5558,6 +5558,46 @@ function UserMessageGenerationTemplate({
   );
 }
 
+function ScheduleUserMessage({
+  scheduleId,
+  scheduleTitle,
+}: {
+  scheduleId: string | undefined;
+  scheduleTitle: string;
+}) {
+  const cardClassName =
+    "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
+  const body = (
+    <>
+      <IconClock size={15} className="shrink-0" />
+      <span className="min-w-0 truncate font-medium text-foreground">
+        {scheduleTitle}
+      </span>
+    </>
+  );
+  return (
+    <div data-role="user" className="group">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
+        <div className="flex flex-col items-end w-full">
+          {scheduleId ? (
+            <Link
+              pathname="/schedules/:scheduleId"
+              options={{ pathParams: { scheduleId } }}
+              className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
+              aria-label={`Open schedule ${scheduleTitle}`}
+            >
+              {body}
+            </Link>
+          ) : (
+            <div className={cardClassName}>{body}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -5609,6 +5649,17 @@ function PagedUserMessage({
       Reason.DomCallback,
     );
   };
+
+  // Schedule-posted user messages don't show the prompt — they render the
+  // schedule's title behind a clock icon and link to the schedule detail page.
+  if (message.scheduleTitle) {
+    return (
+      <ScheduleUserMessage
+        scheduleId={message.scheduleId}
+        scheduleTitle={message.scheduleTitle}
+      />
+    );
+  }
 
   return (
     <div data-role="user" className="group">

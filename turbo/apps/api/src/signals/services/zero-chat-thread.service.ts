@@ -111,6 +111,8 @@ type ChatMessageRow = {
   readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
+  readonly scheduleId: string | null;
+  readonly scheduleTitle: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -206,6 +208,8 @@ const messageColumns = {
   recommendedFollowups: chatMessages.recommendedFollowups,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
+  scheduleId: chatMessages.scheduleId,
+  scheduleTitle: chatMessages.scheduleTitle,
 } as const;
 
 const searchMessageColumns = {
@@ -609,6 +613,8 @@ function toPagedMessage(
       return {
         ...message,
         role: "user" as const,
+        scheduleId: row.scheduleId ?? undefined,
+        scheduleTitle: row.scheduleTitle ?? undefined,
       };
     }
     return {

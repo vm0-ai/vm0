@@ -270,14 +270,25 @@ describe("POST /api/zero/schedules/run", () => {
       chatThreadId: threadId,
     });
 
-    // The prompt was posted as a user chat message bound to the run.
+    // The prompt was posted as a user chat message bound to the run, tagged
+    // with the originating schedule's id and a snapshot of its title.
     const messages = await db
-      .select({ content: chatMessages.content, role: chatMessages.role })
+      .select({
+        content: chatMessages.content,
+        role: chatMessages.role,
+        scheduleId: chatMessages.scheduleId,
+        scheduleTitle: chatMessages.scheduleTitle,
+      })
       .from(chatMessages)
       .where(eq(chatMessages.runId, body.runId));
     expect(
       messages.some((message) => {
-        return message.role === "user" && message.content === "Manual run test";
+        return (
+          message.role === "user" &&
+          message.content === "Manual run test" &&
+          message.scheduleId === scheduleId &&
+          message.scheduleTitle === "run-test"
+        );
       }),
     ).toBeTruthy();
 

@@ -1497,6 +1497,11 @@ async function appendAssociatedUserMessage(params: {
   // When false, the thread's in-progress draft is preserved. Scheduled posts
   // are not user-initiated typing, so they must not clear the user's draft.
   readonly clearDraft: boolean;
+  // Set when this message is posted by a firing schedule. `scheduleTitle`
+  // snapshots the schedule name at send time so the bubble keeps its label
+  // even after a rename/delete.
+  readonly scheduleId?: string;
+  readonly scheduleTitle?: string;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
     if (params.clearDraft) {
@@ -1517,6 +1522,8 @@ async function appendAssociatedUserMessage(params: {
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
         generationTemplate: params.generationTemplate,
+        scheduleId: params.scheduleId,
+        scheduleTitle: params.scheduleTitle,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -2075,6 +2082,8 @@ export async function postScheduleUserMessage(params: {
   readonly runId: string;
   readonly prompt: string;
   readonly appendQueueMarker: boolean;
+  readonly scheduleId: string;
+  readonly scheduleTitle: string;
 }): Promise<void> {
   await appendAssociatedUserMessage({
     db: params.db,
@@ -2088,6 +2097,8 @@ export async function postScheduleUserMessage(params: {
     generationTemplate: undefined,
     appendQueueMarker: params.appendQueueMarker,
     clearDraft: false,
+    scheduleId: params.scheduleId,
+    scheduleTitle: params.scheduleTitle,
   });
   await publishUserSignal(
     [params.userId],

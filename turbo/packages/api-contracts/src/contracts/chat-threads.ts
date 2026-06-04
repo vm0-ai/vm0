@@ -172,6 +172,11 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
+  // Present on user messages posted by a firing schedule. `scheduleId` links to
+  // the schedule detail page; `scheduleTitle` is the schedule name snapshot
+  // rendered in place of the prompt text.
+  scheduleId: z.string().optional(),
+  scheduleTitle: z.string().optional(),
   createdAt: z.string(),
 });
 
