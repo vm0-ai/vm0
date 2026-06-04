@@ -12,6 +12,7 @@ pub struct RawMessage {
 }
 
 impl RawMessage {
+    /// Borrow this owned message without copying its payload.
     pub fn as_borrowed(&self) -> BorrowedRawMessage<'_> {
         BorrowedRawMessage {
             msg_type: self.msg_type,
@@ -30,6 +31,7 @@ pub struct BorrowedRawMessage<'a> {
 }
 
 impl BorrowedRawMessage<'_> {
+    /// Convert this borrowed message into an owned message by copying its payload.
     pub fn to_owned_message(self) -> RawMessage {
         RawMessage {
             msg_type: self.msg_type,
@@ -39,9 +41,12 @@ impl BorrowedRawMessage<'_> {
     }
 }
 
+/// Error returned by [`Decoder::decode_with`].
 #[derive(Debug, Clone)]
 pub enum DecodeWithError<E> {
+    /// The byte stream contains an invalid frame.
     Protocol(ProtocolError),
+    /// The visitor rejected a complete decoded frame.
     Visitor(E),
 }
 
@@ -87,6 +92,11 @@ impl Decoder {
     }
 
     /// Feed data and visit complete messages while they still borrow the decoder buffer.
+    ///
+    /// Protocol errors are detected before any complete frame in the same input
+    /// batch is visited, preserving the all-or-error behavior of [`Self::decode`].
+    /// If the visitor returns an error, frames through the rejected frame are
+    /// consumed and later complete frames remain buffered.
     pub fn decode_with<E>(
         &mut self,
         data: &[u8],
