@@ -278,6 +278,9 @@ describe("zero org switcher - join button accepts invitation (SIDEBAR-D-062)", (
     await waitFor(() => {
       expect(screen.queryByText("Join")).not.toBeInTheDocument();
     });
+    expect(mockedClerk.setActive).toHaveBeenCalledWith({
+      organization: "org_invited",
+    });
   });
 });
 

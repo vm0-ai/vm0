@@ -85,6 +85,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
 import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
 import { clerk$ } from "../../signals/auth.ts";
+import { userInvitations$ } from "../../signals/user-invitations.ts";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 
 // ---------------------------------------------------------------------------
@@ -1138,11 +1139,14 @@ function OnboardingAccountDropdown() {
 
 function OnboardingOrgSwitcher() {
   const clerkLoadable = useLastLoadable(clerk$);
+  const pendingInvitations = useLastResolved(userInvitations$);
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const orgCount = clerk?.user?.organizationMemberships?.length ?? 0;
+  const hasPendingInvitations =
+    pendingInvitations !== undefined && pendingInvitations.length > 0;
 
-  // Only surface the switcher when there is more than one org to switch between.
-  if (orgCount <= 1) {
+  // Surface the switcher when there is another workspace to switch to or join.
+  if (orgCount <= 1 && !hasPendingInvitations) {
     return null;
   }
 

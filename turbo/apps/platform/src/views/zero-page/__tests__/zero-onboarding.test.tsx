@@ -114,6 +114,55 @@ describe("onboarding guard entry routes", () => {
   });
 });
 
+describe("zero onboarding - organization switcher", () => {
+  it("shows pending invitations even when the user only belongs to one org", async () => {
+    mockOnboardingNeeded();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      org: {
+        activeOrg: { id: "org_current", name: "Current Org" },
+        memberships: [
+          {
+            id: "org_current",
+            organization: { id: "org_current", name: "Current Org" },
+          },
+        ],
+        pendingInvitations: [
+          {
+            id: "inv_pending",
+            publicOrganizationData: {
+              id: "org_invited",
+              name: "Invited Org",
+              imageUrl: "",
+            },
+            accept: () => {
+              return Promise.resolve({});
+            },
+          },
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-workspace-name"),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Current Org")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Current Org"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Invited Org")).toBeInTheDocument();
+      expect(screen.getByText("Join")).toBeInTheDocument();
+    });
+  });
+});
+
 describe("zero onboarding - step 2: choose tools", () => {
   it("should show connector selection with search", async () => {
     mockOnboardingNeeded();
