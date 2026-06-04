@@ -1508,6 +1508,7 @@ class _FirewallDecisionState:
     best_base_specificity: int | None
     best_rule_specificity: _PathSpecificity | None
     denied_match: _BlockMatch | None
+    # Dict keys act as an ordered set of first-seen denied permission names.
     denied_permission_names: dict[str, None]
     malformed_config_match: _BlockMatch | None
     malformed_policy_match: _BlockMatch | None
