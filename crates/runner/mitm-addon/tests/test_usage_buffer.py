@@ -55,6 +55,20 @@ class _FakeTimer:
         self.cancelled = True
 
 
+class _InstrumentedFlushOwnerLock:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.blocking_acquire_started = threading.Event()
+
+    def acquire(self, blocking: bool = True) -> bool:
+        if blocking:
+            self.blocking_acquire_started.set()
+        return self._lock.acquire(blocking)
+
+    def release(self) -> None:
+        self._lock.release()
+
+
 def test_flush_aggregates_same_bucket_and_dedupes_source_key(tmp_path):
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
@@ -635,19 +649,6 @@ def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
 def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_path):
     timers = []
 
-    class _InstrumentedFlushOwnerLock:
-        def __init__(self) -> None:
-            self._lock = threading.Lock()
-            self.blocking_acquire_started = threading.Event()
-
-        def acquire(self, blocking: bool = True) -> bool:
-            if blocking:
-                self.blocking_acquire_started.set()
-            return self._lock.acquire(blocking)
-
-        def release(self) -> None:
-            self._lock.release()
-
     def timer_factory(delay: float, callback):
         timer = _FakeTimer(delay, callback)
         timers.append(timer)
@@ -718,6 +719,81 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
     assert enqueued_runs == ["run-1", "run-2"]
     assert usage.counters._buffered_usage_events == 0
     assert len(timers) == 2
+    assert timers[1].cancelled is True
+
+
+def test_shutdown_flush_retries_active_timer_failure_without_rescheduling_timer(tmp_path):
+    timers = []
+
+    def timer_factory(delay: float, callback):
+        timer = _FakeTimer(delay, callback)
+        timers.append(timer)
+        return timer
+
+    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    flush_owner_lock = _InstrumentedFlushOwnerLock()
+    usage_buffer._usage_event_buffer._flush_owner_lock = flush_owner_lock
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        str(tmp_path / "proxy.jsonl"),
+    )
+    assert len(timers) == 1
+
+    first_enqueue_started = threading.Event()
+    release_first_enqueue = threading.Event()
+    shutdown_returned = threading.Event()
+    shutdown_results: list[int] = []
+    enqueued_run_ids: list[str] = []
+    enqueued_idempotency_keys: list[str] = []
+    timer_errors: list[str] = []
+
+    def enqueue_webhook(url, sandbox_token, payload, path, log_type):
+        del url, sandbox_token, path
+        assert log_type == "usage_event"
+        enqueued_run_ids.append(payload["runId"])
+        enqueued_idempotency_keys.append(payload["events"][0]["idempotencyKey"])
+        if len(enqueued_run_ids) == 1:
+            first_enqueue_started.set()
+            assert release_first_enqueue.wait(timeout=1)
+            raise OSError("timer failed")
+
+    def timer_flush():
+        try:
+            timers[0].callback()
+        except OSError as exc:
+            timer_errors.append(str(exc))
+
+    def shutdown_flush():
+        shutdown_results.append(usage.flush_usage_events(trigger="shutdown"))
+        shutdown_returned.set()
+
+    with patch.object(usage_buffer, "_enqueue_webhook", side_effect=enqueue_webhook):
+        timer_thread = threading.Thread(target=timer_flush)
+        timer_thread.start()
+        assert first_enqueue_started.wait(timeout=1)
+
+        shutdown_thread = threading.Thread(target=shutdown_flush)
+        shutdown_thread.start()
+        assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)
+        assert not shutdown_returned.is_set()
+
+        release_first_enqueue.set()
+        timer_thread.join(timeout=1)
+        shutdown_thread.join(timeout=1)
+
+    assert not timer_thread.is_alive()
+    assert not shutdown_thread.is_alive()
+    assert timer_errors == ["timer failed"]
+    assert shutdown_results == [1]
+    assert enqueued_run_ids == ["run-1", "run-1"]
+    assert enqueued_idempotency_keys[0] == enqueued_idempotency_keys[1]
+    assert usage.counters._buffered_usage_events == 0
+    assert len(timers) == 2
+    assert timers[0].cancelled is True
     assert timers[1].cancelled is True
 
 
