@@ -151,17 +151,6 @@ fn echo_session_id(events: &[(String, Value)]) -> Option<&str> {
     })
 }
 
-fn write_echo_session_history(events: &[(String, Value)], session_id: Option<&str>) {
-    if let Some(session_id) = session_id
-        && let Some(path) = create_session_history(session_id)
-        && let Ok(mut file) = std::fs::File::create(path)
-    {
-        for (line, _) in events {
-            let _ = writeln!(file, "{line}");
-        }
-    }
-}
-
 fn run_echo_jsonl_mode(payload: &str) -> ExitCode {
     let events = match parse_echo_jsonl(payload) {
         Ok(events) => events,
@@ -179,10 +168,13 @@ fn run_echo_jsonl_mode(payload: &str) -> ExitCode {
         return ExitCode::from(1);
     }
 
+    let mut transcript = JsonlTranscript::default();
     for (line, _) in &events {
-        println!("{line}");
+        transcript.emit_raw_line(line.clone());
     }
-    write_echo_session_history(&events, session_id);
+    if let Some(session_id) = session_id {
+        transcript.write_session_history(session_id);
+    }
     let _ = std::io::stdout().flush();
     ExitCode::SUCCESS
 }
@@ -319,81 +311,129 @@ fn create_session_history(session_id: &str) -> Option<String> {
     build_session_history_path(session_id, &home)
 }
 
+#[derive(Default)]
+struct JsonlTranscript {
+    lines: Vec<String>,
+}
+
+impl JsonlTranscript {
+    fn emit_value(&mut self, event: Value) {
+        self.emit_raw_line(event.to_string());
+    }
+
+    fn emit_raw_line(&mut self, line: String) {
+        println!("{line}");
+        self.lines.push(line);
+    }
+
+    fn write_session_history(&self, session_id: &str) {
+        if let Some(path) = create_session_history(session_id) {
+            self.write_session_history_file(&path);
+        }
+    }
+
+    fn write_session_history_file(&self, path: &str) {
+        if let Ok(mut file) = std::fs::File::create(path) {
+            for line in &self.lines {
+                let _ = writeln!(file, "{line}");
+            }
+        }
+    }
+}
+
+fn init_event(session_id: &str, tools: &[&str]) -> Value {
+    json!({
+        "type": "system",
+        "subtype": "init",
+        "cwd": CANONICAL_WORKING_DIR,
+        "session_id": session_id,
+        "tools": tools,
+        "model": "mock-claude"
+    })
+}
+
+fn result_event(session_id: &str, is_error: bool, result: &str) -> Value {
+    json!({
+        "type": "result",
+        "subtype": if is_error { "error" } else { "success" },
+        "session_id": session_id,
+        "is_error": is_error,
+        "duration_ms": 100,
+        "num_turns": 1,
+        "result": result,
+        "total_cost_usd": 0,
+        "usage": {"input_tokens": 0, "output_tokens": 0}
+    })
+}
+
+fn assistant_text_event(session_id: &str, text: &str) -> Value {
+    json!({
+        "type": "assistant",
+        "session_id": session_id,
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "text", "text": text}]
+        }
+    })
+}
+
+fn tool_use_event(session_id: &str, id: &str, name: &str, input: Value) -> Value {
+    json!({
+        "type": "assistant",
+        "session_id": session_id,
+        "message": {
+            "role": "assistant",
+            "content": [{
+                "type": "tool_use",
+                "id": id,
+                "name": name,
+                "input": input
+            }]
+        }
+    })
+}
+
+fn tool_result_event(session_id: &str, tool_use_id: &str, content: &str, is_error: bool) -> Value {
+    json!({
+        "type": "user",
+        "session_id": session_id,
+        "message": {
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": tool_use_id,
+                "content": content,
+                "is_error": is_error
+            }]
+        }
+    })
+}
+
 /// Emit the init + result JSONL pair shared by post-result mock test
 /// prefixes, flush stdout so guest-agent sees them, and write the
 /// session history checkpoint file. Caller decides which post-result
 /// behavior follows (hang / exit / ignore SIGTERM / orphan stdout).
 fn emit_post_result_pair() {
     let session_id = generate_session_id();
-    let cwd = CANONICAL_WORKING_DIR;
-
-    let init_event = json!({
-        "type": "system",
-        "subtype": "init",
-        "cwd": cwd,
-        "session_id": session_id,
-        "tools": ["Bash"],
-        "model": "mock-claude"
-    });
-    println!("{init_event}");
-
-    let result_event = json!({
-        "type": "result",
-        "subtype": "success",
-        "session_id": session_id,
-        "is_error": false,
-        "duration_ms": 100,
-        "num_turns": 1,
-        "result": "Done.",
-        "total_cost_usd": 0,
-        "usage": {"input_tokens": 0, "output_tokens": 0}
-    });
-    println!("{result_event}");
-
-    if let Some(path) = create_session_history(&session_id)
-        && let Ok(mut file) = std::fs::File::create(&path)
-    {
-        let _ = writeln!(file, "{init_event}");
-        let _ = writeln!(file, "{result_event}");
-    }
+    let mut transcript = JsonlTranscript::default();
+    transcript.emit_value(init_event(&session_id, &["Bash"]));
+    transcript.emit_value(result_event(&session_id, false, "Done."));
+    transcript.write_session_history(&session_id);
 
     let _ = std::io::stdout().flush();
 }
 
 fn emit_stuck_tool_events() {
     let session_id = generate_session_id();
-    let cwd = CANONICAL_WORKING_DIR;
+    let mut transcript = JsonlTranscript::default();
 
-    // Init event
-    println!(
-        "{}",
-        json!({
-            "type": "system",
-            "subtype": "init",
-            "cwd": cwd,
-            "session_id": session_id,
-            "tools": ["WebFetch"],
-            "model": "mock-claude"
-        })
-    );
-
-    // Tool use event — WebFetch that never completes
-    println!(
-        "{}",
-        json!({
-            "type": "assistant",
-            "session_id": session_id,
-            "message": {
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_use",
-                    "id": "toolu_stuck_001",
-                    "name": "WebFetch",
-                    "input": {"url": "https://example.com/hang"}
-                }]
-            }
-        })
-    );
+    transcript.emit_value(init_event(&session_id, &["WebFetch"]));
+    transcript.emit_value(tool_use_event(
+        &session_id,
+        "toolu_stuck_001",
+        "WebFetch",
+        json!({"url": "https://example.com/hang"}),
+    ));
 
     // Flush stdout so guest-agent receives the events before we hang.
     // When piped, stdout is fully buffered and println! may not flush.
@@ -470,51 +510,22 @@ fn run_text_mode(prompt: &str) -> ExitCode {
 
 /// Execute prompt in stream-json mode: output JSONL events, capture output.
 fn run_stream_json_mode(prompt: &str, session_id: &str) -> ExitCode {
-    let cwd = CANONICAL_WORKING_DIR;
-
     let session_history_file = create_session_history(session_id);
-    let mut events: Vec<Value> = Vec::with_capacity(5);
+    let mut transcript = JsonlTranscript::default();
 
     // 1. System init event
-    let init_event = json!({
-        "type": "system",
-        "subtype": "init",
-        "cwd": cwd,
-        "session_id": session_id,
-        "tools": ["Bash"],
-        "model": "mock-claude"
-    });
-    println!("{}", init_event);
-    events.push(init_event);
+    transcript.emit_value(init_event(session_id, &["Bash"]));
 
     // 2. Assistant text event
-    let text_event = json!({
-        "type": "assistant",
-        "session_id": session_id,
-        "message": {
-            "role": "assistant",
-            "content": [{"type": "text", "text": "Executing command..."}]
-        }
-    });
-    println!("{}", text_event);
-    events.push(text_event);
+    transcript.emit_value(assistant_text_event(session_id, "Executing command..."));
 
     // 3. Assistant tool_use event
-    let tool_use_event = json!({
-        "type": "assistant",
-        "session_id": session_id,
-        "message": {
-            "role": "assistant",
-            "content": [{
-                "type": "tool_use",
-                "id": "toolu_mock_001",
-                "name": "Bash",
-                "input": {"command": prompt}
-            }]
-        }
-    });
-    println!("{}", tool_use_event);
-    events.push(tool_use_event);
+    transcript.emit_value(tool_use_event(
+        session_id,
+        "toolu_mock_001",
+        "Bash",
+        json!({"command": prompt}),
+    ));
 
     // 4. Execute bash and capture output
     let (output, exit_code) = match Command::new("bash")
@@ -538,44 +549,19 @@ fn run_stream_json_mode(prompt: &str, session_id: &str) -> ExitCode {
     let is_error = exit_code != 0;
 
     // 5. User tool_result event
-    let tool_result_event = json!({
-        "type": "user",
-        "session_id": session_id,
-        "message": {
-            "role": "user",
-            "content": [{
-                "type": "tool_result",
-                "tool_use_id": "toolu_mock_001",
-                "content": output,
-                "is_error": is_error
-            }]
-        }
-    });
-    println!("{}", tool_result_event);
-    events.push(tool_result_event);
+    transcript.emit_value(tool_result_event(
+        session_id,
+        "toolu_mock_001",
+        &output,
+        is_error,
+    ));
 
     // 6. Result event
-    let result_event = json!({
-        "type": "result",
-        "subtype": if is_error { "error" } else { "success" },
-        "session_id": session_id,
-        "is_error": is_error,
-        "duration_ms": 100,
-        "num_turns": 1,
-        "result": output,
-        "total_cost_usd": 0,
-        "usage": {"input_tokens": 0, "output_tokens": 0}
-    });
-    println!("{}", result_event);
-    events.push(result_event);
+    transcript.emit_value(result_event(session_id, is_error, &output));
 
     // Write session history
-    if let Some(path) = session_history_file
-        && let Ok(mut file) = std::fs::File::create(&path)
-    {
-        for event in &events {
-            let _ = writeln!(file, "{event}");
-        }
+    if let Some(path) = session_history_file {
+        transcript.write_session_history_file(&path);
     }
 
     ExitCode::from(exit_code as u8)
