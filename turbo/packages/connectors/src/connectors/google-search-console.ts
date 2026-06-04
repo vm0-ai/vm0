@@ -18,7 +18,8 @@ export const googleSearchConsole = {
     authMethods: {
       oauth: {
         label: "OAuth (Recommended)",
-        helpText: "Sign in with Google to grant Search Console (read-only) access.",
+        helpText:
+          "Sign in with Google to grant Search Console (read-only) access.",
         client: {
           clientRegistration: "static",
           clientType: "confidential",
