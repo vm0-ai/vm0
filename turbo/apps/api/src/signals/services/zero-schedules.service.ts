@@ -40,6 +40,7 @@ import {
 } from "./zero-model-selection.service";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import { createChatThread$ } from "./zero-chat-thread.service";
 import {
   postScheduleUserMessage,
   resolveScheduleChatThreadModelPin,
@@ -380,6 +381,11 @@ type EnableScheduleResult =
   | { readonly kind: "ok"; readonly response: ScheduleResponse }
   | { readonly kind: "not_found" }
   | { readonly kind: "schedule_past" };
+
+type MigrateScheduleToChatResult =
+  | { readonly kind: "ok"; readonly response: ScheduleResponse }
+  | { readonly kind: "not_found" }
+  | { readonly kind: "bad_request"; readonly message: string };
 
 interface ScheduleMutationArgs {
   readonly userId: string;
@@ -919,6 +925,97 @@ export const enableSchedule$ = command(
         orgId: args.orgId,
         userId: args.userId,
         overrides: featureSwitchOverrides,
+      }),
+    };
+  },
+);
+
+/**
+ * Migrate a legacy schedule (chatThreadId === null) to chat mode by creating a
+ * new chat thread and linking it. This is the ONLY path that sets chatThreadId
+ * on an existing schedule; it is gated on the ScheduledChat switch and only
+ * performs the null -> set transition. An already-linked schedule is returned
+ * unchanged so the caller can migrate a batch idempotently.
+ */
+export const migrateScheduleToChat$ = command(
+  async (
+    { get, set },
+    args: ScheduleMutationArgs,
+    signal: AbortSignal,
+  ): Promise<MigrateScheduleToChatResult> => {
+    const db = set(writeDb$);
+
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    const chatModeEnabled = isFeatureEnabled(FeatureSwitchKey.ScheduledChat, {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides,
+    });
+    if (!chatModeEnabled) {
+      return {
+        kind: "bad_request",
+        message: "Chat-mode schedules are not enabled",
+      };
+    }
+
+    const ownership = await verifyScheduleOwnership(
+      db,
+      args.userId,
+      args.orgId,
+      args.agentId,
+      args.name,
+    );
+    signal.throwIfAborted();
+    if (!ownership.ok) {
+      return { kind: "not_found" };
+    }
+    const { schedule, displayName } = ownership;
+
+    // Already linked: return as-is so a batch migration can skip it cleanly.
+    if (schedule.chatThreadId) {
+      return {
+        kind: "ok",
+        response: await scheduleResponse(schedule, displayName, {
+          orgId: args.orgId,
+          userId: args.userId,
+          overrides,
+        }),
+      };
+    }
+
+    const thread = await set(
+      createChatThread$,
+      {
+        userId: args.userId,
+        agentComposeId: args.agentId,
+        title: schedule.description ?? schedule.name,
+        clientThreadId: undefined,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const [updated] = await db
+      .update(zeroAgentSchedules)
+      .set({ chatThreadId: thread.id, updatedAt: nowDate() })
+      .where(eq(zeroAgentSchedules.id, schedule.id))
+      .returning();
+    signal.throwIfAborted();
+    if (!updated) {
+      return { kind: "not_found" };
+    }
+
+    await publishChatThreadSchedulesChangedSafely(args.userId, thread.id);
+
+    return {
+      kind: "ok",
+      response: await scheduleResponse(updated, displayName, {
+        orgId: args.orgId,
+        userId: args.userId,
+        overrides,
       }),
     };
   },

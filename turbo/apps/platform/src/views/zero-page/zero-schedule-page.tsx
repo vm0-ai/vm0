@@ -32,6 +32,7 @@ import {
 } from "./schedule-dialog.tsx";
 import { ScheduleCalendarView } from "./schedule-calendar-view.tsx";
 import { ScheduleListView } from "./schedule-list-view.tsx";
+import { MigrateSchedulesDialogContainer } from "./migrate-schedules-dialog.tsx";
 import { agents$ } from "../../signals/agent.ts";
 import {
   COMMON_TIMEZONES,
@@ -713,6 +714,7 @@ export function ZeroSchedulePage() {
         }}
       />
       <DeleteScheduleDialogContainer />
+      <MigrateSchedulesDialogContainer />
     </div>
   );
 }

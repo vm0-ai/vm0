@@ -2734,6 +2734,22 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero schedules migrate-to-chat rewrite path with one dynamic segment", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/schedules/nightly/migrate-to-chat",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/schedules/nightly/migrate-to-chat/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/schedules/nightly/migrate"),
+    ).toBe(false);
+  });
+
   it("matches the zero agents collection rewrite path", () => {
     expect(matchesApiBackendRewritePath("/api/zero/agents")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/agent")).toBe(false);
