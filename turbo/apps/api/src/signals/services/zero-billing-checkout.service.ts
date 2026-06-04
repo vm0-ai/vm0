@@ -1,23 +1,13 @@
 import { command } from "ccstate";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { and, eq, gt, lte, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Stripe } from "stripe";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../external/time";
-import { writeDb$, type Db } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
-
-type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
-
-interface LockedCheckoutOrg {
-  readonly orgId: string;
-  readonly lastProcessedInvoiceId: string | null;
-  readonly stripeSubscriptionId: string | null;
-  readonly tier: string;
-}
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
@@ -38,15 +28,6 @@ type CheckoutCompletionResult =
   | { readonly status: "completed" }
   | { readonly status: "pending" }
   | { readonly status: "customer_mismatch" }
-  | {
-      readonly status: "tier_conflict";
-      readonly currentTier: string | null;
-      readonly targetTier: SubscriptionCheckoutTier;
-    };
-
-type PaidCheckoutInvoiceResult =
-  | { readonly status: "completed" }
-  | { readonly status: "pending" }
   | {
       readonly status: "tier_conflict";
       readonly currentTier: string | null;
@@ -172,244 +153,6 @@ function subscriptionWillCancel(subscription: Stripe.Subscription): boolean {
   return subscription.cancel_at_period_end || subscription.cancel_at !== null;
 }
 
-function subscriptionTrialEnd(subscription: Stripe.Subscription): Date | null {
-  return typeof subscription.trial_end === "number"
-    ? new Date(subscription.trial_end * 1000)
-    : null;
-}
-
-function requiredSubscriptionTrialEnd(subscription: Stripe.Subscription): Date {
-  const trialEnd = subscriptionTrialEnd(subscription);
-  if (!trialEnd) {
-    throw new Error(
-      `trialing subscription has no trial_end (subscriptionId=${subscription.id})`,
-    );
-  }
-  return trialEnd;
-}
-
-function monthlyCreditsForTier(tier: SubscriptionCheckoutTier): number {
-  switch (tier) {
-    case "pro": {
-      return 20_000;
-    }
-    case "team": {
-      return 120_000;
-    }
-  }
-}
-
-function subscriptionCreditExpiresAt(
-  subscription: Stripe.Subscription,
-  periodEndDate: Date,
-): Date {
-  if (subscription.status === "trialing") {
-    return requiredSubscriptionTrialEnd(subscription);
-  }
-
-  const expiresAt = new Date(periodEndDate);
-  expiresAt.setMonth(expiresAt.getMonth() + 1);
-  return expiresAt;
-}
-
-function subscriptionIdFromInvoice(invoice: Stripe.Invoice): string | null {
-  const subscription = invoice.parent?.subscription_details?.subscription;
-  if (typeof subscription === "string") {
-    return subscription;
-  }
-  return subscription?.id ?? null;
-}
-
-function subscriptionPeriodEndFromInvoice(
-  invoice: Stripe.Invoice,
-): Date | null {
-  const subscriptionLine = invoice.lines.data.find((line) => {
-    return line.parent?.type === "subscription_item_details";
-  });
-  const periodEndUnix = subscriptionLine?.period.end;
-  return typeof periodEndUnix === "number"
-    ? new Date(periodEndUnix * 1000)
-    : null;
-}
-
-async function latestPaidInvoice(
-  stripe: ReturnType<typeof getStripeClient>,
-  subscription: Stripe.Subscription,
-): Promise<Stripe.Invoice | null> {
-  const latestInvoice = subscription.latest_invoice;
-  if (!latestInvoice) {
-    return null;
-  }
-
-  const invoice =
-    typeof latestInvoice === "string"
-      ? await stripe.invoices.retrieve(latestInvoice)
-      : latestInvoice;
-
-  return invoice.status === "paid" ? invoice : null;
-}
-
-async function lockCheckoutOrg(
-  tx: WriteTx,
-  orgId: string,
-): Promise<LockedCheckoutOrg | null> {
-  const [org] = await tx
-    .select({
-      orgId: orgMetadata.orgId,
-      lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
-      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-      tier: orgMetadata.tier,
-    })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .for("update")
-    .limit(1);
-
-  return org ?? null;
-}
-
-function invoiceWouldReplaceWithSameOrLowerTier(args: {
-  readonly currentSubscriptionId: string | null;
-  readonly subscriptionId: string;
-  readonly currentTier: string;
-  readonly targetTier: SubscriptionCheckoutTier;
-}): boolean {
-  return (
-    args.currentSubscriptionId !== null &&
-    args.currentSubscriptionId !== args.subscriptionId &&
-    checkoutWouldReplaceWithSameOrLowerTier({
-      currentTier: args.currentTier,
-      targetTier: args.targetTier,
-    })
-  );
-}
-
-async function expireCredits(tx: WriteTx, orgId: string): Promise<void> {
-  const expired = await tx
-    .select({
-      id: creditExpiresRecord.id,
-      remaining: creditExpiresRecord.remaining,
-    })
-    .from(creditExpiresRecord)
-    .where(
-      and(
-        eq(creditExpiresRecord.orgId, orgId),
-        lte(creditExpiresRecord.expiresAt, nowDate()),
-        gt(creditExpiresRecord.remaining, 0),
-      ),
-    )
-    .for("update");
-
-  const totalExpired = expired.reduce((sum, record) => {
-    return sum + record.remaining;
-  }, 0);
-  if (totalExpired === 0) {
-    return;
-  }
-
-  for (const record of expired) {
-    await tx
-      .update(creditExpiresRecord)
-      .set({ remaining: 0 })
-      .where(eq(creditExpiresRecord.id, record.id));
-  }
-
-  await tx
-    .update(orgMetadata)
-    .set({
-      credits: sql`GREATEST(${orgMetadata.credits} - ${totalExpired}, 0)`,
-      updatedAt: nowDate(),
-    })
-    .where(eq(orgMetadata.orgId, orgId));
-}
-
-async function grantOrgCredits(
-  tx: WriteTx,
-  orgId: string,
-  amount: number,
-): Promise<void> {
-  await tx.execute(
-    sql`INSERT INTO org_metadata (org_id, credits, created_at, updated_at)
-        VALUES (${orgId}, ${amount}, now(), now())
-        ON CONFLICT (org_id)
-        DO UPDATE SET credits = org_metadata.credits + ${amount}, updated_at = now()`,
-  );
-}
-
-async function applyPaidCheckoutInvoice(
-  tx: WriteTx,
-  args: {
-    readonly orgId: string;
-    readonly invoice: Stripe.Invoice;
-    readonly subscription: Stripe.Subscription;
-    readonly tier: SubscriptionCheckoutTier;
-    readonly periodEndDate: Date;
-  },
-): Promise<PaidCheckoutInvoiceResult> {
-  const lockedOrg = await lockCheckoutOrg(tx, args.orgId);
-  if (!lockedOrg) {
-    return { status: "pending" };
-  }
-
-  if (lockedOrg.lastProcessedInvoiceId === args.invoice.id) {
-    return { status: "completed" };
-  }
-
-  if (
-    invoiceWouldReplaceWithSameOrLowerTier({
-      currentSubscriptionId: lockedOrg.stripeSubscriptionId,
-      subscriptionId: args.subscription.id,
-      currentTier: lockedOrg.tier,
-      targetTier: args.tier,
-    })
-  ) {
-    return {
-      status: "tier_conflict",
-      currentTier: lockedOrg.tier,
-      targetTier: args.tier,
-    };
-  }
-
-  await expireCredits(tx, args.orgId);
-
-  const credits = monthlyCreditsForTier(args.tier);
-  const inserted = await tx
-    .insert(creditExpiresRecord)
-    .values({
-      orgId: args.orgId,
-      source: "subscription_renewal",
-      stripeInvoiceId: args.invoice.id,
-      amount: credits,
-      remaining: credits,
-      expiresAt: subscriptionCreditExpiresAt(
-        args.subscription,
-        args.periodEndDate,
-      ),
-    })
-    .onConflictDoNothing()
-    .returning({ id: creditExpiresRecord.id });
-
-  if (inserted.length > 0) {
-    await grantOrgCredits(tx, args.orgId, credits);
-  }
-
-  await tx
-    .update(orgMetadata)
-    .set({
-      tier: args.tier,
-      stripeSubscriptionId: args.subscription.id,
-      subscriptionStatus: args.subscription.status,
-      cancelAtPeriodEnd: subscriptionWillCancel(args.subscription),
-      onboardingPaymentPending: false,
-      lastProcessedInvoiceId: args.invoice.id,
-      currentPeriodEnd: args.periodEndDate,
-      updatedAt: nowDate(),
-    })
-    .where(eq(orgMetadata.orgId, args.orgId));
-
-  return { status: "completed" };
-}
-
 function customUnitAmountParams(
   template: Stripe.Price.CustomUnitAmount | null,
   preset: number,
@@ -532,9 +275,7 @@ export const completeCheckoutSession$ = command(
       return { status: "pending" };
     }
 
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
-      expand: ["latest_invoice"],
-    });
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
     signal.throwIfAborted();
 
     const priceId = subscription.items.data[0]?.price?.id;
@@ -558,32 +299,6 @@ export const completeCheckoutSession$ = command(
     }
     const alreadyPaidSubscription =
       org.stripeSubscriptionId === subscription.id && org.tier === tier;
-
-    const paidInvoice = await latestPaidInvoice(stripe, subscription);
-    signal.throwIfAborted();
-    if (
-      paidInvoice &&
-      subscriptionIdFromInvoice(paidInvoice) === subscription.id
-    ) {
-      const periodEndDate = subscriptionPeriodEndFromInvoice(paidInvoice);
-      if (!periodEndDate) {
-        throw new Error(
-          `checkout invoice has no subscription line item with period.end (invoiceId=${paidInvoice.id}, orgId=${args.orgId})`,
-        );
-      }
-
-      const result = await db.transaction(async (tx) => {
-        return await applyPaidCheckoutInvoice(tx, {
-          orgId: args.orgId,
-          invoice: paidInvoice,
-          subscription,
-          tier,
-          periodEndDate,
-        });
-      });
-      signal.throwIfAborted();
-      return result;
-    }
 
     await db
       .update(orgMetadata)
