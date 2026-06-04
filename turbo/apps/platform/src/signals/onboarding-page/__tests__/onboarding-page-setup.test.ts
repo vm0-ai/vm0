@@ -111,6 +111,45 @@ describe("setupOnboardingPage$ — redirect when onboarding is not needed", () =
       "/agents/c0000000-0000-4000-a000-000000000001/chat",
     );
   });
+
+  it("retries checkout reconciliation while onboarding payment is pending", async () => {
+    let checkoutCompleteCalls = 0;
+    let statusCalls = 0;
+    server.use(
+      mockApi(zeroBillingCheckoutContract.complete, ({ respond }) => {
+        checkoutCompleteCalls += 1;
+        return respond(200, { completed: checkoutCompleteCalls > 1 });
+      }),
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+        statusCalls += 1;
+        const completed = statusCalls > 1;
+        return respond(200, {
+          needsOnboarding: !completed,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: completed
+            ? "c0000000-0000-4000-a000-000000000001"
+            : null,
+          defaultAgentMetadata: completed ? { displayName: "Zero" } : null,
+        });
+      }),
+    );
+    context.store.set(markCompletedBillingCheckout$, "pro", "cs_test_retry");
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      withoutRender: true,
+    });
+
+    await context.store.set(setupOnboardingPage$, context.signal);
+
+    expect(checkoutCompleteCalls).toBeGreaterThan(1);
+    expect(pathname()).toBe(
+      "/agents/c0000000-0000-4000-a000-000000000001/chat",
+    );
+  });
 });
 
 describe("setupOnboardingPage$ — ?connector= consumption", () => {

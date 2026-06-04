@@ -6,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { createStore } from "ccstate";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { eq } from "drizzle-orm";
@@ -85,6 +86,9 @@ async function seedOrgRow(values?: {
 async function deleteOrgRow(orgId: string): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb.delete(orgMembersCache).where(eq(orgMembersCache.orgId, orgId));
+  await writeDb
+    .delete(creditExpiresRecord)
+    .where(eq(creditExpiresRecord.orgId, orgId));
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
 }
 
@@ -658,6 +662,115 @@ describe("POST /api/zero/billing/checkout/complete", () => {
     createdOrgIds.push(fixture.orgId);
     return fixture;
   }
+
+  it("completes onboarding when the checkout subscription latest invoice is paid", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const invoiceId = `in_${randomUUID().slice(0, 8)}`;
+    const currentPeriodEnd = 1_800_000_000;
+    const trialEnd = 1_800_086_400;
+    const fixture = await trackedSeed({
+      onboardingPaymentPending: true,
+      stripeCustomerId: customerId,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: "cs_test_completed",
+      mode: "subscription",
+      status: "complete",
+      customer: customerId,
+      subscription: subscriptionId,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subscriptionId,
+      status: "trialing",
+      trial_end: trialEnd,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      latest_invoice: {
+        id: invoiceId,
+        status: "paid",
+        parent: {
+          subscription_details: { subscription: subscriptionId },
+        },
+        lines: {
+          data: [
+            {
+              period: { end: currentPeriodEnd },
+              parent: { type: "subscription_item_details" },
+            },
+          ],
+        },
+      },
+      items: {
+        data: [
+          {
+            price: { id: TEST_PRICE_PRO },
+            current_period_end: currentPeriodEnd,
+          },
+        ],
+      },
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.complete({
+        body: { sessionId: "cs_test_completed" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ completed: true });
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        credits: orgMetadata.credits,
+        tier: orgMetadata.tier,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        subscriptionStatus: orgMetadata.subscriptionStatus,
+        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+        currentPeriodEnd: orgMetadata.currentPeriodEnd,
+        lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+
+    expect(row).toStrictEqual({
+      credits: 20_000,
+      tier: "pro",
+      stripeSubscriptionId: subscriptionId,
+      subscriptionStatus: "trialing",
+      onboardingPaymentPending: false,
+      currentPeriodEnd: new Date(currentPeriodEnd * 1000),
+      lastProcessedInvoiceId: invoiceId,
+    });
+
+    const records = await writeDb
+      .select({
+        source: creditExpiresRecord.source,
+        stripeInvoiceId: creditExpiresRecord.stripeInvoiceId,
+        amount: creditExpiresRecord.amount,
+        remaining: creditExpiresRecord.remaining,
+        expiresAt: creditExpiresRecord.expiresAt,
+      })
+      .from(creditExpiresRecord)
+      .where(eq(creditExpiresRecord.orgId, fixture.orgId));
+
+    expect(records).toStrictEqual([
+      {
+        source: "subscription_renewal",
+        stripeInvoiceId: invoiceId,
+        amount: 20_000,
+        remaining: 20_000,
+        expiresAt: new Date(trialEnd * 1000),
+      },
+    ]);
+  });
 
   it("records a completed subscription checkout while waiting for invoice payment", async () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;

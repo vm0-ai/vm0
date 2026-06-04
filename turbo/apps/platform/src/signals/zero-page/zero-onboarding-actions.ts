@@ -390,12 +390,21 @@ const onboardingContinueWeb$ = command(
 const MAX_CHECKOUT_STATUS_POLLS = 90;
 
 const waitForCompletedOnboardingCheckout$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<string | null> => {
+  async (
+    { get, set },
+    sessionId: string | null,
+    signal: AbortSignal,
+  ): Promise<string | null> => {
     let attempts = 0;
     let resolvedAgentId: string | null = null;
 
     await setLoop(
       async () => {
+        if (sessionId) {
+          await set(completeCheckoutSession$, sessionId, signal);
+          signal.throwIfAborted();
+        }
+
         set(reloadOnboardingStatus$);
         const status = await get(zeroOnboardingStatus$);
         signal.throwIfAborted();
@@ -423,12 +432,12 @@ export const continueOnboardingAfterCheckout$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     set(showAppSkeleton$);
-    if (sessionId) {
-      await set(completeCheckoutSession$, sessionId, signal);
-      signal.throwIfAborted();
-    }
 
-    const agentId = await set(waitForCompletedOnboardingCheckout$, signal);
+    const agentId = await set(
+      waitForCompletedOnboardingCheckout$,
+      sessionId,
+      signal,
+    );
     signal.throwIfAborted();
     if (!agentId) {
       await set(hideAppSkeleton$, signal);
