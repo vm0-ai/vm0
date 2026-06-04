@@ -728,6 +728,7 @@ def _set_auth_base_request_too_large(
 ) -> None:
     body = flow.request.raw_content
     observed_size = len(body) if body is not None else 0
+    flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
     log_proxy_entry(
         proxy_log_path,
         "warn",

@@ -1,9 +1,12 @@
 """Firewall dispatch and network policy tests for the request hook."""
 
 import json
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import auth
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.request_handler_helpers import (
     _single_firewall_vm,
@@ -380,6 +383,68 @@ async def test_firewall_permission_allows_matched(
     assert flow.metadata["firewall_permission"] == "read-repos"
     assert flow.metadata["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
     assert flow.metadata["firewall_params"] == {"owner": "octocat", "repo": "hello"}
+
+
+async def test_oversized_auth_base_request_does_not_capture_request_body(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    request_body = b'{"secret":"super-secret-body"}'
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="webhook",
+            api_entry={
+                "base": "https://placeholder.example.com",
+                "auth": {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"},
+                "permissions": [{"name": "send", "rules": ["POST /"]}],
+            },
+            network_policy={
+                "allow": ["send"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        method="POST",
+        path="/",
+        request_headers=headers(
+            ("Host", "placeholder.example.com"),
+            ("Content-Type", "application/json"),
+        ),
+        request_body=request_body,
+    )
+    get_headers = AsyncMock()
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    get_headers.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 413
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_request_body_too_large"
+    assert flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] is True
+
+    network_log_text = (tmp_path / "net.jsonl").read_text()
+    assert "super-secret-body" not in network_log_text
+    network_log_entry = json.loads(network_log_text)
+    assert "request_body" not in network_log_entry
+    assert network_log_entry["request_body_truncated"] is True
+    assert network_log_entry["firewall_error"] == "auth_base_request_body_too_large"
+
+    proxy_log_text = (tmp_path / "proxy.jsonl").read_text()
+    assert "super-secret-body" not in proxy_log_text
 
 
 async def test_firewall_unknown_policy_allow_writes_empty_permission_metadata(
