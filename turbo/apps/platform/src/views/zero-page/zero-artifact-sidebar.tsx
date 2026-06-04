@@ -551,25 +551,29 @@ function ArtifactBodyError({ message }: { message: string }): ReactNode {
 function ArtifactStageShell({
   centered = false,
   children,
+  flush = false,
   gap = false,
   scrollable = true,
 }: {
   centered?: boolean;
   children: ReactNode;
+  flush?: boolean;
   gap?: boolean;
   scrollable?: boolean;
 }) {
   return (
     <div
       className={cn(
-        "h-full min-h-0 bg-muted/30 p-5",
+        "h-full min-h-0 bg-muted/30",
+        flush ? "p-0" : "p-5",
         scrollable ? "overflow-auto" : "overflow-hidden",
       )}
       data-testid="artifact-sidebar-stage"
     >
       <div
         className={cn(
-          "mx-auto flex w-full max-w-[900px] flex-col",
+          "mx-auto flex w-full flex-col",
+          flush ? "max-w-none" : "max-w-[900px]",
           scrollable ? "min-h-full" : "h-full min-h-0",
           centered && "items-center justify-center",
           gap && "gap-3",
@@ -591,10 +595,10 @@ function ArtifactStageCard({
   return (
     <div
       className={cn(
-        "flex w-full flex-1 flex-col overflow-hidden rounded-xl",
+        "flex w-full flex-1 flex-col overflow-hidden",
         fillHeight
           ? "h-full min-h-0 bg-transparent"
-          : "min-h-[420px] border border-border/70 bg-background shadow-sm",
+          : "min-h-[420px] rounded-xl border border-border/70 bg-background shadow-sm",
       )}
     >
       {children}
@@ -766,14 +770,14 @@ function ArtifactImageBody({
   filename: string;
 }) {
   return (
-    <ArtifactStageShell scrollable={false}>
+    <ArtifactStageShell flush scrollable={false}>
       <ArtifactStageCard fillHeight>
         <ZoomableArtifactImageCanvas
           src={publicAttachmentUrl(url)}
           alt={filename}
           zoomKey={`artifact-sidebar:${url}`}
           imageTestId="artifact-sidebar-body-image"
-          className="p-6"
+          contentClassName="p-6"
         >
           {(controls) => {
             return <ArtifactImageZoomControls controls={controls} />;

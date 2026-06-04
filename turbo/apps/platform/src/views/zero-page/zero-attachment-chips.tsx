@@ -703,25 +703,27 @@ function ArtifactDialogUnavailableBody({ label }: { label: string }) {
 function ArtifactDialogStage({
   children,
   centered = false,
+  flush = false,
   gap = false,
   scrollable = true,
 }: {
   children: ReactNode;
   centered?: boolean;
+  flush?: boolean;
   gap?: boolean;
   scrollable?: boolean;
 }) {
   return (
     <div
-      className={`h-full min-h-0 bg-muted/30 p-5 ${
+      className={`h-full min-h-0 bg-muted/30 ${flush ? "p-0" : "p-5"} ${
         scrollable ? "overflow-auto" : "overflow-hidden"
       }`}
       data-testid="artifact-dialog-stage"
     >
       <div
-        className={`mx-auto flex w-full max-w-[900px] flex-col ${
-          scrollable ? "min-h-full" : "h-full min-h-0"
-        } ${
+        className={`mx-auto flex w-full flex-col ${
+          flush ? "max-w-none" : "max-w-[900px]"
+        } ${scrollable ? "min-h-full" : "h-full min-h-0"} ${
           centered ? "items-center justify-center" : ""
         } ${gap ? "gap-3" : ""}`}
       >
@@ -740,10 +742,10 @@ function ArtifactDialogCard({
 }) {
   return (
     <div
-      className={`flex w-full flex-1 flex-col overflow-hidden rounded-xl ${
+      className={`flex w-full flex-1 flex-col overflow-hidden ${
         fillHeight
           ? "h-full min-h-0 bg-transparent"
-          : "min-h-[420px] border border-border/70 bg-background shadow-sm"
+          : "min-h-[420px] rounded-xl border border-border/70 bg-background shadow-sm"
       }`}
       data-testid="artifact-dialog-card"
     >
@@ -902,14 +904,14 @@ function ArtifactDialogBody({
 
   if (preview.kind === "image") {
     return (
-      <ArtifactDialogStage scrollable={false}>
+      <ArtifactDialogStage flush scrollable={false}>
         <ArtifactDialogCard fillHeight>
           <ZoomableArtifactImageCanvas
             src={publicAttachmentUrl(preview.url)}
             alt={filename}
             zoomKey={`artifact-dialog:${preview.url}`}
             imageTestId="attachment-lightbox-image"
-            className="p-6"
+            contentClassName="p-6"
             imageClassName="rounded-lg shadow-sm"
             canvasTestId="artifact-dialog-image-stage"
           >

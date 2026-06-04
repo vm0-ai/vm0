@@ -1662,9 +1662,10 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(
       within(lightbox).getByTestId("attachment-lightbox-panel"),
     ).toHaveClass("zero-dialog-enter-content");
-    expect(within(lightbox).getByTestId("artifact-dialog-stage")).toHaveClass(
-      "overflow-hidden",
-    );
+    const stage = within(lightbox).getByTestId("artifact-dialog-stage");
+    expect(stage).toHaveClass("overflow-hidden");
+    expect(stage).not.toHaveClass("p-5");
+    expect(stage.firstElementChild).toHaveClass("max-w-none");
     expect(within(lightbox).getByTestId("artifact-dialog-card")).toHaveClass(
       "h-full",
       "min-h-0",

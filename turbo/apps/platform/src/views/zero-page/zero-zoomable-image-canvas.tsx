@@ -36,6 +36,7 @@ type ZoomableArtifactImageCanvasProps = {
   canvasTestId?: string;
   children?: (controls: ZoomableImageControls) => ReactNode;
   className?: string;
+  contentClassName?: string;
   imageClassName?: string;
   imageRef?: Ref<HTMLImageElement>;
   imageTestId: string;
@@ -173,6 +174,7 @@ export function ZoomableArtifactImageCanvas({
   canvasTestId = "zoomable-image-canvas",
   children,
   className,
+  contentClassName,
   imageClassName,
   imageRef,
   imageTestId,
@@ -255,9 +257,11 @@ export function ZoomableArtifactImageCanvas({
             />
             {children?.(controls)}
             <TransformComponent
+              contentClass={contentClassName}
               wrapperStyle={{ height: "100%", width: "100%" }}
               contentStyle={{
                 alignItems: "center",
+                boxSizing: "border-box",
                 display: "flex",
                 height: "100%",
                 justifyContent: "center",
