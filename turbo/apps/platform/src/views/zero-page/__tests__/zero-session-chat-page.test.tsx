@@ -166,7 +166,7 @@ describe("recommended follow-ups", () => {
       }),
     );
 
-    await screen.findByText("Suggested follow-ups");
+    await screen.findByText("Keep going");
     const followupButton = queryAllByRoleFast("button").find((button) => {
       return button.textContent?.includes(
         "Turn this into a week-by-week checklist",
@@ -224,7 +224,7 @@ describe("recommended follow-ups", () => {
 
     await screen.findByText("Assistant complete");
     await waitFor(() => {
-      expect(screen.queryByText("Suggested follow-ups")).toBeNull();
+      expect(screen.queryByText("Keep going")).toBeNull();
     });
   });
 });

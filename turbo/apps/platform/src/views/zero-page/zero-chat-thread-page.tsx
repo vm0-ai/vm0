@@ -3499,7 +3499,7 @@ function ThinkingIndicator({
     ? latestRecommendedFollowups(groups)
     : null;
   const doneLabel = recommendedFollowupSource
-    ? "Suggested follow-ups"
+    ? "Keep going"
     : donePhrase;
 
   if (
