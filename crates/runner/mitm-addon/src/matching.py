@@ -1212,12 +1212,13 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
 # distinguishes inputs that cannot match from malformed inputs that can still
 # match a base and must fail closed at match time.
 #
-# compile_firewalls skips raw entries that cannot participate in base matching:
-# non-object firewalls, firewalls whose "apis" is not a list, non-object APIs,
-# non-string bases, bases that cannot compile into matcher data, and firewalls
-# with no compiled APIs. Once an API base compiles, the API is retained and
-# records malformed state for: firewall name, base syntax/authority/params, auth
-# config, and permission/rule config.
+# compile_firewalls skips raw inputs that cannot participate in base matching:
+# missing, empty, or non-list firewalls payloads; non-object firewall entries;
+# firewalls whose "apis" is not a list; non-object APIs; non-string bases; bases
+# that cannot compile into matcher data; and firewalls with no compiled APIs.
+# Once an API base compiles, the API is retained and records malformed state for:
+# firewall name, base syntax/authority/params, auth config, and permission/rule
+# config.
 #
 # compile_network_policies preserves malformed policy state for a present
 # non-object top-level networkPolicies payload, non-object per-firewall grants,
@@ -1240,12 +1241,12 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
 # no allow/deny resolved, malformed network policy resolves before malformed
 # firewall config; malformed unknownPolicy only affects unknown-endpoint
 # resolution.
-def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
+def compile_firewalls(vm_firewalls: object | None) -> CompiledFirewallSet | None:
     """Compile firewall data and retain selected malformed state.
 
     See the compiled matcher contract above for skipped versus retained inputs.
     """
-    if not vm_firewalls:
+    if not isinstance(vm_firewalls, list) or not vm_firewalls:
         return None
 
     compiled_firewalls: list[_CompiledFirewall] = []

@@ -916,3 +916,26 @@ class TestGetVmContext:
         )
         assert isinstance(result, matching.FirewallBlock)
         assert result.reason == "malformed_firewall_config"
+
+    @pytest.mark.parametrize("firewalls", [1, True, {"name": "example"}, "broken"])
+    def test_malformed_top_level_firewalls_shape_compiles_without_load_failure(
+        self, tmp_path, firewalls
+    ):
+        path = tmp_path / "registry.json"
+        _write_firewall_registry(path)
+        data = json.loads(path.read_text())
+        data["vms"]["10.200.0.1"]["firewalls"] = firewalls
+        path.write_text(json.dumps(data))
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        _, compiled_firewalls, compiled_network_policies = context
+        assert compiled_firewalls is None
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            compiled_firewalls,
+            compiled_network_policies,
+        )
+        assert result is None
