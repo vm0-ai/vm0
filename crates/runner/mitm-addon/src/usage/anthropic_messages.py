@@ -150,7 +150,13 @@ class _AnthropicMessagesSseUsageHandler:
 
 
 class AnthropicMessagesJsonUsageExtractor:
-    """Incrementally extract model usage from non-streaming JSON responses."""
+    """Incrementally extract usage from non-SSE Anthropic Messages JSON chunks.
+
+    Callers feed raw response chunks with ``feed()`` and call ``finish()`` once.
+    ``finish()`` returns ``(usage, None)`` when selected usage or metadata was
+    parsed, ``(None, error)`` on JSON parse failure, and ``(None, None)`` when
+    the JSON is valid but contains no reportable usage.
+    """
 
     def __init__(self) -> None:
         self._extractor = JsonSelectiveExtractor(scalar_fields=_MODEL_JSON_SCALAR_FIELDS)
@@ -176,6 +182,8 @@ class AnthropicMessagesJsonUsageExtractor:
 
 
 def create_anthropic_messages_json_usage_extractor() -> AnthropicMessagesJsonUsageExtractor:
+    """Create an incremental parser for non-SSE Anthropic Messages JSON chunks."""
+
     return AnthropicMessagesJsonUsageExtractor()
 
 
