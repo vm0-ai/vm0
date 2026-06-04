@@ -124,12 +124,19 @@ describe("memory page", () => {
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Zero learned how you prefer to deploy."),
-      ).toBeInTheDocument();
+    const summary = await waitFor(() => {
+      const element = screen.getByText(
+        "Zero learned how you prefer to deploy.",
+      );
+      expect(element).toBeInTheDocument();
+      return element;
     });
 
+    const updateCard = summary.closest("section");
+    if (updateCard === null) {
+      throw new Error("Missing memory update card");
+    }
+    expect(updateCard).toHaveClass("shrink-0");
     expect(screen.getByText("Deploy preference")).toBeInTheDocument();
     expect(screen.getByText("Learned")).toBeInTheDocument();
     expect(screen.getByText("Updated")).toBeInTheDocument();

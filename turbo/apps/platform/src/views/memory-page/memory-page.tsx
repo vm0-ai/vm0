@@ -532,7 +532,7 @@ function MemoryUpdateCard({ entry }: { readonly entry: MemoryActivityEntry }) {
   });
 
   return (
-    <section className="zero-card flex flex-col overflow-hidden">
+    <section className="zero-card flex shrink-0 flex-col overflow-hidden">
       <header className="border-b border-border/70 px-4 py-3">
         <h2 className="text-sm font-semibold tracking-tight text-foreground">
           {formatActivityDate(entry.date)}
@@ -703,7 +703,7 @@ function MemoryUpdatesSkeleton() {
         return (
           <section
             key={cardIndex}
-            className="zero-card flex flex-col overflow-hidden"
+            className="zero-card flex shrink-0 flex-col overflow-hidden"
           >
             <header className="border-b border-border/70 px-4 py-3">
               <div className="h-4 w-40 rounded bg-muted/50" />
