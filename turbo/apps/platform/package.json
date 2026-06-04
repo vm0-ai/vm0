@@ -44,6 +44,7 @@
     "posthog-js": "^1.372.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-zoom-pan-pinch": "^4.0.3",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
     "signal-timers": "^1.0.4",

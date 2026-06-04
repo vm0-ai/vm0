@@ -36,18 +36,14 @@ import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
   IMAGE_LIGHTBOX_MIN_ZOOM,
   imageLightboxImageRef$,
-  imageLightboxKeyboardShortcutsRef$,
   imageLightboxState$,
   imageLoadStatusByKey$,
   imageLoadStatusRef$,
-  resetImageLightboxZoom$,
   setImageLightboxStatus$,
   setImageLoadStatus$,
   textPreviewLoaderRef$,
   textPreviewLoadStateByKey$,
   type TextPreviewLoadState,
-  zoomImageLightboxIn$,
-  zoomImageLightboxOut$,
 } from "../../signals/view-component-state.ts";
 import { Markdown } from "../components/markdown.tsx";
 import {
@@ -84,6 +80,10 @@ import {
   artifactFallbackSubtitle,
   artifactTitleSubtitle,
 } from "./zero-artifact-display.ts";
+import {
+  ZoomableArtifactImageCanvas,
+  type ZoomableImageControls,
+} from "./zero-zoomable-image-canvas.tsx";
 
 export {
   downloadAttachmentUrl,
@@ -119,6 +119,12 @@ function contentTypeForDocumentAttachmentPreviewKind(
   }
   return "application/pdf";
 }
+
+const ATTACHMENT_LIGHTBOX_OVERLAY_CLASS =
+  "pointer-events-auto fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-[180ms] ease outline-none";
+
+const ATTACHMENT_LIGHTBOX_PANEL_CLASS =
+  "animate-in slide-in-from-bottom-2 duration-[180ms] ease";
 
 // ---------------------------------------------------------------------------
 // AttachmentLightbox — full-screen attachment viewer
@@ -399,12 +405,6 @@ function ImageLightboxControls({
   );
 }
 
-function ImageLightboxKeyboardShortcuts() {
-  const keyboardShortcutsRef = useSet(imageLightboxKeyboardShortcutsRef$);
-
-  return <span ref={keyboardShortcutsRef} hidden />;
-}
-
 function ImageLightboxContent({
   closeLightbox,
   pageSignal,
@@ -415,11 +415,7 @@ function ImageLightboxContent({
   url: string;
 }) {
   const imageLightboxImageRef = useSet(imageLightboxImageRef$);
-  const imageState = useGet(imageLightboxState$);
-  const resetZoom = useSet(resetImageLightboxZoom$);
   const setImageLightboxStatus = useSet(setImageLightboxStatus$);
-  const zoomIn = useSet(zoomImageLightboxIn$);
-  const zoomOut = useSet(zoomImageLightboxOut$);
 
   const download = () => {
     detach(
@@ -436,54 +432,60 @@ function ImageLightboxContent({
     );
   };
 
-  const { imageStatus, zoom } = imageState;
+  const { imageStatus } = useGet(imageLightboxState$);
 
   return (
-    <>
-      <ImageLightboxKeyboardShortcuts />
-      <ImageLightboxControls
-        closeLightbox={closeLightbox}
-        copyLink={copyLink}
-        download={download}
-        resetZoom={resetZoom}
-        zoom={zoom}
-        zoomIn={zoomIn}
-        zoomOut={zoomOut}
-      />
-      <div
-        className="relative flex items-center justify-center transition-transform duration-150 animate-in zoom-in-95"
-        style={{ transform: `scale(${String(zoom)})` }}
-      >
-        {imageStatus !== "loaded" && (
-          <div
-            data-testid="attachment-lightbox-image-loading"
-            className="flex h-[min(85vh,480px)] w-[min(90vw,720px)] items-center justify-center rounded-lg bg-black/30 text-white shadow-2xl"
-          >
-            {imageStatus === "loading" ? (
-              <IconLoader2 size={24} stroke={1.8} className="animate-spin" />
-            ) : (
-              <IconPhoto size={24} stroke={1.5} />
+    <ZoomableArtifactImageCanvas
+      src={url}
+      alt=""
+      zoomKey={`attachment-lightbox:${url}`}
+      keyboardShortcuts
+      imageRef={imageLightboxImageRef}
+      imageTestId="attachment-lightbox-image"
+      canvasTestId="attachment-lightbox-panel"
+      onLoad={() => {
+        setImageLightboxStatus("loaded");
+      }}
+      onError={() => {
+        setImageLightboxStatus("error");
+      }}
+      className={`relative z-10 h-[min(85vh,720px)] w-[min(90vw,1100px)] bg-transparent ${ATTACHMENT_LIGHTBOX_PANEL_CLASS}`}
+      imageClassName={`rounded-lg shadow-2xl ${
+        imageStatus === "loaded" ? "" : "opacity-0"
+      }`}
+    >
+      {({ resetZoom, zoom, zoomIn, zoomOut }) => {
+        return (
+          <>
+            <ImageLightboxControls
+              closeLightbox={closeLightbox}
+              copyLink={copyLink}
+              download={download}
+              resetZoom={resetZoom}
+              zoom={zoom}
+              zoomIn={zoomIn}
+              zoomOut={zoomOut}
+            />
+            {imageStatus !== "loaded" && (
+              <div
+                data-testid="attachment-lightbox-image-loading"
+                className="absolute left-1/2 top-1/2 z-10 flex h-[min(85vh,480px)] w-[min(90vw,720px)] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-lg bg-black/30 text-white shadow-2xl"
+              >
+                {imageStatus === "loading" ? (
+                  <IconLoader2
+                    size={24}
+                    stroke={1.8}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <IconPhoto size={24} stroke={1.5} />
+                )}
+              </div>
             )}
-          </div>
-        )}
-        <img
-          key={url}
-          ref={imageLightboxImageRef}
-          src={url}
-          alt=""
-          data-testid="attachment-lightbox-image"
-          onLoad={() => {
-            setImageLightboxStatus("loaded");
-          }}
-          onError={() => {
-            setImageLightboxStatus("error");
-          }}
-          className={`max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl ${
-            imageStatus === "loaded" ? "" : "absolute inset-0 opacity-0"
-          }`}
-        />
-      </div>
-    </>
+          </>
+        );
+      }}
+    </ZoomableArtifactImageCanvas>
   );
 }
 
@@ -502,7 +504,7 @@ function ImageLightbox({ url }: { url: string }) {
     <div
       ref={dialogRef}
       tabIndex={-1}
-      className="pointer-events-auto fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
+      className={ATTACHMENT_LIGHTBOX_OVERLAY_CLASS}
       style={{ pointerEvents: "auto" }}
       onClick={handleBackdropClick}
       role="dialog"
@@ -536,7 +538,7 @@ function VideoLightbox({ filename, url }: { filename: string; url: string }) {
     <div
       ref={dialogRef}
       tabIndex={-1}
-      className="pointer-events-auto fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
+      className={ATTACHMENT_LIGHTBOX_OVERLAY_CLASS}
       style={{ pointerEvents: "auto" }}
       onClick={handleBackdropClick}
       role="dialog"
@@ -584,7 +586,10 @@ function VideoLightbox({ filename, url }: { filename: string; url: string }) {
           <IconX size={20} stroke={2} />
         </button>
       </div>
-      <div className="relative z-10 flex w-[min(92vw,1100px)] min-w-0 overflow-hidden bg-black shadow-2xl animate-in zoom-in-95 duration-200">
+      <div
+        className={`relative z-10 flex w-[min(92vw,1100px)] min-w-0 overflow-hidden bg-black shadow-2xl ${ATTACHMENT_LIGHTBOX_PANEL_CLASS}`}
+        data-testid="attachment-lightbox-panel"
+      >
         <video
           src={videoUrl}
           controls
@@ -732,6 +737,52 @@ function ArtifactDialogCard({ children }: { children: ReactNode }) {
   );
 }
 
+function ArtifactDialogImageZoomControls({
+  controls,
+}: {
+  controls: ZoomableImageControls;
+}) {
+  return (
+    <div
+      className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-background/95 px-2.5 py-1.5 text-muted-foreground shadow-sm backdrop-blur-sm"
+      data-testid="artifact-dialog-image-zoom-controls"
+    >
+      <button
+        type="button"
+        onClick={controls.zoomOut}
+        disabled={!controls.canZoomOut}
+        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        aria-label="Zoom out"
+        title="Zoom out"
+      >
+        -
+      </button>
+      <span className="min-w-10 text-center text-xs font-medium tabular-nums text-foreground">
+        {Math.round(controls.zoom * 100)}%
+      </span>
+      <button
+        type="button"
+        onClick={controls.zoomIn}
+        disabled={!controls.canZoomIn}
+        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        aria-label="Zoom in"
+        title="Zoom in"
+      >
+        +
+      </button>
+      <button
+        type="button"
+        onClick={controls.resetZoom}
+        className="rounded-md px-1.5 text-xs font-medium transition-colors hover:bg-muted/70 hover:text-foreground"
+        aria-label="Reset zoom"
+        title="Reset zoom"
+      >
+        Reset
+      </button>
+    </div>
+  );
+}
+
 function ArtifactDialogTextBody({
   kind,
   signal,
@@ -838,17 +889,19 @@ function ArtifactDialogBody({
     return (
       <ArtifactDialogStage>
         <ArtifactDialogCard>
-          <div
-            className="flex min-h-full flex-1 items-center justify-center overflow-auto bg-muted/30 p-6"
-            data-testid="artifact-dialog-image-stage"
+          <ZoomableArtifactImageCanvas
+            src={publicAttachmentUrl(preview.url)}
+            alt={filename}
+            zoomKey={`artifact-dialog:${preview.url}`}
+            imageTestId="attachment-lightbox-image"
+            className="p-6"
+            imageClassName="rounded-lg shadow-sm"
+            canvasTestId="artifact-dialog-image-stage"
           >
-            <img
-              src={publicAttachmentUrl(preview.url)}
-              alt={filename}
-              data-testid="attachment-lightbox-image"
-              className="max-h-full max-w-full rounded-lg object-contain shadow-sm"
-            />
-          </div>
+            {(controls) => {
+              return <ArtifactDialogImageZoomControls controls={controls} />;
+            }}
+          </ZoomableArtifactImageCanvas>
         </ArtifactDialogCard>
       </ArtifactDialogStage>
     );
@@ -1156,7 +1209,7 @@ export function AttachmentLightbox() {
     <div
       ref={dialogRef}
       tabIndex={-1}
-      className="pointer-events-auto fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
+      className={ATTACHMENT_LIGHTBOX_OVERLAY_CLASS}
       style={{ pointerEvents: "auto" }}
       onClick={handleBackdropClick}
       role="dialog"
@@ -1204,7 +1257,10 @@ export function AttachmentLightbox() {
           <IconX size={20} stroke={2} />
         </button>
       </div>
-      <div className="relative z-10 w-[min(92vw,1100px)] min-w-0 rounded-2xl bg-background shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+      <div
+        className={`relative z-10 w-[min(92vw,1100px)] min-w-0 overflow-hidden rounded-2xl bg-background shadow-2xl ${ATTACHMENT_LIGHTBOX_PANEL_CLASS}`}
+        data-testid="attachment-lightbox-panel"
+      >
         <div className="flex items-center gap-3 border-b border-foreground/10 px-4 py-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
             <FilePreviewIcon

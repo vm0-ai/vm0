@@ -40,13 +40,9 @@ import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { jsonParseOr } from "../../signals/utils.ts";
 import {
-  IMAGE_LIGHTBOX_MAX_ZOOM,
-  IMAGE_LIGHTBOX_MIN_ZOOM,
-  imageLightboxImageRef$,
-  imageLightboxState$,
-  zoomImageLightboxIn$,
-  zoomImageLightboxOut$,
-} from "../../signals/view-component-state.ts";
+  ZoomableArtifactImageCanvas,
+  type ZoomableImageControls,
+} from "./zero-zoomable-image-canvas.tsx";
 import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -749,58 +745,39 @@ function ArtifactImageBody({
   url: string;
   filename: string;
 }) {
-  // The sidebar image preview and the legacy full-screen lightbox are mutually
-  // exclusive (chatArtifactSidebar feature switch routes image clicks to one
-  // or the other), so the lightbox zoom state is reused here. The `key={url}`
-  // on the img remounts it on artifact change, which triggers the onRef
-  // reset that wipes any stale zoom level.
-  const { zoom } = useGet(imageLightboxState$);
-  const setImageRef = useSet(imageLightboxImageRef$);
-  const zoomIn = useSet(zoomImageLightboxIn$);
-  const zoomOut = useSet(zoomImageLightboxOut$);
-
   return (
     <ArtifactStageShell>
       <ArtifactStageCard>
-        <div className="relative flex min-h-full flex-1 items-center justify-center overflow-auto bg-muted/30 p-6">
-          <img
-            key={url}
-            ref={setImageRef}
-            src={publicAttachmentUrl(url)}
-            alt={filename}
-            style={{ transform: `scale(${String(zoom)})` }}
-            className="max-h-full max-w-full object-contain transition-transform duration-150"
-            data-testid="artifact-sidebar-body-image"
-          />
-          <ArtifactImageZoomControls
-            zoom={zoom}
-            zoomIn={zoomIn}
-            zoomOut={zoomOut}
-          />
-        </div>
+        <ZoomableArtifactImageCanvas
+          src={publicAttachmentUrl(url)}
+          alt={filename}
+          zoomKey={`artifact-sidebar:${url}`}
+          imageTestId="artifact-sidebar-body-image"
+          className="p-6"
+        >
+          {(controls) => {
+            return <ArtifactImageZoomControls controls={controls} />;
+          }}
+        </ZoomableArtifactImageCanvas>
       </ArtifactStageCard>
     </ArtifactStageShell>
   );
 }
 
 function ArtifactImageZoomControls({
-  zoom,
-  zoomIn,
-  zoomOut,
+  controls,
 }: {
-  zoom: number;
-  zoomIn: () => void;
-  zoomOut: () => void;
+  controls: ZoomableImageControls;
 }) {
   return (
     <div
-      className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-lg border border-border/70 bg-background/95 px-2.5 py-1.5 text-muted-foreground shadow-sm backdrop-blur-sm"
+      className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-background/95 px-2.5 py-1.5 text-muted-foreground shadow-sm backdrop-blur-sm"
       data-testid="artifact-sidebar-image-zoom-controls"
     >
       <button
         type="button"
-        onClick={zoomOut}
-        disabled={zoom <= IMAGE_LIGHTBOX_MIN_ZOOM}
+        onClick={controls.zoomOut}
+        disabled={!controls.canZoomOut}
         className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         aria-label="Zoom out"
         title="Zoom out"
@@ -812,12 +789,12 @@ function ArtifactImageZoomControls({
         className="min-w-10 text-center text-xs font-medium tabular-nums text-foreground"
         data-testid="artifact-sidebar-image-zoom-level"
       >
-        {Math.round(zoom * 100)}%
+        {Math.round(controls.zoom * 100)}%
       </span>
       <button
         type="button"
-        onClick={zoomIn}
-        disabled={zoom >= IMAGE_LIGHTBOX_MAX_ZOOM}
+        onClick={controls.zoomIn}
+        disabled={!controls.canZoomIn}
         className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         aria-label="Zoom in"
         title="Zoom in"

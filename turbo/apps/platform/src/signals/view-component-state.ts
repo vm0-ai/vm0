@@ -12,16 +12,15 @@ export type TextPreviewLoadState = {
 
 type ImageLightboxImageState = {
   imageStatus: ImageLoadStatus;
-  zoom: number;
 };
 
 export const IMAGE_LIGHTBOX_MIN_ZOOM = 0.5;
 export const IMAGE_LIGHTBOX_MAX_ZOOM = 3;
-const IMAGE_LIGHTBOX_ZOOM_STEP = 0.25;
 
 const internalImageLoadStatusByKey$ = state<Record<string, ImageLoadStatus>>(
   {},
 );
+const internalZoomableImageCanvasZoomByKey$ = state<Record<string, number>>({});
 const internalTextPreviewLoadStateByKey$ = state<
   Record<string, TextPreviewLoadState>
 >({});
@@ -29,11 +28,14 @@ const internalTextPreviewCollapsedByKey$ = state<Record<string, boolean>>({});
 const internalTypewriterDisplayedByKey$ = state<Record<string, string>>({});
 const internalImageLightboxState$ = state<ImageLightboxImageState>({
   imageStatus: "loading",
-  zoom: 1,
 });
 
 export const imageLoadStatusByKey$ = computed((get) => {
   return get(internalImageLoadStatusByKey$);
+});
+
+export const zoomableImageCanvasZoomByKey$ = computed((get) => {
+  return get(internalZoomableImageCanvasZoomByKey$);
 });
 
 export const textPreviewLoadStateByKey$ = computed((get) => {
@@ -59,6 +61,31 @@ export const setImageLoadStatus$ = command(
     });
   },
 );
+
+function clampImageZoom(zoom: number) {
+  return Math.min(
+    IMAGE_LIGHTBOX_MAX_ZOOM,
+    Math.max(IMAGE_LIGHTBOX_MIN_ZOOM, zoom),
+  );
+}
+
+function roundImageZoom(zoom: number) {
+  return Math.round(clampImageZoom(zoom) * 100) / 100;
+}
+
+export const setZoomableImageCanvasZoom$ = command(
+  ({ set }, key: string, zoom: number) => {
+    set(internalZoomableImageCanvasZoomByKey$, (current) => {
+      return { ...current, [key]: roundImageZoom(zoom) };
+    });
+  },
+);
+
+export const resetZoomableImageCanvasZoom$ = command(({ set }, key: string) => {
+  set(internalZoomableImageCanvasZoomByKey$, (current) => {
+    return { ...current, [key]: 1 };
+  });
+});
 
 const resetImageLoadStatus$ = command(({ set }, key: string) => {
   set(internalImageLoadStatusByKey$, (current) => {
@@ -172,15 +199,8 @@ const startTypewriterOnRef$ = command(
 
 export const typewriterRef$ = onRef(startTypewriterOnRef$);
 
-function clampImageLightboxZoom(zoom: number): number {
-  return Math.min(
-    IMAGE_LIGHTBOX_MAX_ZOOM,
-    Math.max(IMAGE_LIGHTBOX_MIN_ZOOM, zoom),
-  );
-}
-
 const resetImageLightboxState$ = command(({ set }) => {
-  set(internalImageLightboxState$, { imageStatus: "loading", zoom: 1 });
+  set(internalImageLightboxState$, { imageStatus: "loading" });
 });
 
 export const setImageLightboxStatus$ = command(
@@ -191,30 +211,6 @@ export const setImageLightboxStatus$ = command(
   },
 );
 
-export const zoomImageLightboxIn$ = command(({ set }) => {
-  set(internalImageLightboxState$, (current) => {
-    return {
-      ...current,
-      zoom: clampImageLightboxZoom(current.zoom + IMAGE_LIGHTBOX_ZOOM_STEP),
-    };
-  });
-});
-
-export const zoomImageLightboxOut$ = command(({ set }) => {
-  set(internalImageLightboxState$, (current) => {
-    return {
-      ...current,
-      zoom: clampImageLightboxZoom(current.zoom - IMAGE_LIGHTBOX_ZOOM_STEP),
-    };
-  });
-});
-
-export const resetImageLightboxZoom$ = command(({ set }) => {
-  set(internalImageLightboxState$, (current) => {
-    return { ...current, zoom: 1 };
-  });
-});
-
 const resetImageLightboxOnRef$ = command(
   ({ set }, _el: HTMLElement, _signal: AbortSignal) => {
     set(resetImageLightboxState$);
@@ -222,44 +218,6 @@ const resetImageLightboxOnRef$ = command(
 );
 
 export const imageLightboxImageRef$ = onRef(resetImageLightboxOnRef$);
-
-const imageLightboxKeyboardShortcutsOnRef$ = command(
-  ({ set }, _el: HTMLElement, signal: AbortSignal) => {
-    document.addEventListener(
-      "keydown",
-      (event: KeyboardEvent) => {
-        if (!event.metaKey && !event.ctrlKey) {
-          return;
-        }
-
-        if (event.key === "+" || event.key === "=") {
-          event.preventDefault();
-          event.stopPropagation();
-          set(zoomImageLightboxIn$);
-          return;
-        }
-
-        if (event.key === "-" || event.key === "_") {
-          event.preventDefault();
-          event.stopPropagation();
-          set(zoomImageLightboxOut$);
-          return;
-        }
-
-        if (event.key === "0") {
-          event.preventDefault();
-          event.stopPropagation();
-          set(resetImageLightboxZoom$);
-        }
-      },
-      { signal },
-    );
-  },
-);
-
-export const imageLightboxKeyboardShortcutsRef$ = onRef(
-  imageLightboxKeyboardShortcutsOnRef$,
-);
 
 const openTelegramOnRef$ = command(
   (_ctx, el: HTMLElement, _signal: AbortSignal) => {

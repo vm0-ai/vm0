@@ -1154,6 +1154,10 @@ describe("zero chat thread page display - attachment video preview", () => {
     });
     const video = within(lightbox).getByLabelText("Video preview for clip.mp4");
 
+    expect(lightbox).toHaveClass("animate-in", "fade-in", "duration-[180ms]");
+    expect(
+      within(lightbox).getByTestId("attachment-lightbox-panel"),
+    ).toHaveClass("animate-in", "slide-in-from-bottom-2", "duration-[180ms]");
     expect(video).toHaveAttribute("src", videoUrl);
     expect(video).toHaveAttribute("controls");
     expect((video as HTMLVideoElement).autoplay).toBeTruthy();

@@ -283,12 +283,12 @@ describe("chatArtifactSidebar: image preview zoom controls", () => {
     const level = screen.getByTestId("artifact-sidebar-image-zoom-level");
 
     fireEvent.click(zoomIn);
-    expect(level.textContent).toBe("125%");
+    expect(level.textContent).toBe("115%");
     fireEvent.click(zoomIn);
-    expect(level.textContent).toBe("150%");
+    expect(level.textContent).toBe("130%");
 
     fireEvent.click(zoomOut);
-    expect(level.textContent).toBe("125%");
+    expect(level.textContent).toBe("115%");
   });
 
   it("disables zoom out at min zoom and zoom in at max zoom", () => {
@@ -296,13 +296,13 @@ describe("chatArtifactSidebar: image preview zoom controls", () => {
     const zoomIn = screen.getByTestId("artifact-sidebar-image-zoom-in");
     const zoomOut = screen.getByTestId("artifact-sidebar-image-zoom-out");
 
-    // Step is 0.25; min is 0.5 (so 2 outs from 1 reaches min), max is 3 (8 ins).
-    for (let i = 0; i < 2; i += 1) {
+    // Step is 0.15; min is 0.5 and max is 3.
+    for (let i = 0; i < 4; i += 1) {
       fireEvent.click(zoomOut);
     }
     expect(zoomOut).toBeDisabled();
 
-    for (let i = 0; i < 10; i += 1) {
+    for (let i = 0; i < 17; i += 1) {
       fireEvent.click(zoomIn);
     }
     expect(zoomIn).toBeDisabled();

@@ -331,7 +331,7 @@ describe("chat-i-059: image preview button opens lightbox", () => {
     expect(screen.getByText("100%")).toBeInTheDocument();
     await user.click(screen.getByLabelText("Zoom in"));
     await waitFor(() => {
-      expect(screen.getByText("125%")).toBeInTheDocument();
+      expect(screen.getByText("115%")).toBeInTheDocument();
     });
 
     await user.click(screen.getByLabelText("Zoom out"));
@@ -341,7 +341,7 @@ describe("chat-i-059: image preview button opens lightbox", () => {
 
     await user.click(screen.getByLabelText("Zoom in"));
     await waitFor(() => {
-      expect(screen.getByText("125%")).toBeInTheDocument();
+      expect(screen.getByText("115%")).toBeInTheDocument();
     });
     await user.click(screen.getByLabelText("Reset zoom"));
     await waitFor(() => {
@@ -350,7 +350,7 @@ describe("chat-i-059: image preview button opens lightbox", () => {
 
     fireEvent.keyDown(document, { key: "=", metaKey: true });
     await waitFor(() => {
-      expect(screen.getByText("125%")).toBeInTheDocument();
+      expect(screen.getByText("115%")).toBeInTheDocument();
     });
 
     fireEvent.keyDown(document, { key: "-", metaKey: true });
