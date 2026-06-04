@@ -159,8 +159,7 @@ function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
   return (
     hasTokenRefreshFailedCode &&
     hasOnlyCodexOAuthConnector &&
-    hasReconnectRequiredFailureReason &&
-    !normalized.includes("upstream_provider")
+    hasReconnectRequiredFailureReason
   );
 }
 
