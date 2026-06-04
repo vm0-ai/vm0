@@ -255,8 +255,9 @@ class TestResponseHandler:
         entry = json.loads(lines[0])
         assert entry["response_size"] == len(body)
 
+    @pytest.mark.parametrize("content_length", ["50000", " 50000\t"])
     def test_response_size_uses_content_length_without_stream_state(
-        self, tmp_path, real_flow, mitm_ctx
+        self, tmp_path, real_flow, mitm_ctx, content_length
     ):
         """response_size should fall back to Content-Length without stream metadata."""
         flow = real_flow(with_response=False, host="api.example.com")
@@ -267,7 +268,7 @@ class TestResponseHandler:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.example.com/"
         flow.response = tutils.tresp(
-            status_code=200, headers=header_map({"content-length": "50000"})
+            status_code=200, headers=header_map({"content-length": content_length})
         )
 
         with mitm_ctx():
@@ -322,10 +323,15 @@ class TestResponseHandler:
     @pytest.mark.parametrize(
         "content_length",
         [
+            "",
+            " ",
+            "\t",
             "not-an-int",
             "-1",
             "+1",
             "1, 2",
+            "1,",
+            ",1",
             "\u0661\u0662",
             "9007199254740992",
             "1" * 257,
