@@ -93,8 +93,8 @@ impl Decoder {
 
     /// Feed data and visit complete messages while they still borrow the decoder buffer.
     ///
-    /// Protocol errors are detected before any complete frame in the same input
-    /// batch is visited, preserving the all-or-error behavior of [`Self::decode`].
+    /// Protocol errors are detected before any complete frame in the current
+    /// buffered data is visited, preserving the all-or-error behavior of [`Self::decode`].
     /// If the visitor returns an error, frames through the rejected frame are
     /// consumed and later complete frames remain buffered.
     pub fn decode_with<E>(
