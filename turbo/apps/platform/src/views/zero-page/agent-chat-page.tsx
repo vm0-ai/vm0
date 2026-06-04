@@ -494,6 +494,7 @@ export function AgentChatPage() {
       return;
     }
 
+    setGenerationTemplate(undefined);
     detach(
       (async () => {
         await sendNewThread(
@@ -505,7 +506,6 @@ export function AgentChatPage() {
           },
           rootSignal,
         );
-        setGenerationTemplate(undefined);
       })(),
       Reason.DomCallback,
     );

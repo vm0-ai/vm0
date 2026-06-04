@@ -3122,6 +3122,7 @@ function useChatThreadComposerSendState({
     selectedGenerationTemplate: GenerationTemplateRequest | undefined,
   ) => {
     setInput("");
+    clearGenerationTemplate();
     detach(
       (async () => {
         await send(
@@ -3132,7 +3133,6 @@ function useChatThreadComposerSendState({
             : undefined,
           rootSignal,
         );
-        clearGenerationTemplate();
       })(),
       Reason.DomCallback,
     );
@@ -3143,10 +3143,10 @@ function useChatThreadComposerSendState({
     selectedGenerationTemplate: GenerationTemplateRequest | undefined,
   ) => {
     setInput("");
+    clearGenerationTemplate();
     detach(
       (async () => {
         await queueMessage(text, selectedGenerationTemplate, rootSignal);
-        clearGenerationTemplate();
       })(),
       Reason.DomCallback,
     );

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
@@ -9,6 +9,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   detachedSetupPage,
   setupPage,
@@ -26,6 +27,7 @@ const context = testContext();
 const mockApi = createMockApi(context);
 const THREAD_ID = "thread-template-picker";
 const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+const nextTemplate = PRESENTATION_TEMPLATE_ITEMS[1]!;
 
 beforeEach(() => {
   const values = new Map<string, string>();
@@ -49,12 +51,23 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", storage);
 });
 
-function captureSendGenerationTemplate() {
+function templateLabel(item: (typeof PRESENTATION_TEMPLATE_ITEMS)[number]) {
+  const label = item.templateId
+    .replace(/^template:/, "")
+    .replace(/^html-ppt-/, "")
+    .replace(/-/g, " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function captureSendGenerationTemplate(options?: { gate?: Promise<void> }) {
   let capturedGenerationTemplate: GenerationTemplateRequest | undefined;
   server.use(
-    mockApi(chatMessagesContract.send, ({ body, respond }) => {
+    mockApi(chatMessagesContract.send, async ({ body, respond }) => {
       if ("generationTemplate" in body) {
         capturedGenerationTemplate = body.generationTemplate;
+      }
+      if (options?.gate) {
+        await options.gate;
       }
       return respond(201, {
         runId: "run-template-picker",
@@ -87,6 +100,7 @@ function captureQueuedGenerationTemplate() {
 
 async function openPickerAndSelectTemplate(
   user: ReturnType<typeof userEvent.setup>,
+  item = template,
 ) {
   const templateButton = await waitFor(() => {
     return screen.getByLabelText("Template");
@@ -101,7 +115,7 @@ async function openPickerAndSelectTemplate(
   });
   expect(pptTab).toBeEnabled();
 
-  await user.click(screen.getByLabelText(`Select template ${template.title}`));
+  await user.click(screen.getByLabelText(`Select template ${item.title}`));
 
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -113,7 +127,7 @@ async function openPickerAndSelectTemplate(
     );
   });
   expect(
-    screen.getByLabelText("Remove template Pitch deck"),
+    screen.getByLabelText(`Remove template ${templateLabel(item)}`),
   ).toBeInTheDocument();
 }
 
@@ -127,6 +141,14 @@ function expectPresentationTemplate(
       templateId: template.templateId,
     },
   });
+}
+
+function expectTemplateChip(
+  item: (typeof PRESENTATION_TEMPLATE_ITEMS)[number],
+) {
+  expect(
+    screen.getByLabelText(`Remove template ${templateLabel(item)}`),
+  ).toBeInTheDocument();
 }
 
 describe("zero chat template picker", () => {
@@ -191,6 +213,45 @@ describe("zero chat template picker", () => {
         "aria-pressed",
         "false",
       );
+    });
+  });
+
+  it("does not clear a newer new-thread template when an older send resolves", async () => {
+    const user = userEvent.setup();
+    const sendGate = createDeferredPromise<void>(context.signal);
+    mockChatLifecycle();
+    const sendCapture = captureSendGenerationTemplate({
+      gate: sendGate.promise,
+    });
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    await openPickerAndSelectTemplate(user, template);
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Create a launch deck");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+    expectPresentationTemplate(sendCapture.generationTemplate());
+
+    await openPickerAndSelectTemplate(user, nextTemplate);
+    act(() => {
+      sendGate.resolve();
+    });
+
+    await waitFor(() => {
+      expectTemplateChip(nextTemplate);
     });
   });
 
@@ -304,6 +365,56 @@ describe("zero chat template picker", () => {
 
     await waitFor(() => {
       expectPresentationTemplate(queueCapture.generationTemplate());
+    });
+  });
+
+  it("does not clear a newer queued template when an older queue request resolves", async () => {
+    const user = userEvent.setup();
+    const appendGate = createDeferredPromise<void>(context.signal);
+    const queueCapture = captureQueuedGenerationTemplate();
+    mockChatLifecycle({
+      threadId: THREAD_ID,
+      appendGate: appendGate.promise,
+      onQueuedMessageAppend: queueCapture.onQueuedMessageAppend,
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    const firstTextarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, firstTextarea, "Start a deck run");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    await openPickerAndSelectTemplate(user, template);
+    const queuedTextarea = await waitFor(() => {
+      return screen.getByPlaceholderText(
+        /Type your next message/,
+      ) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, queuedTextarea, "Queue a matching deck");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+    expectPresentationTemplate(queueCapture.generationTemplate());
+
+    await openPickerAndSelectTemplate(user, nextTemplate);
+    act(() => {
+      appendGate.resolve();
+    });
+
+    await waitFor(() => {
+      expectTemplateChip(nextTemplate);
     });
   });
 });
