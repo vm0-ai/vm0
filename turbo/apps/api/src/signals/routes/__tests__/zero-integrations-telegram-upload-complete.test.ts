@@ -220,6 +220,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
         botId: fixture.telegramBotId,
         chatId: "-1001234567890",
         uploadId,
+        s3Key,
         sourceUrl: fileUrl,
         caption: "Daily report",
         messageThreadId: 42,

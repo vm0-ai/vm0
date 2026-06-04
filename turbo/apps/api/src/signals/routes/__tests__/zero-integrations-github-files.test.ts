@@ -444,6 +444,7 @@ describe("GitHub zero file integration routes", () => {
         repo: "vm0-ai/vm0",
         issueNumber: 42,
         uploadId,
+        s3Key,
         sourceUrl: fileUrl,
         caption: "Daily report",
         githubComment: { id: "98765" },

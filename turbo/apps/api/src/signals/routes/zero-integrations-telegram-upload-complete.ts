@@ -55,15 +55,17 @@ const organizationContextRequired = Object.freeze({
 
 function buildMetadata(args: {
   readonly body: TelegramUploadCompleteBody;
+  readonly s3Key: string;
   readonly sourceUrl: string;
   readonly telegramMessageId: number;
   readonly telegramFileId: string | undefined;
 }): Record<string, unknown> {
-  const { body, sourceUrl, telegramMessageId, telegramFileId } = args;
+  const { body, s3Key, sourceUrl, telegramMessageId, telegramFileId } = args;
   return {
     botId: body.botId,
     chatId: body.chatId,
     uploadId: body.uploadId,
+    s3Key,
     sourceUrl,
     ...(body.caption ? { caption: body.caption } : {}),
     ...(body.messageThreadId ? { messageThreadId: body.messageThreadId } : {}),
@@ -166,6 +168,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       url: fileUrl,
       metadata: buildMetadata({
         body,
+        s3Key: s3Object.key,
         sourceUrl: fileUrl,
         telegramMessageId: result.messageId,
         telegramFileId: fileId,
