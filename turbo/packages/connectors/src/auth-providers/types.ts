@@ -6,7 +6,7 @@ import type {
   ConnectorAuthMethodIdsByAccessKind,
   ConnectorAuthMethodIdsByRevokeKind,
   ConnectorDeviceAuthGrantAuthMethodId,
-  ConnectorAuthProviderType,
+  AuthGrantConnectorType,
   ConnectorRefreshInputValues,
   ConnectorRefreshOutputValues,
   ConnectorType,
@@ -144,7 +144,7 @@ export interface TokenRevokeProvider<
 }
 
 export type ConnectorAuthProviderRevoke<
-  T extends ConnectorAuthProviderType,
+  T extends AuthGrantConnectorType,
   Method extends ConnectorAuthMethodIds<T> = ConnectorAuthMethodIds<T>,
 > =
   Method extends ConnectorAuthMethodIdsByRevokeKind<

@@ -7,7 +7,7 @@ import {
   cliAuthTestTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth-test";
 import {
-  type ConnectorAuthProviderType,
+  type AuthGrantConnectorType,
   type ConnectorAuthMethodId,
   type ConnectorType,
   connectorTypeSchema,
@@ -16,7 +16,7 @@ import {
   getConnectorAuthMethod,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodGrantMetadata,
-  getConnectorAuthMethodStorageMetadata,
+  getConnectorAuthMethodRuntimeMetadata,
 } from "@vm0/connectors/connector-utils";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
@@ -71,16 +71,16 @@ function stringError(status: 400 | 404, error: string) {
   return { status, body: { error } };
 }
 
-function connectorTypeHasSelectedProviderDrivenGrant(
+function connectorTypeHasSelectedAuthGrant(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
-): type is ConnectorAuthProviderType {
+): type is AuthGrantConnectorType {
   const grantKind = getConnectorAuthMethod(type, authMethod)?.grant.kind;
   return grantKind === "auth-code" || grantKind === "device-auth";
 }
 
 function testConnectorTokenOutputs(args: {
-  readonly connectorType: ConnectorAuthProviderType;
+  readonly connectorType: AuthGrantConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
   readonly accessToken: string;
   readonly refreshToken: string | undefined;
@@ -89,11 +89,11 @@ function testConnectorTokenOutputs(args: {
     args.connectorType,
     args.authMethod,
   );
-  const storageMetadata = getConnectorAuthMethodStorageMetadata(
+  const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
     args.connectorType,
     args.authMethod,
   );
-  if (!grantMetadata || !storageMetadata) {
+  if (!grantMetadata || !runtimeMetadata) {
     throw new Error(
       `${args.connectorType} connector auth method ${args.authMethod} does not expose token outputs`,
     );
@@ -104,7 +104,7 @@ function testConnectorTokenOutputs(args: {
       return [output.secretName, outputName];
     }),
   );
-  const accessOutputName = storageMetadata.runtimeBindings
+  const accessOutputName = runtimeMetadata.runtimeBindings
     .flatMap((binding) => {
       return binding.source.kind === "connector-secret"
         ? [outputNameBySecretName.get(binding.source.name)]
@@ -307,9 +307,7 @@ const createTestConnector$ = command(
       );
     }
 
-    if (
-      !connectorTypeHasSelectedProviderDrivenGrant(connectorType, authMethod)
-    ) {
+    if (!connectorTypeHasSelectedAuthGrant(connectorType, authMethod)) {
       return stringError(
         400,
         `${connectorType} connector auth method ${authMethod} does not use an auth-code or device-auth grant`,

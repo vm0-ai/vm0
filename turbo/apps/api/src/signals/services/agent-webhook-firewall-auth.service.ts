@@ -10,7 +10,7 @@ import {
   connectorRefreshMetadataHasRefreshableSecret,
   getConnectorAuthClientConfigForMethod,
   getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodStorageMetadata,
+  getConnectorAuthMethodRuntimeMetadata,
   getConnectorRuntimeBindingSecretName,
   resolveConnectorResolvedAuthMethodClientByAccessKind,
   connectorAuthMethodRefHasAccessKind,
@@ -19,7 +19,7 @@ import {
   type ConnectorAuthMethodRefByAccessKind,
   type ConnectorAuthMethodAccessMetadata,
   type ConnectorRefreshTokenInputMetadata,
-  type ConnectorAuthMethodStorageMetadata,
+  type ConnectorAuthMethodRuntimeMetadata,
   type ConnectorAuthClientForMethod,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -539,7 +539,7 @@ interface RefreshSourceState {
 interface ConnectorAccessState extends RefreshSourceState {
   readonly authMethod: string;
   readonly accessMetadata: ConnectorAuthMethodAccessMetadata;
-  readonly storageMetadata: ConnectorAuthMethodStorageMetadata;
+  readonly runtimeMetadata: ConnectorAuthMethodRuntimeMetadata;
 }
 
 interface BasicArgContext extends BasicAuthTemplateArg {
@@ -856,7 +856,7 @@ function refreshableRuntimeSecretNameForSource(args: {
     return undefined;
   }
   const secretName = getConnectorRuntimeBindingSecretName(
-    connectorAccess.storageMetadata,
+    connectorAccess.runtimeMetadata,
     args.key,
   );
   return secretName &&
@@ -961,17 +961,17 @@ async function loadConnectorAccessStates(
       parsed.data,
       row.authMethod,
     );
-    const storageMetadata = getConnectorAuthMethodStorageMetadata(
+    const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
       parsed.data,
       row.authMethod,
     );
-    if (!accessMetadata || !storageMetadata) {
+    if (!accessMetadata || !runtimeMetadata) {
       continue;
     }
     result.set(row.type, {
       authMethod: row.authMethod,
       accessMetadata,
-      storageMetadata,
+      runtimeMetadata,
       ...refreshSourceStateFromRow(row),
     });
   }
@@ -2268,13 +2268,13 @@ function connectorAccessSecretName(
   switch (connectorAccess.accessMetadata.kind) {
     case "refresh-token": {
       return getConnectorRuntimeBindingSecretName(
-        connectorAccess.storageMetadata,
+        connectorAccess.runtimeMetadata,
         key,
       );
     }
     case "static": {
       return getConnectorRuntimeBindingSecretName(
-        connectorAccess.storageMetadata,
+        connectorAccess.runtimeMetadata,
         key,
       );
     }

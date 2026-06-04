@@ -8,7 +8,7 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConfiguredConnectorAuthMethods,
+  getConfiguredConnectorAuthMethodIds,
   getConnectorAuthMethod,
 } from "@vm0/connectors/connector-utils";
 import { connectZeroConnectorManualGrant } from "../../../lib/api";
@@ -70,8 +70,8 @@ function parseConfiguredAuthMethod(
   type: ConnectorType,
   rawAuthMethod: string,
 ): ConnectorAuthMethodId {
-  const configuredAuthMethods = getConfiguredConnectorAuthMethods(type);
-  const authMethod = configuredAuthMethods.find((method) => {
+  const configuredAuthMethodIds = getConfiguredConnectorAuthMethodIds(type);
+  const authMethod = configuredAuthMethodIds.find((method) => {
     return method === rawAuthMethod;
   });
   if (authMethod) {
@@ -82,7 +82,7 @@ function parseConfiguredAuthMethod(
     `${type} connector does not have ${rawAuthMethod} auth method`,
     {
       cause: new Error(
-        `Available auth methods: ${configuredAuthMethods.join(", ")}`,
+        `Available auth methods: ${configuredAuthMethodIds.join(", ")}`,
       ),
     },
   );
@@ -91,7 +91,7 @@ function parseConfiguredAuthMethod(
 function getManualGrantAuthMethods(
   type: ConnectorType,
 ): ConnectorAuthMethodId[] {
-  return getConfiguredConnectorAuthMethods(type).filter((authMethod) => {
+  return getConfiguredConnectorAuthMethodIds(type).filter((authMethod) => {
     return getConnectorAuthMethod(type, authMethod)?.grant.kind === "manual";
   });
 }

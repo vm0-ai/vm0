@@ -3,7 +3,7 @@ import {
   type AuthCodeGrantConnectorType,
   connectorAuthMethodIdSchema,
   type ConnectorType,
-  type ConnectorAuthProviderType,
+  type AuthGrantConnectorType,
   type ConnectorDeviceAuthGrantAuthMethodId,
   type ConnectorAuthMethodIdsByGrantKind,
   type DeviceAuthGrantConnectorType,
@@ -114,7 +114,7 @@ export type ConnectorAuthProviderAccessTokenRevokeResult =
   | { readonly status: "unsupported" };
 
 type ConnectorProviderBackedType =
-  | ConnectorAuthProviderType
+  | AuthGrantConnectorType
   | RefreshTokenAccessConnectorType
   | TokenRevokeConnectorType;
 

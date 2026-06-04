@@ -34,7 +34,7 @@ import {
   connectorAuthMethodRefHasAccessKind,
   connectorAuthMethodRefHasGrantKind,
   connectorAuthMethodRefHasRevokeKind,
-  getAvailableConnectorAuthMethods,
+  getAvailableConnectorAuthMethodIds,
   getConnectorAuthMethodGrantScopes,
   getConnectorAuthMethodGrantMetadata,
   getConnectorAuthMethodRevokeMetadata,
@@ -42,12 +42,12 @@ import {
   getConnectorAuthMethodIdsForGrantKind,
   getConnectorAuthMethodIdsForRevokeKind,
   getConnectorAuthMethodScopeDiff,
-  getConfiguredConnectorAuthMethods,
+  getConfiguredConnectorAuthMethodIds,
   hasRequiredConnectorAuthMethodScopes,
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodDeviceAuthGrantConfig,
   getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodStorageMetadata,
+  getConnectorAuthMethodRuntimeMetadata,
   getConnectorGrantOutputSecretName,
   getConnectorRefreshOutputSecretName,
   getConnectorStoredSecretDisplayInfo,
@@ -60,7 +60,7 @@ import {
   getConnectorManualGrantFieldNamesForAuthMethod,
   getRuntimeAvailableConnectorTypes,
   getConnectorOwnedSecretNames,
-  getConnectorVariableNames,
+  getConnectorOwnedVariableNames,
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
   isStaticConfidentialConnectorAuthClient,
@@ -598,7 +598,7 @@ describe("connector auth method config", () => {
             `${type}:${authMethod}`,
           ]);
         }
-        for (const name of getConnectorVariableNames(type, authMethod)) {
+        for (const name of getConnectorOwnedVariableNames(type, authMethod)) {
           variableOwners.set(name, [
             ...(variableOwners.get(name) ?? []),
             `${type}:${authMethod}`,
@@ -644,14 +644,14 @@ describe("connector auth method config", () => {
 describe("connector selected auth method capability checks", () => {
   it("matches exactly the auth methods that declare auth-code and device-auth grants", () => {
     for (const type of connectorTypeSchema.options) {
-      const authMethods = getConfiguredConnectorAuthMethods(type);
+      const authMethodIds = getConfiguredConnectorAuthMethodIds(type);
       expect(hasConnectorAuthCodeGrant(type)).toBe(
-        authMethods.some((authMethod) => {
+        authMethodIds.some((authMethod) => {
           return connectorAuthMethodHasGrantKind(type, authMethod, "auth-code");
         }),
       );
       expect(hasConnectorDeviceAuthGrant(type)).toBe(
-        authMethods.some((authMethod) => {
+        authMethodIds.some((authMethod) => {
           return connectorAuthMethodHasGrantKind(
             type,
             authMethod,
@@ -659,7 +659,7 @@ describe("connector selected auth method capability checks", () => {
           );
         }),
       );
-      for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
         expect(
           connectorAuthMethodHasGrantKind(type, authMethod, "auth-code"),
         ).toBe(
@@ -681,7 +681,7 @@ describe("connector selected auth method capability checks", () => {
     expectTypeOf<"github">().not.toMatchTypeOf<RefreshTokenAccessConnectorType>();
 
     for (const type of connectorTypeSchema.options) {
-      for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
         const hasRefreshTokenAccess =
           getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
           "refresh-token";
@@ -734,7 +734,7 @@ describe("connector selected auth method capability checks", () => {
     expectTypeOf<"notion">().not.toMatchTypeOf<TokenRevokeConnectorType>();
 
     for (const type of connectorTypeSchema.options) {
-      for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
         const supportsTokenRevoke = connectorAuthMethodRefHasRevokeKind(
           {
             type,
@@ -1812,60 +1812,60 @@ describe("connector selected auth method capability checks", () => {
   });
 });
 
-describe("getConfiguredConnectorAuthMethods", () => {
+describe("getConfiguredConnectorAuthMethodIds", () => {
   it("returns configured auth methods without feature filtering", () => {
-    expect(getConfiguredConnectorAuthMethods("stripe")).toStrictEqual([
+    expect(getConfiguredConnectorAuthMethodIds("stripe")).toStrictEqual([
       "oauth",
       "api-token",
     ]);
   });
 });
 
-describe("getAvailableConnectorAuthMethods", () => {
+describe("getAvailableConnectorAuthMethodIds", () => {
   it("exposes Stripe API-token auth without CLI auth", () => {
-    expect(getAvailableConnectorAuthMethods("stripe", {})).toStrictEqual([
+    expect(getAvailableConnectorAuthMethodIds("stripe", {})).toStrictEqual([
       "api-token",
     ]);
   });
 
   it("exposes BentoML API-token auth only when its switch is enabled", () => {
-    expect(getAvailableConnectorAuthMethods("bentoml", {})).toStrictEqual([]);
+    expect(getAvailableConnectorAuthMethodIds("bentoml", {})).toStrictEqual([]);
     expect(
-      getAvailableConnectorAuthMethods("bentoml", {
+      getAvailableConnectorAuthMethodIds("bentoml", {
         [FeatureSwitchKey.BentomlConnector]: true,
       }),
     ).toStrictEqual(["api-token"]);
   });
 
   it("exposes Base44 OAuth without a feature switch", () => {
-    expect(getAvailableConnectorAuthMethods("base44", {})).toStrictEqual([
+    expect(getAvailableConnectorAuthMethodIds("base44", {})).toStrictEqual([
       "oauth",
     ]);
   });
 
   it("exposes Slock OAuth without a feature switch", () => {
-    expect(getAvailableConnectorAuthMethods("slock", {})).toStrictEqual([
+    expect(getAvailableConnectorAuthMethodIds("slock", {})).toStrictEqual([
       "oauth",
     ]);
   });
 
   it("exposes Lark API-token auth only when its switch is enabled", () => {
-    expect(getAvailableConnectorAuthMethods("lark", {})).toStrictEqual([]);
+    expect(getAvailableConnectorAuthMethodIds("lark", {})).toStrictEqual([]);
     expect(
-      getAvailableConnectorAuthMethods("lark", {
+      getAvailableConnectorAuthMethodIds("lark", {
         [FeatureSwitchKey.LarkConnector]: true,
       }),
     ).toStrictEqual(["api-token"]);
   });
 
   it("exposes Doubao API-token auth without a feature switch", () => {
-    expect(getAvailableConnectorAuthMethods("doubao", {})).toStrictEqual([
+    expect(getAvailableConnectorAuthMethodIds("doubao", {})).toStrictEqual([
       "api-token",
     ]);
   });
 
   it("exposes WeRead API-token auth without a feature switch", () => {
-    expect(getAvailableConnectorAuthMethods("weread", {})).toStrictEqual([
+    expect(getAvailableConnectorAuthMethodIds("weread", {})).toStrictEqual([
       "api-token",
     ]);
   });
@@ -2050,7 +2050,7 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
 
   it("keeps platform-owned secrets referenced by selected env bindings", () => {
     for (const type of connectorTypeSchema.options) {
-      for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
         const accessMetadata = getConnectorAuthMethodAccessMetadata(
           type,
           authMethod,
@@ -2109,10 +2109,10 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
   });
 });
 
-describe("getConnectorAuthMethodStorageMetadata", () => {
+describe("getConnectorAuthMethodRuntimeMetadata", () => {
   it("returns static provider storage and runtime bindings", () => {
     expect(
-      getConnectorAuthMethodStorageMetadata("github", "oauth"),
+      getConnectorAuthMethodRuntimeMetadata("github", "oauth"),
     ).toStrictEqual({
       storage: {
         secrets: ["GITHUB_ACCESS_TOKEN"],
@@ -2141,7 +2141,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
 
   it("keeps manual static API tokens role-free", () => {
     expect(
-      getConnectorAuthMethodStorageMetadata("stripe", "api-token"),
+      getConnectorAuthMethodRuntimeMetadata("stripe", "api-token"),
     ).toStrictEqual({
       storage: {
         secrets: ["STRIPE_TOKEN"],
@@ -2162,7 +2162,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
 
   it("represents provider extra secrets as storage-owned runtime sources", () => {
     expect(
-      getConnectorAuthMethodStorageMetadata("slock", "oauth"),
+      getConnectorAuthMethodRuntimeMetadata("slock", "oauth"),
     ).toStrictEqual({
       storage: {
         secrets: [
@@ -2195,7 +2195,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
 
   it("represents platform secrets as platform runtime sources", () => {
     expect(
-      getConnectorAuthMethodStorageMetadata("google-ads", "oauth"),
+      getConnectorAuthMethodRuntimeMetadata("google-ads", "oauth"),
     ).toStrictEqual({
       storage: {
         secrets: ["GOOGLE_ADS_ACCESS_TOKEN", "GOOGLE_ADS_REFRESH_TOKEN"],
@@ -2259,15 +2259,15 @@ describe("getConnectorAuthMethodRevokeMetadata", () => {
   });
 });
 
-describe("getConnectorVariableNames", () => {
+describe("getConnectorOwnedVariableNames", () => {
   it("returns manual grant variable fields for the exact auth method", () => {
-    expect(new Set(getConnectorVariableNames("zendesk", "api-token"))).toEqual(
-      new Set(["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"]),
-    );
+    expect(
+      new Set(getConnectorOwnedVariableNames("zendesk", "api-token")),
+    ).toEqual(new Set(["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"]));
   });
 
   it("returns no variables for an auth method without variable fields", () => {
-    expect(getConnectorVariableNames("ahrefs", "oauth")).toEqual([]);
+    expect(getConnectorOwnedVariableNames("ahrefs", "oauth")).toEqual([]);
   });
 });
 
@@ -2381,11 +2381,11 @@ describe("getConnectorEnvBindingEntries", () => {
         "refresh-token",
       );
       const grantMetadata = getConnectorAuthMethodGrantMetadata(type, "oauth");
-      const storageMetadata = getConnectorAuthMethodStorageMetadata(
+      const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
         type,
         "oauth",
       );
-      if (!storageMetadata) {
+      if (!runtimeMetadata) {
         throw new Error(`${type}: missing OAuth storage metadata`);
       }
       if (!grantMetadata) {
@@ -2434,7 +2434,7 @@ describe("getConnectorEnvBindingEntries", () => {
         ).toContain(refreshSecretName);
       }
 
-      const runtimeSecretNames = storageMetadata.runtimeBindings.flatMap(
+      const runtimeSecretNames = runtimeMetadata.runtimeBindings.flatMap(
         (entry) => {
           return entry.source.kind === "connector-secret"
             ? [entry.source.name]

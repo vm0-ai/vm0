@@ -5,7 +5,7 @@ import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
 } from "@vm0/connectors/connectors";
-import { getAvailableConnectorAuthMethods } from "@vm0/connectors/connector-utils";
+import { getAvailableConnectorAuthMethodIds } from "@vm0/connectors/connector-utils";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -19,7 +19,7 @@ function isConnectorAuthMethodId(
 
 function defaultAvailableConnectors() {
   return CONNECTOR_TYPE_KEYS.map((type) => {
-    const authMethods = getAvailableConnectorAuthMethods(type, {});
+    const authMethods = getAvailableConnectorAuthMethodIds(type, {});
     return { type, authMethods };
   })
     .filter((item) => {

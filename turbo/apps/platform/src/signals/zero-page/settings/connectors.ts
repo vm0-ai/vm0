@@ -12,7 +12,7 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   getConnectorAuthMethod,
-  getConfiguredConnectorAuthMethods,
+  getConfiguredConnectorAuthMethodIds,
   getConnectorTags,
   hasRequiredConnectorAuthMethodScopes,
   hasConnectorDeviceAuthGrant,
@@ -93,7 +93,7 @@ function getAvailableConnectorConnectAuthMethods(
     readonly includeManagedForTypes: readonly ConnectorType[];
   },
 ): ConnectorAuthMethodId[] {
-  return getConfiguredConnectorAuthMethods(type).filter((authMethod) => {
+  return getConfiguredConnectorAuthMethodIds(type).filter((authMethod) => {
     const method = getConnectorAuthMethod(type, authMethod);
     switch (method?.grant.kind) {
       case "managed": {

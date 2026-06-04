@@ -58,7 +58,7 @@ function connectorAuthMethodPriority(
   return CONNECTOR_AUTH_METHOD_PRIORITY[authMethod];
 }
 
-export function getConfiguredConnectorAuthMethods(
+export function getConfiguredConnectorAuthMethodIds(
   type: ConnectorType,
 ): ConnectorAuthMethodId[] {
   // Configured methods are raw registry entries; callers apply feature flags.
@@ -117,7 +117,7 @@ export function getConnectorAuthMethodIdsForGrantKind<
   type: Type,
   grantKind: Kind,
 ): ConnectorAuthMethodIdsByGrantKind<Type, Kind>[] {
-  return getConfiguredConnectorAuthMethods(type).filter(
+  return getConfiguredConnectorAuthMethodIds(type).filter(
     (
       authMethod,
     ): authMethod is ConnectorAuthMethodIdsByGrantKind<Type, Kind> => {
@@ -144,7 +144,7 @@ export function getConnectorAuthMethodIdsForAccessKind<
   type: Type,
   accessKind: Kind,
 ): ConnectorAuthMethodIdsByAccessKind<Type, Kind>[] {
-  return getConfiguredConnectorAuthMethods(type).filter(
+  return getConfiguredConnectorAuthMethodIds(type).filter(
     (
       authMethod,
     ): authMethod is ConnectorAuthMethodIdsByAccessKind<Type, Kind> => {
@@ -171,7 +171,7 @@ export function getConnectorAuthMethodIdsForRevokeKind<
   type: Type,
   revokeKind: Kind,
 ): ConnectorAuthMethodIdsByRevokeKind<Type, Kind>[] {
-  return getConfiguredConnectorAuthMethods(type).filter(
+  return getConfiguredConnectorAuthMethodIds(type).filter(
     (
       authMethod,
     ): authMethod is ConnectorAuthMethodIdsByRevokeKind<Type, Kind> => {
@@ -222,7 +222,7 @@ export function getConnectorManualGrantFieldNames(
 ): ConnectorManualGrantFieldNames | null {
   const secretNames = new Set<string>();
   const variableNames = new Set<string>();
-  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+  for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
     const fields = getConnectorManualGrantFieldNamesForAuthMethod(
       type,
       authMethod,
@@ -368,7 +368,7 @@ export interface ConnectorRuntimeBindingEntry {
   readonly source: ConnectorRuntimeBindingSource;
 }
 
-export interface ConnectorAuthMethodStorageMetadata {
+export interface ConnectorAuthMethodRuntimeMetadata {
   readonly storage: {
     readonly secrets: readonly string[];
     readonly variables: readonly string[];
@@ -578,7 +578,7 @@ export function getConnectorRefreshOutputSecretName(
 }
 
 export function getConnectorRuntimeBindingSecretName(
-  metadata: ConnectorAuthMethodStorageMetadata,
+  metadata: ConnectorAuthMethodRuntimeMetadata,
   envName: string,
 ): string | undefined {
   const binding = metadata.runtimeBindings.find((entry) => {
@@ -646,10 +646,10 @@ function connectorRuntimeBindingEntries(args: {
   return entries;
 }
 
-export function getConnectorAuthMethodStorageMetadata(
+export function getConnectorAuthMethodRuntimeMetadata(
   type: ConnectorType,
   authMethod: string,
-): ConnectorAuthMethodStorageMetadata | undefined {
+): ConnectorAuthMethodRuntimeMetadata | undefined {
   const method = getConnectorAuthMethod(type, authMethod);
   if (!method) {
     return undefined;
@@ -862,16 +862,16 @@ function shouldIncludeApiAuthMethod(
  *
  * This does not describe persisted connected state.
  */
-export function getAvailableConnectorAuthMethods(
+export function getAvailableConnectorAuthMethodIds(
   type: ConnectorType,
   featureStates: ConnectorFeatureStates,
   options: AvailableConnectorAuthMethodsOptions = {},
 ): ConnectorAuthMethodId[] {
   const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
-  const availableAuthMethods: ConnectorAuthMethodId[] = [];
-  const configuredAuthMethods = getConfiguredConnectorAuthMethods(type);
+  const availableAuthMethodIds: ConnectorAuthMethodId[] = [];
+  const configuredAuthMethodIds = getConfiguredConnectorAuthMethodIds(type);
 
-  for (const authMethod of configuredAuthMethods) {
+  for (const authMethod of configuredAuthMethodIds) {
     const method = getConnectorAuthMethod(type, authMethod);
     switch (method?.grant.kind) {
       case "managed": {
@@ -890,11 +890,11 @@ export function getAvailableConnectorAuthMethods(
       }
     }
     if (isConnectorAuthMethodAvailable(type, authMethod, featureStates)) {
-      availableAuthMethods.push(authMethod);
+      availableAuthMethodIds.push(authMethod);
     }
   }
 
-  return availableAuthMethods;
+  return availableAuthMethodIds;
 }
 
 export type ConnectorEnvReader = (name: string) => string | undefined;
@@ -1206,7 +1206,7 @@ function hasRuntimeAvailableAuthMethod(
   readEnv: ConnectorEnvReader,
   type: ConnectorType,
 ): boolean {
-  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+  for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
     const method = getConnectorAuthMethod(type, authMethod);
     switch (method?.grant.kind) {
       case "auth-code":
@@ -1257,28 +1257,30 @@ export function getConnectorOwnedSecretNames(
   type: ConnectorType,
   authMethod: string,
 ): string[] {
-  return connectorMethodOwnedSecretNames(
+  return connectorAuthMethodOwnedSecretNames(
     getConnectorAuthMethod(type, authMethod),
   );
 }
 
 /**
- * Get variable names for a specific auth method
+ * Get connector-owned variable storage names for a specific auth method.
  */
-export function getConnectorVariableNames(
+export function getConnectorOwnedVariableNames(
   type: ConnectorType,
   authMethod: string,
 ): string[] {
-  return connectorMethodVariableNames(getConnectorAuthMethod(type, authMethod));
+  return connectorAuthMethodOwnedVariableNames(
+    getConnectorAuthMethod(type, authMethod),
+  );
 }
 
-function connectorMethodOwnedSecretNames(
+function connectorAuthMethodOwnedSecretNames(
   method: ConnectorAuthMethodConfig | undefined,
 ): string[] {
   return method ? [...method.storage.secrets] : [];
 }
 
-function connectorMethodVariableNames(
+function connectorAuthMethodOwnedVariableNames(
   method: ConnectorAuthMethodConfig | undefined,
 ): string[] {
   return method ? [...method.storage.variables] : [];
@@ -1311,7 +1313,7 @@ export function getConnectorEnvBindingEntries(
   type: ConnectorType,
 ): ConnectorEnvBindingEntry[] {
   const entries: ConnectorEnvBindingEntry[] = [];
-  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+  for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
     const envBindings = getConnectorAuthMethodEnvBindings(type, authMethod);
     for (const [envName, valueRef] of Object.entries(envBindings)) {
       entries.push({ authMethod, envName, valueRef });
@@ -1341,7 +1343,7 @@ export function getConnectorStoredSecretDisplayInfo(
     const config = CONNECTOR_TYPES[type];
 
     const found = Object.values(config.authMethods).some((method) => {
-      return connectorMethodOwnedSecretNames(method).includes(secretName);
+      return connectorAuthMethodOwnedSecretNames(method).includes(secretName);
     });
     if (!found) {
       continue;

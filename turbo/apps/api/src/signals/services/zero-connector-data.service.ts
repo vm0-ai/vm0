@@ -7,15 +7,15 @@ import type {
 import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   connectorAuthMethodRefHasRevokeKind,
-  getAvailableConnectorAuthMethods,
+  getAvailableConnectorAuthMethodIds,
   getConnectorAuthMethodGrantMetadata,
   getConnectorAuthMethodRevokeMetadata,
-  getConnectorAuthMethodStorageMetadata,
+  getConnectorAuthMethodRuntimeMetadata,
   getConnectorAuthMethodScopeDiff,
   getConnectorAuthMethod,
   getConnectorManualGrantFieldNamesForAuthMethod,
   getConnectorOwnedSecretNames,
-  getConnectorVariableNames,
+  getConnectorOwnedVariableNames,
   getRuntimeAvailableConnectorTypes,
   type ConnectorAuthMethodRef,
   type ConnectorAuthMethodRefByRevokeKind,
@@ -30,7 +30,7 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
-  type ConnectorAuthProviderType,
+  type AuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getAllFeatureStates,
@@ -169,7 +169,7 @@ function storedConnectorTypeIsVisible(
   featureStates: FeatureStates,
 ): boolean {
   return (
-    getAvailableConnectorAuthMethods(type, featureStates, {
+    getAvailableConnectorAuthMethodIds(type, featureStates, {
       apiAuthMethodPolicy: "include",
     }).length > 0
   );
@@ -421,7 +421,7 @@ function connectorProvidedEnvNamesForStoredConnectors(
 ): Set<string> {
   const provided = new Set<string>();
   for (const connector of connectorList) {
-    const metadata = getConnectorAuthMethodStorageMetadata(
+    const metadata = getConnectorAuthMethodRuntimeMetadata(
       connector.type,
       connector.authMethod,
     );
@@ -776,7 +776,7 @@ export const deleteZeroConnectorLocalState$ = command(
       await deleteConnectorScopedVariableNames(tx, {
         orgId: args.orgId,
         userId: args.userId,
-        names: getConnectorVariableNames(args.type, existing.authMethod),
+        names: getConnectorOwnedVariableNames(args.type, existing.authMethod),
         signal,
       });
 
@@ -1071,7 +1071,7 @@ async function cleanupExistingStoredConnectorForManualGrantConnect(
   await deleteConnectorScopedVariableNames(db, {
     orgId: args.orgId,
     userId: args.userId,
-    names: getConnectorVariableNames(args.type, existing.authMethod),
+    names: getConnectorOwnedVariableNames(args.type, existing.authMethod),
     signal: args.signal,
   });
 
@@ -1317,11 +1317,11 @@ function requiredConnectorTokenSecretRequirements(args: {
   readonly authMethod: string;
   readonly outputSecretNames: Readonly<Record<string, string>>;
 }): ConnectorTokenSecretRequirements {
-  const storageMetadata = getConnectorAuthMethodStorageMetadata(
+  const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
     args.type,
     args.authMethod,
   );
-  if (!storageMetadata) {
+  if (!runtimeMetadata) {
     return { requiredOutputNames: [], requiredExtraSecretNames: [] };
   }
 
@@ -1332,7 +1332,7 @@ function requiredConnectorTokenSecretRequirements(args: {
   );
   const requiredOutputNames = new Set<string>();
   const requiredExtraSecretNames = new Set<string>();
-  for (const binding of storageMetadata.runtimeBindings) {
+  for (const binding of runtimeMetadata.runtimeBindings) {
     if (binding.source.kind !== "connector-secret") {
       continue;
     }
@@ -1350,7 +1350,7 @@ function requiredConnectorTokenSecretRequirements(args: {
 }
 
 function validateRequiredConnectorTokenSecrets(args: {
-  readonly type: ConnectorAuthProviderType;
+  readonly type: AuthGrantConnectorType;
   readonly outputs: ConnectorTokenOutputValues;
   readonly requiredOutputNames: readonly string[];
   readonly extraSecrets: readonly (readonly [string, string])[];
@@ -1383,7 +1383,7 @@ function validateRequiredConnectorTokenSecrets(args: {
 }
 
 function allowedConnectorTokenSecretNames(
-  type: ConnectorAuthProviderType,
+  type: AuthGrantConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): Set<string> {
   return new Set(getConnectorOwnedSecretNames(type, authMethod));
@@ -1397,7 +1397,7 @@ function isPrimaryConnectorTokenSecret(args: {
 }
 
 function validateExtraConnectorTokenSecrets(args: {
-  readonly type: ConnectorAuthProviderType;
+  readonly type: AuthGrantConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
   readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
   readonly outputSecretNames: Readonly<Record<string, string>>;
@@ -1434,7 +1434,7 @@ function validateExtraConnectorTokenSecrets(args: {
 }
 
 async function encryptExtraConnectorTokenSecrets(args: {
-  readonly type: ConnectorAuthProviderType;
+  readonly type: AuthGrantConnectorType;
   readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
@@ -1455,7 +1455,7 @@ async function encryptExtraConnectorTokenSecrets(args: {
 }
 
 async function encryptConnectorTokenSecretSet(args: {
-  readonly type: ConnectorAuthProviderType;
+  readonly type: AuthGrantConnectorType;
   readonly outputSecretNames: Readonly<Record<string, string>>;
   readonly requiredOutputNames: readonly string[];
   readonly requiredExtraSecretNames: readonly string[];
@@ -1557,7 +1557,7 @@ async function upsertConnectorTokenConnectionRow(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: ConnectorAuthProviderType;
+    readonly type: AuthGrantConnectorType;
     readonly authMethod: ConnectorAuthMethodId;
     readonly userInfo: ExternalUserInfo;
     readonly oauthScopes: readonly string[];
@@ -1617,7 +1617,7 @@ async function deleteObsoleteConnectorScopedStateForTokenConnect(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: ConnectorAuthProviderType;
+    readonly type: AuthGrantConnectorType;
     readonly authMethod: ConnectorAuthMethodId;
     readonly existingAuthMethod: string | null;
     readonly signal: AbortSignal;
@@ -1637,9 +1637,9 @@ async function deleteObsoleteConnectorScopedStateForTokenConnect(
     return !targetSecretNames.has(name);
   });
   const targetVariableNames = new Set(
-    getConnectorVariableNames(args.type, args.authMethod),
+    getConnectorOwnedVariableNames(args.type, args.authMethod),
   );
-  const obsoleteVariableNames = getConnectorVariableNames(
+  const obsoleteVariableNames = getConnectorOwnedVariableNames(
     args.type,
     args.existingAuthMethod,
   ).filter((name) => {
@@ -1665,7 +1665,7 @@ export const upsertConnectorTokenConnection$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ConnectorAuthProviderType;
+      readonly type: AuthGrantConnectorType;
       readonly authMethod: ConnectorAuthMethodId;
       readonly outputs: ConnectorTokenOutputValues;
       readonly userInfo: ExternalUserInfo;
@@ -1838,7 +1838,7 @@ export function zeroConnectorSearch(args: {
     return CONNECTOR_TYPE_KEYS.flatMap((type) => {
       const config = CONNECTOR_TYPES[type];
       const authMethods: ConnectorSearchAuthMethod[] =
-        getAvailableConnectorAuthMethods(type, featureStates, {
+        getAvailableConnectorAuthMethodIds(type, featureStates, {
           apiAuthMethodPolicy: "include",
         });
 

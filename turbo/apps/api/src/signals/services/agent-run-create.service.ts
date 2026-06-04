@@ -29,7 +29,7 @@ import {
 import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
-  getConnectorAuthMethodStorageMetadata,
+  getConnectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -1689,7 +1689,7 @@ function connectorEnvBindingSets(
       row.connectorType,
       row.authMethod,
     );
-    const metadata = getConnectorAuthMethodStorageMetadata(
+    const metadata = getConnectorAuthMethodRuntimeMetadata(
       row.connectorType,
       row.authMethod,
     );
