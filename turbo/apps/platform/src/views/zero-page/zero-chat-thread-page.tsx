@@ -3394,19 +3394,6 @@ function FinishedRunRow({
   label: string;
   source: RecommendedFollowupSource | null;
 }) {
-  if (source) {
-    return (
-      <div className="flex flex-col gap-1.5">
-        <div className="flex h-5 items-center">
-          <p className="text-[11px] font-medium text-muted-foreground/50 shrink-0">
-            {label}
-          </p>
-        </div>
-        <RecommendedFollowupList thread={thread} source={source} />
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-2">
       <div className="flex h-5 flex-col justify-center gap-1.5">
@@ -3418,6 +3405,9 @@ function FinishedRunRow({
           <div className="h-px flex-1 bg-border/40" />
         </div>
       </div>
+      {source ? (
+        <RecommendedFollowupList thread={thread} source={source} />
+      ) : null}
     </div>
   );
 }
