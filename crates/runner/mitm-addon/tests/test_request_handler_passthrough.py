@@ -56,10 +56,10 @@ async def test_registry_unavailable_blocks_vm0_api_auto_allow(registry_file, rea
 async def test_vm0_api_test_paths_skip_auto_allow(tmp_path, real_flow, mitm_ctx, headers):
     """`/api/test/*` routes exist to exercise the firewall pipeline itself.
 
-    If they fell into Step 1's auto-allow fast path, the test-oauth E2E
+    If they fell into Step 2's auto-allow fast path, the test-oauth E2E
     test would never get proxy-injected Authorization headers and the
     pipeline it's supposed to exercise would be silently bypassed. The
-    carve-out drops these paths into Step 2 so the registered firewall
+    carve-out drops these paths into Step 3 so the registered firewall
     runs `handle_firewall_request`.
     """
     reg_path = _write_registry(
@@ -85,8 +85,8 @@ async def test_vm0_api_test_paths_skip_auto_allow(tmp_path, real_flow, mitm_ctx,
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
 
-    # Carve-out took effect: Step 2 ran and the real handle_firewall_request
-    # entered (firewall_base is written at auth.py:327 up-front).  Step 1's
+    # Carve-out took effect: Step 3 ran and the real handle_firewall_request
+    # entered (firewall_base is written at auth.py:327 up-front).  Step 2's
     # auto-allow would have returned without writing firewall_base.
     assert flow.metadata["firewall_base"] == "https://api.vm0.ai/api/test/oauth-provider"
 
