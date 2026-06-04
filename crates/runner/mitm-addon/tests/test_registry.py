@@ -5,6 +5,8 @@ import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import matching
 import registry
 from tests.auth_state_helpers import (
