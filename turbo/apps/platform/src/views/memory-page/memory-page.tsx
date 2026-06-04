@@ -280,10 +280,10 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
   };
 
   return (
-    <section className="zero-card flex min-h-[420px] flex-1 flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+    <section className="zero-card flex min-h-[420px] min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
         {/* Content (left) — scrolls independently of the file panel. */}
-        <div className="order-1 flex min-h-0 flex-1 flex-col">
+        <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex h-9 shrink-0 items-center border-b border-border/70 px-4 text-xs font-medium text-muted-foreground">
             <span className="truncate">
               {selectedPath ?? "No file selected"}
@@ -293,7 +293,7 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
             selectedMarkdown !== null ? (
               <div
                 aria-label="Memory content"
-                className="min-h-0 flex-1 overflow-auto bg-background px-4 py-3"
+                className="min-h-0 min-w-0 flex-1 overflow-auto bg-background px-4 py-3"
                 onClick={handleContentClick}
               >
                 <MemoryFrontmatter fields={selectedMarkdown.frontmatter} />

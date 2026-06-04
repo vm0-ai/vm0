@@ -267,6 +267,53 @@ describe("memory page", () => {
     expect(fileButtons[2]?.textContent).toContain("scratch.txt");
   });
 
+  it("constrains markdown content so wide code blocks do not displace the file list", async () => {
+    setMockMemory({
+      exists: true,
+      name: "memory",
+      size: 900,
+      fileCount: 1,
+      updatedAt: "2024-01-01T00:00:00Z",
+      files: [{ path: "MEMORY.md", size: 900 }],
+      fileContents: [
+        {
+          path: "MEMORY.md",
+          content: [
+            "# Memory Index",
+            "",
+            "```sh",
+            `npx -p @vm0/cli zero agent edit $ZERO_AGENT_ID --instructions-file /tmp/${"very-long-segment-".repeat(8)}current-instructions.md`,
+            "```",
+          ].join("\n"),
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await clickTab("Raw files");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Memory content")).toHaveTextContent(
+        "zero agent edit",
+      );
+    });
+
+    const content = screen.getByLabelText("Memory content");
+    const markdownRoot = document.querySelector(".wmde-markdown");
+    if (!(markdownRoot instanceof HTMLElement)) {
+      throw new Error("Missing markdown root");
+    }
+
+    expect(content.className).toContain("min-w-0");
+    expect(content.parentElement?.className).toContain("min-w-0");
+    expect(markdownRoot.className).toContain("min-w-0");
+  });
+
   it("switches files when a relative link to another memory file is clicked", async () => {
     setMockMemory({
       exists: true,

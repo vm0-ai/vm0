@@ -670,6 +670,11 @@
 }
 
 /* --- Spacing ------------------------------------------------------------ */
+.wmde-markdown {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .wmde-markdown p {
   margin-top: 6px;
   margin-bottom: 6px;
@@ -871,6 +876,8 @@
 .wmde-markdown pre {
   overflow-x: auto;
   max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: 8px;
 }
