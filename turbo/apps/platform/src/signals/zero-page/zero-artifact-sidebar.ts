@@ -11,6 +11,7 @@ import {
   previewAttachmentFromUrl,
 } from "../chat-page/parse-body-blocks.ts";
 import {
+  type AttachmentArtifactMetadata,
   openDocumentLightbox$ as openDocumentLightboxModal$,
   openImageLightbox$ as openImageLightboxModal$,
   openVideoLightbox$ as openVideoLightboxModal$,
@@ -116,14 +117,15 @@ export const currentArtifactRef$ = computed<ArtifactRef | null>((get) => {
   return { source: "url", url: raw, kind, filename: attachment.filename };
 });
 
-const openArtifact$ = command(({ get, set }, url: string) => {
-  const params = new URLSearchParams(get(searchParams$));
-  params.set(ARTIFACT_QUERY_PARAM, url);
-  // Don't carry a previous artifact's fullscreen flag onto a fresh open;
-  // a new artifact starts at the default 50/50 size.
-  params.delete(ARTIFACT_FULLSCREEN_PARAM);
-  set(updateSearchParams$, params);
-});
+export const openArtifactSidebarPreview$ = command(
+  ({ get, set }, url: string) => {
+    const params = new URLSearchParams(get(searchParams$));
+    params.set(ARTIFACT_QUERY_PARAM, url);
+    params.delete(ARTIFACT_INBOX_QUERY_PARAM);
+    params.delete(ARTIFACT_FULLSCREEN_PARAM);
+    set(updateSearchParams$, params);
+  },
+);
 
 export const openArtifactInbox$ = command(({ get, set }, threadId: string) => {
   const params = new URLSearchParams(get(searchParams$));
@@ -205,44 +207,49 @@ export const toggleArtifactFullscreen$ = command(({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Switch-aware open commands — the existing lightbox-open commands route
-// here when the sidebar feature switch is on, so every chip click site
-// participates without per-callsite branching.
+// Attachment preview clicks still open the modal lightbox. Moving into the
+// artifact sidebar is an explicit lightbox action so chat previews do not jump
+// directly into split view.
 // ---------------------------------------------------------------------------
 
 export const openImageLightboxOrArtifact$ = command(
-  ({ get, set }, url: string) => {
-    if (get(chatArtifactSidebarEnabled$)) {
-      set(openArtifact$, url);
-      return;
-    }
-    set(openImageLightboxModal$, url);
+  (
+    { set },
+    value:
+      | string
+      | {
+          url: string;
+          filename?: string;
+          artifact?: AttachmentArtifactMetadata;
+        },
+  ) => {
+    set(openImageLightboxModal$, value);
   },
 );
 
 export const openVideoLightboxOrArtifact$ = command(
-  ({ get, set }, value: { url: string; filename: string }) => {
-    if (get(chatArtifactSidebarEnabled$)) {
-      set(openArtifact$, value.url);
-      return;
-    }
+  (
+    { set },
+    value: {
+      url: string;
+      filename: string;
+      artifact?: AttachmentArtifactMetadata;
+    },
+  ) => {
     set(openVideoLightboxModal$, value);
   },
 );
 
 export const openDocumentLightboxOrArtifact$ = command(
   (
-    { get, set },
+    { set },
     value: {
       kind: "markdown" | "text" | "json" | "csv" | "html" | "pdf";
       url: string;
       filename: string;
+      artifact?: AttachmentArtifactMetadata;
     },
   ) => {
-    if (get(chatArtifactSidebarEnabled$)) {
-      set(openArtifact$, value.url);
-      return;
-    }
     set(openDocumentLightboxModal$, value);
   },
 );

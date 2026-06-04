@@ -1,22 +1,37 @@
 import type { MouseEvent, ReactNode } from "react";
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useLoadable,
+  useSet,
+} from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
+  IconArrowsDiagonal,
+  IconArrowsDiagonalMinimize2,
+  IconColumns2,
   IconDownload,
-  IconLink,
   IconPhoto,
   IconLoader2,
+  IconShare,
   IconZoomIn,
   IconZoomOut,
   IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import type {
+  ChatThreadArtifactFile,
+  ChatThreadArtifactRun,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
-import { logger } from "../../signals/log.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import {
+  currentLeftThread$,
+  currentRightThread$,
+} from "../../signals/chat-page/chat-thread-panes.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
   IMAGE_LIGHTBOX_MIN_ZOOM,
@@ -38,13 +53,43 @@ import { Markdown } from "../components/markdown.tsx";
 import {
   lightboxUrl$,
   closeLightbox$,
+  closeLightboxWithDialogExit$,
+  lightboxDialogFullscreen$,
+  lightboxDialogVisible$,
   openDocumentLightbox$,
   openImageLightbox$,
   lightboxDialogRef$,
+  toggleLightboxDialogFullscreen$,
+  type AttachmentArtifactMetadata,
+  type AttachmentLightboxState,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  chatArtifactSidebarEnabled$,
+  openArtifactSidebarPreview$,
+} from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
+import {
+  attachmentFilenameFromUrl,
+  copyAttachmentLinkToClipboard,
+  downloadAttachmentUrl,
+  publicAttachmentUrl,
+} from "./zero-attachment-url.ts";
+import {
+  ArtifactActionSeparator,
+  ArtifactDownloadMenu,
+  ArtifactShareButton,
+  type ArtifactDownloadSyncTarget,
+} from "./zero-artifact-actions.tsx";
+import {
+  artifactFallbackSubtitle,
+  artifactTitleSubtitle,
+} from "./zero-artifact-display.ts";
 
-const log = logger("zero-attachment-chips");
+export {
+  downloadAttachmentUrl,
+  getAttachmentRawUrl,
+  publicAttachmentUrl,
+} from "./zero-attachment-url.ts";
 
 type DocumentAttachmentPreviewKind =
   | "markdown"
@@ -78,168 +123,6 @@ function contentTypeForDocumentAttachmentPreviewKind(
 // ---------------------------------------------------------------------------
 // AttachmentLightbox — full-screen attachment viewer
 // ---------------------------------------------------------------------------
-
-function filenameFromUrl(url: string): string {
-  const path = url.split("?")[0].split("#")[0];
-  const last = path.split("/").pop();
-  return last && last.length > 0 ? last : "image";
-}
-
-const LEGACY_FILE_PATH_PATTERN = /^\/f\/([^/]+)\/([^/]+)\/([^/]+)$/;
-const ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/([^/]+)\/([^/]+)\/([^/]+)$/;
-const CLERK_USER_ID_PREFIX = "user_";
-
-function publicArtifactsBaseUrl(): string | null {
-  const baseUrl = import.meta.env.PUBLIC_ARTIFACTS_BASE_URL;
-  if (!baseUrl || !URL.canParse(baseUrl)) {
-    return null;
-  }
-  return baseUrl.replace(/\/+$/, "");
-}
-
-function hasExplicitUrlOrigin(url: string): boolean {
-  return /^[a-z][a-z\d+\-.]*:\/\//i.test(url);
-}
-
-function browserOrigin(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return window.location.origin;
-}
-
-type PlatformHostTarget = "api" | "www";
-
-function rewritePlatformHostname(
-  hostname: string,
-  target: PlatformHostTarget,
-): string {
-  return hostname.replace(/(^|-)(platform|app|www|api)\./, `$1${target}.`);
-}
-
-function addOrigin(origins: Set<string>, baseUrl: string | null) {
-  if (!baseUrl || !URL.canParse(baseUrl)) {
-    return;
-  }
-  origins.add(new URL(baseUrl).origin);
-}
-
-function addPlatformOriginVariants(
-  origins: Set<string>,
-  baseUrl: string | null,
-) {
-  if (!baseUrl || !URL.canParse(baseUrl)) {
-    return;
-  }
-
-  const parsed = new URL(baseUrl);
-  origins.add(parsed.origin);
-
-  for (const target of ["api", "www"] as const) {
-    const variant = new URL(parsed);
-    variant.hostname = rewritePlatformHostname(variant.hostname, target);
-    origins.add(variant.origin);
-  }
-}
-
-function platformFileOrigins(): Set<string> {
-  const origins = new Set<string>();
-  const configuredApiUrl = import.meta.env.VITE_API_URL as string | undefined;
-
-  addPlatformOriginVariants(origins, browserOrigin());
-  addPlatformOriginVariants(origins, configuredApiUrl ?? null);
-  addOrigin(origins, publicArtifactsBaseUrl());
-
-  return origins;
-}
-
-function isPlatformFileUrlHost(parsed: URL, sourceUrl: string): boolean {
-  return (
-    !hasExplicitUrlOrigin(sourceUrl) || platformFileOrigins().has(parsed.origin)
-  );
-}
-
-function storageUserIdSegmentFromFileUrlSegment(userIdSegment: string): string {
-  if (
-    userIdSegment === "user" ||
-    userIdSegment.startsWith(CLERK_USER_ID_PREFIX) ||
-    userIdSegment.startsWith("user-")
-  ) {
-    return userIdSegment;
-  }
-  return `${CLERK_USER_ID_PREFIX}${userIdSegment}`;
-}
-
-function artifactCdnUrl(args: {
-  userIdSegment: string;
-  idSegment: string;
-  filenameSegment: string;
-  hash: string;
-}): string | null {
-  const baseUrl = publicArtifactsBaseUrl();
-  if (!baseUrl) {
-    return null;
-  }
-  return `${baseUrl}/artifacts/${args.userIdSegment}/${args.idSegment}/${args.filenameSegment}${args.hash}`;
-}
-
-function parseFileUrl(url: string): URL | null {
-  const baseUrl = browserOrigin() ?? undefined;
-  if (!URL.canParse(url, baseUrl)) {
-    return null;
-  }
-  return new URL(url, baseUrl);
-}
-
-function normalizedLegacyFileUrl(url: string): string | null {
-  const parsed = parseFileUrl(url);
-  if (!parsed) {
-    return null;
-  }
-  if (!isPlatformFileUrlHost(parsed, url)) {
-    return null;
-  }
-  const match = parsed.pathname.match(LEGACY_FILE_PATH_PATTERN);
-  if (!match) {
-    return null;
-  }
-  const [, userIdSegment, idSegment, filenameSegment] = match;
-  return artifactCdnUrl({
-    userIdSegment: storageUserIdSegmentFromFileUrlSegment(userIdSegment),
-    idSegment,
-    filenameSegment,
-    hash: parsed.hash,
-  });
-}
-
-function normalizedArtifactFileUrl(url: string): string | null {
-  const parsed = parseFileUrl(url);
-  if (!parsed) {
-    return null;
-  }
-  if (!isPlatformFileUrlHost(parsed, url)) {
-    return null;
-  }
-  const match = parsed.pathname.match(ARTIFACT_FILE_PATH_PATTERN);
-  if (!match) {
-    return null;
-  }
-  const [, userIdSegment, idSegment, filenameSegment] = match;
-  return artifactCdnUrl({
-    userIdSegment,
-    idSegment,
-    filenameSegment,
-    hash: parsed.hash,
-  });
-}
-
-export function publicAttachmentUrl(url: string): string {
-  return normalizedLegacyFileUrl(url) ?? normalizedArtifactFileUrl(url) ?? url;
-}
-
-export function getAttachmentRawUrl(url: string): string {
-  return url;
-}
 
 export function TextPreviewLoader({
   url,
@@ -343,68 +226,6 @@ export function CsvPreviewTable({ rows }: { rows: string[][] }) {
   );
 }
 
-function triggerBlobDownload(blob: Blob, filename: string): void {
-  const blobUrl = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = blobUrl;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(blobUrl);
-}
-
-// Fetch the asset as a blob so downloads are delivered from a same-origin
-// object URL. Cross-origin `<a download>` is intentionally avoided because
-// browsers ignore it for CDN image URLs and open the asset instead.
-async function fetchBlobForDownload(
-  url: string,
-  signal: AbortSignal,
-): Promise<Blob | null> {
-  const fetchUrl = publicAttachmentUrl(url);
-  // The catch branch reports network/CORS failures without falling back to
-  // cross-origin anchor navigation, which would open images instead.
-  // eslint-disable-next-line no-restricted-syntax -- fetch/CORS failures should surface as download failures
-  try {
-    const res = await fetch(fetchUrl, {
-      cache: "reload",
-      mode: "cors",
-      signal,
-    });
-    if (!res.ok) {
-      throw new Error(`fetch failed: ${String(res.status)}`);
-    }
-    return await res.blob();
-  } catch (error) {
-    signal.throwIfAborted();
-    log.warn("downloadUrl: fetch failed", error);
-    toast.error("Download failed");
-    return null;
-  }
-}
-
-export async function downloadAttachmentUrl(
-  url: string,
-  signal: AbortSignal = AbortSignal.any([]),
-  filename = filenameFromUrl(url),
-): Promise<void> {
-  const blob = await fetchBlobForDownload(url, signal);
-  if (blob !== null) {
-    triggerBlobDownload(blob, filename);
-  }
-}
-
-export async function copyAttachmentLinkToClipboard(
-  url: string,
-): Promise<void> {
-  const copied = await writeToClipboard(publicAttachmentUrl(url));
-  if (copied) {
-    toast.success("Link copied");
-    return;
-  }
-  toast.error("Failed to copy link");
-}
-
 function LightboxBodyScrollLock() {
   let restore: (() => void) | null = null;
 
@@ -443,6 +264,57 @@ function LightboxBodyScrollLock() {
 
 function isImageLightboxZoomAtReset(zoom: number): boolean {
   return Math.abs(zoom - 1) < 0.001;
+}
+
+function DialogIconButton({
+  ariaLabel,
+  children,
+  onClick,
+}: {
+  ariaLabel: string;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      aria-label={ariaLabel}
+      title={ariaLabel}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ArtifactDialogSplitViewButton({ onClick }: { onClick: () => void }) {
+  return (
+    <DialogIconButton ariaLabel="Open in split view" onClick={onClick}>
+      <IconColumns2 size={18} stroke={1.8} />
+    </DialogIconButton>
+  );
+}
+
+function ArtifactDialogFullscreenButton({
+  fullscreen,
+  onClick,
+}: {
+  fullscreen: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <DialogIconButton
+      ariaLabel={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+      onClick={onClick}
+    >
+      {fullscreen ? (
+        <IconArrowsDiagonalMinimize2 size={18} stroke={1.8} />
+      ) : (
+        <IconArrowsDiagonal size={18} stroke={1.8} />
+      )}
+    </DialogIconButton>
+  );
 }
 
 function ImageLightboxControls({
@@ -503,9 +375,9 @@ function ImageLightboxControls({
         type="button"
         onClick={copyLink}
         className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-        aria-label="Copy link"
+        aria-label="Share"
       >
-        <IconLink size={20} stroke={2} />
+        <IconShare size={20} stroke={2} />
       </button>
       <button
         type="button"
@@ -683,9 +555,9 @@ function VideoLightbox({ filename, url }: { filename: string; url: string }) {
             );
           }}
           className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-          aria-label="Copy link"
+          aria-label="Share"
         >
-          <IconLink size={20} stroke={2} />
+          <IconShare size={20} stroke={2} />
         </button>
         <button
           type="button"
@@ -728,14 +600,541 @@ function VideoLightbox({ filename, url }: { filename: string; url: string }) {
   );
 }
 
+function artifactDialogFilename(preview: AttachmentLightboxState): string {
+  return "filename" in preview && preview.filename
+    ? preview.filename
+    : attachmentFilenameFromUrl(preview.url);
+}
+
+type ArtifactDialogItem = {
+  runId: string;
+  file: ChatThreadArtifactFile;
+};
+
+function artifactDialogKindLabel(
+  preview: AttachmentLightboxState,
+  artifact: AttachmentArtifactMetadata | undefined,
+): string {
+  if (artifact) {
+    return artifactTitleSubtitle(preview.kind, artifact);
+  }
+  return artifactFallbackSubtitle(
+    preview.kind,
+    artifactDialogFilename(preview),
+  );
+}
+
+function artifactDialogSyncTarget(
+  artifact: AttachmentArtifactMetadata | undefined,
+): ArtifactDownloadSyncTarget | undefined {
+  if (!artifact) {
+    return undefined;
+  }
+  return {
+    agentId: artifact.agentId,
+    fileId: artifact.fileId,
+    filename: artifact.filename,
+    onSyncSuccess:
+      artifact.onSyncSuccess ??
+      (() => {
+        return undefined;
+      }),
+    runId: artifact.runId,
+    synced: artifact.googleDriveSynced,
+    threadId: artifact.threadId,
+  };
+}
+
+function findArtifactDialogItemForUrl(
+  runs: ChatThreadArtifactRun[],
+  url: string,
+): ArtifactDialogItem | undefined {
+  for (const run of runs) {
+    const file = run.files.find((candidate) => {
+      return candidate.url === url;
+    });
+    if (file) {
+      return { runId: run.runId, file };
+    }
+  }
+  return undefined;
+}
+
+function artifactDialogMetadataFromItem(params: {
+  agentId: string | null | undefined;
+  item: ArtifactDialogItem;
+  onSyncSuccess: () => void;
+  threadId: string;
+}): AttachmentArtifactMetadata {
+  return {
+    agentId: params.agentId,
+    contentType: params.item.file.contentType,
+    createdAt: params.item.file.createdAt,
+    fileId: params.item.file.id,
+    filename: params.item.file.filename,
+    googleDriveSynced: params.item.file.googleDriveSync?.status === "synced",
+    onSyncSuccess: params.onSyncSuccess,
+    runId: params.item.runId,
+    size: params.item.file.size,
+    threadId: params.threadId,
+  };
+}
+
+function ArtifactDialogLoadingBody() {
+  return (
+    <div className="flex h-full items-center justify-center p-6 text-muted-foreground">
+      <IconLoader2 size={20} stroke={1.8} className="animate-spin" />
+    </div>
+  );
+}
+
+function ArtifactDialogUnavailableBody({ label }: { label: string }) {
+  return (
+    <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+      {label} preview unavailable.
+    </div>
+  );
+}
+
+function ArtifactDialogStage({
+  children,
+  centered = false,
+  gap = false,
+}: {
+  children: ReactNode;
+  centered?: boolean;
+  gap?: boolean;
+}) {
+  return (
+    <div
+      className="h-full overflow-auto bg-muted/30 p-5"
+      data-testid="artifact-dialog-stage"
+    >
+      <div
+        className={`mx-auto flex min-h-full w-full max-w-[900px] flex-col ${
+          centered ? "items-center justify-center" : ""
+        } ${gap ? "gap-3" : ""}`}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ArtifactDialogCard({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="flex min-h-[420px] w-full flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm"
+      data-testid="artifact-dialog-card"
+    >
+      {children}
+    </div>
+  );
+}
+
+function ArtifactDialogTextBody({
+  kind,
+  signal,
+  url,
+}: {
+  kind: "markdown" | "text" | "json" | "csv";
+  signal: AbortSignal;
+  url: string;
+}) {
+  return (
+    <TextPreviewLoader url={url} signal={signal}>
+      {({ status, text }) => {
+        if (status === "loading") {
+          return (
+            <ArtifactDialogStage>
+              <ArtifactDialogCard>
+                <ArtifactDialogLoadingBody />
+              </ArtifactDialogCard>
+            </ArtifactDialogStage>
+          );
+        }
+
+        if (status === "error") {
+          return (
+            <ArtifactDialogStage>
+              <ArtifactDialogCard>
+                <ArtifactDialogUnavailableBody
+                  label={
+                    kind === "json"
+                      ? "JSON"
+                      : kind === "csv"
+                        ? "CSV"
+                        : kind === "markdown"
+                          ? "Markdown"
+                          : "Text"
+                  }
+                />
+              </ArtifactDialogCard>
+            </ArtifactDialogStage>
+          );
+        }
+
+        if (kind === "markdown") {
+          return (
+            <ArtifactDialogStage>
+              <ArtifactDialogCard>
+                <div className="h-full overflow-auto p-6">
+                  <Markdown source={text} />
+                </div>
+              </ArtifactDialogCard>
+            </ArtifactDialogStage>
+          );
+        }
+
+        if (kind === "csv") {
+          const rows = parseCsvRows(text);
+          return (
+            <ArtifactDialogStage>
+              <ArtifactDialogCard>
+                <div className="h-full overflow-auto p-5">
+                  {rows.length > 0 ? (
+                    <CsvPreviewTable rows={rows} />
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      CSV preview unavailable.
+                    </div>
+                  )}
+                </div>
+              </ArtifactDialogCard>
+            </ArtifactDialogStage>
+          );
+        }
+
+        const formatted = formatPlainPreviewText(kind, text);
+        const display =
+          formatted.length > 16_000
+            ? `${formatted.slice(0, 16_000)}\n\n…`
+            : formatted;
+
+        return (
+          <ArtifactDialogStage>
+            <ArtifactDialogCard>
+              <pre className="m-0 h-full overflow-auto whitespace-pre-wrap break-words p-6 text-sm text-foreground">
+                {display}
+              </pre>
+            </ArtifactDialogCard>
+          </ArtifactDialogStage>
+        );
+      }}
+    </TextPreviewLoader>
+  );
+}
+
+function ArtifactDialogBody({
+  pageSignal,
+  preview,
+}: {
+  pageSignal: AbortSignal;
+  preview: AttachmentLightboxState;
+}) {
+  const filename = artifactDialogFilename(preview);
+
+  if (preview.kind === "image") {
+    return (
+      <ArtifactDialogStage>
+        <ArtifactDialogCard>
+          <div
+            className="flex min-h-full flex-1 items-center justify-center overflow-auto bg-muted/30 p-6"
+            data-testid="artifact-dialog-image-stage"
+          >
+            <img
+              src={publicAttachmentUrl(preview.url)}
+              alt={filename}
+              data-testid="attachment-lightbox-image"
+              className="max-h-full max-w-full rounded-lg object-contain shadow-sm"
+            />
+          </div>
+        </ArtifactDialogCard>
+      </ArtifactDialogStage>
+    );
+  }
+
+  if (preview.kind === "video") {
+    return (
+      <ArtifactDialogStage centered>
+        <div
+          className="w-full overflow-hidden rounded-xl border border-border/70 bg-black shadow-sm"
+          data-testid="artifact-dialog-video-stage"
+        >
+          <video
+            src={publicAttachmentUrl(preview.url)}
+            controls
+            autoPlay
+            playsInline
+            preload="metadata"
+            className="block aspect-video w-full bg-black object-contain"
+            aria-label={`Video preview for ${filename}`}
+          />
+        </div>
+      </ArtifactDialogStage>
+    );
+  }
+
+  if (
+    preview.kind === "markdown" ||
+    preview.kind === "text" ||
+    preview.kind === "json" ||
+    preview.kind === "csv"
+  ) {
+    return (
+      <ArtifactDialogTextBody
+        kind={preview.kind}
+        signal={pageSignal}
+        url={preview.url}
+      />
+    );
+  }
+
+  if (preview.kind === "html") {
+    return (
+      <div
+        className="h-full w-full bg-background"
+        data-testid="artifact-dialog-site-frame"
+      >
+        <iframe
+          src={preview.url}
+          title={`${filename} preview`}
+          sandbox="allow-scripts"
+          scrolling="yes"
+          className="block h-full w-full border-0 bg-background"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <ArtifactDialogStage>
+      <div
+        className="flex min-h-[420px] w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm"
+        data-testid="artifact-dialog-document-frame"
+      >
+        <iframe
+          src={
+            preview.kind === "pdf" ? `${preview.url}#navpanes=0` : preview.url
+          }
+          title={`${filename} preview`}
+          scrolling="yes"
+          className="block h-full w-full bg-background"
+        />
+      </div>
+    </ArtifactDialogStage>
+  );
+}
+
+function ArtifactPreviewDialog({
+  preview,
+}: {
+  preview: AttachmentLightboxState;
+}) {
+  const leftThread = useLastResolved(currentLeftThread$);
+  const rightThread = useLastResolved(currentRightThread$);
+
+  if (leftThread) {
+    return (
+      <ArtifactPreviewDialogThreadResolver
+        preview={preview}
+        thread={leftThread}
+        fallbackThread={
+          rightThread && rightThread.threadId !== leftThread.threadId
+            ? rightThread
+            : undefined
+        }
+      />
+    );
+  }
+
+  if (rightThread) {
+    return (
+      <ArtifactPreviewDialogThreadResolver
+        preview={preview}
+        thread={rightThread}
+      />
+    );
+  }
+
+  return (
+    <ArtifactPreviewDialogContent
+      artifact={preview.artifact}
+      preview={preview}
+    />
+  );
+}
+
+function ArtifactPreviewDialogThreadResolver({
+  fallbackThread,
+  preview,
+  thread,
+}: {
+  fallbackThread?: ChatThreadSignals;
+  preview: AttachmentLightboxState;
+  thread: ChatThreadSignals;
+}) {
+  const loadable = useLastLoadable(thread.artifacts$);
+  const agentId = useLastResolved(thread.agentId$);
+  const reloadArtifacts = useSet(thread.setArtifactsDrawerOpen$);
+  const item =
+    loadable.state === "hasData"
+      ? findArtifactDialogItemForUrl(loadable.data, preview.url)
+      : undefined;
+
+  if (item) {
+    return (
+      <ArtifactPreviewDialogContent
+        artifact={artifactDialogMetadataFromItem({
+          agentId,
+          item,
+          onSyncSuccess: () => {
+            reloadArtifacts(true);
+          },
+          threadId: thread.threadId,
+        })}
+        preview={preview}
+      />
+    );
+  }
+
+  if (fallbackThread && loadable.state === "hasData") {
+    return (
+      <ArtifactPreviewDialogThreadResolver
+        preview={preview}
+        thread={fallbackThread}
+      />
+    );
+  }
+
+  return (
+    <ArtifactPreviewDialogContent
+      artifact={preview.artifact}
+      preview={preview}
+    />
+  );
+}
+
+function ArtifactPreviewDialogContent({
+  artifact,
+  preview,
+}: {
+  artifact: AttachmentArtifactMetadata | undefined;
+  preview: AttachmentLightboxState;
+}) {
+  const dialogRef = useSet(lightboxDialogRef$);
+  const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
+  const openArtifactSidebarPreview = useSet(openArtifactSidebarPreview$);
+  const toggleLightboxDialogFullscreen = useSet(
+    toggleLightboxDialogFullscreen$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const filename = artifact?.filename ?? artifactDialogFilename(preview);
+  const subtitle = artifactDialogKindLabel(preview, artifact);
+  const syncTarget = artifactDialogSyncTarget(artifact);
+  const visible = useGet(lightboxDialogVisible$);
+  const fullscreen = useGet(lightboxDialogFullscreen$);
+
+  const closeWithAnimation = () => {
+    closeLightboxWithDialogExit();
+  };
+
+  const openInSplitView = () => {
+    openArtifactSidebarPreview(preview.url);
+    closeLightboxWithDialogExit();
+  };
+
+  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      closeWithAnimation();
+    }
+  };
+
+  return createPortal(
+    <div
+      ref={dialogRef}
+      tabIndex={-1}
+      className={`fixed inset-0 z-[9999] isolate flex items-center justify-center bg-gray-900/45 outline-none transition-opacity duration-[180ms] ease ${
+        visible
+          ? "pointer-events-auto opacity-100"
+          : "pointer-events-none opacity-0"
+      } ${fullscreen ? "p-0" : "p-6"}`}
+      onClick={handleBackdropClick}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${filename} preview`}
+      data-testid="attachment-lightbox"
+    >
+      <LightboxBodyScrollLock />
+      <div
+        className={`flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)] transition-transform duration-[180ms] ease ${
+          visible ? "translate-y-0" : "translate-y-2"
+        } ${
+          fullscreen
+            ? "h-dvh w-dvw rounded-none"
+            : "h-[min(700px,86vh)] w-[min(980px,92vw)] rounded-2xl"
+        }`}
+      >
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/70 pl-4 pr-3">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium">{filename}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {subtitle}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <ArtifactShareButton
+              ariaLabel="Share"
+              iconSize={18}
+              url={preview.url}
+            />
+            <ArtifactDownloadMenu
+              ariaLabel="Download options"
+              filename={filename}
+              iconSize={18}
+              syncTarget={syncTarget}
+              url={preview.url}
+            />
+            <ArtifactActionSeparator />
+            <ArtifactDialogSplitViewButton onClick={openInSplitView} />
+            <ArtifactDialogFullscreenButton
+              fullscreen={fullscreen}
+              onClick={() => {
+                toggleLightboxDialogFullscreen();
+              }}
+            />
+            <DialogIconButton
+              ariaLabel="Close"
+              onClick={() => {
+                closeWithAnimation();
+              }}
+            >
+              <IconX size={18} stroke={1.8} />
+            </DialogIconButton>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 bg-background">
+          <ArtifactDialogBody pageSignal={pageSignal} preview={preview} />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function AttachmentLightbox() {
   const preview = useGet(lightboxUrl$);
+  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightbox = useSet(closeLightbox$);
   const pageSignal = useGet(pageSignal$);
 
   if (!preview) {
     return null;
+  }
+
+  if (sidebarEnabled) {
+    return <ArtifactPreviewDialog preview={preview} />;
   }
 
   if (preview.kind === "image") {
@@ -775,9 +1174,9 @@ export function AttachmentLightbox() {
             );
           }}
           className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-          aria-label="Copy link"
+          aria-label="Share"
         >
-          <IconLink size={20} stroke={2} />
+          <IconShare size={20} stroke={2} />
         </button>
         <button
           type="button"

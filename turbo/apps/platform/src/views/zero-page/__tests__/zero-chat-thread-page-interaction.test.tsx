@@ -560,7 +560,7 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
       );
     });
 
-    await userEvent.click(screen.getByLabelText("Copy link"));
+    await userEvent.click(screen.getByLabelText("Share"));
     expect(writeTextSpy).toHaveBeenCalledWith(publicHtmlUrl);
   });
 });

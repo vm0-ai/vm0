@@ -1157,8 +1157,44 @@ describe("zero chat thread page display - attachment video preview", () => {
     expect(video).toHaveAttribute("src", videoUrl);
     expect(video).toHaveAttribute("controls");
     expect((video as HTMLVideoElement).autoplay).toBeTruthy();
-    expect(within(lightbox).getByLabelText("Copy link")).toBeInTheDocument();
+    expect(within(lightbox).getByLabelText("Share")).toBeInTheDocument();
     expect(within(lightbox).getByLabelText("Download")).toBeInTheDocument();
+  });
+
+  it("uses the padded artifact dialog stage for video previews when enabled", async () => {
+    const videoUrl = "https://example.com/clip.mp4";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: `[Attached file: clip.mp4](${videoUrl})\nDownload with: curl ${videoUrl}\n`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatArtifactSidebar]: true,
+      },
+    });
+
+    await userEvent.click(await screen.findByLabelText("Preview clip.mp4"));
+
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    const stage = within(lightbox).getByTestId("artifact-dialog-stage");
+    const videoStage = within(lightbox).getByTestId(
+      "artifact-dialog-video-stage",
+    );
+    const video = within(videoStage).getByLabelText(
+      "Video preview for clip.mp4",
+    );
+
+    expect(stage).toHaveClass("bg-muted/30", "p-5");
+    expect(videoStage).toHaveClass("rounded-xl", "border", "bg-black");
+    expect(video).toHaveClass("aspect-video", "object-contain");
   });
 });
 
@@ -1532,6 +1568,10 @@ describe("zero chat thread page display - artifacts drawer", () => {
     const sidebar = await screen.findByTestId("artifact-sidebar");
     expect(sidebar).toBeInTheDocument();
     expect(screen.getByLabelText("Back to all artifacts")).toBeInTheDocument();
+    expect(within(sidebar).getByText("chart.png")).toBeInTheDocument();
+    expect(
+      within(sidebar).getByText(/Image · PNG · 4\.0 KB · Generated/u),
+    ).toBeInTheDocument();
     expect(
       screen.getByTestId("artifact-sidebar-image-zoom-controls"),
     ).toBeInTheDocument();
@@ -1559,6 +1599,145 @@ describe("zero chat thread page display - artifacts drawer", () => {
       expect(screen.queryByTestId("artifact-inbox")).not.toBeInTheDocument();
     });
     expect(search()).not.toContain("artifacts=");
+  });
+
+  it("opens chat previews in a modal before split view", async () => {
+    const user = userEvent.setup();
+    const imageUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/chart.png";
+    server.use(
+      http.get(imageUrl, () => {
+        return new HttpResponse("png", {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-chat-preview-artifact",
+              files: [
+                {
+                  id: "file-image",
+                  filename: "chart.png",
+                  contentType: "image/png",
+                  size: 4096,
+                  url: imageUrl,
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `Generated chart:\n\n${imageUrl}`,
+          runId: "run-chat-preview-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatArtifactSidebar]: true,
+      },
+    });
+
+    await user.click(await screen.findByLabelText("Preview chart.png"));
+
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    expect(lightbox).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "chart.png preview" })).toBe(
+      lightbox,
+    );
+    expect(within(lightbox).getByText("chart.png")).toBeInTheDocument();
+    expect(
+      within(lightbox).getByText(/Image · PNG · 4\.0 KB · Generated/u),
+    ).toBeInTheDocument();
+    expect(
+      within(lightbox).queryByTestId("attachment-lightbox-file-icon"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("artifact-inbox")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    expect(search()).not.toContain("artifacts=");
+    expect(search()).not.toContain("artifact=");
+
+    await user.click(within(lightbox).getByLabelText("Open in split view"));
+
+    await expect(
+      screen.findByTestId("artifact-sidebar"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("artifact-inbox")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Back to all artifacts")).toBeNull();
+    expect(search()).not.toContain("artifacts=");
+    expect(search()).toContain(
+      "artifact=https%3A%2F%2Fwww.vm0.ai%2Ff%2Fuser_123%2F3a474c61-ffe4-4e56-b9e7-0185b3dba9f7%2Fchart.png",
+    );
+  });
+
+  it("only shows artifact inbox filters for existing artifact types", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create an image",
+          runId: "run-artifact-inbox-media",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-artifact-inbox-media",
+              files: [
+                {
+                  id: "file-image",
+                  filename: "chart.png",
+                  contentType: "image/png",
+                  size: 4096,
+                  url: "https://example.com/chart.png",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatArtifactSidebar]: true,
+      },
+    });
+
+    await user.click(await screen.findByLabelText("Open artifacts"));
+
+    await expect(
+      screen.findByTestId("artifact-inbox"),
+    ).resolves.toBeInTheDocument();
+    expect(getRoleByText("tab", "All")).toBeInTheDocument();
+    expect(getRoleByText("tab", "Media")).toBeInTheDocument();
+    expect(queryRoleByText("tab", "Docs")).toBeUndefined();
+    expect(queryRoleByText("tab", "Sites")).toBeUndefined();
   });
 
   it("opens artifacts from the mobile top bar icon", async () => {
@@ -1975,14 +2154,27 @@ describe("zero chat thread page display - artifacts drawer", () => {
     click(button);
 
     await waitFor(() => {
-      expect(
-        screen.getByLabelText("Copy link for chart.png"),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Share chart.png")).toBeInTheDocument();
     });
-    await user.click(screen.getByLabelText("Copy link for chart.png"));
+    await user.click(screen.getByLabelText("Share chart.png"));
     expect(writeTextSpy).toHaveBeenCalledWith(publicFileUrl);
 
-    await user.click(screen.getByLabelText("Sync chart.png to Google Drive"));
+    const downloadButton = screen.getByLabelText("Download chart.png");
+    await user.hover(downloadButton);
+    await waitFor(() => {
+      expect(
+        getRoleByText("menuitem", "Upload to Google Drive"),
+      ).toBeInTheDocument();
+    });
+    fireEvent.pointerLeave(downloadButton);
+    await waitFor(() => {
+      expect(
+        queryRoleByText("menuitem", "Upload to Google Drive"),
+      ).toBeUndefined();
+    });
+
+    await user.click(downloadButton);
+    await user.click(await screen.findByText("Upload to Google Drive"));
 
     await waitFor(() => {
       expect(syncBodies).toStrictEqual([
@@ -1992,11 +2184,13 @@ describe("zero chat thread page display - artifacts drawer", () => {
         },
       ]);
     });
+    await user.click(downloadButton);
     await waitFor(() => {
       expect(
-        screen.getByLabelText("chart.png is synced to Google Drive"),
+        getRoleByText("menuitem", "Synced to Google Drive"),
       ).toHaveAttribute("aria-disabled", "true");
     });
+    await user.keyboard("{Escape}");
 
     await user.click(screen.getByLabelText("More artifact actions"));
     await user.click(screen.getByText("Sync all to Google Drive"));
@@ -2239,13 +2433,19 @@ describe("zero chat thread page display - artifacts drawer", () => {
     });
     click(button);
 
-    const syncButton = await waitFor(() => {
-      return screen.getByLabelText(
-        "Sync disconnected-chart.png to Google Drive",
-      );
+    const downloadButton = await waitFor(() => {
+      return screen.getByLabelText("Download disconnected-chart.png");
     });
 
-    await user.click(syncButton);
+    await user.click(downloadButton);
+    const connectGoogleDriveItem = await screen.findByText(
+      "Connect Google Drive",
+    );
+    await user.hover(connectGoogleDriveItem);
+    await expect(
+      screen.findAllByText("Connect Google Drive to upload artifacts"),
+    ).resolves.not.toHaveLength(0);
+    await user.click(connectGoogleDriveItem);
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
         "about:blank",

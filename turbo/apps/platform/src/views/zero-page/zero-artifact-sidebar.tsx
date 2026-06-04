@@ -4,14 +4,17 @@ import {
   IconArrowLeft,
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
-  IconCopy,
-  IconDownload,
   IconDots,
   IconExternalLink,
   IconLoader2,
   IconX,
 } from "@tabler/icons-react";
-import { useGet, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import {
   cn,
   DropdownMenu,
@@ -28,16 +31,14 @@ import {
   toggleArtifactFullscreen$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import {
-  copyAttachmentLinkToClipboard,
   CsvPreviewTable,
-  downloadAttachmentUrl,
   parseCsvRows,
   publicAttachmentUrl,
   TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
+import { jsonParseOr } from "../../signals/utils.ts";
 import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
   IMAGE_LIGHTBOX_MIN_ZOOM,
@@ -46,6 +47,18 @@ import {
   zoomImageLightboxIn$,
   zoomImageLightboxOut$,
 } from "../../signals/view-component-state.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  ArtifactActionSeparator,
+  ArtifactDownloadMenu,
+  ArtifactShareButton,
+  type ArtifactDownloadSyncTarget,
+} from "./zero-artifact-actions.tsx";
+import {
+  artifactFallbackSubtitle,
+  artifactTitleSubtitle,
+} from "./zero-artifact-display.ts";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — page-level pane for previewing the artifact pointed to
@@ -69,10 +82,85 @@ export function ArtifactSidebar({
   artifactRef,
   onBack,
   onClose,
-}: {
+  thread,
+}: ArtifactSidebarProps) {
+  if (thread) {
+    return (
+      <ArtifactSidebarWithThreadData
+        artifactRef={artifactRef}
+        onBack={onBack}
+        onClose={onClose}
+        thread={thread}
+      />
+    );
+  }
+
+  return (
+    <ArtifactSidebarContent
+      artifactRef={artifactRef}
+      onBack={onBack}
+      onClose={onClose}
+    />
+  );
+}
+
+type ArtifactSidebarProps = {
   artifactRef: ArtifactRef;
   onBack?: () => void;
   onClose?: () => void;
+  thread?: ChatThreadSignals;
+};
+
+type ArtifactSidebarItem = {
+  runId: string;
+  file: ChatThreadArtifactFile;
+};
+
+function ArtifactSidebarWithThreadData({
+  artifactRef,
+  onBack,
+  onClose,
+  thread,
+}: ArtifactSidebarProps & { thread: ChatThreadSignals }) {
+  const loadable = useLastLoadable(thread.artifacts$);
+  const agentId = useLastResolved(thread.agentId$);
+  const reloadArtifacts = useSet(thread.setArtifactsDrawerOpen$);
+  const item =
+    artifactRef.source === "url" && loadable.state === "hasData"
+      ? findArtifactItemForUrl(loadable.data, artifactRef.url)
+      : undefined;
+
+  return (
+    <ArtifactSidebarContent
+      agentId={agentId}
+      artifactRef={artifactRef}
+      item={item}
+      onBack={onBack}
+      onClose={onClose}
+      onSyncSuccess={() => {
+        reloadArtifacts(true);
+      }}
+      threadId={thread.threadId}
+    />
+  );
+}
+
+function ArtifactSidebarContent({
+  agentId,
+  artifactRef,
+  item,
+  onBack,
+  onClose,
+  onSyncSuccess,
+  threadId,
+}: {
+  agentId?: string | null;
+  artifactRef: ArtifactRef;
+  item?: ArtifactSidebarItem;
+  onBack?: () => void;
+  onClose?: () => void;
+  onSyncSuccess?: () => void;
+  threadId?: string;
 }) {
   const fullscreen = useGet(artifactFullscreen$);
   const close = useSet(closeArtifact$);
@@ -80,7 +168,20 @@ export function ArtifactSidebar({
   const pageSignal = useGet(pageSignal$);
   const closePreview = onClose ?? close;
 
-  const display = resolveArtifactDisplay(artifactRef);
+  const display = resolveArtifactDisplay(artifactRef, item);
+  const syncTarget =
+    item && threadId
+      ? artifactSidebarSyncTarget({
+          agentId,
+          item,
+          onSyncSuccess:
+            onSyncSuccess ??
+            (() => {
+              return undefined;
+            }),
+          threadId,
+        })
+      : undefined;
 
   if (!display) {
     const sidebar = (
@@ -89,12 +190,13 @@ export function ArtifactSidebar({
           fullscreen
             ? "fixed inset-0 z-[100] flex flex-col bg-background"
             : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background",
-          "animate-in fade-in slide-in-from-right-2 duration-200",
+          "animate-in fade-in duration-[180ms] ease",
         )}
         data-testid="artifact-sidebar"
       >
         <ArtifactSidebarHeader
           title="Artifact unavailable"
+          subtitle="Unavailable"
           fullscreen={fullscreen}
           onBack={onBack}
           onToggleFullscreen={toggleFullscreen}
@@ -116,13 +218,15 @@ export function ArtifactSidebar({
         fullscreen
           ? "fixed inset-0 z-[100] flex flex-col bg-background"
           : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background",
-        "animate-in fade-in slide-in-from-right-2 duration-200",
+        "animate-in fade-in duration-[180ms] ease",
       )}
       data-testid="artifact-sidebar"
     >
       <ArtifactSidebarHeader
         title={display.filename}
         kind={display.kind}
+        subtitle={display.subtitle}
+        syncTarget={syncTarget}
         url={display.url}
         fullscreen={fullscreen}
         onBack={onBack}
@@ -148,6 +252,7 @@ interface ArtifactDisplay {
   url: string;
   kind: ArtifactKindForBody;
   filename: string;
+  subtitle: string;
 }
 
 type ArtifactKindForBody =
@@ -162,20 +267,66 @@ type ArtifactKindForBody =
   | "audio"
   | "file";
 
-function resolveArtifactDisplay(ref: ArtifactRef): ArtifactDisplay | null {
+function findArtifactItemForUrl(
+  runs: { runId: string; files: ChatThreadArtifactFile[] }[],
+  url: string,
+): ArtifactSidebarItem | undefined {
+  for (const run of runs) {
+    const file = run.files.find((candidate) => {
+      return candidate.url === url;
+    });
+    if (file) {
+      return { runId: run.runId, file };
+    }
+  }
+  return undefined;
+}
+
+function artifactSidebarSyncTarget(params: {
+  agentId: string | null | undefined;
+  item: ArtifactSidebarItem;
+  onSyncSuccess: () => void;
+  threadId: string;
+}): ArtifactDownloadSyncTarget {
+  return {
+    agentId: params.agentId,
+    fileId: params.item.file.id,
+    filename: params.item.file.filename,
+    onSyncSuccess: params.onSyncSuccess,
+    runId: params.item.runId,
+    synced: params.item.file.googleDriveSync?.status === "synced",
+    threadId: params.threadId,
+  };
+}
+
+function resolveArtifactDisplay(
+  ref: ArtifactRef,
+  item?: ArtifactSidebarItem,
+): ArtifactDisplay | null {
   if (ref.source !== "url") {
     return null;
+  }
+  if (item) {
+    return {
+      url: ref.url,
+      kind: ref.kind,
+      filename: item.file.filename,
+      subtitle: artifactTitleSubtitle(ref.kind, item.file),
+    };
   }
   return {
     url: ref.url,
     kind: ref.kind,
     filename: ref.filename,
+    subtitle: artifactFallbackSubtitle(ref.kind, ref.filename),
   };
 }
 
 function ArtifactSidebarHeader({
   title,
   kind,
+  subtitle,
+  syncTarget,
   url,
   fullscreen,
   onBack,
@@ -184,6 +335,8 @@ function ArtifactSidebarHeader({
 }: {
   title: string;
   kind?: ArtifactKindForBody;
+  subtitle: string;
+  syncTarget?: ArtifactDownloadSyncTarget;
   url?: string;
   fullscreen: boolean;
   onBack?: () => void;
@@ -208,9 +361,9 @@ function ArtifactSidebarHeader({
         <div className="truncate text-sm font-medium text-foreground">
           {title}
         </div>
-        {kind && (
+        {subtitle && (
           <div className="mt-0.5 truncate text-xs text-muted-foreground">
-            {artifactKindLabel(kind)}
+            {subtitle}
           </div>
         )}
       </div>
@@ -220,6 +373,7 @@ function ArtifactSidebarHeader({
         kind={kind}
         onClose={onClose}
         onToggleFullscreen={onToggleFullscreen}
+        syncTarget={syncTarget}
         title={title}
         url={url}
       />
@@ -233,6 +387,7 @@ function ArtifactSidebarActions({
   kind,
   onClose,
   onToggleFullscreen,
+  syncTarget,
   title,
   url,
 }: {
@@ -241,6 +396,7 @@ function ArtifactSidebarActions({
   kind?: ArtifactKindForBody;
   onClose: () => void;
   onToggleFullscreen: () => void;
+  syncTarget?: ArtifactDownloadSyncTarget;
   title: string;
   url?: string;
 }) {
@@ -248,16 +404,23 @@ function ArtifactSidebarActions({
     <div className="flex shrink-0 items-center gap-1">
       {url && (
         <>
-          <ArtifactPrimaryAction kind={kind} title={title} url={url} />
-          {!compactActions && <ArtifactCopyAction url={url} />}
+          {kind === "html" && <ArtifactOpenExternalAction url={url} />}
+          <ArtifactShareButton ariaLabel="Share artifact" url={url} />
+          <ArtifactDownloadMenu
+            ariaLabel="Download artifact"
+            filename={title}
+            syncTarget={syncTarget}
+            url={url}
+          />
+          <ArtifactActionSeparator />
         </>
       )}
       <ArtifactFullscreenAction
         fullscreen={fullscreen}
         onToggleFullscreen={onToggleFullscreen}
       />
-      {compactActions && url ? (
-        <ArtifactMoreActions onClose={onClose} url={url} />
+      {compactActions ? (
+        <ArtifactMoreActions onClose={onClose} />
       ) : (
         <ArtifactCloseAction onClose={onClose} />
       )}
@@ -265,61 +428,18 @@ function ArtifactSidebarActions({
   );
 }
 
-function ArtifactPrimaryAction({
-  kind,
-  title,
-  url,
-}: {
-  kind?: ArtifactKindForBody;
-  title: string;
-  url: string;
-}) {
-  if (kind === "html") {
-    return (
-      <a
-        href={publicAttachmentUrl(url)}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Open in new tab"
-        data-testid="artifact-sidebar-open-external"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-      >
-        <IconExternalLink size={16} />
-      </a>
-    );
-  }
-
+function ArtifactOpenExternalAction({ url }: { url: string }) {
   return (
-    <button
-      type="button"
-      onClick={() => {
-        detach(
-          downloadAttachmentUrl(url, undefined, title),
-          Reason.DomCallback,
-          "artifact download",
-        );
-      }}
-      aria-label="Download"
+    <a
+      href={publicAttachmentUrl(url)}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Open in new tab"
+      data-testid="artifact-sidebar-open-external"
       className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
     >
-      <IconDownload size={16} />
-    </button>
-  );
-}
-
-function ArtifactCopyAction({ url }: { url: string }) {
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        copyArtifactUrl(url);
-      }}
-      aria-label="Copy artifact URL"
-      title={publicAttachmentUrl(url)}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-    >
-      <IconCopy size={16} />
-    </button>
+      <IconExternalLink size={16} />
+    </a>
   );
 }
 
@@ -347,13 +467,7 @@ function ArtifactFullscreenAction({
   );
 }
 
-function ArtifactMoreActions({
-  onClose,
-  url,
-}: {
-  onClose: () => void;
-  url: string;
-}) {
+function ArtifactMoreActions({ onClose }: { onClose: () => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -366,13 +480,6 @@ function ArtifactMoreActions({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          onClick={() => {
-            copyArtifactUrl(url);
-          }}
-        >
-          Copy link
-        </DropdownMenuItem>
         <DropdownMenuItem onClick={onClose}>Close preview</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -391,49 +498,6 @@ function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
       <IconX size={16} />
     </button>
   );
-}
-
-function copyArtifactUrl(url: string) {
-  detach(
-    copyAttachmentLinkToClipboard(url),
-    Reason.DomCallback,
-    "artifact copy link",
-  );
-}
-
-function artifactKindLabel(kind: ArtifactKindForBody): string {
-  switch (kind) {
-    case "markdown": {
-      return "Markdown document";
-    }
-    case "text": {
-      return "Text document";
-    }
-    case "json": {
-      return "JSON document";
-    }
-    case "csv": {
-      return "Data table";
-    }
-    case "html": {
-      return "Hosted site";
-    }
-    case "pdf": {
-      return "PDF document";
-    }
-    case "image": {
-      return "Image";
-    }
-    case "video": {
-      return "Video";
-    }
-    case "audio": {
-      return "Audio";
-    }
-    case "file": {
-      return "File";
-    }
-  }
 }
 
 function ArtifactBody({
@@ -487,6 +551,41 @@ function ArtifactBodyError({ message }: { message: string }): ReactNode {
   );
 }
 
+function ArtifactStageShell({
+  centered = false,
+  children,
+  gap = false,
+}: {
+  centered?: boolean;
+  children: ReactNode;
+  gap?: boolean;
+}) {
+  return (
+    <div
+      className="h-full overflow-auto bg-muted/30 p-5"
+      data-testid="artifact-sidebar-stage"
+    >
+      <div
+        className={cn(
+          "mx-auto flex min-h-full w-full max-w-[900px] flex-col",
+          centered && "items-center justify-center",
+          gap && "gap-3",
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ArtifactStageCard({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-[420px] w-full flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+      {children}
+    </div>
+  );
+}
+
 function ArtifactMarkdownBody({
   url,
   signal,
@@ -498,15 +597,31 @@ function ArtifactMarkdownBody({
     <TextPreviewLoader url={url} signal={signal}>
       {({ status, text }) => {
         if (status === "loading") {
-          return <ArtifactSpinner />;
+          return (
+            <ArtifactStageShell>
+              <ArtifactStageCard>
+                <ArtifactSpinner />
+              </ArtifactStageCard>
+            </ArtifactStageShell>
+          );
         }
         if (status === "error") {
-          return <ArtifactBodyError message="Markdown preview unavailable." />;
+          return (
+            <ArtifactStageShell>
+              <ArtifactStageCard>
+                <ArtifactBodyError message="Markdown preview unavailable." />
+              </ArtifactStageCard>
+            </ArtifactStageShell>
+          );
         }
         return (
-          <div className="h-full overflow-auto p-6">
-            <Markdown source={text} />
-          </div>
+          <ArtifactStageShell>
+            <ArtifactStageCard>
+              <div className="h-full overflow-auto p-6">
+                <Markdown source={text} />
+              </div>
+            </ArtifactStageCard>
+          </ArtifactStageShell>
         );
       }}
     </TextPreviewLoader>
@@ -526,27 +641,41 @@ function ArtifactPlainTextBody({
     <TextPreviewLoader url={url} signal={signal}>
       {({ status, text }) => {
         if (status === "loading") {
-          return <ArtifactSpinner />;
+          return (
+            <ArtifactStageShell>
+              <ArtifactStageCard>
+                <ArtifactSpinner />
+              </ArtifactStageCard>
+            </ArtifactStageShell>
+          );
         }
         if (status === "error") {
           return (
-            <ArtifactBodyError
-              message={
-                kind === "json"
-                  ? "JSON preview unavailable."
-                  : "Text preview unavailable."
-              }
-            />
+            <ArtifactStageShell>
+              <ArtifactStageCard>
+                <ArtifactBodyError
+                  message={
+                    kind === "json"
+                      ? "JSON preview unavailable."
+                      : "Text preview unavailable."
+                  }
+                />
+              </ArtifactStageCard>
+            </ArtifactStageShell>
           );
         }
         const formatted = formatBodyText(kind, text);
         return (
-          <pre
-            className="h-full overflow-auto whitespace-pre-wrap break-words p-6 text-sm text-foreground"
-            data-testid={`artifact-sidebar-body-${kind}`}
-          >
-            {formatted}
-          </pre>
+          <ArtifactStageShell>
+            <ArtifactStageCard>
+              <pre
+                className="m-0 h-full overflow-auto whitespace-pre-wrap break-words p-6 text-sm text-foreground"
+                data-testid={`artifact-sidebar-body-${kind}`}
+              >
+                {formatted}
+              </pre>
+            </ArtifactStageCard>
+          </ArtifactStageShell>
         );
       }}
     </TextPreviewLoader>
@@ -572,19 +701,41 @@ function ArtifactCsvBody({
     <TextPreviewLoader url={url} signal={signal}>
       {({ status, text }) => {
         if (status === "loading") {
-          return <ArtifactSpinner />;
+          return (
+            <ArtifactStageShell>
+              <ArtifactStageCard>
+                <ArtifactSpinner />
+              </ArtifactStageCard>
+            </ArtifactStageShell>
+          );
         }
         if (status === "error") {
-          return <ArtifactBodyError message="CSV preview unavailable." />;
+          return (
+            <ArtifactStageShell>
+              <ArtifactStageCard>
+                <ArtifactBodyError message="CSV preview unavailable." />
+              </ArtifactStageCard>
+            </ArtifactStageShell>
+          );
         }
         const rows = parseCsvRows(text);
         if (rows.length === 0) {
-          return <ArtifactBodyError message="Empty CSV." />;
+          return (
+            <ArtifactStageShell>
+              <ArtifactStageCard>
+                <ArtifactBodyError message="Empty CSV." />
+              </ArtifactStageCard>
+            </ArtifactStageShell>
+          );
         }
         return (
-          <div className="h-full overflow-auto p-6">
-            <CsvPreviewTable rows={rows} />
-          </div>
+          <ArtifactStageShell>
+            <ArtifactStageCard>
+              <div className="h-full overflow-auto p-5">
+                <CsvPreviewTable rows={rows} />
+              </div>
+            </ArtifactStageCard>
+          </ArtifactStageShell>
         );
       }}
     </TextPreviewLoader>
@@ -609,22 +760,26 @@ function ArtifactImageBody({
   const zoomOut = useSet(zoomImageLightboxOut$);
 
   return (
-    <div className="relative flex h-full items-center justify-center overflow-auto bg-muted/20 p-4">
-      <img
-        key={url}
-        ref={setImageRef}
-        src={url}
-        alt={filename}
-        style={{ transform: `scale(${String(zoom)})` }}
-        className="max-h-full max-w-full object-contain transition-transform duration-150"
-        data-testid="artifact-sidebar-body-image"
-      />
-      <ArtifactImageZoomControls
-        zoom={zoom}
-        zoomIn={zoomIn}
-        zoomOut={zoomOut}
-      />
-    </div>
+    <ArtifactStageShell>
+      <ArtifactStageCard>
+        <div className="relative flex min-h-full flex-1 items-center justify-center overflow-auto bg-muted/30 p-6">
+          <img
+            key={url}
+            ref={setImageRef}
+            src={publicAttachmentUrl(url)}
+            alt={filename}
+            style={{ transform: `scale(${String(zoom)})` }}
+            className="max-h-full max-w-full object-contain transition-transform duration-150"
+            data-testid="artifact-sidebar-body-image"
+          />
+          <ArtifactImageZoomControls
+            zoom={zoom}
+            zoomIn={zoomIn}
+            zoomOut={zoomOut}
+          />
+        </div>
+      </ArtifactStageCard>
+    </ArtifactStageShell>
   );
 }
 
@@ -682,16 +837,21 @@ function ArtifactVideoBody({
   filename: string;
 }) {
   return (
-    <div className="flex h-full items-center justify-center bg-black/95 p-4">
-      <video
-        src={publicAttachmentUrl(url)}
-        controls
-        playsInline
-        className="max-h-full max-w-full"
-        aria-label={`Video preview for ${filename}`}
-        data-testid="artifact-sidebar-body-video"
-      />
-    </div>
+    <ArtifactStageShell centered>
+      <div
+        className="w-full overflow-hidden rounded-xl border border-border/70 bg-black shadow-sm"
+        data-testid="artifact-sidebar-video-stage"
+      >
+        <video
+          src={publicAttachmentUrl(url)}
+          controls
+          playsInline
+          className="block aspect-video w-full bg-black object-contain"
+          aria-label={`Video preview for ${filename}`}
+          data-testid="artifact-sidebar-body-video"
+        />
+      </div>
+    </ArtifactStageShell>
   );
 }
 
@@ -703,17 +863,19 @@ function ArtifactAudioBody({
   filename: string;
 }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 p-6">
-      <p className="text-sm text-muted-foreground">{filename}</p>
-      <audio
-        src={url}
-        controls
-        preload="metadata"
-        className="w-full max-w-md"
-        aria-label={`Audio preview for ${filename}`}
-        data-testid="artifact-sidebar-body-audio"
-      />
-    </div>
+    <ArtifactStageShell centered>
+      <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
+        <p className="text-sm text-muted-foreground">{filename}</p>
+        <audio
+          src={publicAttachmentUrl(url)}
+          controls
+          preload="metadata"
+          className="w-full"
+          aria-label={`Audio preview for ${filename}`}
+          data-testid="artifact-sidebar-body-audio"
+        />
+      </div>
+    </ArtifactStageShell>
   );
 }
 
@@ -730,22 +892,39 @@ function ArtifactIframeBody({
   // (thumbnails / bookmarks) so the embedded preview shows just the page
   // and toolbar by default. Firefox/PDF.js silently ignores it.
   const src = kind === "pdf" ? `${url}#navpanes=0` : url;
+  if (kind === "html") {
+    return (
+      <iframe
+        src={src}
+        title={`${filename} preview`}
+        sandbox="allow-scripts"
+        className="h-full w-full border-0 bg-background"
+        data-testid={`artifact-sidebar-body-${kind}`}
+      />
+    );
+  }
+
   return (
-    <iframe
-      src={src}
-      title={`${filename} preview`}
-      sandbox={kind === "html" ? "allow-scripts" : undefined}
-      className="h-full w-full bg-background"
-      data-testid={`artifact-sidebar-body-${kind}`}
-    />
+    <ArtifactStageShell>
+      <div className="flex min-h-[420px] w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
+        <iframe
+          src={src}
+          title={`${filename} preview`}
+          className="h-full w-full bg-background"
+          data-testid={`artifact-sidebar-body-${kind}`}
+        />
+      </div>
+    </ArtifactStageShell>
   );
 }
 
 function ArtifactGenericBody({ filename }: { filename: string }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-muted-foreground">
-      <p className="text-sm">No inline preview available for this file.</p>
-      <p className="text-xs">{filename}</p>
-    </div>
+    <ArtifactStageShell centered>
+      <div className="flex w-full max-w-md flex-col items-center justify-center gap-3 rounded-xl border border-border/70 bg-background p-6 text-center text-muted-foreground shadow-sm">
+        <p className="text-sm">No inline preview available for this file.</p>
+        <p className="text-xs">{filename}</p>
+      </div>
+    </ArtifactStageShell>
   );
 }

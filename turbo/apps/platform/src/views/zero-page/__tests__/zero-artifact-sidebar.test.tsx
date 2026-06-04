@@ -2,9 +2,9 @@
  * Integration tests for the ChatArtifactSidebar feature switch behavior.
  *
  * Covers the ON path that issue #15027 introduces: inline .txt/.md
- * attachments collapse to anchor chips, clicking them writes the
- * ?artifact= URL parameter, and the page-level slot then renders the
- * sidebar component. The OFF path is covered by the existing
+ * attachments collapse to anchor chips, plain clicks still open the modal
+ * lightbox, and explicit sidebar opens write the ?artifact= URL parameter.
+ * The OFF path is covered by the existing
  * zero-attachment-preview.test.tsx file.
  */
 
@@ -16,6 +16,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { search } from "../../../signals/location.ts";
 import { setPageSignal$ } from "../../../signals/page-signal.ts";
+import {
+  closeLightbox$,
+  lightboxUrl$,
+} from "../../../signals/zero-page/zero-attachment-chips.ts";
 import { AttachmentPreview } from "../zero-attachment-preview.tsx";
 import {
   ArtifactSidebarSlot,
@@ -42,6 +46,7 @@ function setup(path = "/chats/thread-1") {
   // ArtifactSidebar reads pageSignal$ for fetch cancellation; tests render
   // it outside of normal page setup, so we have to seed it explicitly.
   context.store.set(setPageSignal$, context.signal);
+  context.store.set(closeLightbox$);
 }
 
 function renderWithStore(node: React.ReactNode) {
@@ -83,7 +88,7 @@ describe("chatArtifactSidebar: inline anchor chip behavior", () => {
     expect(chip).toHaveAttribute("href", "https://example.com/readme.md");
   });
 
-  it("opens the artifact pane and writes ?artifact= on plain click", () => {
+  it("opens the attachment lightbox on plain click", () => {
     setup();
     renderWithStore(
       <AttachmentPreview
@@ -97,16 +102,13 @@ describe("chatArtifactSidebar: inline anchor chip behavior", () => {
     const chip = screen.getByTestId("attachment-preview-text");
     fireEvent.click(chip);
 
-    const ref = context.store.get(currentArtifactRef$);
-    expect(ref).toStrictEqual({
-      source: "url",
-      url: "https://example.com/notes.txt",
+    expect(context.store.get(lightboxUrl$)).toStrictEqual({
       kind: "text",
       filename: "notes.txt",
+      url: "https://example.com/notes.txt",
     });
-    expect(search()).toContain(
-      "artifact=https%3A%2F%2Fexample.com%2Fnotes.txt",
-    );
+    expect(context.store.get(currentArtifactRef$)).toBeNull();
+    expect(search()).not.toContain("artifact=");
   });
 
   it("does not intercept cmd+click (modifier-click navigates natively)", () => {
@@ -133,6 +135,7 @@ describe("chatArtifactSidebar: inline anchor chip behavior", () => {
     // (handled by the browser) is left intact.
     expect(search()).not.toContain("artifact=");
     expect(context.store.get(currentArtifactRef$)).toBeNull();
+    expect(context.store.get(lightboxUrl$)).toBeNull();
   });
 });
 
@@ -201,6 +204,28 @@ describe("chatArtifactSidebar: sidebar slot rendering", () => {
 });
 
 describe("chatArtifactSidebar: fullscreen toggle", () => {
+  it("renders video artifacts inside a padded stage card", () => {
+    setup("/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fclip.mp4");
+    renderWithStore(
+      <ArtifactSidebar
+        artifactRef={{
+          source: "url",
+          url: "https://example.com/clip.mp4",
+          kind: "video",
+          filename: "clip.mp4",
+        }}
+      />,
+    );
+
+    const stage = screen.getByTestId("artifact-sidebar-stage");
+    const videoStage = screen.getByTestId("artifact-sidebar-video-stage");
+    const video = screen.getByTestId("artifact-sidebar-body-video");
+
+    expect(stage).toHaveClass("bg-muted/30", "p-5");
+    expect(videoStage).toHaveClass("rounded-xl", "border", "bg-black");
+    expect(video).toHaveClass("aspect-video", "object-contain");
+  });
+
   it("toggles fullscreen state when the fullscreen button is clicked", () => {
     setup("/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fnotes.txt");
     renderWithStore(

@@ -150,8 +150,6 @@ function AttachmentAnchorChip({
   kind: AttachmentAnchorChipKind;
 }) {
   const publicUrl = publicAttachmentUrl(url);
-  // Switch-aware open. html chips can render even when the sidebar feature is
-  // off, in which case this routes back to the legacy modal lightbox.
   const openDocument = useSet(openDocumentLightboxOrArtifact$);
 
   return (

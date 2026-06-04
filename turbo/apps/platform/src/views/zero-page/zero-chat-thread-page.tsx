@@ -107,7 +107,6 @@ import {
 import {
   AttachmentLightbox,
   CsvPreviewTable,
-  downloadAttachmentUrl,
   FileAttachmentChip,
   getAttachmentRawUrl,
   parseCsvRows,
@@ -132,9 +131,17 @@ import {
 import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
+import {
+  ArtifactDownloadMenu,
+  ArtifactShareButton,
+  type ArtifactDownloadSyncTarget,
+} from "./zero-artifact-actions.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
-import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  lightboxUrl$ as attachmentLightboxUrl$,
+  type AttachmentArtifactMetadata,
+} from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -157,10 +164,7 @@ import {
   toggleArtifactFullscreen$,
   toggleArtifactInboxSearch$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
-import {
-  writeToClipboard,
-  type ChatClipboardAttachment,
-} from "../../signals/zero-page/clipboard.ts";
+import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { connectors$ } from "../../signals/external/connectors.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
@@ -244,7 +248,6 @@ import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thr
 import {
   type ArtifactGoogleDriveSyncFile,
   syncArtifactFilesToGoogleDrive,
-  syncArtifactFileToGoogleDrive,
   waitForGoogleDriveAndSyncArtifacts$,
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -1160,6 +1163,8 @@ const ARTIFACT_INBOX_SECTIONS = [
   label: string;
 }[];
 
+type ArtifactInboxSectionEntry = (typeof ARTIFACT_INBOX_SECTIONS)[number];
+
 function artifactItemKey(item: ChatArtifactItem): string {
   return `${item.runId}:${item.file.id}:${item.file.url}`;
 }
@@ -1268,6 +1273,30 @@ function artifactMatchesInboxSection(
     previewKind === "video" ||
     previewKind === "audio"
   );
+}
+
+function artifactInboxSectionsForItems(
+  items: readonly ChatArtifactItem[],
+): readonly ArtifactInboxSectionEntry[] {
+  return ARTIFACT_INBOX_SECTIONS.filter((entry) => {
+    return (
+      entry.key === "all" ||
+      items.some((item) => {
+        return artifactMatchesInboxSection(item, entry.key);
+      })
+    );
+  });
+}
+
+function resolveVisibleArtifactInboxSection(
+  section: ArtifactInboxSection,
+  sections: readonly ArtifactInboxSectionEntry[],
+): ArtifactInboxSection {
+  return sections.some((entry) => {
+    return entry.key === section;
+  })
+    ? section
+    : "all";
 }
 
 function artifactMatchesSearch(item: ChatArtifactItem, query: string): boolean {
@@ -1490,17 +1519,6 @@ function ArtifactPreviewOpenOverlay({
   );
 }
 
-async function copyArtifactLinkToClipboard(
-  file: ChatThreadArtifactFile,
-): Promise<void> {
-  const copied = await writeToClipboard(publicAttachmentUrl(file.url));
-  if (copied) {
-    toast.success("Link copied");
-    return;
-  }
-  toast.error("Failed to copy link");
-}
-
 async function downloadArtifactItemsAsZip(params: {
   readonly items: readonly ChatArtifactItem[];
   readonly signal: AbortSignal;
@@ -1576,6 +1594,43 @@ function artifactItemsToGoogleDriveFiles(
 
 function isArtifactSyncedToGoogleDrive(item: ChatArtifactItem): boolean {
   return item.file.googleDriveSync?.status === "synced";
+}
+
+function artifactDownloadSyncTargetFromItem(params: {
+  agentId: string | null | undefined;
+  item: ChatArtifactItem;
+  onSyncSuccess: () => void;
+  threadId: string;
+}): ArtifactDownloadSyncTarget {
+  return {
+    agentId: params.agentId,
+    fileId: params.item.file.id,
+    filename: params.item.file.filename,
+    onSyncSuccess: params.onSyncSuccess,
+    runId: params.item.runId,
+    synced: isArtifactSyncedToGoogleDrive(params.item),
+    threadId: params.threadId,
+  };
+}
+
+function artifactLightboxMetadataFromItem(params: {
+  agentId: string | null | undefined;
+  item: ChatArtifactItem;
+  onSyncSuccess: () => void;
+  threadId: string;
+}): AttachmentArtifactMetadata {
+  return {
+    agentId: params.agentId,
+    contentType: params.item.file.contentType,
+    createdAt: params.item.file.createdAt,
+    fileId: params.item.file.id,
+    filename: params.item.file.filename,
+    googleDriveSynced: isArtifactSyncedToGoogleDrive(params.item),
+    onSyncSuccess: params.onSyncSuccess,
+    runId: params.item.runId,
+    size: params.item.file.size,
+    threadId: params.threadId,
+  };
 }
 
 type WaitForGoogleDriveAndSyncArtifactsFn = (
@@ -1716,139 +1771,37 @@ function ArtifactGoogleDriveConnectMenuItem({
   );
 }
 
-function ArtifactPreviewIconButton({
-  ariaLabel,
-  children,
-  disabled = false,
-  onClick,
-  tooltip,
-}: {
-  ariaLabel: string;
-  children: ReactNode;
-  disabled?: boolean;
-  onClick: () => void;
-  tooltip: string;
-}) {
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-disabled={disabled}
-            aria-label={ariaLabel}
-            onClick={() => {
-              if (!disabled) {
-                onClick();
-              }
-            }}
-            className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-              disabled &&
-                "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-muted-foreground",
-            )}
-          >
-            {children}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="top">
-          <p className="text-xs">{tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 function ArtifactPreviewActions({
   item,
-  googleDriveConnected,
   agentId,
   threadId,
   onSyncSuccess,
 }: {
   item: ChatArtifactItem;
-  googleDriveConnected: boolean;
   agentId: string | null | undefined;
   threadId: string;
   onSyncSuccess: () => void;
 }) {
-  const createClient = useGet(zeroClient$);
-  const waitForGoogleDriveAndSyncArtifacts = useSet(
-    waitForGoogleDriveAndSyncArtifacts$,
-  );
-  const pageSignal = useGet(pageSignal$);
   const { file } = item;
-  const synced = isArtifactSyncedToGoogleDrive(item);
-  const syncTooltip = synced
-    ? "Synced to Google Drive"
-    : googleDriveConnected
-      ? "Sync to Google Drive"
-      : CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP;
-  const syncAriaLabel = synced
-    ? `${file.filename} is synced to Google Drive`
-    : `Sync ${file.filename} to Google Drive`;
+  const syncTarget = artifactDownloadSyncTargetFromItem({
+    agentId,
+    item,
+    onSyncSuccess,
+    threadId,
+  });
 
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <ArtifactPreviewIconButton
-        ariaLabel={`Copy link for ${file.filename}`}
-        tooltip="Copy link"
-        onClick={() => {
-          detach(
-            copyArtifactLinkToClipboard(file),
-            Reason.DomCallback,
-            "artifact copy link",
-          );
-        }}
-      >
-        <IconLink size={16} stroke={1.5} />
-      </ArtifactPreviewIconButton>
-      <ArtifactPreviewIconButton
+      <ArtifactShareButton
+        ariaLabel={`Share ${file.filename}`}
+        url={file.url}
+      />
+      <ArtifactDownloadMenu
         ariaLabel={`Download ${file.filename}`}
-        tooltip="Download"
-        onClick={() => {
-          detach(
-            downloadAttachmentUrl(file.url, pageSignal, file.filename),
-            Reason.DomCallback,
-            "artifact download",
-          );
-        }}
-      >
-        <IconDownload size={16} stroke={1.5} />
-      </ArtifactPreviewIconButton>
-      <ArtifactPreviewIconButton
-        ariaLabel={syncAriaLabel}
-        disabled={synced}
-        tooltip={syncTooltip}
-        onClick={() => {
-          if (googleDriveConnected) {
-            syncArtifactFilesAndRefresh({
-              sync: syncArtifactFileToGoogleDrive({
-                createClient,
-                threadId,
-                runId: item.runId,
-                fileId: item.file.id,
-                filename: item.file.filename,
-                signal: pageSignal,
-              }),
-              onSyncSuccess,
-              reason: "artifact google drive sync",
-            });
-            return;
-          }
-          startGoogleDriveConnectAndSync({
-            agentId,
-            createClient,
-            files: artifactItemsToGoogleDriveFiles([item]),
-            pageSignal,
-            threadId,
-            waitForGoogleDriveAndSyncArtifacts,
-            onSyncComplete: onSyncSuccess,
-          });
-        }}
-      >
-        <IconBrandGoogleDrive size={16} stroke={1.5} />
-      </ArtifactPreviewIconButton>
+        filename={file.filename}
+        syncTarget={syncTarget}
+        url={file.url}
+      />
     </div>
   );
 }
@@ -2097,11 +2050,28 @@ function ChatVideoPreviewButton({
   );
 }
 
-function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
+function ArtifactPreviewFrame({
+  agentId,
+  item,
+  onSyncSuccess,
+  threadId,
+}: {
+  agentId: string | null | undefined;
+  item: ChatArtifactItem;
+  onSyncSuccess: () => void;
+  threadId: string;
+}) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openDocumentLightbox = useSet(openAttachmentDocumentLightbox$);
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
+  const { file } = item;
   const previewKind = getArtifactPreviewKind(file);
+  const artifact = artifactLightboxMetadataFromItem({
+    agentId,
+    item,
+    onSyncSuccess,
+    threadId,
+  });
 
   if (previewKind === "image") {
     return (
@@ -2111,7 +2081,11 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
         imageClassName="h-full w-full object-contain"
         linkClassName="flex h-full w-full items-center justify-center bg-muted"
         onPreview={() => {
-          openImageLightbox(file.url);
+          openImageLightbox({
+            url: file.url,
+            filename: file.filename,
+            artifact,
+          });
         }}
         placeholderClassName="h-full w-full"
         url={file.url}
@@ -2129,6 +2103,7 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
           openVideoLightbox({
             url: file.url,
             filename: file.filename,
+            artifact,
           });
         }}
         posterClassName="h-full w-full"
@@ -2167,6 +2142,7 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
         kind: documentPreviewKind,
         url: file.url,
         filename: file.filename,
+        artifact,
       });
     };
 
@@ -2211,13 +2187,11 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
 
 function ArtifactPreviewPanel({
   item,
-  googleDriveConnected,
   agentId,
   onSyncSuccess,
   threadId,
 }: {
   item: ChatArtifactItem;
-  googleDriveConnected: boolean;
   agentId: string | null | undefined;
   onSyncSuccess: () => void;
   threadId: string;
@@ -2227,7 +2201,12 @@ function ArtifactPreviewPanel({
   return (
     <div className="min-w-0 overflow-hidden rounded-lg border border-border/70 bg-background shadow-sm">
       <div className="h-[260px] border-b border-border/60 bg-muted/30">
-        <ArtifactPreviewFrame file={file} />
+        <ArtifactPreviewFrame
+          agentId={agentId}
+          item={item}
+          onSyncSuccess={onSyncSuccess}
+          threadId={threadId}
+        />
       </div>
       <div className="flex items-start gap-3 px-3 py-3">
         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground">
@@ -2238,13 +2217,16 @@ function ArtifactPreviewPanel({
             {file.filename}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span>{artifactFileKindLabel(file)}</span>
+            <span aria-hidden>·</span>
             <span>{formatBytes(file.size)}</span>
+            <span aria-hidden>·</span>
+            <span>{formatArtifactTime(file.createdAt)}</span>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <ArtifactPreviewActions
             item={item}
-            googleDriveConnected={googleDriveConnected}
             agentId={agentId}
             threadId={threadId}
             onSyncSuccess={onSyncSuccess}
@@ -2437,18 +2419,23 @@ function ChatArtifactInboxHeader({
 
 function ArtifactInboxTabs({
   section,
+  sections,
   setSection,
 }: {
   section: ArtifactInboxSection;
+  sections: readonly ArtifactInboxSectionEntry[];
   setSection: (value: ArtifactInboxSection) => void;
 }) {
   return (
     <div
-      className="grid grid-cols-4 rounded-lg bg-muted/70 p-1"
+      className="grid rounded-lg bg-muted/70 p-1"
+      style={{
+        gridTemplateColumns: `repeat(${sections.length}, minmax(0, 1fr))`,
+      }}
       role="tablist"
       aria-label="Artifact sections"
     >
-      {ARTIFACT_INBOX_SECTIONS.map((entry) => {
+      {sections.map((entry) => {
         const selected = section === entry.key;
         return (
           <button
@@ -2600,16 +2587,22 @@ function ChatArtifactInboxBody({ thread }: { thread: ChatThreadSignals }) {
   }
 
   const normalizedQuery = query.trim().toLowerCase();
+  const sections = artifactInboxSectionsForItems(items);
+  const activeSection = resolveVisibleArtifactInboxSection(section, sections);
   const visibleItems = items.filter((item) => {
     return (
-      artifactMatchesInboxSection(item, section) &&
+      artifactMatchesInboxSection(item, activeSection) &&
       artifactMatchesSearch(item, normalizedQuery)
     );
   });
 
   return (
     <div className="flex min-h-full flex-col gap-4">
-      <ArtifactInboxTabs section={section} setSection={setSection} />
+      <ArtifactInboxTabs
+        section={activeSection}
+        sections={sections}
+        setSection={setSection}
+      />
       {(searchOpen || query.length > 0) && (
         <ArtifactInboxSearch query={query} setQuery={setQuery} />
       )}
@@ -2658,7 +2651,7 @@ function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
         fullscreen
           ? "fixed inset-0 z-[100] flex flex-col bg-background"
           : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background",
-        "animate-in fade-in slide-in-from-right-2 duration-200",
+        "animate-in fade-in duration-[180ms] ease",
       )}
       data-testid="artifact-inbox"
     >
@@ -2706,6 +2699,7 @@ function ChatArtifactInboxSlot({
     return (
       <ArtifactSidebar
         artifactRef={artifactRef}
+        thread={thread ?? undefined}
         onBack={inboxThreadId ? backToInbox : undefined}
         onClose={close}
       />
@@ -2790,7 +2784,6 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
       {selectedItem && (
         <ArtifactPreviewPanel
           item={selectedItem}
-          googleDriveConnected={googleDriveConnected}
           agentId={agentId}
           onSyncSuccess={refreshArtifactSyncStatus}
           threadId={thread.threadId}
@@ -2956,21 +2949,29 @@ export function ZeroChatThreadPage() {
         <div
           className={
             artifactPanelOpen
-              ? "hidden xl:flex flex-1 basis-0 min-w-0 min-h-0"
-              : "flex flex-1 min-w-0 min-h-0"
+              ? "hidden xl:flex flex-1 basis-0 min-w-0 min-h-0 transition-[flex-basis,width] duration-[240ms] ease"
+              : "flex flex-1 min-w-0 min-h-0 transition-[flex-basis,width] duration-[240ms] ease"
           }
         >
           {threadArea}
         </div>
-        {artifactPanelOpen && (
-          <div className="flex flex-1 basis-0 min-w-0 min-h-0">
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 overflow-hidden transition-[flex-basis,width] duration-[240ms] ease",
+            artifactPanelOpen
+              ? "flex-1 basis-0 xl:w-[min(760px,48vw)] xl:flex-none xl:basis-[min(760px,48vw)]"
+              : "pointer-events-none w-0 flex-none basis-0",
+          )}
+          aria-hidden={!artifactPanelOpen}
+        >
+          {artifactPanelOpen && (
             <ChatArtifactInboxSlot
               artifactRef={artifactRef}
               leftThread={leftThread}
               rightThread={rightThread}
             />
-          </div>
-        )}
+          )}
+        </div>
       </div>
       {!sidebarEnabled && leftThread && (
         <ChatArtifactsDrawer thread={leftThread} />
