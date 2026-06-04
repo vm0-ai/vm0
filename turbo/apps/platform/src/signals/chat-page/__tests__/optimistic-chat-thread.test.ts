@@ -253,6 +253,7 @@ describe("optimistic chat thread (local mode)", () => {
               id: clientMessageId,
               role: "user",
               content: "blocked by credits",
+              generationTemplate,
               error: "insufficient_credits",
               createdAt: "2026-04-13T00:00:00Z",
             },
