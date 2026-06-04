@@ -89,7 +89,7 @@ async fn run_workspace_image_cache_with_home(
         }
         WorkspaceImageCacheCommand::List(list) => {
             let inspection = shared_cache(home).inspect().await?;
-            let output = list_output(&inspection, list.limit);
+            let output = list_output(inspection, list.limit);
             if list.json {
                 print_json(&output)
             } else {
@@ -129,10 +129,17 @@ fn info_output(inspection: &WorkspaceImageCacheInspection) -> WorkspaceImageCach
 }
 
 fn list_output(
-    inspection: &WorkspaceImageCacheInspection,
+    inspection: WorkspaceImageCacheInspection,
     limit: Option<usize>,
 ) -> WorkspaceImageCacheListOutput {
-    let mut entries = inspection.entries.clone();
+    let WorkspaceImageCacheInspection {
+        cache_dir,
+        lock_dir,
+        summary,
+        entries,
+        ..
+    } = inspection;
+    let mut entries = entries;
     entries.sort_by(|left, right| {
         status_rank(left.status)
             .cmp(&status_rank(right.status))
@@ -143,9 +150,9 @@ fn list_output(
         entries.truncate(limit);
     }
     WorkspaceImageCacheListOutput {
-        cache_dir: inspection.cache_dir.clone(),
-        lock_dir: inspection.lock_dir.clone(),
-        summary: inspection.summary.clone(),
+        cache_dir,
+        lock_dir,
+        summary,
         entries,
     }
 }
@@ -372,7 +379,7 @@ mod tests {
 
     #[test]
     fn list_json_includes_limited_entries() {
-        let output = list_output(&test_inspection(), Some(1));
+        let output = list_output(test_inspection(), Some(1));
         let value = serde_json::to_value(&output).unwrap();
         assert_eq!(value["entries"].as_array().unwrap().len(), 1);
         assert_eq!(value["entries"][0]["status"], "invalid");
@@ -394,7 +401,7 @@ mod tests {
 
     #[test]
     fn text_list_respects_limit_and_prioritizes_invalid_entries() {
-        let text = format_list_text(&list_output(&test_inspection(), Some(1)));
+        let text = format_list_text(&list_output(test_inspection(), Some(1)));
         assert!(text.contains("1 shown, 2 total"));
         assert!(text.contains("invalid "));
         assert!(text.contains("tempPaths=0"));
@@ -404,7 +411,7 @@ mod tests {
 
     #[test]
     fn text_list_distinguishes_empty_limit_from_empty_cache() {
-        let limited = format_list_text(&list_output(&test_inspection(), Some(0)));
+        let limited = format_list_text(&list_output(test_inspection(), Some(0)));
         assert!(limited.contains("0 shown, 2 total"));
         assert!(limited.contains("No workspace image cache entries shown by current limit."));
         assert!(!limited.contains("No workspace image cache entries found."));
@@ -414,7 +421,7 @@ mod tests {
             entries: Vec::new(),
             ..test_inspection()
         };
-        let text = format_list_text(&list_output(&empty, None));
+        let text = format_list_text(&list_output(empty, None));
         assert!(text.contains("0 shown, 0 total"));
         assert!(text.contains("No workspace image cache entries found."));
     }
