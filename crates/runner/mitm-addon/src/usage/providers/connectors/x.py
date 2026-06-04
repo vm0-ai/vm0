@@ -124,6 +124,8 @@ def _synthetic_include_category(key: str) -> str | None:
         return None
     if _SAFE_SYNTHETIC_INCLUDE_KEY_RE.fullmatch(key) is None:
         return None
+    if f"{_SYNTHETIC_INCLUDE_CATEGORY_PREFIX}{key}" == _INCLUDES_OVERFLOW_CATEGORY:
+        return None
     return f"{_SYNTHETIC_INCLUDE_CATEGORY_PREFIX}{key}"
 
 

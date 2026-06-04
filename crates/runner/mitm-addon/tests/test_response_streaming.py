@@ -247,11 +247,12 @@ class TestNdjsonExtractor:
         parse(
             b'{"data":{"id":"1"},"includes":{"'
             + overlong_key
-            + b'":[{"id":"long"}],"bad/key":[{"id":"one"},{"id":"two"}]}}\n'
+            + b'":[{"id":"long"}],"bad/key":[{"id":"one"},{"id":"two"}],'
+            b'"__overflow__":[{"id":"reserved"}]}}\n'
         )
 
         assert state["includes"] == {}
-        assert state["unknown_includes_overflow_count"] == 3
+        assert state["unknown_includes_overflow_count"] == 4
         assert state["data_count"] == 1
         assert state["lines_failed"] == 0
 

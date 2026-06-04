@@ -312,6 +312,7 @@ class TestReportConnectorUsage:
                 "includes": {
                     overlong_key: [{"id": "long"}],
                     "bad/key": [{"id": "unsafe"}, {"id": "unsafe-2"}],
+                    "__overflow__": [{"id": "reserved"}],
                 },
             }
         ).encode()
@@ -320,7 +321,7 @@ class TestReportConnectorUsage:
         payloads = self._call_and_get_billing(flow)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
 
-        assert by_cat == {"posts.read": 1, "includes.__overflow__": 3}
+        assert by_cat == {"posts.read": 1, "includes.__overflow__": 4}
         assert all(len(category) <= 100 for category in by_cat)
 
     def test_empty_search_emits_no_billing(self, tmp_path, real_flow):
