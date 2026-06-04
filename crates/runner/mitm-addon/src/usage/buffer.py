@@ -71,6 +71,12 @@ class _TimerHandle(Protocol):
 _TimerFactory = Callable[[float, Callable[[], None]], _TimerHandle]
 
 
+class _FlushOwnerLock(Protocol):
+    def acquire(self, blocking: bool = True) -> bool: ...
+
+    def release(self) -> None: ...
+
+
 @dataclass(frozen=True)
 class _DestinationKey:
     url: str
@@ -131,7 +137,7 @@ class UsageEventBuffer:
         self._lock = threading.Lock()
         # Serializes snapshot/enqueue ownership. Ordinary flushes defer if busy;
         # shutdown waits so daemon timer work cannot outlive process teardown.
-        self._flush_owner_lock = threading.Lock()
+        self._flush_owner_lock: _FlushOwnerLock = threading.Lock()
         self._buffer_id = str(uuid.uuid4())
         self._flush_sequence = 0
         self._flush_interval_seconds = max(1.0, flush_interval_seconds)
