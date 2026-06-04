@@ -427,8 +427,9 @@ async def request(flow: http.HTTPFlow) -> None:
     Intercept request: inject firewall auth headers for configured firewall rules.
 
     Order:
-    1. VM0 API auto-allow (agent must always reach the platform)
-    2. Firewall match (inject auth headers for allowed requests)
+    1. Registry gate (block unavailable or invalid registered VM state)
+    2. VM0 API auto-allow (agent must always reach the platform)
+    3. Firewall match (inject auth headers for allowed requests)
     """
     # Get client IP (source VM)
     client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
