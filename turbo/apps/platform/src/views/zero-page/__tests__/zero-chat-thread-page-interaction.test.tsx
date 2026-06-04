@@ -12,6 +12,7 @@ import {
   chatMessagesContract,
   chatThreadMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
@@ -33,6 +34,12 @@ import {
 const context = testContext();
 
 const THREAD_ID = "thread-test-1";
+
+function chatArtifactSidebarOff() {
+  return {
+    [FeatureSwitchKey.ChatArtifactSidebar]: false,
+  };
+}
 
 function queryButtonByText(text: string): HTMLElement | undefined {
   return queryAllByRoleFast("button").find((button) => {
@@ -435,7 +442,11 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     await waitFor(() => {
       expect(screen.getByAltText("photo.png")).toBeInTheDocument();
@@ -483,7 +494,11 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     const imageLink = await waitFor(() => {
       return screen.getByLabelText("Preview photo.png");
@@ -527,7 +542,11 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: chatArtifactSidebarOff(),
+    });
 
     const previewButton = await waitFor(() => {
       return screen.getByLabelText("Open html preview for report");
