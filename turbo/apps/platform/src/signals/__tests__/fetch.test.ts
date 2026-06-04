@@ -690,6 +690,28 @@ describe("apiBackend routing", () => {
     ]);
   });
 
+  it("routes push-subscriptions POST to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    server.use(
+      http.post("*/api/zero/push-subscriptions", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/push-subscriptions", { method: "POST" });
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
   it("does not let a :param template over-match a shorter parent path", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({

@@ -114,6 +114,7 @@ const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
     methods: ["POST", "DELETE"],
     pathname: "/api/zero/org/membership-requests",
   },
+  { methods: ["POST"], pathname: "/api/zero/push-subscriptions" },
   { methods: ["GET"], pathname: "/api/zero/queue-position" },
   { methods: ["POST"], pathname: "/api/zero/realtime/token" },
   { methods: ["POST"], pathname: "/api/zero/report-error" },
