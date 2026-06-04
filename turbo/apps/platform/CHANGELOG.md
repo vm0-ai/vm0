@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.412.0](https://github.com/vm0-ai/vm0/compare/app-v0.411.0...app-v0.412.0) (2026-06-04)
+
+
+### Features
+
+* route recovered first-party platform routes to api backend ([#16173](https://github.com/vm0-ai/vm0/issues/16173)) ([073f509](https://github.com/vm0-ai/vm0/commit/073f509f9ac6a8e223027012009607ebe5a911ef))
+* simplify memory activity updates ([#16175](https://github.com/vm0-ai/vm0/issues/16175)) ([6187410](https://github.com/vm0-ai/vm0/commit/618741097fc725534135efcdb4690818d26ba233))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.61.0
+    * @vm0/connectors bumped to 1.46.2
+    * @vm0/core bumped to 8.309.11
+
 ## [0.411.0](https://github.com/vm0-ai/vm0/compare/app-v0.410.0...app-v0.411.0) (2026-06-04)
 
 

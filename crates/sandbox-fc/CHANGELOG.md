@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.9](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.8...sandbox-fc-v0.37.9) (2026-06-04)
+
+
+### Refactoring
+
+* extract snapshot provider test fixtures ([#16165](https://github.com/vm0-ai/vm0/issues/16165)) ([6a5ae0b](https://github.com/vm0-ai/vm0/commit/6a5ae0bf05ee765c5986dd56ab67bf28d86440d7))
+
 ## [0.37.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.7...sandbox-fc-v0.37.8) (2026-06-04)
 
 ## [0.37.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.6...sandbox-fc-v0.37.7) (2026-06-04)

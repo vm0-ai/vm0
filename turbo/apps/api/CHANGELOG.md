@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.100.0](https://github.com/vm0-ai/vm0/compare/api-v1.99.0...api-v1.100.0) (2026-06-04)
+
+
+### Features
+
+* simplify memory activity updates ([#16175](https://github.com/vm0-ai/vm0/issues/16175)) ([6187410](https://github.com/vm0-ai/vm0/commit/618741097fc725534135efcdb4690818d26ba233))
+
+
+### Refactoring
+
+* group connector auth providers by connector ([#16174](https://github.com/vm0-ai/vm0/issues/16174)) ([0cd90bf](https://github.com/vm0-ai/vm0/commit/0cd90bf76236f55c40a76d023ee47cc4dc7e3a84))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.61.0
+    * @vm0/connectors bumped to 1.46.2
+    * @vm0/core bumped to 8.309.11
+    * @vm0/db bumped to 1.30.0
+
 ## [1.99.0](https://github.com/vm0-ai/vm0/compare/api-v1.98.7...api-v1.99.0) (2026-06-04)
 
 

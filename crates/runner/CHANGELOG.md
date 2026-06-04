@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.108.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.3...runner-rs-v0.108.4) (2026-06-04)
+
+
+### Bug Fixes
+
+* bound model websocket retention ([#16182](https://github.com/vm0-ai/vm0/issues/16182)) ([ff822d9](https://github.com/vm0-ai/vm0/commit/ff822d9c222b4b1b7439ef37e6e59753493993a1))
+* share X billing IDNA normalization ([#16162](https://github.com/vm0-ai/vm0/issues/16162)) ([16d3d59](https://github.com/vm0-ai/vm0/commit/16d3d592a396f15a7430282941ba5b861b29df46))
+
+
+### Refactoring
+
+* make firewall auth ownership explicit ([#16161](https://github.com/vm0-ai/vm0/issues/16161)) ([9832ae3](https://github.com/vm0-ai/vm0/commit/9832ae33d48503dc3e705d4c1e33b240fc3b177e))
+
 ## [0.108.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.2...runner-rs-v0.108.3) (2026-06-04)
 
 

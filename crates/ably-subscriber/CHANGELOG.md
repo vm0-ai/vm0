@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.17](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.16...ably-subscriber-v0.7.17) (2026-06-04)
+
+
+### Bug Fixes
+
+* avoid ably retry counter overflow ([#16167](https://github.com/vm0-ai/vm0/issues/16167)) ([2b84fb4](https://github.com/vm0-ai/vm0/commit/2b84fb4889fa30730edd1dcec8585959c403e52f))
+
 ## [0.7.16](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.15...ably-subscriber-v0.7.16) (2026-05-28)
 
 

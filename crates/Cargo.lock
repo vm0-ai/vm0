@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "0.7.16"
+version = "0.7.17"
 dependencies = [
  "base64",
  "futures-util",
@@ -1263,7 +1263,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.34.12"
+version = "0.34.13"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -2558,7 +2558,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.108.3"
+version = "0.108.4"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2774,7 +2774,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.8"
+version = "0.37.9"
 dependencies = [
  "async-trait",
  "base64",

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.12...guest-agent-v0.34.13) (2026-06-04)
+
+
+### Performance Improvements
+
+* stream artifact manifest uploads ([#16178](https://github.com/vm0-ai/vm0/issues/16178)) ([68ffd1f](https://github.com/vm0-ai/vm0/commit/68ffd1fd8f4ee6e22e22145328a1beca8bd545ad))
+
 ## [0.34.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.11...guest-agent-v0.34.12) (2026-06-04)
 
 
