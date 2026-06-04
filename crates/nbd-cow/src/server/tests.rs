@@ -3,6 +3,7 @@ use crate::cow::CowLayer;
 use crate::protocol::{Command, NbdReply, NbdRequest, REPLY_MAGIC, serialize_request};
 use std::io::Write as _;
 use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd};
+use std::time::Duration;
 use tempfile::NamedTempFile;
 
 fn must<T, E: std::fmt::Display>(result: std::result::Result<T, E>, context: &str) -> T {
@@ -126,14 +127,18 @@ async fn read_payload(reader: &mut tokio::net::unix::OwnedReadHalf, len: usize) 
 }
 
 async fn wait_for_dispatch(task: tokio::task::JoinHandle<crate::error::Result<()>>) {
-    let result = must(task.await, "join dispatch task");
+    let joined = match tokio::time::timeout(Duration::from_secs(1), task).await {
+        Ok(joined) => joined,
+        Err(_) => panic!("dispatch should exit"),
+    };
+    let result = must(joined, "join dispatch task");
     must(result, "dispatch task");
 }
 
 async fn assert_dispatch_exits_after_shutdown(
     task: tokio::task::JoinHandle<crate::error::Result<()>>,
 ) {
-    let joined = match tokio::time::timeout(std::time::Duration::from_secs(1), task).await {
+    let joined = match tokio::time::timeout(Duration::from_secs(1), task).await {
         Ok(joined) => joined,
         Err(_) => panic!("dispatch should exit after shutdown"),
     };

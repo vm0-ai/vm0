@@ -3,6 +3,7 @@ use std::io::Write as _;
 use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd};
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use nbd_cow::cow::CowLayer;
 use nbd_cow::error::Result as NbdResult;
@@ -240,7 +241,7 @@ pub async fn spawn_dispatch_with_shutdown(
 }
 
 pub async fn wait_for_dispatch(task: JoinHandle<NbdResult<()>>) -> TestResult<()> {
-    task.await??;
+    tokio::time::timeout(Duration::from_secs(1), task).await???;
     Ok(())
 }
 
