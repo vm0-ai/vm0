@@ -19,7 +19,9 @@ use crate::operation_tracker::NormalOperationReadiness;
 use crate::{ConnectionState, NormalOperationFence, VsockHost};
 
 const MOCK_GUEST_IO_TIMEOUT: Duration = Duration::from_secs(5);
-const MOCK_GUEST_TASK_TIMEOUT: Duration = Duration::from_secs(15);
+// Keep the task guard wider than multi-frame reads so the per-frame
+// assertions report the actual protocol step that got stuck.
+const MOCK_GUEST_TASK_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(crate) fn make_pair() -> (UnixStream, UnixStream) {
     UnixStream::pair().unwrap()
