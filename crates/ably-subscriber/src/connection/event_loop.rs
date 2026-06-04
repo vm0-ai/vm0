@@ -76,7 +76,7 @@ fn schedule_channel_retry(p: &mut EventLoopState) {
     if p.lifecycle.channel == ChannelLifecycleState::Suspended
         && p.lifecycle.connection.send_events()
     {
-        p.channel_retry_count += 1;
+        p.channel_retry_count = p.channel_retry_count.saturating_add(1);
         p.channel_retry_at = checked_deadline_after(retry_delay(
             p.timing.channel_retry_timeout,
             p.channel_retry_count,
@@ -439,7 +439,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
             } else if p.lifecycle.connection == ConnectionLifecycleState::Suspended {
                 p.timing.suspended_retry_timeout
             } else {
-                disconnected_retry_count += 1;
+                disconnected_retry_count = disconnected_retry_count.saturating_add(1);
                 retry_delay(
                     p.timing.disconnected_retry_timeout,
                     disconnected_retry_count,
@@ -1113,6 +1113,19 @@ mod tests {
             disconnected_sent,
             "outer loop must not duplicate a Disconnected event sent by reconnect handling"
         );
+    }
+
+    #[test]
+    fn channel_retry_count_saturates_at_max_attempt() {
+        let (event_tx, _event_rx) = mpsc::channel(4);
+        let mut state = test_event_loop_state(event_tx);
+        state.lifecycle.notify_channel_suspended();
+        state.channel_retry_count = u32::MAX;
+
+        schedule_channel_retry(&mut state);
+
+        assert_eq!(state.channel_retry_count, u32::MAX);
+        assert!(state.channel_retry_at.is_some());
     }
 
     #[tokio::test]
