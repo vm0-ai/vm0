@@ -142,6 +142,62 @@ fn stream_json_shell_writes_matching_session_history() -> Result<(), Box<dyn std
 }
 
 #[test]
+fn stream_json_shell_failure_writes_error_history() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+
+    let output = mock_claude()
+        .env("HOME", home.path())
+        .args([
+            "--output-format",
+            "stream-json",
+            "--",
+            "printf out; printf err >&2; exit 7",
+        ])
+        .output()?;
+
+    assert_eq!(output.status.code(), Some(7));
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    let session_id = init_session_id(&events)?;
+    let stdout = String::from_utf8(output.stdout)?;
+    let history = fs::read_to_string(expected_history_path(home.path(), &session_id))?;
+
+    assert_eq!(history, stdout);
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        [
+            "system/init",
+            "assistant/text",
+            "assistant/tool_use",
+            "user/tool_result",
+            "result/error",
+        ]
+    );
+    assert_eq!(
+        events[3]
+            .pointer("/message/content/0/content")
+            .and_then(Value::as_str),
+        Some("outerr")
+    );
+    assert_eq!(
+        events[3]
+            .pointer("/message/content/0/is_error")
+            .and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        events[4].get("result").and_then(Value::as_str),
+        Some("outerr")
+    );
+    assert_eq!(
+        events[4].get("is_error").and_then(Value::as_bool),
+        Some(true)
+    );
+    Ok(())
+}
+
+#[test]
 fn exit_after_result_writes_init_and_result_history() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
 
