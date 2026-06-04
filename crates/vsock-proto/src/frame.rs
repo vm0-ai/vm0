@@ -385,6 +385,41 @@ mod tests {
     }
 
     #[test]
+    fn decode_with_reports_invalid_length_after_partial_header() {
+        let bad_header = 2_u32.to_be_bytes();
+        let mut dec = Decoder::new();
+        let mut visited = false;
+
+        dec.decode_with(&bad_header[..3], |_msg| {
+            visited = true;
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+        assert!(!visited);
+
+        let err = dec
+            .decode_with(&bad_header[3..], |_msg| {
+                visited = true;
+                Ok::<(), Infallible>(())
+            })
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            DecodeWithError::Protocol(ProtocolError::MessageTooSmall(2))
+        ));
+        assert!(!visited);
+
+        let valid = encode(MSG_PING, 9, b"recovered").unwrap();
+        let mut recovered = Vec::new();
+        dec.decode_with(&valid, |msg| {
+            recovered.push((msg.msg_type, msg.seq, msg.payload.to_vec()));
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+        assert_eq!(recovered, vec![(MSG_PING, 9, b"recovered".to_vec())]);
+    }
+
+    #[test]
     fn decode_with_rejects_protocol_error_before_visiting_prior_frames() {
         let mut data = encode(MSG_PING, 1, b"valid").unwrap();
         data.extend_from_slice(&(17 * 1024 * 1024_u32).to_be_bytes());
