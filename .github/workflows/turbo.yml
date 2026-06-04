@@ -838,7 +838,7 @@ jobs:
           # near no-op -- this is what keeps preview migrate (and deploy-web) fast.
           # Safe by construction: this job has no `environment: production`, so
           # NEON_PROJECT_ID resolves to the Neon TEST project, never production.
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
             echo "main push: pre-migrating test project default (parent) branch"
             PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
             if [ -z "$PARENT_DATABASE_URL" ]; then
