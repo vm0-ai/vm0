@@ -301,7 +301,7 @@ class TestResponseHandler:
 
     @pytest.mark.parametrize(
         "content_length",
-        ["not-an-int", "-1", "+1", "1, 2", "١٢", "9007199254740992"],
+        ["not-an-int", "-1", "+1", "1, 2", "\u0661\u0662", "9007199254740992"],
     )
     def test_response_size_is_zero_for_invalid_content_length(
         self, tmp_path, real_flow, mitm_ctx, content_length
