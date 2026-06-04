@@ -635,12 +635,27 @@ def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
 def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_path):
     timers = []
 
+    class _InstrumentedFlushOwnerLock:
+        def __init__(self) -> None:
+            self._lock = threading.Lock()
+            self.blocking_acquire_started = threading.Event()
+
+        def acquire(self, blocking: bool = True) -> bool:
+            if blocking:
+                self.blocking_acquire_started.set()
+            return self._lock.acquire(blocking)
+
+        def release(self) -> None:
+            self._lock.release()
+
     def timer_factory(delay: float, callback):
         timer = _FakeTimer(delay, callback)
         timers.append(timer)
         return timer
 
     usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    flush_owner_lock = _InstrumentedFlushOwnerLock()
+    usage_buffer._usage_event_buffer._flush_owner_lock = flush_owner_lock
 
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_usage_events(
@@ -654,7 +669,6 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
 
     timer_enqueue_started = threading.Event()
     release_timer_enqueue = threading.Event()
-    shutdown_started = threading.Event()
     shutdown_returned = threading.Event()
     shutdown_results: list[int] = []
     enqueued_runs: list[str] = []
@@ -679,7 +693,6 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
         assert log_type == "usage_event"
 
     def shutdown_flush():
-        shutdown_started.set()
         shutdown_results.append(usage.flush_usage_events(trigger="shutdown"))
         shutdown_returned.set()
 
@@ -690,8 +703,8 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
 
         shutdown_thread = threading.Thread(target=shutdown_flush)
         shutdown_thread.start()
-        assert shutdown_started.wait(timeout=1)
-        assert not shutdown_returned.wait(timeout=0.05)
+        assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)
+        assert not shutdown_returned.is_set()
         assert enqueue_call_count == 1
 
         release_timer_enqueue.set()
@@ -705,6 +718,51 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
     assert enqueued_runs == ["run-1", "run-2"]
     assert usage.counters._buffered_usage_events == 0
     assert len(timers) == 2
+    assert timers[1].cancelled is True
+
+
+def test_shutdown_flush_drains_live_usage_buffered_during_own_enqueue(tmp_path):
+    timers = []
+
+    def timer_factory(delay: float, callback):
+        timer = _FakeTimer(delay, callback)
+        timers.append(timer)
+        return timer
+
+    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        proxy_log_path,
+    )
+    assert len(timers) == 1
+
+    enqueued_runs: list[str] = []
+
+    def enqueue_webhook(url, sandbox_token, payload, path, log_type):
+        enqueued_runs.append(payload["runId"])
+        if payload["runId"] == "run-1":
+            usage.buffer_usage_events(
+                url,
+                sandbox_token,
+                "run-2",
+                [_event(source_key="source-2")],
+                path,
+            )
+            assert len(timers) == 2
+        assert log_type == "usage_event"
+
+    with patch.object(usage_buffer, "_enqueue_webhook", side_effect=enqueue_webhook):
+        assert usage.flush_usage_events(trigger="shutdown") == 2
+
+    assert enqueued_runs == ["run-1", "run-2"]
+    assert usage.counters._buffered_usage_events == 0
+    assert len(timers) == 2
+    assert timers[0].cancelled is True
     assert timers[1].cancelled is True
 
 
