@@ -438,7 +438,7 @@ async function generateRecommendedFollowups(
         role: "system",
         content: [
           "Generate up to three concise follow-up prompts the user may ask next in this chat.",
-          "Keep each prompt under 30 characters. Make them specific to the latest assistant reply, actionable, and useful. Match the user's language.",
+          "Make each prompt specific to the latest assistant reply, actionable, and useful. Match the user's language.",
           'Classify each item as kind "talk" for normal discussion, planning, analysis, or refinement, or kind "generate" when the prompt asks VM0 to create one of the supported built-in generation outputs.',
           BUILT_IN_GENERATION_FOLLOWUP_CONTEXT,
           "For generate items, include generationType as one of: image, video, presentation, website.",

@@ -670,7 +670,9 @@ describe("POST /api/internal/callbacks/chat", () => {
       if (
         systemContent.includes("Generate up to three concise follow-up prompts")
       ) {
-        expect(systemContent).toContain("Keep each prompt under 30 characters");
+        expect(systemContent).toContain(
+          "Make each prompt specific to the latest assistant reply",
+        );
         return JSON.stringify([
           {
             prompt: "Turn this into a checklist",
