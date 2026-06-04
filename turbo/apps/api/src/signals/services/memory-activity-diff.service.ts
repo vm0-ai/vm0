@@ -26,7 +26,6 @@ interface MemoryFileState {
 
 export type MemoryFileMap = ReadonlyMap<string, MemoryFileState>;
 
-const MEMORY_INDEX_PATH = "MEMORY.md";
 const MAX_DIFF_LINES = 300;
 const MAX_DIFF_LINE_CHARS = 500;
 const MAX_LCS_CELLS = 250_000;
@@ -306,9 +305,8 @@ function classifyFile(
  * unchanged files are skipped without byte-diffing. The resulting item stores
  * lifecycle on `diff.beforeExists` / `diff.afterExists`.
  *
- * `MEMORY.md` is a derived index: its churn is folded into the real fact
- * changes. It is only emitted as its own item when it changed AND no other
- * file change explains it (pure index reorg / prose-only edit).
+ * `MEMORY.md` is emitted like any other file because the activity UI renders
+ * file-level diffs.
  */
 export function computeChangeSet(
   fromFiles: MemoryFileMap,
@@ -317,7 +315,6 @@ export function computeChangeSet(
   const paths = new Set<string>([...fromFiles.keys(), ...toFiles.keys()]);
 
   const items: MemoryChangeItem[] = [];
-  let memoryIndexItem: MemoryChangeItem | null = null;
 
   for (const filePath of paths) {
     const item = classifyFile(
@@ -328,15 +325,7 @@ export function computeChangeSet(
     if (!item) {
       continue;
     }
-    if (filePath === MEMORY_INDEX_PATH) {
-      memoryIndexItem = item;
-      continue;
-    }
     items.push(item);
-  }
-
-  if (memoryIndexItem && items.length === 0) {
-    items.push(memoryIndexItem);
   }
 
   return { items, changed: items.length > 0 };

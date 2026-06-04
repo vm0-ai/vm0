@@ -535,7 +535,7 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(items).toStrictEqual(["facts/zero-search.md"]);
   });
 
-  it("folds MEMORY.md churn into the real file change", async () => {
+  it("persists MEMORY.md alongside the real file change", async () => {
     mockLlm();
     const seeded = await seedTwoVersions(
       [{ path: "MEMORY.md", content: "# index v1" }],
@@ -549,7 +549,9 @@ describe("GET /api/cron/summarize-memory", () => {
 
     const summary = await findSummary(seeded.fixture);
     const items = await findItems(summary?.id ?? "");
-    expect(items).toStrictEqual(["facts/coffee.md"]);
+    expect(items).toHaveLength(2);
+    expect(items).toContain("MEMORY.md");
+    expect(items).toContain("facts/coffee.md");
   });
 
   it("backfills quiet cards and makes no LLM call when memory did not change", async () => {

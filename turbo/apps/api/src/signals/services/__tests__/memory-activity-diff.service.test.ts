@@ -143,7 +143,7 @@ describe("computeChangeSet", () => {
     });
   });
 
-  it("folds MEMORY.md churn into real file changes (does not emit it)", () => {
+  it("emits MEMORY.md alongside real file changes", () => {
     const changeSet = computeChangeSet(
       fileMap([["MEMORY.md", "idx1", "# index v1"]]),
       fileMap([
@@ -152,11 +152,14 @@ describe("computeChangeSet", () => {
       ]),
     );
 
-    expect(changeSet.items).toHaveLength(1);
-    expect(changeSet.items[0]?.filePath).toBe("facts/coffee.md");
+    expect(
+      changeSet.items.map((item) => {
+        return item.filePath;
+      }),
+    ).toStrictEqual(["MEMORY.md", "facts/coffee.md"]);
   });
 
-  it("emits MEMORY.md as its own item when no real file change explains it", () => {
+  it("emits MEMORY.md as its own item when it is the only changed file", () => {
     const changeSet = computeChangeSet(
       fileMap([["MEMORY.md", "idx1", "# index v1"]]),
       fileMap([["MEMORY.md", "idx2", "# index v2 reorganized"]]),
