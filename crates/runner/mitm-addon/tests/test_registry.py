@@ -574,6 +574,70 @@ class TestLoadRegistry:
         assert force_refresh_pending(("run-active", "api-0"))
         assert last_force_refresh_at(("run-active", "api-0")) == 200.0
 
+    def test_valid_entry_becoming_invalid_evicts_context_and_cache(self, tmp_path):
+        registry_file = tmp_path / "registry.json"
+        _write_firewall_registry(registry_file)
+
+        context = registry.get_vm_context("10.200.0.1", str(registry_file))
+        assert context is not None
+        _, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        set_cached_headers(
+            ("run-abc-123", "api-0"),
+            headers={"Authorization": "Bearer tok"},
+        )
+
+        registry_file.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {"runId": ""},
+                    },
+                    "updatedAt": 0,
+                }
+            )
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            state = registry.load_registry_state(str(registry_file))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert state.vms == {}
+        assert set(state.invalid_vms) == {"10.200.0.1"}
+        assert state.compiled_firewalls == {}
+        assert state.compiled_network_policies == {}
+        assert registry.get_vm_context("10.200.0.1", str(registry_file)) is None
+        assert not has_auth_state(("run-abc-123", "api-0"))
+
+    def test_invalid_entry_can_recover_to_valid_context(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text(json.dumps({"vms": {"10.200.0.1": {"runId": ""}}, "updatedAt": 0}))
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            invalid_state = registry.load_registry_state(str(path))
+
+        assert not isinstance(invalid_state, registry.RegistryUnavailable)
+        assert invalid_state.vms == {}
+        assert set(invalid_state.invalid_vms) == {"10.200.0.1"}
+
+        path.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {"runId": "run-recovered"},
+                    },
+                    "updatedAt": 1,
+                }
+            )
+        )
+
+        recovered_state = registry.load_registry_state(str(path))
+
+        assert not isinstance(recovered_state, registry.RegistryUnavailable)
+        assert recovered_state.vms["10.200.0.1"]["runId"] == "run-recovered"
+        assert recovered_state.invalid_vms == {}
+        assert registry.get_vm_info("10.200.0.1", str(path)) == {"runId": "run-recovered"}
+
     def test_malformed_vm_entries_do_not_block_header_cache_eviction(self, registry_file):
         """Malformed VM entries are not active cache owners."""
         registry.load_registry(str(registry_file))

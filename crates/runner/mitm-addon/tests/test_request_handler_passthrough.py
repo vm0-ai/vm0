@@ -185,6 +185,36 @@ async def test_invalid_registered_vm_blocks_before_auth_injection(
     assert flow.metadata["firewall_error"] == "invalid_registry_vm"
 
 
+async def test_invalid_registered_vm_non_object_blocks_before_auth_injection(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    reg_path = tmp_path / "registry.json"
+    reg_path.write_text(json.dumps({"vms": {"10.200.0.5": "broken"}, "updatedAt": 0}))
+    flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 503
+    assert json.loads(flow.response.content) == {
+        "error": "invalid_registry_vm",
+        "message": "proxy registry VM entry must be an object",
+        "reason": "invalid_vm_entry",
+    }
+    auth_fetch.assert_not_called()
+    assert "vm_run_id" not in flow.metadata
+    assert "firewall_base" not in flow.metadata
+    assert flow.metadata["firewall_action"] == "BLOCK"
+    assert flow.metadata["firewall_error"] == "invalid_registry_vm"
+
+
 async def test_tracks_start_time(registry_file, real_flow, mitm_ctx):
     flow = real_flow(with_response=False, host="api.anthropic.com")
 
