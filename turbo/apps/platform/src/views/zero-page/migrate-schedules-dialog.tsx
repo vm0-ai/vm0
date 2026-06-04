@@ -1,4 +1,9 @@
-import { useGet, useSet, useLastLoadable, useLastResolved } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import {
   IconCheck,
   IconLoader2,

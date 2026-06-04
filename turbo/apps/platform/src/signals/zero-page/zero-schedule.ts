@@ -592,6 +592,7 @@ export const migrateAllLegacySchedules$ = command(
             [200],
             { toast: false },
           );
+          signal.throwIfAborted();
           set(internalMigrationStatus$, patchMigrationStatus(s.id, "done"));
         } catch (error: unknown) {
           throwIfAbort(error);
