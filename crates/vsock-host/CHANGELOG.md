@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.20](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.19...vsock-host-v0.17.20) (2026-06-04)
+
+
+### Performance Improvements
+
+* avoid exec output payload copy ([#16081](https://github.com/vm0-ai/vm0/issues/16081)) ([3611818](https://github.com/vm0-ai/vm0/commit/3611818fcd7d15583dde5113ace28918395858cb))
+
 ## [0.17.19](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.18...vsock-host-v0.17.19) (2026-06-03)
 
 

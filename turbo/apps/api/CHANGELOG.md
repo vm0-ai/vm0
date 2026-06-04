@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.98.5](https://github.com/vm0-ai/vm0/compare/api-v1.98.4...api-v1.98.5) (2026-06-04)
+
+
+### Bug Fixes
+
+* **api:** summarize only yesterday and gate memory cron by feature switch ([#16098](https://github.com/vm0-ai/vm0/issues/16098)) ([9ccb50b](https://github.com/vm0-ai/vm0/commit/9ccb50bd7bc5a34931130774ca784e03e41c2d4c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.4
+    * @vm0/core bumped to 8.309.7
+    * @vm0/db bumped to 1.28.5
+
 ## [1.98.4](https://github.com/vm0-ai/vm0/compare/api-v1.98.3...api-v1.98.4) (2026-06-04)
 
 

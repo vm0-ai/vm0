@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.108.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.0...runner-rs-v0.108.1) (2026-06-04)
+
+
+### Bug Fixes
+
+* **mitm-addon:** bound X includes usage categories ([#16100](https://github.com/vm0-ai/vm0/issues/16100)) ([a5dcb25](https://github.com/vm0-ai/vm0/commit/a5dcb25c2ce73842e928c7b241d1e35798bb9caa))
+* tolerate invalid response content length ([#16088](https://github.com/vm0-ai/vm0/issues/16088)) ([6ab7225](https://github.com/vm0-ai/vm0/commit/6ab72256f2d2dee06d31423f0db2e81ab03377af))
+
+
+### Documentation
+
+* **mitm-addon:** document anthropic json usage extractor ([#16085](https://github.com/vm0-ai/vm0/issues/16085)) ([59cb7b4](https://github.com/vm0-ai/vm0/commit/59cb7b45f0a2ccf36b78a925e5df24de7fa39bc3))
+
 ## [0.108.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.10...runner-rs-v0.108.0) (2026-06-04)
 
 

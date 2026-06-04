@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.10](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.9...vsock-proto-v0.18.10) (2026-06-04)
+
+
+### Performance Improvements
+
+* avoid exec output payload copy ([#16081](https://github.com/vm0-ai/vm0/issues/16081)) ([3611818](https://github.com/vm0-ai/vm0/commit/3611818fcd7d15583dde5113ace28918395858cb))
+
 ## [0.18.9](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.8...vsock-proto-v0.18.9) (2026-05-28)
 
 

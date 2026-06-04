@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.408.0](https://github.com/vm0-ai/vm0/compare/app-v0.407.3...app-v0.408.0) (2026-06-04)
+
+
+### Features
+
+* route platform billing, onboarding and attribution to api backend ([#16106](https://github.com/vm0-ai/vm0/issues/16106)) ([3e48a9d](https://github.com/vm0-ai/vm0/commit/3e48a9d4dad33f5e7486a767ae616199841f31c2))
+
+
+### Bug Fixes
+
+* add side padding to Compare plans cards on wide screens ([#16099](https://github.com/vm0-ai/vm0/issues/16099)) ([ebe4930](https://github.com/vm0-ai/vm0/commit/ebe49302e4f06ce623f0711d34d3bac413bc8cc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.4
+    * @vm0/core bumped to 8.309.7
+
 ## [0.407.3](https://github.com/vm0-ai/vm0/compare/app-v0.407.2...app-v0.407.3) (2026-06-04)
 
 
