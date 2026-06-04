@@ -4,7 +4,13 @@ import type {
   ZeroAgentSkillDetailResponse,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { IconChevronRight, IconSearch, IconUsers } from "@tabler/icons-react";
+import {
+  IconChevronRight,
+  IconFile,
+  IconFolderOpen,
+  IconSearch,
+  IconUsers,
+} from "@tabler/icons-react";
 import {
   cn,
   Dialog,
@@ -44,6 +50,41 @@ const SKILL_LIST_GRID =
   "grid grid-cols-[minmax(10rem,1.1fr)_minmax(16rem,1.8fr)_8rem_2.5rem] gap-x-6 items-center";
 const LEADING_YAML_FRONTMATTER_PATTERN =
   /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
+const FILE_TREE_BASE_PADDING_PX = 8;
+const FILE_TREE_INDENT_PX = 16;
+
+type SkillFileMetadata = {
+  readonly path: string;
+  readonly size: number;
+};
+
+type SkillFileTreeNode = SkillFileTreeFolderNode | SkillFileTreeFileNode;
+
+type SkillFileTreeFolderNode = {
+  readonly kind: "folder";
+  readonly name: string;
+  readonly path: string;
+  readonly children: readonly SkillFileTreeNode[];
+};
+
+type SkillFileTreeFileNode = {
+  readonly kind: "file";
+  readonly name: string;
+  readonly path: string;
+  readonly size: number;
+};
+
+type MutableSkillFileTreeNode =
+  | MutableSkillFileTreeFolderNode
+  | SkillFileTreeFileNode;
+
+type MutableSkillFileTreeFolderNode = {
+  readonly kind: "folder";
+  readonly name: string;
+  readonly path: string;
+  readonly children: MutableSkillFileTreeNode[];
+  readonly folders: Map<string, MutableSkillFileTreeFolderNode>;
+};
 
 function skillTitle(skill: {
   readonly name: string;
@@ -62,6 +103,79 @@ function isMarkdownPath(path: string): boolean {
 
 function stripMarkdownFrontmatter(content: string): string {
   return content.replace(LEADING_YAML_FRONTMATTER_PATTERN, "");
+}
+
+function filePathSegments(path: string): readonly string[] {
+  return path.split("/").filter((segment) => {
+    return segment.length > 0;
+  });
+}
+
+function toSkillFileTreeNode(
+  node: MutableSkillFileTreeNode,
+): SkillFileTreeNode {
+  if (node.kind === "file") {
+    return node;
+  }
+
+  return {
+    kind: "folder",
+    name: node.name,
+    path: node.path,
+    children: node.children.map(toSkillFileTreeNode),
+  };
+}
+
+function buildSkillFileTree(
+  files: readonly SkillFileMetadata[],
+): readonly SkillFileTreeNode[] {
+  const root: MutableSkillFileTreeFolderNode = {
+    kind: "folder",
+    name: "",
+    path: "",
+    children: [],
+    folders: new Map(),
+  };
+
+  for (const file of files) {
+    const segments = filePathSegments(file.path);
+    const fileName = segments.at(-1);
+    if (!fileName) {
+      continue;
+    }
+
+    let currentFolder = root;
+    for (const folderName of segments.slice(0, -1)) {
+      const folderPath = currentFolder.path
+        ? `${currentFolder.path}/${folderName}`
+        : folderName;
+      const existingFolder = currentFolder.folders.get(folderName);
+      if (existingFolder) {
+        currentFolder = existingFolder;
+        continue;
+      }
+
+      const folder: MutableSkillFileTreeFolderNode = {
+        kind: "folder",
+        name: folderName,
+        path: folderPath,
+        children: [],
+        folders: new Map(),
+      };
+      currentFolder.folders.set(folderName, folder);
+      currentFolder.children.push(folder);
+      currentFolder = folder;
+    }
+
+    currentFolder.children.push({
+      kind: "file",
+      name: fileName,
+      path: file.path,
+      size: file.size,
+    });
+  }
+
+  return root.children.map(toSkillFileTreeNode);
 }
 
 export function SkillsPage() {
@@ -527,10 +641,12 @@ function SkillFiles({
   selectedPath,
   onSelectFile,
 }: {
-  readonly files: readonly { readonly path: string; readonly size: number }[];
+  readonly files: readonly SkillFileMetadata[];
   readonly selectedPath: string | null;
   readonly onSelectFile: (path: string) => void;
 }) {
+  const tree = buildSkillFileTree(files);
+
   return (
     <div className="min-h-0">
       <div className="flex h-9 items-center justify-between border-b border-border/70 px-3">
@@ -539,35 +655,98 @@ function SkillFiles({
       </div>
       <div className="max-h-[240px] overflow-auto p-2 lg:max-h-none">
         {files.length > 0 ? (
-          <div className="flex flex-col gap-1">
-            {files.map((file) => {
-              const selected = file.path === selectedPath;
-              return (
-                <button
-                  key={file.path}
-                  type="button"
-                  aria-pressed={selected}
-                  className={`flex min-w-0 items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left transition-colors ${
-                    selected
-                      ? "bg-accent text-accent-foreground"
-                      : "text-foreground hover:bg-accent/70"
-                  }`}
-                  onClick={() => {
-                    onSelectFile(file.path);
-                  }}
-                >
-                  <span className="min-w-0 truncate text-xs">{file.path}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {formatBytes(file.size)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <SkillFileTree
+            nodes={tree}
+            depth={0}
+            selectedPath={selectedPath}
+            onSelectFile={onSelectFile}
+          />
         ) : (
           <p className="px-2 pb-3 text-xs text-muted-foreground">No files.</p>
         )}
       </div>
+    </div>
+  );
+}
+
+function SkillFileTree({
+  nodes,
+  depth,
+  selectedPath,
+  onSelectFile,
+}: {
+  readonly nodes: readonly SkillFileTreeNode[];
+  readonly depth: number;
+  readonly selectedPath: string | null;
+  readonly onSelectFile: (path: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      {nodes.map((node) => {
+        if (node.kind === "folder") {
+          return (
+            <div key={node.path} className="min-w-0">
+              <div
+                className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-foreground"
+                style={{
+                  paddingLeft:
+                    FILE_TREE_BASE_PADDING_PX + depth * FILE_TREE_INDENT_PX,
+                }}
+              >
+                <IconFolderOpen
+                  size={14}
+                  stroke={1.5}
+                  className="shrink-0 text-muted-foreground"
+                />
+                <span className="min-w-0 truncate text-xs font-medium">
+                  {node.name}
+                </span>
+              </div>
+              <SkillFileTree
+                nodes={node.children}
+                depth={depth + 1}
+                selectedPath={selectedPath}
+                onSelectFile={onSelectFile}
+              />
+            </div>
+          );
+        }
+
+        const selected = node.path === selectedPath;
+        return (
+          <button
+            key={node.path}
+            type="button"
+            aria-label={`Open ${node.path}`}
+            aria-pressed={selected}
+            className={cn(
+              "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-md py-1.5 pr-2 text-left transition-colors",
+              selected
+                ? "bg-accent text-accent-foreground"
+                : "text-foreground hover:bg-accent/70",
+            )}
+            style={{
+              paddingLeft:
+                FILE_TREE_BASE_PADDING_PX + depth * FILE_TREE_INDENT_PX,
+            }}
+            onClick={() => {
+              onSelectFile(node.path);
+            }}
+          >
+            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+              <IconFile
+                size={14}
+                stroke={1.5}
+                className="shrink-0 text-muted-foreground"
+              />
+              <span className="min-w-0 truncate text-xs">{node.name}</span>
+            </span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {formatBytes(node.size)}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
