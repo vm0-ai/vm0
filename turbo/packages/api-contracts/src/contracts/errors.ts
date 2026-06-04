@@ -151,10 +151,12 @@ function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
   const normalized = errorMessage.toLowerCase();
   const hasOnlyCodexOAuthConnector =
     /"connectors"\s*:\s*\[\s*"codex-oauth-token"\s*\]/.test(normalized);
+  const hasReconnectRequiredFailureReason =
+    /"failurereason"\s*:\s*"reconnect_required"/.test(normalized);
   return (
     normalized.includes("token_refresh_failed") &&
     hasOnlyCodexOAuthConnector &&
-    normalized.includes("reconnect_required") &&
+    hasReconnectRequiredFailureReason &&
     !normalized.includes("upstream_provider")
   );
 }
