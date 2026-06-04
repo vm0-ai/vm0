@@ -77,7 +77,7 @@ describe("memory page", () => {
       expect(screen.getByText("No updates yet")).toBeInTheDocument();
     });
 
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     await waitFor(() => {
       expect(screen.getByText("No memory yet")).toBeInTheDocument();
@@ -213,7 +213,7 @@ describe("memory page", () => {
 
   it("lists memory files and shows selected file content read-only", async () => {
     setupMemoryPage();
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     // Defaults to MEMORY.md (rendered as markdown).
     await waitFor(() => {
@@ -247,7 +247,7 @@ describe("memory page", () => {
 
   it("pins MEMORY.md to the top of the file list", async () => {
     setupMemoryPage();
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     await waitFor(() => {
       expect(screen.getAllByText("MEMORY.md").length).toBeGreaterThan(0);
@@ -295,7 +295,7 @@ describe("memory page", () => {
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
 
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Memory content")).toHaveTextContent(
@@ -343,7 +343,7 @@ describe("memory page", () => {
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
 
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     // Defaults to MEMORY.md, which renders the relative link to other-note.md.
     await waitFor(() => {
@@ -406,7 +406,7 @@ describe("memory page", () => {
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
 
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Memory content")).toHaveTextContent(
@@ -458,7 +458,7 @@ describe("memory page", () => {
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
 
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     // Defaults to MEMORY.md, which renders an absolute external link.
     await waitFor(() => {

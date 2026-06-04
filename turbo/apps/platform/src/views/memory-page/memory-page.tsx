@@ -186,7 +186,7 @@ export function MemoryPage() {
               Memory
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              What Zero remembers across runs. Read-only.
+              What Zero remembers from previous work.
             </p>
           </div>
           <Tabs
@@ -209,7 +209,7 @@ export function MemoryPage() {
                 value="raw"
                 className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
               >
-                Raw files
+                Memory files
               </TabsTrigger>
             </TabsList>
           </Tabs>
