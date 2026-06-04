@@ -1255,7 +1255,7 @@ jobs:
     concurrency:
       group: cli-e2e-02-browser-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-web, deploy-app]
+    needs: [prepare, deploy-api, deploy-web, deploy-app]
     if: |
       always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1265,6 +1265,7 @@ jobs:
         needs.prepare.outputs.ci-changed == 'true' ||
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&
+      needs.deploy-api.result == 'success' &&
       needs.deploy-web.result == 'success' &&
       needs.deploy-app.result == 'success'
     steps:
@@ -1300,7 +1301,7 @@ jobs:
     concurrency:
       group: cli-e2e-02-playwright-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-web, deploy-app]
+    needs: [prepare, deploy-api, deploy-web, deploy-app]
     if: |
       always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1310,6 +1311,7 @@ jobs:
         needs.prepare.outputs.ci-changed == 'true' ||
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&
+      needs.deploy-api.result == 'success' &&
       needs.deploy-web.result == 'success' &&
       needs.deploy-app.result == 'success'
     steps:
@@ -2050,7 +2052,7 @@ jobs:
     concurrency:
       group: lighthouse-web-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-web]
+    needs: [prepare, deploy-api, deploy-web]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
@@ -2120,7 +2122,7 @@ jobs:
     concurrency:
       group: lighthouse-app-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-web, deploy-app]
+    needs: [prepare, deploy-api, deploy-web, deploy-app]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
