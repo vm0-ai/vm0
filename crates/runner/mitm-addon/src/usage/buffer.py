@@ -129,6 +129,7 @@ class UsageEventBuffer:
         timer_factory: _TimerFactory | None = None,
     ) -> None:
         self._lock = threading.Lock()
+        self._flush_owner_lock = threading.Lock()
         self._buffer_id = str(uuid.uuid4())
         self._flush_sequence = 0
         self._flush_interval_seconds = max(1.0, flush_interval_seconds)
@@ -209,9 +210,36 @@ class UsageEventBuffer:
             timer.cancel()
 
     def _flush_usage_events(self, *, trigger: UsageFlushTrigger) -> int:
+        if not self._acquire_flush_ownership(trigger):
+            self._defer_unowned_flush(trigger)
+            return 0
+
+        try:
+            return self._flush_usage_events_owned(trigger=trigger)
+        finally:
+            self._flush_owner_lock.release()
+
+    def _acquire_flush_ownership(self, trigger: UsageFlushTrigger) -> bool:
+        return self._flush_owner_lock.acquire(blocking=trigger == "shutdown")
+
+    def _defer_unowned_flush(self, trigger: UsageFlushTrigger) -> None:
+        timer_to_cancel: _TimerHandle | None = None
+        timer_to_start: _TimerHandle | None = None
+        with self._lock:
+            if trigger == "timer":
+                timer_to_cancel = self._pop_timer_locked()
+            if trigger != "shutdown":
+                timer_to_start = self._schedule_timer_if_buffered_locked()
+            self._sync_buffered_counter_locked()
+        if timer_to_cancel is not None:
+            timer_to_cancel.cancel()
+        if timer_to_start is not None:
+            timer_to_start.start()
+
+    def _flush_usage_events_owned(self, *, trigger: UsageFlushTrigger) -> int:
         flushed_batch_count = 0
         snapshot_live = True
-        if trigger == "timer":
+        if trigger in ("shutdown", "timer"):
             with self._lock:
                 timer = self._pop_timer_locked()
             if timer is not None:
@@ -223,9 +251,13 @@ class UsageEventBuffer:
                 pending_flush, live_snapshot_attempted = self._next_pending_flush_locked(
                     snapshot_live=snapshot_live
                 )
-                if live_snapshot_attempted:
+                if live_snapshot_attempted and trigger != "shutdown":
                     snapshot_live = False
-                if self._enqueuing_source_event_count and pending_flush is None:
+                if (
+                    trigger != "shutdown"
+                    and self._enqueuing_source_event_count
+                    and pending_flush is None
+                ):
                     timer_to_start = self._schedule_timer_if_buffered_locked()
                 if pending_flush is None:
                     self._sync_buffered_counter_locked()

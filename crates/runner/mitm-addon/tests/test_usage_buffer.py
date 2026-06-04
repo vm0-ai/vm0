@@ -1,6 +1,7 @@
 """Tests for buffered usage-event aggregation."""
 
 import json
+import threading
 import uuid
 from unittest.mock import patch
 
@@ -629,6 +630,82 @@ def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
 
     enqueue.assert_called_once()
     assert usage.counters._buffered_usage_events == 0
+
+
+def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_path):
+    timers = []
+
+    def timer_factory(delay: float, callback):
+        timer = _FakeTimer(delay, callback)
+        timers.append(timer)
+        return timer
+
+    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        proxy_log_path,
+    )
+    assert len(timers) == 1
+
+    timer_enqueue_started = threading.Event()
+    release_timer_enqueue = threading.Event()
+    shutdown_started = threading.Event()
+    shutdown_returned = threading.Event()
+    shutdown_results: list[int] = []
+    enqueued_runs: list[str] = []
+    enqueue_call_count = 0
+
+    def enqueue_webhook(url, sandbox_token, payload, path, log_type):
+        nonlocal enqueue_call_count
+        enqueue_call_count += 1
+        enqueued_runs.append(payload["runId"])
+        if payload["runId"] == "run-1":
+            timer_enqueue_started.set()
+            assert usage.flush_usage_events(trigger="runner") == 0
+            usage.buffer_usage_events(
+                url,
+                sandbox_token,
+                "run-2",
+                [_event(source_key="source-2")],
+                path,
+            )
+            assert len(timers) == 2
+            assert release_timer_enqueue.wait(timeout=1)
+        assert log_type == "usage_event"
+
+    def shutdown_flush():
+        shutdown_started.set()
+        shutdown_results.append(usage.flush_usage_events(trigger="shutdown"))
+        shutdown_returned.set()
+
+    with patch.object(usage_buffer, "_enqueue_webhook", side_effect=enqueue_webhook):
+        timer_thread = threading.Thread(target=timers[0].callback)
+        timer_thread.start()
+        assert timer_enqueue_started.wait(timeout=1)
+
+        shutdown_thread = threading.Thread(target=shutdown_flush)
+        shutdown_thread.start()
+        assert shutdown_started.wait(timeout=1)
+        assert not shutdown_returned.wait(timeout=0.05)
+        assert enqueue_call_count == 1
+
+        release_timer_enqueue.set()
+        timer_thread.join(timeout=1)
+        shutdown_thread.join(timeout=1)
+
+    assert not timer_thread.is_alive()
+    assert not shutdown_thread.is_alive()
+    assert shutdown_returned.is_set()
+    assert shutdown_results == [1]
+    assert enqueued_runs == ["run-1", "run-2"]
+    assert usage.counters._buffered_usage_events == 0
+    assert len(timers) == 2
+    assert timers[1].cancelled is True
 
 
 def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
