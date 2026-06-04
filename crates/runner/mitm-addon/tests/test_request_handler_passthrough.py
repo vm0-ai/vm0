@@ -130,6 +130,11 @@ async def test_registry_unavailable_blocks_before_auth_injection(tmp_path, real_
     [
         ("", "empty_run_id", "proxy registry VM entry runId must be non-empty"),
         ("  \t", "empty_run_id", "proxy registry VM entry runId must be non-empty"),
+        (
+            " run-abc ",
+            "invalid_run_id",
+            "proxy registry VM entry runId must not include leading or trailing whitespace",
+        ),
         (None, "missing_run_id", "proxy registry VM entry is missing runId"),
         (123, "invalid_run_id", "proxy registry VM entry runId must be a string"),
     ],
