@@ -1124,8 +1124,9 @@ function OnboardingIllustrationPanel() {
         )}
       </div>
 
-      {/* Account dropdown — bottom-left of left panel */}
-      <div className="absolute bottom-6 left-4 z-20">
+      {/* Org switcher + account dropdown — bottom-left of left panel */}
+      <div className="absolute bottom-6 left-4 z-20 flex w-[240px] flex-col gap-2">
+        <OnboardingOrgSwitcher />
         <OnboardingAccountDropdown />
       </div>
     </div>
@@ -1150,19 +1151,12 @@ function OnboardingOrgSwitcher() {
     return null;
   }
 
-  return (
-    <div className="absolute top-4 left-4 z-20 w-[240px]">
-      <ZeroOrgSwitcher />
-    </div>
-  );
+  return <ZeroOrgSwitcher />;
 }
 
 function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="zero-app flex h-dvh bg-muted/30 relative">
-      {/* Org switcher — top left (only when the user has multiple orgs) */}
-      <OnboardingOrgSwitcher />
-
       {/* Left panel — brand / illustration */}
       <OnboardingIllustrationPanel />
 
