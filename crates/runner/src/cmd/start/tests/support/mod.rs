@@ -25,5 +25,5 @@ pub(super) use self::wait::{
     wait_cancel_token_removed, wait_discover_entered,
     wait_idle_cleanup_processed_with_expired_entries, wait_idle_pool_len,
     wait_idle_pool_session_states, wait_idle_pool_sessions, wait_parking_state,
-    wait_sandbox_lifecycle_counts, wait_usage_flush_requested,
+    wait_sandbox_lifecycle_counts, wait_usage_flush_requested, wait_workspace_cache_sessions,
 };
