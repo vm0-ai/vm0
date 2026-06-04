@@ -152,7 +152,8 @@ function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
   return (
     normalized.includes("token_refresh_failed") &&
     normalized.includes("codex-oauth-token") &&
-    normalized.includes("reconnect_required")
+    normalized.includes("reconnect_required") &&
+    !normalized.includes("upstream_provider")
   );
 }
 
