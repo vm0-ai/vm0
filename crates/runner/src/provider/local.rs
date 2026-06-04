@@ -1023,6 +1023,38 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn complete_result_failure_keeps_state_when_job_scan_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
+
+        let run_id = RunId::new_v4();
+        let claim_path = local_queue::claim_path(dir.path(), run_id);
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        let result_dir = local_queue::results_dir(dir.path());
+        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+
+        std::fs::write(&claim_path, b"").unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&result_dir, b"not a directory").unwrap();
+        std::fs::write(local_queue::jobs_dir(dir.path()), b"not a directory").unwrap();
+
+        provider
+            .complete(run_id, 0, None, None, None, CompletionAuth::local())
+            .await;
+
+        assert!(
+            claim_path.exists(),
+            "claim should stay when job-file cleanup cannot verify retry state"
+        );
+        assert!(
+            cancel_path.exists(),
+            "cancel file should stay when job-file cleanup cannot verify retry state"
+        );
+    }
+
     /// Regression: if the job file is missing when claim() reads it, the
     /// .claim file must be removed so the job doesn't get stranded forever.
     #[tokio::test]
