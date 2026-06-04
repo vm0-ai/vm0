@@ -613,6 +613,44 @@ describe("apiBackend routing", () => {
     ]);
   });
 
+  it("routes connector/integration data to api but keeps connector oauth flows on www", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    function capture(method: "get" | "post" | "delete", pattern: string): void {
+      server.use(
+        http[method](pattern, ({ request }) => {
+          hosts.push(`${method.toUpperCase()} ${new URL(request.url).host}`);
+          return new Response(null, { status: 200 });
+        }),
+      );
+    }
+    capture("get", "*/api/zero/connectors");
+    capture("delete", "*/api/zero/connectors/:type");
+    capture("get", "*/api/zero/integrations/slack");
+    // OAuth flows under the connectors subtree must stay on www even though
+    // their /connectors/:type prefix is now migrated.
+    capture("post", "*/api/zero/connectors/:type/oauth/start");
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/connectors");
+    await fch("/api/zero/connectors/slack", { method: "DELETE" });
+    await fch("/api/zero/integrations/slack");
+    await fch("/api/zero/connectors/slack/oauth/start", { method: "POST" });
+
+    expect(hosts).toStrictEqual([
+      "GET api.vm0.ai",
+      "DELETE api.vm0.ai",
+      "GET api.vm0.ai",
+      "POST www.vm0.ai",
+    ]);
+  });
+
   it("does not let a :param template over-match a shorter parent path", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({

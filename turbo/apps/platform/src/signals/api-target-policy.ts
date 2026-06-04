@@ -17,16 +17,21 @@ interface ApiRouteAllowlistEntry {
 // First-party apps/platform routes that resolve to the dedicated `api` host
 // while the global `apiBackend` switch is off. Everything not listed here
 // defaults to `www`. Routes are method-aware: a path's mutations are migrated
-// only when their method is listed. OAuth, connector/integration, billing,
-// bootstrap feature-switches, and web-origin flows are intentionally absent
-// and stay on `www`.
+// only when their method is listed. OAuth start/callbacks and device-auth
+// flows, bootstrap feature-switches, and web-origin navigation flows are
+// intentionally absent and stay on `www`.
 const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
   { methods: ["GET", "POST"], pathname: "/api/zero/agents" },
   {
     methods: ["GET", "PUT", "PATCH", "DELETE"],
     pathname: "/api/zero/agents/:id",
   },
+  {
+    methods: ["GET", "PUT"],
+    pathname: "/api/zero/agents/:id/custom-connectors",
+  },
   { methods: ["GET", "PUT"], pathname: "/api/zero/agents/:id/instructions" },
+  { methods: ["GET", "PUT"], pathname: "/api/zero/agents/:id/user-connectors" },
   { methods: ["GET", "POST"], pathname: "/api/zero/api-keys" },
   { methods: ["DELETE"], pathname: "/api/zero/api-keys/:id" },
   { methods: ["POST"], pathname: "/api/zero/attribution/signup" },
@@ -52,6 +57,7 @@ const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
     methods: ["GET", "POST"],
     pathname: "/api/zero/chat-threads/:threadId/artifacts",
   },
+  { methods: ["GET"], pathname: "/api/zero/chat-threads/:threadId/github-prs" },
   { methods: ["GET"], pathname: "/api/zero/chat-threads/:threadId/messages" },
   { methods: ["POST"], pathname: "/api/zero/chat/messages" },
   { methods: ["GET"], pathname: "/api/zero/chat/search" },
@@ -59,9 +65,34 @@ const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
   { methods: ["GET", "DELETE"], pathname: "/api/zero/composes/:id" },
   { methods: ["PATCH"], pathname: "/api/zero/composes/:id/metadata" },
   { methods: ["GET"], pathname: "/api/zero/composes/list" },
+  { methods: ["GET"], pathname: "/api/zero/connectors" },
+  { methods: ["GET", "DELETE"], pathname: "/api/zero/connectors/:type" },
+  { methods: ["POST"], pathname: "/api/zero/connectors/:type/manual-grant" },
+  { methods: ["GET"], pathname: "/api/zero/connectors/:type/scope-diff" },
+  { methods: ["GET"], pathname: "/api/zero/connectors/search" },
+  { methods: ["GET", "POST"], pathname: "/api/zero/custom-connectors" },
+  { methods: ["PATCH", "DELETE"], pathname: "/api/zero/custom-connectors/:id" },
+  {
+    methods: ["PUT", "DELETE"],
+    pathname: "/api/zero/custom-connectors/:id/secret",
+  },
   { methods: ["PUT"], pathname: "/api/zero/default-agent" },
   { methods: ["GET"], pathname: "/api/zero/insights" },
   { methods: ["GET"], pathname: "/api/zero/insights/range" },
+  { methods: ["GET", "DELETE"], pathname: "/api/zero/integrations/slack" },
+  {
+    methods: ["GET", "POST"],
+    pathname: "/api/zero/integrations/slack/connect",
+  },
+  { methods: ["POST"], pathname: "/api/zero/integrations/slack/message" },
+  {
+    methods: ["POST"],
+    pathname: "/api/zero/integrations/slack/upload-file/complete",
+  },
+  {
+    methods: ["POST"],
+    pathname: "/api/zero/integrations/slack/upload-file/init",
+  },
   { methods: ["GET"], pathname: "/api/zero/logs" },
   { methods: ["GET"], pathname: "/api/zero/logs/:id" },
   { methods: ["GET"], pathname: "/api/zero/logs/search" },
@@ -101,6 +132,7 @@ const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
   { methods: ["DELETE"], pathname: "/api/zero/secrets/:name" },
   { methods: ["GET", "POST"], pathname: "/api/zero/skills" },
   { methods: ["GET", "PUT", "DELETE"], pathname: "/api/zero/skills/:name" },
+  { methods: ["GET"], pathname: "/api/zero/slack/channels" },
   { methods: ["GET"], pathname: "/api/zero/team" },
   { methods: ["POST"], pathname: "/api/zero/uploads/complete" },
   { methods: ["POST"], pathname: "/api/zero/uploads/prepare" },
