@@ -22,11 +22,15 @@ pub(crate) fn make_pair() -> (UnixStream, UnixStream) {
     UnixStream::pair().unwrap()
 }
 
-pub(crate) async fn await_mock_guest(task: JoinHandle<()>) {
-    tokio::time::timeout(Duration::from_secs(5), task)
-        .await
-        .expect("mock guest task did not finish")
-        .expect("mock guest task panicked");
+pub(crate) async fn await_mock_guest(mut task: JoinHandle<()>) {
+    match tokio::time::timeout(Duration::from_secs(5), &mut task).await {
+        Ok(result) => result.expect("mock guest task panicked"),
+        Err(_) => {
+            task.abort();
+            let _ = task.await;
+            panic!("mock guest task did not finish");
+        }
+    }
 }
 
 pub(crate) struct MockGuest {
