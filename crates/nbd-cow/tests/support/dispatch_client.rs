@@ -77,6 +77,14 @@ impl DispatchClient {
         total: usize,
         chunk_size: usize,
     ) -> TestResult<()> {
+        if total > 0 && chunk_size == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "payload chunk size must be non-zero",
+            )
+            .into());
+        }
+
         let chunk = vec![byte; chunk_size];
         let mut sent = 0usize;
         while sent < total {
