@@ -11,7 +11,7 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { settle } from "../utils.ts";
+import { settle, withCleanup } from "../utils.ts";
 
 export type MemoryTab = "updates" | "raw";
 
@@ -168,24 +168,28 @@ export const loadMoreMemoryActivity$ = command(
     set(loadMoreMemoryActivityError$, null);
 
     const client = get(zeroClient$)(zeroMemoryActivityContract);
-    const settled = await settle(
-      accept(
-        client.get({
-          query: {
-            cursor,
-            limit: MEMORY_ACTIVITY_DEFAULT_LIMIT,
-          },
-          fetchOptions: { signal },
-        }),
-        [200],
-        { toast: false },
+    const settled = await withCleanup(
+      settle(
+        accept(
+          client.get({
+            query: {
+              cursor,
+              limit: MEMORY_ACTIVITY_DEFAULT_LIMIT,
+            },
+            fetchOptions: { signal },
+          }),
+          [200],
+          { toast: false },
+        ),
+        signal,
       ),
-      signal,
+      () => {
+        set(loadingMoreMemoryActivity$, (current) => {
+          return current === key ? null : current;
+        });
+      },
     );
-
-    set(loadingMoreMemoryActivity$, (current) => {
-      return current === key ? null : current;
-    });
+    signal.throwIfAborted();
 
     if (!settled.ok) {
       set(loadMoreMemoryActivityError$, {
