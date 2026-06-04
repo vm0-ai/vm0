@@ -917,7 +917,10 @@ class TestGetVmContext:
         assert isinstance(result, matching.FirewallBlock)
         assert result.reason == "malformed_firewall_config"
 
-    @pytest.mark.parametrize("firewalls", [1, True, {"name": "example"}, "broken"])
+    @pytest.mark.parametrize(
+        "firewalls",
+        [0, 1, False, True, "", {}, {"name": "example"}, "broken"],
+    )
     def test_malformed_top_level_firewalls_shape_rejects_vm(self, tmp_path, firewalls):
         path = tmp_path / "registry.json"
         _write_firewall_registry(path)

@@ -220,7 +220,10 @@ async def test_invalid_registered_vm_non_object_blocks_before_auth_injection(
     assert flow.metadata["firewall_error"] == "invalid_registry_vm"
 
 
-@pytest.mark.parametrize("firewalls", [1, True, {"name": "github"}, "broken"])
+@pytest.mark.parametrize(
+    "firewalls",
+    [0, 1, False, True, "", {}, {"name": "github"}, "broken"],
+)
 async def test_invalid_registered_vm_firewalls_shape_blocks_before_auth_injection(
     tmp_path,
     real_flow,
