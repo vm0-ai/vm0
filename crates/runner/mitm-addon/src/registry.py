@@ -108,11 +108,11 @@ def _compile_registry(
     compiled_firewall_registry: dict[str, matching.CompiledFirewallSet] = {}
     compiled_policy_registry: dict[str, matching.CompiledNetworkPolicies] = {}
     for client_ip, vm in new_registry.items():
-        firewalls = vm.get("firewalls") if isinstance(vm, dict) else None
+        firewalls = vm.get("firewalls")
         compiled_firewalls = matching.compile_firewalls(firewalls)
         if compiled_firewalls is not None:
             compiled_firewall_registry[client_ip] = compiled_firewalls
-        network_policies = vm.get("networkPolicies") if isinstance(vm, dict) else None
+        network_policies = vm.get("networkPolicies")
         compiled_policy_registry[client_ip] = matching.compile_network_policies(network_policies)
     return compiled_firewall_registry, compiled_policy_registry
 
@@ -237,11 +237,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
     new_compiled_registry, new_compiled_policy_registry = _compile_registry(new_registry)
 
     # Evict cache entries for runs no longer in the registry.
-    active_run_ids = {
-        run_id
-        for vm in new_registry.values()
-        if isinstance(run_id := vm.get("runId"), str) and run_id
-    }
+    active_run_ids = {vm["runId"] for vm in new_registry.values()}
     evict_stale_cache_keys(active_run_ids)
 
     state.snapshot = _RegistrySnapshot(
