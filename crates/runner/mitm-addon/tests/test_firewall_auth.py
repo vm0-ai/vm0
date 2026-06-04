@@ -83,7 +83,7 @@ def _allow(
     rule: str | None = "GET /repos/{owner}/{repo}",
     rel_path: str = "/",
 ) -> matching.FirewallAllow:
-    return matching.FirewallAllow(api_entry, name, permission, params or {}, rule, rel_path)
+    return matching.FirewallAllow(api_entry, name, permission, dict(params or {}), rule, rel_path)
 
 
 def _firewall_flow(
@@ -104,13 +104,26 @@ def _api_entry(
     auth_config: dict | None = None,
     api_id: str | None = None,
 ) -> dict:
+    auth = _copy_auth_config(auth_config)
     entry = {
         "base": base,
-        "auth": auth_config if auth_config is not None else {"headers": {}},
+        "auth": auth,
     }
     if api_id is not None:
         entry["id"] = api_id
     return entry
+
+
+def _copy_auth_config(auth_config: dict | None) -> dict:
+    if auth_config is None:
+        return {"headers": {}}
+
+    copied = dict(auth_config)
+    for key in ("headers", "query"):
+        value = copied.get(key)
+        if isinstance(value, dict):
+            copied[key] = dict(value)
+    return copied
 
 
 def _vm_info(
@@ -125,7 +138,9 @@ def _vm_info(
     network_log_path: str | None = None,
 ) -> dict:
     if network_log_path is None:
-        network_log_path = str(tmp_path / "net.jsonl") if tmp_path is not None else ""
+        if tmp_path is None:
+            raise ValueError("tmp_path or network_log_path is required")
+        network_log_path = str(tmp_path / "net.jsonl")
 
     vm_info: dict[str, object] = {
         "runId": run_id,
