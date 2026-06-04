@@ -234,7 +234,7 @@ function MemoryRawFiles() {
   const hasFiles = detail !== null && detail.exists && detail.files.length > 0;
 
   if (loading) {
-    return <MemorySkeleton />;
+    return <MemoryRawFilesSkeleton />;
   }
   if (hasFiles && detail) {
     return <MemoryViewer detail={detail} />;
@@ -498,7 +498,7 @@ function MemoryUpdates() {
   const activityLoadable = useLoadable(memoryActivity$);
 
   if (activityLoadable.state === "loading") {
-    return <MemorySkeleton />;
+    return <MemoryUpdatesSkeleton />;
   }
   if (activityLoadable.state === "hasError") {
     return <MemoryEmptyState errored />;
@@ -693,7 +693,56 @@ function MemoryEmptyState({ errored }: { readonly errored: boolean }) {
   );
 }
 
-function MemorySkeleton() {
+function MemoryUpdatesSkeleton() {
+  return (
+    <div
+      className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-2"
+      data-testid="memory-updates-loading"
+    >
+      {[0, 1].map((cardIndex) => {
+        return (
+          <section
+            key={cardIndex}
+            className="zero-card flex flex-col overflow-hidden"
+          >
+            <header className="border-b border-border/70 px-4 py-3">
+              <div className="h-4 w-40 rounded bg-muted/50" />
+              <div className="mt-2 h-3 w-full max-w-[560px] rounded bg-muted/50" />
+            </header>
+            <div className="flex flex-col gap-4 px-4 py-3">
+              {[0, 1].map((groupIndex) => {
+                return (
+                  <div key={groupIndex} className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-5 w-20 rounded-full bg-muted/50" />
+                      <div className="h-3 w-4 rounded bg-muted/50" />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {[0, 1].map((itemIndex) => {
+                        return (
+                          <div
+                            key={itemIndex}
+                            className="rounded-md border border-border/70 bg-background px-3 py-2"
+                          >
+                            <div className="h-4 w-52 max-w-full rounded bg-muted/50" />
+                            <div className="mt-1.5 h-3 w-72 max-w-full rounded bg-muted/50" />
+                            <div className="mt-1.5 h-3 w-36 max-w-full rounded bg-muted/50" />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function MemoryRawFilesSkeleton() {
   return (
     <section className="zero-card flex min-h-[420px] flex-1 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">

@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import { zeroMemoryActivityContract } from "@vm0/api-contracts/contracts/zero-memory-activity";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -7,12 +8,15 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockMemory } from "../../../mocks/handlers/api-memory.ts";
 import { setMockMemoryActivity } from "../../../mocks/handlers/api-memory-activity.ts";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname$ } from "../../../signals/route.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 async function clickTab(name: string): Promise<void> {
   const tab = await waitFor(() => {
@@ -143,6 +147,25 @@ describe("memory page", () => {
       expect(screen.getByText("new setup")).toBeInTheDocument();
     });
     expect(screen.getByText("old setup")).toBeInTheDocument();
+  });
+
+  it("shows an Updates-shaped skeleton while the default tab is loading", async () => {
+    server.use(
+      mockApi(zeroMemoryActivityContract.get, ({ never }) => {
+        return never();
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("memory-updates-loading")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("memory-loading")).not.toBeInTheDocument();
   });
 
   it("falls back to a deterministic summary line when the LLM summary is null", async () => {
