@@ -7,7 +7,7 @@ from pathlib import Path
 from mitmproxy import ctx
 
 import matching
-from auth import evict_stale_cache_keys
+from auth import evict_all_cache_keys, evict_stale_cache_keys
 
 VmContext = tuple[
     dict,
@@ -29,6 +29,17 @@ class _RegistrySnapshot:
     loaded_key: _RegistryCacheKey | None
 
 
+@dataclass(frozen=True)
+class RegistryUnavailable:
+    """Current registry file cannot be trusted as an enforcement source."""
+
+    reason: str
+    message: str
+
+
+RegistryState = _RegistrySnapshot | RegistryUnavailable
+
+
 def _empty_snapshot() -> _RegistrySnapshot:
     return _RegistrySnapshot({}, {}, {}, None)
 
@@ -39,6 +50,7 @@ class _RegistryCacheState:
     # Successful registry state is stored in one snapshot so raw VM entries and
     # compiled matcher sidecars are published together.
     snapshot: _RegistrySnapshot = field(default_factory=_empty_snapshot)
+    unavailable: RegistryUnavailable | None = None
     # Known-bad decoded registry input. Unlike the snapshot loaded key, this
     # means the current snapshot belongs to an older file state and this key
     # should short-circuit until the file changes again.
@@ -52,6 +64,7 @@ class _RegistryCacheState:
     def reset(self, registry_path: str | None = None) -> None:
         self.registry_path = registry_path
         self.snapshot = _empty_snapshot()
+        self.unavailable = None
         self.failed_key = None
         self.stat_error_logged = False
         self.read_error_key = None
@@ -71,6 +84,8 @@ def _path_key(path: Path) -> str:
 
 def _state_for_path(path_key: str) -> _RegistryCacheState:
     if _registry_state.registry_path != path_key:
+        if _registry_state.snapshot.loaded_key is not None:
+            evict_all_cache_keys()
         _registry_state.reset(path_key)
     return _registry_state
 
@@ -109,16 +124,29 @@ def _read_registry_vms(path: Path) -> dict:
     return raw_vms
 
 
-def _load_registry_snapshot(registry_path: str) -> _RegistrySnapshot:
-    """Load the proxy registry snapshot, reusing cached data when possible.
+def _mark_unavailable(
+    state: _RegistryCacheState,
+    *,
+    reason: str,
+    message: str,
+) -> RegistryUnavailable:
+    if state.unavailable is None and state.snapshot.loaded_key is not None:
+        evict_all_cache_keys()
+    state.unavailable = RegistryUnavailable(reason, message)
+    return state.unavailable
+
+
+def load_registry_state(registry_path: str) -> RegistryState:
+    """Load the proxy registry state, reusing cached data when possible.
 
     Cache state is scoped to one active registry path. A successful load
     publishes raw and compiled registry state together in a snapshot keyed by
-    file identity metadata. Malformed registry input is recorded separately as
-    a failed key so repeated reads of the same bad bytes do not reparse or
-    re-warn. File read errors preserve the last snapshot but keep retrying that
-    key, and internal compile/eviction errors are allowed to propagate instead
-    of being treated as stale-cache parse failures.
+    file identity metadata. Registry file stat/read/parse failures publish a
+    separate unavailable state instead of returning a stale snapshot for
+    enforcement. Malformed registry input is recorded separately as a failed key
+    so repeated reads of the same bad bytes do not reparse or re-warn. File read
+    errors keep retrying that key, and internal compile/eviction errors are
+    allowed to propagate.
     """
     path = Path(registry_path)
     path_key = _path_key(path)
@@ -127,28 +155,40 @@ def _load_registry_snapshot(registry_path: str) -> _RegistrySnapshot:
     try:
         st = path.stat()
     except OSError as e:
+        message = str(e)
         if not state.stat_error_logged:
             state.stat_error_logged = True
-            ctx.log.warn(f"Failed to stat proxy registry: {e}")
-        return state.snapshot
+            ctx.log.warn(f"Failed to stat proxy registry: {message}")
+        return _mark_unavailable(state, reason="stat_failed", message=message)
 
     key = (path_key, st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
-    if key in (state.snapshot.loaded_key, state.failed_key):
+    if key == state.snapshot.loaded_key:
+        state.unavailable = None
+        state.stat_error_logged = False
+        state.read_error_key = None
         return state.snapshot
+    if key == state.failed_key:
+        return state.unavailable or _mark_unavailable(
+            state,
+            reason="parse_failed",
+            message="proxy registry is unavailable",
+        )
 
     try:
         raw_registry = _read_registry_vms(path)
     except OSError as e:
+        message = str(e)
         state.failed_key = None
         if key != state.read_error_key:
             state.read_error_key = key
-            ctx.log.warn(f"Failed to read proxy registry: {e}")
-        return state.snapshot
+            ctx.log.warn(f"Failed to read proxy registry: {message}")
+        return _mark_unavailable(state, reason="read_failed", message=message)
     except (json.JSONDecodeError, UnicodeDecodeError, _RegistryFormatError) as e:
+        message = str(e)
         state.failed_key = key
         state.read_error_key = None
-        ctx.log.warn(f"Failed to parse proxy registry: {e}")
-        return state.snapshot
+        ctx.log.warn(f"Failed to parse proxy registry: {message}")
+        return _mark_unavailable(state, reason="parse_failed", message=message)
 
     new_registry, malformed_vm_count = _normalize_registry_vms(raw_registry)
     if malformed_vm_count:
@@ -169,6 +209,7 @@ def _load_registry_snapshot(registry_path: str) -> _RegistrySnapshot:
         new_compiled_policy_registry,
         key,
     )
+    state.unavailable = None
     state.failed_key = None
     state.stat_error_logged = False
     state.read_error_key = None
@@ -177,7 +218,10 @@ def _load_registry_snapshot(registry_path: str) -> _RegistrySnapshot:
 
 def load_registry(registry_path: str) -> dict:
     """Load the proxy registry, reusing cached data when possible."""
-    return _load_registry_snapshot(registry_path).vms
+    state = load_registry_state(registry_path)
+    if isinstance(state, RegistryUnavailable):
+        return {}
+    return state.vms
 
 
 def get_vm_info(client_ip: str, registry_path: str) -> dict | None:
@@ -190,7 +234,9 @@ def get_vm_context(
     registry_path: str,
 ) -> VmContext | None:
     """Look up raw VM info with compiled firewall and policy matcher sidecars."""
-    snapshot = _load_registry_snapshot(registry_path)
+    snapshot = load_registry_state(registry_path)
+    if isinstance(snapshot, RegistryUnavailable):
+        return None
     vm_info = snapshot.vms.get(client_ip)
     if vm_info is None:
         return None

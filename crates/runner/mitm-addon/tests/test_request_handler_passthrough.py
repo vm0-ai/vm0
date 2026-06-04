@@ -1,7 +1,10 @@
 """Pass-through and auto-allow tests for the request hook."""
 
+import json
+
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import registry
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
 
@@ -25,6 +28,26 @@ async def test_vm0_api_auto_allowed(registry_file, real_flow, mitm_ctx):
         await mitm_addon.request(flow)
 
     assert flow.metadata["firewall_action"] == "ALLOW"
+
+
+async def test_registry_unavailable_blocks_vm0_api_auto_allow(registry_file, real_flow, mitm_ctx):
+    registry.load_registry(str(registry_file))
+    registry_file.write_text("{ broken registry")
+    flow = real_flow(with_response=False, host="api.vm0.ai")
+
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 503
+    assert json.loads(flow.response.content) == {
+        "error": "registry_unavailable",
+        "message": "Proxy registry is unavailable",
+        "reason": "parse_failed",
+    }
+    assert flow.metadata["firewall_action"] == "BLOCK"
+    assert flow.metadata["firewall_error"] == "registry_unavailable"
+    assert "vm_run_id" not in flow.metadata
 
 
 async def test_vm0_api_test_paths_skip_auto_allow(tmp_path, real_flow, mitm_ctx, headers):
@@ -63,6 +86,40 @@ async def test_vm0_api_test_paths_skip_auto_allow(tmp_path, real_flow, mitm_ctx,
     # entered (firewall_base is written at auth.py:327 up-front).  Step 1's
     # auto-allow would have returned without writing firewall_base.
     assert flow.metadata["firewall_base"] == "https://api.vm0.ai/api/test/oauth-provider"
+
+
+async def test_registry_unavailable_blocks_before_auth_injection(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip="10.200.0.5",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer secret"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+    registry.load_registry(str(reg_path))
+    reg_path.unlink()
+    flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 503
+    assert flow.request.headers.get("Authorization") is None
+    assert flow.metadata["firewall_action"] == "BLOCK"
+    assert flow.metadata["firewall_error"] == "registry_unavailable"
+    assert "firewall_base" not in flow.metadata
 
 
 async def test_tracks_start_time(registry_file, real_flow, mitm_ctx):

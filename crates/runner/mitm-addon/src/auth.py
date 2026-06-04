@@ -251,6 +251,11 @@ def evict_stale_cache_keys(active_run_ids: set[str]) -> None:
         _auth_state.pop(k, None)
 
 
+def evict_all_cache_keys() -> None:
+    """Remove all auth cache entries when active registry ownership is unknown."""
+    _auth_state.clear()
+
+
 def get_api_url() -> str:
     """Get API URL from mitmproxy options."""
     return ctx.options.vm0_api_url

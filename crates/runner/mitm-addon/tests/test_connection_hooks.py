@@ -11,6 +11,7 @@ from mitmproxy.flow import Error
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import registry
 import usage
 import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
@@ -391,6 +392,18 @@ class TestTlsClienthello:
         # All registered VMs use MITM — should NOT set ignore_connection
         assert data.ignore_connection is False
 
+    def test_registry_unavailable_does_not_ignore_connection(
+        self, registry_file, make_tls_data, mitm_ctx
+    ):
+        registry.load_registry(str(registry_file))
+        registry_file.unlink()
+        data = make_tls_data(client_ip="10.200.0.1", sni="anything.com")
+
+        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+            mitm_addon.tls_clienthello(data)
+
+        assert data.ignore_connection is False
+
 
 class TestTcpStart:
     def test_sets_metadata_for_registered_vm(self, registry_file, mitm_ctx, real_tcp_flow):
@@ -424,6 +437,19 @@ class TestTcpStart:
         ):
             mitm_addon.tcp_start(flow)
 
+        assert "vm_run_id" not in flow.metadata
+
+    def test_registry_unavailable_kills_flow(self, registry_file, mitm_ctx, real_tcp_flow):
+        registry.load_registry(str(registry_file))
+        registry_file.unlink()
+        flow = real_tcp_flow(client_ip="10.200.0.1")
+
+        with mitm_ctx(registry_path=str(registry_file)):
+            mitm_addon.tcp_start(flow)
+
+        assert flow.error is not None
+        assert flow.error.msg == Error.KILLED_MESSAGE
+        assert not flow.live
         assert "vm_run_id" not in flow.metadata
 
 

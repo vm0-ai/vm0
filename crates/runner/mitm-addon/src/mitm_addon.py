@@ -351,6 +351,25 @@ def _block_authority_validation_error(flow: http.HTTPFlow, error: AuthorityValid
     )
 
 
+def _block_registry_unavailable(
+    flow: http.HTTPFlow,
+    unavailable: registry.RegistryUnavailable,
+) -> None:
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = "registry_unavailable"
+    flow.response = http.Response.make(
+        503,
+        json.dumps(
+            {
+                "error": "registry_unavailable",
+                "message": "Proxy registry is unavailable",
+                "reason": unavailable.reason,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
 # ============================================================================
 # TLS ClientHello Handler
 # ============================================================================
@@ -366,8 +385,11 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
     if not client_ip:
         return
 
-    vm_info = registry.get_vm_info(client_ip, get_registry_path())
-    if not vm_info:
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        return
+
+    if client_ip not in registry_state.vms:
         # Not a registered VM - pass through without MITM interception
         # This is critical for CIDR-based rules where all VM traffic is redirected
         data.ignore_connection = True
@@ -396,13 +418,19 @@ async def request(flow: http.HTTPFlow) -> None:
         ctx.log.warn("No client IP available, passing through")
         return
 
-    # Look up VM info from registry
-    vm_context = registry.get_vm_context(client_ip, get_registry_path())
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        _block_registry_unavailable(flow, registry_state)
+        return
 
-    if not vm_context:
+    # Look up VM info from registry. This pass-through path is valid only after
+    # the registry file loaded successfully; unavailable registry is blocked above.
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is None:
         # Not a registered VM, pass through without proxying
         return
-    vm_info, compiled_firewalls, compiled_network_policies = vm_context
+    compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
+    compiled_network_policies = registry_state.compiled_network_policies[client_ip]
 
     run_id = vm_info.get("runId", "")
 
@@ -876,7 +904,12 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
     if not client_ip:
         return
 
-    vm_info = registry.get_vm_info(client_ip, get_registry_path())
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        flow.kill()
+        return
+
+    vm_info = registry_state.vms.get(client_ip)
     if not vm_info:
         return
 

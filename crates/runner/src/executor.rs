@@ -862,10 +862,12 @@ async fn execute_new_sandbox(
     {
         Ok(prepared) => prepared,
         Err(e)
-            if workspace_image
-                .as_ref()
-                .is_some_and(WorkspaceImageLease::is_cache_hit) =>
+            if e.retry_without_workspace_image
+                && workspace_image
+                    .as_ref()
+                    .is_some_and(WorkspaceImageLease::is_cache_hit) =>
         {
+            let error = e.error;
             invalidate_workspace_cache_hit(
                 workspace_image.as_ref(),
                 context.run_id,
@@ -875,16 +877,17 @@ async fn execute_new_sandbox(
             warn!(
                 run_id = %context.run_id,
                 sandbox_id = %sandbox_id,
-                error = %e,
+                error = %error,
                 "workspace image cache hit failed during sandbox preparation; retrying with fresh workspace image"
             );
             workspace_image = None;
             create_started_sandbox(
                 factory, context, sandbox_id, config, params, telemetry, None,
             )
-            .await?
+            .await
+            .map_err(|e| e.error)?
         }
-        Err(e) => return Err(e),
+        Err(e) => return Err(e.error),
     };
 
     let mut outcome = execute_prepared_sandbox_run(
@@ -915,6 +918,27 @@ struct PreparedSandboxRun {
     sandbox: Box<dyn Sandbox>,
     source_ip: String,
     network_log_session: NetworkLogSession,
+}
+
+struct SandboxPrepareError {
+    error: RunnerError,
+    retry_without_workspace_image: bool,
+}
+
+impl SandboxPrepareError {
+    fn retry(error: RunnerError) -> Self {
+        Self {
+            error,
+            retry_without_workspace_image: true,
+        }
+    }
+
+    fn fatal(error: RunnerError) -> Self {
+        Self {
+            error,
+            retry_without_workspace_image: false,
+        }
+    }
 }
 
 async fn prepare_workspace_image(
@@ -964,7 +988,7 @@ async fn create_started_sandbox(
     params: &JobParams,
     telemetry: &mut JobTelemetry,
     workspace_image: Option<&WorkspaceImageLease>,
-) -> RunnerResult<PreparedSandboxRun> {
+) -> Result<PreparedSandboxRun, SandboxPrepareError> {
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
         resources: sandbox::ResourceLimits {
@@ -989,21 +1013,34 @@ async fn create_started_sandbox(
         Ok(s) => s,
         Err(e) => {
             telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-            return Err(e.into());
+            return Err(SandboxPrepareError::retry(e.into()));
         }
     };
 
     let source_ip = sandbox.source_ip().to_string();
-    let network_log_session = register_proxy(config, context, &source_ip).await;
+    let network_log_session = match register_proxy(config, context, &source_ip).await {
+        Ok(session) => session,
+        Err(e) => {
+            telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+            destroy_sandbox_panic_safe(factory, sandbox).await;
+            return Err(SandboxPrepareError::fatal(e));
+        }
+    };
 
     if let Err(e) = sandbox.start().await {
         telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-        unregister_proxy_registry(config, context, &source_ip).await;
+        if let Err(unregister_error) = unregister_proxy_registry(config, &source_ip).await {
+            warn!(
+                run_id = %context.run_id,
+                error = %unregister_error,
+                "failed to unregister VM from proxy after sandbox start failure"
+            );
+        }
         network_log_session
             .close_for_upload(context.run_id, &config.network_log_drain)
             .await;
         destroy_sandbox_panic_safe(factory, sandbox).await;
-        return Err(e.into());
+        return Err(SandboxPrepareError::retry(e.into()));
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
 
@@ -1015,12 +1052,18 @@ async fn create_started_sandbox(
             false,
             Some(&e.to_string()),
         );
-        unregister_proxy_registry(config, context, &source_ip).await;
+        if let Err(unregister_error) = unregister_proxy_registry(config, &source_ip).await {
+            warn!(
+                run_id = %context.run_id,
+                error = %unregister_error,
+                "failed to unregister VM from proxy after workspace mount failure"
+            );
+        }
         network_log_session
             .close_for_upload(context.run_id, &config.network_log_drain)
             .await;
         destroy_sandbox_panic_safe(factory, sandbox).await;
-        return Err(e);
+        return Err(SandboxPrepareError::retry(e));
     }
     telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
 
@@ -1081,7 +1124,20 @@ async fn execute_reused_sandbox(
     );
 
     let source_ip = source_ip.to_string();
-    let network_log_session = register_proxy(config, context, &source_ip).await;
+    let network_log_session = match register_proxy(config, context, &source_ip).await {
+        Ok(session) => session,
+        Err(e) => {
+            return ExecuteOutcome {
+                failure: Some(ExecutionFailure::from_error(e.to_string())),
+                sandbox: Some(sandbox),
+                source_ip,
+                network_log_session: None,
+                workspace_image: None,
+                workspace_promotable: false,
+                guest_session_id: None,
+            };
+        }
+    };
 
     let mount_started = Instant::now();
     if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
@@ -1091,7 +1147,13 @@ async fn execute_reused_sandbox(
             false,
             Some(&e.to_string()),
         );
-        unregister_proxy_registry(config, context, &source_ip).await;
+        if let Err(unregister_error) = unregister_proxy_registry(config, &source_ip).await {
+            warn!(
+                run_id = %context.run_id,
+                error = %unregister_error,
+                "failed to unregister VM from proxy after reused sandbox mount failure"
+            );
+        }
         return ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(e.to_string())),
             sandbox: Some(sandbox),
@@ -1152,7 +1214,7 @@ async fn execute_prepared_sandbox_run(
         |result| result.stdout_stream_diagnostics,
     );
 
-    post_job_cleanup(
+    let cleanup_result = post_job_cleanup(
         sandbox.as_ref(),
         config,
         context,
@@ -1162,10 +1224,22 @@ async fn execute_prepared_sandbox_run(
     )
     .await;
 
-    let agent_result = match result {
+    let mut agent_result = match result {
         Ok(result) => result,
         Err(e) => AgentExecutionResult::failure_from_error(e.to_string()),
     };
+    if let Err(e) = cleanup_result {
+        warn!(
+            run_id = %context.run_id,
+            error = %e,
+            "post-job proxy cleanup failed"
+        );
+        if agent_result.failure.is_none() {
+            agent_result.failure = Some(ExecutionFailure::from_error(format!(
+                "post-job proxy cleanup failed: {e}"
+            )));
+        }
+    }
 
     // Read CLI-generated session ID for first-run parking.
     let guest_session_id = if agent_result.exit_code() == 0 && context.session_id().is_none() {
@@ -1194,7 +1268,7 @@ async fn register_proxy(
     config: &ExecutorConfig,
     context: &ExecutionContext,
     source_ip: &str,
-) -> NetworkLogSession {
+) -> RunnerResult<NetworkLogSession> {
     let network_log_path = config.log_paths.network_log(context.run_id);
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
     let run_id_str = context.run_id.to_string();
@@ -1215,24 +1289,24 @@ async fn register_proxy(
         billable_firewalls: &context.billable_firewalls,
         model_usage_provider: context.model_usage_provider.as_deref(),
     };
-    if let Err(e) = config.registry.register_vm(source_ip, &registration).await {
-        warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
-    }
     config
+        .registry
+        .register_vm(source_ip, &registration)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("register VM in proxy registry: {e}")))?;
+    Ok(config
         .network_log_manager
         .register_source_ip(source_ip, network_log_path)
-        .await
+        .await)
 }
 
 /// Unregister a VM from the proxy registry.
-async fn unregister_proxy_registry(
-    config: &ExecutorConfig,
-    context: &ExecutionContext,
-    source_ip: &str,
-) {
-    if let Err(e) = config.registry.unregister_vm(source_ip).await {
-        warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
-    }
+async fn unregister_proxy_registry(config: &ExecutorConfig, source_ip: &str) -> RunnerResult<()> {
+    config
+        .registry
+        .unregister_vm(source_ip)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("unregister VM from proxy registry: {e}")))
 }
 
 /// Post-job cleanup: copy logs, unregister proxy registry.
@@ -1248,7 +1322,7 @@ async fn post_job_cleanup(
     source_ip: &str,
     cancelled: bool,
     stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
-) {
+) -> RunnerResult<()> {
     copy_guest_logs(sandbox, context, &config.log_paths, cancelled).await;
     append_stdout_stream_diagnostics_to_stream_log(
         context.run_id,
@@ -1256,7 +1330,7 @@ async fn post_job_cleanup(
         stdout_stream_diagnostics,
     )
     .await;
-    unregister_proxy_registry(config, context, source_ip).await;
+    unregister_proxy_registry(config, source_ip).await
 }
 
 /// How this run is entering its sandbox. Each field feeds a distinct step:
@@ -4867,7 +4941,8 @@ mod tests {
                 stream_overflowed: true,
             },
         )
-        .await;
+        .await
+        .unwrap();
 
         let system_log = tokio::fs::read(&system_log_path).await.unwrap();
         assert_eq!(system_log, b"guest system log");
@@ -5232,6 +5307,7 @@ mod tests {
     struct QueuedCopyFileSandbox {
         inner: Box<dyn Sandbox>,
         copy_file_results: Mutex<VecDeque<Vec<u8>>>,
+        remove_path_before_copy: Option<std::path::PathBuf>,
     }
 
     impl QueuedCopyFileSandbox {
@@ -5239,7 +5315,13 @@ mod tests {
             Self {
                 inner,
                 copy_file_results: Mutex::new(VecDeque::from(copy_file_results)),
+                remove_path_before_copy: None,
             }
+        }
+
+        fn with_remove_path_before_copy(mut self, path: std::path::PathBuf) -> Self {
+            self.remove_path_before_copy = Some(path);
+            self
         }
     }
 
@@ -5291,6 +5373,9 @@ mod tests {
             host_path: &std::path::Path,
             options: CopyFileOptions,
         ) -> sandbox::Result<sandbox::CopyFileResult> {
+            if let Some(path) = &self.remove_path_before_copy {
+                let _ = std::fs::remove_file(path);
+            }
             let bytes = self
                 .copy_file_results
                 .lock()
@@ -5743,6 +5828,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        tokio::fs::remove_file(dir.path().join("proxy-registry.json"))
+            .await
+            .unwrap();
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (outcome, _telemetry) = execute_job(
+            &factory,
+            minimal_context(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(
+            error.contains("register VM in proxy registry"),
+            "got: {error}"
+        );
+        assert!(outcome.sandbox.is_none());
+        assert!(outcome.network_log_session.is_none());
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert!(
+            overrides.start_process_calls().is_empty(),
+            "agent must not start when proxy registry registration fails"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_agent_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        tokio::fs::remove_file(dir.path().join("proxy-registry.json"))
+            .await
+            .unwrap();
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+        let source_ip = sandbox.source_ip().to_string();
+        let ctx = minimal_context();
+        let mut telemetry = test_telemetry(&config, &ctx);
+        let prev_storage = crate::idle_pool::StorageFingerprints::default();
+
+        let outcome = execute_reused_sandbox(
+            sandbox,
+            &source_ip,
+            &ctx,
+            &config,
+            &prev_storage,
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(
+            error.contains("register VM in proxy registry"),
+            "got: {error}"
+        );
+        assert!(outcome.sandbox.is_some());
+        assert!(outcome.network_log_session.is_none());
+        assert!(
+            overrides.start_process_calls().is_empty(),
+            "reused sandbox must not start an agent when proxy registration fails"
+        );
+    }
+
+    #[tokio::test]
     async fn execute_job_workspace_mount_failure_destroys_sandbox() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
@@ -5886,7 +6048,7 @@ mod tests {
         let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
         let ctx = minimal_context();
         let source_ip = sandbox.source_ip().to_string();
-        let network_log_session = register_proxy(&config, &ctx, &source_ip).await;
+        let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
         let sandbox: Box<dyn Sandbox> = Box::new(QueuedCopyFileSandbox::new(
             sandbox,
             vec![b"guest system log\n".to_vec()],
@@ -5921,6 +6083,54 @@ mod tests {
         assert_eq!(system_log, b"guest system log\n");
         let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
         assert_eq!(system_stream_log, b"bootstrap diagnostic\n");
+    }
+
+    #[tokio::test]
+    async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+        let ctx = minimal_context();
+        let source_ip = sandbox.source_ip().to_string();
+        let network_log_session = register_proxy(&config, &ctx, &source_ip).await.unwrap();
+        let sandbox: Box<dyn Sandbox> = Box::new(
+            QueuedCopyFileSandbox::new(sandbox, vec![b"guest system log\n".to_vec()])
+                .with_remove_path_before_copy(dir.path().join("proxy-registry.json")),
+        );
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let outcome = execute_prepared_sandbox_run(
+            PreparedSandboxRun {
+                sandbox,
+                source_ip,
+                network_log_session,
+            },
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(
+            error.contains("post-job proxy cleanup failed"),
+            "got: {error}"
+        );
+        assert!(
+            error.contains("unregister VM from proxy registry"),
+            "got: {error}"
+        );
+        assert!(outcome.sandbox.is_some());
+        assert!(outcome.network_log_session.is_some());
+        assert!(outcome.guest_session_id.is_none());
     }
 
     #[tokio::test]
@@ -6107,6 +6317,74 @@ mod tests {
         assert!(
             !expected_seed.exists(),
             "failed cache hit should invalidate the unusable baseline"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        tokio::fs::remove_file(dir.path().join("proxy-registry.json"))
+            .await
+            .unwrap();
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: "sess-register-fail".into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        ctx.feature_flags = Some(HashMap::from([(
+            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
+            true,
+        )]));
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let expected_seed =
+            seed_workspace_image_cache(&cache, &runner_paths, "sess-register-fail", 16).await;
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let result = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "proxy registration failure must return an error"
+        );
+        let err = result.err().unwrap();
+        assert!(
+            err.to_string().contains("register VM in proxy registry"),
+            "got: {err}"
+        );
+        assert_eq!(
+            overrides.create_configs().len(),
+            1,
+            "proxy registration failure must not retry with a fresh workspace image"
+        );
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert!(
+            overrides.start_process_calls().is_empty(),
+            "agent must not start when proxy registry registration fails"
+        );
+        assert!(
+            expected_seed.exists(),
+            "proxy registration failure must not invalidate the unrelated workspace cache hit"
         );
     }
 
