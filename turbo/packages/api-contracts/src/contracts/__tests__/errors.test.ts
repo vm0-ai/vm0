@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   formatRunErrorForExternalSurface,
   INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE,
+  isActionableRunError,
+  isGenericRunErrorForDisplay,
 } from "../errors";
 
 describe("formatRunErrorForExternalSurface", () => {
@@ -94,5 +97,51 @@ describe("formatRunErrorForExternalSurface", () => {
         message: "Something failed",
       }),
     ).toBe("Oops, something went wrong. Please try again later.");
+  });
+
+  it("shows reconnect guidance for Codex OAuth reconnect-required refresh failures", () => {
+    const rawRunError =
+      'unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: codex-oauth-token. The connector may need to be reconnected.","permission":"model-provider:codex-oauth-token","base":"https://chatgpt.com/backend-api/codex","connectors":["codex-oauth-token"],"failureReason":"reconnect_required"}, url: https://chatgpt.com/backend-api/codex/responses';
+    const expectedMessage =
+      "ChatGPT session needs reconnection. Reconnect ChatGPT (Codex) in Model Providers, then retry.";
+
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: rawRunError,
+      }),
+    ).toBe(expectedMessage);
+    expect(isActionableRunError(rawRunError)).toBe(true);
+    expect(isGenericRunErrorForDisplay(rawRunError)).toBe(false);
+    expect(isActionableRunError(expectedMessage)).toBe(true);
+    expect(isGenericRunErrorForDisplay(expectedMessage)).toBe(false);
+  });
+
+  it("keeps upstream Codex token refresh failures generic", () => {
+    const rawRunError =
+      'unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token refresh failed for: codex-oauth-token.","permission":"model-provider:codex-oauth-token","connectors":["codex-oauth-token"],"failureReason":"upstream_provider"}, url: https://chatgpt.com/backend-api/codex/responses';
+
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: rawRunError,
+      }),
+    ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
+    expect(isActionableRunError(rawRunError)).toBe(false);
+    expect(isGenericRunErrorForDisplay(rawRunError)).toBe(true);
+  });
+
+  it("keeps non-Codex token refresh failures generic", () => {
+    const rawRunError =
+      'unexpected status 502 Bad Gateway: {"error":"TOKEN_REFRESH_FAILED","message":"Access token expired and refresh failed for: zendesk.","permission":"connector:zendesk","connectors":["zendesk"],"failureReason":"reconnect_required"}, url: https://example.zendesk.com/api/v2/tickets';
+
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: rawRunError,
+      }),
+    ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
+    expect(isActionableRunError(rawRunError)).toBe(false);
+    expect(isGenericRunErrorForDisplay(rawRunError)).toBe(true);
   });
 });

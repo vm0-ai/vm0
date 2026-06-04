@@ -119,6 +119,9 @@ export const RUN_ERROR_GUIDANCE: Record<
 export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
   "Oops, something went wrong. Please try again later.";
 
+export const CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE =
+  "ChatGPT session needs reconnection. Reconnect ChatGPT (Codex) in Model Providers, then retry.";
+
 export const INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE =
   "Ask a workspace admin to add credits or upgrade the workspace plan.";
 
@@ -141,13 +144,26 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   //   "You've hit your weekly limit · resets …"
   "session limit",
   "weekly limit",
+  CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE,
 ] as const;
+
+function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
+  const normalized = errorMessage.toLowerCase();
+  return (
+    normalized.includes("token_refresh_failed") &&
+    normalized.includes("codex-oauth-token") &&
+    normalized.includes("reconnect_required")
+  );
+}
 
 export function isActionableRunError(errorMessage: string): boolean {
   const normalized = errorMessage.toLowerCase();
-  return ACTIONABLE_RUN_ERROR_SNIPPETS.some((snippet) => {
-    return normalized.includes(snippet.toLowerCase());
-  });
+  return (
+    isCodexOAuthReconnectRequiredRunError(errorMessage) ||
+    ACTIONABLE_RUN_ERROR_SNIPPETS.some((snippet) => {
+      return normalized.includes(snippet.toLowerCase());
+    })
+  );
 }
 
 export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
@@ -188,6 +204,10 @@ export function formatRunErrorForExternalSurface(params: {
       params.insufficientCredits.addCreditsUrl ??
       params.insufficientCredits.comparePlansUrl;
     return `${errorMessage}\n\nAdd credits: ${addCreditsUrl}`;
+  }
+
+  if (isCodexOAuthReconnectRequiredRunError(errorMessage)) {
+    return CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE;
   }
 
   return isGenericRunErrorForDisplay(errorMessage)
