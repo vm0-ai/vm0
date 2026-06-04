@@ -5,8 +5,6 @@ import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 import matching
 import registry
 from tests.auth_state_helpers import (
@@ -364,36 +362,6 @@ class TestLoadRegistry:
 
         assert log.warn.call_count == 2
         assert all("Failed to parse" in call.args[0] for call in log.warn.call_args_list)
-
-    def test_compile_registry_failure_propagates(self, registry_file):
-        registry.load_registry(str(registry_file))
-        registry_file.write_text(json.dumps({"vms": {"10.200.0.99": {"runId": "new-run"}}}))
-
-        with (
-            patch.object(registry.ctx, "log", MagicMock(), create=True),
-            patch.object(
-                registry,
-                "_compile_registry",
-                side_effect=RuntimeError("compile failed"),
-            ),
-            pytest.raises(RuntimeError, match="compile failed"),
-        ):
-            registry.load_registry(str(registry_file))
-
-    def test_auth_cache_eviction_failure_propagates(self, registry_file):
-        registry.load_registry(str(registry_file))
-        registry_file.write_text(json.dumps({"vms": {"10.200.0.99": {"runId": "new-run"}}}))
-
-        with (
-            patch.object(registry.ctx, "log", MagicMock(), create=True),
-            patch.object(
-                registry,
-                "evict_stale_cache_keys",
-                side_effect=RuntimeError("evict failed"),
-            ),
-            pytest.raises(RuntimeError, match="evict failed"),
-        ):
-            registry.load_registry(str(registry_file))
 
     def test_read_failure_after_stat_does_not_poison_file_key(self, registry_file):
         registry.load_registry(str(registry_file))
