@@ -122,6 +122,12 @@ export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
 const CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE =
   "ChatGPT session needs reconnection. Reconnect ChatGPT (Codex) in Model Providers, then retry.";
 
+const codexOAuthReconnectRequiredRunErrorBodySchema = z.object({
+  error: z.literal("TOKEN_REFRESH_FAILED"),
+  connectors: z.tuple([z.literal("codex-oauth-token")]),
+  failureReason: z.literal("reconnect_required"),
+});
+
 export const INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE =
   "Ask a workspace admin to add credits or upgrade the workspace plan.";
 
@@ -147,20 +153,24 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE,
 ] as const;
 
+function parseEmbeddedRunErrorBody(errorMessage: string): unknown {
+  const bodyStart = errorMessage.indexOf("{");
+  const bodyEnd = errorMessage.lastIndexOf("}");
+  if (bodyStart === -1 || bodyEnd <= bodyStart) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(errorMessage.slice(bodyStart, bodyEnd + 1)) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
-  const normalized = errorMessage.toLowerCase();
-  const hasTokenRefreshFailedCode = /"error"\s*:\s*"token_refresh_failed"/.test(
-    normalized,
-  );
-  const hasOnlyCodexOAuthConnector =
-    /"connectors"\s*:\s*\[\s*"codex-oauth-token"\s*\]/.test(normalized);
-  const hasReconnectRequiredFailureReason =
-    /"failurereason"\s*:\s*"reconnect_required"/.test(normalized);
-  return (
-    hasTokenRefreshFailedCode &&
-    hasOnlyCodexOAuthConnector &&
-    hasReconnectRequiredFailureReason
-  );
+  return codexOAuthReconnectRequiredRunErrorBodySchema.safeParse(
+    parseEmbeddedRunErrorBody(errorMessage),
+  ).success;
 }
 
 export function isActionableRunError(errorMessage: string): boolean {
