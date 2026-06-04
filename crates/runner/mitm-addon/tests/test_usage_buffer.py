@@ -766,6 +766,43 @@ def test_shutdown_flush_drains_live_usage_buffered_during_own_enqueue(tmp_path):
     assert timers[1].cancelled is True
 
 
+def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_path):
+    timers = []
+
+    def timer_factory(delay: float, callback):
+        timer = _FakeTimer(delay, callback)
+        timers.append(timer)
+        return timer
+
+    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        str(tmp_path / "proxy.jsonl"),
+    )
+    assert len(timers) == 1
+
+    with (
+        patch.object(usage_buffer, "_enqueue_webhook", side_effect=OSError("shutdown failed")),
+        pytest.raises(OSError, match="shutdown failed"),
+    ):
+        usage.flush_usage_events(trigger="shutdown")
+
+    assert usage.counters._buffered_usage_events == 1
+    assert len(timers) == 1
+    assert timers[0].cancelled is True
+
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.call_args.args[2]["runId"] == "run-1"
+    assert usage.counters._buffered_usage_events == 0
+
+
 def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
         assert (
