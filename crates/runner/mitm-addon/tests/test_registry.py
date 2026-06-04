@@ -249,8 +249,7 @@ class TestLoadRegistry:
         assert "Failed to stat" in log.warn.call_args_list[0].args[0]
 
     def test_missing_file_after_success_marks_registry_unavailable(self, registry_file):
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
-            registry.load_registry(str(registry_file))
+        registry.load_registry(str(registry_file))
         registry_file.unlink()
 
         log = MagicMock()
@@ -283,8 +282,7 @@ class TestLoadRegistry:
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
 
     def test_parse_failure_after_success_marks_registry_unavailable(self, registry_file):
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
-            registry.load_registry(str(registry_file))
+        registry.load_registry(str(registry_file))
         registry_file.write_text("{ not valid json after success")
 
         log = MagicMock()
