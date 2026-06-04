@@ -1,4 +1,8 @@
 import { parseSkillFrontmatter } from "@vm0/core/skill-frontmatter";
+import type {
+  MemoryChangeDiff,
+  MemoryChangeDiffLine,
+} from "@vm0/db/schema/memory-change-item";
 import { computed, type Computed } from "ccstate";
 
 import { env } from "../../lib/env";
@@ -13,8 +17,7 @@ export interface MemoryChangeItem {
   readonly title: string | null;
   readonly description: string | null;
   readonly filePath: string;
-  readonly beforeSnippet: string | null;
-  readonly afterSnippet: string | null;
+  readonly diff: MemoryChangeDiff;
 }
 
 export interface MemoryChangeSet {
@@ -31,21 +34,240 @@ interface MemoryFileState {
 export type MemoryFileMap = ReadonlyMap<string, MemoryFileState>;
 
 const MEMORY_INDEX_PATH = "MEMORY.md";
+const MAX_DIFF_LINES = 300;
+const MAX_DIFF_LINE_CHARS = 500;
+const MAX_LCS_CELLS = 250_000;
 
-function truncateSnippet(
-  text: string,
-  maxLines = 3,
-  maxCharsPerLine = 80,
-): string {
-  return text
-    .split("\n")
-    .slice(0, maxLines)
-    .map((line) => {
-      return line.length > maxCharsPerLine
-        ? `${line.slice(0, maxCharsPerLine)}...`
-        : line;
-    })
-    .join("\n");
+function splitContentLines(content: string): readonly string[] {
+  return content.length === 0 ? [] : content.split("\n");
+}
+
+function truncateDiffLineText(text: string): string {
+  if (text.length <= MAX_DIFF_LINE_CHARS) {
+    return text;
+  }
+  return `${text.slice(0, MAX_DIFF_LINE_CHARS)}...`;
+}
+
+function createDiffLine(
+  line: Omit<MemoryChangeDiffLine, "text"> & { readonly text: string },
+): MemoryChangeDiffLine {
+  return {
+    ...line,
+    text: truncateDiffLineText(line.text),
+  };
+}
+
+function lcsLengthAt(
+  lengths: readonly (readonly number[])[],
+  beforeIndex: number,
+  afterIndex: number,
+): number {
+  return lengths[beforeIndex]?.[afterIndex] ?? 0;
+}
+
+function buildLcsLengths(
+  beforeLines: readonly string[],
+  afterLines: readonly string[],
+): readonly (readonly number[])[] {
+  const lengths = Array.from({ length: beforeLines.length + 1 }, () => {
+    return Array.from({ length: afterLines.length + 1 }, () => {
+      return 0;
+    });
+  });
+
+  for (
+    let beforeIndex = beforeLines.length - 1;
+    beforeIndex >= 0;
+    beforeIndex--
+  ) {
+    const beforeLine = beforeLines[beforeIndex];
+    const row = lengths[beforeIndex];
+    if (beforeLine === undefined || row === undefined) {
+      continue;
+    }
+    for (
+      let afterIndex = afterLines.length - 1;
+      afterIndex >= 0;
+      afterIndex--
+    ) {
+      const afterLine = afterLines[afterIndex];
+      if (afterLine === undefined) {
+        continue;
+      }
+      if (beforeLine === afterLine) {
+        row[afterIndex] =
+          lcsLengthAt(lengths, beforeIndex + 1, afterIndex + 1) + 1;
+      } else {
+        row[afterIndex] = Math.max(
+          lcsLengthAt(lengths, beforeIndex + 1, afterIndex),
+          lcsLengthAt(lengths, beforeIndex, afterIndex + 1),
+        );
+      }
+    }
+  }
+
+  return lengths;
+}
+
+function buildTwoSidedDiffLines(
+  beforeLines: readonly string[],
+  afterLines: readonly string[],
+): readonly MemoryChangeDiffLine[] {
+  const lengths = buildLcsLengths(beforeLines, afterLines);
+  const diffLines: MemoryChangeDiffLine[] = [];
+  let beforeIndex = 0;
+  let afterIndex = 0;
+
+  while (beforeIndex < beforeLines.length || afterIndex < afterLines.length) {
+    const beforeLine = beforeLines[beforeIndex];
+    const afterLine = afterLines[afterIndex];
+    if (
+      beforeLine !== undefined &&
+      afterLine !== undefined &&
+      beforeLine === afterLine
+    ) {
+      diffLines.push(
+        createDiffLine({
+          op: "context",
+          beforeLine: beforeIndex + 1,
+          afterLine: afterIndex + 1,
+          text: beforeLine,
+        }),
+      );
+      beforeIndex++;
+      afterIndex++;
+    } else if (
+      afterLine === undefined ||
+      (beforeLine !== undefined &&
+        lcsLengthAt(lengths, beforeIndex + 1, afterIndex) >=
+          lcsLengthAt(lengths, beforeIndex, afterIndex + 1))
+    ) {
+      diffLines.push(
+        createDiffLine({
+          op: "remove",
+          beforeLine: beforeIndex + 1,
+          afterLine: null,
+          text: beforeLine ?? "",
+        }),
+      );
+      beforeIndex++;
+    } else {
+      diffLines.push(
+        createDiffLine({
+          op: "add",
+          beforeLine: null,
+          afterLine: afterIndex + 1,
+          text: afterLine ?? "",
+        }),
+      );
+      afterIndex++;
+    }
+  }
+
+  return diffLines;
+}
+
+function firstLineNumber(
+  lines: readonly MemoryChangeDiffLine[],
+  side: "before" | "after",
+): number | null {
+  for (const line of lines) {
+    const lineNumber = side === "before" ? line.beforeLine : line.afterLine;
+    if (lineNumber !== null) {
+      return lineNumber;
+    }
+  }
+  return null;
+}
+
+function createDiff(
+  lines: readonly MemoryChangeDiffLine[],
+  stats: MemoryChangeDiff["stats"],
+): MemoryChangeDiff {
+  const limitedLines = lines.slice(0, MAX_DIFF_LINES);
+  return {
+    format: "line",
+    truncated: limitedLines.length < lines.length,
+    stats,
+    hunks:
+      limitedLines.length === 0
+        ? []
+        : [
+            {
+              beforeStartLine: firstLineNumber(limitedLines, "before"),
+              afterStartLine: firstLineNumber(limitedLines, "after"),
+              lines: limitedLines,
+            },
+          ],
+  };
+}
+
+function buildOneSidedDiff(
+  op: "add" | "remove",
+  content: string,
+): MemoryChangeDiff {
+  const lines = splitContentLines(content).map((text, index) => {
+    return createDiffLine({
+      op,
+      beforeLine: op === "remove" ? index + 1 : null,
+      afterLine: op === "add" ? index + 1 : null,
+      text,
+    });
+  });
+  return createDiff(lines, {
+    added: op === "add" ? lines.length : 0,
+    removed: op === "remove" ? lines.length : 0,
+  });
+}
+
+function buildLargeDiff(
+  beforeLineCount: number,
+  afterLineCount: number,
+): MemoryChangeDiff {
+  return {
+    format: "line",
+    truncated: true,
+    stats: { added: afterLineCount, removed: beforeLineCount },
+    hunks: [],
+    omittedReason: "too_large",
+  };
+}
+
+function buildLineDiff(
+  beforeContent: string | null,
+  afterContent: string | null,
+): MemoryChangeDiff {
+  if (beforeContent === null && afterContent === null) {
+    return createDiff([], { added: 0, removed: 0 });
+  }
+  if (beforeContent === null) {
+    return buildOneSidedDiff("add", afterContent ?? "");
+  }
+  if (afterContent === null) {
+    return buildOneSidedDiff("remove", beforeContent);
+  }
+
+  const beforeLines = splitContentLines(beforeContent);
+  const afterLines = splitContentLines(afterContent);
+  if (beforeLines.length * afterLines.length > MAX_LCS_CELLS) {
+    return buildLargeDiff(beforeLines.length, afterLines.length);
+  }
+
+  const lines = buildTwoSidedDiffLines(beforeLines, afterLines);
+  const stats = lines.reduce(
+    (acc, line) => {
+      if (line.op === "add") {
+        return { added: acc.added + 1, removed: acc.removed };
+      }
+      if (line.op === "remove") {
+        return { added: acc.added, removed: acc.removed + 1 };
+      }
+      return acc;
+    },
+    { added: 0, removed: 0 },
+  );
+  return createDiff(lines, stats);
 }
 
 /**
@@ -75,10 +297,6 @@ function deriveTitle(
   return { title: filePath, description: null };
 }
 
-function snippetOf(content: string | undefined): string | null {
-  return content === undefined ? null : truncateSnippet(content);
-}
-
 function classifyFile(
   filePath: string,
   before: MemoryFileState | undefined,
@@ -91,8 +309,7 @@ function classifyFile(
       title,
       description,
       filePath,
-      beforeSnippet: null,
-      afterSnippet: snippetOf(after.content),
+      diff: buildLineDiff(null, after.content),
     };
   }
   if (before && !after) {
@@ -102,8 +319,7 @@ function classifyFile(
       title,
       description,
       filePath,
-      beforeSnippet: snippetOf(before.content),
-      afterSnippet: null,
+      diff: buildLineDiff(before.content, null),
     };
   }
   if (before && after && before.hash !== after.hash) {
@@ -113,8 +329,7 @@ function classifyFile(
       title,
       description,
       filePath,
-      beforeSnippet: snippetOf(before.content),
-      afterSnippet: snippetOf(after.content),
+      diff: buildLineDiff(before.content, after.content),
     };
   }
   return null;

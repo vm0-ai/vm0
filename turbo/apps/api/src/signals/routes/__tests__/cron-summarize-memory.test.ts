@@ -31,10 +31,20 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-// Fixed clock: "today" in UTC is 2999-01-03, so the single most-recently-closed
-// local day ("yesterday") the cron summarizes is 2999-01-02. The day before
-// that (2999-01-01) is where baseline versions are seeded.
+// Fixed clock: "today" in UTC is 2999-01-03, so the seven most-recently-closed
+// local days are 2998-12-27 through 2999-01-02.
 const FIXED_NOW_ISO = "2999-01-03T12:00:00.000Z";
+const LOOKBACK_DATES = [
+  "2998-12-27",
+  "2998-12-28",
+  "2998-12-29",
+  "2998-12-30",
+  "2998-12-31",
+  "2999-01-01",
+  "2999-01-02",
+] as const;
+const BASELINE_BEFORE_LOOKBACK = "2998-12-26T03:00:00.000Z";
+const BASELINE_DURING_LOOKBACK = "2999-01-01T03:00:00.000Z";
 const YESTERDAY = "2999-01-02";
 
 /**
@@ -92,10 +102,9 @@ interface SeededMemory {
 }
 
 /**
- * Seed a memory artifact whose baseline (v1) predates yesterday and whose v2
- * lands during yesterday, mock their S3 content, and register the fixture for
- * cleanup. v1 is the version current at the start of yesterday; v2 is
- * yesterday's net result, so the cron diffs v1 -> v2.
+ * Seed a memory artifact whose baseline (v1) predates the seven-day lookback
+ * window and whose v2 lands during yesterday. The first cron run backfills six
+ * quiet cards and yesterday's v1 -> v2 diff.
  */
 async function seedTwoVersions(
   files1: readonly MemoryFile[],
@@ -119,7 +128,7 @@ async function seedTwoVersions(
       s3Key: v1Key,
       headVersionId: v1Id,
       fileCount: files1.length,
-      updatedAt: new Date("2999-01-01T03:00:00.000Z"),
+      updatedAt: new Date(BASELINE_BEFORE_LOOKBACK),
     },
     context.signal,
   );
@@ -129,12 +138,12 @@ async function seedTwoVersions(
     fixture.orgId,
     context.signal,
   );
-  // Re-stamp the head version (v1) to the day before yesterday so it is the
-  // baseline current at the start of yesterday, not an implicit wall-clock now.
+  // Re-stamp the head version (v1) before the lookback window so it is the
+  // baseline for every backfilled day, not an implicit wall-clock now.
   const db = store.set(writeDb$);
   await db
     .update(storageVersions)
-    .set({ createdAt: new Date("2999-01-01T03:00:00.000Z") })
+    .set({ createdAt: new Date(BASELINE_BEFORE_LOOKBACK) })
     .where(eq(storageVersions.id, v1Id));
   await store.set(
     seedMemoryVersion$,
@@ -157,7 +166,7 @@ async function seedTwoVersions(
 }
 
 /**
- * Seed two versions for a user inside the closed day without mocking their S3
+ * Seed two versions for a user inside the lookback window without mocking S3
  * content. The caller supplies a single combined S3 mock (so several users can
  * coexist on the shared mock), and may deliberately omit a user's content to
  * make their per-user summarize throw — exercising the cron's per-user error
@@ -187,7 +196,7 @@ async function seedTwoVersionsNoMock(): Promise<{
       s3Key: v1Key,
       headVersionId: v1Id,
       fileCount: 1,
-      updatedAt: new Date("2999-01-01T03:00:00.000Z"),
+      updatedAt: new Date(BASELINE_DURING_LOOKBACK),
     },
     context.signal,
   );
@@ -197,11 +206,11 @@ async function seedTwoVersionsNoMock(): Promise<{
     fixture.orgId,
     context.signal,
   );
-  // Baseline (v1) predates yesterday; v2 lands during yesterday.
+  // v1 appears during the lookback window; v2 lands during yesterday.
   const db = store.set(writeDb$);
   await db
     .update(storageVersions)
-    .set({ createdAt: new Date("2999-01-01T03:00:00.000Z") })
+    .set({ createdAt: new Date(BASELINE_DURING_LOOKBACK) })
     .where(eq(storageVersions.id, v1Id));
   await store.set(
     seedMemoryVersion$,
@@ -298,11 +307,20 @@ async function seedVersions(versions: readonly DayVersion[]): Promise<{
 
 async function findSummary(
   fixture: MemoryFixture,
-): Promise<{ id: string; toVersionId: string; summary: string | null } | null> {
+  date = YESTERDAY,
+): Promise<{
+  id: string;
+  date: string;
+  fromVersionId: string | null;
+  toVersionId: string;
+  summary: string | null;
+} | null> {
   const db = store.set(writeDb$);
   const [row] = await db
     .select({
       id: memoryChangeSummaries.id,
+      date: memoryChangeSummaries.date,
+      fromVersionId: memoryChangeSummaries.fromVersionId,
       toVersionId: memoryChangeSummaries.toVersionId,
       summary: memoryChangeSummaries.summary,
     })
@@ -311,11 +329,39 @@ async function findSummary(
       and(
         eq(memoryChangeSummaries.orgId, fixture.orgId),
         eq(memoryChangeSummaries.userId, fixture.userId),
-        eq(memoryChangeSummaries.date, YESTERDAY),
+        eq(memoryChangeSummaries.date, date),
       ),
     )
     .limit(1);
   return row ?? null;
+}
+
+async function findSummaries(fixture: MemoryFixture): Promise<
+  {
+    readonly id: string;
+    readonly date: string;
+    readonly fromVersionId: string | null;
+    readonly toVersionId: string;
+    readonly summary: string | null;
+  }[]
+> {
+  const db = store.set(writeDb$);
+  return await db
+    .select({
+      id: memoryChangeSummaries.id,
+      date: memoryChangeSummaries.date,
+      fromVersionId: memoryChangeSummaries.fromVersionId,
+      toVersionId: memoryChangeSummaries.toVersionId,
+      summary: memoryChangeSummaries.summary,
+    })
+    .from(memoryChangeSummaries)
+    .where(
+      and(
+        eq(memoryChangeSummaries.orgId, fixture.orgId),
+        eq(memoryChangeSummaries.userId, fixture.userId),
+      ),
+    )
+    .orderBy(asc(memoryChangeSummaries.date));
 }
 
 async function findItems(
@@ -383,7 +429,7 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(response.body).toStrictEqual({ skipped: true });
   });
 
-  it("summarizes a closed day with learned and updated items and an LLM narrative", async () => {
+  it("backfills seven closed days and summarizes the changed day with an LLM narrative", async () => {
     const llm = mockLlm(
       "Zero learned your coffee order and updated your pets.",
     );
@@ -400,8 +446,19 @@ describe("GET /api/cron/summarize-memory", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ summarized: 1 });
+    expect(response.body).toStrictEqual({ summarized: 7 });
     expect(llm.calls).toBe(1);
+
+    const summaries = await findSummaries(seeded.fixture);
+    expect(
+      summaries.map((row) => {
+        return row.date;
+      }),
+    ).toStrictEqual([...LOOKBACK_DATES]);
+    for (const quietSummary of summaries.slice(0, -1)) {
+      await expect(findItems(quietSummary.id)).resolves.toHaveLength(0);
+      expect(quietSummary.summary).toBeNull();
+    }
 
     const summary = await findSummary(seeded.fixture);
     expect(summary).not.toBeNull();
@@ -440,7 +497,7 @@ describe("GET /api/cron/summarize-memory", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ summarized: 1 });
+    expect(response.body).toStrictEqual({ summarized: 7 });
     expect(llm.calls).toBe(1);
 
     const summary = await findSummary(seeded.fixture);
@@ -469,7 +526,7 @@ describe("GET /api/cron/summarize-memory", () => {
     ]);
   });
 
-  it("writes no row and makes no LLM call when memory did not change in the day", async () => {
+  it("backfills quiet cards and makes no LLM call when memory did not change", async () => {
     const llm = mockLlm();
     const seeded = await seedTwoVersions(
       [{ path: "facts/pets.md", content: "Has a dog" }],
@@ -481,9 +538,17 @@ describe("GET /api/cron/summarize-memory", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ skipped: true });
+    expect(response.body).toStrictEqual({ summarized: 7 });
     expect(llm.calls).toBe(0);
-    await expect(findSummary(seeded.fixture)).resolves.toBeNull();
+    const summaries = await findSummaries(seeded.fixture);
+    expect(
+      summaries.map((row) => {
+        return row.date;
+      }),
+    ).toStrictEqual([...LOOKBACK_DATES]);
+    const summary = await findSummary(seeded.fixture);
+    expect(summary?.summary).toBeNull();
+    await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(0);
   });
 
   it("persists deterministic items with a null summary when the LLM fails", async () => {
@@ -503,7 +568,7 @@ describe("GET /api/cron/summarize-memory", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ summarized: 1 });
+    expect(response.body).toStrictEqual({ summarized: 7 });
     const summary = await findSummary(seeded.fixture);
     expect(summary?.summary).toBeNull();
     await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(2);
@@ -524,7 +589,7 @@ describe("GET /api/cron/summarize-memory", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ summarized: 1 });
+    expect(response.body).toStrictEqual({ summarized: 7 });
     const summary = await findSummary(seeded.fixture);
     expect(summary?.summary).toBeNull();
     await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(1);
@@ -554,8 +619,9 @@ describe("GET /api/cron/summarize-memory", () => {
       .select({ id: memoryChangeSummaries.id })
       .from(memoryChangeSummaries)
       .where(eq(memoryChangeSummaries.orgId, seeded.fixture.orgId));
-    expect(rows).toHaveLength(1);
-    await expect(findItems(rows[0]?.id ?? "")).resolves.toHaveLength(1);
+    expect(rows).toHaveLength(7);
+    const summary = await findSummary(seeded.fixture);
+    await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(1);
   });
 
   it("isolates a failing user so others are still summarized", async () => {
@@ -587,8 +653,8 @@ describe("GET /api/cron/summarize-memory", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ summarized: 1 });
-    expect(llm.calls).toBe(1);
+    expect(response.body).toStrictEqual({ summarized: 2 });
+    expect(llm.calls).toBe(2);
 
     const healthySummary = await findSummary(healthy.fixture);
     expect(healthySummary).not.toBeNull();
@@ -601,7 +667,7 @@ describe("GET /api/cron/summarize-memory", () => {
     await expect(findSummary(broken.fixture)).resolves.toBeNull();
   });
 
-  it("emits only yesterday's delta for a long-history user and never backfills", async () => {
+  it("backfills each changed day in the seven-day window without combining history", async () => {
     const llm = mockLlm();
     // A user with months of accumulated memory. The baseline must be the state
     // at the START of yesterday, so the card reflects only the day-over-day
@@ -644,27 +710,27 @@ describe("GET /api/cron/summarize-memory", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ summarized: 1 });
-    expect(llm.calls).toBe(1);
+    expect(response.body).toStrictEqual({ summarized: 4 });
+    expect(llm.calls).toBe(3);
 
-    const db = store.set(writeDb$);
-    const summaries = await db
-      .select({
-        date: memoryChangeSummaries.date,
-        id: memoryChangeSummaries.id,
-      })
-      .from(memoryChangeSummaries)
-      .where(eq(memoryChangeSummaries.orgId, fixture.orgId))
-      .orderBy(asc(memoryChangeSummaries.date));
+    const summaries = await findSummaries(fixture);
 
-    // Exactly one row, for yesterday — no row for 2999-01-01 (no backfill).
     expect(
       summaries.map((row) => {
         return row.date;
       }),
-    ).toStrictEqual([YESTERDAY]);
+    ).toStrictEqual(["2998-12-30", "2998-12-31", "2999-01-01", YESTERDAY]);
     // The card is the yesterday-only delta: just `e.md`, NOT a,b,c,d.
     await expect(findItems(summaries[0]?.id ?? "")).resolves.toStrictEqual([
+      { kind: "learned", filePath: "facts/a.md" },
+      { kind: "learned", filePath: "facts/b.md" },
+      { kind: "learned", filePath: "facts/c.md" },
+    ]);
+    await expect(findItems(summaries[1]?.id ?? "")).resolves.toHaveLength(0);
+    await expect(findItems(summaries[2]?.id ?? "")).resolves.toStrictEqual([
+      { kind: "learned", filePath: "facts/d.md" },
+    ]);
+    await expect(findItems(summaries[3]?.id ?? "")).resolves.toStrictEqual([
       { kind: "learned", filePath: "facts/e.md" },
     ]);
   });
@@ -697,9 +763,10 @@ describe("GET /api/cron/summarize-memory", () => {
 
   it("only summarizes users for whom the memory viewer feature is enabled", async () => {
     const llm = mockLlm();
-    // Both users changed memory yesterday. Only the enabled user is processed;
-    // the disabled user gets no row and burns no LLM call. Both share a single
-    // combined S3 mock so neither user's content clobbers the other's.
+    // Both users changed memory inside the lookback window. Only the enabled
+    // user is processed; the disabled user gets no rows and burns no LLM call.
+    // Both share a single combined S3 mock so neither user's content clobbers
+    // the other's.
     const enabled = await seedTwoVersionsNoMock();
     const disabled = await seedTwoVersionsNoMock();
 
@@ -740,12 +807,12 @@ describe("GET /api/cron/summarize-memory", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ summarized: 1 });
-    expect(llm.calls).toBe(1);
+    expect(response.body).toStrictEqual({ summarized: 2 });
+    expect(llm.calls).toBe(2);
 
     const enabledSummary = await findSummary(enabled.fixture);
     expect(enabledSummary).not.toBeNull();
     expect(enabledSummary?.toVersionId).toBe(enabled.v2Id);
-    await expect(findSummary(disabled.fixture)).resolves.toBeNull();
+    await expect(findSummaries(disabled.fixture)).resolves.toHaveLength(0);
   });
 });

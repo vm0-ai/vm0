@@ -1,5 +1,8 @@
-import { screen, waitFor } from "@testing-library/react";
-import { zeroMemoryActivityContract } from "@vm0/api-contracts/contracts/zero-memory-activity";
+import { screen, waitFor, within } from "@testing-library/react";
+import {
+  zeroMemoryActivityContract,
+  type MemoryActivityResponse,
+} from "@vm0/api-contracts/contracts/zero-memory-activity";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -17,6 +20,8 @@ import { pathname$ } from "../../../signals/route.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
+type MemoryActivityDiff =
+  MemoryActivityResponse["entries"][number]["items"][number]["diff"];
 
 async function clickTab(name: string): Promise<void> {
   const tab = await waitFor(() => {
@@ -27,6 +32,42 @@ async function clickTab(name: string): Promise<void> {
     return found!;
   });
   click(tab);
+}
+
+function addedDiff(text: string): MemoryActivityDiff {
+  return {
+    format: "line",
+    truncated: false,
+    stats: { added: 1, removed: 0 },
+    hunks: [
+      {
+        beforeStartLine: null,
+        afterStartLine: 1,
+        lines: [{ op: "add", beforeLine: null, afterLine: 1, text }],
+      },
+    ],
+  };
+}
+
+function updatedDiff(
+  beforeText: string,
+  afterText: string,
+): MemoryActivityDiff {
+  return {
+    format: "line",
+    truncated: false,
+    stats: { added: 1, removed: 1 },
+    hunks: [
+      {
+        beforeStartLine: 1,
+        afterStartLine: 1,
+        lines: [
+          { op: "remove", beforeLine: 1, afterLine: null, text: beforeText },
+          { op: "add", beforeLine: null, afterLine: 1, text: afterText },
+        ],
+      },
+    ],
+  };
 }
 
 function setupMemoryPage(): void {
@@ -102,16 +143,14 @@ describe("memory page", () => {
               title: "Deploy preference",
               description: "Use blue-green deploys",
               filePath: "deploy.md",
-              beforeSnippet: null,
-              afterSnippet: "Use blue-green deploys",
+              diff: addedDiff("Use blue-green deploys"),
             },
             {
               kind: "updated",
               title: "Project setup",
               description: null,
               filePath: "setup.md",
-              beforeSnippet: "old setup",
-              afterSnippet: "new setup",
+              diff: updatedDiff("old setup", "new setup"),
             },
           ],
         },
@@ -147,6 +186,9 @@ describe("memory page", () => {
       expect(screen.getByText("new setup")).toBeInTheDocument();
     });
     expect(screen.getByText("old setup")).toBeInTheDocument();
+    const diff = screen.getByLabelText("Memory diff");
+    expect(within(diff).getByText("-")).toBeInTheDocument();
+    expect(within(diff).getByText("+")).toBeInTheDocument();
   });
 
   it("shows an Updates-shaped skeleton while the default tab is loading", async () => {
@@ -182,24 +224,21 @@ describe("memory page", () => {
               title: "Fact A",
               description: null,
               filePath: "a.md",
-              beforeSnippet: null,
-              afterSnippet: "a",
+              diff: addedDiff("a"),
             },
             {
               kind: "learned",
               title: "Fact B",
               description: null,
               filePath: "b.md",
-              beforeSnippet: null,
-              afterSnippet: "b",
+              diff: addedDiff("b"),
             },
             {
               kind: "updated",
               title: "Fact C",
               description: null,
               filePath: "c.md",
-              beforeSnippet: "old",
-              afterSnippet: "new",
+              diff: updatedDiff("old", "new"),
             },
           ],
         },

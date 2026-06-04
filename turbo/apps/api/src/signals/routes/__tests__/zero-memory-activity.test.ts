@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroMemoryActivityContract } from "@vm0/api-contracts/contracts/zero-memory-activity";
+import type { MemoryChangeDiff } from "@vm0/db/schema/memory-change-item";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -25,6 +26,54 @@ function authHeaders() {
 
 function activityClient() {
   return setupApp({ context })(zeroMemoryActivityContract);
+}
+
+function addedDiff(text: string): MemoryChangeDiff {
+  return {
+    format: "line",
+    truncated: false,
+    stats: { added: 1, removed: 0 },
+    hunks: [
+      {
+        beforeStartLine: null,
+        afterStartLine: 1,
+        lines: [{ op: "add", beforeLine: null, afterLine: 1, text }],
+      },
+    ],
+  };
+}
+
+function removedDiff(text: string): MemoryChangeDiff {
+  return {
+    format: "line",
+    truncated: false,
+    stats: { added: 0, removed: 1 },
+    hunks: [
+      {
+        beforeStartLine: 1,
+        afterStartLine: null,
+        lines: [{ op: "remove", beforeLine: 1, afterLine: null, text }],
+      },
+    ],
+  };
+}
+
+function updatedDiff(beforeText: string, afterText: string): MemoryChangeDiff {
+  return {
+    format: "line",
+    truncated: false,
+    stats: { added: 1, removed: 1 },
+    hunks: [
+      {
+        beforeStartLine: 1,
+        afterStartLine: 1,
+        lines: [
+          { op: "remove", beforeLine: 1, afterLine: null, text: beforeText },
+          { op: "add", beforeLine: null, afterLine: 1, text: afterText },
+        ],
+      },
+    ],
+  };
 }
 
 describe("GET /api/zero/memory/activity", () => {
@@ -83,8 +132,7 @@ describe("GET /api/zero/memory/activity", () => {
             title: "Project uses pnpm",
             description: "Package manager preference",
             filePath: "preferences/pnpm.md",
-            beforeSnippet: null,
-            afterSnippet: "Use pnpm for all package operations",
+            diff: addedDiff("Use pnpm for all package operations"),
           },
         ],
       },
@@ -105,16 +153,17 @@ describe("GET /api/zero/memory/activity", () => {
             title: "Project uses pnpm",
             description: null,
             filePath: "preferences/pnpm.md",
-            beforeSnippet: "Use pnpm for all package operations",
-            afterSnippet: "Use pnpm 9 for all package operations",
+            diff: updatedDiff(
+              "Use pnpm for all package operations",
+              "Use pnpm 9 for all package operations",
+            ),
           },
           {
             kind: "forgotten",
             title: null,
             description: null,
             filePath: "notes/stale.md",
-            beforeSnippet: "Old note",
-            afterSnippet: null,
+            diff: removedDiff("Old note"),
           },
         ],
       },
@@ -142,16 +191,17 @@ describe("GET /api/zero/memory/activity", () => {
               title: null,
               description: null,
               filePath: "notes/stale.md",
-              beforeSnippet: "Old note",
-              afterSnippet: null,
+              diff: removedDiff("Old note"),
             },
             {
               kind: "updated",
               title: "Project uses pnpm",
               description: null,
               filePath: "preferences/pnpm.md",
-              beforeSnippet: "Use pnpm for all package operations",
-              afterSnippet: "Use pnpm 9 for all package operations",
+              diff: updatedDiff(
+                "Use pnpm for all package operations",
+                "Use pnpm 9 for all package operations",
+              ),
             },
           ],
         },
@@ -166,8 +216,7 @@ describe("GET /api/zero/memory/activity", () => {
               title: "Project uses pnpm",
               description: "Package manager preference",
               filePath: "preferences/pnpm.md",
-              beforeSnippet: null,
-              afterSnippet: "Use pnpm for all package operations",
+              diff: addedDiff("Use pnpm for all package operations"),
             },
           ],
         },
@@ -272,7 +321,7 @@ describe("GET /api/zero/memory/activity", () => {
             kind: "learned",
             title: "Secret",
             filePath: "secret.md",
-            afterSnippet: "Should not leak",
+            diff: addedDiff("Should not leak"),
           },
         ],
       },

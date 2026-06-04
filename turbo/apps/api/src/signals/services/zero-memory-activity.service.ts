@@ -1,5 +1,8 @@
 import { computed, type Computed } from "ccstate";
-import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
+import {
+  memoryChangeItems,
+  type MemoryChangeDiff,
+} from "@vm0/db/schema/memory-change-item";
 import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
@@ -12,8 +15,7 @@ interface MemoryActivityItem {
   readonly title: string | null;
   readonly description: string | null;
   readonly filePath: string;
-  readonly beforeSnippet: string | null;
-  readonly afterSnippet: string | null;
+  readonly diff: MemoryChangeDiff;
 }
 
 interface MemoryActivityEntry {
@@ -83,8 +85,7 @@ export function zeroMemoryActivity(
         title: memoryChangeItems.title,
         description: memoryChangeItems.description,
         filePath: memoryChangeItems.filePath,
-        beforeSnippet: memoryChangeItems.beforeSnippet,
-        afterSnippet: memoryChangeItems.afterSnippet,
+        diff: memoryChangeItems.diff,
       })
       .from(memoryChangeItems)
       .where(inArray(memoryChangeItems.summaryId, summaryIds))
@@ -103,8 +104,7 @@ export function zeroMemoryActivity(
         title: item.title,
         description: item.description,
         filePath: item.filePath,
-        beforeSnippet: item.beforeSnippet,
-        afterSnippet: item.afterSnippet,
+        diff: item.diff,
       });
       itemsBySummaryId.set(item.summaryId, bucket);
     }

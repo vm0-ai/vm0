@@ -52,6 +52,12 @@ describe("migration 0428 clear dirty memory change summaries", () => {
         summaryId: summary?.id ?? "",
         kind: "learned",
         filePath: "facts/a.md",
+        diff: {
+          format: "line",
+          truncated: false,
+          stats: { added: 0, removed: 0 },
+          hunks: [],
+        },
       });
 
       await tx.execute(sql.raw(migrationSql));

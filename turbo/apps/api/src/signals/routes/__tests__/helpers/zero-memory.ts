@@ -3,7 +3,10 @@ import { gzipSync } from "node:zlib";
 
 import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
 import { command } from "ccstate";
-import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
+import {
+  memoryChangeItems,
+  type MemoryChangeDiff,
+} from "@vm0/db/schema/memory-change-item";
 import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
@@ -63,8 +66,7 @@ interface MemoryActivityItemSeed {
   readonly title?: string | null;
   readonly description?: string | null;
   readonly filePath: string;
-  readonly beforeSnippet?: string | null;
-  readonly afterSnippet?: string | null;
+  readonly diff?: MemoryChangeDiff;
 }
 
 interface MemoryActivitySummarySeed {
@@ -75,6 +77,15 @@ interface MemoryActivitySummarySeed {
   readonly toVersionId: string;
   readonly summary?: string | null;
   readonly items?: readonly MemoryActivityItemSeed[];
+}
+
+function emptyMemoryChangeDiff(): MemoryChangeDiff {
+  return {
+    format: "line",
+    truncated: false,
+    stats: { added: 0, removed: 0 },
+    hunks: [],
+  };
 }
 
 export const seedMemoryActivitySummary$ = command(
@@ -110,8 +121,7 @@ export const seedMemoryActivitySummary$ = command(
             title: item.title ?? null,
             description: item.description ?? null,
             filePath: item.filePath,
-            beforeSnippet: item.beforeSnippet ?? null,
-            afterSnippet: item.afterSnippet ?? null,
+            diff: item.diff ?? emptyMemoryChangeDiff(),
           };
         }),
       );

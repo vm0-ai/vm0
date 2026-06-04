@@ -425,6 +425,9 @@ function MemoryFrontmatter({
 type MemoryActivityEntry = MemoryActivityResponse["entries"][number];
 type MemoryActivityItem = MemoryActivityEntry["items"][number];
 type MemoryItemKind = MemoryActivityItem["kind"];
+type MemoryActivityDiff = MemoryActivityItem["diff"];
+type MemoryActivityDiffLine =
+  MemoryActivityDiff["hunks"][number]["lines"][number];
 
 const KIND_ORDER: readonly MemoryItemKind[] = [
   "learned",
@@ -447,9 +450,17 @@ const KIND_BADGE_CLASS = {
     "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
 } as const satisfies Record<MemoryItemKind, string>;
 
-function isMarkdownPath(path: string): boolean {
-  return path.toLowerCase().endsWith(".md");
-}
+const DIFF_LINE_CLASS = {
+  add: "border-l-emerald-500 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100",
+  remove: "border-l-rose-500 bg-rose-500/10 text-rose-950 dark:text-rose-100",
+  context: "border-l-transparent text-muted-foreground",
+} as const satisfies Record<MemoryActivityDiffLine["op"], string>;
+
+const DIFF_LINE_SYMBOL = {
+  add: "+",
+  remove: "-",
+  context: " ",
+} as const satisfies Record<MemoryActivityDiffLine["op"], string>;
 
 /**
  * Deterministic fallback line shown when the LLM narrative is null. Mirrors the
@@ -492,6 +503,14 @@ function formatActivityDate(date: string): string {
     month: "long",
     day: "numeric",
   });
+}
+
+function hasDiffEvidence(diff: MemoryActivityDiff): boolean {
+  return (
+    diff.hunks.some((hunk) => {
+      return hunk.lines.length > 0;
+    }) || diff.omittedReason !== undefined
+  );
 }
 
 function MemoryUpdates() {
@@ -589,7 +608,7 @@ function MemoryUpdateItem({
   const toggleExpanded = useSet(toggleMemoryItemExpanded$);
   const expanded = expandedByKey[itemKey] ?? false;
   const title = item.title ?? item.filePath;
-  const hasEvidence = item.beforeSnippet !== null || item.afterSnippet !== null;
+  const hasEvidence = hasDiffEvidence(item.diff);
 
   return (
     <div className="rounded-md border border-border/70 bg-background">
@@ -621,47 +640,64 @@ function MemoryUpdateItem({
       </button>
       {expanded && hasEvidence ? (
         <div className="border-t border-border/70 px-3 py-2">
-          <MemorySnippet
-            label="Before"
-            filePath={item.filePath}
-            snippet={item.beforeSnippet}
-          />
-          <MemorySnippet
-            label="After"
-            filePath={item.filePath}
-            snippet={item.afterSnippet}
-          />
+          <MemoryDiffView diff={item.diff} />
         </div>
       ) : null}
     </div>
   );
 }
 
-function MemorySnippet({
-  label,
-  filePath,
-  snippet,
-}: {
-  readonly label: string;
-  readonly filePath: string;
-  readonly snippet: string | null;
-}) {
+function MemoryDiffView({ diff }: { readonly diff: MemoryActivityDiff }) {
   return (
-    <div className="mt-2 first:mt-0">
-      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
-      {snippet === null ? (
-        <p className="text-xs italic text-muted-foreground">None</p>
-      ) : isMarkdownPath(filePath) ? (
-        <div className="overflow-auto rounded bg-muted/30 px-3 py-2 text-sm">
-          <Markdown source={snippet} />
+    <div
+      aria-label="Memory diff"
+      className="overflow-hidden rounded-md border border-border/70 bg-muted/20"
+    >
+      {diff.hunks.map((hunk, hunkIndex) => {
+        const hunkKey = `${hunk.beforeStartLine ?? "x"}:${hunk.afterStartLine ?? "x"}:${hunkIndex}`;
+        return (
+          <div
+            key={hunkKey}
+            className={cn(hunkIndex > 0 && "border-t border-border/70")}
+          >
+            {hunk.lines.map((line, lineIndex) => {
+              const lineKey = `${line.beforeLine ?? "x"}:${line.afterLine ?? "x"}:${line.op}:${lineIndex}`;
+              return (
+                <div
+                  key={lineKey}
+                  className={cn(
+                    "grid grid-cols-[3rem_3rem_1.75rem_minmax(0,1fr)] border-l-2 font-mono text-xs leading-5",
+                    DIFF_LINE_CLASS[line.op],
+                  )}
+                >
+                  <span className="select-none px-2 text-right text-muted-foreground/70">
+                    {line.beforeLine ?? ""}
+                  </span>
+                  <span className="select-none border-l border-border/50 px-2 text-right text-muted-foreground/70">
+                    {line.afterLine ?? ""}
+                  </span>
+                  <span className="select-none border-l border-border/50 px-2 text-right text-muted-foreground">
+                    {DIFF_LINE_SYMBOL[line.op]}
+                  </span>
+                  <span className="whitespace-pre-wrap break-words border-l border-border/50 py-0.5 pr-3 pl-2">
+                    {line.text}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+      {diff.omittedReason ? (
+        <div className="px-3 py-2 text-xs text-muted-foreground">
+          Diff omitted because this memory file is too large.
         </div>
-      ) : (
-        <pre className="overflow-auto whitespace-pre-wrap rounded bg-muted/30 px-3 py-2 font-mono text-xs leading-5 text-foreground">
-          {snippet}
-        </pre>
-      )}
+      ) : null}
+      {diff.truncated && !diff.omittedReason ? (
+        <div className="border-t border-border/70 px-3 py-2 text-xs text-muted-foreground">
+          Diff truncated.
+        </div>
+      ) : null}
     </div>
   );
 }

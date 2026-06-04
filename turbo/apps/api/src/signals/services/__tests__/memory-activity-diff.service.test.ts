@@ -27,8 +27,25 @@ describe("computeChangeSet", () => {
     expect(changeSet.items[0]).toMatchObject({
       kind: "learned",
       filePath: "facts/coffee.md",
-      beforeSnippet: null,
-      afterSnippet: "User drinks oat milk lattes",
+      diff: {
+        format: "line",
+        truncated: false,
+        stats: { added: 1, removed: 0 },
+        hunks: [
+          {
+            beforeStartLine: null,
+            afterStartLine: 1,
+            lines: [
+              {
+                op: "add",
+                beforeLine: null,
+                afterLine: 1,
+                text: "User drinks oat milk lattes",
+              },
+            ],
+          },
+        ],
+      },
     });
   });
 
@@ -42,8 +59,25 @@ describe("computeChangeSet", () => {
     expect(changeSet.items[0]).toMatchObject({
       kind: "forgotten",
       filePath: "facts/coffee.md",
-      beforeSnippet: "User drinks oat milk lattes",
-      afterSnippet: null,
+      diff: {
+        format: "line",
+        truncated: false,
+        stats: { added: 0, removed: 1 },
+        hunks: [
+          {
+            beforeStartLine: 1,
+            afterStartLine: null,
+            lines: [
+              {
+                op: "remove",
+                beforeLine: 1,
+                afterLine: null,
+                text: "User drinks oat milk lattes",
+              },
+            ],
+          },
+        ],
+      },
     });
   });
 
@@ -63,8 +97,21 @@ describe("computeChangeSet", () => {
     expect(changeSet.items[0]).toMatchObject({
       kind: "updated",
       filePath: "facts/coffee.md",
-      beforeSnippet: "old",
-      afterSnippet: "new",
+      diff: {
+        format: "line",
+        truncated: false,
+        stats: { added: 1, removed: 1 },
+        hunks: [
+          {
+            beforeStartLine: 1,
+            afterStartLine: 1,
+            lines: [
+              { op: "remove", beforeLine: 1, afterLine: null, text: "old" },
+              { op: "add", beforeLine: null, afterLine: 1, text: "new" },
+            ],
+          },
+        ],
+      },
     });
   });
 

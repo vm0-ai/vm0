@@ -24,6 +24,7 @@ import { generateMemoryDaySummary } from "./memory-activity-summarize.service";
 import { settle } from "../utils";
 
 const L = logger("CronSummarizeMemory");
+const MEMORY_SUMMARY_LOOKBACK_DAYS = 7;
 
 type SummarizeMemoryResult =
   | { readonly skipped: true }
@@ -41,11 +42,30 @@ interface MemoryVersionRow {
   readonly createdAt: Date;
 }
 
+function addDateLabelDays(dateLabel: string, days: number): string {
+  const date = new Date(`${dateLabel}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 /** The previous calendar date (YYYY-MM-DD) before `dateLabel`. */
 function previousDateLabel(dateLabel: string): string {
-  const prev = new Date(`${dateLabel}T00:00:00Z`);
-  prev.setUTCDate(prev.getUTCDate() - 1);
-  return prev.toISOString().slice(0, 10);
+  return addDateLabelDays(dateLabel, -1);
+}
+
+/** The next calendar date (YYYY-MM-DD) after `dateLabel`. */
+function nextDateLabel(dateLabel: string): string {
+  return addDateLabelDays(dateLabel, 1);
+}
+
+function recentClosedDateLabels(todayLabel: string): readonly string[] {
+  const labels: string[] = [];
+  let cursor = todayLabel;
+  for (let index = 0; index < MEMORY_SUMMARY_LOOKBACK_DAYS; index++) {
+    cursor = previousDateLabel(cursor);
+    labels.push(cursor);
+  }
+  return labels.reverse();
 }
 
 async function loadMemoryStorages(
@@ -173,34 +193,34 @@ async function persistSummary(
     await tx
       .delete(memoryChangeItems)
       .where(eq(memoryChangeItems.summaryId, summaryId));
-    await tx.insert(memoryChangeItems).values(
-      args.changeSet.items.map((item) => {
-        return {
-          summaryId,
-          kind: item.kind,
-          title: item.title,
-          description: item.description,
-          filePath: item.filePath,
-          beforeSnippet: item.beforeSnippet,
-          afterSnippet: item.afterSnippet,
-        };
-      }),
-    );
+    if (args.changeSet.items.length > 0) {
+      await tx.insert(memoryChangeItems).values(
+        args.changeSet.items.map((item) => {
+          return {
+            summaryId,
+            kind: item.kind,
+            title: item.title,
+            description: item.description,
+            filePath: item.filePath,
+            diff: item.diff,
+          };
+        }),
+      );
+    }
   });
   signal.throwIfAborted();
 }
 
 /**
- * Summarize a single user's memory for the most-recently-closed local day
- * ("yesterday"). Each run considers only that one day — there is no multi-day
- * catch-up. The cron runs hourly, so a closed day has many chances to be
- * captured before it rolls off.
+ * Summarize a single user's memory for the seven most-recently-closed local
+ * days. Each missing day is compared against the day before it, so the first
+ * run backfills a daily timeline instead of one combined multi-day diff.
  *
- * The baseline is the version current at the *start* of yesterday (the last
- * version strictly before yesterday's local midnight), so a long-time user's
- * card reflects only the day-over-day delta, never their full history. A null
- * baseline only happens for a user whose memory first appeared yesterday —
- * that is a legitimate "learned yesterday", not a backfill.
+ * The baseline for a date is the version current at that date's local
+ * midnight. The target is the version current at the next local midnight. A
+ * null baseline means the user's memory first appeared during that day. Days
+ * with no changes still get a quiet card once memory exists, while days before
+ * the user's first memory version are skipped.
  */
 function summarizeUserMemory(
   db: Db,
@@ -211,76 +231,78 @@ function summarizeUserMemory(
 ): Computed<Promise<number>> {
   return computed(async (get): Promise<number> => {
     const todayLabel = localDateLabel(timezone, now);
-    const yesterdayLabel = previousDateLabel(todayLabel);
-
-    // Idempotent: if yesterday already has a summary row, do nothing.
-    if (
-      await summaryExists(
-        db,
-        storage.orgId,
-        storage.userId,
-        yesterdayLabel,
-        signal,
-      )
-    ) {
-      return 0;
-    }
-
-    const yesterdayStart = localMidnightUtc(timezone, yesterdayLabel);
-    const yesterdayEnd = localMidnightUtc(timezone, todayLabel);
-
+    const dateLabels = recentClosedDateLabels(todayLabel);
     const versions = await loadVersions(db, storage.storageId, signal);
 
-    // State at the end of yesterday. Null means the user had no memory through
-    // yesterday — nothing to summarize.
-    const toVersion = lastVersionBefore(versions, yesterdayEnd);
-    if (!toVersion) {
-      return 0;
+    let summarized = 0;
+    for (const dateLabel of dateLabels) {
+      // Idempotent: if a date already has a summary row, do nothing.
+      if (
+        await summaryExists(
+          db,
+          storage.orgId,
+          storage.userId,
+          dateLabel,
+          signal,
+        )
+      ) {
+        continue;
+      }
+
+      const dayStart = localMidnightUtc(timezone, dateLabel);
+      const dayEnd = localMidnightUtc(timezone, nextDateLabel(dateLabel));
+
+      // State at the end of the day. Null means the user had no memory through
+      // that date, so there is no card to show.
+      const toVersion = lastVersionBefore(versions, dayEnd);
+      if (!toVersion) {
+        continue;
+      }
+
+      // State at the start of the day (= end of the day before). Null means
+      // the user's memory first appeared during this date.
+      const baseline = lastVersionBefore(versions, dayStart);
+
+      const changeSet =
+        baseline?.id === toVersion.id
+          ? { items: [], changed: false }
+          : await get(
+              computeMemoryChangeSet(baseline?.s3Key ?? null, toVersion.s3Key),
+            );
+      signal.throwIfAborted();
+
+      let summary: string | null = null;
+      if (changeSet.changed) {
+        const summaryResult = await settle(generateMemoryDaySummary(changeSet));
+        if (summaryResult.ok) {
+          summary = summaryResult.value;
+        } else {
+          L.warn("Memory day summary generation failed", {
+            orgId: storage.orgId,
+            userId: storage.userId,
+            date: dateLabel,
+            err: summaryResult.error,
+          });
+        }
+      }
+
+      await persistSummary(
+        db,
+        {
+          orgId: storage.orgId,
+          userId: storage.userId,
+          date: dateLabel,
+          fromVersionId: baseline?.id ?? null,
+          toVersionId: toVersion.id,
+          summary,
+          changeSet,
+          createdAt: now,
+        },
+        signal,
+      );
+      summarized++;
     }
-
-    // State at the start of yesterday (= end of the day before). Null means the
-    // user's memory first appeared during yesterday.
-    const baseline = lastVersionBefore(versions, yesterdayStart);
-
-    // No new version landed during yesterday: nothing changed that day.
-    if (baseline?.id === toVersion.id) {
-      return 0;
-    }
-
-    const changeSet = await get(
-      computeMemoryChangeSet(baseline?.s3Key ?? null, toVersion.s3Key),
-    );
-    signal.throwIfAborted();
-
-    if (!changeSet.changed) {
-      return 0;
-    }
-
-    const summaryResult = await settle(generateMemoryDaySummary(changeSet));
-    if (!summaryResult.ok) {
-      L.warn("Memory day summary generation failed", {
-        orgId: storage.orgId,
-        userId: storage.userId,
-        date: yesterdayLabel,
-        err: summaryResult.error,
-      });
-    }
-
-    await persistSummary(
-      db,
-      {
-        orgId: storage.orgId,
-        userId: storage.userId,
-        date: yesterdayLabel,
-        fromVersionId: baseline?.id ?? null,
-        toVersionId: toVersion.id,
-        summary: summaryResult.ok ? summaryResult.value : null,
-        changeSet,
-        createdAt: now,
-      },
-      signal,
-    );
-    return 1;
+    return summarized;
   });
 }
 
