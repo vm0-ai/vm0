@@ -86,6 +86,76 @@ def _allow(
     return matching.FirewallAllow(api_entry, name, permission, params or {}, rule, rel_path)
 
 
+def _firewall_flow(
+    real_flow,
+    *,
+    host: str = "api.github.com",
+    path: str = "/repos",
+    run_id: str = "test-run",
+):
+    flow = real_flow(with_response=False, host=host, path=path)
+    flow.metadata["vm_run_id"] = run_id
+    return flow
+
+
+def _api_entry(
+    *,
+    base: str = "https://api.github.com",
+    auth_config: dict | None = None,
+    api_id: str | None = None,
+) -> dict:
+    entry = {
+        "base": base,
+        "auth": auth_config if auth_config is not None else {"headers": {}},
+    }
+    if api_id is not None:
+        entry["id"] = api_id
+    return entry
+
+
+def _vm_info(
+    tmp_path=None,
+    *,
+    run_id: str = "run-1",
+    sandbox_marker: str = "tok-xyz",
+    encrypted_secrets: str = "iv:tag:data",
+    include_encrypted_secrets: bool = True,
+    billable_firewalls: list[str] | None = None,
+    include_billable_firewalls: bool = True,
+    network_log_path: str | None = None,
+) -> dict:
+    if network_log_path is None:
+        network_log_path = str(tmp_path / "net.jsonl") if tmp_path is not None else ""
+
+    vm_info: dict[str, object] = {
+        "runId": run_id,
+        "sandboxToken": sandbox_marker,
+        "networkLogPath": network_log_path,
+    }
+    if include_encrypted_secrets:
+        vm_info["encryptedSecrets"] = encrypted_secrets
+    if include_billable_firewalls:
+        vm_info["billableFirewalls"] = list(billable_firewalls or [])
+    return vm_info
+
+
+def _token_meta(
+    *,
+    headers: dict[str, str] | None = None,
+    resolved_secrets: list[str] | None = None,
+    refreshed_connectors: list[str] | None = None,
+    refreshed_secrets: list[str] | None = None,
+    cache_hit: bool = False,
+) -> dict:
+    return {
+        "headers": dict(headers or {}),
+        "resolved_secrets": list(resolved_secrets or []),
+        "refreshed_connectors": list(refreshed_connectors or []),
+        "refreshed_secrets": list(refreshed_secrets or []),
+        "cache_hit": cache_hit,
+    }
+
+
 class _UnreadableHttpErrorBody(io.BytesIO):
     def read(self, size: int = -1) -> bytes:
         raise OSError("body read failed")
@@ -611,30 +681,19 @@ class TestHandleFirewallRequest:
     async def test_success_injects_headers_and_audit_metadata(
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
+        flow = _firewall_flow(real_flow)
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
-        api_entry = {
-            "id": "run-1:0",
-            "base": "https://api.github.com",
-            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        api_entry = _api_entry(
+            api_id="run-1:0",
+            auth_config={"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+        )
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry, params={"owner": "octocat", "repo": "hello"})
-        token_meta = {
-            "headers": {"Authorization": "Bearer real-token", "X-Custom": "value"},
-            "resolved_secrets": ["GITHUB_TOKEN"],
-            "refreshed_connectors": [],
-            "refreshed_secrets": [],
-            "cache_hit": False,
-        }
+        token_meta = _token_meta(
+            headers={"Authorization": "Bearer real-token", "X-Custom": "value"},
+            resolved_secrets=["GITHUB_TOKEN"],
+        )
 
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -672,28 +731,11 @@ class TestHandleFirewallRequest:
     ):
         """billableFirewalls is optional in the TS schema — a vm_info without
         the key must not KeyError; firewall_billable should be False."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {
-            "id": "run-1:0",
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            # intentionally no "billableFirewalls" key
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry(api_id="run-1:0")
+        vm_info = _vm_info(tmp_path, include_billable_firewalls=False)
         allow = _allow(api_entry, rule="GET /repos")
-        token_meta = {
-            "headers": {},
-            "resolved_secrets": [],
-            "refreshed_connectors": [],
-            "refreshed_secrets": [],
-            "cache_hit": False,
-        }
+        token_meta = _token_meta()
 
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -704,16 +746,9 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_billable"] is False
 
     async def test_failure_returns_502(self, real_flow, headers, mitm_ctx, tmp_path):
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
 
         with (
@@ -764,16 +799,9 @@ class TestHandleFirewallRequest:
         mitm_ctx,
         tmp_path,
     ):
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
 
         with (
@@ -800,26 +828,14 @@ class TestHandleFirewallRequest:
         mitm_ctx,
         tmp_path,
     ):
-        flow = real_flow(
-            with_response=False,
-            host="api.github.com",
-            path="/repos?existing=1",
-        )
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {
-            "base": "https://api.github.com",
-            "auth": {
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
                 "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        )
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         mock_resp = MagicMock()
         mock_resp.__enter__.return_value = mock_resp
@@ -853,26 +869,14 @@ class TestHandleFirewallRequest:
         mitm_ctx,
         tmp_path,
     ):
-        flow = real_flow(
-            with_response=False,
-            host="api.github.com",
-            path="/repos?existing=1",
-        )
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {
-            "base": "https://api.github.com",
-            "auth": {
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
                 "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        )
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         response_body = json.dumps({"headers": {"Authorization": "Bearer tok"}}).encode()
         mock_resp = _raw_response(response_body)
@@ -910,26 +914,14 @@ class TestHandleFirewallRequest:
         mitm_ctx,
         tmp_path,
     ):
-        flow = real_flow(
-            with_response=False,
-            host="api.github.com",
-            path="/repos?existing=1",
-        )
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {
-            "base": "https://api.github.com",
-            "auth": {
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
                 "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        )
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         mock_resp = _json_response({"headers": []})
 
@@ -956,16 +948,9 @@ class TestHandleFirewallRequest:
         mock_resp.__exit__.assert_called_once()
 
     async def test_structured_api_error_is_preserved(self, real_flow, mitm_ctx, tmp_path):
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         api_error = auth.FirewallAuthApiError(
             status=502,
@@ -998,18 +983,11 @@ class TestHandleFirewallRequest:
         assert body["failureReason"] == "upstream_provider"
 
     async def test_invalid_billable_auth_expiry_returns_502(self, real_flow, mitm_ctx, tmp_path):
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
+        flow = _firewall_flow(real_flow)
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": ["github"],
-        }
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path, billable_firewalls=["github"])
         allow = _allow(api_entry)
 
         with (
@@ -1050,16 +1028,9 @@ class TestHandleFirewallRequest:
 
     async def test_no_response_set_on_success(self, real_flow, headers, mitm_ctx):
         """On success, flow.response should remain None (request continues to origin)."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "",
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(network_log_path="")
         allow = _allow(api_entry)
 
         with (
@@ -1086,16 +1057,9 @@ class TestHandleFirewallRequest:
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
         """When connector is enabled but not linked, return 424 with missing secrets."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
 
         with (
@@ -1126,16 +1090,9 @@ class TestHandleFirewallRequest:
 
     async def test_insufficient_credits_returns_402(self, real_flow, headers, mitm_ctx, tmp_path):
         """Billable firewall auth denied for credits returns 402 and blocks usage."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": ["github"],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path, billable_firewalls=["github"])
         allow = _allow(api_entry)
 
         with (
@@ -1164,16 +1121,9 @@ class TestHandleFirewallRequest:
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
         """Connector references are only returned when the firewall name is known."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry, name="", permission=None, rule=None)
 
         with (
@@ -1204,16 +1154,9 @@ class TestHandleFirewallRequest:
 
     async def test_missing_vars_only_returns_424(self, real_flow, headers, mitm_ctx, tmp_path):
         """When connector not configured, return 424 with connector ref."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://hcti.io", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry(base="https://hcti.io")
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry, name="htmlcsstoimage")
 
         with (
@@ -1240,15 +1183,9 @@ class TestHandleFirewallRequest:
 
     async def test_missing_encrypted_secrets_returns_502(self, real_flow, headers, mitm_ctx):
         """When encryptedSecrets is missing from vm_info, return 502."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "networkLogPath": "",
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(network_log_path="", include_encrypted_secrets=False)
         allow = _allow(api_entry)
 
         with mitm_ctx():
