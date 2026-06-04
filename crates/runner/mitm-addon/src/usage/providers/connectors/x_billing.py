@@ -311,37 +311,50 @@ def _host_from_bare_domain_candidate(candidate: str) -> str | None:
     return host.rstrip(".")
 
 
-def _labels_are_billing_domain(labels: tuple[str, ...]) -> bool:
-    if len(labels) < _MIN_DOMAIN_LABELS:
-        return False
+def _label_is_billing_domain_label(label: str) -> bool:
+    return (
+        bool(label)
+        and _DOMAIN_LABEL_RE.fullmatch(label) is not None
+        and not label.startswith("-")
+        and not label.endswith("-")
+    )
 
-    for label in labels:
-        if (
-            not label
-            or _DOMAIN_LABEL_RE.fullmatch(label) is None
-            or label.startswith("-")
-            or label.endswith("-")
-        ):
-            return False
-    return labels[-1] in IANA_TLDS
+
+def _is_unsafe_idna_compatibility_error(exc: UnicodeError) -> bool:
+    return str(exc) == _UNSAFE_IDNA_COMPATIBILITY_MAPPING_ERROR
 
 
 def _classify_bare_domain_host(host: str) -> _BareDomainClassification:
-    try:
-        normalized_host = normalize_idna_hostname(host)
-    except UnicodeError as exc:
-        # Keep billing conservative for URL-like compatibility aliases, but
-        # do not fold them into unrelated ASCII domains.
-        if str(exc) == _UNSAFE_IDNA_COMPATIBILITY_MAPPING_ERROR:
-            return "ambiguous"
-        return "non_link"
-    except ValueError:
+    labels = tuple(host.split("."))
+    if len(labels) < _MIN_DOMAIN_LABELS or any(not label for label in labels):
         return "non_link"
 
-    labels = tuple(normalized_host.split("."))
-    if _labels_are_billing_domain(labels):
-        return "url"
-    return "non_link"
+    has_ambiguous_label = False
+    normalized_labels: list[str | None] = []
+    for label in labels:
+        try:
+            normalized_label = normalize_idna_hostname(label)
+        except UnicodeError as exc:
+            # Keep billing conservative for URL-like compatibility aliases,
+            # but do not fold them into unrelated ASCII domains.
+            if _is_unsafe_idna_compatibility_error(exc):
+                has_ambiguous_label = True
+                normalized_labels.append(None)
+                continue
+            return "non_link"
+        except ValueError:
+            return "non_link"
+
+        if not _label_is_billing_domain_label(normalized_label):
+            return "non_link"
+        normalized_labels.append(normalized_label)
+
+    normalized_tld = normalized_labels[-1]
+    if normalized_tld is not None and normalized_tld not in IANA_TLDS:
+        return "non_link"
+    if has_ambiguous_label:
+        return "ambiguous"
+    return "url"
 
 
 def _bare_domain_candidate_likely_contains_url(candidate: str) -> bool:

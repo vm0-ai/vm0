@@ -1049,6 +1049,7 @@ class TestReportConnectorUsage:
             "Plus suffix example.com+tag",
             "At suffix example.com@user",
             "Unknown example.notatld",
+            "Fullwidth unknown \uff26\uff2f\uff2f.notatld",
             "Underscore foo_bar.example.com",
             "Leading hyphen -bad.com",
             "Trailing hyphen bad-.com",
