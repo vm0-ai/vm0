@@ -323,7 +323,7 @@ function PricingPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 -mx-4 sm:-mx-10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {COMPARE_PLANS.map((plan) => {
           return (
             <PlanCard
