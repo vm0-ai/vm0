@@ -1015,7 +1015,8 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main), not a release-please commit, and web-facing changes need a web preview.
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and
+    # web-facing changes or runner OAuth E2E need a web preview.
     # Runs in merge queue too, but skips GitHub Deployment creation (the bobheadxi/deployments action
     # cannot resolve the temporary `gh-readonly-queue/*` ref via the GitHub API).
     if: |
@@ -1026,7 +1027,8 @@ jobs:
         needs.prepare.outputs.platform-changed == 'true' ||
         needs.prepare.outputs.ci-changed == 'true' ||
         needs.prepare.outputs.e2e-changed == 'true' ||
-        needs.prepare.outputs.api-backend-needed == 'true'
+        needs.prepare.outputs.api-backend-needed == 'true' ||
+        needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
       )
     outputs:
       preview-url: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
@@ -1894,6 +1896,7 @@ jobs:
         prepare,
         build-cli,
         deploy-api,
+        deploy-web,
         deploy-runner-prepare,
         deploy-runner-start,
         e2e-runner-bootstrap,
@@ -2249,6 +2252,12 @@ jobs:
           if [ "${{ needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed }}" = "false" ]; then
             TS_CHECK_SKIP_ALLOWED="skipped"
           fi
+          RUNNER_E2E_SKIP_ALLOWED="true"
+          WEB_DEPLOY_SKIP_ALLOWED="true"
+          if [ "${{ needs.prepare.outputs.turbo-runner-consumer-needed }}" = "true" ]; then
+            RUNNER_E2E_SKIP_ALLOWED=""
+            WEB_DEPLOY_SKIP_ALLOWED=""
+          fi
 
           check_result() {
             local job="$1" result="$2" allow_skip="$3"
@@ -2294,17 +2303,17 @@ jobs:
           check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
           check_result "build-api" "${{ needs.build-api.result }}" "true"
           check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
-          check_result "deploy-web" "${{ needs.deploy-web.result }}" "true"
+          check_result "deploy-web" "${{ needs.deploy-web.result }}" "$WEB_DEPLOY_SKIP_ALLOWED"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "true"
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
           check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "true"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
-          check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "true"
-          check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "true"
-          check_result "e2e-runner-bootstrap" "${{ needs.e2e-runner-bootstrap.result }}" "true"
-          check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "true"
+          check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "e2e-runner-bootstrap" "${{ needs.e2e-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           # Informational: any result is acceptable (not a merge blocker)
           check_result "lighthouse-web" "${{ needs.lighthouse-web.result }}" "informational"
           check_result "lighthouse-app" "${{ needs.lighthouse-app.result }}" "informational"
