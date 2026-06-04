@@ -101,6 +101,14 @@ export const setTemplatePickerCategory$ = command(
   },
 );
 
+const internalTemplatePickerSearch$ = state("");
+export const templatePickerSearch$ = computed((get) => {
+  return get(internalTemplatePickerSearch$);
+});
+export const setTemplatePickerSearch$ = command(({ set }, value: string) => {
+  set(internalTemplatePickerSearch$, value);
+});
+
 // -- Per-message generation template selections --------------------------------
 
 const internalNewThreadGenerationTemplate$ = state<

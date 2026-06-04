@@ -17,12 +17,14 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
+  IconChartBar,
   IconLoader2,
   IconMicrophone,
   IconPaperclip,
   IconPlayerStop,
   IconPlug,
   IconPlus,
+  IconSearch,
   IconTemplate,
   IconX,
 } from "@tabler/icons-react";
@@ -138,6 +140,8 @@ import {
   setTemplatePickerOpen$,
   templatePickerCategory$,
   setTemplatePickerCategory$,
+  templatePickerSearch$,
+  setTemplatePickerSearch$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -476,6 +480,63 @@ function formatPresentationTemplateKind(templateId: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+function presentationTemplateMatchesSearch(
+  item: PresentationTemplateItem,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  const searchable = [
+    item.title,
+    item.designSystemId,
+    item.templateId,
+    formatPresentationTemplateKind(item.templateId),
+  ].join(" ");
+  return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function TemplateSectionHeader({
+  label,
+  count,
+}: {
+  label: string;
+  count: number;
+}) {
+  return (
+    <div className="mb-4 flex items-center gap-3">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </h3>
+      <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
+        {count}
+      </span>
+    </div>
+  );
+}
+
+function TemplateEmptyPanel({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex min-h-40 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
+      <div className="flex max-w-xl flex-col items-center">
+        <IconSearch
+          className="mb-4 h-8 w-8 text-muted-foreground/70"
+          stroke={1.7}
+        />
+        <p className="text-sm font-semibold text-muted-foreground">{title}</p>
+        <p className="mt-2 text-sm text-muted-foreground/80">{description}</p>
+      </div>
+    </div>
+  );
+}
+
 function TemplatePickerDialog({
   value,
   onChange,
@@ -487,6 +548,11 @@ function TemplatePickerDialog({
 }) {
   const category = useGet(templatePickerCategory$);
   const setCategory = useSet(setTemplatePickerCategory$);
+  const search = useGet(templatePickerSearch$);
+  const setSearch = useSet(setTemplatePickerSearch$);
+  const filteredItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
+    return presentationTemplateMatchesSearch(item, search);
+  });
 
   const handleSelect = (item: PresentationTemplateItem) => {
     onChange(toPresentationGenerationTemplate(item));
@@ -509,114 +575,113 @@ function TemplatePickerDialog({
         <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
           <DialogTitle>Templates</DialogTitle>
         </DialogHeader>
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3">
+        <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
           <Tabs value={category} onValueChange={setCategory}>
-            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-              <TabsTrigger value="slides">PPT</TabsTrigger>
-              <TabsTrigger value="website" disabled>
-                Website
-              </TabsTrigger>
-              <TabsTrigger value="illustration" disabled>
-                Illustration
-              </TabsTrigger>
-              <TabsTrigger value="report" disabled>
-                Report
-              </TabsTrigger>
-              <TabsTrigger value="workflow" disabled>
-                Workflow
+            <TabsList className="h-auto rounded-none bg-transparent p-0">
+              <TabsTrigger
+                value="slides"
+                className="h-11 gap-2 rounded-none border-b-2 border-foreground bg-transparent px-1 pb-3 pt-2 text-base font-semibold text-foreground shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+              >
+                <IconChartBar className="h-5 w-5 text-blue-500" stroke={1.8} />
+                PPT
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          {value && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 shrink-0 rounded-md px-2 text-xs"
-              onClick={() => {
-                onChange(undefined);
+          <div className="relative w-full sm:w-64">
+            <IconSearch
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              stroke={1.8}
+            />
+            <Input
+              aria-label="Search templates"
+              className="h-8 pl-9 text-sm"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
               }}
-            >
-              Clear
-            </Button>
-          )}
+              placeholder="Search templates"
+            />
+          </div>
         </div>
         {category === "slides" && (
           <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
-            <div className="mb-4 flex items-center gap-2">
-              <h3 className="text-xs font-semibold uppercase text-muted-foreground">
-                VM0 templates
-              </h3>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                {PRESENTATION_TEMPLATE_ITEMS.length}
-              </span>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {PRESENTATION_TEMPLATE_ITEMS.map((item) => {
-                const selected = isSelectedPresentationTemplate(item, value);
-                return (
-                  <div
-                    key={item.slug}
-                    className={cn(
-                      "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
-                      selected
-                        ? "border-primary ring-1 ring-primary"
-                        : "border-border",
-                    )}
-                  >
-                    <div className="relative aspect-[16/9] overflow-hidden bg-muted">
-                      {item.previewImage ? (
-                        <img
-                          src={item.previewImage}
-                          alt=""
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-muted-foreground">
-                          <IconTemplate size={28} stroke={1.5} />
-                        </div>
+            <TemplateSectionHeader
+              label="VM0 templates"
+              count={filteredItems.length}
+            />
+            {filteredItems.length > 0 ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredItems.map((item) => {
+                  const selected = isSelectedPresentationTemplate(item, value);
+                  return (
+                    <div
+                      key={item.slug}
+                      className={cn(
+                        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+                        selected
+                          ? "border-primary ring-1 ring-primary"
+                          : "border-border",
                       )}
-                      <div className="absolute inset-0 flex items-center justify-center gap-0 bg-black/0 opacity-0 transition-opacity group-hover:bg-black/10 group-hover:opacity-100 group-focus-within:bg-black/10 group-focus-within:opacity-100">
-                        <button
-                          type="button"
-                          aria-label={`Select template ${item.title}`}
-                          aria-pressed={selected}
-                          onClick={() => {
-                            handleSelect(item);
-                          }}
-                          className="h-9 rounded-l-full bg-foreground px-6 text-sm font-semibold text-background shadow-lg transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          Use
-                        </button>
-                        <a
-                          href={item.embedUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label={`View template ${item.title}`}
-                          className="flex h-9 items-center rounded-r-full bg-background px-6 text-sm font-semibold text-foreground shadow-lg transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                          }}
-                        >
-                          View
-                        </a>
+                    >
+                      <div className="relative aspect-[16/9] overflow-hidden bg-muted">
+                        {item.previewImage ? (
+                          <img
+                            src={item.previewImage}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-muted-foreground">
+                            <IconTemplate size={28} stroke={1.5} />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 flex items-center justify-center gap-0 bg-black/0 opacity-0 transition-opacity group-hover:bg-black/10 group-hover:opacity-100 group-focus-within:bg-black/10 group-focus-within:opacity-100">
+                          <button
+                            type="button"
+                            aria-label={`Select template ${item.title}`}
+                            aria-pressed={selected}
+                            onClick={() => {
+                              handleSelect(item);
+                            }}
+                            className="h-9 rounded-l-full bg-foreground px-6 text-sm font-semibold text-background shadow-lg transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            Use
+                          </button>
+                          <a
+                            href={item.embedUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`View template ${item.title}`}
+                            className="flex h-9 items-center rounded-r-full bg-background px-6 text-sm font-semibold text-foreground shadow-lg transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                            }}
+                          >
+                            View
+                          </a>
+                        </div>
+                      </div>
+                      <div className="px-3.5 py-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {item.title}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">
+                            {formatPresentationTemplateKind(item.templateId)}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                    <div className="px-3.5 py-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">
-                          {item.title}
-                        </p>
-                        <p className="mt-1 truncate text-xs text-muted-foreground">
-                          {formatPresentationTemplateKind(item.templateId)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <TemplateEmptyPanel
+                title="No matches"
+                description="Try a different search."
+              />
+            )}
           </div>
         )}
       </DialogContent>
@@ -689,6 +754,7 @@ function SelectedTemplateChipSlot({
 function TemplatePickerButton({ picker }: { picker: ComposerTemplatePicker }) {
   const open = useGet(templatePickerOpen$);
   const setOpen = useSet(setTemplatePickerOpen$);
+  const setSearch = useSet(setTemplatePickerSearch$);
   const selectedTitle = selectedTemplateTitle(picker.value);
 
   return (
@@ -705,6 +771,7 @@ function TemplatePickerButton({ picker }: { picker: ComposerTemplatePicker }) {
               aria-label="Template"
               aria-pressed={picker.value !== undefined}
               onClick={() => {
+                setSearch("");
                 setOpen(true);
               }}
             >

@@ -151,6 +151,18 @@ function expectTemplateChip(
   ).toBeInTheDocument();
 }
 
+function tabWithText(text: string): HTMLElement | undefined {
+  return queryAllByRoleFast("tab").find((tab) => {
+    return tab.textContent === text;
+  });
+}
+
+function buttonWithText(text: string): HTMLElement | undefined {
+  return queryAllByRoleFast("button").find((button) => {
+    return button.textContent === text;
+  });
+}
+
 describe("zero chat template picker", () => {
   it("hides the Template button while the feature switch is off", async () => {
     mockChatLifecycle();
@@ -185,6 +197,71 @@ describe("zero chat template picker", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
     expect(screen.getByText(template.title)).toBeInTheDocument();
+    expect(tabWithText("PPT")).toBeDefined();
+    expect(tabWithText("Website")).toBeUndefined();
+    expect(tabWithText("Illustration")).toBeUndefined();
+    expect(tabWithText("Report")).toBeUndefined();
+    expect(tabWithText("Workflow")).toBeUndefined();
+    expect(buttonWithText("Clear")).toBeUndefined();
+  });
+
+  it("filters templates from the picker search", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    const templateButton = await waitFor(() => {
+      return screen.getByLabelText("Template");
+    });
+    click(templateButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    await user.type(
+      screen.getByLabelText("Search templates"),
+      nextTemplate.title,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(nextTemplate.title)).toBeInTheDocument();
+    });
+    if (template.title !== nextTemplate.title) {
+      expect(screen.queryByText(template.title)).toBeNull();
+    }
+  });
+
+  it("shows the no-match empty state for template search", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    const templateButton = await waitFor(() => {
+      return screen.getByLabelText("Template");
+    });
+    click(templateButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    await user.type(screen.getByLabelText("Search templates"), "no-match");
+
+    await waitFor(() => {
+      expect(screen.getByText("No matches")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Try a different search.")).toBeInTheDocument();
+    expect(screen.queryByText("My templates")).toBeNull();
+    expect(screen.queryByText("Nothing saved yet")).toBeNull();
   });
 
   it("sends selected generation template from the new-thread composer and clears it", async () => {
@@ -295,34 +372,11 @@ describe("zero chat template picker", () => {
     });
 
     await openPickerAndSelectTemplate(user);
-    await user.click(screen.getByLabelText("Remove template Pitch deck"));
-
-    await waitFor(() => {
-      expect(screen.queryByLabelText("Remove template Pitch deck")).toBeNull();
-    });
-    expect(screen.getByLabelText("Template")).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
-  });
-
-  it("clears the selected template from the picker dialog", async () => {
-    const user = userEvent.setup();
-    mockChatLifecycle();
-
-    await setupPage({
-      context,
-      path: "/",
-      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
-    });
-
-    await openPickerAndSelectTemplate(user);
     click(screen.getByLabelText("Template"));
-    const clearButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent === "Clear";
-    });
-    expect(clearButton).toBeEnabled();
-    await user.click(clearButton!);
+    expect(buttonWithText("Clear")).toBeUndefined();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByLabelText("Remove template Pitch deck"));
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Remove template Pitch deck")).toBeNull();
