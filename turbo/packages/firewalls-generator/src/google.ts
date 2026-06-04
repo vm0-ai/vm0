@@ -95,6 +95,8 @@ const SCOPELESS_METHODS = new Set([
   "youtube.thirdPartyLinks.insert",
   "youtube.thirdPartyLinks.update",
   "youtube.thirdPartyLinks.delete",
+  // Deprecated Mobile-Friendly Test tool — exposed without an OAuth scope.
+  "searchconsole.urlTestingTools.mobileFriendlyTest.run",
 ]);
 
 const RULE_PATTERN = /^(GET|HEAD|POST|PUT|PATCH|DELETE) \//;
@@ -604,6 +606,18 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     placeholderKey: "GOOGLE_MEET_TOKEN",
     placeholderValue: OAUTH_PLACEHOLDER,
     auth: bearerAuth("GOOGLE_MEET_TOKEN"),
+  },
+  "google-search-console": {
+    discoveryUrls: [
+      "https://searchconsole.googleapis.com/$discovery/rest?version=v1",
+    ],
+    baseUrl: "https://searchconsole.googleapis.com",
+    stripPrefix: "",
+    serviceName: "google-search-console",
+    serviceDescription: "Google Search Console API",
+    placeholderKey: "GOOGLE_SEARCH_CONSOLE_TOKEN",
+    placeholderValue: OAUTH_PLACEHOLDER,
+    auth: bearerAuth("GOOGLE_SEARCH_CONSOLE_TOKEN"),
   },
   "google-sheets": {
     discoveryUrls: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],

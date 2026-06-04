@@ -66,6 +66,7 @@ import { googleCalendarProvider } from "./oauth/providers/google-calendar-provid
 import { googleDocsProvider } from "./oauth/providers/google-docs-provider";
 import { googleDriveProvider } from "./oauth/providers/google-drive-provider";
 import { googleMeetProvider } from "./oauth/providers/google-meet-provider";
+import { googleSearchConsoleProvider } from "./oauth/providers/google-search-console-provider";
 import { googleSheetsProvider } from "./oauth/providers/google-sheets-provider";
 import { linearProvider } from "./oauth/providers/linear-provider";
 import { mailchimpProvider } from "./oauth/providers/mailchimp-provider";
@@ -386,6 +387,9 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   },
   "google-meet": {
     oauth: authCodeRefreshProviderEntry(googleMeetProvider),
+  },
+  "google-search-console": {
+    oauth: authCodeRefreshProviderEntry(googleSearchConsoleProvider),
   },
   "google-sheets": {
     oauth: authCodeRefreshProviderEntry(googleSheetsProvider),

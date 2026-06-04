@@ -10,6 +10,7 @@ import { slock } from "./connectors/slock";
 import { googleSheets } from "./connectors/google-sheets";
 import { googleCalendar } from "./connectors/google-calendar";
 import { googleDocs } from "./connectors/google-docs";
+import { googleSearchConsole } from "./connectors/google-search-console";
 import { linear } from "./connectors/linear";
 import { intervalsIcu } from "./connectors/intervals-icu";
 import { vercel } from "./connectors/vercel";
@@ -866,6 +867,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...googleSheets,
   ...googleCalendar,
   ...googleDocs,
+  ...googleSearchConsole,
   ...linear,
   ...intervalsIcu,
   ...vercel,

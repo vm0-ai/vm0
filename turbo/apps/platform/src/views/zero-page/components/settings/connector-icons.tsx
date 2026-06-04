@@ -130,6 +130,7 @@ const CONNECTOR_ICON_COLORFUL = {
   "google-docs": true,
   "google-drive": true,
   "google-meet": true,
+  "google-search-console": true,
   "google-sheets": true,
   granola: true,
   greenhouse: true,

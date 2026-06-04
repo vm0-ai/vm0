@@ -176,6 +176,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   "google-docs": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-drive": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-meet": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-search-console": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-sheets": "https://accounts.google.com/o/oauth2/v2/auth",
   gumroad: "https://gumroad.com/oauth/authorize",
   hubspot: "https://app.hubspot.com/oauth/authorize",
