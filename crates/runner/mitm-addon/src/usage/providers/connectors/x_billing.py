@@ -53,9 +53,10 @@ sheet for drift.
 import json
 import re
 from collections.abc import Callable
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 import matching
+from host_normalization import normalize_idna_hostname
 
 from .x_tlds import IANA_TLDS
 
@@ -291,6 +292,8 @@ _DOMAIN_LABEL_RE = re.compile(r"^[a-z0-9-]{1,63}$")
 _MIN_DOMAIN_LABELS = 2
 _URL_TRAILING_PUNCTUATION = ".,:;!?"
 _URL_WRAPPER_CHARS = " \t\r\n<>()[]{}\"'"
+_UNSAFE_IDNA_COMPATIBILITY_MAPPING_ERROR = "unsafe IDNA compatibility mapping"
+_BareDomainClassification = Literal["url", "non_link", "ambiguous"]
 
 
 def _host_from_bare_domain_candidate(candidate: str) -> str | None:
@@ -308,36 +311,49 @@ def _host_from_bare_domain_candidate(candidate: str) -> str | None:
     return host.rstrip(".")
 
 
-def _idna_domain_labels(host: str) -> tuple[str, ...] | None:
-    labels = host.split(".")
+def _labels_are_billing_domain(labels: tuple[str, ...]) -> bool:
     if len(labels) < _MIN_DOMAIN_LABELS:
-        return None
+        return False
 
-    normalized_labels = []
     for label in labels:
-        if not label:
-            return None
-        try:
-            normalized = label.encode("idna").decode("ascii").lower()
-        except UnicodeError:
-            return None
         if (
-            _DOMAIN_LABEL_RE.fullmatch(normalized) is None
-            or normalized.startswith("-")
-            or normalized.endswith("-")
+            not label
+            or _DOMAIN_LABEL_RE.fullmatch(label) is None
+            or label.startswith("-")
+            or label.endswith("-")
         ):
-            return None
-        normalized_labels.append(normalized)
+            return False
+    return labels[-1] in IANA_TLDS
 
-    return tuple(normalized_labels)
+
+def _classify_bare_domain_host(host: str) -> _BareDomainClassification:
+    try:
+        normalized_host = normalize_idna_hostname(host)
+    except UnicodeError as exc:
+        # Keep billing conservative for URL-like compatibility aliases, but
+        # do not fold them into unrelated ASCII domains.
+        if str(exc) == _UNSAFE_IDNA_COMPATIBILITY_MAPPING_ERROR:
+            return "ambiguous"
+        return "non_link"
+    except ValueError:
+        return "non_link"
+
+    labels = tuple(normalized_host.split("."))
+    if _labels_are_billing_domain(labels):
+        return "url"
+    return "non_link"
 
 
 def _bare_domain_candidate_likely_contains_url(candidate: str) -> bool:
     host = _host_from_bare_domain_candidate(candidate)
     if host is None:
         return False
-    labels = _idna_domain_labels(host)
-    return labels is not None and labels[-1] in IANA_TLDS
+
+    match _classify_bare_domain_host(host):
+        case "url" | "ambiguous":
+            return True
+        case "non_link":
+            return False
 
 
 def _tweet_text_likely_contains_url(text: str) -> bool:

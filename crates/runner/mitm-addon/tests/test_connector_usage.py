@@ -1012,6 +1012,8 @@ class TestReportConnectorUsage:
             "Open xn--r8jz45g.xn--q9jyb4c",
             "IDN 例え.みんな",
             "Accent mañana.com",
+            "Sharp S faß.de",
+            "Fullwidth compatibility \uff26\uff2f\uff2f.com",
         ],
     )
     def test_tweet_create_with_url_stays_on_with_url_bucket(self, tmp_path, real_flow, text):
