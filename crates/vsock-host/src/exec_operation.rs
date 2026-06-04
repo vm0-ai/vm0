@@ -786,8 +786,8 @@ impl ExecOperationDiagnostic {
 ///
 /// Dropping the handle removes the host-side registration only. It never sends
 /// `MSG_EXEC_CANCEL`; callers that need remote cancellation must call
-/// [`ExecOperationHandle::cancel_and_wait`]. See the crate-level exec
-/// operation lifecycle docs for the cross-handle ownership contract.
+/// [`ExecOperationHandle::cancel_and_wait`]. See the Exec Operation Lifecycle
+/// section in the [`crate`] docs for the cross-handle ownership contract.
 #[must_use = "dropping this handle does not cancel the guest; call wait or cancel_and_wait"]
 pub struct ExecOperationHandle {
     shared: Arc<Shared>,
@@ -974,9 +974,9 @@ impl Drop for ExecOperationHandle {
 /// Dropping this handle never sends `MSG_EXEC_CANCEL` and does not remove the
 /// operation lifecycle registration. The host keeps the registration until a
 /// terminal exec result arrives, the connection closes, or a caller explicitly
-/// waits with a timeout that abandons the operation. See the crate-level exec
-/// operation lifecycle docs for how supervised handles share cancellation and
-/// terminal result ownership.
+/// waits with a timeout that abandons the operation. See the Exec Operation
+/// Lifecycle section in the [`crate`] docs for how supervised handles share
+/// cancellation and terminal result ownership.
 #[must_use = "dropping this handle does not cancel the guest or remove lifecycle registration"]
 pub struct SupervisedExecHandle {
     shared: Arc<Shared>,
@@ -1006,7 +1006,7 @@ impl SupervisedExecCancelHandle {
     ///
     /// The paired [`SupervisedExecHandle`] still owns the result receiver and must
     /// be waited or abandoned by its caller. If this times out before the
-    /// cancel frame is written, the paired handle can still observe the
+    /// cancel frame write starts, the paired handle can still observe the
     /// terminal result.
     pub async fn cancel(self, timeout: Duration) -> io::Result<()> {
         tokio::time::timeout(
@@ -1247,7 +1247,7 @@ impl ExecControlHandle {
     /// bound. `payload` must fit the exec-control payload limit. Invalid
     /// inputs fail before the request frame is written. The timeout is encoded
     /// for guest-side control delivery and also bounds the host wait for a
-    /// response.
+    /// response after the request frame is written.
     ///
     /// Only [`ExecControlOutcome::Delivered`] is returned as an
     /// [`ExecControlAck`]. Guest statuses and guest error responses are
