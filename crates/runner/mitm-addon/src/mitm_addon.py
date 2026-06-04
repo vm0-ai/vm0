@@ -635,7 +635,21 @@ def _response_size(flow: http.HTTPFlow) -> int:
     if streamed_size is not None:
         return streamed_size
 
-    return int(flow.response.headers.get("content-length", 0))
+    return _content_length_response_size(flow.response.headers.get("content-length"))
+
+
+def _content_length_response_size(content_length: str | None) -> int:
+    if content_length is None:
+        return 0
+
+    try:
+        response_size = int(content_length)
+    except ValueError:
+        return 0
+
+    if response_size < 0:
+        return 0
+    return response_size
 
 
 def _release_usage_hook_state(flow: http.HTTPFlow, *, release_tracking: bool) -> None:
@@ -704,7 +718,6 @@ def response(flow: http.HTTPFlow) -> None:
     firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
     request_size = len(flow.request.raw_content or b"")
-    response_size = _response_size(flow)
     stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     status_code = flow.response.status_code if flow.response else 0
 
@@ -714,6 +727,7 @@ def response(flow: http.HTTPFlow) -> None:
     network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     if network_log_path:
+        response_size = _response_size(flow)
         log_entry = _http_network_log_entry(
             flow,
             action=firewall_action,
