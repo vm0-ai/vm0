@@ -305,6 +305,21 @@ describe("chatArtifactSidebar: image preview zoom controls", () => {
     expect(level.textContent).toBe("100%");
   });
 
+  it("resets image zoom before toggling fullscreen", () => {
+    renderImageSidebar();
+
+    fireEvent.click(screen.getByTestId("artifact-sidebar-image-zoom-in"));
+    expect(
+      screen.getByTestId("artifact-sidebar-image-zoom-level").textContent,
+    ).toBe("115%");
+
+    fireEvent.click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
+    expect(context.store.get(artifactFullscreen$)).toBeTruthy();
+    expect(
+      screen.getByTestId("artifact-sidebar-image-zoom-level").textContent,
+    ).toBe("100%");
+  });
+
   it("disables zoom out at min zoom and zoom in at max zoom", () => {
     renderImageSidebar();
     const zoomIn = screen.getByTestId("artifact-sidebar-image-zoom-in");

@@ -40,9 +40,11 @@ import {
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { jsonParseOr } from "../../signals/utils.ts";
+import { resetZoomableImageCanvasZoom$ } from "../../signals/view-component-state.ts";
 import {
   ZoomableArtifactImageCanvas,
   type ZoomableImageControls,
+  zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
 import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
@@ -162,6 +164,7 @@ function ArtifactSidebarContent({
   const fullscreen = useGet(artifactFullscreen$);
   const close = useSet(closeArtifact$);
   const toggleFullscreen = useSet(toggleArtifactFullscreen$);
+  const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const pageSignal = useGet(pageSignal$);
   const closePreview = onClose ?? close;
 
@@ -209,6 +212,26 @@ function ArtifactSidebarContent({
       : sidebar;
   }
 
+  const toggleFullscreenWithImageReset = () => {
+    if (display.kind === "image") {
+      resetZoomableImageCanvasZoom(
+        zoomableArtifactImageKey(
+          "artifact-sidebar",
+          display.url,
+          fullscreen ? "fullscreen" : "sidebar",
+        ),
+      );
+      resetZoomableImageCanvasZoom(
+        zoomableArtifactImageKey(
+          "artifact-sidebar",
+          display.url,
+          fullscreen ? "sidebar" : "fullscreen",
+        ),
+      );
+    }
+    toggleFullscreen();
+  };
+
   const sidebar = (
     <div
       className={cn(
@@ -227,7 +250,7 @@ function ArtifactSidebarContent({
         url={display.url}
         fullscreen={fullscreen}
         onBack={onBack}
-        onToggleFullscreen={toggleFullscreen}
+        onToggleFullscreen={toggleFullscreenWithImageReset}
         onClose={closePreview}
       />
       <div className="min-h-0 flex-1 overflow-hidden bg-background">
@@ -769,13 +792,19 @@ function ArtifactImageBody({
   url: string;
   filename: string;
 }) {
+  const fullscreen = useGet(artifactFullscreen$);
+
   return (
     <ArtifactStageShell flush scrollable={false}>
       <ArtifactStageCard fillHeight>
         <ZoomableArtifactImageCanvas
           src={publicAttachmentUrl(url)}
           alt={filename}
-          zoomKey={`artifact-sidebar:${url}`}
+          zoomKey={zoomableArtifactImageKey(
+            "artifact-sidebar",
+            url,
+            fullscreen ? "fullscreen" : "sidebar",
+          )}
           imageTestId="artifact-sidebar-body-image"
           contentClassName="p-6"
         >

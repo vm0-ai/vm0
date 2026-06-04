@@ -19,6 +19,19 @@ const IMAGE_ZOOM_STEP = 0.15;
 const IMAGE_ZOOM_ANIMATION_MS = 180;
 const IMAGE_ZOOM_ANIMATION_TYPE = "linear";
 
+type ZoomableArtifactImageSurface =
+  | "attachment-lightbox"
+  | "artifact-dialog"
+  | "artifact-sidebar";
+
+export function zoomableArtifactImageKey(
+  surface: ZoomableArtifactImageSurface,
+  url: string,
+  mode = "default",
+) {
+  return `${surface}:${mode}:${url}`;
+}
+
 type SetZoomHandler = (key: string, zoom: number) => void;
 type ResetZoomHandler = (key: string) => void;
 

@@ -146,6 +146,8 @@ describe("attachment preview component", () => {
     const video = preview.querySelector("video");
 
     expect(preview).toBeInTheDocument();
+    expect(preview).toHaveClass("w-[min(100%,400px)]");
+    expect(preview.firstElementChild).toHaveClass("aspect-[16/10]");
     expect(
       screen.getByLabelText("Open video preview for video.mp4"),
     ).toHaveAttribute("type", "button");

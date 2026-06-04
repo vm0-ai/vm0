@@ -105,6 +105,11 @@ type TextPreviewProps = {
   text$?: Computed<Promise<string>>;
 };
 
+const MEDIA_PREVIEW_CARD_CLASS =
+  "inline-flex w-[min(100%,400px)] overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground no-underline shadow-sm transition-all duration-200";
+const MEDIA_PREVIEW_CARD_HOVER_CLASS =
+  "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+
 function TextPreview(props: TextPreviewProps) {
   const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
   if (sidebarEnabled) {
@@ -230,7 +235,7 @@ function HtmlSitePreviewCard({
       }}
       aria-label={`Open html preview for ${filename}`}
       title={title}
-      className="group/site-preview inline-flex w-[min(100%,400px)] flex-col overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground no-underline shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30"
+      className={`group/site-preview flex-col ${MEDIA_PREVIEW_CARD_CLASS} ${MEDIA_PREVIEW_CARD_HOVER_CLASS}`}
     >
       <div className="flex min-h-10 items-center border-b border-border/60 bg-background/95 px-3 py-2">
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
@@ -539,9 +544,13 @@ function VideoThumbnailPreview({
       title={filename}
       aria-label={`Open video preview for ${filename}`}
       data-testid="attachment-preview-video"
-      className={`${lightboxOpen ? "" : "group/video-preview"} inline-flex w-fit self-start align-top text-left disabled:pointer-events-none`}
+      className={`${
+        lightboxOpen
+          ? ""
+          : `group/video-preview ${MEDIA_PREVIEW_CARD_HOVER_CLASS}`
+      } ${MEDIA_PREVIEW_CARD_CLASS} self-start disabled:pointer-events-none`}
     >
-      <div className="relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl border border-foreground/10 bg-black sm:w-[168px]">
+      <div className="relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden bg-black">
         <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-stone-900 text-white">
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-white/10">
             <FilePreviewIcon

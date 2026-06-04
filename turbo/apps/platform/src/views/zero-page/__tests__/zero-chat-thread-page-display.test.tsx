@@ -257,6 +257,7 @@ describe("zero chat thread page display - attachment image preview", () => {
       "href",
       "https://example.com/photo.png",
     );
+    expect(previewLink).toHaveClass("w-[min(100%,400px)]", "aspect-[16/10]");
     const previewImage = within(previewLink).getByAltText("photo.png");
     expect(previewImage).toBeInTheDocument();
     expect(
@@ -1135,6 +1136,7 @@ describe("zero chat thread page display - attachment video preview", () => {
     });
     const posterVideo = previewButton.querySelector("video");
 
+    expect(previewButton).toHaveClass("w-[min(100%,400px)]", "aspect-[16/10]");
     expect(
       within(previewButton).getByTestId("chat-video-preview-poster"),
     ).toBeInTheDocument();
@@ -1691,7 +1693,21 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(search()).not.toContain("artifacts=");
     expect(search()).not.toContain("artifact=");
 
-    await user.click(within(lightbox).getByLabelText("Open in split view"));
+    await user.click(within(lightbox).getByLabelText("Zoom in"));
+    expect(within(lightbox).getByText("115%")).toBeInTheDocument();
+
+    await user.click(within(lightbox).getByLabelText("Enter fullscreen"));
+    const fullscreenLightbox = await screen.findByTestId("attachment-lightbox");
+    await waitFor(() => {
+      expect(within(fullscreenLightbox).getByText("100%")).toBeInTheDocument();
+    });
+    expect(
+      within(fullscreenLightbox).getByLabelText("Exit fullscreen"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(fullscreenLightbox).getByLabelText("Open in split view"),
+    );
 
     await expect(
       screen.findByTestId("artifact-sidebar"),

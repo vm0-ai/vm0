@@ -1900,6 +1900,9 @@ type ChatImagePreviewLinkProps = {
   url: string;
 };
 
+const CHAT_INLINE_MEDIA_PREVIEW_CLASS =
+  "inline-flex aspect-[16/10] w-[min(100%,400px)] items-center justify-center rounded-lg border border-foreground/10 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+
 function ChatImagePreviewLink({
   alt,
   ariaLabel,
@@ -4213,12 +4216,12 @@ function BodyContentBlocks({
               key={block.id}
               alt={block.preview.filename}
               ariaLabel={`Preview ${block.preview.filename}`}
-              imageClassName="max-h-48 max-w-full object-contain"
-              linkClassName="w-fit max-w-full rounded-lg border border-foreground/10"
+              imageClassName="h-full w-full object-contain"
+              linkClassName={`${CHAT_INLINE_MEDIA_PREVIEW_CLASS} bg-muted/30`}
               onPreview={() => {
                 openLightbox(block.preview.url);
               }}
-              placeholderClassName="h-48 w-64 max-w-full"
+              placeholderClassName="h-full w-full"
               url={block.preview.url}
             />
           );
@@ -4229,7 +4232,7 @@ function BodyContentBlocks({
             <ChatVideoPreviewButton
               key={block.id}
               ariaLabel={`Preview ${block.preview.filename}`}
-              buttonClassName="w-fit max-w-full rounded-lg border border-foreground/10"
+              buttonClassName={CHAT_INLINE_MEDIA_PREVIEW_CLASS}
               filename={block.preview.filename}
               onPreview={() => {
                 openVideoLightbox({
@@ -4237,7 +4240,7 @@ function BodyContentBlocks({
                   filename: block.preview.filename,
                 });
               }}
-              posterClassName="h-48 w-64 max-w-full"
+              posterClassName="h-full w-full"
               url={block.preview.url}
               videoClassName="h-full w-full object-contain"
             />
@@ -5323,12 +5326,12 @@ function UserMessageAttachments({
               key={a.url}
               alt={a.filename}
               ariaLabel={`Preview ${a.filename}`}
-              imageClassName="h-9 max-w-[72px] object-cover"
-              linkClassName="rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
+              imageClassName="h-full w-full object-contain"
+              linkClassName={`${CHAT_INLINE_MEDIA_PREVIEW_CLASS} bg-muted/30`}
               onPreview={() => {
                 onImageClick(a.url);
               }}
-              placeholderClassName="h-9 w-[72px]"
+              placeholderClassName="h-full w-full"
               url={a.url}
             />
           );
@@ -5338,7 +5341,7 @@ function UserMessageAttachments({
             <ChatVideoPreviewButton
               key={a.url}
               ariaLabel={`Preview ${a.filename}`}
-              buttonClassName="rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
+              buttonClassName={CHAT_INLINE_MEDIA_PREVIEW_CLASS}
               filename={a.filename}
               onPreview={() => {
                 openVideoLightbox({
@@ -5346,9 +5349,9 @@ function UserMessageAttachments({
                   filename: a.filename,
                 });
               }}
-              posterClassName="h-9 w-[72px]"
+              posterClassName="h-full w-full"
               url={a.url}
-              videoClassName="h-full w-full object-cover"
+              videoClassName="h-full w-full object-contain"
             />
           );
         }

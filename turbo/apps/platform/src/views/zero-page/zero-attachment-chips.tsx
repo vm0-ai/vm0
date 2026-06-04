@@ -39,6 +39,7 @@ import {
   imageLightboxState$,
   imageLoadStatusByKey$,
   imageLoadStatusRef$,
+  resetZoomableImageCanvasZoom$,
   setImageLightboxStatus$,
   setImageLoadStatus$,
   textPreviewLoaderRef$,
@@ -83,6 +84,7 @@ import {
 import {
   ZoomableArtifactImageCanvas,
   type ZoomableImageControls,
+  zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
 
 export {
@@ -437,7 +439,7 @@ function ImageLightboxContent({
     <ZoomableArtifactImageCanvas
       src={url}
       alt=""
-      zoomKey={`attachment-lightbox:${url}`}
+      zoomKey={zoomableArtifactImageKey("attachment-lightbox", url)}
       keyboardShortcuts
       imageRef={imageLightboxImageRef}
       imageTestId="attachment-lightbox-image"
@@ -901,6 +903,7 @@ function ArtifactDialogBody({
   preview: AttachmentLightboxState;
 }) {
   const filename = artifactDialogFilename(preview);
+  const fullscreen = useGet(lightboxDialogFullscreen$);
 
   if (preview.kind === "image") {
     return (
@@ -909,7 +912,7 @@ function ArtifactDialogBody({
           <ZoomableArtifactImageCanvas
             src={publicAttachmentUrl(preview.url)}
             alt={filename}
-            zoomKey={`artifact-dialog:${preview.url}`}
+            zoomKey={artifactDialogImageZoomKey(preview.url, fullscreen)}
             imageTestId="attachment-lightbox-image"
             contentClassName="p-6"
             imageClassName="rounded-lg shadow-sm"
@@ -1085,6 +1088,32 @@ function ArtifactPreviewDialogThreadResolver({
   );
 }
 
+function artifactDialogImageZoomKey(url: string, fullscreen: boolean) {
+  return zoomableArtifactImageKey(
+    "artifact-dialog",
+    url,
+    fullscreen ? "fullscreen" : "windowed",
+  );
+}
+
+function resetArtifactDialogImageZoom({
+  fullscreen,
+  preview,
+  resetZoom,
+  targetFullscreen,
+}: {
+  fullscreen: boolean;
+  preview: AttachmentLightboxState;
+  resetZoom: (key: string) => void;
+  targetFullscreen: boolean;
+}) {
+  if (preview.kind !== "image") {
+    return;
+  }
+  resetZoom(artifactDialogImageZoomKey(preview.url, fullscreen));
+  resetZoom(artifactDialogImageZoomKey(preview.url, targetFullscreen));
+}
+
 function ArtifactPreviewDialogContent({
   artifact,
   preview,
@@ -1098,6 +1127,7 @@ function ArtifactPreviewDialogContent({
   const toggleLightboxDialogFullscreen = useSet(
     toggleLightboxDialogFullscreen$,
   );
+  const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const pageSignal = useGet(pageSignal$);
   const filename = artifact?.filename ?? artifactDialogFilename(preview);
   const subtitle = artifactDialogKindLabel(preview, artifact);
@@ -1109,7 +1139,22 @@ function ArtifactPreviewDialogContent({
     closeLightboxWithDialogExit();
   };
 
+  const resetDialogImageZoom = (targetFullscreen: boolean) => {
+    resetArtifactDialogImageZoom({
+      fullscreen,
+      preview,
+      resetZoom: resetZoomableImageCanvasZoom,
+      targetFullscreen,
+    });
+  };
+
   const openInSplitView = () => {
+    resetDialogImageZoom(fullscreen);
+    if (preview.kind === "image") {
+      resetZoomableImageCanvasZoom(
+        zoomableArtifactImageKey("artifact-sidebar", preview.url, "sidebar"),
+      );
+    }
     openArtifactSidebarPreview(preview.url);
     closeLightboxWithDialogExit();
   };
@@ -1171,6 +1216,7 @@ function ArtifactPreviewDialogContent({
             <ArtifactDialogFullscreenButton
               fullscreen={fullscreen}
               onClick={() => {
+                resetDialogImageZoom(!fullscreen);
                 toggleLightboxDialogFullscreen();
               }}
             />
