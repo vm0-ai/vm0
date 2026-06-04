@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.415.0](https://github.com/vm0-ai/vm0/compare/app-v0.414.0...app-v0.415.0) (2026-06-04)
+
+
+### Features
+
+* scope chat header schedule menu to the thread and refresh it in realtime ([#16208](https://github.com/vm0-ai/vm0/issues/16208)) ([6a3ed06](https://github.com/vm0-ai/vm0/commit/6a3ed060531645250e875c1dbba1ac119b6e665f))
+
 ## [0.414.0](https://github.com/vm0-ai/vm0/compare/app-v0.413.0...app-v0.414.0) (2026-06-04)
 
 
