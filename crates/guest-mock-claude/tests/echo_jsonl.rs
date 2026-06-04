@@ -87,6 +87,31 @@ fn echo_jsonl_outputs_valid_payload_unchanged() -> Result<(), Box<dyn std::error
 }
 
 #[test]
+fn echo_jsonl_without_init_skips_history() -> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let payload = r#"{"type":"assistant","session_id":"preview-no-init","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}"#;
+    let prompt = format!("@ECHO@\n{payload}\n");
+
+    let output = mock_claude()
+        .env("HOME", home.path())
+        .args(["--output-format", "stream-json", "--", &prompt])
+        .output()?;
+
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        format!("{payload}\n")
+    );
+    assert!(output.stderr.is_empty());
+    assert!(!home.path().join(".claude").exists());
+    Ok(())
+}
+
+#[test]
 fn stream_json_shell_writes_matching_session_history() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
 
