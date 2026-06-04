@@ -10,6 +10,12 @@ pub(crate) struct LocalQueue {
     group_dir: PathBuf,
 }
 
+enum JobFileLookup {
+    Found(PathBuf),
+    NotFound,
+    ScanFailed,
+}
+
 impl LocalQueue {
     pub(crate) fn new(group_dir: PathBuf) -> Self {
         Self { group_dir }
@@ -19,14 +25,18 @@ impl LocalQueue {
         &self.group_dir
     }
 
-    pub(crate) fn cancel_has_pending_target(&self, run_id: RunId) -> bool {
+    pub(crate) fn has_pending_cancel_target(&self, run_id: RunId) -> bool {
         if self.result_file_has_content(run_id) {
             return false;
         }
         if super::claim_path(&self.group_dir, run_id).exists() {
             return true;
         }
-        self.job_file_exists(run_id).unwrap_or(true)
+        match self.lookup_job_file(run_id) {
+            JobFileLookup::Found(_) => true,
+            JobFileLookup::NotFound => false,
+            JobFileLookup::ScanFailed => true,
+        }
     }
 
     pub(crate) fn result_file_has_content(&self, run_id: RunId) -> bool {
@@ -36,18 +46,29 @@ impl LocalQueue {
             .unwrap_or(false)
     }
 
-    fn job_file_exists(&self, run_id: RunId) -> Option<bool> {
-        self.find_job_file(run_id).map(|path| path.is_some())
+    pub(crate) fn remove_job_file_if_present(&self, run_id: RunId) -> bool {
+        match self.lookup_job_file(run_id) {
+            JobFileLookup::Found(path) => match std::fs::remove_file(&path) {
+                Ok(()) => true,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+                Err(e) => {
+                    warn!(run_id = %run_id, path = %path.display(), error = %e, "local: failed to remove job file after result failure");
+                    false
+                }
+            },
+            JobFileLookup::NotFound => true,
+            JobFileLookup::ScanFailed => false,
+        }
     }
 
-    pub(crate) fn find_job_file(&self, run_id: RunId) -> Option<Option<PathBuf>> {
+    fn lookup_job_file(&self, run_id: RunId) -> JobFileLookup {
         let jobs_dir = super::jobs_dir(&self.group_dir);
         let orgs = match std::fs::read_dir(&jobs_dir) {
             Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return JobFileLookup::NotFound,
             Err(e) => {
                 warn!(path = %jobs_dir.display(), error = %e, "local: cannot scan jobs dir for job file");
-                return None;
+                return JobFileLookup::ScanFailed;
             }
         };
 
@@ -61,7 +82,7 @@ impl LocalQueue {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => {
                     warn!(path = %org_path.display(), error = %e, "local: cannot scan profile org dir for job file");
-                    return None;
+                    return JobFileLookup::ScanFailed;
                 }
             };
             for profile in profiles.filter_map(Result::ok) {
@@ -70,16 +91,16 @@ impl LocalQueue {
                 }
                 let path = profile.path().join(format!("{run_id}.job"));
                 match std::fs::metadata(&path) {
-                    Ok(_) => return Some(Some(path)),
+                    Ok(_) => return JobFileLookup::Found(path),
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                     Err(e) => {
                         warn!(run_id = %run_id, path = %path.display(), error = %e, "local: cannot stat job file");
-                        return None;
+                        return JobFileLookup::ScanFailed;
                     }
                 }
             }
         }
 
-        Some(None)
+        JobFileLookup::NotFound
     }
 }

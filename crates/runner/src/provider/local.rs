@@ -98,27 +98,6 @@ impl LocalProvider {
 }
 
 impl LocalProvider {
-    fn find_job_file(&self, run_id: RunId) -> Option<Option<PathBuf>> {
-        self.queue.find_job_file(run_id)
-    }
-
-    fn remove_job_file_if_present(&self, run_id: RunId) -> bool {
-        let Some(path) = self.find_job_file(run_id) else {
-            return false;
-        };
-        let Some(path) = path else {
-            return true;
-        };
-        match std::fs::remove_file(&path) {
-            Ok(()) => true,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
-            Err(e) => {
-                warn!(run_id = %run_id, path = %path.display(), error = %e, "local: failed to remove job file after result failure");
-                false
-            }
-        }
-    }
-
     /// Find the first unclaimed job in the supported profile partitions.
     fn find_unclaimed_job(&self) -> Option<JobCandidate> {
         if self.supported_profiles.is_empty() {
@@ -425,7 +404,7 @@ impl JobProvider for LocalProvider {
     ) {
         self.cancel_scanner.remove_owned_claim(run_id).await;
         if !self.write_result(run_id, exit_code, error) {
-            if self.remove_job_file_if_present(run_id) {
+            if self.queue.remove_job_file_if_present(run_id) {
                 let _ =
                     std::fs::remove_file(local_queue::cancel_path(self.queue.group_dir(), run_id));
                 let _ =

@@ -61,14 +61,14 @@ impl LocalCancelScanner {
                     info!(run_id = %run_id, "local: cancel file detected, cancelling job");
                 }
                 let should_delete =
-                    owned_claims.contains(&run_id) || !self.queue.cancel_has_pending_target(run_id);
+                    owned_claims.contains(&run_id) || !self.queue.has_pending_cancel_target(run_id);
                 if should_delete {
                     let _ = std::fs::remove_file(local_queue::cancel_path(
                         self.queue.group_dir(),
                         run_id,
                     ));
                 }
-            } else if !self.queue.cancel_has_pending_target(run_id) {
+            } else if !self.queue.has_pending_cancel_target(run_id) {
                 let _ =
                     std::fs::remove_file(local_queue::cancel_path(self.queue.group_dir(), run_id));
             }
@@ -478,6 +478,23 @@ mod tests {
         assert!(
             !cancel_path.exists(),
             "cancel file should be deleted when no pending target exists"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_file_is_kept_when_job_scan_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let run_id = RunId::new_v4();
+        let cancel_path = write_cancel(dir.path(), run_id);
+        std::fs::write(local_queue::jobs_dir(dir.path()), b"not a directory").unwrap();
+
+        scanner(dir.path(), empty_cancel_tokens())
+            .scan_cancel_files()
+            .await;
+
+        assert!(
+            cancel_path.exists(),
+            "cancel file should stay when the pending target state is unknown"
         );
     }
 
