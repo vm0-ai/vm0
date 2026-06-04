@@ -37,6 +37,8 @@ async function clickTab(name: string): Promise<void> {
 function addedDiff(text: string): MemoryActivityDiff {
   return {
     format: "line",
+    beforeExists: false,
+    afterExists: true,
     truncated: false,
     stats: { added: 1, removed: 0 },
     hunks: [
@@ -55,6 +57,8 @@ function updatedDiff(
 ): MemoryActivityDiff {
   return {
     format: "line",
+    beforeExists: true,
+    afterExists: true,
     truncated: false,
     stats: { added: 1, removed: 1 },
     hunks: [
@@ -139,16 +143,10 @@ describe("memory page", () => {
           toVersionId: "v2",
           items: [
             {
-              kind: "learned",
-              title: "Deploy preference",
-              description: "Use blue-green deploys",
               filePath: "deploy.md",
               diff: addedDiff("Use blue-green deploys"),
             },
             {
-              kind: "updated",
-              title: "Project setup",
-              description: null,
               filePath: "setup.md",
               diff: updatedDiff("old setup", "new setup"),
             },
@@ -176,15 +174,19 @@ describe("memory page", () => {
       throw new Error("Missing memory update card");
     }
     expect(updateCard).toHaveClass("shrink-0");
-    expect(screen.getByText("Deploy preference")).toBeInTheDocument();
-    expect(screen.getByText("Learned")).toBeInTheDocument();
-    expect(screen.getByText("Updated")).toBeInTheDocument();
+    expect(screen.getByText("deploy.md")).toBeInTheDocument();
+    expect(screen.getByText("setup.md")).toBeInTheDocument();
+    expect(screen.queryByText("Deploy preference")).not.toBeInTheDocument();
+    expect(screen.queryByText("Learned")).not.toBeInTheDocument();
+    expect(screen.queryByText("Updated")).not.toBeInTheDocument();
+    expect(updateCard).toHaveTextContent("+1");
+    expect(updateCard).toHaveTextContent("-1");
 
     // Evidence is hidden until the item is expanded.
     expect(screen.queryByText("new setup")).not.toBeInTheDocument();
 
     const updatedItem = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.includes("Project setup");
+      return button.textContent?.includes("setup.md");
     });
     expect(updatedItem).toBeDefined();
     click(updatedItem!);
@@ -227,23 +229,14 @@ describe("memory page", () => {
           toVersionId: "v2",
           items: [
             {
-              kind: "learned",
-              title: "Fact A",
-              description: null,
               filePath: "a.md",
               diff: addedDiff("a"),
             },
             {
-              kind: "learned",
-              title: "Fact B",
-              description: null,
               filePath: "b.md",
               diff: addedDiff("b"),
             },
             {
-              kind: "updated",
-              title: "Fact C",
-              description: null,
               filePath: "c.md",
               diff: updatedDiff("old", "new"),
             },
@@ -260,7 +253,7 @@ describe("memory page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("3 changes — 2 learned, 1 updated"),
+        screen.getByText("3 memory files changed (+3 -1)."),
       ).toBeInTheDocument();
     });
   });

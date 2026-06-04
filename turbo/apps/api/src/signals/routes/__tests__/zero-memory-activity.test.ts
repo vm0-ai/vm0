@@ -31,6 +31,8 @@ function activityClient() {
 function addedDiff(text: string): MemoryChangeDiff {
   return {
     format: "line",
+    beforeExists: false,
+    afterExists: true,
     truncated: false,
     stats: { added: 1, removed: 0 },
     hunks: [
@@ -46,6 +48,8 @@ function addedDiff(text: string): MemoryChangeDiff {
 function removedDiff(text: string): MemoryChangeDiff {
   return {
     format: "line",
+    beforeExists: true,
+    afterExists: false,
     truncated: false,
     stats: { added: 0, removed: 1 },
     hunks: [
@@ -61,6 +65,8 @@ function removedDiff(text: string): MemoryChangeDiff {
 function updatedDiff(beforeText: string, afterText: string): MemoryChangeDiff {
   return {
     format: "line",
+    beforeExists: true,
+    afterExists: true,
     truncated: false,
     stats: { added: 1, removed: 1 },
     hunks: [
@@ -128,9 +134,6 @@ describe("GET /api/zero/memory/activity", () => {
         summary: "Zero learned about your project setup",
         items: [
           {
-            kind: "learned",
-            title: "Project uses pnpm",
-            description: "Package manager preference",
             filePath: "preferences/pnpm.md",
             diff: addedDiff("Use pnpm for all package operations"),
           },
@@ -149,9 +152,6 @@ describe("GET /api/zero/memory/activity", () => {
         summary: null,
         items: [
           {
-            kind: "updated",
-            title: "Project uses pnpm",
-            description: null,
             filePath: "preferences/pnpm.md",
             diff: updatedDiff(
               "Use pnpm for all package operations",
@@ -159,9 +159,6 @@ describe("GET /api/zero/memory/activity", () => {
             ),
           },
           {
-            kind: "forgotten",
-            title: null,
-            description: null,
             filePath: "notes/stale.md",
             diff: removedDiff("Old note"),
           },
@@ -183,20 +180,14 @@ describe("GET /api/zero/memory/activity", () => {
           summary: null,
           fromVersionId: "v1",
           toVersionId: "v2",
-          // Items are ordered by `kind` then `file_path`, so `forgotten`
-          // precedes `updated` regardless of the seeded insertion order.
+          // Items are ordered by `file_path`, regardless of seeded insertion
+          // order.
           items: [
             {
-              kind: "forgotten",
-              title: null,
-              description: null,
               filePath: "notes/stale.md",
               diff: removedDiff("Old note"),
             },
             {
-              kind: "updated",
-              title: "Project uses pnpm",
-              description: null,
               filePath: "preferences/pnpm.md",
               diff: updatedDiff(
                 "Use pnpm for all package operations",
@@ -212,9 +203,6 @@ describe("GET /api/zero/memory/activity", () => {
           toVersionId: "v1",
           items: [
             {
-              kind: "learned",
-              title: "Project uses pnpm",
-              description: "Package manager preference",
               filePath: "preferences/pnpm.md",
               diff: addedDiff("Use pnpm for all package operations"),
             },
@@ -257,15 +245,13 @@ describe("GET /api/zero/memory/activity", () => {
     ]);
   });
 
-  it("orders a summary's items deterministically by kind then file_path", async () => {
+  it("orders a summary's items deterministically by file_path", async () => {
     const fixture = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
-    // Seeded out of the expected order and with a `file_path`-only order
-    // (b, a, d, c) that differs from the kind-then-path order, so a pass
-    // can only come from sorting on `kind` first and `file_path` second.
-    // All items share one batch-insert `created_at`, mirroring the cron, so
-    // the previous `created_at` ordering would leave this order undefined.
+    // Seeded out of file path order. All items share one batch-insert
+    // `created_at`, mirroring the cron, so the previous `created_at` ordering
+    // would leave this order undefined.
     await store.set(
       seedMemoryActivitySummary$,
       {
@@ -275,10 +261,10 @@ describe("GET /api/zero/memory/activity", () => {
         toVersionId: "v-order",
         summary: "Many changes in one day",
         items: [
-          { kind: "updated", filePath: "b.md" },
-          { kind: "learned", filePath: "d.md" },
-          { kind: "learned", filePath: "a.md" },
-          { kind: "forgotten", filePath: "c.md" },
+          { filePath: "b.md" },
+          { filePath: "d.md" },
+          { filePath: "a.md" },
+          { filePath: "c.md" },
         ],
       },
       context.signal,
@@ -292,14 +278,9 @@ describe("GET /api/zero/memory/activity", () => {
 
     expect(
       response.body.entries[0]?.items.map((item) => {
-        return { kind: item.kind, filePath: item.filePath };
+        return item.filePath;
       }),
-    ).toStrictEqual([
-      { kind: "forgotten", filePath: "c.md" },
-      { kind: "learned", filePath: "a.md" },
-      { kind: "learned", filePath: "d.md" },
-      { kind: "updated", filePath: "b.md" },
-    ]);
+    ).toStrictEqual(["a.md", "b.md", "c.md", "d.md"]);
   });
 
   it("scopes summaries to the authenticated user and org", async () => {
@@ -318,8 +299,6 @@ describe("GET /api/zero/memory/activity", () => {
         summary: "Other user's memory",
         items: [
           {
-            kind: "learned",
-            title: "Secret",
             filePath: "secret.md",
             diff: addedDiff("Should not leak"),
           },

@@ -5,7 +5,6 @@ import {
   text,
   timestamp,
   uuid,
-  varchar,
 } from "drizzle-orm/pg-core";
 import { memoryChangeSummaries } from "./memory-change-summary";
 
@@ -31,6 +30,8 @@ export interface MemoryChangeDiffStats {
 
 export interface MemoryChangeDiff {
   readonly format: "line";
+  readonly beforeExists: boolean;
+  readonly afterExists: boolean;
   readonly truncated: boolean;
   readonly stats: MemoryChangeDiffStats;
   readonly hunks: readonly MemoryChangeDiffHunk[];
@@ -42,9 +43,10 @@ export interface MemoryChangeDiff {
  * Each item records one changed memory file with a precomputed structured diff,
  * so reading the Memory Activity page is a pure DB read (no S3 diffing).
  *
- * `kind` is one of `learned` | `updated` | `forgotten`. `title` / `description`
- * are derived from frontmatter where available and may be null. Items are
- * deleted with their parent summary via the cascade FK.
+ * File lifecycle is stored in `diff.beforeExists` / `diff.afterExists`, so the
+ * UI can derive added / deleted / modified without persisting a separate
+ * presentation-oriented classification. Items are deleted with their parent
+ * summary via the cascade FK.
  */
 export const memoryChangeItems = pgTable(
   "memory_change_items",
@@ -58,9 +60,6 @@ export const memoryChangeItems = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    kind: varchar("kind", { length: 16 }).notNull(),
-    title: text("title"),
-    description: text("description"),
     filePath: text("file_path").notNull(),
     diff: jsonb("diff").$type<MemoryChangeDiff>().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

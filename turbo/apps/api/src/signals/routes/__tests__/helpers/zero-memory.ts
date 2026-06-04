@@ -62,9 +62,6 @@ export const deleteMemoryForFixture$ = command(
 );
 
 interface MemoryActivityItemSeed {
-  readonly kind: string;
-  readonly title?: string | null;
-  readonly description?: string | null;
   readonly filePath: string;
   readonly diff?: MemoryChangeDiff;
 }
@@ -82,6 +79,8 @@ interface MemoryActivitySummarySeed {
 function emptyMemoryChangeDiff(): MemoryChangeDiff {
   return {
     format: "line",
+    beforeExists: true,
+    afterExists: true,
     truncated: false,
     stats: { added: 0, removed: 0 },
     hunks: [],
@@ -112,14 +111,11 @@ export const seedMemoryActivitySummary$ = command(
       // Mirror the cron: every item of a summary is batch-inserted in one
       // transaction and so shares the same transaction-start `now()`
       // `created_at`. This leaves `created_at` order undefined and lets the
-      // service's `kind` / `file_path` ordering be exercised honestly.
+      // service's `file_path` ordering be exercised honestly.
       await db.insert(memoryChangeItems).values(
         items.map((item) => {
           return {
             summaryId,
-            kind: item.kind,
-            title: item.title ?? null,
-            description: item.description ?? null,
             filePath: item.filePath,
             diff: item.diff ?? emptyMemoryChangeDiff(),
           };

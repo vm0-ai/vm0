@@ -47,6 +47,17 @@ const BASELINE_BEFORE_LOOKBACK = "2998-12-26T03:00:00.000Z";
 const BASELINE_DURING_LOOKBACK = "2999-01-01T03:00:00.000Z";
 const YESTERDAY = "2999-01-02";
 
+interface OpenRouterRequestMessage {
+  readonly role: "system" | "user" | "assistant";
+  readonly content: string;
+}
+
+interface OpenRouterRequestBody {
+  readonly model: string;
+  readonly messages: readonly OpenRouterRequestMessage[];
+  readonly max_tokens: number;
+}
+
 /**
  * Enable the Memory Viewer feature for a fixture's org/user. The cron only
  * processes users who can see the Memory page; fixtures use random org IDs that
@@ -364,28 +375,33 @@ async function findSummaries(fixture: MemoryFixture): Promise<
     .orderBy(asc(memoryChangeSummaries.date));
 }
 
-async function findItems(
-  summaryId: string,
-): Promise<{ kind: string; filePath: string }[]> {
+async function findItems(summaryId: string): Promise<string[]> {
   const db = store.set(writeDb$);
-  return await db
+  const rows = await db
     .select({
-      kind: memoryChangeItems.kind,
       filePath: memoryChangeItems.filePath,
     })
     .from(memoryChangeItems)
     .where(eq(memoryChangeItems.summaryId, summaryId))
     .orderBy(asc(memoryChangeItems.filePath));
+  return rows.map((row) => {
+    return row.filePath;
+  });
 }
 
 function mockLlm(content = "Today Zero learned one new thing about you."): {
   calls: number;
+  requests: OpenRouterRequestBody[];
 } {
-  const state = { calls: 0 };
+  const state: { calls: number; requests: OpenRouterRequestBody[] } = {
+    calls: 0,
+    requests: [],
+  };
   mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
   server.use(
-    http.post(OPENROUTER_URL, () => {
+    http.post(OPENROUTER_URL, async ({ request }) => {
       state.calls++;
+      state.requests.push((await request.json()) as OpenRouterRequestBody);
       return HttpResponse.json({ choices: [{ message: { content } }] });
     }),
   );
@@ -448,6 +464,22 @@ describe("GET /api/cron/summarize-memory", () => {
 
     expect(response.body).toStrictEqual({ summarized: 7 });
     expect(llm.calls).toBe(1);
+    expect(llm.requests[0]).toMatchObject({
+      model: "google/gemini-3.5-flash",
+      max_tokens: 1000,
+    });
+    const userMessage = llm.requests[0]?.messages.find((message) => {
+      return message.role === "user";
+    })?.content;
+    expect(userMessage).toContain("Memory file diffs today:");
+    expect(userMessage).toContain("File: facts/coffee.md");
+    expect(userMessage).toContain("Change: added");
+    expect(userMessage).toContain("+ Drinks oat milk lattes");
+    expect(userMessage).toContain("File: facts/pets.md");
+    expect(userMessage).toContain("Change: modified");
+    expect(userMessage).toContain("- Has a dog");
+    expect(userMessage).toContain("+ Has a dog and a cat");
+    expect(userMessage).not.toContain("Learned:");
 
     const summaries = await findSummaries(seeded.fixture);
     expect(
@@ -468,17 +500,15 @@ describe("GET /api/cron/summarize-memory", () => {
     );
 
     const items = await findItems(summary?.id ?? "");
-    expect(items).toStrictEqual([
-      { kind: "learned", filePath: "facts/coffee.md" },
-      { kind: "updated", filePath: "facts/pets.md" },
-    ]);
+    expect(items).toStrictEqual(["facts/coffee.md", "facts/pets.md"]);
   });
 
   it("summarizes a file whose frontmatter is not valid YAML", async () => {
     // Regression for the prod 500: a memory file whose `description` opens with
     // a backtick is invalid YAML and made parseSkillFrontmatter throw a
-    // YAMLParseError, which propagated up and 500'd every cron run. The run
-    // must now complete and persist the item with a path-based title.
+    // YAMLParseError, which propagated up and 500'd every cron run. Memory
+    // activity diffs no longer parse frontmatter, so the run must complete and
+    // persist the changed file.
     const llm = mockLlm();
     const seeded = await seedTwoVersions(
       [{ path: "facts/pets.md", content: "Has a dog" }],
@@ -502,9 +532,7 @@ describe("GET /api/cron/summarize-memory", () => {
 
     const summary = await findSummary(seeded.fixture);
     const items = await findItems(summary?.id ?? "");
-    expect(items).toStrictEqual([
-      { kind: "learned", filePath: "facts/zero-search.md" },
-    ]);
+    expect(items).toStrictEqual(["facts/zero-search.md"]);
   });
 
   it("folds MEMORY.md churn into the real file change", async () => {
@@ -521,9 +549,7 @@ describe("GET /api/cron/summarize-memory", () => {
 
     const summary = await findSummary(seeded.fixture);
     const items = await findItems(summary?.id ?? "");
-    expect(items).toStrictEqual([
-      { kind: "learned", filePath: "facts/coffee.md" },
-    ]);
+    expect(items).toStrictEqual(["facts/coffee.md"]);
   });
 
   it("backfills quiet cards and makes no LLM call when memory did not change", async () => {
@@ -660,9 +686,7 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(healthySummary).not.toBeNull();
     expect(healthySummary?.toVersionId).toBe(healthy.v2Id);
     const items = await findItems(healthySummary?.id ?? "");
-    expect(items).toStrictEqual([
-      { kind: "learned", filePath: "facts/coffee.md" },
-    ]);
+    expect(items).toStrictEqual(["facts/coffee.md"]);
 
     await expect(findSummary(broken.fixture)).resolves.toBeNull();
   });
@@ -722,16 +746,16 @@ describe("GET /api/cron/summarize-memory", () => {
     ).toStrictEqual(["2998-12-30", "2998-12-31", "2999-01-01", YESTERDAY]);
     // The card is the yesterday-only delta: just `e.md`, NOT a,b,c,d.
     await expect(findItems(summaries[0]?.id ?? "")).resolves.toStrictEqual([
-      { kind: "learned", filePath: "facts/a.md" },
-      { kind: "learned", filePath: "facts/b.md" },
-      { kind: "learned", filePath: "facts/c.md" },
+      "facts/a.md",
+      "facts/b.md",
+      "facts/c.md",
     ]);
     await expect(findItems(summaries[1]?.id ?? "")).resolves.toHaveLength(0);
     await expect(findItems(summaries[2]?.id ?? "")).resolves.toStrictEqual([
-      { kind: "learned", filePath: "facts/d.md" },
+      "facts/d.md",
     ]);
     await expect(findItems(summaries[3]?.id ?? "")).resolves.toStrictEqual([
-      { kind: "learned", filePath: "facts/e.md" },
+      "facts/e.md",
     ]);
   });
 
@@ -757,7 +781,7 @@ describe("GET /api/cron/summarize-memory", () => {
     const summary = await findSummary(fixture);
     expect(summary).not.toBeNull();
     await expect(findItems(summary?.id ?? "")).resolves.toStrictEqual([
-      { kind: "learned", filePath: "facts/coffee.md" },
+      "facts/coffee.md",
     ]);
   });
 

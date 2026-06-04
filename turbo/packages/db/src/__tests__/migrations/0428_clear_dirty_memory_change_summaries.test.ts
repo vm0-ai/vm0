@@ -50,10 +50,11 @@ describe("migration 0428 clear dirty memory change summaries", () => {
 
       await tx.insert(memoryChangeItems).values({
         summaryId: summary?.id ?? "",
-        kind: "learned",
         filePath: "facts/a.md",
         diff: {
           format: "line",
+          beforeExists: false,
+          afterExists: true,
           truncated: false,
           stats: { added: 0, removed: 0 },
           hunks: [],

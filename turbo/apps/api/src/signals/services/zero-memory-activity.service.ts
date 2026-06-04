@@ -8,12 +8,7 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
 import { db$ } from "../external/db";
 
-type MemoryActivityKind = "learned" | "updated" | "forgotten";
-
 interface MemoryActivityItem {
-  readonly kind: MemoryActivityKind;
-  readonly title: string | null;
-  readonly description: string | null;
   readonly filePath: string;
   readonly diff: MemoryChangeDiff;
 }
@@ -28,15 +23,6 @@ interface MemoryActivityEntry {
 
 interface MemoryActivityResult {
   readonly entries: readonly MemoryActivityEntry[];
-}
-
-function toKind(kind: string): MemoryActivityKind {
-  if (kind === "learned" || kind === "updated" || kind === "forgotten") {
-    return kind;
-  }
-  // The cron owns this vocabulary; an unknown value is a producer-side data bug
-  // that should surface rather than be silently coerced.
-  throw new Error(`Unexpected memory change item kind: ${kind}`);
 }
 
 /**
@@ -81,9 +67,6 @@ export function zeroMemoryActivity(
       .select({
         id: memoryChangeItems.id,
         summaryId: memoryChangeItems.summaryId,
-        kind: memoryChangeItems.kind,
-        title: memoryChangeItems.title,
-        description: memoryChangeItems.description,
         filePath: memoryChangeItems.filePath,
         diff: memoryChangeItems.diff,
       })
@@ -92,17 +75,13 @@ export function zeroMemoryActivity(
       // The cron batch-inserts every item of a summary in one transaction, so
       // they all share the transaction-start `now()` `created_at`; ordering by
       // it would leave intra-day order undefined across page loads. Order by
-      // `kind` then `file_path` instead: both are stable, non-null columns, so
-      // the result is fully deterministic and matches the kind-grouped UI.
-      .orderBy(asc(memoryChangeItems.kind), asc(memoryChangeItems.filePath));
+      // the stable memory file path instead.
+      .orderBy(asc(memoryChangeItems.filePath));
 
     const itemsBySummaryId = new Map<string, MemoryActivityItem[]>();
     for (const item of items) {
       const bucket = itemsBySummaryId.get(item.summaryId) ?? [];
       bucket.push({
-        kind: toKind(item.kind),
-        title: item.title,
-        description: item.description,
         filePath: item.filePath,
         diff: item.diff,
       });

@@ -198,9 +198,6 @@ async function persistSummary(
         args.changeSet.items.map((item) => {
           return {
             summaryId,
-            kind: item.kind,
-            title: item.title,
-            description: item.description,
             filePath: item.filePath,
             diff: item.diff,
           };

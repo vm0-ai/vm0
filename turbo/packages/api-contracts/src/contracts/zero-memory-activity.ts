@@ -19,6 +19,8 @@ const memoryActivityDiffHunkSchema = z.object({
 
 const memoryActivityDiffSchema = z.object({
   format: z.literal("line"),
+  beforeExists: z.boolean(),
+  afterExists: z.boolean(),
   truncated: z.boolean(),
   stats: z.object({
     added: z.number().int().nonnegative(),
@@ -29,9 +31,6 @@ const memoryActivityDiffSchema = z.object({
 });
 
 const memoryActivityItemSchema = z.object({
-  kind: z.enum(["learned", "updated", "forgotten"]),
-  title: z.string().nullable(),
-  description: z.string().nullable(),
   filePath: z.string(),
   diff: memoryActivityDiffSchema,
 });

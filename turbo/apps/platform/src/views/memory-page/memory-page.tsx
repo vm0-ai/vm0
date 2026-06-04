@@ -424,31 +424,9 @@ function MemoryFrontmatter({
 
 type MemoryActivityEntry = MemoryActivityResponse["entries"][number];
 type MemoryActivityItem = MemoryActivityEntry["items"][number];
-type MemoryItemKind = MemoryActivityItem["kind"];
 type MemoryActivityDiff = MemoryActivityItem["diff"];
 type MemoryActivityDiffLine =
   MemoryActivityDiff["hunks"][number]["lines"][number];
-
-const KIND_ORDER: readonly MemoryItemKind[] = [
-  "learned",
-  "updated",
-  "forgotten",
-];
-
-const KIND_LABEL = {
-  learned: "Learned",
-  updated: "Updated",
-  forgotten: "Forgotten",
-} as const satisfies Record<MemoryItemKind, string>;
-
-const KIND_BADGE_CLASS = {
-  learned:
-    "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  updated:
-    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  forgotten:
-    "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
-} as const satisfies Record<MemoryItemKind, string>;
 
 const DIFF_LINE_CLASS = {
   add: "border-l-emerald-500 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100",
@@ -463,26 +441,21 @@ const DIFF_LINE_SYMBOL = {
 } as const satisfies Record<MemoryActivityDiffLine["op"], string>;
 
 /**
- * Deterministic fallback line shown when the LLM narrative is null. Mirrors the
- * "N changes — A learned, B updated, C forgotten" shape so a failed generation
- * still reads as a real summary rather than a broken card.
+ * Deterministic fallback line shown when the LLM narrative is null, based only
+ * on the raw file diffs persisted for the day.
  */
 function buildFallbackSummary(items: readonly MemoryActivityItem[]): string {
-  const counts = new Map<MemoryItemKind, number>();
+  const totals = { added: 0, removed: 0 };
   for (const item of items) {
-    counts.set(item.kind, (counts.get(item.kind) ?? 0) + 1);
+    totals.added += item.diff.stats.added;
+    totals.removed += item.diff.stats.removed;
   }
-  const parts = KIND_ORDER.filter((kind) => {
-    return (counts.get(kind) ?? 0) > 0;
-  }).map((kind) => {
-    return `${counts.get(kind)} ${kind}`;
-  });
   const total = items.length;
-  const noun = total === 1 ? "change" : "changes";
-  if (parts.length === 0) {
-    return `${total} ${noun}`;
+  if (total === 0) {
+    return "No memory files changed.";
   }
-  return `${total} ${noun} — ${parts.join(", ")}`;
+  const noun = total === 1 ? "memory file" : "memory files";
+  return `${total} ${noun} changed (${formatLineStatsText(totals)}).`;
 }
 
 function formatActivityDate(date: string): string {
@@ -513,6 +486,20 @@ function hasDiffEvidence(diff: MemoryActivityDiff): boolean {
   );
 }
 
+function formatLineStatsText(stats: {
+  readonly added: number;
+  readonly removed: number;
+}): string {
+  const parts: string[] = [];
+  if (stats.added > 0) {
+    parts.push(`+${stats.added}`);
+  }
+  if (stats.removed > 0) {
+    parts.push(`-${stats.removed}`);
+  }
+  return parts.length === 0 ? "0" : parts.join(" ");
+}
+
 function MemoryUpdates() {
   const activityLoadable = useLoadable(memoryActivity$);
 
@@ -539,16 +526,6 @@ function MemoryUpdates() {
 
 function MemoryUpdateCard({ entry }: { readonly entry: MemoryActivityEntry }) {
   const summary = entry.summary ?? buildFallbackSummary(entry.items);
-  const grouped = KIND_ORDER.map((kind) => {
-    return {
-      kind,
-      items: entry.items.filter((item) => {
-        return item.kind === kind;
-      }),
-    };
-  }).filter((group) => {
-    return group.items.length > 0;
-  });
 
   return (
     <section className="zero-card flex shrink-0 flex-col overflow-hidden">
@@ -560,36 +537,11 @@ function MemoryUpdateCard({ entry }: { readonly entry: MemoryActivityEntry }) {
           {summary}
         </p>
       </header>
-      <div className="flex flex-col gap-4 px-4 py-3">
-        {grouped.map((group) => {
+      <div className="flex flex-col gap-2 px-4 py-3">
+        {entry.items.map((item) => {
+          const itemKey = `${entry.toVersionId}:${item.filePath}`;
           return (
-            <div key={group.kind} className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
-                    KIND_BADGE_CLASS[group.kind],
-                  )}
-                >
-                  {KIND_LABEL[group.kind]}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {group.items.length}
-                </span>
-              </div>
-              <div className="flex flex-col gap-2">
-                {group.items.map((item) => {
-                  const itemKey = `${entry.toVersionId}:${item.kind}:${item.filePath}`;
-                  return (
-                    <MemoryUpdateItem
-                      key={itemKey}
-                      itemKey={itemKey}
-                      item={item}
-                    />
-                  );
-                })}
-              </div>
-            </div>
+            <MemoryUpdateItem key={itemKey} itemKey={itemKey} item={item} />
           );
         })}
       </div>
@@ -607,7 +559,6 @@ function MemoryUpdateItem({
   const expandedByKey = useGet(expandedMemoryItems$);
   const toggleExpanded = useSet(toggleMemoryItemExpanded$);
   const expanded = expandedByKey[itemKey] ?? false;
-  const title = item.title ?? item.filePath;
   const hasEvidence = hasDiffEvidence(item.diff);
 
   return (
@@ -620,23 +571,16 @@ function MemoryUpdateItem({
           toggleExpanded(itemKey);
         }}
         className={cn(
-          "flex w-full min-w-0 flex-col items-start gap-0.5 px-3 py-2 text-left",
+          "flex w-full min-w-0 items-center justify-between gap-3 px-3 py-2 text-left",
           hasEvidence
             ? "transition-colors hover:bg-accent/40"
             : "cursor-default",
         )}
       >
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">
-          {title}
-        </span>
-        {item.description !== null ? (
-          <span className="min-w-0 truncate text-xs text-muted-foreground">
-            {item.description}
-          </span>
-        ) : null}
-        <span className="truncate font-mono text-[11px] text-muted-foreground/80">
+        <span className="min-w-0 truncate font-mono text-xs text-foreground">
           {item.filePath}
         </span>
+        <MemoryLineStats diff={item.diff} />
       </button>
       {expanded && hasEvidence ? (
         <div className="border-t border-border/70 px-3 py-2">
@@ -644,6 +588,23 @@ function MemoryUpdateItem({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function MemoryLineStats({ diff }: { readonly diff: MemoryActivityDiff }) {
+  const { added, removed } = diff.stats;
+  return (
+    <span className="flex shrink-0 items-center gap-1 font-mono text-xs">
+      {added > 0 ? (
+        <span className="text-emerald-700 dark:text-emerald-300">+{added}</span>
+      ) : null}
+      {removed > 0 ? (
+        <span className="text-rose-700 dark:text-rose-300">-{removed}</span>
+      ) : null}
+      {added === 0 && removed === 0 ? (
+        <span className="text-muted-foreground">0</span>
+      ) : null}
+    </span>
   );
 }
 
@@ -745,27 +706,16 @@ function MemoryUpdatesSkeleton() {
               <div className="h-4 w-40 rounded bg-muted/50" />
               <div className="mt-2 h-3 w-full max-w-[560px] rounded bg-muted/50" />
             </header>
-            <div className="flex flex-col gap-4 px-4 py-3">
-              {[0, 1].map((groupIndex) => {
+            <div className="flex flex-col gap-2 px-4 py-3">
+              {[0, 1, 2].map((itemIndex) => {
                 return (
-                  <div key={groupIndex} className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="h-5 w-20 rounded-full bg-muted/50" />
-                      <div className="h-3 w-4 rounded bg-muted/50" />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {[0, 1].map((itemIndex) => {
-                        return (
-                          <div
-                            key={itemIndex}
-                            className="rounded-md border border-border/70 bg-background px-3 py-2"
-                          >
-                            <div className="h-4 w-52 max-w-full rounded bg-muted/50" />
-                            <div className="mt-1.5 h-3 w-72 max-w-full rounded bg-muted/50" />
-                            <div className="mt-1.5 h-3 w-36 max-w-full rounded bg-muted/50" />
-                          </div>
-                        );
-                      })}
+                  <div
+                    key={itemIndex}
+                    className="rounded-md border border-border/70 bg-background px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="h-3 w-52 max-w-full rounded bg-muted/50" />
+                      <div className="h-3 w-12 shrink-0 rounded bg-muted/50" />
                     </div>
                   </div>
                 );
