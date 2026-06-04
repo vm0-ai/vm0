@@ -22,10 +22,6 @@ const IMAGE_ZOOM_ANIMATION_TYPE = "linear";
 type SetZoomHandler = (key: string, zoom: number) => void;
 type ResetZoomHandler = (key: string) => void;
 
-type TransformState = {
-  scale: number;
-};
-
 export type ZoomableImageControls = {
   canZoomIn: boolean;
   canZoomOut: boolean;
@@ -191,15 +187,12 @@ export function ZoomableArtifactImageCanvas({
   const resetDisplayZoom = useSet(resetZoomableImageCanvasZoom$);
   const displayZoom = zoomByKey[zoomKey] ?? 1;
 
-  const handleTransform = (
-    ref: ReactZoomPanPinchRef,
-    state: TransformState,
-  ) => {
+  const syncDisplayZoom = (ref: ReactZoomPanPinchRef) => {
     if (!hasMeasurableCanvas(ref)) {
       return;
     }
 
-    setDisplayZoom(zoomKey, state.scale);
+    setDisplayZoom(zoomKey, ref.state.scale);
   };
 
   return (
@@ -212,7 +205,7 @@ export function ZoomableArtifactImageCanvas({
       centerZoomedOut
       smooth
       wheel={{ step: 0.008, wheelDisabled: true }}
-      pinch={{ allowPanning: false, step: 2.5 }}
+      pinch={{ allowPanning: false, step: 5 }}
       doubleClick={{
         mode: "toggle",
         step: IMAGE_ZOOM_STEP,
@@ -224,7 +217,15 @@ export function ZoomableArtifactImageCanvas({
         animationType: IMAGE_ZOOM_ANIMATION_TYPE,
         size: 0.2,
       }}
-      onTransform={handleTransform}
+      onPinchStop={(ref) => {
+        syncDisplayZoom(ref);
+      }}
+      onWheelStop={(ref) => {
+        syncDisplayZoom(ref);
+      }}
+      onZoomStop={(ref) => {
+        syncDisplayZoom(ref);
+      }}
       onInit={() => {
         resetDisplayZoom(zoomKey);
       }}
