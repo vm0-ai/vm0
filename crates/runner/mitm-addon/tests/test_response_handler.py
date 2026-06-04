@@ -434,7 +434,7 @@ class TestResponseHandler:
         assert force_refresh_pending(cache_key)
 
     def test_invalid_content_length_without_network_log_does_not_block_401_cache_invalidation(
-        self, real_flow, mitm_ctx, headers
+        self, real_flow, mitm_ctx
     ):
         """Malformed log-only response size metadata must not block 401 auth recovery."""
         flow = real_flow(with_response=False, host="api.github.com")

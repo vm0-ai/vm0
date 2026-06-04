@@ -67,7 +67,9 @@ _BROWSER_USER_AGENT_MARKERS = (
 )
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
+# Network log size fields are consumed as JavaScript numbers downstream.
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
+# Bound untrusted log-only header parsing before splitting comma lists.
 _MAX_CONTENT_LENGTH_HEADER_CHARS = 256
 
 # Runner-triggered usage drain protocol:
