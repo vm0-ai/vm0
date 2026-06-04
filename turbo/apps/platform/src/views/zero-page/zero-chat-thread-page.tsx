@@ -3498,9 +3498,7 @@ function ThinkingIndicator({
   const recommendedFollowupSource = recommendedFollowupsEnabled
     ? latestRecommendedFollowups(groups)
     : null;
-  const doneLabel = recommendedFollowupSource
-    ? "Keep going"
-    : donePhrase;
+  const doneLabel = recommendedFollowupSource ? "Keep going" : donePhrase;
 
   if (
     !shouldRenderThinkingIndicator({
