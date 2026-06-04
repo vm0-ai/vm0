@@ -55,6 +55,7 @@ interface SubscriptionInput {
   readonly customer?: string | { readonly id: string } | null;
   readonly status: string;
   readonly trial_end?: number | null;
+  readonly cancel_at?: number | null;
   readonly cancel_at_period_end: boolean;
   readonly items: {
     readonly data: readonly {
@@ -73,11 +74,39 @@ interface CheckoutSubscriptionContext {
   readonly subscriptionId: string;
 }
 
+interface InvoicePaidOrg {
+  readonly orgId: string;
+  readonly lastProcessedInvoiceId: string | null;
+  readonly stripeSubscriptionId: string | null;
+  readonly tier: string;
+}
+
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
   return typeof periodEndUnix === "number"
     ? new Date(periodEndUnix * 1000)
     : null;
+}
+
+function subscriptionCancelAt(subscription: SubscriptionInput): Date | null {
+  return typeof subscription.cancel_at === "number"
+    ? new Date(subscription.cancel_at * 1000)
+    : null;
+}
+
+function subscriptionWillCancel(subscription: SubscriptionInput): boolean {
+  return (
+    subscription.cancel_at_period_end ||
+    subscriptionCancelAt(subscription) !== null
+  );
+}
+
+function subscriptionScheduledEnd(
+  subscription: SubscriptionInput,
+): Date | null {
+  return (
+    subscriptionCancelAt(subscription) ?? subscriptionPeriodEnd(subscription)
+  );
 }
 
 function customerIdFromSubscription(
@@ -86,12 +115,6 @@ function customerIdFromSubscription(
   return typeof subscription.customer === "string"
     ? subscription.customer
     : (subscription.customer?.id ?? null);
-}
-
-function subscriptionCanRefreshPaidThrough(
-  subscription: SubscriptionInput,
-): boolean {
-  return subscription.status === "active" || subscription.status === "trialing";
 }
 
 function subscriptionTrialEnd(subscription: SubscriptionInput): Date | null {
@@ -444,7 +467,7 @@ function checkoutSubscriptionContext(
   return { customerId, subscriptionId };
 }
 
-async function shouldSkipCheckoutSubscriptionUpdate(
+async function shouldSkipSubscriptionBinding(
   db: Db,
   args: {
     readonly customerId: string;
@@ -462,7 +485,7 @@ async function shouldSkipCheckoutSubscriptionUpdate(
     .limit(1);
 
   if (existing?.stripeSubscriptionId === args.subscriptionId) {
-    L.debug("checkout.session.completed already processed", {
+    L.debug("subscription binding already processed", {
       subscriptionId: args.subscriptionId,
     });
     return true;
@@ -473,7 +496,7 @@ async function shouldSkipCheckoutSubscriptionUpdate(
       targetTier: args.tier,
     })
   ) {
-    L.warn("checkout.session.completed rejected tier replacement", {
+    L.warn("subscription binding rejected tier replacement", {
       customerId: args.customerId,
       subscriptionId: args.subscriptionId,
       currentTier: existing?.tier ?? null,
@@ -502,7 +525,7 @@ async function orgHasStripeCustomer(
   return Boolean(existing);
 }
 
-async function bindCustomerFromStripeMetadata(
+async function bindStripeCustomerFromMetadata(
   db: Db,
   args: {
     readonly customerId: string;
@@ -516,7 +539,7 @@ async function bindCustomerFromStripeMetadata(
   const stripe = getStripeClient();
   const customer = await stripe.customers.retrieve(args.customerId);
   if ("deleted" in customer && customer.deleted) {
-    L.warn("subscription customer was deleted before org binding", {
+    L.warn("stripe customer was deleted before org binding", {
       customerId: args.customerId,
       subscriptionId: args.subscriptionId,
     });
@@ -525,7 +548,7 @@ async function bindCustomerFromStripeMetadata(
 
   const orgId = customer.metadata.orgId;
   if (!orgId) {
-    L.warn("subscription customer has no org metadata", {
+    L.warn("stripe customer has no org metadata", {
       customerId: args.customerId,
       subscriptionId: args.subscriptionId,
     });
@@ -550,13 +573,47 @@ async function bindCustomerFromStripeMetadata(
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
 
-  L.warn("subscription customer metadata could not bind org", {
+  L.warn("stripe customer metadata could not bind org", {
     customerId: args.customerId,
     subscriptionId: args.subscriptionId,
     orgId,
     existingStripeCustomerId: org?.stripeCustomerId ?? null,
   });
   return false;
+}
+
+async function invoicePaidOrgForCustomer(
+  db: Db,
+  customerId: string,
+): Promise<InvoicePaidOrg | null> {
+  const [org] = await db
+    .select({
+      orgId: orgMetadata.orgId,
+      lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      tier: orgMetadata.tier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.stripeCustomerId, customerId))
+    .limit(1);
+
+  return org ?? null;
+}
+
+async function invoicePaidOrgForCustomerOrMetadata(
+  db: Db,
+  args: {
+    readonly customerId: string;
+    readonly subscriptionId: string;
+  },
+): Promise<InvoicePaidOrg | null> {
+  const org = await invoicePaidOrgForCustomer(db, args.customerId);
+  if (org) {
+    return org;
+  }
+
+  const bound = await bindStripeCustomerFromMetadata(db, args);
+  return bound ? await invoicePaidOrgForCustomer(db, args.customerId) : null;
 }
 
 async function bindSubscriptionToCustomerOrg(
@@ -571,7 +628,7 @@ async function bindSubscriptionToCustomerOrg(
 ): Promise<void> {
   if (
     args.source === "customer.subscription.created" &&
-    !(await bindCustomerFromStripeMetadata(db, {
+    !(await bindStripeCustomerFromMetadata(db, {
       customerId: args.customerId,
       subscriptionId: args.subscription.id,
     }))
@@ -585,31 +642,22 @@ async function bindSubscriptionToCustomerOrg(
       subscriptionId: args.subscription.id,
       source: args.source,
     });
-    return;
-  }
-
-  const tier = tierFromPriceId(priceId);
-  if (
-    await shouldSkipCheckoutSubscriptionUpdate(db, {
+  } else if (
+    await shouldSkipSubscriptionBinding(db, {
       customerId: args.customerId,
       subscriptionId: args.subscription.id,
-      tier,
+      tier: tierFromPriceId(priceId),
     })
   ) {
     return;
   }
 
-  const periodEnd = subscriptionPeriodEnd(args.subscription);
-
   const rows = await db
     .update(orgMetadata)
     .set({
-      tier,
       stripeSubscriptionId: args.subscription.id,
       subscriptionStatus: args.subscription.status,
-      cancelAtPeriodEnd: args.subscription.cancel_at_period_end,
-      onboardingPaymentPending: false,
-      ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+      cancelAtPeriodEnd: subscriptionWillCancel(args.subscription),
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.stripeCustomerId, args.customerId))
@@ -711,17 +759,10 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     return;
   }
 
-  const [org] = await db
-    .select({
-      orgId: orgMetadata.orgId,
-      lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
-      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-      tier: orgMetadata.tier,
-    })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.stripeCustomerId, customerId))
-    .limit(1);
-
+  const org = await invoicePaidOrgForCustomerOrMetadata(db, {
+    customerId,
+    subscriptionId,
+  });
   if (!org) {
     L.warn("invoice.paid for unknown customer", {
       customerId,
@@ -819,6 +860,11 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     await tx
       .update(orgMetadata)
       .set({
+        tier,
+        stripeSubscriptionId: subscriptionId,
+        subscriptionStatus: subscriptionRecord.status,
+        cancelAtPeriodEnd: subscriptionWillCancel(subscriptionRecord),
+        onboardingPaymentPending: false,
         lastProcessedInvoiceId: invoice.id,
         currentPeriodEnd: periodEndDate,
         updatedAt: nowDate(),
@@ -831,23 +877,20 @@ async function handleSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
 ): Promise<void> {
-  const priceId = subscription.items.data[0]?.price?.id;
-  const canSyncPaidEntitlement =
-    subscriptionCanRefreshPaidThrough(subscription);
-  const tier: OrgTier | undefined =
-    canSyncPaidEntitlement && priceId ? tierFromPriceId(priceId) : undefined;
-  const periodEnd = canSyncPaidEntitlement
-    ? subscriptionPeriodEnd(subscription)
-    : null;
+  const periodEnd =
+    subscription.status === "trialing"
+      ? subscriptionPeriodEnd(subscription)
+      : subscriptionWillCancel(subscription)
+        ? subscriptionScheduledEnd(subscription)
+        : null;
 
   await db.transaction(async (tx) => {
     const rows = await tx
       .update(orgMetadata)
       .set({
         subscriptionStatus: subscription.status,
-        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        cancelAtPeriodEnd: subscriptionWillCancel(subscription),
         updatedAt: nowDate(),
-        ...(tier ? { tier } : {}),
         ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
       })
       .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
@@ -883,6 +926,7 @@ async function handleSubscriptionDeleted(
       subscriptionStatus: "canceled",
       stripeSubscriptionId: null,
       cancelAtPeriodEnd: false,
+      currentPeriodEnd: null,
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.stripeSubscriptionId, subscription.id));

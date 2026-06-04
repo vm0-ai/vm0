@@ -149,11 +149,8 @@ function stripeObjectId(
   return value?.id ?? null;
 }
 
-function subscriptionPeriodEnd(subscription: Stripe.Subscription): Date | null {
-  const periodEndUnix = subscription.items.data[0]?.current_period_end;
-  return typeof periodEndUnix === "number"
-    ? new Date(periodEndUnix * 1000)
-    : null;
+function subscriptionWillCancel(subscription: Stripe.Subscription): boolean {
+  return subscription.cancel_at_period_end || subscription.cancel_at !== null;
 }
 
 function customUnitAmountParams(
@@ -300,17 +297,15 @@ export const completeCheckoutSession$ = command(
         targetTier: tier,
       };
     }
-    const periodEnd = subscriptionPeriodEnd(subscription);
+    const alreadyPaidSubscription =
+      org.stripeSubscriptionId === subscription.id && org.tier === tier;
 
     await db
       .update(orgMetadata)
       .set({
-        tier,
         stripeSubscriptionId: subscription.id,
         subscriptionStatus: subscription.status,
-        cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        onboardingPaymentPending: false,
-        ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+        cancelAtPeriodEnd: subscriptionWillCancel(subscription),
         updatedAt: nowDate(),
       })
       .where(
@@ -321,7 +316,7 @@ export const completeCheckoutSession$ = command(
       );
     signal.throwIfAborted();
 
-    return { status: "completed" };
+    return { status: alreadyPaidSubscription ? "completed" : "pending" };
   },
 );
 

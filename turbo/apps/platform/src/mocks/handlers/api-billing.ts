@@ -3,6 +3,7 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingDowngradeContract,
+  zeroBillingRestoreContract,
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
   zeroBillingRedeemContract,
@@ -85,6 +86,11 @@ export const apiBillingHandlers = [
       success: true,
       effectiveDate: null,
     });
+  }),
+
+  mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
+    mockBillingStatus.cancelAtPeriodEnd = false;
+    return respond(200, { success: true });
   }),
 
   mockApi(zeroBillingAutoRechargeContract.get, ({ respond }) => {

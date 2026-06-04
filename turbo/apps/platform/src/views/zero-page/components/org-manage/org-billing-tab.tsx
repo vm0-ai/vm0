@@ -20,6 +20,7 @@ import {
   closeDowngradeDialog$,
   confirmDowngrade$,
   downgradeDialogOpen$,
+  restorePlan$,
   type BillingTier,
 } from "../../../../signals/zero-page/billing.ts";
 import {
@@ -137,6 +138,10 @@ function isPaidTier(tier: BillingTier): boolean {
   return tier === "pro" || tier === "team";
 }
 
+function formatBillingDate(value: string): string {
+  return new Date(value).toLocaleDateString("en-US");
+}
+
 function planButtonLabel(
   plan: (typeof PLANS)[number],
   currentTier: BillingTier,
@@ -159,16 +164,26 @@ function planButtonLabel(
 function PlanCard({
   plan,
   currentTier,
+  isCancelling,
+  periodEnd,
   loading,
   onAction,
+  onRestore,
 }: {
   plan: (typeof PLANS)[number];
   currentTier: BillingTier;
+  isCancelling: boolean;
+  periodEnd: string | null | undefined;
   loading: boolean;
   onAction: (planTier: BillingTier, e: React.MouseEvent) => void;
+  onRestore: () => void;
 }) {
   const isCurrent = plan.tier === currentTier;
-  const label = planButtonLabel(plan, currentTier);
+  const restoreCurrentPlan =
+    isCurrent && isCancelling && isPaidTier(currentTier);
+  const label = restoreCurrentPlan
+    ? "Restore plan"
+    : planButtonLabel(plan, currentTier);
   const unavailable = label === "Unavailable";
 
   return (
@@ -206,6 +221,12 @@ function PlanCard({
         {plan.description}
       </p>
 
+      {restoreCurrentPlan && periodEnd && (
+        <p className="mb-5 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[12px] leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
+          Ends on {formatBillingDate(periodEnd)}
+        </p>
+      )}
+
       <ul className="mb-6 flex flex-col gap-2.5">
         {plan.features.map((feature) => {
           return (
@@ -235,20 +256,27 @@ function PlanCard({
       <div className="mt-auto">
         <Button
           variant={
-            isCurrent
-              ? "outline"
-              : "primary" in plan && plan.primary
-                ? "default"
-                : "outline"
+            restoreCurrentPlan
+              ? "default"
+              : isCurrent
+                ? "outline"
+                : "primary" in plan && plan.primary
+                  ? "default"
+                  : "outline"
           }
           size="default"
           className="w-full h-11 text-sm font-medium"
-          disabled={loading || isCurrent || unavailable}
+          disabled={
+            loading || (!restoreCurrentPlan && (isCurrent || unavailable))
+          }
           onClick={(e) => {
+            if (restoreCurrentPlan) {
+              return onRestore();
+            }
             return onAction(plan.tier, e);
           }}
         >
-          {isCurrent ? "Current plan" : label}
+          {label}
         </Button>
       </div>
     </div>
@@ -257,14 +285,22 @@ function PlanCard({
 
 function PricingPage({
   currentTier,
+  isCancelling,
+  periodEnd,
+  restoreLoading,
   onBack,
+  onRestore,
 }: {
   currentTier: BillingTier;
+  isCancelling: boolean;
+  periodEnd: string | null | undefined;
+  restoreLoading: boolean;
   onBack: () => void;
+  onRestore: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
-  const loading = checkoutLoadable.state === "loading";
+  const loading = checkoutLoadable.state === "loading" || restoreLoading;
   const openDowngrade = useSet(openDowngradeDialog$);
 
   const handlePlanAction = (planTier: BillingTier, e: React.MouseEvent) => {
@@ -323,15 +359,18 @@ function PricingPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 -mx-4 sm:-mx-10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {COMPARE_PLANS.map((plan) => {
           return (
             <PlanCard
               key={plan.tier}
               plan={plan}
               currentTier={currentTier}
+              isCancelling={isCancelling}
+              periodEnd={periodEnd}
               loading={loading}
               onAction={handlePlanAction}
+              onRestore={onRestore}
             />
           );
         })}
@@ -470,22 +509,37 @@ function PlanActionButtons({
   isCancelling,
   currentTier,
   loading,
+  restoreLoading,
   onUpgrade,
   onDowngrade,
+  onRestore,
 }: {
   isPaid: boolean;
   isCancelling: boolean;
   currentTier: BillingTier;
   loading: boolean;
+  restoreLoading: boolean;
   onUpgrade: () => void;
   onDowngrade: () => void;
+  onRestore: () => void;
 }) {
   const showUpgrade =
     (isPaid && currentTier !== "team" && !isCancelling) || !isPaid;
   const showDowngrade = isPaid && !isCancelling;
+  const showRestore = isPaid && isCancelling;
 
   return (
     <div className="flex items-center gap-2 shrink-0">
+      {showRestore && (
+        <Button
+          size="sm"
+          className="rounded-lg h-8 text-xs"
+          disabled={loading}
+          onClick={onRestore}
+        >
+          {restoreLoading ? "Restoring..." : "Restore plan"}
+        </Button>
+      )}
       {showUpgrade && (
         <Button
           size="sm"
@@ -518,6 +572,20 @@ function shouldShowBuyCreditsSection(
   return hasBillingStatus && currentTier !== "pro-suspend";
 }
 
+function billingPeriodLabel(args: {
+  isPaid: boolean;
+  isCancelling: boolean;
+  periodEnd: string | null | undefined;
+}): string | null {
+  const { isPaid, isCancelling, periodEnd } = args;
+  if (!isPaid || !periodEnd) {
+    return null;
+  }
+
+  const date = formatBillingDate(periodEnd);
+  return isCancelling ? `Ends on ${date}` : `Renews ${date}`;
+}
+
 export function OrgBillingTab() {
   const pricingOpen = useGet(billingSubPage$);
   const billingScrollTarget = useGet(billingScrollTarget$);
@@ -530,8 +598,10 @@ export function OrgBillingTab() {
   const reloadBilling = useSet(reloadBillingStatus$);
   const openDowngrade = useSet(openDowngradeDialog$);
   const [portalLoadable, portal] = useLoadableSet(startDowngrade$);
+  const [restoreLoadable, restore] = useLoadableSet(restorePlan$);
   const statusLoadable = useLastLoadable(billingStatusAsync$);
-  const loading = portalLoadable.state === "loading";
+  const restoreLoading = restoreLoadable.state === "loading";
+  const loading = portalLoadable.state === "loading" || restoreLoading;
 
   const status =
     statusLoadable.state === "hasData" ? statusLoadable.data : null;
@@ -542,15 +612,17 @@ export function OrgBillingTab() {
   const isPaid = isPaidTier(currentTier);
   const isCancelling = status?.cancelAtPeriodEnd === true;
   const periodEnd = status?.currentPeriodEnd;
-  const periodLabel =
-    periodEnd !== undefined && periodEnd !== null && periodEnd !== ""
-      ? isCancelling
-        ? `Ends on ${new Date(periodEnd).toLocaleDateString("en-US")}`
-        : `Renews ${new Date(periodEnd).toLocaleDateString("en-US")}`
-      : null;
+  const periodLabel = billingPeriodLabel({
+    isPaid,
+    isCancelling,
+    periodEnd,
+  });
 
   const handleDowngrade = () => {
     openDowngrade();
+  };
+  const handleRestore = () => {
+    detach(restore(pageSignal), Reason.DomCallback);
   };
   const currentPlanLabel =
     currentTier === "pro-suspend"
@@ -566,9 +638,13 @@ export function OrgBillingTab() {
       <>
         <PricingPage
           currentTier={currentTier}
+          isCancelling={isCancelling}
+          periodEnd={periodEnd}
+          restoreLoading={restoreLoading}
           onBack={() => {
             return setPricingOpen(false);
           }}
+          onRestore={handleRestore}
         />
         <DowngradeConfirmDialog currentTier={currentTier} />
       </>
@@ -619,10 +695,12 @@ export function OrgBillingTab() {
                   isCancelling={isCancelling}
                   currentTier={currentTier}
                   loading={loading}
+                  restoreLoading={restoreLoading}
                   onUpgrade={() => {
                     return setPricingOpen(true);
                   }}
                   onDowngrade={handleDowngrade}
+                  onRestore={handleRestore}
                 />
               </div>
               {isCancelling && periodEnd && (
@@ -631,8 +709,7 @@ export function OrgBillingTab() {
                   <div className="px-5 py-3">
                     <p className="text-[13px] text-amber-600 dark:text-amber-400">
                       Your {formatTierLabel(currentTier)} plan has been
-                      cancelled and will end on{" "}
-                      {new Date(periodEnd).toLocaleDateString("en-US")}.
+                      cancelled and will end on {formatBillingDate(periodEnd)}.
                     </p>
                   </div>
                 </>

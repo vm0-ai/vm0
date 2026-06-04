@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -84,6 +84,18 @@ function mockProviderResponse(
 }
 
 describe("org-provider-dialog - display", () => {
+  it("opens providers from a primary app route settings URL", async () => {
+    detachedSetupPage({ context, path: "/agents?settings=providers" });
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Workspace settings" });
+    });
+
+    expect(
+      within(dialog).getByText("Models Configuration"),
+    ).toBeInTheDocument();
+  });
+
   // ORG-D-089: dialog title and description based on mode/type
   it("shows add title for anthropic-api-key in add mode", async () => {
     await openAddDialog("anthropic-api-key", /Add workspace Anthropic/i);

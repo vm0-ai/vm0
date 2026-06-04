@@ -350,6 +350,10 @@ const downgradeResponseSchema = z.object({
   effectiveDate: z.string().nullable(),
 });
 
+const restoreResponseSchema = z.object({
+  success: z.boolean(),
+});
+
 /**
  * Zero contract for POST /api/zero/billing/downgrade
  */
@@ -373,6 +377,29 @@ export const zeroBillingDowngradeContract = c.router({
 });
 
 export type ZeroBillingDowngradeContract = typeof zeroBillingDowngradeContract;
+
+/**
+ * Zero contract for POST /api/zero/billing/restore
+ */
+export const zeroBillingRestoreContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/billing/restore",
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: restoreResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Restore a subscription scheduled for cancellation",
+  },
+});
+
+export type ZeroBillingRestoreContract = typeof zeroBillingRestoreContract;
 
 /**
  * Zero contract for POST /api/zero/billing/redeem/:campaign
@@ -414,5 +441,6 @@ export type BillingInvoicesResponse = z.infer<
   typeof billingInvoicesResponseSchema
 >;
 export type DowngradeResponse = z.infer<typeof downgradeResponseSchema>;
+export type RestoreResponse = z.infer<typeof restoreResponseSchema>;
 export type RedeemRequest = z.infer<typeof redeemRequestSchema>;
 export type RedeemResponse = z.infer<typeof redeemResponseSchema>;

@@ -4,9 +4,12 @@ import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import {
   initProfileName$,
+  setActiveOrgManageTab$,
   setBillingScrollTarget$,
   setBillingSubPage$,
+  type OrgManageTab,
 } from "./org-manage-tabs-state.ts";
+import { setOrgManageDialogOpen$ } from "./org-manage-dialog.ts";
 
 export const SETTINGS_SECTIONS = [
   "preference",
@@ -21,6 +24,8 @@ export const SETTINGS_SECTIONS = [
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+type OrgManageOnlySettingsSection = "providers";
+type UnifiedSettingsSection = SettingsSection | OrgManageOnlySettingsSection;
 
 const ADMIN_ONLY_SETTINGS_SECTIONS_LIST = [
   "general",
@@ -85,8 +90,9 @@ export const setSettingsDialogOpen$ = command(
       }
     } else {
       const params = new URLSearchParams(get(searchParams$));
-      if (params.has("settings")) {
+      if (params.has("settings") || params.has("billingView")) {
         params.delete("settings");
+        params.delete("billingView");
         set(updateSearchParams$, params);
       }
     }
@@ -108,11 +114,46 @@ function isSettingsSection(value: string): value is SettingsSection {
   return (SETTINGS_SECTIONS as readonly string[]).includes(value);
 }
 
+function isUnifiedSettingsSection(
+  value: string,
+): value is UnifiedSettingsSection {
+  return isSettingsSection(value) || value === "providers";
+}
+
+function orgManageTabForSettingsSection(
+  section: UnifiedSettingsSection,
+): OrgManageTab | null {
+  switch (section) {
+    case "general": {
+      return "general";
+    }
+    case "people": {
+      return "members";
+    }
+    case "providers": {
+      return "providers";
+    }
+    case "billing": {
+      return "billing";
+    }
+    case "usage": {
+      return "usage";
+    }
+    case "invoices": {
+      return "invoices";
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 /**
- * Check URL for `?settings=<section>` and auto-open the dialog on that section.
- * Falls back to the closest non-admin section if the user lacks workspace
- * admin and the URL points at an admin-only section. Strips the param from
- * the URL after consuming it so reloads don't re-pin the dialog.
+ * Check URL for `?settings=<section>` and auto-open the matching settings
+ * surface. Admin-only workspace sections open the workspace management dialog
+ * for admins, and fall back to the closest non-admin section otherwise.
+ * Valid settings params stay in the URL while the dialog is open; closing the
+ * dialog clears them.
  */
 export const checkUnifiedSettingsParam$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -122,36 +163,49 @@ export const checkUnifiedSettingsParam$ = command(
     if (!value) {
       return;
     }
-    if (isSettingsSection(value)) {
-      const section = value;
-      const opensBillingPlans =
-        section === "billing" && billingView === "plans";
-      const opensBuyCredits =
-        section === "billing" && billingView === "credits";
-      const isAdmin = await get(isOrgAdmin$);
-      signal.throwIfAborted();
-      if (!isAdmin && (opensBillingPlans || opensBuyCredits)) {
-        set(setBillingSubPage$, false);
-        set(setBillingScrollTarget$, null);
-      } else {
-        const resolved =
-          !isAdmin && isAdminOnlySettingsSection(section)
-            ? "preference"
-            : section;
-        set(internalActiveSection$, resolved);
-        set(setBillingSubPage$, opensBillingPlans && resolved === "billing");
-        set(
-          setBillingScrollTarget$,
-          opensBuyCredits && resolved === "billing" ? "buy-credits" : null,
-        );
-        await set(setSettingsDialogOpen$, true, signal);
-      }
+    if (!isUnifiedSettingsSection(value)) {
+      const next = new URLSearchParams(get(searchParams$));
+      next.delete("settings");
+      next.delete("billingView");
+      set(updateSearchParams$, next);
+      return;
     }
 
-    // Strip the param so a reload doesn't re-pin the dialog on this section
-    const next = new URLSearchParams(get(searchParams$));
-    next.delete("settings");
-    next.delete("billingView");
-    set(updateSearchParams$, next);
+    const section = value;
+    const opensBillingPlans = section === "billing" && billingView === "plans";
+    const opensBuyCredits = section === "billing" && billingView === "credits";
+    const isAdmin = await get(isOrgAdmin$);
+    signal.throwIfAborted();
+
+    const orgManageTab = orgManageTabForSettingsSection(section);
+    if (orgManageTab && isAdmin) {
+      set(setActiveOrgManageTab$, orgManageTab);
+      set(setBillingSubPage$, opensBillingPlans);
+      set(setBillingScrollTarget$, opensBuyCredits ? "buy-credits" : null);
+      await set(setOrgManageDialogOpen$, true, signal);
+      return;
+    }
+    if (!isAdmin && (opensBillingPlans || opensBuyCredits)) {
+      set(setBillingSubPage$, false);
+      set(setBillingScrollTarget$, null);
+      const next = new URLSearchParams(get(searchParams$));
+      next.delete("settings");
+      next.delete("billingView");
+      set(updateSearchParams$, next);
+      return;
+    }
+
+    const resolved: SettingsSection =
+      !isSettingsSection(section) ||
+      (!isAdmin && isAdminOnlySettingsSection(section))
+        ? "preference"
+        : section;
+    set(internalActiveSection$, resolved);
+    set(setBillingSubPage$, opensBillingPlans && resolved === "billing");
+    set(
+      setBillingScrollTarget$,
+      opensBuyCredits && resolved === "billing" ? "buy-credits" : null,
+    );
+    await set(setSettingsDialogOpen$, true, signal);
   },
 );

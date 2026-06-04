@@ -1928,6 +1928,19 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero billing restore rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/billing/restore")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/restore/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing/restores")).toBe(
+      false,
+    );
+  });
+
   it("matches the zero billing redeem rewrite path by a single campaign segment", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/billing/redeem/ZERO100"),

@@ -7,6 +7,7 @@ import {
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
   zeroBillingDowngradeContract,
+  zeroBillingRestoreContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
@@ -276,6 +277,34 @@ export const confirmDowngrade$ = command(
     set(billingReload$, (x) => {
       return x + 1;
     });
+    if (targetTier === "pro-suspend") {
+      toast.success(
+        "Cancellation scheduled. Your current plan stays active until the billing period ends.",
+      );
+    } else {
+      toast.success(
+        "Downgrade started. Your plan and credits will update after Stripe confirms payment.",
+      );
+    }
+  },
+);
+
+export const restorePlan$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingRestoreContract);
+    await accept(
+      client.create({
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(billingReload$, (x) => {
+      return x + 1;
+    });
+    toast.success("Plan restored. Your subscription will renew normally.");
   },
 );
 
