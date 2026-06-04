@@ -128,6 +128,14 @@ const codexOAuthReconnectRequiredRunErrorBodySchema = z.object({
   failureReason: z.literal("reconnect_required"),
 });
 
+const codexOAuthReconnectRequiredRunErrorEnvelopeSchema = z.object({
+  error: z.object({
+    code: z.literal("TOKEN_REFRESH_FAILED"),
+    connectors: z.tuple([z.literal("codex-oauth-token")]),
+    failureReason: z.literal("reconnect_required"),
+  }),
+});
+
 export const INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE =
   "Ask a workspace admin to add credits or upgrade the workspace plan.";
 
@@ -153,7 +161,10 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE,
 ] as const;
 
-function parseJsonObjectAt(errorMessage: string, bodyStart: number): unknown {
+function parseJsonObjectAt(
+  errorMessage: string,
+  bodyStart: number,
+): { readonly value?: unknown; readonly endIndex: number } | undefined {
   let depth = 0;
   let inString = false;
   let escaped = false;
@@ -188,26 +199,36 @@ function parseJsonObjectAt(errorMessage: string, bodyStart: number): unknown {
     }
 
     try {
-      return JSON.parse(errorMessage.slice(bodyStart, index + 1)) as unknown;
+      return {
+        value: JSON.parse(errorMessage.slice(bodyStart, index + 1)) as unknown,
+        endIndex: index + 1,
+      };
     } catch {
-      return undefined;
+      return { endIndex: index + 1 };
     }
   }
 
   return undefined;
 }
 
+function isCodexOAuthReconnectRequiredRunErrorObject(value: unknown): boolean {
+  return (
+    codexOAuthReconnectRequiredRunErrorBodySchema.safeParse(value).success ||
+    codexOAuthReconnectRequiredRunErrorEnvelopeSchema.safeParse(value).success
+  );
+}
+
 function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
   let bodyStart = errorMessage.indexOf("{");
   while (bodyStart !== -1) {
-    if (
-      codexOAuthReconnectRequiredRunErrorBodySchema.safeParse(
-        parseJsonObjectAt(errorMessage, bodyStart),
-      ).success
-    ) {
+    const parsed = parseJsonObjectAt(errorMessage, bodyStart);
+    if (isCodexOAuthReconnectRequiredRunErrorObject(parsed?.value)) {
       return true;
     }
-    bodyStart = errorMessage.indexOf("{", bodyStart + 1);
+    bodyStart = errorMessage.indexOf(
+      "{",
+      parsed === undefined ? bodyStart + 1 : parsed.endIndex,
+    );
   }
   return false;
 }
