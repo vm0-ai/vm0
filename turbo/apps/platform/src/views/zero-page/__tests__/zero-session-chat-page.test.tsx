@@ -175,6 +175,13 @@ describe("recommended follow-ups", () => {
     if (!followupButton) {
       throw new Error("Expected recommended follow-up button");
     }
+    expect(followupButton).toHaveAttribute(
+      "title",
+      "Turn this into a week-by-week checklist",
+    );
+    expect(
+      screen.getByText("Turn this into a week-by-week checklist"),
+    ).toHaveClass("truncate");
     await userEvent.click(followupButton);
 
     await waitFor(() => {

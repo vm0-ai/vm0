@@ -2923,6 +2923,7 @@ function RecommendedFollowupList({
           <button
             key={followup.prompt}
             type="button"
+            title={followup.prompt}
             className="group flex min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/40"
             onClick={() => {
               handleSelect(followup, followupIndex);
@@ -2931,7 +2932,7 @@ function RecommendedFollowupList({
             <span className="shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground">
               <RecommendedFollowupIcon followup={followup} />
             </span>
-            <span className="min-w-0 flex-1 break-words text-xs font-medium leading-5 text-muted-foreground group-hover:text-foreground">
+            <span className="min-w-0 flex-1 truncate text-xs font-medium leading-5 text-muted-foreground group-hover:text-foreground">
               {followup.prompt}
             </span>
             <IconArrowUpRight
