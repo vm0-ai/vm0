@@ -27,7 +27,7 @@ import {
   IconDots,
   IconVolume2,
   IconArrowDown,
-  IconArrowRight,
+  IconArrowUpRight,
   IconBrandGoogleDrive,
   IconChevronRight,
   IconDownload,
@@ -2912,16 +2912,13 @@ function RecommendedFollowupList({
   };
 
   return (
-    <div
-      ref={handleRecommendedFollowupsRef}
-      className="-mx-2 divide-y divide-border/60"
-    >
+    <div ref={handleRecommendedFollowupsRef} className="-mx-2">
       {source.followups.map((followup, followupIndex) => {
         return (
           <button
             key={followup.prompt}
             type="button"
-            className="group flex min-h-10 w-full items-center gap-2 px-2 py-2 text-left transition-colors first:rounded-t-lg last:rounded-b-lg hover:bg-muted/40"
+            className="group flex min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/40"
             onClick={() => {
               handleSelect(followup, followupIndex);
             }}
@@ -2932,10 +2929,10 @@ function RecommendedFollowupList({
             <span className="min-w-0 flex-1 break-words text-xs font-medium leading-5 text-muted-foreground group-hover:text-foreground">
               {followup.prompt}
             </span>
-            <IconArrowRight
+            <IconArrowUpRight
               size={14}
               stroke={1.8}
-              className="shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground"
+              className="shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100"
             />
           </button>
         );
@@ -3397,6 +3394,19 @@ function FinishedRunRow({
   label: string;
   source: RecommendedFollowupSource | null;
 }) {
+  if (source) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <div className="flex h-5 items-center">
+          <p className="text-[11px] font-medium text-muted-foreground/50 shrink-0">
+            {label}
+          </p>
+        </div>
+        <RecommendedFollowupList thread={thread} source={source} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex h-5 flex-col justify-center gap-1.5">
@@ -3408,9 +3418,6 @@ function FinishedRunRow({
           <div className="h-px flex-1 bg-border/40" />
         </div>
       </div>
-      {source ? (
-        <RecommendedFollowupList thread={thread} source={source} />
-      ) : null}
     </div>
   );
 }
