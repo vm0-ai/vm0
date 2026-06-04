@@ -299,7 +299,7 @@ class TestResponseHandler:
         entry = json.loads(lines[0])
         assert entry["response_size"] == 0
 
-    @pytest.mark.parametrize("content_length", ["not-an-int", "-1"])
+    @pytest.mark.parametrize("content_length", ["not-an-int", "-1", "+1", "1, 2", "١٢"])
     def test_response_size_is_zero_for_invalid_content_length(
         self, tmp_path, real_flow, mitm_ctx, content_length
     ):
@@ -321,6 +321,29 @@ class TestResponseHandler:
         lines = Path(log_path).read_text().splitlines()
         entry = json.loads(lines[0])
         assert entry["response_size"] == 0
+
+    def test_response_size_accepts_matching_repeated_content_length(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Repeated matching Content-Length values should keep the advertised size."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers([(b"content-length", b"50000"), (b"content-length", b"50000")]),
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 50000
 
     def test_response_size_keeps_zero_streamed_bytes(self, tmp_path, real_flow, mitm_ctx):
         """response_size should not treat a streamed byte count of 0 as missing."""

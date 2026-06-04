@@ -642,14 +642,28 @@ def _content_length_response_size(content_length: str | None) -> int:
     if content_length is None:
         return 0
 
-    try:
-        response_size = int(content_length)
-    except ValueError:
-        return 0
+    response_size: int | None = None
+    for value in content_length.split(","):
+        parsed_size = _single_content_length_response_size(value)
+        if parsed_size is None:
+            return 0
+        if response_size is None:
+            response_size = parsed_size
+        elif response_size != parsed_size:
+            return 0
 
-    if response_size < 0:
-        return 0
-    return response_size
+    return response_size if response_size is not None else 0
+
+
+def _single_content_length_response_size(content_length: str) -> int | None:
+    content_length = content_length.strip(" \t")
+    if not content_length.isascii() or not content_length.isdigit():
+        return None
+
+    try:
+        return int(content_length)
+    except ValueError:
+        return None
 
 
 def _release_usage_hook_state(flow: http.HTTPFlow, *, release_tracking: bool) -> None:
