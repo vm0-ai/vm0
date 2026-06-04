@@ -45,10 +45,7 @@ import {
   providerDeleted,
 } from "../../lib/error";
 import { env } from "../../lib/env";
-import {
-  buildArtifactKey,
-  sanitizeArtifactFilename,
-} from "../../lib/file-url";
+import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
 import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import {
