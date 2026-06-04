@@ -146,7 +146,7 @@ def _classify_registry_vms(raw_registry: dict) -> tuple[dict, dict[str, InvalidV
                 "proxy registry VM entry runId must be a string",
             )
             continue
-        if not run_id:
+        if not run_id.strip():
             invalid_vms[client_ip] = _invalid_vm_entry(
                 "empty_run_id",
                 "proxy registry VM entry runId must be non-empty",

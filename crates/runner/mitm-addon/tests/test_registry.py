@@ -95,6 +95,7 @@ class TestLoadRegistry:
                         "10.200.0.3": {},
                         "10.200.0.4": {"runId": ""},
                         "10.200.0.5": {"runId": 123},
+                        "10.200.0.6": {"runId": "  \t"},
                     },
                     "updatedAt": 0,
                 }
@@ -111,11 +112,13 @@ class TestLoadRegistry:
             "10.200.0.3",
             "10.200.0.4",
             "10.200.0.5",
+            "10.200.0.6",
         }
         assert state.invalid_vms["10.200.0.2"].reason == "invalid_vm_entry"
         assert state.invalid_vms["10.200.0.3"].reason == "missing_run_id"
         assert state.invalid_vms["10.200.0.4"].reason == "empty_run_id"
         assert state.invalid_vms["10.200.0.5"].reason == "invalid_run_id"
+        assert state.invalid_vms["10.200.0.6"].reason == "empty_run_id"
 
     def test_missing_file_returns_empty(self, tmp_path):
         missing = str(tmp_path / "nonexistent.json")
@@ -556,6 +559,7 @@ class TestLoadRegistry:
                         "10.200.0.1": {"runId": ""},
                         "10.200.0.2": {},
                         "10.200.0.3": {"runId": "run-active"},
+                        "10.200.0.4": {"runId": "  \t"},
                     },
                     "updatedAt": 0,
                 }
