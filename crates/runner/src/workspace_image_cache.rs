@@ -1557,6 +1557,13 @@ impl SessionWorkspaceCache {
         &self,
         metadata_path: &Path,
     ) -> RunnerResult<WorkspaceCacheMetadata> {
+        let metadata = fs::symlink_metadata(metadata_path).await?;
+        if !metadata.is_file() {
+            return Err(RunnerError::Internal(format!(
+                "workspace image cache metadata is not a file: {}",
+                metadata_path.display()
+            )));
+        }
         let bytes = fs::read(metadata_path).await?;
         serde_json::from_slice(&bytes)
             .map_err(|e| RunnerError::Internal(format!("parse {}: {e}", metadata_path.display())))
@@ -1575,6 +1582,7 @@ impl SessionWorkspaceCache {
         }
         let bytes = serde_json::to_vec_pretty(&metadata)
             .map_err(|e| RunnerError::Internal(format!("serialize workspace metadata: {e}")))?;
+        let _ = remove_workspace_cache_path_if_exists(&tmp).await;
         if let Err(e) = fs::write(&tmp, bytes).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e.into());
@@ -3454,7 +3462,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn inspect_reports_metadata_io_errors_as_invalid_entry() {
+    async fn inspect_reports_non_file_metadata_as_invalid_entry() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         let cache = SessionWorkspaceCache::new(paths.clone());
@@ -3474,14 +3482,31 @@ mod tests {
         assert_eq!(inspection.summary.invalid_entries, 1);
         let entry = &inspection.entries[0];
         assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
-        assert!(
-            entry
-                .reason
-                .as_deref()
-                .is_some_and(|reason| reason.starts_with("metadata read failed:")),
-            "unexpected reason: {:?}",
-            entry.reason,
-        );
+        assert_eq!(entry.reason.as_deref(), Some("missing or invalid metadata"));
+    }
+
+    #[tokio::test]
+    async fn inspect_rejects_metadata_symlink_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        fs::write(paths.session_workspace_cache_current_image(&key), b"image")
+            .await
+            .unwrap();
+        let outside = dir.path().join("outside-metadata.json");
+        fs::write(&outside, b"{\"unexpected\":true}").await.unwrap();
+        std::os::unix::fs::symlink(&outside, paths.session_workspace_cache_metadata(&key)).unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert_eq!(entry.reason.as_deref(), Some("missing or invalid metadata"));
     }
 
     #[test]
@@ -4081,6 +4106,63 @@ mod tests {
             .await;
 
         assert!(err.unwrap_err().to_string().contains("session id mismatch"));
+    }
+
+    #[tokio::test]
+    async fn write_metadata_replaces_stale_tmp_symlink_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 5);
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        fs::write(&current, b"image").await.unwrap();
+        let current_metadata = fs::metadata(&current).await.unwrap();
+        let outside = dir.path().join("outside-metadata-target");
+        fs::write(&outside, b"outside").await.unwrap();
+        let metadata_tmp = paths
+            .session_workspace_cache_metadata(&key)
+            .with_file_name(format!("metadata.json.tmp.{run_id}"));
+        std::os::unix::fs::symlink(&outside, &metadata_tmp).unwrap();
+
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: "sess-1".into(),
+                    working_dir: "/workspace".into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:01:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(fs::read(&outside).await.unwrap(), b"outside");
+        let metadata_path = paths.session_workspace_cache_metadata(&key);
+        let metadata_file_type = fs::symlink_metadata(&metadata_path)
+            .await
+            .unwrap()
+            .file_type();
+        assert!(metadata_file_type.is_file());
+        assert!(!metadata_file_type.is_symlink());
     }
 
     #[tokio::test]
