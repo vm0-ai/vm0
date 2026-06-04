@@ -119,7 +119,7 @@ export const RUN_ERROR_GUIDANCE: Record<
 export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
   "Oops, something went wrong. Please try again later.";
 
-export const CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE =
+const CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE =
   "ChatGPT session needs reconnection. Reconnect ChatGPT (Codex) in Model Providers, then retry.";
 
 export const INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE =

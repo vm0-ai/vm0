@@ -27,7 +27,6 @@ export {
   apiErrorSchema,
   ApiError,
   CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
-  CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE,
   createErrorResponse,
   formatRunErrorForExternalSurface,
   isActionableRunError,
