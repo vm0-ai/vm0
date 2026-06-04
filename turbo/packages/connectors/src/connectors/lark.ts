@@ -12,31 +12,38 @@ export const lark = {
         featureFlag: FeatureSwitchKey.LarkConnector,
         label: "App Credentials",
         helpText:
-          "1. Log in to the [Lark Developer Console](https://open.larksuite.com/app/)\n2. Select your app from the list (or create a new one)\n3. Go to the **Credentials & Basic Info** page\n4. Copy your **App ID** and **App Secret**\n5. Use these credentials to call the tenant_access_token API to obtain an access token",
+          "1. Log in to the [Lark Developer Console](https://open.larksuite.com/app/)\n2. Select your app from the list (or create a new one)\n3. Go to the **Credentials & Basic Info** page\n4. Copy your **App ID** and **App Secret**",
         storage: {
-          secrets: ["LARK_TOKEN"],
+          secrets: ["LARK_APP_SECRET", "LARK_ACCESS_TOKEN"],
           variables: ["LARK_APP_ID"],
         },
         grant: {
           kind: "manual",
           fields: {
-            LARK_TOKEN: {
-              label: "App Secret",
-              required: true,
-              storage: "secret",
-            },
             LARK_APP_ID: {
               label: "App ID",
               required: true,
               storage: "variable",
             },
+            LARK_APP_SECRET: {
+              label: "App Secret",
+              required: true,
+              storage: "secret",
+            },
           },
         },
         access: {
-          kind: "static",
+          kind: "refresh-token",
+          inputs: {
+            appId: "$vars.LARK_APP_ID",
+            appSecret: "$secrets.LARK_APP_SECRET",
+          },
+          outputs: {
+            accessToken: "$secrets.LARK_ACCESS_TOKEN",
+          },
+          refreshableSecrets: ["LARK_ACCESS_TOKEN"],
           envBindings: {
-            LARK_TOKEN: "$secrets.LARK_TOKEN",
-            LARK_APP_ID: "$vars.LARK_APP_ID",
+            LARK_TOKEN: "$secrets.LARK_ACCESS_TOKEN",
           },
         },
         revoke: { kind: "none" },

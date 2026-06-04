@@ -228,6 +228,122 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     ).resolves.toMatchObject([{ value: "example", type: "connector" }]);
   });
 
+  it("stores Lark app credentials without writing the logical access token", async () => {
+    const fixture = await seedFixture();
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: { [FeatureSwitchKey.LarkConnector]: true },
+    });
+    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+
+    await accept(
+      client.connect({
+        params: { type: "lark" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            LARK_APP_ID: " cli_a123 ",
+            LARK_APP_SECRET: " lark-app-secret\n",
+          },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await expect(connectorRows(fixture, "lark")).resolves.toMatchObject([
+      {
+        authMethod: "api-token",
+        tokenExpiresAt: null,
+        needsReconnect: false,
+      },
+    ]);
+    await expect(
+      secretRows(fixture, "LARK_APP_SECRET", "connector"),
+    ).resolves.toHaveLength(1);
+    await expect(
+      secretRows(fixture, "LARK_ACCESS_TOKEN", "connector"),
+    ).resolves.toHaveLength(0);
+    await expect(
+      secretRows(fixture, "LARK_TOKEN", "connector"),
+    ).resolves.toHaveLength(0);
+    await expect(
+      secretRows(fixture, "LARK_TOKEN", "user"),
+    ).resolves.toHaveLength(0);
+    await expect(variableRows(fixture, "LARK_APP_ID")).resolves.toMatchObject([
+      { value: "cli_a123", type: "connector" },
+    ]);
+  });
+
+  it("clears stale Lark access token state on reconnect", async () => {
+    const fixture = await seedFixture();
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: { [FeatureSwitchKey.LarkConnector]: true },
+    });
+    await db.insert(connectors).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      type: "lark",
+      authMethod: "api-token",
+      tokenExpiresAt: new Date("2030-01-01T00:00:00Z"),
+      needsReconnect: true,
+    });
+    await db.insert(secrets).values([
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "LARK_TOKEN",
+        encryptedValue: "encrypted_legacy_lark_token",
+        type: "connector",
+      },
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "LARK_ACCESS_TOKEN",
+        encryptedValue: "encrypted_stale_lark_access_token",
+        type: "connector",
+      },
+    ]);
+
+    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    await accept(
+      client.connect({
+        params: { type: "lark" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            LARK_APP_ID: "cli_new",
+            LARK_APP_SECRET: "new-lark-app-secret",
+          },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await expect(connectorRows(fixture, "lark")).resolves.toMatchObject([
+      {
+        authMethod: "api-token",
+        tokenExpiresAt: null,
+        needsReconnect: false,
+      },
+    ]);
+    await expect(
+      secretRows(fixture, "LARK_ACCESS_TOKEN", "connector"),
+    ).resolves.toHaveLength(0);
+    await expect(
+      secretRows(fixture, "LARK_APP_SECRET", "connector"),
+    ).resolves.toHaveLength(1);
+    await expect(
+      secretRows(fixture, "LARK_TOKEN", "connector"),
+    ).resolves.toHaveLength(1);
+  });
+
   it("replaces stored OAuth state with stored manual grant state", async () => {
     const fixture = await seedFixture();
     const db = store.set(writeDb$);

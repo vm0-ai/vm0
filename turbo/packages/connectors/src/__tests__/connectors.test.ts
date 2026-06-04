@@ -308,6 +308,12 @@ describe("connector auth method lifecycle helpers", () => {
       getConnectorAuthMethodIdsForAccessKind("stripe", "static"),
     ).toStrictEqual(["api-token"]);
     expect(
+      getConnectorAuthMethodIdsForAccessKind("lark", "refresh-token"),
+    ).toStrictEqual(["api-token"]);
+    expect(
+      getConnectorAuthMethodIdsForAccessKind("lark", "static"),
+    ).toStrictEqual([]);
+    expect(
       getConnectorAuthMethodIdsForRevokeKind("stripe", "token-revoke"),
     ).toStrictEqual([]);
     expect(
@@ -677,6 +683,7 @@ describe("connector selected auth method capability checks", () => {
 
   it("matches exactly the auth methods that declare refresh-token access", () => {
     expectTypeOf<"base44">().toMatchTypeOf<RefreshTokenAccessConnectorType>();
+    expectTypeOf<"lark">().toMatchTypeOf<RefreshTokenAccessConnectorType>();
     expectTypeOf<"notion">().toMatchTypeOf<RefreshTokenAccessConnectorType>();
     expectTypeOf<"github">().not.toMatchTypeOf<RefreshTokenAccessConnectorType>();
 
@@ -704,6 +711,10 @@ describe("connector selected auth method capability checks", () => {
       "test-oauth",
       "api-token"
     >;
+    type LarkRefreshArgs = ConnectorAuthProviderRefreshArgs<
+      "lark",
+      "api-token"
+    >;
     type DefaultRefreshArgs = ConnectorAuthProviderRefreshArgs<"test-oauth">;
     type DefaultInputOnlyRefreshArgs = Exclude<
       DefaultRefreshArgs,
@@ -726,6 +737,11 @@ describe("connector selected auth method capability checks", () => {
     expectTypeOf<DefaultInputOnlyRefreshArgs["inputs"]>().toEqualTypeOf<{
       readonly inputSecret: string;
       readonly inputVariable: string;
+    }>();
+    expectTypeOf<"authClient">().not.toMatchTypeOf<keyof LarkRefreshArgs>();
+    expectTypeOf<LarkRefreshArgs["inputs"]>().toEqualTypeOf<{
+      readonly appId: string;
+      readonly appSecret: string;
     }>();
   });
 
@@ -1208,6 +1224,43 @@ describe("connector selected auth method capability checks", () => {
         accessToken: "fresh-test-oauth-api-token:secret-input:variable-input",
       },
       expiresIn: 3600,
+    });
+  });
+
+  it("refreshes Lark tenant access through the non-OAuth access provider", async () => {
+    server.use(
+      http.post(
+        "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal",
+        async ({ request }) => {
+          await expect(request.json()).resolves.toStrictEqual({
+            app_id: "lark-app-id",
+            app_secret: "lark-app-secret",
+          });
+          return HttpResponse.json({
+            code: 0,
+            msg: "ok",
+            tenant_access_token: "lark-tenant-access-token",
+            expire: 7200,
+          });
+        },
+      ),
+    );
+
+    await expect(
+      refreshConnectorAuthProviderAccessToken({
+        type: "lark",
+        authMethod: "api-token",
+        inputs: {
+          appId: "lark-app-id",
+          appSecret: "lark-app-secret",
+        },
+        signal: testRefreshSignal(),
+      }),
+    ).resolves.toStrictEqual({
+      outputs: {
+        accessToken: "lark-tenant-access-token",
+      },
+      expiresIn: 7200,
     });
   });
 
@@ -2042,6 +2095,58 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
     });
   });
 
+  it("returns Lark refresh-token access metadata for manual app credentials", () => {
+    expect(getApiTokenManualGrantFields("lark")).toStrictEqual({
+      LARK_APP_ID: {
+        label: "App ID",
+        required: true,
+        storage: "variable",
+      },
+      LARK_APP_SECRET: {
+        label: "App Secret",
+        required: true,
+        storage: "secret",
+      },
+    });
+    expect(
+      getConnectorAuthMethodAccessMetadata("lark", "api-token"),
+    ).toStrictEqual({
+      kind: "refresh-token",
+      inputs: {
+        appId: {
+          valueRef: "$vars.LARK_APP_ID",
+          source: {
+            kind: "connector-variable",
+            name: "LARK_APP_ID",
+          },
+        },
+        appSecret: {
+          valueRef: "$secrets.LARK_APP_SECRET",
+          source: {
+            kind: "connector-secret",
+            name: "LARK_APP_SECRET",
+          },
+        },
+      },
+      outputs: {
+        accessToken: {
+          valueRef: "$secrets.LARK_ACCESS_TOKEN",
+          secretName: "LARK_ACCESS_TOKEN",
+        },
+      },
+      refreshableSecrets: ["LARK_ACCESS_TOKEN"],
+      envBindings: {
+        LARK_TOKEN: "$secrets.LARK_ACCESS_TOKEN",
+      },
+      platformSecrets: [],
+    });
+    expect(
+      getConnectorAuthMethodEnvBindings("lark", "api-token"),
+    ).toStrictEqual({
+      LARK_TOKEN: "$secrets.LARK_ACCESS_TOKEN",
+    });
+  });
+
   it("returns undefined for an unknown auth method", () => {
     expect(
       getConnectorAuthMethodAccessMetadata("stripe", "missing"),
@@ -2571,7 +2676,7 @@ describe("getConnectorEnvBindingEntries", () => {
     }
   });
 
-  it("api-token-only connectors expose all secrets via envBindings with same name", () => {
+  it("static api-token-only connectors expose all fields via envBindings with same name", () => {
     for (const type of connectorTypeSchema.options) {
       if (hasConnectorAuthorizationGrant(type)) continue;
       const fields = getApiTokenManualGrantFields(type);
@@ -2579,6 +2684,20 @@ describe("getConnectorEnvBindingEntries", () => {
 
       const fieldNames = Object.keys(fields);
       const envBindings = envBindingsForSingleMethod(type, "api-token");
+      const accessMetadata = getConnectorAuthMethodAccessMetadata(
+        type,
+        "api-token",
+      );
+      if (accessMetadata?.kind === "refresh-token") {
+        const bindingRefs = new Set(Object.values(envBindings));
+        for (const refreshableSecretName of accessMetadata.refreshableSecrets) {
+          expect(
+            bindingRefs.has(`$secrets.${refreshableSecretName}`),
+            `${type}: refresh-token api-token envBindings must expose derived access secret ${refreshableSecretName}`,
+          ).toBe(true);
+        }
+        continue;
+      }
       const envBindingNames = Object.keys(envBindings);
 
       // envBindings names must be exactly the same set as secrets

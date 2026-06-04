@@ -3113,19 +3113,21 @@ function buildStoredExecutionSecrets(args: {
     secretConnectorMetadataMap: args.modelProvider?.secretConnectorMetadataMap,
     secretConnectorMap: filteredModelProviderMap,
   });
+  const secretConnectorMap =
+    mergeRecords(filteredConnectorMap, filteredModelProviderMap) ?? null;
+  const secrets = mergeRecords(
+    args.connectorContext.secrets,
+    args.modelProvider?.secrets,
+    args.bodySecrets,
+    args.customConnectorContext.secrets,
+  );
   // The merged map is the runtime `secrets.NAME` namespace consumed by firewall
   // auth and environment expansion. Stored connectors and model providers enter
   // this map under env binding aliases; raw DB storage names stay behind the
   // access metadata used during refresh/lookup.
   return {
-    secrets: mergeRecords(
-      args.connectorContext.secrets,
-      args.modelProvider?.secrets,
-      args.bodySecrets,
-      args.customConnectorContext.secrets,
-    ),
-    secretConnectorMap:
-      mergeRecords(filteredConnectorMap, filteredModelProviderMap) ?? null,
+    secrets: secrets ?? (secretConnectorMap ? {} : undefined),
+    secretConnectorMap,
     secretConnectorMetadataMap: filteredModelProviderMetadataMap ?? null,
   };
 }

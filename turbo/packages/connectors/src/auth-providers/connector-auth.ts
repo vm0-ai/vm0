@@ -67,6 +67,7 @@ import { googleDocsProvider } from "./connectors/google-docs/provider";
 import { googleDriveProvider } from "./connectors/google-drive/provider";
 import { googleMeetProvider } from "./connectors/google-meet/provider";
 import { googleSheetsProvider } from "./connectors/google-sheets/provider";
+import { larkProvider } from "./connectors/lark/provider";
 import { linearProvider } from "./connectors/linear/provider";
 import { mailchimpProvider } from "./connectors/mailchimp/provider";
 import { mercuryProvider } from "./connectors/mercury/provider";
@@ -402,6 +403,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   },
   gumroad: { oauth: authCodeRefreshProviderEntry(gumroadProvider) },
   hubspot: { oauth: authCodeRefreshProviderEntry(hubspotProvider) },
+  lark: { "api-token": refreshProviderEntry(larkProvider) },
   "intervals-icu": {
     oauth: authCodeProviderEntry(intervalsIcuProvider),
   },

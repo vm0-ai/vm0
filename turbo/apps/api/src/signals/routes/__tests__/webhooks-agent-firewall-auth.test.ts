@@ -561,6 +561,91 @@ async function seedTestOAuthApiTokenConnector(
   }
 }
 
+async function seedLarkConnector(
+  fixture: FirewallFixture,
+  args: {
+    readonly accessToken?: string;
+    readonly tokenExpiresAt?: Date | null;
+    readonly appId?: string | undefined;
+    readonly appSecret?: string | undefined;
+  } = {},
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "lark",
+    authMethod: "api-token",
+    tokenExpiresAt: args.tokenExpiresAt ?? null,
+  });
+
+  const appId = "appId" in args ? args.appId : "lark-app-id";
+  if (appId !== undefined) {
+    await seedVariable({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "LARK_APP_ID",
+      value: appId,
+    });
+  }
+
+  const appSecret = "appSecret" in args ? args.appSecret : "lark-app-secret";
+  if (appSecret !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "LARK_APP_SECRET",
+      value: appSecret,
+      type: "connector",
+    });
+  }
+
+  if (args.accessToken !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "LARK_ACCESS_TOKEN",
+      value: args.accessToken,
+      type: "connector",
+    });
+  }
+}
+
+function useLarkTenantAccessTokenEndpoint(
+  args: {
+    readonly accessToken?: string;
+    readonly expire?: number;
+    readonly code?: number;
+    readonly msg?: string;
+    readonly status?: number;
+    readonly body?: unknown;
+  } = {},
+): unknown[] {
+  const calls: unknown[] = [];
+  server.use(
+    http.post(
+      "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal",
+      async ({ request }) => {
+        calls.push(await request.json());
+        if (args.body !== undefined) {
+          return HttpResponse.json(args.body, { status: args.status ?? 200 });
+        }
+        return HttpResponse.json(
+          {
+            code: args.code ?? 0,
+            msg: args.msg ?? "ok",
+            tenant_access_token:
+              args.accessToken ?? "fresh-lark-tenant-access-token",
+            expire: args.expire ?? 7200,
+          },
+          { status: args.status ?? 200 },
+        );
+      },
+    ),
+  );
+  return calls;
+}
+
 async function seedStripeApiTokenConnector(
   fixture: FirewallFixture,
   args: { readonly token?: string } = {},
@@ -2396,6 +2481,250 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     ).resolves.toBe(
       "fresh-test-oauth-api-token:test-oauth-api-token-input-secret:test-oauth-api-token-input-variable",
     );
+  });
+
+  it("exchanges Lark app credentials when the cached access token is missing", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint({
+      accessToken: "fresh-lark-access-token",
+      expire: 7200,
+    });
+    const fixture = await track(seedFixture());
+    await seedLarkConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            LARK_TOKEN: "lark",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(larkCalls).toStrictEqual([
+      {
+        app_id: "lark-app-id",
+        app_secret: "lark-app-secret",
+      },
+    ]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-lark-access-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["lark"]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["LARK_TOKEN"]);
+    expect(response.body.expiresAt).toBeGreaterThan(currentSecond());
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "LARK_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("fresh-lark-access-token");
+    const connector = await connectorState(fixture, "lark");
+    expect(connector.tokenExpiresAt?.getTime()).toBeGreaterThan(now());
+  });
+
+  it("reuses current Lark access token without calling the token endpoint", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint();
+    const fixture = await track(seedFixture());
+    await seedLarkConnector(fixture, {
+      accessToken: "current-lark-access-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            LARK_TOKEN: "lark",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(larkCalls).toStrictEqual([]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-lark-access-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("refreshes expired Lark access token and updates stored state", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint({
+      accessToken: "rotated-lark-access-token",
+      expire: 3600,
+    });
+    const fixture = await track(seedFixture());
+    await seedLarkConnector(fixture, {
+      accessToken: "expired-lark-access-token",
+      tokenExpiresAt: new Date(now() - 60_000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            LARK_TOKEN: "expired-lark-access-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            LARK_TOKEN: "lark",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(larkCalls).toStrictEqual([
+      {
+        app_id: "lark-app-id",
+        app_secret: "lark-app-secret",
+      },
+    ]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer rotated-lark-access-token",
+    );
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "LARK_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("rotated-lark-access-token");
+  });
+
+  it("force-refreshes Lark access token even when the cached token is current", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint({
+      accessToken: "force-refreshed-lark-access-token",
+    });
+    const fixture = await track(seedFixture());
+    await seedLarkConnector(fixture, {
+      accessToken: "current-lark-access-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            LARK_TOKEN: "lark",
+          },
+          forceRefresh: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(larkCalls).toHaveLength(1);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer force-refreshed-lark-access-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["lark"]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["LARK_TOKEN"]);
+  });
+
+  it("returns refresh failure when Lark app credentials are missing", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint();
+    for (const missingInput of ["appId", "appSecret"] as const) {
+      const fixture = await track(seedFixture());
+      await seedLarkConnector(
+        fixture,
+        missingInput === "appId"
+          ? { appId: undefined }
+          : { appSecret: undefined },
+      );
+
+      const response = await accept(
+        firewallClient().resolve({
+          body: {
+            encryptedSecrets: encryptedSecrets({}),
+            authHeaders: {
+              Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+            },
+            secretConnectorMap: {
+              LARK_TOKEN: "lark",
+            },
+          },
+          headers: authHeaders(fixture),
+        }),
+        [502],
+      );
+
+      expect(response.body.error).toMatchObject({
+        code: "TOKEN_REFRESH_FAILED",
+        connectors: ["lark"],
+        failureReason: "reconnect_required",
+      });
+      await expect(connectorState(fixture, "lark")).resolves.toMatchObject({
+        needsReconnect: true,
+      });
+    }
+    expect(larkCalls).toStrictEqual([]);
+  });
+
+  it("returns refresh failure for invalid Lark token endpoint responses", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint({
+      body: {
+        code: 0,
+        msg: "ok",
+        expire: 7200,
+      },
+    });
+    const fixture = await track(seedFixture());
+    await seedLarkConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            LARK_TOKEN: "lark",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(larkCalls).toHaveLength(1);
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["lark"],
+    });
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "LARK_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBeNull();
   });
 
   it("reuses current input-only connector access without refreshing", async () => {
