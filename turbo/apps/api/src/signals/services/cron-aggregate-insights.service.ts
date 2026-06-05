@@ -5,6 +5,7 @@ import {
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userCache } from "@vm0/db/schema/user-cache";
@@ -147,6 +148,7 @@ interface WindowScope {
   readonly users: OrgUserPair[];
   readonly orgIds: string[];
   readonly userIds: string[];
+  readonly cachedOrgMembers: CachedOrgMemberScope;
 }
 
 interface ClerkUserListUser {
@@ -204,6 +206,11 @@ interface NetworkQueryResult {
   readonly userNetworkMap: Map<string, UserNetworkData>;
   readonly networkRows: number;
   readonly axiomDegraded: boolean;
+}
+
+interface CachedOrgMemberScope {
+  readonly orgsWithCachedMembers: Set<string>;
+  readonly memberKeys: Set<string>;
 }
 
 function normalizeDbDate(value: Date | string): Date {
@@ -496,6 +503,52 @@ function aggregateOrgCredits(
   return orgCreditsMap;
 }
 
+function orgUserKey(args: OrgUserPair): string {
+  return `${args.orgId}:${args.userId}`;
+}
+
+function isCachedOrgMember(
+  scope: CachedOrgMemberScope,
+  args: OrgUserPair,
+): boolean {
+  return (
+    !scope.orgsWithCachedMembers.has(args.orgId) ||
+    scope.memberKeys.has(orgUserKey(args))
+  );
+}
+
+async function queryCachedOrgMembers(
+  db: Db,
+  orgIds: string[],
+  signal: AbortSignal,
+): Promise<CachedOrgMemberScope> {
+  if (orgIds.length === 0) {
+    return { orgsWithCachedMembers: new Set(), memberKeys: new Set() };
+  }
+
+  const rows = await db
+    .select({
+      orgId: orgMembersCache.orgId,
+      userId: orgMembersCache.userId,
+    })
+    .from(orgMembersCache)
+    .where(inArray(orgMembersCache.orgId, orgIds));
+  signal.throwIfAborted();
+
+  return {
+    orgsWithCachedMembers: new Set(
+      rows.map((row) => {
+        return row.orgId;
+      }),
+    ),
+    memberKeys: new Set(
+      rows.map((row) => {
+        return orgUserKey(row);
+      }),
+    ),
+  };
+}
+
 function mergeActiveUserRows(rows: ActiveUserRow[]): ActiveUserRow[] {
   const byUser = new Map<string, ActiveUserRow>();
   for (const row of rows) {
@@ -765,7 +818,10 @@ async function queryNetworkRunAgentRows(
   return rows;
 }
 
-function windowScope(group: WindowGroup): WindowScope {
+function windowScope(
+  group: WindowGroup,
+  cachedOrgMembers: CachedOrgMemberScope,
+): WindowScope {
   const { dayStart, dayEnd, users } = group;
   return {
     dayStart,
@@ -785,6 +841,7 @@ function windowScope(group: WindowGroup): WindowScope {
         }),
       ),
     ],
+    cachedOrgMembers,
   };
 }
 
@@ -806,10 +863,17 @@ async function loadWindowUsageData(
   ]);
   signal.throwIfAborted();
 
-  const userAgentMap = mergeAgentRows(runRows, ledgerCreditRows, scope.users);
+  const currentMemberCreditRows = ledgerCreditRows.filter((row) => {
+    return isCachedOrgMember(scope.cachedOrgMembers, row);
+  });
+  const userAgentMap = mergeAgentRows(
+    runRows,
+    currentMemberCreditRows,
+    scope.users,
+  );
   const allCreditUserIds = [
     ...new Set(
-      ledgerCreditRows.map((row) => {
+      currentMemberCreditRows.map((row) => {
         return row.userId;
       }),
     ),
@@ -820,7 +884,10 @@ async function loadWindowUsageData(
     allCreditUserIds,
     signal,
   );
-  const orgCreditsMap = aggregateOrgCredits(ledgerCreditRows, userNameMap);
+  const orgCreditsMap = aggregateOrgCredits(
+    currentMemberCreditRows,
+    userNameMap,
+  );
 
   const balanceRows =
     scope.orgIds.length > 0
@@ -964,6 +1031,7 @@ function processWindowGroup(
   db: Db,
   clerk: ClerkLike,
   group: WindowGroup,
+  cachedOrgMembers: CachedOrgMemberScope,
   signal: AbortSignal,
 ): Computed<
   Promise<{ readonly upserted: number; readonly networkRows: number }>
@@ -972,7 +1040,7 @@ function processWindowGroup(
     async (
       get,
     ): Promise<{ readonly upserted: number; readonly networkRows: number }> => {
-      const scope = windowScope(group);
+      const scope = windowScope(group, cachedOrgMembers);
       const usageData = await loadWindowUsageData(db, clerk, scope, signal);
       const networkData = await get(queryWindowNetworkData(db, scope, signal));
       const upserted = await upsertWindowInsights(
@@ -1017,6 +1085,11 @@ export const aggregateInsights$ = command(
         }),
       ),
     ];
+    const cachedOrgMembers = await queryCachedOrgMembers(
+      db,
+      activeOrgIds,
+      signal,
+    );
 
     const lastAggRows = await db
       .select({
@@ -1082,7 +1155,9 @@ export const aggregateInsights$ = command(
     let upserted = 0;
     let totalNetworkRows = 0;
     for (const group of windowGroups.values()) {
-      const result = await get(processWindowGroup(db, clerk, group, signal));
+      const result = await get(
+        processWindowGroup(db, clerk, group, cachedOrgMembers, signal),
+      );
       signal.throwIfAborted();
       upserted += result.upserted;
       totalNetworkRows += result.networkRows;
