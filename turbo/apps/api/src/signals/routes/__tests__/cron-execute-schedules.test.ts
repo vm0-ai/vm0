@@ -313,6 +313,57 @@ describe("GET /api/cron/execute-schedules", () => {
     expect(schedule?.nextRunAt).toBeNull();
   });
 
+  it("keeps feature-off recurring schedules in legacy mode across due runs", async () => {
+    const fixture = await seedFixture([
+      {
+        name: "legacy-recurring",
+        prompt: "Legacy recurring task",
+        intervalSeconds: 300,
+        nextRunAt: dueDate(),
+      },
+    ]);
+    const scheduleId = fixture.scheduleIds[0]!;
+    mockNow(DUE_TIME);
+
+    const firstResponse = await accept(
+      apiClient().execute({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(firstResponse.body).toMatchObject({ executed: 1, skipped: 0 });
+    const firstSchedule = await findSchedule(scheduleId);
+    expect(firstSchedule?.chatThreadId).toBeNull();
+    expect(firstSchedule?.nextRunAt).toBeNull();
+    const firstRuns = await findScheduleRuns(scheduleId);
+    expect(firstRuns).toHaveLength(1);
+    const firstRunId = firstRuns[0]?.id;
+    if (!firstRunId) {
+      throw new Error("Expected first scheduled run");
+    }
+
+    const db = store.set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({ status: "completed" })
+      .where(eq(agentRuns.id, firstRunId));
+    await db
+      .update(zeroAgentSchedules)
+      .set({ nextRunAt: dueDate() })
+      .where(eq(zeroAgentSchedules.id, scheduleId));
+
+    const secondResponse = await accept(
+      apiClient().execute({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(secondResponse.body).toMatchObject({ executed: 1, skipped: 0 });
+    const secondSchedule = await findSchedule(scheduleId);
+    expect(secondSchedule?.chatThreadId).toBeNull();
+    expect(secondSchedule?.nextRunAt).toBeNull();
+    const secondRuns = await findScheduleRuns(scheduleId);
+    expect(secondRuns).toHaveLength(2);
+  });
+
   it("queues a scheduled run when the org is at its concurrency limit", async () => {
     const fixture = await seedFixture([
       {

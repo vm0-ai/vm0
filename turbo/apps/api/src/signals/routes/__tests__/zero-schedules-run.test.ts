@@ -8,9 +8,11 @@ import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
 import { userConnectors } from "@vm0/db/schema/user-connector";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { createStore } from "ccstate";
@@ -78,6 +80,15 @@ async function seedFixture(): Promise<SchedulesFixture> {
   );
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return fixture;
+}
+
+async function enableChatMode(fixture: SchedulesFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    switches: { [FeatureSwitchKey.ScheduledChat]: true },
+  });
 }
 
 async function seedSlackGrantForScheduleOwner(
@@ -176,6 +187,7 @@ function expectErrorCode(response: { readonly body: unknown }): string {
 describe("POST /api/zero/schedules/run", () => {
   it("executes a schedule and returns runId with 201", async () => {
     const fixture = await seedFixture();
+    await enableChatMode(fixture);
     const scheduleId = fixture.scheduleIds[0];
     if (!scheduleId) {
       throw new Error("Expected schedule fixture");
