@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.182.0](https://github.com/vm0-ai/vm0/compare/cli-v9.181.6...cli-v9.182.0) (2026-06-05)
+
+
+### Features
+
+* emit presentation artifact kind ([#16320](https://github.com/vm0-ai/vm0/issues/16320)) ([#16324](https://github.com/vm0-ai/vm0/issues/16324)) ([5c69151](https://github.com/vm0-ai/vm0/commit/5c691514eda865472e08a63b771931dd1b331bb4))
+* preserve hosted artifact kind ([#16316](https://github.com/vm0-ai/vm0/issues/16316)) ([d4befd9](https://github.com/vm0-ai/vm0/commit/d4befd9ff13968e9c3e2f2788ef1c178c8f875bb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.66.0
+    * @vm0/core bumped to 8.313.1
+
 ## [9.181.6](https://github.com/vm0-ai/vm0/compare/cli-v9.181.5...cli-v9.181.6) (2026-06-05)
 
 

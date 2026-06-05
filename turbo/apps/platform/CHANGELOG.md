@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.419.2](https://github.com/vm0-ai/vm0/compare/app-v0.419.1...app-v0.419.2) (2026-06-05)
+
+
+### Bug Fixes
+
+* **platform:** update groq connector icon ([#16323](https://github.com/vm0-ai/vm0/issues/16323)) ([a5744ce](https://github.com/vm0-ai/vm0/commit/a5744cedac662fe1d50c3d963a2ffb242c216266))
+* **platform:** update parallel connector logo ([#16321](https://github.com/vm0-ai/vm0/issues/16321)) ([c3dd6c1](https://github.com/vm0-ai/vm0/commit/c3dd6c1a0c9dd95ea63ece14dbadf902f22b46f9))
+* **platform:** update pika connector logo ([#16327](https://github.com/vm0-ai/vm0/issues/16327)) ([e789173](https://github.com/vm0-ai/vm0/commit/e789173584bc33049efa249bd4019cc15a9934c4))
+* **platform:** use official stripe connector logo ([#16318](https://github.com/vm0-ai/vm0/issues/16318)) ([a40c525](https://github.com/vm0-ai/vm0/commit/a40c52515d2e96dd923ca9493b0acd3a2da174a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.0
+    * @vm0/core bumped to 8.313.1
+
 ## [0.419.1](https://github.com/vm0-ai/vm0/compare/app-v0.419.0...app-v0.419.1) (2026-06-05)
 
 
