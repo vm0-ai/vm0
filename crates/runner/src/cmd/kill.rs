@@ -485,9 +485,8 @@ async fn report_kill_outcome(
                 "Killed orphan sandbox {} (PID {})",
                 initial.sandbox_id, initial.pid
             );
-            if initial.base_dir.is_some() {
-                let results =
-                    cleanup_orphan(&initial.sandbox_id, initial.base_dir.as_deref(), control).await;
+            if let Some(base_dir) = initial.base_dir.as_deref() {
+                let results = cleanup_orphan(&initial.sandbox_id, base_dir, control).await;
                 print_cleanup_results(&results);
             } else {
                 println!(
@@ -540,18 +539,16 @@ fn print_cleanup_results(results: &[(String, bool)]) {
 
 async fn cleanup_orphan(
     sandbox_id: &str,
-    base_dir: Option<&Path>,
+    base_dir: &Path,
     control: &dyn SandboxControl,
 ) -> Vec<(String, bool)> {
     let mut results = Vec::new();
 
     // Workspace dir
-    if let Some(bd) = base_dir {
-        let workspace = bd.join("workspaces").join(sandbox_id);
-        let label = format!("Workspace: {}", workspace.display());
-        let success = remove_dir_if_exists(&workspace).await;
-        results.push((label, success));
-    }
+    let workspace = base_dir.join("workspaces").join(sandbox_id);
+    let label = format!("Workspace: {}", workspace.display());
+    let success = remove_dir_if_exists(&workspace).await;
+    results.push((label, success));
 
     // Socket dir
     let sock_dir = control.runtime_dir(sandbox_id);
@@ -926,7 +923,7 @@ mod tests {
         let sock_dir = control.runtime_dir("sbox-123");
         tokio::fs::create_dir_all(&sock_dir).await.unwrap();
 
-        let results = cleanup_orphan("sbox-123", Some(base), &control).await;
+        let results = cleanup_orphan("sbox-123", base, &control).await;
 
         assert_eq!(results.len(), 2);
         assert!(results[0].1, "workspace cleanup should succeed");
@@ -940,7 +937,7 @@ mod tests {
         let control = MockSandboxControl::new("/tmp/nonexistent-base");
         let results = cleanup_orphan(
             "sbox-456",
-            Some(std::path::Path::new("/tmp/no-such-dir")),
+            std::path::Path::new("/tmp/no-such-dir"),
             &control,
         )
         .await;
@@ -949,15 +946,5 @@ mod tests {
         assert_eq!(results.len(), 2);
         assert!(results[0].1);
         assert!(results[1].1);
-    }
-
-    #[tokio::test]
-    async fn cleanup_orphan_no_base_dir() {
-        let control = MockSandboxControl::new("/tmp/test");
-        let results = cleanup_orphan("sbox-789", None, &control).await;
-
-        // Only socket dir cleanup, no workspace
-        assert_eq!(results.len(), 1);
-        assert!(results[0].0.contains("Socket dir"));
     }
 }
