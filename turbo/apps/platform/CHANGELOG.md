@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.419.0](https://github.com/vm0-ai/vm0/compare/app-v0.418.0...app-v0.419.0) (2026-06-05)
+
+
+### Features
+
+* add template ppt preview page ([#16285](https://github.com/vm0-ai/vm0/issues/16285)) ([5c82156](https://github.com/vm0-ai/vm0/commit/5c821560e9c4d4ceccc20c09508adfb4d4aa916b))
+* collapse memory file diffs ([#16290](https://github.com/vm0-ai/vm0/issues/16290)) ([795bafc](https://github.com/vm0-ai/vm0/commit/795bafcd361ebf7cc9898a46b209486d3f775d05))
+
+
+### Bug Fixes
+
+* allow recommended followups to wrap ([#16291](https://github.com/vm0-ai/vm0/issues/16291)) ([5862532](https://github.com/vm0-ai/vm0/commit/586253261dbe3c55521557322c947960e5d36b82))
+* handle scheduled billing plan changes ([#16261](https://github.com/vm0-ai/vm0/issues/16261)) ([3453471](https://github.com/vm0-ai/vm0/commit/345347139ca5151393bacd9ab15951572f37d084))
+* remove lark connector feature switch ([#16289](https://github.com/vm0-ai/vm0/issues/16289)) ([844fb53](https://github.com/vm0-ai/vm0/commit/844fb53259a5eba2600e02a90ce0255f8383b3f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.2
+    * @vm0/connectors bumped to 1.48.1
+    * @vm0/core bumped to 8.313.0
+
 ## [0.418.0](https://github.com/vm0-ai/vm0/compare/app-v0.417.1...app-v0.418.0) (2026-06-05)
 
 
