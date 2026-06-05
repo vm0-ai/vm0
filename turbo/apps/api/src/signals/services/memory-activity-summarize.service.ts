@@ -5,7 +5,6 @@ import type {
 } from "./memory-activity-diff.service";
 
 const MEMORY_SUMMARY_MODEL = "google/gemini-3.5-flash";
-const MEMORY_SUMMARY_MAX_TOKENS = 1000;
 const MEMORY_SUMMARY_PROMPT_MAX_CHARS = 24_000;
 const MEMORY_SUMMARY_DIFF_LINES_PER_FILE = 160;
 export const MEMORY_SUMMARY_SYSTEM_PROMPT = [
@@ -166,18 +165,14 @@ export function generateMemoryDaySummary(
     return Promise.resolve(null);
   }
 
-  return generateText(
-    MEMORY_SUMMARY_MODEL,
-    [
-      {
-        role: "system",
-        content: MEMORY_SUMMARY_SYSTEM_PROMPT,
-      },
-      {
-        role: "user",
-        content: buildMemorySummaryPrompt(changeSet),
-      },
-    ],
-    MEMORY_SUMMARY_MAX_TOKENS,
-  );
+  return generateText(MEMORY_SUMMARY_MODEL, [
+    {
+      role: "system",
+      content: MEMORY_SUMMARY_SYSTEM_PROMPT,
+    },
+    {
+      role: "user",
+      content: buildMemorySummaryPrompt(changeSet),
+    },
+  ]);
 }
