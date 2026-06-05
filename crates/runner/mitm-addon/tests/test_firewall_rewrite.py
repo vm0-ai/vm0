@@ -5,6 +5,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 from mitmproxy import http
 
 import auth
@@ -1004,14 +1005,33 @@ class TestAuthBaseUrlRewriteEdgeCases:
             assert "super-secret-token" not in json.dumps(log_call.args)
             assert "super-secret-token" not in json.dumps(log_call.kwargs)
 
+    @pytest.mark.parametrize(
+        "resolved_base",
+        [
+            "https://real.example.com/webhook/%5csuper-secret-token",
+            "https://real.example.com/webhook/%255csuper-secret-token",
+            "https://real.example.com/webhook/%zzsuper-secret-token",
+            "https://real.example.com/webhook/%25zzsuper-secret-token",
+            "https://real.example.com/webhook/%00super-secret-token",
+            "https://real.example.com/webhook/%2500super-secret-token",
+            "https://real.example.com/webhook/%7fsuper-secret-token",
+            "https://real.example.com/webhook/%ef%bc%8e%ef%bc%8e/super-secret-token",
+            "https://real.example.com/webhook/%ef%bc%8f../super-secret-token",
+            "https://real.example.com/webhook/%ef%bc%bcsuper-secret-token",
+            "https://real.example.com/webhook/%ef%bc%852esuper-secret-token",
+            "https://real.example.com/webhook/%ffsuper-secret-token",
+            "https://real.example.com/webhook/%25ffsuper-secret-token",
+            "https://real.example.com/webhook/%ed%a0%80super-secret-token",
+        ],
+    )
     async def test_resolved_base_unsafe_path_fails_closed_without_forwarding(
-        self, real_flow, mitm_ctx, tmp_path
+        self, real_flow, mitm_ctx, tmp_path, resolved_base
     ):
         """Secret-backed auth.base paths must reject unsafe path syntax."""
         flow, allow, vm_info, token_meta = make_rewrite_inputs(
             real_flow,
             tmp_path,
-            resolved_base="https://real.example.com/webhook/%5csuper-secret-token",
+            resolved_base=resolved_base,
         )
         mock_forward = AsyncMock()
         mock_log = MagicMock()
