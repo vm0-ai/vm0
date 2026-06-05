@@ -417,6 +417,15 @@ async fn disconnect_connected_if_owned_critical_section(
     .await
 }
 
+async fn disconnect_connected_if_owned_result_critical_section(
+    connected: ConnectedDevice,
+) -> Result<OwnedDisconnectState> {
+    run_netlink_critical_section("owned NBD disconnect", move || {
+        disconnect_connected_if_owned_result_with(connected, device_ownership, netlink::disconnect)
+    })
+    .await?
+}
+
 async fn disconnect_connected_if_owned_with_lease_critical_section(
     connected: ConnectedDevice,
     pool: pool::DevicePoolHandle,
@@ -443,6 +452,11 @@ enum DeviceOwnership {
 struct ConnectedDevice {
     index: u32,
     connect_tid: u32,
+}
+
+enum OwnedDisconnectState {
+    Disconnected,
+    Foreign(u32),
 }
 
 struct CreateAttemptGuard {
@@ -984,30 +998,26 @@ impl NbdCowDevice {
             cow.save_bitmap(&self.bitmap_path())?;
         }
 
-        // Disconnect via netlink — attempt exactly once, only if we still own
-        // the device. On shared hosts, another runner may have already
-        // disconnected our device and recycled the index; blindly calling
-        // disconnect(device_index) would tear down the new owner's device.
+        // Disconnect via netlink, only if we still own the device. On shared
+        // hosts, another runner may have already disconnected our device and
+        // recycled the index; blindly calling disconnect(device_index) would
+        // tear down the new owner's device. Keep the ownership check inside the
+        // blocking critical section so queueing cannot widen that race window.
         if !self.disconnected {
-            match self.device_ownership() {
-                DeviceOwnership::Ours => {
-                    disconnect_device_critical_section(self.device_index).await?;
+            let connected = ConnectedDevice {
+                index: self.device_index,
+                connect_tid: self.connect_tid,
+            };
+            match disconnect_connected_if_owned_result_critical_section(connected).await? {
+                OwnedDisconnectState::Disconnected => {
                     self.disconnected = true;
                 }
-                DeviceOwnership::Foreign(pid) => {
+                OwnedDisconnectState::Foreign(pid) => {
                     self.disconnected = true;
                     tracing::warn!(
                         device_index = self.device_index,
                         foreign_pid = pid,
                         "skipping disconnect: device recycled by another process"
-                    );
-                }
-                DeviceOwnership::Unknown(err) => {
-                    self.disconnected = true;
-                    tracing::warn!(
-                        device_index = self.device_index,
-                        error = %err,
-                        "skipping disconnect: cannot read device pid"
                     );
                 }
             }
@@ -1066,6 +1076,27 @@ fn device_ownership(device_index: u32, connect_tid: u32) -> DeviceOwnership {
 
 fn disconnect_connected_if_owned(connected: ConnectedDevice) -> bool {
     disconnect_connected_if_owned_with(connected, device_ownership, netlink::disconnect)
+}
+
+fn disconnect_connected_if_owned_result_with(
+    connected: ConnectedDevice,
+    ownership: impl FnOnce(u32, u32) -> DeviceOwnership,
+    disconnect: impl FnOnce(u32) -> Result<()>,
+) -> Result<OwnedDisconnectState> {
+    match ownership(connected.index, connected.connect_tid) {
+        DeviceOwnership::Ours => {
+            disconnect(connected.index)?;
+            Ok(OwnedDisconnectState::Disconnected)
+        }
+        DeviceOwnership::Foreign(pid) => Ok(OwnedDisconnectState::Foreign(pid)),
+        DeviceOwnership::Unknown(err) => Err(error::NbdCowError::Io(std::io::Error::new(
+            err.kind(),
+            format!(
+                "cannot read NBD device ownership for nbd{}: {err}",
+                connected.index
+            ),
+        ))),
+    }
 }
 
 fn disconnect_connected_if_owned_with(
@@ -1895,6 +1926,33 @@ mod tests {
     }
 
     #[test]
+    fn disconnect_connected_if_owned_result_disconnects_matching_owner() {
+        let calls = std::cell::Cell::new(0);
+        let connected = ConnectedDevice {
+            index: 7,
+            connect_tid: 42,
+        };
+
+        let result = disconnect_connected_if_owned_result_with(
+            connected,
+            |index, tid| {
+                assert_eq!(index, 7);
+                assert_eq!(tid, 42);
+                DeviceOwnership::Ours
+            },
+            |index| {
+                assert_eq!(index, 7);
+                calls.set(calls.get() + 1);
+                Ok(())
+            },
+        )
+        .expect("matching owner should disconnect");
+
+        assert!(matches!(result, OwnedDisconnectState::Disconnected));
+        assert_eq!(calls.get(), 1);
+    }
+
+    #[test]
     fn disconnect_connected_if_owned_skips_foreign_owner() {
         let connected = ConnectedDevice {
             index: 7,
@@ -1915,6 +1973,27 @@ mod tests {
     }
 
     #[test]
+    fn disconnect_connected_if_owned_result_skips_foreign_owner() {
+        let connected = ConnectedDevice {
+            index: 7,
+            connect_tid: 42,
+        };
+
+        let result = disconnect_connected_if_owned_result_with(
+            connected,
+            |index, tid| {
+                assert_eq!(index, 7);
+                assert_eq!(tid, 42);
+                DeviceOwnership::Foreign(100)
+            },
+            |_| panic!("foreign device must not be disconnected"),
+        )
+        .expect("foreign owner should be reported");
+
+        assert!(matches!(result, OwnedDisconnectState::Foreign(100)));
+    }
+
+    #[test]
     fn disconnect_connected_if_owned_skips_unknown_owner() {
         let connected = ConnectedDevice {
             index: 7,
@@ -1932,6 +2011,32 @@ mod tests {
         );
 
         assert!(!disconnected);
+    }
+
+    #[test]
+    fn disconnect_connected_if_owned_result_errors_on_unknown_owner() {
+        let connected = ConnectedDevice {
+            index: 7,
+            connect_tid: 42,
+        };
+
+        let result = disconnect_connected_if_owned_result_with(
+            connected,
+            |index, tid| {
+                assert_eq!(index, 7);
+                assert_eq!(tid, 42);
+                DeviceOwnership::Unknown(std::io::Error::other("sysfs unavailable"))
+            },
+            |_| panic!("unknown ownership must not be disconnected"),
+        );
+
+        match result {
+            Err(error::NbdCowError::Io(e)) => {
+                assert!(e.to_string().contains("cannot read NBD device ownership"));
+            }
+            Err(e) => panic!("expected I/O error, got {e}"),
+            Ok(_) => panic!("unknown owner should fail shutdown ownership check"),
+        }
     }
 
     #[test]
