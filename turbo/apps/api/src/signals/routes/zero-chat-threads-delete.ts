@@ -4,10 +4,16 @@ import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-thread
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
+import { waitUntil } from "../context/wait-until";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
+import { logger } from "../../lib/log";
 import { deleteChatThread$ } from "../services/zero-chat-thread.service";
+import { dispatchCancelSideEffects$ } from "../services/zero-run-cancel.service";
+import { tapError } from "../utils";
 import type { RouteEntry } from "../route";
+
+const L = logger("ChatThreadDelete");
 
 function chatThreadNotFound() {
   return notFound("Chat thread not found");
@@ -26,6 +32,19 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   if (!result.deleted) {
     return chatThreadNotFound();
+  }
+
+  // Dispatch post-cancel side effects (runner halt, queue drain, credit
+  // reconciliation) for every run we stopped while tearing down the thread.
+  for (const cancelled of result.cancelledRuns) {
+    waitUntil(
+      tapError(set(dispatchCancelSideEffects$, cancelled, signal), (error) => {
+        L.error("dispatchCancelSideEffects failed", {
+          runId: cancelled.runId,
+          error,
+        });
+      }),
+    );
   }
 
   await publishThreadListChanged(auth.userId);

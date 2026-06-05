@@ -36,7 +36,7 @@ import {
 } from "../../lib/callback-route/callback-route";
 import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
-import { env } from "../../lib/env";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route";
@@ -170,7 +170,10 @@ function generateCallbackSecret(): string {
 }
 
 function chatCallbackUrl(): string {
-  return new URL("/api/internal/callbacks/chat", env("VM0_API_URL")).toString();
+  return new URL(
+    "/api/internal/callbacks/chat",
+    internalApiBaseUrl(),
+  ).toString();
 }
 
 function parseModelProviderCredentialScope(

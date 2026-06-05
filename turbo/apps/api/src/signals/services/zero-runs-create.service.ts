@@ -26,8 +26,8 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
-import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { createAgentRun$ } from "./agent-run-create.service";
@@ -41,6 +41,8 @@ const DISALLOWED_TOOLS = [
   "CronDelete",
   "ScheduleWakeup",
   "AskUserQuestion",
+  "Skill(loop)",
+  "Skill(loop *)",
 ] as const;
 
 const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
@@ -111,10 +113,6 @@ function forbidden(message: string) {
       },
     },
   };
-}
-
-function apiUrl(): string {
-  return env("VM0_API_URL");
 }
 
 function generateCallbackSecret(): string {
@@ -550,7 +548,7 @@ function callbacksForTriggerAgent(triggerAgentId: string | undefined) {
   return triggerAgentId
     ? [
         {
-          url: `${apiUrl()}/api/internal/callbacks/agent`,
+          url: `${internalApiBaseUrl()}/api/internal/callbacks/agent`,
           secret: generateCallbackSecret(),
           payload: { triggerAgentId },
         },

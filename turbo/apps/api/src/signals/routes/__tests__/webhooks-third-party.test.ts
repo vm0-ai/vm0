@@ -6,12 +6,14 @@ import {
   randomUUID,
 } from "node:crypto";
 
+import type { StoredExecutionContext } from "@vm0/api-contracts/contracts/runners";
 import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
@@ -45,6 +47,10 @@ import { nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { mockStripeClient } from "../../external/stripe-client";
+import {
+  encryptQueuedRunnerJobPayload,
+  queuedRunnerJobPayload,
+} from "../../services/agent-run-queue-payload.service";
 import { clearAllDetached } from "../../utils";
 import {
   createFixtureTracker,
@@ -52,6 +58,8 @@ import {
 } from "./helpers/zero-route-test";
 import {
   deleteUsageInsightFixture$,
+  seedCompose$,
+  seedRun$,
   seedUsageInsightFixture$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
@@ -751,6 +759,72 @@ async function selectStripeCreditExpiresRecords(
     .where(eq(creditExpiresRecord.orgId, fixture.orgId));
 }
 
+async function seedStripeRun(
+  fixture: StripeFixture,
+  args: {
+    readonly composeId: string;
+    readonly status: string;
+    readonly createdAt?: Date;
+    readonly startedAt?: Date | null;
+  },
+): Promise<string> {
+  const { runId } = await store.set(
+    seedRun$,
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      composeId: args.composeId,
+      status: args.status,
+      createdAt: args.createdAt,
+      startedAt: args.startedAt,
+    },
+    context.signal,
+  );
+  return runId;
+}
+
+async function seedStripeQueuedRun(
+  fixture: StripeFixture,
+  args: {
+    readonly composeId: string;
+    readonly createdAt: Date;
+    readonly runnerGroup?: string;
+  },
+): Promise<string> {
+  const db = store.set(writeDb$);
+  const runId = await seedStripeRun(fixture, {
+    composeId: args.composeId,
+    status: "queued",
+    createdAt: args.createdAt,
+  });
+  const runnerGroup = args.runnerGroup ?? "vm0/test";
+  const executionContext = {
+    storageManifest: null,
+    environment: null,
+    resumeSession: null,
+    encryptedSecrets: null,
+    cliAgentType: "codex",
+  } satisfies StoredExecutionContext;
+
+  await db.insert(agentRunQueue).values({
+    runId,
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    encryptedParams: await encryptQueuedRunnerJobPayload(
+      queuedRunnerJobPayload({
+        runnerGroup,
+        profile: "vm0/default",
+        sessionId: null,
+        executionContext,
+      }),
+    ),
+    createdAt: args.createdAt,
+    expiresAt: new Date(nowDate().getTime() + 60_000),
+  });
+
+  return runId;
+}
+
 const deleteGitHubFixture$ = command(
   async (
     { set },
@@ -942,16 +1016,80 @@ const deleteStripeFixture$ = command(
   async (
     { set },
     fixture: StripeFixture,
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
+    const runRows = await db
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.orgId, fixture.orgId),
+          eq(agentRuns.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
+    const runIds = runRows.map((row) => {
+      return row.id;
+    });
+    if (runIds.length > 0) {
+      await db
+        .delete(agentRunQueue)
+        .where(inArray(agentRunQueue.runId, runIds));
+      signal.throwIfAborted();
+      await db
+        .delete(runnerJobQueue)
+        .where(inArray(runnerJobQueue.runId, runIds));
+      signal.throwIfAborted();
+      await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
+      signal.throwIfAborted();
+      await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
+      signal.throwIfAborted();
+    }
+    await db
+      .delete(agentSessions)
+      .where(
+        and(
+          eq(agentSessions.orgId, fixture.orgId),
+          eq(agentSessions.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
+    const composeRows = await db
+      .select({ id: agentComposes.id })
+      .from(agentComposes)
+      .where(
+        and(
+          eq(agentComposes.orgId, fixture.orgId),
+          eq(agentComposes.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
+    const composeIds = composeRows.map((row) => {
+      return row.id;
+    });
+    if (composeIds.length > 0) {
+      await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
+      signal.throwIfAborted();
+      await db
+        .delete(agentComposeVersions)
+        .where(inArray(agentComposeVersions.composeId, composeIds));
+      signal.throwIfAborted();
+      await db
+        .delete(agentComposes)
+        .where(inArray(agentComposes.id, composeIds));
+      signal.throwIfAborted();
+    }
     await db
       .delete(creditExpiresRecord)
       .where(eq(creditExpiresRecord.orgId, fixture.orgId));
+    signal.throwIfAborted();
     await db
       .delete(orgMembersMetadata)
       .where(eq(orgMembersMetadata.orgId, fixture.orgId));
+    signal.throwIfAborted();
     await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
+    signal.throwIfAborted();
   },
 );
 
@@ -2748,6 +2886,106 @@ describe("POST /api/webhooks/stripe", () => {
         120_000,
       );
       expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+    });
+
+    it("drains queued runs to the new team capacity after a paid invoice", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const db = store.set(writeDb$);
+      const subId = stripeId("sub");
+      const invId = stripeId("inv");
+      const periodEnd = 1_800_000_000;
+      const now = nowDate();
+      await updateStripeOrg(fixture, {
+        credits: 100_000,
+        tier: "free",
+      });
+      const compose = await store.set(
+        seedCompose$,
+        { orgId: fixture.orgId, userId: fixture.userId },
+        context.signal,
+      );
+      await seedStripeRun(fixture, {
+        composeId: compose.composeId,
+        status: "running",
+        startedAt: now,
+      });
+      const firstQueuedRunId = await seedStripeQueuedRun(fixture, {
+        composeId: compose.composeId,
+        createdAt: new Date(now.getTime() + 1000),
+      });
+      const secondQueuedRunId = await seedStripeQueuedRun(fixture, {
+        composeId: compose.composeId,
+        createdAt: new Date(now.getTime() + 2000),
+      });
+      const queuedRunIds = [firstQueuedRunId, secondQueuedRunId];
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: subId,
+        status: "active",
+        cancel_at_period_end: false,
+        items: { data: [{ price: { id: STRIPE_PRICE_TEAM } }] },
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
+          parent: { subscription_details: { subscription: subId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect((await selectStripeBilling(fixture)).tier).toBe("team");
+      const promotedRuns = await db
+        .select({ id: agentRuns.id, status: agentRuns.status })
+        .from(agentRuns)
+        .where(inArray(agentRuns.id, queuedRunIds));
+      const promotedStatuses = new Map(
+        promotedRuns.map((run) => {
+          return [run.id, run.status];
+        }),
+      );
+      expect(promotedStatuses.get(firstQueuedRunId)).toBe("pending");
+      expect(promotedStatuses.get(secondQueuedRunId)).toBe("pending");
+
+      const queueRows = await db
+        .select({ runId: agentRunQueue.runId })
+        .from(agentRunQueue)
+        .where(inArray(agentRunQueue.runId, queuedRunIds));
+      expect(queueRows).toHaveLength(0);
+
+      const runnerJobs = await db
+        .select({ runId: runnerJobQueue.runId })
+        .from(runnerJobQueue)
+        .where(inArray(runnerJobQueue.runId, queuedRunIds));
+      expect(runnerJobs).toHaveLength(2);
+
+      const duplicateQueuedRunId = await seedStripeQueuedRun(fixture, {
+        composeId: compose.composeId,
+        createdAt: new Date(now.getTime() + 3000),
+      });
+      const duplicateResponse = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
+          parent: { subscription_details: { subscription: subId } },
+        },
+      });
+      expect(duplicateResponse.status).toBe(200);
+      const [duplicateRun] = await db
+        .select({ status: agentRuns.status })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, duplicateQueuedRunId))
+        .limit(1);
+      expect(duplicateRun?.status).toBe("pending");
     });
 
     it("cancels the replaced Pro subscription after the Team invoice is paid", async () => {

@@ -28,6 +28,7 @@ import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 
 import { env, optionalEnv } from "../../lib/env";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../external/time";
@@ -1926,7 +1927,7 @@ const runAgentForAgentPhone$ = command(
         selectedModelOverride: args.modelRoute?.selectedModel,
         callbacks: [
           {
-            url: `${env("VM0_API_URL")}/api/internal/callbacks/agentphone`,
+            url: `${internalApiBaseUrl()}/api/internal/callbacks/agentphone`,
             secret: randomBytes(32).toString("hex"),
             payload: args.callbackContext,
           },

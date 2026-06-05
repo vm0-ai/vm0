@@ -14,7 +14,9 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
 import { createNewChatThreadOptimistically$ } from "../../../signals/chat-page/optimistic-chat-thread-page.ts";
+import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -169,10 +171,13 @@ describe("sidebar chat delete", () => {
   });
 
   it("should warn that deleting a scheduled chat deletes linked schedules", async () => {
+    // chatThreadId is a UUID in the schedule contract, so the thread id must be
+    // a valid UUID for the linked-schedule list to pass response validation.
+    const scheduledThreadId = "a0000000-0000-4000-a000-000000000099";
     let threads = [
       {
         ...makeThread(
-          "thread-scheduled",
+          scheduledThreadId,
           "Scheduled chat",
           "2026-03-10T00:00:00Z",
         ),
@@ -181,6 +186,24 @@ describe("sidebar chat delete", () => {
     ];
 
     server.use(
+      mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
+        return respond(200, {
+          schedules: [
+            createMockScheduleResponse({
+              id: "f0000001-0000-4000-a000-000000000010",
+              name: "morning-briefing",
+              description: "Morning briefing",
+              chatThreadId: scheduledThreadId,
+            }),
+            createMockScheduleResponse({
+              id: "f0000001-0000-4000-a000-000000000011",
+              name: "weekly-report",
+              description: "Weekly report",
+              chatThreadId: scheduledThreadId,
+            }),
+          ],
+        });
+      }),
       mockApi(chatThreadsContract.list, ({ respond }) => {
         return respond(200, splitChatThreadListResponse(threads));
       }),
@@ -205,7 +228,7 @@ describe("sidebar chat delete", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-scheduled" });
+    detachedSetupPage({ context, path: `/chats/${scheduledThreadId}` });
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled chat")).toBeInTheDocument();
@@ -236,9 +259,19 @@ describe("sidebar chat delete", () => {
     ).toBeInTheDocument();
     expect(
       within(dialog).getByText(
-        "This will permanently delete this chat and 2 linked schedules. This action cannot be undone.",
+        "This will permanently delete this chat and its 2 linked schedules. Any task currently running in this chat will be stopped immediately. This action cannot be undone.",
       ),
     ).toBeInTheDocument();
+
+    // The linked schedules are fetched asynchronously and listed by their
+    // description once loaded.
+    await waitFor(() => {
+      expect(within(dialog).getByText("Morning briefing")).toBeInTheDocument();
+    });
+    expect(
+      within(dialog).getByText("These schedules will be deleted"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("Weekly report")).toBeInTheDocument();
   });
 
   it("should send the correct thread ID when deleting a middle thread", async () => {

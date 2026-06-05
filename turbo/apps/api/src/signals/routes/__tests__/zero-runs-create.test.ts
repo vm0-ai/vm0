@@ -681,6 +681,8 @@ describe("POST /api/zero/runs", () => {
       "CronDelete",
       "ScheduleWakeup",
       "AskUserQuestion",
+      "Skill(loop)",
+      "Skill(loop *)",
     ]);
     expect(executionContext.environment.ZERO_AGENT_ID).toBe(agent.agentId);
 
