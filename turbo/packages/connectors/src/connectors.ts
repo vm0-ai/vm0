@@ -338,10 +338,38 @@ export interface ConnectorAuthCodeGrantConfig {
   readonly outputs: ConnectorGrantOutputBindings;
 }
 
+export interface ConnectorDeviceAuthStartSelectOptionChoiceConfig {
+  readonly value: string;
+  readonly label: string;
+}
+
+type ConnectorDeviceAuthStartSelectOptionChoicesConfig = readonly [
+  ConnectorDeviceAuthStartSelectOptionChoiceConfig,
+  ...ConnectorDeviceAuthStartSelectOptionChoiceConfig[],
+];
+
+export interface ConnectorDeviceAuthStartSelectOptionConfig {
+  readonly kind: "select";
+  readonly label: string;
+  readonly required: boolean;
+  readonly defaultValue?: string;
+  readonly options: ConnectorDeviceAuthStartSelectOptionChoicesConfig;
+}
+
+export type ConnectorDeviceAuthStartOptionConfig =
+  ConnectorDeviceAuthStartSelectOptionConfig;
+
+export type ConnectorDeviceAuthStartOptionsConfig = Readonly<
+  Record<string, ConnectorDeviceAuthStartOptionConfig>
+>;
+
+export type ConnectorDeviceAuthStartOptions = Readonly<Record<string, string>>;
+
 export interface ConnectorDeviceAuthGrantConfig {
   readonly kind: "device-auth";
   readonly scopes: string[];
   readonly outputs: ConnectorGrantOutputBindings;
+  readonly startOptions?: ConnectorDeviceAuthStartOptionsConfig;
 }
 
 export interface ConnectorManagedGrantConfig {
@@ -827,8 +855,40 @@ type ValidatedConnectorGrantConfig<Grant, Storage> = Grant extends {
       }
     ? Grant & {
         readonly outputs: ValidatedConnectorGrantOutputs<Outputs, Storage>;
-      }
+      } & ValidatedConnectorDeviceAuthStartOptions<Grant>
     : Grant;
+
+type ConnectorDeviceAuthStartSelectOptionValue<Option> = Option extends {
+  readonly options: readonly (infer Choice)[];
+}
+  ? Choice extends { readonly value: infer Value }
+    ? Value
+    : never
+  : never;
+
+type ValidatedConnectorDeviceAuthStartOption<Option> = Option extends {
+  readonly kind: "select";
+  readonly defaultValue: infer DefaultValue;
+}
+  ? DefaultValue extends ConnectorDeviceAuthStartSelectOptionValue<Option>
+    ? Option
+    : never
+  : Option;
+
+type ValidatedConnectorDeviceAuthStartOptionMap<Options> = {
+  readonly [OptionName in keyof Options]: ValidatedConnectorDeviceAuthStartOption<
+    Options[OptionName]
+  >;
+};
+
+type ValidatedConnectorDeviceAuthStartOptions<Grant> = Grant extends {
+  readonly kind: "device-auth";
+  readonly startOptions: infer StartOptions;
+}
+  ? {
+      readonly startOptions: ValidatedConnectorDeviceAuthStartOptionMap<StartOptions>;
+    }
+  : object;
 
 type ValidatedConnectorRevokeConfig<Revoke, Storage> = Revoke extends {
   readonly kind: "token-revoke";

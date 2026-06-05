@@ -7,6 +7,7 @@ import {
   CONNECTOR_TYPES,
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
+  type ConnectorDeviceAuthStartOptions,
   type ConnectorType,
   type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
@@ -593,6 +594,9 @@ const internalConnectorOAuthDeviceAuthState$ =
     createIdleConnectorOAuthDeviceAuthState(),
   );
 const resetConnectorOAuthDeviceAuthFlowSignal$ = resetSignal();
+const connectorOAuthDeviceAuthStartOptionValues$ = state<
+  Record<string, Record<string, string>>
+>({});
 
 export const selectedConnectorType$ = computed((get) => {
   return get(internalSelectedConnectorType$);
@@ -614,6 +618,51 @@ export const setSelectedConnectorType$ = command(
 export const connectorOAuthDeviceAuthState$ = computed((get) => {
   return get(internalConnectorOAuthDeviceAuthState$);
 });
+
+function connectorOAuthDeviceAuthStartOptionsKey(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): string {
+  return `${type}:${authMethod}`;
+}
+
+export const connectorOAuthDeviceAuthStartOptionValuesFor$ = (
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+) => {
+  return computed((get) => {
+    return (
+      get(connectorOAuthDeviceAuthStartOptionValues$)[
+        connectorOAuthDeviceAuthStartOptionsKey(type, authMethod)
+      ] ?? {}
+    );
+  });
+};
+
+export const setConnectorOAuthDeviceAuthStartOptionValue$ = command(
+  (
+    { get, set },
+    args: {
+      readonly type: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+      readonly name: string;
+      readonly value: string;
+    },
+  ) => {
+    const key = connectorOAuthDeviceAuthStartOptionsKey(
+      args.type,
+      args.authMethod,
+    );
+    const current = get(connectorOAuthDeviceAuthStartOptionValues$);
+    set(connectorOAuthDeviceAuthStartOptionValues$, {
+      ...current,
+      [key]: {
+        ...current[key],
+        [args.name]: args.value,
+      },
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Scope review modal state
@@ -905,6 +954,13 @@ type PollConnectorOAuthDeviceAuthArgs = {
   readonly options: PostConnectOptions;
 };
 
+type ConnectConnectorOAuthDeviceAuthParams = {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly options: PostConnectOptions;
+  readonly startOptions?: ConnectorDeviceAuthStartOptions;
+};
+
 function createConnectorOAuthDeviceAuthRequestId(type: ConnectorType): string {
   return `${type}-oauth-device-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -1134,11 +1190,10 @@ const pollConnectorOAuthDeviceAuth$ = command(
 export const connectConnectorOAuthDeviceAuth$ = command(
   async (
     { get, set },
-    type: ConnectorType,
-    authMethod: ConnectorAuthMethodId,
-    options: PostConnectOptions,
+    args: ConnectConnectorOAuthDeviceAuthParams,
     signal: AbortSignal,
   ): Promise<boolean> => {
+    const { type, authMethod, options, startOptions } = args;
     if (!hasConnectorDeviceAuthGrant(type)) {
       throw new Error(`${type} does not use device authorization OAuth`);
     }
@@ -1165,11 +1220,18 @@ export const connectConnectorOAuthDeviceAuth$ = command(
         const client = createClient(
           zeroConnectorOauthDeviceAuthSessionContract,
         );
+        const startOptionEntries = Object.entries(startOptions ?? {});
         const startSettled = await settle(
           accept(
             client.create({
               params: { type },
-              body: { authMethod },
+              body:
+                startOptionEntries.length > 0
+                  ? {
+                      authMethod,
+                      options: Object.fromEntries(startOptionEntries),
+                    }
+                  : { authMethod },
               fetchOptions: { signal: flowSignal },
             }),
             [200],
@@ -1258,14 +1320,18 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
       readonly authMethod: ConnectorAuthMethodId;
       readonly onSuccess: () => void | Promise<void>;
       readonly options: PostConnectOptions;
+      readonly startOptions?: ConnectorDeviceAuthStartOptions;
     },
     signal: AbortSignal,
   ): Promise<void> => {
     const connected = await set(
       connectConnectorOAuthDeviceAuth$,
-      args.type,
-      args.authMethod,
-      args.options,
+      {
+        type: args.type,
+        authMethod: args.authMethod,
+        options: args.options,
+        startOptions: args.startOptions,
+      },
       signal,
     );
     if (connected) {

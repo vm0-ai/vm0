@@ -15,6 +15,7 @@ import {
   connectorAuthMethodRefHasGrantKind,
   getConnectorAuthMethod,
   getConnectorAuthMethodIdsForGrantKind,
+  parseConnectorDeviceAuthStartOptions,
   resolveConnectorResolvedAuthMethodClientByGrantKind,
   type ConnectorResolvedAuthMethodClientByGrantKind,
   type ConnectorAuthMethodRef,
@@ -721,6 +722,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       readonly userId: string;
       readonly type: ConnectorType;
       readonly authMethod: ConnectorAuthMethodId;
+      readonly options?: Readonly<Record<string, string>>;
     },
     signal: AbortSignal,
   ) => {
@@ -748,7 +750,19 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       return resolvedClient;
     }
 
-    const startResult = await startConnectorDeviceAuthorization(resolvedClient);
+    const startOptionsResult = parseConnectorDeviceAuthStartOptions({
+      type: resolvedMethod.type,
+      authMethod: resolvedMethod.authMethod,
+      options: args.options,
+    });
+    if (!startOptionsResult.success) {
+      return badRequestMessage(startOptionsResult.message);
+    }
+
+    const startResult = await startConnectorDeviceAuthorization({
+      ...resolvedClient,
+      options: startOptionsResult.options,
+    });
     signal.throwIfAborted();
 
     const sessionToken = generateSessionToken();

@@ -38,6 +38,7 @@ function createTestOauthDeviceApiGrant(): DeviceAuthGrantProvider<
       return await startTestOAuthDeviceAuth({
         clientId,
         scopes: args.scopes,
+        mode: args.options.mode,
       });
     },
     pollDeviceAuth: async (args) => {

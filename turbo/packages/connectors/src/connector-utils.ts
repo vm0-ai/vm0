@@ -21,6 +21,9 @@ import {
   type ConnectorAuthCodeGrantConfig,
   type ConnectorAuthClientConfig,
   type ConnectorDeviceAuthGrantConfig,
+  type ConnectorDeviceAuthStartOptionConfig,
+  type ConnectorDeviceAuthStartOptions,
+  type ConnectorDeviceAuthStartOptionsConfig,
   type ConnectorEnvBindings,
   type ConnectorGenerationType,
   type ConnectorGrantOutputBindings,
@@ -819,6 +822,138 @@ export function getConnectorAuthMethodDeviceAuthGrantConfig(
 ): ConnectorDeviceAuthGrantConfig | undefined {
   const grant = getConnectorAuthMethod(type, authMethod)?.grant;
   return grant?.kind === "device-auth" ? grant : undefined;
+}
+
+export function getConnectorAuthMethodDeviceAuthStartOptionsConfig<
+  Type extends DeviceAuthGrantConnectorType,
+>(
+  type: Type,
+  authMethod: ConnectorDeviceAuthGrantAuthMethodId<Type>,
+): ConnectorDeviceAuthStartOptionsConfig | undefined;
+export function getConnectorAuthMethodDeviceAuthStartOptionsConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorDeviceAuthStartOptionsConfig | undefined;
+export function getConnectorAuthMethodDeviceAuthStartOptionsConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorDeviceAuthStartOptionsConfig | undefined {
+  return getConnectorAuthMethodDeviceAuthGrantConfig(type, authMethod)
+    ?.startOptions;
+}
+
+export type ConnectorDeviceAuthStartOptionsParseResult =
+  | {
+      readonly success: true;
+      readonly options: ConnectorDeviceAuthStartOptions;
+    }
+  | {
+      readonly success: false;
+      readonly message: string;
+    };
+
+function parseConnectorDeviceAuthStartOption(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly optionName: string;
+  readonly config: ConnectorDeviceAuthStartOptionConfig;
+  readonly requestedValue: string | undefined;
+}): ConnectorDeviceAuthStartOptionsParseResult {
+  const value = args.requestedValue ?? args.config.defaultValue;
+  if (value === undefined) {
+    if (args.config.required) {
+      return {
+        success: false,
+        message: `${args.type} ${args.authMethod} device-auth start option ${args.optionName} is required`,
+      };
+    }
+    return { success: true, options: {} };
+  }
+
+  switch (args.config.kind) {
+    case "select": {
+      if (
+        !args.config.options.some((option) => {
+          return option.value === value;
+        })
+      ) {
+        return {
+          success: false,
+          message: `${args.type} ${args.authMethod} device-auth start option ${args.optionName} must be one of: ${args.config.options
+            .map((option) => {
+              return option.value;
+            })
+            .join(", ")}`,
+        };
+      }
+      return { success: true, options: { [args.optionName]: value } };
+    }
+  }
+}
+
+function connectorDeviceAuthStartOptionValue(
+  options: ConnectorDeviceAuthStartOptions | undefined,
+  optionName: string,
+): string | undefined {
+  if (!options || !Object.hasOwn(options, optionName)) {
+    return undefined;
+  }
+  return options[optionName];
+}
+
+export function parseConnectorDeviceAuthStartOptions(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly options: ConnectorDeviceAuthStartOptions | undefined;
+}): ConnectorDeviceAuthStartOptionsParseResult {
+  const configuredOptions = getConnectorAuthMethodDeviceAuthStartOptionsConfig(
+    args.type,
+    args.authMethod,
+  );
+  const requestedOptionKeys = Object.keys(args.options ?? {});
+
+  if (!configuredOptions || Object.keys(configuredOptions).length === 0) {
+    if (requestedOptionKeys.length === 0) {
+      return { success: true, options: {} };
+    }
+    return {
+      success: false,
+      message: `${args.type} ${args.authMethod} device-auth start options are not supported: ${requestedOptionKeys.join(", ")}`,
+    };
+  }
+
+  for (const optionName of requestedOptionKeys) {
+    if (!Object.hasOwn(configuredOptions, optionName)) {
+      return {
+        success: false,
+        message: `${args.type} ${args.authMethod} device-auth start option ${optionName} is not supported`,
+      };
+    }
+  }
+
+  const normalizedOptions: Record<string, string> = {};
+  for (const [optionName, config] of Object.entries(configuredOptions)) {
+    const parsedOption = parseConnectorDeviceAuthStartOption({
+      type: args.type,
+      authMethod: args.authMethod,
+      optionName,
+      config,
+      requestedValue: connectorDeviceAuthStartOptionValue(
+        args.options,
+        optionName,
+      ),
+    });
+    if (!parsedOption.success) {
+      return parsedOption;
+    }
+    for (const [parsedOptionName, parsedOptionValue] of Object.entries(
+      parsedOption.options,
+    )) {
+      normalizedOptions[parsedOptionName] = parsedOptionValue;
+    }
+  }
+
+  return { success: true, options: normalizedOptions };
 }
 
 function connectorGrantScopes(

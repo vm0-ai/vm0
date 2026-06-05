@@ -4,6 +4,13 @@ import { Input } from "@vm0/ui/components/ui/input";
 import { Button } from "@vm0/ui/components/ui/button";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@vm0/ui/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -13,6 +20,8 @@ import {
   CONNECTOR_TYPES,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
+  type ConnectorDeviceAuthStartOptions,
+  type ConnectorDeviceAuthStartOptionsConfig,
   type ConnectorManualGrantConfig,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
@@ -27,6 +36,8 @@ import {
   connectConnectorOAuthDeviceAuthAndSettle$,
   openConnectorOAuthDeviceAuthVerificationPage$,
   clearConnectorOAuthDeviceAuth$,
+  connectorOAuthDeviceAuthStartOptionValuesFor$,
+  setConnectorOAuthDeviceAuthStartOptionValue$,
   runConnectorConnectSuccess$,
   submitManualGrant$,
   setManualGrantFormValue$,
@@ -90,10 +101,13 @@ type ConnectOAuthAuthCodeAndSettleFn = (
 ) => Promise<void>;
 
 type ConnectOAuthDeviceAuthAndSettleFn = (
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-  onSuccess: () => void | Promise<void>,
-  options: PostConnectOptions,
+  args: {
+    readonly type: ConnectorType;
+    readonly authMethod: ConnectorAuthMethodId;
+    readonly onSuccess: () => void | Promise<void>;
+    readonly options: PostConnectOptions;
+    readonly startOptions?: ConnectorDeviceAuthStartOptions;
+  },
   signal: AbortSignal,
 ) => Promise<void>;
 
@@ -391,11 +405,153 @@ function OAuthDeviceAuthCodePanel({
   );
 }
 
+function defaultDeviceAuthStartOptionValues(
+  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined,
+): Record<string, string> {
+  if (!startOptions) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(startOptions).flatMap(([name, config]) => {
+      return config.defaultValue === undefined
+        ? []
+        : ([[name, config.defaultValue]] as const);
+    }),
+  );
+}
+
+function deviceAuthStartOptionValue(
+  values: Record<string, string>,
+  name: string,
+): string | undefined {
+  return Object.hasOwn(values, name) ? values[name] : undefined;
+}
+
+function selectedDeviceAuthStartOptions(
+  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined,
+  values: Record<string, string>,
+): ConnectorDeviceAuthStartOptions | undefined {
+  if (!startOptions) {
+    return undefined;
+  }
+  const selectedEntries = Object.entries(startOptions).flatMap(
+    ([name, config]) => {
+      const value =
+        deviceAuthStartOptionValue(values, name) ?? config.defaultValue;
+      return value === undefined ? [] : ([[name, value]] as const);
+    },
+  );
+  return selectedEntries.length === 0
+    ? undefined
+    : Object.fromEntries(selectedEntries);
+}
+
+function deviceAuthStartOptionsFilled(
+  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined,
+  values: Record<string, string>,
+): boolean {
+  if (!startOptions) {
+    return true;
+  }
+  return Object.entries(startOptions).every(([name, config]) => {
+    return (
+      !config.required ||
+      Boolean(deviceAuthStartOptionValue(values, name) ?? config.defaultValue)
+    );
+  });
+}
+
+function OAuthDeviceAuthStartOptionsForm({
+  type,
+  authMethod,
+  startOptions,
+  values,
+  setValue,
+}: {
+  type: ConnectorType;
+  authMethod: ConnectorAuthMethodId;
+  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined;
+  values: Record<string, string>;
+  setValue: (name: string, value: string) => void;
+}) {
+  if (!startOptions) {
+    return null;
+  }
+
+  return (
+    <>
+      {Object.entries(startOptions).map(([name, config]) => {
+        const inputId = `connector-device-auth-option-${type}-${authMethod}-${name}`;
+        return (
+          <div key={name} className="flex flex-col gap-1.5">
+            <label
+              htmlFor={inputId}
+              className="text-sm font-medium text-foreground"
+            >
+              {config.label}
+            </label>
+            <Select
+              value={
+                deviceAuthStartOptionValue(values, name) ?? config.defaultValue
+              }
+              onValueChange={(value) => {
+                setValue(name, value);
+              }}
+            >
+              <SelectTrigger id={inputId} className="h-9">
+                <SelectValue placeholder={`Select ${config.label}`} />
+              </SelectTrigger>
+              <SelectContent>
+                {config.options.map((option) => {
+                  return (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   const state = useGet(connectorOAuthDeviceAuthState$);
   const openVerificationPage = useSet(
     openConnectorOAuthDeviceAuthVerificationPage$,
   );
+  const setStartOptionValueCommand = useSet(
+    setConnectorOAuthDeviceAuthStartOptionValue$,
+  );
+  const startOptions =
+    props.method.grant.kind === "device-auth"
+      ? props.method.grant.startOptions
+      : undefined;
+  const startOptionValues = useGet(
+    connectorOAuthDeviceAuthStartOptionValuesFor$(
+      props.item.type,
+      props.authMethod,
+    ),
+  );
+  const effectiveStartOptionValues = {
+    ...defaultDeviceAuthStartOptionValues(startOptions),
+    ...startOptionValues,
+  };
+  const startOptionsFilled = deviceAuthStartOptionsFilled(
+    startOptions,
+    effectiveStartOptionValues,
+  );
+  const setStartOptionValue = (name: string, value: string) => {
+    setStartOptionValueCommand({
+      type: props.item.type,
+      authMethod: props.authMethod,
+      name,
+      value,
+    });
+  };
   const current = connectorOAuthDeviceAuthStateForMethod(
     state,
     props.item.type,
@@ -405,11 +561,17 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
 
   const start = onDomEventFn(async () => {
     await props.connectOAuthDeviceAuthAndSettle(
-      props.item.type,
-      props.authMethod,
-      props.onSuccess,
       {
-        showPermissionDialog: props.showPermissionDialogOnConnect,
+        type: props.item.type,
+        authMethod: props.authMethod,
+        onSuccess: props.onSuccess,
+        options: {
+          showPermissionDialog: props.showPermissionDialogOnConnect,
+        },
+        startOptions: selectedDeviceAuthStartOptions(
+          startOptions,
+          effectiveStartOptionValues,
+        ),
       },
       props.signal,
     );
@@ -439,6 +601,13 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   ) {
     return (
       <div className="flex flex-col gap-3">
+        <OAuthDeviceAuthStartOptionsForm
+          type={props.item.type}
+          authMethod={props.authMethod}
+          startOptions={startOptions}
+          values={effectiveStartOptionValues}
+          setValue={setStartOptionValue}
+        />
         <p className="text-sm text-destructive" role="alert">
           {current.message}
         </p>
@@ -446,7 +615,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
           type="button"
           variant="outline"
           onClick={start}
-          disabled={starting}
+          disabled={starting || !startOptionsFilled}
           className="w-full"
         >
           {starting ? "Starting..." : "Try again"}
@@ -461,11 +630,18 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
         Connect to get a verification code, then use it on the provider&apos;s
         verification page to approve access.
       </p>
+      <OAuthDeviceAuthStartOptionsForm
+        type={props.item.type}
+        authMethod={props.authMethod}
+        startOptions={startOptions}
+        values={effectiveStartOptionValues}
+        setValue={setStartOptionValue}
+      />
       <Button
         type="button"
         variant="outline"
         onClick={start}
-        disabled={starting}
+        disabled={starting || !startOptionsFilled}
         className="w-full"
       >
         {starting
@@ -590,7 +766,10 @@ function ConnectMethodsContent({
     <>
       {entries.map(({ authMethod, method, Content }, index) => {
         return (
-          <div key={authMethod} className="flex flex-col gap-3">
+          <div
+            key={`${props.item.type}:${authMethod}`}
+            className="flex flex-col gap-3"
+          >
             {index > 0 && <AuthMethodDivider />}
             <ConnectMethodHeading method={method} show={showMethodHeadings} />
             <Content {...props} authMethod={authMethod} method={method} />
@@ -697,9 +876,15 @@ function ConnectModalContent({
     );
   };
   const connectOAuthDeviceAuthAndSettleCommandFn: ConnectOAuthDeviceAuthAndSettleFn =
-    async (type, authMethod, connectSuccess, options, signal) => {
+    async (args, signal) => {
       await connectOAuthDeviceAuthAndSettle(
-        { type, authMethod, onSuccess: connectSuccess, options },
+        {
+          type: args.type,
+          authMethod: args.authMethod,
+          onSuccess: args.onSuccess,
+          options: args.options,
+          startOptions: args.startOptions,
+        },
         signal,
       );
     };

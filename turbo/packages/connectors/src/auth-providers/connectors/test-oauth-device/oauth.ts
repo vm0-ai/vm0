@@ -71,17 +71,23 @@ function getDeviceTokenUrl(): string {
 export async function startTestOAuthDeviceAuth(args: {
   readonly clientId: string;
   readonly scopes: readonly string[];
+  readonly mode?: string;
 }): Promise<OAuthDeviceAuthStartResult> {
+  const body = new URLSearchParams({
+    client_id: args.clientId,
+    scope: args.scopes.join(" "),
+  });
+  if (args.mode !== undefined) {
+    body.set("mode", args.mode);
+  }
+
   const response = await fetch(getDeviceAuthUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       ...testOAuthPreviewBypassHeaders(),
     },
-    body: new URLSearchParams({
-      client_id: args.clientId,
-      scope: args.scopes.join(" "),
-    }),
+    body,
   });
 
   if (!response.ok) {

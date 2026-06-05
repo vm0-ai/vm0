@@ -134,7 +134,10 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
     path: "/api/zero/connectors/:type/oauth/device/sessions",
     headers: authHeadersSchema,
     pathParams: z.object({ type: connectorTypeSchema }),
-    body: z.object({ authMethod: connectorAuthMethodIdSchema }),
+    body: z.object({
+      authMethod: connectorAuthMethodIdSchema,
+      options: z.record(z.string(), z.string()).optional(),
+    }),
     responses: {
       200: connectorOauthDeviceAuthSessionStartResponseSchema,
       400: apiErrorSchema,

@@ -14,6 +14,7 @@ import type { ConnectorType } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroConnectorManualGrantContract,
+  zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -74,14 +75,7 @@ function getButtonByText(matcher: string | RegExp): HTMLElement {
 }
 
 async function clickTestOAuthDeviceConnectButton() {
-  const heading = await screen.findByRole("heading", {
-    name: "OAuth Device Authorization",
-  });
-  const section = heading.parentElement;
-  if (!section) {
-    throw new Error("OAuth Device Authorization section not found");
-  }
-
+  const section = await findConnectMethodSection("OAuth Device Authorization");
   const button = queryAllByRoleFast("button", section).find((element) => {
     return elementTextMatches(element, "Connect Test OAuth Device (internal)");
   });
@@ -89,6 +83,27 @@ async function clickTestOAuthDeviceConnectButton() {
     throw new Error("Test OAuth device connect button not found");
   }
 
+  await userEvent.click(button);
+}
+
+async function findConnectMethodSection(name: string): Promise<HTMLElement> {
+  const heading = await screen.findByRole("heading", { name });
+  const section = heading.parentElement;
+  if (!section) {
+    throw new Error(`${name} section not found`);
+  }
+  return section;
+}
+
+async function clickConnectButtonInSection(
+  section: HTMLElement,
+): Promise<void> {
+  const button = queryAllByRoleFast("button", section).find((element) => {
+    return elementTextMatches(element, "Connect Test OAuth Device (internal)");
+  });
+  if (!button) {
+    throw new Error("Connect button not found");
+  }
   await userEvent.click(button);
 }
 
@@ -257,6 +272,59 @@ describe("connect modal - content by auth method", () => {
     expect(
       screen.queryByText("Connection methods unavailable"),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders device auth start options and sends the selected value", async () => {
+    let submittedBody:
+      | {
+          readonly authMethod: string;
+          readonly options?: Record<string, string>;
+        }
+      | undefined;
+    server.use(
+      mockApi(
+        zeroConnectorOauthDeviceAuthSessionContract.create,
+        ({ body, params, respond }) => {
+          submittedBody = body;
+          return respond(200, {
+            sessionId: "00000000-0000-4000-8000-000000000103",
+            sessionToken: "device-session-token",
+            type: params.type,
+            status: "pending",
+            userCode: "VM0-DEVICE",
+            verificationUri: "https://oauth.test/test-oauth-device/device",
+            verificationUriComplete:
+              "https://oauth.test/test-oauth-device/device?user_code=VM0-DEVICE",
+            expiresIn: 300,
+            interval: 1,
+          });
+        },
+      ),
+    );
+
+    await openConnectModal("test-oauth-device", {
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    const section = await findConnectMethodSection("API Device Authorization");
+    const modeSelect = within(section).getByRole("combobox", { name: "Mode" });
+    expect(modeSelect).toHaveTextContent("Test");
+
+    await userEvent.click(modeSelect);
+    await userEvent.click(await screen.findByRole("option", { name: "Live" }));
+    expect(modeSelect).toHaveTextContent("Live");
+
+    await clickConnectButtonInSection(section);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("VM0-DEVICE");
+    });
+    expect(submittedBody).toStrictEqual({
+      authMethod: "api",
+      options: { mode: "live" },
+    });
   });
 
   it("opens the verification URI when the complete verification URI is absent", async () => {

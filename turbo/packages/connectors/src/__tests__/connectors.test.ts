@@ -46,6 +46,7 @@ import {
   hasRequiredConnectorAuthMethodScopes,
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodDeviceAuthGrantConfig,
+  getConnectorAuthMethodDeviceAuthStartOptionsConfig,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodRuntimeMetadata,
   getConnectorGrantOutputSecretName,
@@ -59,6 +60,7 @@ import {
   getConnectorManualGrantFieldNames,
   getConnectorManualGrantFieldNamesForAuthMethod,
   getRuntimeAvailableConnectorTypes,
+  parseConnectorDeviceAuthStartOptions,
   getConnectorOwnedSecretNames,
   getConnectorOwnedVariableNames,
   hasConnectorAuthCodeGrant,
@@ -1097,6 +1099,7 @@ describe("connector selected auth method capability checks", () => {
       type: "test-oauth-device",
       authMethod: "oauth",
       authClient: oauthClient,
+      options: {},
     });
     expect(startResult).toStrictEqual({
       deviceCode: "test-device:test-oauth-device-client:read",
@@ -1206,6 +1209,100 @@ describe("connector selected auth method capability checks", () => {
       getConnectorAuthMethodGrantMetadata("test-oauth-device", "api")?.outputs
         .accessToken?.secretName,
     ).toBe(TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME);
+  });
+
+  it("passes validated start options to the test OAuth device API provider", async () => {
+    server.use(
+      http.post(
+        /\/api\/test\/oauth-provider\/device\/code$/,
+        async ({ request }) => {
+          const body = new URLSearchParams(await request.text());
+          expect(body.get("client_id")).toBe("test-oauth-device-api-client");
+          expect(body.get("scope")).toBe("read");
+          expect(body.get("mode")).toBe("live");
+          return HttpResponse.json({
+            device_code: `test-device:${body.get("client_id")}:${body.get("scope")}:${body.get("mode")}`,
+            user_code: "TEST-DEVICE",
+            verification_uri: "https://oauth-device.test/device",
+            verification_uri_complete:
+              "https://oauth-device.test/device?user_code=TEST-DEVICE",
+            expires_in: 600,
+            interval: 0,
+          });
+        },
+      ),
+    );
+
+    const apiClient = resolveConnectorAuthClientForMethod(
+      "test-oauth-device",
+      "api",
+      () => {
+        return undefined;
+      },
+    );
+    expect(apiClient).toBeDefined();
+
+    if (!apiClient) {
+      throw new Error("Expected test-oauth-device API client");
+    }
+
+    await expect(
+      startConnectorDeviceAuthorization({
+        type: "test-oauth-device",
+        authMethod: "api",
+        authClient: apiClient,
+        options: { mode: "live" },
+      }),
+    ).resolves.toMatchObject({
+      deviceCode: "test-device:test-oauth-device-api-client:read:live",
+    });
+  });
+
+  it("applies default start options in the device authorization dispatcher", async () => {
+    server.use(
+      http.post(
+        /\/api\/test\/oauth-provider\/device\/code$/,
+        async ({ request }) => {
+          const body = new URLSearchParams(await request.text());
+          expect(body.get("client_id")).toBe("test-oauth-device-api-client");
+          expect(body.get("scope")).toBe("read");
+          expect(body.get("mode")).toBe("test");
+          return HttpResponse.json({
+            device_code: `test-device:${body.get("client_id")}:${body.get("scope")}:${body.get("mode")}`,
+            user_code: "TEST-DEVICE",
+            verification_uri: "https://oauth-device.test/device",
+            verification_uri_complete:
+              "https://oauth-device.test/device?user_code=TEST-DEVICE",
+            expires_in: 600,
+            interval: 0,
+          });
+        },
+      ),
+    );
+
+    const apiClient = resolveConnectorAuthClientForMethod(
+      "test-oauth-device",
+      "api",
+      () => {
+        return undefined;
+      },
+    );
+    expect(apiClient).toBeDefined();
+
+    if (!apiClient) {
+      throw new Error("Expected test-oauth-device API client");
+    }
+
+    await expect(
+      startConnectorDeviceAuthorization({
+        type: "test-oauth-device",
+        authMethod: "api",
+        authClient: apiClient,
+        options: {},
+      }),
+    ).resolves.toMatchObject({
+      deviceCode: "test-device:test-oauth-device-api-client:read:test",
+    });
   });
 
   it("refreshes an input-only connector access provider without an auth client", async () => {
@@ -1377,6 +1474,7 @@ describe("connector selected auth method capability checks", () => {
         type: "base44",
         authMethod: "oauth",
         authClient: oauthClient,
+        options: {},
       }),
     ).resolves.toStrictEqual({
       deviceCode: "base44-device-code",
@@ -1677,6 +1775,7 @@ describe("connector selected auth method capability checks", () => {
         type: "slock",
         authMethod: "oauth",
         authClient: oauthClient,
+        options: {},
       }),
     ).resolves.toStrictEqual({
       deviceCode: "slock-device-code",
@@ -3180,6 +3279,107 @@ describe("connector OAuth device authorization config", () => {
         clientType: "public",
         clientId: "test-oauth-device-api-client",
       },
+    });
+  });
+
+  it("normalizes and rejects device authorization start options from connector config", () => {
+    expect(
+      getConnectorAuthMethodDeviceAuthStartOptionsConfig(
+        "test-oauth-device",
+        "oauth",
+      ),
+    ).toBeUndefined();
+    expect(
+      getConnectorAuthMethodDeviceAuthStartOptionsConfig(
+        "test-oauth-device",
+        "api",
+      ),
+    ).toStrictEqual({
+      mode: {
+        kind: "select",
+        label: "Mode",
+        required: true,
+        defaultValue: "test",
+        options: [
+          { value: "test", label: "Test" },
+          { value: "live", label: "Live" },
+        ],
+      },
+    });
+
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "oauth",
+        options: undefined,
+      }),
+    ).toStrictEqual({ success: true, options: {} });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "oauth",
+        options: { mode: "live" },
+      }),
+    ).toStrictEqual({
+      success: false,
+      message:
+        "test-oauth-device oauth device-auth start options are not supported: mode",
+    });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: undefined,
+      }),
+    ).toStrictEqual({ success: true, options: { mode: "test" } });
+    const inheritedModeOptions: Record<string, string> = {};
+    Object.setPrototypeOf(inheritedModeOptions, { mode: "live" });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: inheritedModeOptions,
+      }),
+    ).toStrictEqual({ success: true, options: { mode: "test" } });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: { mode: "live" },
+      }),
+    ).toStrictEqual({ success: true, options: { mode: "live" } });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: { mode: "production" },
+      }),
+    ).toStrictEqual({
+      success: false,
+      message:
+        "test-oauth-device api device-auth start option mode must be one of: test, live",
+    });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: { region: "us" },
+      }),
+    ).toStrictEqual({
+      success: false,
+      message:
+        "test-oauth-device api device-auth start option region is not supported",
+    });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: Object.fromEntries([["toString", "live"]]),
+      }),
+    ).toStrictEqual({
+      success: false,
+      message:
+        "test-oauth-device api device-auth start option toString is not supported",
     });
   });
 

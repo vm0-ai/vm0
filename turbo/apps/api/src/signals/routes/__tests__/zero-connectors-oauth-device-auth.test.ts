@@ -3,7 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { zeroConnectorOauthDeviceAuthSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { slockProvider } from "@vm0/connectors/auth-providers/connectors/slock/provider";
-import { testOauthDeviceProvider } from "@vm0/connectors/auth-providers/connectors/test-oauth-device/provider";
+import {
+  testOauthDeviceApiProvider,
+  testOauthDeviceProvider,
+} from "@vm0/connectors/auth-providers/connectors/test-oauth-device/provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { secrets } from "@vm0/db/schema/secret";
@@ -33,6 +36,9 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const originalStartDeviceAuth = testOauthDeviceProvider.grant.startDeviceAuth;
+const originalApiStartDeviceAuth =
+  testOauthDeviceApiProvider.grant.startDeviceAuth;
 const originalPollDeviceAuth = testOauthDeviceProvider.grant.pollDeviceAuth;
 const originalSlockPollDeviceAuth = slockProvider.grant.pollDeviceAuth;
 const TEST_OAUTH_DEVICE_CODE_URL =
@@ -130,8 +136,9 @@ function mockTestOAuthDeviceProvider(): void {
   server.use(
     http.post(TEST_OAUTH_DEVICE_CODE_URL, async ({ request }) => {
       const body = new URLSearchParams(await request.text());
+      const modeSuffix = body.get("mode") ? `:${body.get("mode")}` : "";
       return HttpResponse.json({
-        device_code: `test-device:${body.get("client_id")}:${body.get("scope")}`,
+        device_code: `test-device:${body.get("client_id")}:${body.get("scope")}${modeSuffix}`,
         user_code: "TEST-DEVICE",
         verification_uri: "https://oauth-device.test/device",
         verification_uri_complete:
@@ -417,6 +424,9 @@ describe("OAuth device authorization connector routes", () => {
   afterEach(async () => {
     clearMockedEnv();
     resetSecretKmsClientForTests();
+    testOauthDeviceProvider.grant.startDeviceAuth = originalStartDeviceAuth;
+    testOauthDeviceApiProvider.grant.startDeviceAuth =
+      originalApiStartDeviceAuth;
     testOauthDeviceProvider.grant.pollDeviceAuth = originalPollDeviceAuth;
     slockProvider.grant.pollDeviceAuth = originalSlockPollDeviceAuth;
     while (users.length > 0) {
@@ -584,6 +594,163 @@ describe("OAuth device authorization connector routes", () => {
         status: "awaiting_user_authorization",
       },
     );
+  });
+
+  it("applies default start options for an options-capable device auth method", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const session = await onlySession(response.body.sessionId);
+    const decryptedProviderState = await decryptPersistentSecretValue(
+      session.encryptedProviderState,
+      { orgId, userId },
+    );
+    expect(decryptedProviderState).toContain(
+      "test-device:test-oauth-device-api-client:read:test",
+    );
+  });
+
+  it("passes valid start options to the selected device auth provider", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api", options: { mode: "live" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const session = await onlySession(response.body.sessionId);
+    const decryptedProviderState = await decryptPersistentSecretValue(
+      session.encryptedProviderState,
+      { orgId, userId },
+    );
+    expect(decryptedProviderState).toContain(
+      "test-device:test-oauth-device-api-client:read:live",
+    );
+  });
+
+  it("rejects start options for no-options device auth methods before provider start", async () => {
+    await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let startCalled = false;
+    testOauthDeviceProvider.grant.startDeviceAuth = async (args) => {
+      startCalled = true;
+      return await originalStartDeviceAuth(args);
+    };
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "oauth", options: { mode: "live" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "test-oauth-device oauth device-auth start options are not supported: mode",
+    );
+    expect(startCalled).toBeFalsy();
+  });
+
+  it("rejects invalid start option values before provider start", async () => {
+    await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let startCalled = false;
+    testOauthDeviceApiProvider.grant.startDeviceAuth = async (args) => {
+      startCalled = true;
+      return await originalApiStartDeviceAuth(args);
+    };
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api", options: { mode: "production" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "test-oauth-device api device-auth start option mode must be one of: test, live",
+    );
+    expect(startCalled).toBeFalsy();
+  });
+
+  it("rejects unexpected start option keys before provider start", async () => {
+    await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let startCalled = false;
+    testOauthDeviceApiProvider.grant.startDeviceAuth = async (args) => {
+      startCalled = true;
+      return await originalApiStartDeviceAuth(args);
+    };
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api", options: { region: "us" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "test-oauth-device api device-auth start option region is not supported",
+    );
+    expect(startCalled).toBeFalsy();
+  });
+
+  it("rejects start option keys that collide with object prototype names before provider start", async () => {
+    await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let startCalled = false;
+    testOauthDeviceApiProvider.grant.startDeviceAuth = async (args) => {
+      startCalled = true;
+      return await originalApiStartDeviceAuth(args);
+    };
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: {
+          authMethod: "api",
+          options: Object.fromEntries([["toString", "live"]]),
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "test-oauth-device api device-auth start option toString is not supported",
+    );
+    expect(startCalled).toBeFalsy();
   });
 
   it("does not persist a superseded session that completes after a new session starts", async () => {
@@ -931,7 +1098,7 @@ describe("OAuth device authorization connector routes", () => {
     await expect(
       connectorSecretValue(userId, orgId, "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN"),
     ).resolves.toBe(
-      "test-device-access:test-oauth-device-api-client:test-device:test-oauth-device-api-client:read",
+      "test-device-access:test-oauth-device-api-client:test-device:test-oauth-device-api-client:read:test",
     );
 
     const stored = await store

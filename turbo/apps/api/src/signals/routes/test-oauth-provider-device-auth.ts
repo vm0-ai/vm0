@@ -4,8 +4,8 @@ import { testOAuthProviderDeviceAuthContract } from "@vm0/api-contracts/contract
 import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route";
 import {
+  isTestOAuthDeviceClientId,
   isTestEndpointAllowed,
-  TEST_OAUTH_DEVICE_CLIENT_ID,
   TEST_OAUTH_DEVICE_USER_CODE,
   TEST_OAUTH_DEVICE_VERIFICATION_URI,
   testEndpointNotFoundResponse,
@@ -43,12 +43,13 @@ const deviceAuth$ = command(async ({ get }, signal: AbortSignal) => {
 
   const body = new URLSearchParams(text);
   const clientId = body.get("client_id");
-  if (clientId !== TEST_OAUTH_DEVICE_CLIENT_ID) {
+  if (!isTestOAuthDeviceClientId(clientId)) {
     return errorResponse(401, "invalid_client");
   }
 
   const scope = body.get("scope") ?? "";
-  const deviceCode = `test-device:${clientId}:${scope}`;
+  const mode = body.get("mode");
+  const deviceCode = `test-device:${clientId}:${scope}${mode ? `:${mode}` : ""}`;
   return {
     status: 200 as const,
     body: {

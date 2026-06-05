@@ -36,6 +36,7 @@ const startConnectorOauthDeviceAuthSessionInner$ = command(
         userId: auth.userId,
         type: params.type,
         authMethod: body.data.authMethod,
+        options: body.data.options,
       },
       signal,
     );

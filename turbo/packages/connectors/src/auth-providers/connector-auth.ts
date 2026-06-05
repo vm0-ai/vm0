@@ -5,6 +5,7 @@ import {
   type ConnectorType,
   type AuthGrantConnectorType,
   type ConnectorDeviceAuthGrantAuthMethodId,
+  type ConnectorDeviceAuthStartOptions,
   type ConnectorAuthMethodIdsByGrantKind,
   type DeviceAuthGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
@@ -21,6 +22,7 @@ import {
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodGrantScopes,
   isStaticConfidentialConnectorAuthClient,
+  parseConnectorDeviceAuthStartOptions,
   resolveConnectorAuthClientForMethod,
   type ConnectorAuthClientForMethod,
   type ConnectorResolvedAuthMethodClientByGrantKind,
@@ -471,7 +473,9 @@ type ConnectorAuthCodeExchangeCallArgs =
   };
 
 type ConnectorDeviceAuthorizationStartCallArgs =
-  ConnectorDeviceAuthResolvedMethodClient;
+  ConnectorDeviceAuthResolvedMethodClient & {
+    readonly options: ConnectorDeviceAuthStartOptions;
+  };
 
 type ConnectorDeviceAuthorizationPollCallArgs =
   ConnectorDeviceAuthResolvedMethodClient & {
@@ -610,6 +614,7 @@ export function startConnectorDeviceAuthorization<
   readonly type: T;
   readonly authMethod: Method;
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+  readonly options: ConnectorDeviceAuthStartOptions;
 }): Promise<OAuthDeviceAuthStartResult>;
 export function startConnectorDeviceAuthorization(
   args: ConnectorDeviceAuthorizationStartCallArgs,
@@ -621,14 +626,24 @@ export async function startConnectorDeviceAuthorization<
   readonly type: T;
   readonly authMethod: Method;
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+  readonly options: ConnectorDeviceAuthStartOptions;
 }): Promise<OAuthDeviceAuthStartResult> {
   const provider = connectorDeviceAuthGrantProviderFor(
     args.type,
     args.authMethod,
   );
+  const startOptionsResult = parseConnectorDeviceAuthStartOptions({
+    type: args.type,
+    authMethod: args.authMethod,
+    options: args.options,
+  });
+  if (!startOptionsResult.success) {
+    throw new Error(startOptionsResult.message);
+  }
   return await provider.startDeviceAuth({
     authClient: connectorAuthClientIdentityForMethod(args.authClient),
     scopes: getConnectorAuthMethodGrantScopes(args.type, args.authMethod),
+    options: startOptionsResult.options,
   });
 }
 

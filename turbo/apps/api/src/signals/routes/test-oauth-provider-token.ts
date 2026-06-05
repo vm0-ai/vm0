@@ -9,6 +9,7 @@ import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route";
 import {
   isTestEndpointAllowed,
+  isTestOAuthDeviceClientId,
   isTestOAuthRefreshToken,
   mintAccessToken,
   mintRefreshToken,
@@ -16,7 +17,6 @@ import {
   parseScenarioFromRefreshToken,
   TEST_OAUTH_CLIENT_ID,
   TEST_OAUTH_CLIENT_SECRET,
-  TEST_OAUTH_DEVICE_CLIENT_ID,
   testEndpointNotFoundResponse,
   type TestOAuthScenario,
 } from "./test-oauth-provider-helpers";
@@ -126,7 +126,7 @@ function deviceGrantErrorForDeviceCode(
 
 function handleDeviceCode(body: URLSearchParams) {
   const clientId = body.get("client_id");
-  if (clientId !== TEST_OAUTH_DEVICE_CLIENT_ID) {
+  if (!isTestOAuthDeviceClientId(clientId)) {
     return errorResponse(401, "invalid_client");
   }
 

@@ -5,6 +5,7 @@ import type {
   ConnectorAuthCodeGrantAuthMethodId,
   ConnectorDeviceAuthGrantAuthMethodId,
   ConnectorAuthMethodIdsByRevokeKind,
+  ConnectorDeviceAuthStartOptions,
   ConnectorRevokeInputValues,
   ConnectorType,
   DeviceAuthGrantConnectorType,
@@ -44,6 +45,7 @@ interface OAuthExchangeFlowArgs {
 
 interface OAuthDeviceAuthStartFlowArgs {
   readonly scopes: readonly string[];
+  readonly options: ConnectorDeviceAuthStartOptions;
 }
 
 interface OAuthDeviceAuthPollFlowArgs {
