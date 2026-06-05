@@ -402,25 +402,46 @@ async fn retry_as_orphan_if_owner_disappeared(
 }
 
 async fn kill_orphan_process_group(target: &KillTarget) -> KillOutcome {
-    let Some(pgid) = validated_orphan_pgid(target).await else {
-        return KillOutcome::AlreadyExitedOrChanged(target.clone());
+    let pgid = match validate_orphan_target(target).await {
+        OrphanTargetValidation::Valid { pgid } => pgid,
+        OrphanTargetValidation::AlreadyGone => {
+            return already_gone_orphan_outcome(target).await;
+        }
+        OrphanTargetValidation::Changed => {
+            return KillOutcome::AlreadyExitedOrChanged(target.clone());
+        }
     };
 
     match signal_process_group(target.pid, pgid) {
         ProcessGroupSignalResult::Signaled => KillOutcome::OrphanKilled(target.clone()),
-        ProcessGroupSignalResult::AlreadyGone => KillOutcome::OrphanAlreadyExited(target.clone()),
+        ProcessGroupSignalResult::AlreadyGone => already_gone_orphan_outcome(target).await,
         ProcessGroupSignalResult::Failed => KillOutcome::SignalFailed(target.clone()),
     }
 }
 
-async fn validated_orphan_pgid(target: &KillTarget) -> Option<u32> {
+async fn already_gone_orphan_outcome(target: &KillTarget) -> KillOutcome {
+    let discovered = process::discover_all().await;
+    if should_cleanup_disappeared_initial_orphan(target, true, &discovered) {
+        KillOutcome::OrphanAlreadyExited(target.clone())
+    } else {
+        KillOutcome::AlreadyExitedOrChanged(target.clone())
+    }
+}
+
+enum OrphanTargetValidation {
+    Valid { pgid: u32 },
+    AlreadyGone,
+    Changed,
+}
+
+async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
     let Some(identity) = &target.identity else {
         tracing::warn!(
             pid = target.pid,
             sandbox_id = %target.sandbox_id,
             "refusing orphan kill without process identity"
         );
-        return None;
+        return OrphanTargetValidation::Changed;
     };
 
     if identity.pid != target.pid {
@@ -429,7 +450,7 @@ async fn validated_orphan_pgid(target: &KillTarget) -> Option<u32> {
             identity_pid = identity.pid,
             "refusing orphan kill with inconsistent process identity"
         );
-        return None;
+        return OrphanTargetValidation::Changed;
     }
 
     let Some(stat) = process::read_process_stat(target.pid).await else {
@@ -437,10 +458,9 @@ async fn validated_orphan_pgid(target: &KillTarget) -> Option<u32> {
             pid = target.pid,
             "failed to read process stat before orphan kill"
         );
-        return None;
+        return OrphanTargetValidation::AlreadyGone;
     };
-    let stat_matches = stat.pgid == identity.pgid && stat.starttime == identity.starttime;
-    if !stat_matches {
+    if !process_stat_matches_identity(identity, &stat) {
         tracing::warn!(
             pid = target.pid,
             expected_pgid = identity.pgid,
@@ -449,7 +469,7 @@ async fn validated_orphan_pgid(target: &KillTarget) -> Option<u32> {
             current_starttime = stat.starttime,
             "refusing orphan kill after process identity changed"
         );
-        return None;
+        return OrphanTargetValidation::Changed;
     }
 
     let Some(cmdline) = process::read_cmdline(target.pid).await else {
@@ -457,14 +477,14 @@ async fn validated_orphan_pgid(target: &KillTarget) -> Option<u32> {
             pid = target.pid,
             "failed to read cmdline before orphan kill"
         );
-        return None;
+        return classify_orphan_validation_after_unreadable_pid_fact(target.pid, identity).await;
     };
     if !process::is_firecracker_cmdline(&cmdline) {
         tracing::warn!(
             pid = target.pid,
             "refusing orphan kill for non-firecracker cmdline"
         );
-        return None;
+        return OrphanTargetValidation::Changed;
     }
 
     let cwd_info = process::read_cwd(target.pid)
@@ -476,10 +496,51 @@ async fn validated_orphan_pgid(target: &KillTarget) -> Option<u32> {
             sandbox_id = %target.sandbox_id,
             "refusing orphan kill after workspace identity changed"
         );
-        return None;
+        return classify_orphan_validation_after_unreadable_pid_fact(target.pid, identity).await;
     }
 
-    Some(identity.pgid)
+    let Some(final_stat) = process::read_process_stat(target.pid).await else {
+        tracing::warn!(
+            pid = target.pid,
+            "failed to reread process stat before orphan kill"
+        );
+        return OrphanTargetValidation::AlreadyGone;
+    };
+    if !process_stat_matches_identity(identity, &final_stat) {
+        tracing::warn!(
+            pid = target.pid,
+            expected_pgid = identity.pgid,
+            current_pgid = final_stat.pgid,
+            expected_starttime = identity.starttime,
+            current_starttime = final_stat.starttime,
+            "refusing orphan kill after process identity changed during validation"
+        );
+        return OrphanTargetValidation::Changed;
+    }
+
+    OrphanTargetValidation::Valid {
+        pgid: identity.pgid,
+    }
+}
+
+async fn classify_orphan_validation_after_unreadable_pid_fact(
+    pid: u32,
+    identity: &FirecrackerProcessIdentity,
+) -> OrphanTargetValidation {
+    match process::read_process_stat(pid).await {
+        Some(stat) if process_stat_matches_identity(identity, &stat) => {
+            OrphanTargetValidation::Changed
+        }
+        Some(_) => OrphanTargetValidation::Changed,
+        None => OrphanTargetValidation::AlreadyGone,
+    }
+}
+
+fn process_stat_matches_identity(
+    identity: &FirecrackerProcessIdentity,
+    stat: &ProcessStat,
+) -> bool {
+    stat.pgid == identity.pgid && stat.starttime == identity.starttime
 }
 
 fn orphan_identity_matches_facts(
@@ -488,8 +549,7 @@ fn orphan_identity_matches_facts(
     is_firecracker_cmdline: bool,
     cwd_info: Option<&(String, PathBuf)>,
 ) -> bool {
-    stat.pgid == identity.pgid
-        && stat.starttime == identity.starttime
+    process_stat_matches_identity(identity, stat)
         && is_firecracker_cmdline
         && workspace_identity_matches(identity, cwd_info)
 }
@@ -1007,6 +1067,28 @@ mod tests {
     }
 
     #[test]
+    fn process_stat_identity_match_requires_stable_pgid_and_starttime() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let matching = ProcessStat {
+            pgid: identity.pgid,
+            starttime: identity.starttime,
+        };
+        let changed_starttime = ProcessStat {
+            pgid: identity.pgid,
+            starttime: identity.starttime + 1,
+        };
+        let changed_pgid = ProcessStat {
+            pgid: identity.pgid + 1,
+            starttime: identity.starttime,
+        };
+
+        assert!(process_stat_matches_identity(identity, &matching));
+        assert!(!process_stat_matches_identity(identity, &changed_starttime));
+        assert!(!process_stat_matches_identity(identity, &changed_pgid));
+    }
+
+    #[test]
     fn orphan_identity_rejects_non_firecracker_cmdline() {
         let target = make_target(200, "sbox-123");
         let identity = target.identity.as_ref().unwrap();
@@ -1108,8 +1190,8 @@ mod tests {
         let outcome = kill_current_target(&args, &initial, current.clone(), true, &control).await;
 
         match outcome {
-            KillOutcome::AlreadyExitedOrChanged(target) => assert_eq!(target, current),
-            other => panic!("expected current target to fail closed, got {other:?}"),
+            KillOutcome::OrphanAlreadyExited(target) => assert_eq!(target, current),
+            other => panic!("expected current target to be reported gone, got {other:?}"),
         }
     }
 
@@ -1158,7 +1240,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn orphan_kill_nonexistent_pid_fails_closed() {
+    async fn orphan_kill_nonexistent_pid_reports_gone_when_cleanup_is_safe() {
         // u32::MAX exceeds any valid PID — /proc/{pid}/stat won't exist
         let target = KillTarget {
             pid: u32::MAX,
@@ -1176,7 +1258,7 @@ mod tests {
 
         assert!(matches!(
             kill_orphan_process_group(&target).await,
-            KillOutcome::AlreadyExitedOrChanged(_)
+            KillOutcome::OrphanAlreadyExited(_)
         ));
     }
 
