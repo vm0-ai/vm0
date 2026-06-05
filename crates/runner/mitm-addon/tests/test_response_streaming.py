@@ -9,6 +9,7 @@ import body_utils
 import mitm_addon
 import response_streaming
 from tests.flow_helpers import header_map, response_stream
+from tests.x_flow_helpers import make_x_response_flow
 
 _OVERSIZED_NDJSON_LINE_BYTES = body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT + 1024
 
@@ -17,17 +18,8 @@ class TestNdjsonExtractor:
     """Tests for X NDJSON extraction through responseheaders (issue #9534)."""
 
     def _stream_flow(self, real_flow):
-        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
-        flow.metadata["firewall_name"] = "x"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map({"content-type": "application/json"}),
-        )
-
+        flow = make_x_response_flow(real_flow, path="/2/tweets/search/stream")
         mitm_addon.responseheaders(flow)
-
         return flow
 
     def _stream_parser(self, real_flow):
@@ -276,15 +268,7 @@ class TestXJsonFinalize:
     """Tests for finalizing non-streaming X JSON parser state."""
 
     def _billable_x_json_flow(self, real_flow):
-        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map({"content-type": "application/json"}),
-        )
-        flow.metadata["firewall_name"] = "x"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
-        return flow
+        return make_x_response_flow(real_flow)
 
     def test_no_registered_x_json_finalizer_is_noop(self, real_flow):
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
@@ -585,14 +569,11 @@ class TestResponseHeadersSseParser:
 
     @pytest.mark.parametrize("firewall_name", [None, 42])
     def test_malformed_firewall_name_skips_usage_parsers(self, real_flow, firewall_name):
-        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map({"content-type": "application/json"}),
+        flow = make_x_response_flow(
+            real_flow,
+            path="/2/tweets/search/stream",
+            firewall_name=firewall_name,
         )
-        flow.metadata["firewall_name"] = firewall_name
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
 
         mitm_addon.responseheaders(flow)
 

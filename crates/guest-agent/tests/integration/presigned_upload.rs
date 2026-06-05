@@ -154,6 +154,46 @@ async fn put_presigned_429_retries() {
     mock.delete_async().await;
 }
 
+#[tokio::test]
+async fn put_presigned_transport_error_does_not_log_presigned_url() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let system_log_path = tmp.path().join("system.log");
+    let system_log_path = system_log_path.to_string_lossy().into_owned();
+    let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+
+    let signature = "super-secret-signature";
+    let url =
+        format!("http://127.0.0.1:0/upload?X-Amz-Signature={signature}&X-Amz-Credential=test");
+    let result = http_client!()
+        .put_presigned(
+            &url,
+            Bytes::from_static(b"secret upload"),
+            "application/octet-stream",
+        )
+        .await;
+
+    assert!(result.is_err());
+    let system_log = std::fs::read_to_string(&system_log_path).unwrap();
+    assert!(
+        system_log.contains("HTTP PUT presigned failed (attempt 1/3)"),
+        "system log should keep retry context, got: {system_log}"
+    );
+    assert!(
+        !system_log.contains(&url),
+        "system log leaked full presigned URL: {system_log}"
+    );
+    assert!(
+        !system_log.contains("X-Amz-Signature"),
+        "system log leaked presigned query key: {system_log}"
+    );
+    assert!(
+        !system_log.contains(signature),
+        "system log leaked presigned signature: {system_log}"
+    );
+}
+
 // =========================================================================
 // put_presigned_file (streaming upload)
 // =========================================================================
