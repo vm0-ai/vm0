@@ -12,10 +12,18 @@ import {
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../../contracts/model-providers";
-import { CANONICAL_WORKING_DIR } from "../../contracts/runners";
+import {
+  CANONICAL_GUEST_HOME_DIR,
+  CANONICAL_WORKING_DIR,
+} from "../../contracts/runners";
 
 const codexOauthPlaceholders =
   MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"].placeholders!;
+
+const canonicalGuestHomeDirDoc = [
+  "Canonical home directory path expected for the sandbox user inside runner guests.",
+  "Rust and TypeScript components use this shared contract value when building runner guest paths.",
+] as const;
 
 const canonicalWorkingDirDoc = [
   "Canonical working directory path expected inside runner guests.",
@@ -30,6 +38,12 @@ function placeholderRustDoc(name: string): readonly string[] {
 }
 
 const expectedBindings = [
+  {
+    rustModulePath: ["runners", "paths"],
+    rustConstName: "CANONICAL_GUEST_HOME_DIR",
+    value: CANONICAL_GUEST_HOME_DIR,
+    rustDoc: canonicalGuestHomeDirDoc,
+  },
   {
     rustModulePath: ["runners", "paths"],
     rustConstName: "CANONICAL_WORKING_DIR",
@@ -168,6 +182,12 @@ describe("Rust string constant bindings", () => {
     );
     expect(firstRender).toContain(
       "/// This value is not a secret and must not be treated as a usable credential.",
+    );
+    expect(firstRender).toContain(
+      "/// Canonical home directory path expected for the sandbox user inside runner guests.",
+    );
+    expect(firstRender).toContain(
+      `pub const CANONICAL_GUEST_HOME_DIR: &str = "${CANONICAL_GUEST_HOME_DIR}";`,
     );
     expect(firstRender).toContain(
       "/// Canonical working directory path expected inside runner guests.",

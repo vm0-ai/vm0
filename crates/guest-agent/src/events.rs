@@ -258,7 +258,7 @@ pub async fn post_event(http: &HttpClient, payload: &Value) -> Result<(), AgentE
         Ok(_) => Ok(()),
         Err(e) => {
             log_error!(LOG_TAG, "Failed to send event after retries");
-            let _ = std::fs::write(paths::event_error_flag(), "1");
+            let _ = paths::write_private(paths::event_error_flag(), "1");
             Err(e)
         }
     }
@@ -340,7 +340,7 @@ pub(crate) fn capture_session_metadata(event: &Value) {
     }
 
     log_info!(LOG_TAG, "Captured session ID: {session_id}");
-    match std::fs::write(paths::session_id_file(), &session_id) {
+    match paths::write_private(paths::session_id_file(), &session_id) {
         Ok(()) => log_info!(
             LOG_TAG,
             "Session ID written to {}",
@@ -352,7 +352,7 @@ pub(crate) fn capture_session_metadata(event: &Value) {
             paths::session_id_file()
         ),
     }
-    match std::fs::write(paths::session_history_path_file(), &history_path_payload) {
+    match paths::write_private(paths::session_history_path_file(), &history_path_payload) {
         Ok(()) => log_info!(
             LOG_TAG,
             "Session history marker written to {}: {history_path_payload}",

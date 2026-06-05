@@ -1168,7 +1168,7 @@ async fn sequential_same_session_reuse_cycle() {
 async fn park_evicts_via_guest_session_id() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
-        pattern: "cat /tmp/vm0-session-".into(),
+        pattern: "/.vm0/guest-agent/runs/".into(),
         exit_code: 0,
         stdout: b"sess-evict".to_vec(),
         stderr: Vec::new(),

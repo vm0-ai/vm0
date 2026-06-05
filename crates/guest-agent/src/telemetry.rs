@@ -18,7 +18,7 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use guest_common::log_warn;
 use serde_json::{Value, json};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
@@ -125,9 +125,7 @@ fn read_jsonl_delta(file_path: &str, pos_path: &str, mode: UploadMode) -> (Vec<V
 
 /// Persist the current read position for a file.
 fn save_position(pos_path: &str, pos: u64) {
-    if let Ok(mut f) = std::fs::File::create(pos_path) {
-        let _ = write!(f, "{pos}");
-    }
+    let _ = paths::write_private(pos_path, pos.to_string());
 }
 
 /// Perform one telemetry upload cycle.

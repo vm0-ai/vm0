@@ -1,6 +1,6 @@
 //! Logging utilities for VM scripts.
 
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{self, IoSlice, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
@@ -11,8 +11,18 @@ static RUN_ID: LazyLock<String> = LazyLock::new(|| match std::env::var("VM0_RUN_
     _ => panic!("VM0_RUN_ID is required for guest system logging"),
 });
 static DEFAULT_SYSTEM_LOG_FILE: LazyLock<String> =
-    LazyLock::new(|| format!("/tmp/vm0-system-{}.log", &*RUN_ID));
+    LazyLock::new(|| path_to_string(guest_runtime_paths::system_log_file(default_run_dir())));
 static SYSTEM_LOG: Mutex<SystemLogState> = Mutex::new(SystemLogState::disabled());
+
+#[allow(clippy::panic)]
+fn default_run_dir() -> PathBuf {
+    guest_runtime_paths::run_dir_from_env(&RUN_ID)
+        .unwrap_or_else(|error| panic!("failed to resolve guest system log path: {error}"))
+}
+
+fn path_to_string(path: PathBuf) -> String {
+    path.to_string_lossy().into_owned()
+}
 
 /// Process-global guest system log state.
 ///
@@ -88,10 +98,7 @@ fn write_line_with_newline(writer: &mut impl Write, line: &str) -> io::Result<()
 }
 
 fn open_system_log_file(path: &Path) -> std::io::Result<File> {
-    OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
+    guest_runtime_paths::open_private_append(path)
         .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", path.display())))
 }
 
@@ -302,7 +309,9 @@ mod tests {
     fn emit_continues_when_system_log_append_fails() {
         let _guard = LOG_TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("missing-parent").join("system.log");
+        let parent = dir.path().join("parent-file");
+        std::fs::write(&parent, "not a directory").unwrap();
+        let path = parent.join("system.log");
         let _system_log = SystemLogFileGuard::set(&path);
 
         emit(
@@ -393,13 +402,21 @@ mod tests {
     fn transient_open_failure_is_not_cached() {
         let _guard = LOG_TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let parent = dir.path().join("missing-parent");
+        let parent = dir.path().join("parent-file");
+        std::fs::write(&parent, "not a directory").unwrap();
         let path = parent.join("system.log");
         let _system_log = SystemLogFileGuard::set(&path);
 
         let error = append_system_log_line("before parent exists").unwrap_err();
-        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        assert!(
+            matches!(
+                error.kind(),
+                std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::NotADirectory
+            ),
+            "unexpected error kind: {error:?}",
+        );
 
+        std::fs::remove_file(&parent).unwrap();
         std::fs::create_dir(&parent).unwrap();
         append_system_log_line("after parent exists").unwrap();
 

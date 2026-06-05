@@ -16,8 +16,9 @@ async fn recovery_checkpoint_uploads_valid_session_history() {
     let history_path = dir.path().join("history.jsonl");
     let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"# + "\n";
     std::fs::write(&history_path, &history).unwrap();
-    std::fs::write(guest_agent::paths::session_id_file(), "recovery-session").unwrap();
-    std::fs::write(
+    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), "recovery-session")
+        .unwrap();
+    guest_agent::paths::write_private(
         guest_agent::paths::session_history_path_file(),
         history_path.to_string_lossy().as_ref(),
     )
@@ -74,8 +75,9 @@ async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
         r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant""#,
     )
     .unwrap();
-    std::fs::write(guest_agent::paths::session_id_file(), "partial-session").unwrap();
-    std::fs::write(
+    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), "partial-session")
+        .unwrap();
+    guest_agent::paths::write_private(
         guest_agent::paths::session_history_path_file(),
         history_path.to_string_lossy().as_ref(),
     )
@@ -140,7 +142,8 @@ async fn recovery_checkpoint_skips_when_history_marker_is_missing() {
     let server = &*MOCK_SERVER;
 
     let _files_guard = SessionCheckpointFilesGuard::new();
-    std::fs::write(guest_agent::paths::session_id_file(), "missing-history").unwrap();
+    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), "missing-history")
+        .unwrap();
 
     let prepare_mock = server.mock(|when, then| {
         when.method(POST)

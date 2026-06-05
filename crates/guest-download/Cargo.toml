@@ -12,6 +12,7 @@ ureq = { workspace = true, features = ["platform-verifier"] }
 guest-common.workspace = true
 
 [dev-dependencies]
+guest-runtime-paths.workspace = true
 httpmock.workspace = true
 tempfile.workspace = true
 

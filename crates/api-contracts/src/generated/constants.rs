@@ -63,6 +63,10 @@ pub mod model_provider_env {
 pub mod runners {
     /// Runner and guest filesystem path constants shared across Rust and TypeScript.
     pub mod paths {
+        /// Canonical home directory path expected for the sandbox user inside runner guests.
+        /// Rust and TypeScript components use this shared contract value when building runner guest paths.
+        pub const CANONICAL_GUEST_HOME_DIR: &str = "/home/user";
+
         /// Canonical working directory path expected inside runner guests.
         /// Rust and TypeScript components use this shared contract value when building runner commands and paths.
         pub const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";
