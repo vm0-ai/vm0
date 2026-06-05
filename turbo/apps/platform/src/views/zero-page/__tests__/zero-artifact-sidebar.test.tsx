@@ -9,7 +9,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -19,8 +25,10 @@ import { setPageSignal$ } from "../../../signals/page-signal.ts";
 import {
   closeLightbox$,
   lightboxUrl$,
+  openDocumentLightbox$,
 } from "../../../signals/zero-page/zero-attachment-chips.ts";
 import { AttachmentPreview } from "../zero-attachment-preview.tsx";
+import { AttachmentLightbox } from "../zero-attachment-chips.tsx";
 import {
   ArtifactSidebarSlot,
   ArtifactSidebar,
@@ -265,6 +273,69 @@ describe("chatArtifactSidebar: fullscreen toggle", () => {
     fireEvent.click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
     expect(context.store.get(artifactFullscreen$)).toBeFalsy();
     expect(search()).not.toContain("artifact-fullscreen=");
+  });
+
+  it("focuses website artifacts after entering fullscreen", async () => {
+    const url = "about:blank";
+    setup(`/chats/thread-1?artifact=${encodeURIComponent(url)}`);
+    renderWithStore(
+      <ArtifactSidebar
+        artifactRef={{
+          source: "url",
+          url,
+          kind: "html",
+          filename: "demo-site",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveFocus();
+    });
+  });
+
+  it("focuses website artifacts when opened directly in fullscreen", async () => {
+    const url = "about:blank";
+    setup(
+      `/chats/thread-1?artifact=${encodeURIComponent(url)}&artifact-fullscreen=1`,
+    );
+    renderWithStore(
+      <ArtifactSidebar
+        artifactRef={{
+          source: "url",
+          url,
+          kind: "html",
+          filename: "demo-site",
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveFocus();
+    });
+  });
+
+  it("focuses website artifacts in the chat artifact dialog", async () => {
+    const url = "about:blank";
+    setup();
+    context.store.set(openDocumentLightbox$, {
+      kind: "html",
+      filename: "demo-site",
+      url,
+    });
+    renderWithStore(<AttachmentLightbox />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-dialog-body-html")).toHaveFocus();
+    });
+
+    fireEvent.click(screen.getByLabelText("Enter fullscreen"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-dialog-body-html")).toHaveFocus();
+    });
   });
 });
 
