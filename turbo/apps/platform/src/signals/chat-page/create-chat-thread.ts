@@ -857,7 +857,7 @@ function createAppendServerMessages(
         return !reportedCompletedRunIds.has(runId);
       },
     );
-    for (let i = 0; i < newlyCompletedRunIds.length; i++) {
+    for (const _ of newlyCompletedRunIds) {
       captureTaskCompletedSuccessfully();
     }
     if (newlyCompletedRunIds.length > 0) {
