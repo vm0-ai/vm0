@@ -77,6 +77,7 @@ pub enum TerminateAction {
 
 /// Request from a host-side termination client.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TerminateRequest {
     pub action: TerminateAction,
 }
@@ -318,5 +319,16 @@ mod tests {
         let request_json = serde_json::to_vec(&request).unwrap();
 
         assert!(serde_json::from_slice::<ExecRequest>(&request_json).is_err());
+    }
+
+    #[test]
+    fn terminate_request_rejects_exec_fields() {
+        let request_json = serde_json::json!({
+            "action": "terminate",
+            "command": "true",
+            "timeout_secs": 1,
+        });
+
+        assert!(serde_json::from_value::<TerminateRequest>(request_json).is_err());
     }
 }
