@@ -55,7 +55,11 @@ export type ConnectorProvidedBindingNamespace = z.infer<
   typeof connectorProvidedBindingNamespaceSchema
 >;
 
-export function connectorProvidedBindingNames(args: {
+/**
+ * Names that a stored connector guarantees at runtime. Optional bindings are
+ * omitted because they only exist when the optional connector field is set.
+ */
+export function guaranteedConnectorProvidedBindingNames(args: {
   readonly bindings: readonly ConnectorProvidedBinding[];
   readonly namespace: ConnectorProvidedBindingNamespace;
 }): Set<string> {

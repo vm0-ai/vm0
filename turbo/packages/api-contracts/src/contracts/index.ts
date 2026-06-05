@@ -728,7 +728,7 @@ export {
 export {
   connectorResponseSchema,
   connectorListResponseSchema,
-  connectorProvidedBindingNames,
+  guaranteedConnectorProvidedBindingNames,
   connectorProvidedBindingNamespaceSchema,
   connectorProvidedBindingSchema,
   connectorProvidedBindingSourceSchema,

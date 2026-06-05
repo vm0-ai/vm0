@@ -4,7 +4,7 @@ import { readFile, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { parse as parseYaml } from "yaml";
-import { connectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
+import { guaranteedConnectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import {
   getComposeByName,
@@ -209,22 +209,28 @@ async function checkAndPromptMissingItems(
     }),
   );
 
-  const connectorProvidedSecretNames = connectorProvidedBindingNames({
-    bindings: connectorsResponse.connectorProvidedBindings,
-    namespace: "secrets",
-  });
-  const connectorProvidedVarNames = connectorProvidedBindingNames({
-    bindings: connectorsResponse.connectorProvidedBindings,
-    namespace: "vars",
-  });
+  const guaranteedConnectorProvidedSecretNames =
+    guaranteedConnectorProvidedBindingNames({
+      bindings: connectorsResponse.connectorProvidedBindings,
+      namespace: "secrets",
+    });
+  const guaranteedConnectorProvidedVarNames =
+    guaranteedConnectorProvidedBindingNames({
+      bindings: connectorsResponse.connectorProvidedBindings,
+      namespace: "vars",
+    });
 
   const missingSecrets = [...requiredSecrets].filter((name) => {
     return (
-      !existingSecretNames.has(name) && !connectorProvidedSecretNames.has(name)
+      !existingSecretNames.has(name) &&
+      !guaranteedConnectorProvidedSecretNames.has(name)
     );
   });
   const missingVars = [...requiredVars].filter((name) => {
-    return !existingVarNames.has(name) && !connectorProvidedVarNames.has(name);
+    return (
+      !existingVarNames.has(name) &&
+      !guaranteedConnectorProvidedVarNames.has(name)
+    );
   });
 
   if (missingSecrets.length === 0 && missingVars.length === 0) {

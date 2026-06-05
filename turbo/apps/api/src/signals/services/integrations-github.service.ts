@@ -8,7 +8,7 @@ import type {
   GithubLabelListener,
   UpdateGithubLabelListenerBody,
 } from "@vm0/api-contracts/contracts/integrations-github";
-import { connectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
+import { guaranteedConnectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import {
   agentComposes,
@@ -1083,7 +1083,7 @@ export const getGithubInstallation$ = command(
       ...secretList.secrets.map((secret) => {
         return secret.name;
       }),
-      ...connectorProvidedBindingNames({
+      ...guaranteedConnectorProvidedBindingNames({
         bindings: connectorList.connectorProvidedBindings,
         namespace: "secrets",
       }),
@@ -1092,7 +1092,7 @@ export const getGithubInstallation$ = command(
       ...variableList.variables.map((variable) => {
         return variable.name;
       }),
-      ...connectorProvidedBindingNames({
+      ...guaranteedConnectorProvidedBindingNames({
         bindings: connectorList.connectorProvidedBindings,
         namespace: "vars",
       }),
