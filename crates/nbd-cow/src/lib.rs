@@ -1012,12 +1012,7 @@ impl NbdCowDevice {
     /// Destroy the device, removing the COW file and bitmap.
     pub async fn destroy(&mut self) -> Result<()> {
         self.shutdown_inner(false).await?;
-
-        // Remove COW file and bitmap
-        let _ = std::fs::remove_file(&self.cow_file);
-        let _ = std::fs::remove_file(self.bitmap_path());
-
-        Ok(())
+        remove_cow_files(&self.cow_file)
     }
 
     /// Destroy the device but keep the COW file for snapshot persistence.
@@ -1141,6 +1136,23 @@ fn device_ownership(device_index: u32, connect_tid: u32) -> DeviceOwnership {
 
 fn disconnect_connected_if_owned(connected: ConnectedDevice) -> bool {
     disconnect_connected_if_owned_with(connected, device_ownership, netlink::disconnect)
+}
+
+fn remove_cow_files(cow_file: &Path) -> Result<()> {
+    remove_file_if_exists(cow_file)?;
+    remove_file_if_exists(&cow::bitmap_path_for(cow_file))?;
+    Ok(())
+}
+
+fn remove_file_if_exists(path: &Path) -> Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(error::NbdCowError::Io(std::io::Error::new(
+            e.kind(),
+            format!("failed to remove {}: {e}", path.display()),
+        ))),
+    }
 }
 
 fn disconnect_connected_if_owned_result_with(
@@ -1405,9 +1417,7 @@ impl PooledNbdCowDevice {
         match mode {
             DestroyMode::RemoveCow => {
                 Self::shutdown_device_with_lease(device, lease, pool, false).await?;
-                let _ = std::fs::remove_file(&device.cow_file);
-                let _ = std::fs::remove_file(device.bitmap_path());
-                Ok(())
+                remove_cow_files(&device.cow_file)
             }
             DestroyMode::KeepCow => {
                 Self::shutdown_device_with_lease(device, lease, pool, true).await
@@ -1622,6 +1632,11 @@ mod tests {
             )
             .expect("create broken bitmap tmp symlink");
         }
+
+        fn replace_cow_file_with_directory(&self) {
+            std::fs::remove_file(&self.cow_file).expect("remove cow file");
+            std::fs::create_dir(&self.cow_file).expect("create cow directory");
+        }
     }
 
     fn zero_attempt_destroy_policy() -> DestroyRetryPolicy {
@@ -1828,6 +1843,34 @@ mod tests {
 
         assert!(!cow_file.exists());
         assert!(!bitmap_file.exists());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn destroy_with_retries_reports_cow_removal_failure() {
+        let harness = PooledDestroyHarness::new();
+        harness.replace_cow_file_with_directory();
+        let PooledDestroyHarness {
+            _tmp,
+            cow_file,
+            pool,
+            device,
+            ..
+        } = harness;
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_with_retries(zero_attempt_destroy_policy()),
+        )
+        .await
+        .expect("destroy should not sleep before returning the first error");
+
+        let err = result.expect_err("destroy should report cow removal failure");
+        assert!(
+            err.to_string().contains("failed to remove"),
+            "unexpected error: {err}"
+        );
+        assert!(cow_file.is_dir());
         pool.cleanup().await;
     }
 
