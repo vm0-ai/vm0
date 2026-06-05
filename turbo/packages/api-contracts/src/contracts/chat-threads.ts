@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import {
   isSupportedRunModel,
@@ -46,6 +47,7 @@ const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
 
 const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
   createdAt: z.string(),
+  artifactKind: hostedArtifactKindSchema.optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });
 
