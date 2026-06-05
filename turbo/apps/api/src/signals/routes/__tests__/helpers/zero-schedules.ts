@@ -93,7 +93,11 @@ async function seedSchedule(
   const scheduleId = randomUUID();
   const [thread] = await writeDb
     .insert(chatThreads)
-    .values({ userId: args.userId, agentComposeId: args.composeId })
+    .values({
+      userId: args.userId,
+      agentComposeId: args.composeId,
+      title: args.seed.name,
+    })
     .returning({ id: chatThreads.id });
   if (!thread) {
     throw new Error("seedSchedule: chat thread insert returned no row");
