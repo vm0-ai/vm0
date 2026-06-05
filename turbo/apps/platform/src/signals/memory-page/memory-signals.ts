@@ -57,13 +57,24 @@ export const memoryDevRefreshState$ = computed((get) => {
   return get(internalMemoryDevRefreshState$);
 });
 
-// Per-item expand state for the Updates timeline, keyed by a stable item key.
-// Mirrors the keyed-record ephemeral UI state pattern used elsewhere in the
-// platform (e.g. view-component-state) since `useState` is restricted here.
+// Per-entry and per-item expand state for the Updates timeline, keyed by stable
+// activity keys. Mirrors the keyed-record ephemeral UI state pattern used
+// elsewhere in the platform since `useState` is restricted here.
+const internalExpandedMemoryEntries$ = state<Record<string, boolean>>({});
 const internalExpandedMemoryItems$ = state<Record<string, boolean>>({});
+
+export const expandedMemoryEntries$ = computed((get) => {
+  return get(internalExpandedMemoryEntries$);
+});
 
 export const expandedMemoryItems$ = computed((get) => {
   return get(internalExpandedMemoryItems$);
+});
+
+export const toggleMemoryEntryExpanded$ = command(({ set }, key: string) => {
+  set(internalExpandedMemoryEntries$, (current) => {
+    return { ...current, [key]: !current[key] };
+  });
 });
 
 export const toggleMemoryItemExpanded$ = command(({ set }, key: string) => {

@@ -171,7 +171,8 @@ pub async fn execute_cli(
 
     // Open the run log before spawning the CLI. If the run-id-scoped path is
     // invalid or unavailable, fail without starting a child process.
-    let mut log_file = tokio::fs::File::create(paths::agent_log_file()).await?;
+    let log_file = guest_runtime_paths::create_private(paths::agent_log_file())?;
+    let mut log_file = tokio::fs::File::from_std(log_file);
 
     let mut child = cmd.spawn()?;
 

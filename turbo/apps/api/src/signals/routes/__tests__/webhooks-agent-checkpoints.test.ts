@@ -595,30 +595,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         name: "artifact-c",
         version: "version-ccc",
         mountPath: "/workspace/c",
-        generatedBy: "apiAutoMemory" as const,
-      },
-    ];
-    const persistedArtifactSnapshots = [
-      {
-        name: "artifact-a",
-        version: "version-aaa",
-        mountPath: "/workspace/a",
-      },
-      {
-        name: "memory",
-        version: "version-bbb",
-        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-        missingRootPolicy: "preserveParentVersion",
-      },
-      {
-        name: "memory",
-        version: "version-codex",
-        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
-      },
-      {
-        name: "artifact-c",
-        version: "version-ccc",
-        mountPath: "/workspace/c",
       },
     ];
     const body = {
@@ -636,12 +612,10 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       {
         name: "memory",
         mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-        generatedBy: "apiAutoMemory" as const,
       },
       {
         name: "memory",
         mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
-        generatedBy: "apiAutoMemory" as const,
       },
     ];
     await db
@@ -666,9 +640,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .from(checkpoints)
       .where(eq(checkpoints.id, response.body.checkpointId))
       .limit(1);
-    expect(checkpoint?.artifactSnapshots).toStrictEqual(
-      persistedArtifactSnapshots,
-    );
+    expect(checkpoint?.artifactSnapshots).toStrictEqual(artifactSnapshots);
     const [session] = await db
       .select({ artifacts: agentSessions.artifacts })
       .from(agentSessions)
@@ -677,14 +649,14 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     expect(session?.artifacts).toStrictEqual(originalSessionArtifacts);
   });
 
-  it("strips canonical memory provenance from stored checkpoint snapshots", async () => {
+  it("strips unknown artifact snapshot fields while preserving policy", async () => {
     const fixture = await track(seedFixture());
     const artifactSnapshots = [
       {
         name: "memory",
         version: "version-bbb",
         mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-        generatedBy: "apiAutoMemory" as const,
+        legacyProvenance: "old-agent" as const,
         missingRootPolicy: "preserveParentVersion" as const,
       },
     ];
@@ -701,7 +673,16 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       [200],
     );
 
-    expect(response.body.artifacts).toStrictEqual(artifactSnapshots);
+    const sanitizedArtifactSnapshots = [
+      {
+        name: "memory",
+        version: "version-bbb",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        missingRootPolicy: "preserveParentVersion",
+      },
+    ];
+
+    expect(response.body.artifacts).toStrictEqual(sanitizedArtifactSnapshots);
 
     const db = store.set(writeDb$);
     const [checkpoint] = await db
@@ -709,14 +690,9 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .from(checkpoints)
       .where(eq(checkpoints.id, response.body.checkpointId))
       .limit(1);
-    expect(checkpoint?.artifactSnapshots).toStrictEqual([
-      {
-        name: "memory",
-        version: "version-bbb",
-        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-        missingRootPolicy: "preserveParentVersion",
-      },
-    ]);
+    expect(checkpoint?.artifactSnapshots).toStrictEqual(
+      sanitizedArtifactSnapshots,
+    );
   });
 
   it("creates independent sessions for separate runs", async () => {

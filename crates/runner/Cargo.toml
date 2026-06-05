@@ -7,6 +7,7 @@ edition.workspace = true
 ably-subscriber = { workspace = true }
 agent-diagnostics.workspace = true
 api-contracts.workspace = true
+guest-runtime-paths.workspace = true
 sandbox = { workspace = true }
 nbd-cow = { workspace = true }
 sandbox-fc = { workspace = true }

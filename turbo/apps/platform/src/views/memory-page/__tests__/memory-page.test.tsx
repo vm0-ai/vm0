@@ -211,12 +211,34 @@ describe("memory page", () => {
     expect(screen.getByText("Changed memory")).toBeInTheDocument();
     expect(screen.getByText("How Zero will use this")).toBeInTheDocument();
     expect(screen.queryByText("**Changed memory**")).not.toBeInTheDocument();
-    expect(screen.getByText("deploy.md")).toBeInTheDocument();
-    expect(screen.getByText("setup.md")).toBeInTheDocument();
+    expect(screen.getByText("2 memory files changed")).toBeInTheDocument();
+    expect(screen.queryByText("deploy.md")).not.toBeInTheDocument();
+    expect(screen.queryByText("setup.md")).not.toBeInTheDocument();
     expect(screen.queryByText("Deploy preference")).not.toBeInTheDocument();
     expect(screen.queryByText("Updated")).not.toBeInTheDocument();
-    expect(updateCard).toHaveTextContent("+1");
+    expect(updateCard).toHaveTextContent("+2");
     expect(updateCard).toHaveTextContent("-1");
+
+    const viewFiles = queryAllByRoleFast("button", updateCard).find(
+      (button) => {
+        return button.textContent?.includes("View files");
+      },
+    );
+    expect(viewFiles).toBeDefined();
+    expect(viewFiles).toHaveAttribute("aria-expanded", "false");
+    click(viewFiles!);
+
+    await waitFor(() => {
+      expect(screen.getByText("deploy.md")).toBeInTheDocument();
+      expect(screen.getByText("setup.md")).toBeInTheDocument();
+    });
+    const hideFiles = queryAllByRoleFast("button", updateCard).find(
+      (button) => {
+        return button.textContent?.includes("Hide files");
+      },
+    );
+    expect(hideFiles).toBeDefined();
+    expect(hideFiles).toHaveAttribute("aria-expanded", "true");
 
     // Evidence is hidden until the item is expanded.
     expect(screen.queryByText("new setup")).not.toBeInTheDocument();
@@ -234,6 +256,12 @@ describe("memory page", () => {
     const diff = screen.getByLabelText("Memory diff");
     expect(within(diff).getByText("-")).toBeInTheDocument();
     expect(within(diff).getByText("+")).toBeInTheDocument();
+
+    click(hideFiles!);
+    await waitFor(() => {
+      expect(screen.queryByText("deploy.md")).not.toBeInTheDocument();
+      expect(screen.queryByText("setup.md")).not.toBeInTheDocument();
+    });
   });
 
   it("shows an Updates-shaped skeleton while the default tab is loading", async () => {

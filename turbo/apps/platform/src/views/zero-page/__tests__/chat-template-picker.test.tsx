@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
@@ -287,19 +287,23 @@ describe("zero chat template picker", () => {
       expect(screen.getByText("Use this template")).toBeInTheDocument();
     });
     expect(screen.getByText("Dials")).toBeInTheDocument();
-    expect(screen.getByText("1 of 6")).toBeInTheDocument();
+    expect(
+      screen.getByText(`1 of ${nextTemplate.previewImages.length}`),
+    ).toBeInTheDocument();
     expect(
       screen.getByTitle(`${nextTemplate.title} preview slide 1`),
-    ).toHaveAttribute("src", `${nextTemplate.embedUrl}#01`);
+    ).toHaveAttribute("src", nextTemplate.previewImages[0]);
 
     await user.click(screen.getByLabelText("Next slide"));
 
     await waitFor(() => {
-      expect(screen.getByText("2 of 6")).toBeInTheDocument();
+      expect(
+        screen.getByText(`2 of ${nextTemplate.previewImages.length}`),
+      ).toBeInTheDocument();
     });
     expect(
       screen.getByTitle(`${nextTemplate.title} preview slide 2`),
-    ).toHaveAttribute("src", `${nextTemplate.embedUrl}#02`);
+    ).toHaveAttribute("src", nextTemplate.previewImages[1]);
 
     await user.click(screen.getByText("Templates"));
 
@@ -316,6 +320,76 @@ describe("zero chat template picker", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expectTemplateChip(nextTemplate);
+  });
+
+  it("scrubs card preview slides on mouse movement and resets on leave", async () => {
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    const templateButton = await waitFor(() => {
+      return screen.getByLabelText("Template");
+    });
+    click(templateButton);
+
+    const previewImage = await waitFor(() => {
+      return screen.getByTitle(`${template.title} card preview slide 1`);
+    });
+    const previewFrame = previewImage.parentElement;
+    expect(previewFrame).not.toBeNull();
+    if (!previewFrame) {
+      throw new Error("expected template preview frame");
+    }
+
+    vi.spyOn(previewFrame, "getBoundingClientRect").mockReturnValue({
+      bottom: 450,
+      height: 450,
+      left: 0,
+      right: 800,
+      top: 0,
+      width: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => {
+        return {};
+      },
+    });
+
+    fireEvent.mouseMove(previewFrame, { clientX: 400 });
+
+    const middleSlideIndex = Math.round(
+      0.5 * (template.previewImages.length - 1),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTitle(
+          `${template.title} card preview slide ${middleSlideIndex + 1}`,
+        ),
+      ).toHaveAttribute("src", template.previewImages[middleSlideIndex]);
+    });
+
+    fireEvent.mouseMove(previewFrame, { clientX: 799 });
+
+    const lastSlideIndex = template.previewImages.length - 1;
+    await waitFor(() => {
+      expect(
+        screen.getByTitle(
+          `${template.title} card preview slide ${lastSlideIndex + 1}`,
+        ),
+      ).toHaveAttribute("src", template.previewImages[lastSlideIndex]);
+    });
+
+    fireEvent.mouseLeave(previewFrame);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTitle(`${template.title} card preview slide 1`),
+      ).toHaveAttribute("src", template.previewImages[0]);
+    });
   });
 
   it("returns to the template picker when closing the PPT preview page", async () => {

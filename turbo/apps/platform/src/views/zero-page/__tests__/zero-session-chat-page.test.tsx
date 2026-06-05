@@ -181,7 +181,7 @@ describe("recommended follow-ups", () => {
     );
     expect(
       screen.getByText("Turn this into a week-by-week checklist"),
-    ).toHaveClass("truncate");
+    ).not.toHaveClass("truncate");
     await userEvent.click(followupButton);
 
     await waitFor(() => {

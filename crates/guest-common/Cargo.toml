@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 chrono = { workspace = true, features = ["std", "clock"] }
+guest-runtime-paths.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 

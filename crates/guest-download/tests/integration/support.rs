@@ -180,24 +180,3 @@ pub(crate) fn unique_run_id(test_name: &str) -> String {
         RUN_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
     )
 }
-
-pub(crate) struct RunFileCleanup {
-    paths: Vec<String>,
-}
-
-impl RunFileCleanup {
-    pub(crate) fn new(paths: Vec<String>) -> Self {
-        for path in &paths {
-            let _ = std::fs::remove_file(path);
-        }
-        Self { paths }
-    }
-}
-
-impl Drop for RunFileCleanup {
-    fn drop(&mut self) {
-        for path in &self.paths {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-}

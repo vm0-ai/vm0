@@ -798,13 +798,20 @@ mod tests {
 
     #[tokio::test]
     async fn checkpoint_missing_mount_fails_before_final_checkpoint_api_call() {
-        let _files_guard = CheckpointFilesGuard::new();
         let server = MockServer::start();
         let dir = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("VM0_RUN_ID", "checkpoint-missing-mount");
+            std::env::set_var(
+                guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                dir.path().join("runtime"),
+            );
+        }
+        let _files_guard = CheckpointFilesGuard::new();
         let history_path = dir.path().join("history.jsonl");
         std::fs::write(&history_path, r#"{"type":"system"}"#).unwrap();
-        std::fs::write(paths::session_id_file(), "session-with-missing-artifact").unwrap();
-        std::fs::write(
+        paths::write_private(paths::session_id_file(), "session-with-missing-artifact").unwrap();
+        paths::write_private(
             paths::session_history_path_file(),
             history_path.to_string_lossy().as_ref(),
         )

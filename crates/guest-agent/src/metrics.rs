@@ -6,7 +6,6 @@
 use crate::constants;
 use crate::paths;
 use serde::Serialize;
-use std::fs::OpenOptions;
 use std::io::Write;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -153,7 +152,7 @@ pub async fn metrics_loop(shutdown: CancellationToken) {
                 let entry = collect_metrics(&mut cpu_tracker);
                 if let Ok(json) = serde_json::to_string(&entry) {
                     let path = paths::metrics_log_file();
-                    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
+                    if let Ok(mut f) = guest_runtime_paths::open_private_append(path) {
                         let _ = writeln!(f, "{json}");
                     }
                 }

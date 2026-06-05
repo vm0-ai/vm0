@@ -31,4 +31,10 @@ describe("presentation template items", () => {
       expect(item.prompt).toContain(`template \`${promptTemplate}\``);
     }
   });
+
+  it("defines explicit preview image arrays", () => {
+    for (const item of PRESENTATION_TEMPLATE_ITEMS) {
+      expect(Array.isArray(item.previewImages)).toBe(true);
+    }
+  });
 });

@@ -403,7 +403,7 @@ fn write_guest_error_file(message: &str) {
         return;
     }
 
-    if let Err(e) = std::fs::write(paths::checkpoint_error_file(), message) {
+    if let Err(e) = paths::write_private(paths::checkpoint_error_file(), message) {
         log_warn!(LOG_TAG, "Failed to write guest error file: {e}");
     }
 }
@@ -417,7 +417,7 @@ fn write_guest_failure_diagnostic(diagnostic: &FailureDiagnostic) {
         }
     };
 
-    if let Err(e) = std::fs::write(paths::failure_diagnostic_file(), bytes) {
+    if let Err(e) = paths::write_private(paths::failure_diagnostic_file(), bytes) {
         log_warn!(
             LOG_TAG,
             "Failed to write guest failure diagnostic file: {e}"
@@ -711,6 +711,27 @@ mod tests {
 
     fn test_http_client(server: &MockServer) -> HttpClient {
         HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO).unwrap()
+    }
+
+    fn test_runtime_dir() -> std::path::PathBuf {
+        std::env::temp_dir()
+            .join(format!("vm0-guest-agent-main-tests-{}", std::process::id()))
+            .join("main-recovery-checkpoint")
+    }
+
+    unsafe fn set_test_env(server: &MockServer, prompt: Option<&str>) {
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var(
+                guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                test_runtime_dir(),
+            );
+            if let Some(prompt) = prompt {
+                std::env::set_var("VM0_PROMPT", prompt);
+            }
+        }
     }
 
     struct SystemLogOverrideGuard;
@@ -1251,9 +1272,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            set_test_env(server, None);
         }
 
         let tmp = tempfile::tempdir().unwrap();
@@ -1361,10 +1380,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "/event-upload-failure");
+            set_test_env(server, Some("/event-upload-failure"));
         }
 
         let cleanup_paths = [
@@ -1381,7 +1397,7 @@ mod tests {
         for path in &cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
-        std::fs::write(paths::event_error_flag(), "").unwrap();
+        paths::write_private(paths::event_error_flag(), "").unwrap();
 
         let telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
@@ -1434,10 +1450,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "/checkpoint-failure");
+            set_test_env(server, Some("/checkpoint-failure"));
         }
 
         let cleanup_paths = [
@@ -1504,10 +1517,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "plain prompt");
+            set_test_env(server, Some("plain prompt"));
         }
 
         let cleanup_paths = [
@@ -1524,7 +1534,7 @@ mod tests {
         for path in &cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
-        std::fs::write(paths::event_error_flag(), "").unwrap();
+        paths::write_private(paths::event_error_flag(), "").unwrap();
 
         let telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
@@ -1580,10 +1590,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "/help");
+            set_test_env(server, Some("/help"));
         }
 
         let cleanup_paths = [
@@ -1664,10 +1671,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "plain prompt");
+            set_test_env(server, Some("plain prompt"));
         }
 
         let cleanup_paths = [
@@ -1689,8 +1693,8 @@ mod tests {
         let history_path = dir.path().join("history.jsonl");
         let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"# + "\n";
         std::fs::write(&history_path, &history).unwrap();
-        std::fs::write(paths::session_id_file(), "recovery-session-from-main").unwrap();
-        std::fs::write(
+        paths::write_private(paths::session_id_file(), "recovery-session-from-main").unwrap();
+        paths::write_private(
             paths::session_history_path_file(),
             history_path.to_string_lossy().as_ref(),
         )

@@ -5,6 +5,7 @@ import type {
   ClipboardEvent,
   DragEvent,
   KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   useGet,
@@ -149,6 +150,8 @@ import {
   setTemplatePickerPreviewSlug$,
   templatePickerPreviewSlideIndex$,
   setTemplatePickerPreviewSlideIndex$,
+  templateCardHover$,
+  setTemplateCardHover$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -544,24 +547,13 @@ function TemplateEmptyPanel({
   );
 }
 
-const PRESENTATION_TEMPLATE_PREVIEW_SLIDE_COUNT = 6;
-
-function presentationTemplateSlideUrl(
-  item: PresentationTemplateItem,
-  index: number,
-): string {
-  return `${item.embedUrl.split("#")[0]}#${String(index + 1).padStart(2, "0")}`;
-}
-
-function presentationTemplateSlideUrls(
+function presentationTemplateSlideImages(
   item: PresentationTemplateItem,
 ): readonly string[] {
-  return Array.from(
-    { length: PRESENTATION_TEMPLATE_PREVIEW_SLIDE_COUNT },
-    (_, index) => {
-      return presentationTemplateSlideUrl(item, index);
-    },
-  );
+  if (item.previewImages.length > 0) {
+    return item.previewImages;
+  }
+  return [item.previewImage];
 }
 
 function TemplatePreview({
@@ -571,12 +563,46 @@ function TemplatePreview({
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
+  const slideImages = presentationTemplateSlideImages(item);
+  const hover = useGet(templateCardHover$);
+  const setHover = useSet(setTemplateCardHover$);
+  const hoverSlideIndex = hover?.slug === item.slug ? hover.index : 0;
+  const previewImage = slideImages[hoverSlideIndex] ?? item.previewImage;
+
+  const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (slideImages.length < 2) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) {
+      return;
+    }
+    const offsetX = Math.min(
+      rect.width - 1,
+      Math.max(0, event.clientX - rect.left),
+    );
+    const nextIndex = Math.min(
+      slideImages.length - 1,
+      Math.round((offsetX / rect.width) * (slideImages.length - 1)),
+    );
+    if (nextIndex !== hoverSlideIndex) {
+      setHover({ slug: item.slug, index: nextIndex });
+    }
+  };
+
   return (
-    <div className="relative aspect-[16/9] overflow-hidden bg-muted">
-      {item.previewImage ? (
+    <div
+      className="relative aspect-[16/9] overflow-hidden bg-muted"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => {
+        setHover(null);
+      }}
+    >
+      {previewImage ? (
         <img
-          src={item.previewImage}
+          src={previewImage}
           alt=""
+          title={`${item.title} card preview slide ${hoverSlideIndex + 1}`}
           className="h-full w-full object-cover"
           loading="lazy"
         />
@@ -613,17 +639,21 @@ function TemplatePreviewPage({
   onBack: () => void;
   onSelect: (item: PresentationTemplateItem) => void;
 }) {
-  const slideUrls = presentationTemplateSlideUrls(item);
+  const slideImages = presentationTemplateSlideImages(item);
   const safeSlideIndex = Math.max(
     0,
-    Math.min(selectedSlideIndex, slideUrls.length - 1),
+    Math.min(selectedSlideIndex, slideImages.length - 1),
   );
-  const selectedSlideUrl = slideUrls[safeSlideIndex] ?? item.embedUrl;
+  const selectedSlideImage = slideImages[safeSlideIndex] ?? item.previewImage;
+  const hasMultipleSlides = slideImages.length > 1;
   const kind = formatPresentationTemplateKind(item.templateId);
 
   const changeSlide = (direction: -1 | 1) => {
+    if (!hasMultipleSlides) {
+      return;
+    }
     onSlideChange(
-      (safeSlideIndex + direction + slideUrls.length) % slideUrls.length,
+      (safeSlideIndex + direction + slideImages.length) % slideImages.length,
     );
   };
 
@@ -648,19 +678,21 @@ function TemplatePreviewPage({
         <div className="rounded-lg border border-border bg-background p-4">
           <div className="relative overflow-hidden rounded-lg bg-muted">
             <div className="absolute left-3 top-3 z-10 rounded-md bg-black/80 px-2 py-1 text-xs font-semibold text-white">
-              {safeSlideIndex + 1} of {slideUrls.length}
+              {safeSlideIndex + 1} of {slideImages.length}
             </div>
-            <iframe
-              key={selectedSlideUrl}
-              src={selectedSlideUrl}
+            <img
+              key={selectedSlideImage}
+              src={selectedSlideImage}
               title={`${item.title} preview slide ${safeSlideIndex + 1}`}
-              className="aspect-[16/9] w-full border-0 bg-muted"
+              alt=""
+              className="aspect-[16/9] w-full object-cover"
               loading="lazy"
             />
             <button
               type="button"
               aria-label="Previous slide"
               className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              disabled={!hasMultipleSlides}
               onClick={() => {
                 changeSlide(-1);
               }}
@@ -671,6 +703,7 @@ function TemplatePreviewPage({
               type="button"
               aria-label="Next slide"
               className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              disabled={!hasMultipleSlides}
               onClick={() => {
                 changeSlide(1);
               }}
@@ -679,11 +712,11 @@ function TemplatePreviewPage({
             </button>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
-            {slideUrls.map((url, index) => {
+            {slideImages.map((image, index) => {
               const selected = index === safeSlideIndex;
               return (
                 <button
-                  key={url}
+                  key={image}
                   type="button"
                   aria-label={`Show slide ${index + 1}`}
                   aria-pressed={selected}
@@ -696,7 +729,7 @@ function TemplatePreviewPage({
                   }}
                 >
                   <img
-                    src={item.previewImage}
+                    src={image}
                     alt=""
                     className="aspect-[16/9] w-full object-cover"
                     loading="lazy"
@@ -715,7 +748,7 @@ function TemplatePreviewPage({
               {item.title}
             </h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              {kind} · {slideUrls.length} preview slides
+              {kind} · {slideImages.length} preview slides
             </p>
           </div>
           <div className="rounded-lg border border-border bg-background p-5">
@@ -724,7 +757,7 @@ function TemplatePreviewPage({
             </h3>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                {slideUrls.length} preview slides
+                {slideImages.length} preview slides
               </span>
               <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
                 Confident tone

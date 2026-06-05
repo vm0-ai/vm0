@@ -21,9 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use agent_diagnostics::{
-    FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic, failure_diagnostic_file,
-};
+use agent_diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
 use futures_util::FutureExt;
 use sandbox::{
     CopyFileOptions, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest,
@@ -36,7 +34,9 @@ use tracing::{info, warn};
 
 use crate::ids::RunId;
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
-use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+use api_contracts::generated::constants::runners::paths::{
+    CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR,
+};
 
 /// Maximum wall-clock time for a single job (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
@@ -103,6 +103,23 @@ use crate::workspace_image_cache::{
     WorkspaceImageLease, WorkspaceImagePrepareRequest,
 };
 use crate::workspace_mount::ensure_workspace_drive_mounted;
+
+fn guest_runtime_dir(run_id: RunId) -> RunnerResult<String> {
+    let run_id = run_id.to_string();
+    let path = guest_runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
+        .map_err(|e| RunnerError::Internal(format!("guest runtime dir: {e}")))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+fn guest_runtime_path(
+    run_id: RunId,
+    path: impl FnOnce(PathBuf) -> PathBuf,
+) -> RunnerResult<String> {
+    let run_id = run_id.to_string();
+    let run_dir = guest_runtime_paths::run_dir_for_home(CANONICAL_GUEST_HOME_DIR, &run_id)
+        .map_err(|e| RunnerError::Internal(format!("guest runtime path: {e}")))?;
+    Ok(path(run_dir).to_string_lossy().into_owned())
+}
 
 /// Shared configuration for all executions (profile-independent).
 pub struct ExecutorConfig {
@@ -1743,16 +1760,17 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
 
 /// Read a structured error file from the guest filesystem.
 ///
-/// The guest-agent writes final failure messages to
-/// `/tmp/vm0-checkpoint-error-{run_id}` so the runner can surface them through
+/// The guest-agent writes final failure messages to the guest runtime directory
+/// so the runner can surface them through
 /// `/complete` even though stdout/stderr are redirected to the system log file.
-///
-/// NOTE: This path must match the convention in `crates/guest-agent/src/paths.rs`
-/// (`checkpoint_error_file()`). The runner and guest-agent are separate binaries
-/// running in different processes, so the path is duplicated by design.
 async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: RunId) -> Option<String> {
-    // Mirror of guest-agent paths::checkpoint_error_file()
-    let error_path = format!("/tmp/vm0-checkpoint-error-{run_id}");
+    let error_path = match guest_runtime_path(run_id, guest_runtime_paths::checkpoint_error_file) {
+        Ok(path) => path,
+        Err(e) => {
+            warn!(run_id = %run_id, error = %e, "failed to resolve guest error file path");
+            return None;
+        }
+    };
     match sandbox
         .read_file(&error_path, SMALL_GUEST_FILE_MAX_BYTES)
         .await
@@ -1773,7 +1791,13 @@ async fn read_guest_failure_diagnostic_file(
     sandbox: &dyn Sandbox,
     run_id: RunId,
 ) -> Option<FailureDiagnostic> {
-    let path = failure_diagnostic_file(&run_id.to_string());
+    let path = match guest_runtime_path(run_id, guest_runtime_paths::failure_diagnostic_file) {
+        Ok(path) => path,
+        Err(e) => {
+            warn!(run_id = %run_id, error = %e, "failed to resolve guest failure diagnostic path");
+            return None;
+        }
+    };
     match sandbox.read_file(&path, SMALL_GUEST_FILE_MAX_BYTES).await {
         Ok(Some(bytes)) if !bytes.iter().all(|byte| byte.is_ascii_whitespace()) => {
             match serde_json::from_slice::<FailureDiagnostic>(&bytes) {
@@ -1806,14 +1830,17 @@ async fn read_guest_failure_diagnostic_file(
 
 /// Read the CLI-generated session ID from the guest filesystem.
 ///
-/// The guest-agent writes the session ID to `/tmp/vm0-session-{run_id}.txt`
+/// The guest-agent writes the session ID to the guest runtime directory
 /// after the CLI emits its `system/init` event. On first runs (no
 /// `resume_session`), the runner uses this to park the VM for keep-alive.
-///
-/// NOTE: Path must match `crates/guest-agent/src/paths.rs` (`session_id_file()`).
 async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: RunId) -> Option<String> {
-    // Mirror of guest-agent paths::session_id_file()
-    let path = format!("/tmp/vm0-session-{run_id}.txt");
+    let path = match guest_runtime_path(run_id, guest_runtime_paths::session_id_file) {
+        Ok(path) => path,
+        Err(e) => {
+            warn!(run_id = %run_id, error = %e, "failed to resolve guest session id path");
+            return None;
+        }
+    };
     match sandbox.read_file(&path, SMALL_GUEST_FILE_MAX_BYTES).await {
         Ok(Some(bytes)) if !bytes.is_empty() => {
             let id = String::from_utf8_lossy(&bytes).trim().to_string();
@@ -1981,15 +2008,6 @@ async fn append_stdout_stream_diagnostics(
     file.flush().await
 }
 
-/// Guest log file path prefixes. Each turn creates files named
-/// `{PREFIX}{run_id}{SUFFIX}` under `/tmp`. Used by `copy_guest_logs`.
-const GUEST_SYSTEM_LOG_PREFIX: &str = "/tmp/vm0-system-";
-const GUEST_SYSTEM_LOG_SUFFIX: &str = ".log";
-const GUEST_METRICS_LOG_PREFIX: &str = "/tmp/vm0-metrics-";
-const GUEST_METRICS_LOG_SUFFIX: &str = ".jsonl";
-const GUEST_SANDBOX_OPS_LOG_PREFIX: &str = "/tmp/vm0-sandbox-ops-";
-const GUEST_SANDBOX_OPS_LOG_SUFFIX: &str = ".jsonl";
-
 /// Copy guest log files to host (best-effort, post-job).
 ///
 /// The final system log copy keeps `system-*` as the guest-authored log. The
@@ -2016,20 +2034,23 @@ async fn copy_guest_logs(
     cancelled: bool,
 ) {
     let run_id = context.run_id;
-    let files = [
-        (
-            format!("{GUEST_SYSTEM_LOG_PREFIX}{run_id}{GUEST_SYSTEM_LOG_SUFFIX}"),
-            log_paths.system_log(run_id),
-        ),
-        (
-            format!("{GUEST_METRICS_LOG_PREFIX}{run_id}{GUEST_METRICS_LOG_SUFFIX}"),
-            log_paths.metrics_log(run_id),
-        ),
-        (
-            format!("{GUEST_SANDBOX_OPS_LOG_PREFIX}{run_id}{GUEST_SANDBOX_OPS_LOG_SUFFIX}"),
-            log_paths.sandbox_ops_log(run_id),
-        ),
-    ];
+    let files = match [
+        guest_runtime_path(run_id, guest_runtime_paths::system_log_file)
+            .map(|path| (path, log_paths.system_log(run_id))),
+        guest_runtime_path(run_id, guest_runtime_paths::metrics_log_file)
+            .map(|path| (path, log_paths.metrics_log(run_id))),
+        guest_runtime_path(run_id, guest_runtime_paths::sandbox_ops_log_file)
+            .map(|path| (path, log_paths.sandbox_ops_log(run_id))),
+    ]
+    .into_iter()
+    .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(files) => files,
+        Err(e) => {
+            warn!(run_id = %run_id, error = %e, "failed to resolve guest log paths");
+            return;
+        }
+    };
 
     for (guest_path, host_path) in &files {
         if let Err(e) = sandbox
@@ -2308,8 +2329,11 @@ fn guest_download_command() -> String {
     format!("{} {}", guest::DOWNLOAD_BIN, guest::STORAGE_MANIFEST)
 }
 
-fn guest_download_env(run_id: &str) -> [(&'static str, &str); 1] {
-    [("VM0_RUN_ID", run_id)]
+fn guest_download_env<'a>(run_id: &'a str, runtime_dir: &'a str) -> [(&'static str, &'a str); 2] {
+    [
+        ("VM0_RUN_ID", run_id),
+        (guest_runtime_paths::GUEST_RUNTIME_DIR_ENV, runtime_dir),
+    ]
 }
 
 async fn download_storages(
@@ -2325,7 +2349,8 @@ async fn download_storages(
 
     let download_cmd = guest_download_command();
     let run_id = context.run_id.to_string();
-    let download_env = guest_download_env(&run_id);
+    let runtime_dir = guest_runtime_dir(context.run_id)?;
+    let download_env = guest_download_env(&run_id, &runtime_dir);
     info!(run_id = %context.run_id, "downloading storages");
     let result = sandbox
         .exec(&ExecRequest {
@@ -2634,6 +2659,10 @@ fn build_env_json_with_host_env(
     env.insert("VM0_API_TOKEN".into(), context.sandbox_token.clone());
     env.insert("VM0_SANDBOX_ID".into(), sandbox_id.into());
     env.insert(
+        guest_runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
+        guest_runtime_dir(context.run_id)?,
+    );
+    env.insert(
         "VM0_SANDBOX_REUSE_RESULT".into(),
         reuse_result.as_wire().into(),
     );
@@ -2782,6 +2811,7 @@ const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     "VM0_RUN_ID",
     "VM0_API_TOKEN",
     "VM0_SANDBOX_ID",
+    guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
     "VM0_SANDBOX_REUSE_RESULT",
     "VM0_PROMPT",
     "VM0_APPEND_SYSTEM_PROMPT",
@@ -3326,6 +3356,10 @@ mod tests {
         assert_eq!(env.get("VM0_API_URL").unwrap(), "https://api.example.com");
         assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
+        assert_eq!(
+            env.get(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV).unwrap(),
+            &guest_runtime_dir(ctx.run_id).unwrap()
+        );
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert!(!env.contains_key("VM0_WORKING_DIR"));
         // Guest-agent needs these to post /complete with full metadata when
@@ -3469,6 +3503,10 @@ mod tests {
             ("VM0_PROMPT".into(), "user prompt".into()),
             ("VM0_API_TOKEN".into(), "stolen".into()),
             ("VM0_WORKING_DIR".into(), "/legacy".into()),
+            (
+                guest_runtime_paths::GUEST_RUNTIME_DIR_ENV.into(),
+                "/user/controlled/runtime".into(),
+            ),
             ("VM0_FEATURE_FLAGS".into(), r#"{"bad":true}"#.into()),
             (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
             (RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(), "999".into()),
@@ -3491,6 +3529,10 @@ mod tests {
         assert_eq!(env.get("CUSTOM_ENV").unwrap(), "kept");
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
+        assert_eq!(
+            env.get(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV).unwrap(),
+            &guest_runtime_dir(ctx.run_id).unwrap()
+        );
         assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
         assert!(!env.contains_key("VM0_WORKING_DIR"));
         assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
@@ -4517,6 +4559,13 @@ mod tests {
         sandbox.push_read_file_result(Ok(Some(b"checkpoint error: disk full".to_vec())));
         let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
         assert_eq!(msg.as_deref(), Some("checkpoint error: disk full"));
+        let calls = sandbox.read_file_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].path,
+            guest_runtime_path(RunId::nil(), guest_runtime_paths::checkpoint_error_file).unwrap()
+        );
+        assert_eq!(calls[0].max_bytes, SMALL_GUEST_FILE_MAX_BYTES);
     }
 
     #[tokio::test]
@@ -4544,6 +4593,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_guest_session_id_returns_trimmed_content_from_runtime_path() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_read_file_result(Ok(Some(b" session-abc \n".to_vec())));
+
+        let session_id = read_guest_session_id(&sandbox, RunId::nil()).await;
+
+        assert_eq!(session_id.as_deref(), Some("session-abc"));
+        let calls = sandbox.read_file_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].path,
+            guest_runtime_path(RunId::nil(), guest_runtime_paths::session_id_file).unwrap()
+        );
+        assert_eq!(calls[0].max_bytes, SMALL_GUEST_FILE_MAX_BYTES);
+    }
+
+    #[tokio::test]
+    async fn read_guest_session_id_returns_none_on_missing_or_empty_file() {
+        let missing = MockSandbox::new("test");
+        missing.push_read_file_result(Ok(None));
+        assert!(
+            read_guest_session_id(&missing, RunId::nil())
+                .await
+                .is_none()
+        );
+
+        let empty = MockSandbox::new("test");
+        empty.push_read_file_result(Ok(Some(b" \n ".to_vec())));
+        assert!(read_guest_session_id(&empty, RunId::nil()).await.is_none());
+    }
+
+    #[tokio::test]
     async fn read_guest_failure_diagnostic_file_returns_valid_diagnostic() {
         let sandbox = MockSandbox::new("test");
         let diagnostic = FailureDiagnostic::new(
@@ -4563,7 +4644,7 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(
             calls[0].path,
-            agent_diagnostics::failure_diagnostic_file(&RunId::nil().to_string())
+            guest_runtime_path(RunId::nil(), guest_runtime_paths::failure_diagnostic_file).unwrap()
         );
         assert_eq!(calls[0].max_bytes, SMALL_GUEST_FILE_MAX_BYTES);
     }
@@ -4672,10 +4753,13 @@ mod tests {
     fn guest_download_env_includes_run_id_for_guest_common_logs() {
         let ctx = minimal_context();
         let run_id = ctx.run_id.to_string();
-        let env = guest_download_env(&run_id);
+        let runtime_dir = guest_runtime_dir(ctx.run_id).unwrap();
+        let env = guest_download_env(&run_id, &runtime_dir);
 
         assert_eq!(env[0].0, "VM0_RUN_ID");
         assert_eq!(env[0].1, run_id);
+        assert_eq!(env[1].0, guest_runtime_paths::GUEST_RUNTIME_DIR_ENV);
+        assert_eq!(env[1].1, runtime_dir);
     }
 
     #[tokio::test]
@@ -4951,7 +5035,7 @@ mod tests {
         assert_eq!(calls.len(), 3);
         assert_eq!(
             calls[2].path,
-            format!("/tmp/vm0-sandbox-ops-{}.jsonl", ctx.run_id)
+            guest_runtime_path(ctx.run_id, guest_runtime_paths::sandbox_ops_log_file).unwrap()
         );
         assert_eq!(calls[2].host_path, log_paths.sandbox_ops_log(ctx.run_id));
         assert_eq!(calls[0].max_bytes, GUEST_LOG_COPY_MAX_BYTES);
