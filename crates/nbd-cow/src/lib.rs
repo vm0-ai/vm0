@@ -1315,15 +1315,11 @@ impl PooledNbdCowDevice {
         Self::run_finalizer(async move { self.destroy_with_retries_inner(policy).await })
     }
 
-    async fn destroy_with_retries_inner(self, policy: DestroyRetryPolicy) -> Result<()> {
-        let Self {
-            mut device,
-            mut lease,
-            pool,
-        } = self;
+    async fn destroy_with_retries_inner(mut self, policy: DestroyRetryPolicy) -> Result<()> {
+        let pool = self.pool.clone();
         Self::destroy_with_mode(
-            &mut device,
-            &mut lease,
+            &mut self.device,
+            &mut self.lease,
             &pool,
             policy,
             DestroyMode::RemoveCow,
@@ -1346,18 +1342,20 @@ impl PooledNbdCowDevice {
     }
 
     async fn destroy_keep_cow_with_retries_inner(
-        self,
+        mut self,
         policy: DestroyRetryPolicy,
     ) -> Result<KeptCow> {
-        let Self {
-            mut device,
-            mut lease,
-            pool,
-        } = self;
-        let cow_file = device.cow_file().to_path_buf();
-        let bitmap_file = device.bitmap_path();
-        Self::destroy_with_mode(&mut device, &mut lease, &pool, policy, DestroyMode::KeepCow)
-            .await?;
+        let pool = self.pool.clone();
+        let cow_file = self.device.cow_file().to_path_buf();
+        let bitmap_file = self.device.bitmap_path();
+        Self::destroy_with_mode(
+            &mut self.device,
+            &mut self.lease,
+            &pool,
+            policy,
+            DestroyMode::KeepCow,
+        )
+        .await?;
 
         Ok(KeptCow {
             cow_file,
@@ -1465,14 +1463,10 @@ impl PooledNbdCowDevice {
         }
     }
 
-    async fn abandon_inner(self) {
-        let Self {
-            mut device,
-            mut lease,
-            pool,
-        } = self;
-        device.abandon();
-        Self::retire_uncertain(&pool, &mut lease).await;
+    async fn abandon_inner(mut self) {
+        let pool = self.pool.clone();
+        self.device.abandon();
+        Self::retire_uncertain(&pool, &mut self.lease).await;
     }
 
     fn run_finalizer<T>(
