@@ -1197,15 +1197,28 @@ impl NbdCowDevice {
 fn device_ownership(device_index: u32, connect_tid: u32) -> DeviceOwnership {
     let pid_path = format!("/sys/block/nbd{device_index}/pid");
     match std::fs::read_to_string(&pid_path) {
-        Ok(contents) => {
-            let tid: u32 = contents.trim().parse().unwrap_or(0);
-            if tid == connect_tid {
-                DeviceOwnership::Ours
-            } else {
-                DeviceOwnership::Foreign(tid)
-            }
-        }
+        Ok(contents) => device_ownership_from_pid_contents(device_index, connect_tid, &contents),
         Err(e) => DeviceOwnership::Unknown(e),
+    }
+}
+
+fn device_ownership_from_pid_contents(
+    device_index: u32,
+    connect_tid: u32,
+    contents: &str,
+) -> DeviceOwnership {
+    let pid = contents.trim();
+    if pid == "-1" || pid == "0" || pid.is_empty() {
+        return DeviceOwnership::Foreign(0);
+    }
+
+    match pid.parse::<u32>() {
+        Ok(tid) if tid == connect_tid => DeviceOwnership::Ours,
+        Ok(tid) => DeviceOwnership::Foreign(tid),
+        Err(e) => DeviceOwnership::Unknown(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("invalid NBD device pid for nbd{device_index}: {e}"),
+        )),
     }
 }
 
@@ -2196,6 +2209,35 @@ mod tests {
             .unwrap()
             .unwrap();
         pool.cleanup().await;
+    }
+
+    #[test]
+    fn device_ownership_parses_matching_pid_as_ours() {
+        let ownership = device_ownership_from_pid_contents(7, 42, "42\n");
+
+        assert!(matches!(ownership, DeviceOwnership::Ours));
+    }
+
+    #[test]
+    fn device_ownership_treats_empty_or_nonpositive_pid_as_released() {
+        for contents in ["", "0\n", "-1\n"] {
+            let ownership = device_ownership_from_pid_contents(7, 42, contents);
+
+            assert!(matches!(ownership, DeviceOwnership::Foreign(0)));
+        }
+    }
+
+    #[test]
+    fn device_ownership_reports_malformed_pid_as_unknown() {
+        let ownership = device_ownership_from_pid_contents(7, 42, "not-a-pid\n");
+
+        match ownership {
+            DeviceOwnership::Unknown(e) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
+                assert!(e.to_string().contains("invalid NBD device pid for nbd7"));
+            }
+            _ => panic!("malformed pid must not be treated as released or foreign"),
+        }
     }
 
     #[test]
