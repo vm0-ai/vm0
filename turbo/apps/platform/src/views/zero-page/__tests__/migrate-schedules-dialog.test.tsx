@@ -31,7 +31,11 @@ function setLegacySchedule() {
 describe("migrate schedules dialog", () => {
   it("does not open when scheduled chat is off", async () => {
     setLegacySchedule();
-    detachedSetupPage({ context, path: "/schedules" });
+    detachedSetupPage({
+      context,
+      path: "/schedules",
+      featureSwitches: { [FeatureSwitchKey.ScheduledChat]: false },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();

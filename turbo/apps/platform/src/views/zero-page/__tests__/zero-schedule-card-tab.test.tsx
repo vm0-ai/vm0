@@ -53,7 +53,7 @@ function defaultSchedule(
     volumeVersions: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
-    chatThreadId: null,
+    chatThreadId: "d0000000-0000-4000-a000-000000000001",
     ...overrides,
   };
 }
