@@ -24,7 +24,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { Cron } from "croner";
-import { and, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -380,11 +380,6 @@ type EnableScheduleResult =
   | { readonly kind: "ok"; readonly response: ScheduleResponse }
   | { readonly kind: "not_found" }
   | { readonly kind: "schedule_past" };
-
-type MigrateScheduleToChatResult =
-  | { readonly kind: "ok"; readonly response: ScheduleResponse }
-  | { readonly kind: "not_found" }
-  | { readonly kind: "bad_request"; readonly message: string };
 
 interface ScheduleMutationArgs {
   readonly userId: string;
@@ -949,139 +944,6 @@ export const enableSchedule$ = command(
         orgId: args.orgId,
         userId: args.userId,
         overrides: featureSwitchOverrides,
-      }),
-    };
-  },
-);
-
-/**
- * Migrate a legacy schedule (chatThreadId === null) to chat mode by creating a
- * new chat thread and linking it. This is the ONLY path that sets chatThreadId
- * on an existing schedule; it is gated on the ScheduledChat switch and only
- * performs the null -> set transition. An already-linked schedule is returned
- * unchanged so the caller can migrate a batch idempotently.
- */
-export const migrateScheduleToChat$ = command(
-  async (
-    { get, set },
-    args: ScheduleMutationArgs,
-    signal: AbortSignal,
-  ): Promise<MigrateScheduleToChatResult> => {
-    const db = set(writeDb$);
-
-    const overrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
-    const chatModeEnabled = isFeatureEnabled(FeatureSwitchKey.ScheduledChat, {
-      orgId: args.orgId,
-      userId: args.userId,
-      overrides,
-    });
-    if (!chatModeEnabled) {
-      return {
-        kind: "bad_request",
-        message: "Chat-mode schedules are not enabled",
-      };
-    }
-
-    const ownership = await verifyScheduleOwnership(
-      db,
-      args.userId,
-      args.orgId,
-      args.agentId,
-      args.name,
-    );
-    signal.throwIfAborted();
-    if (!ownership.ok) {
-      return { kind: "not_found" };
-    }
-    const { schedule, displayName } = ownership;
-
-    // Already linked: return as-is so a batch migration can skip it cleanly.
-    if (schedule.chatThreadId) {
-      return {
-        kind: "ok",
-        response: await scheduleResponse(schedule, displayName, {
-          orgId: args.orgId,
-          userId: args.userId,
-          overrides,
-        }),
-      };
-    }
-
-    const migration = await db.transaction(async (tx) => {
-      const [thread] = await tx
-        .insert(chatThreads)
-        .values({
-          userId: args.userId,
-          agentComposeId: args.agentId,
-          title: schedule.description ?? schedule.name,
-        })
-        .returning({ id: chatThreads.id });
-      if (!thread) {
-        throw new Error("Failed to create chat thread");
-      }
-
-      const [updated] = await tx
-        .update(zeroAgentSchedules)
-        .set({ chatThreadId: thread.id, updatedAt: nowDate() })
-        .where(
-          and(
-            eq(zeroAgentSchedules.id, schedule.id),
-            isNull(zeroAgentSchedules.chatThreadId),
-          ),
-        )
-        .returning();
-
-      if (updated) {
-        return {
-          kind: "linked" as const,
-          schedule: updated,
-          threadId: thread.id,
-        };
-      }
-
-      await tx.delete(chatThreads).where(eq(chatThreads.id, thread.id));
-
-      const [current] = await tx
-        .select()
-        .from(zeroAgentSchedules)
-        .where(eq(zeroAgentSchedules.id, schedule.id))
-        .limit(1);
-      if (!current) {
-        return { kind: "not_found" as const };
-      }
-      if (!current.chatThreadId) {
-        throw new Error(
-          `Failed to link schedule ${schedule.id} to chat thread`,
-        );
-      }
-      return {
-        kind: "already_linked" as const,
-        schedule: current,
-        threadId: current.chatThreadId,
-      };
-    });
-    signal.throwIfAborted();
-    if (migration.kind === "not_found") {
-      return { kind: "not_found" };
-    }
-
-    if (migration.kind === "linked") {
-      await publishChatThreadSchedulesChangedSafely(
-        args.userId,
-        migration.threadId,
-      );
-      signal.throwIfAborted();
-    }
-
-    return {
-      kind: "ok",
-      response: await scheduleResponse(migration.schedule, displayName, {
-        orgId: args.orgId,
-        userId: args.userId,
-        overrides,
       }),
     };
   },

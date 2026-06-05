@@ -1,6 +1,5 @@
 import { command, computed } from "ccstate";
 import {
-  zeroScheduleMigrateChatContract,
   zeroScheduleRunContract,
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
@@ -16,7 +15,6 @@ import {
   deploySchedule$,
   disableSchedule$,
   enableSchedule$,
-  migrateScheduleToChat$,
   runScheduleNow$,
   zeroScheduleList,
 } from "../services/zero-schedules.service";
@@ -162,42 +160,6 @@ const enableInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result.response };
 });
 
-const migrateToChatInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(
-      pathParamsOf(zeroScheduleMigrateChatContract.migrateToChat),
-    );
-    const bodyResult = await get(
-      bodyResultOf(zeroScheduleMigrateChatContract.migrateToChat),
-    );
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-
-    const result = await set(
-      migrateScheduleToChat$,
-      {
-        userId: auth.userId,
-        orgId: auth.orgId,
-        agentId: bodyResult.data.agentId,
-        name: params.name,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.kind === "not_found") {
-      return notFound("Resource not found");
-    }
-    if (result.kind === "bad_request") {
-      return badRequestMessage(result.message);
-    }
-    return { status: 200 as const, body: result.response };
-  },
-);
-
 const runNowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const bodyResult = await get(bodyResultOf(zeroScheduleRunContract.run));
@@ -283,17 +245,6 @@ export const zeroSchedulesRoutes: readonly RouteEntry[] = [
         requiredCapability: "schedule:write",
       },
       enableInner$,
-    ),
-  },
-  {
-    route: zeroScheduleMigrateChatContract.migrateToChat,
-    handler: authRoute(
-      {
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-        requiredCapability: "schedule:write",
-      },
-      migrateToChatInner$,
     ),
   },
   {

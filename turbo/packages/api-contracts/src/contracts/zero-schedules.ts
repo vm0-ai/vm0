@@ -211,45 +211,11 @@ export const zeroScheduleRunContract = c.router({
   },
 });
 
-/**
- * Zero schedule migrate-to-chat contract
- * (POST /api/zero/schedules/:name/migrate-to-chat)
- *
- * One-way migration for legacy schedules (chatThreadId === null): creates a new
- * chat thread and links it to the schedule. Only the null -> set transition is
- * allowed; an already-linked schedule is returned unchanged (idempotent). The
- * link can never be re-pointed, preserving the create-only immutability of
- * chatThreadId.
- */
-export const zeroScheduleMigrateChatContract = c.router({
-  migrateToChat: {
-    method: "POST",
-    path: "/api/zero/schedules/:name/migrate-to-chat",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      name: z.string().min(1, "Schedule name required"),
-    }),
-    body: z.object({
-      agentId: z.string().uuid("Invalid agent ID"),
-    }),
-    responses: {
-      200: scheduleResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Migrate a legacy schedule to chat mode (create + link a thread)",
-  },
-});
-
 // Contract type exports
 export type ZeroSchedulesMainContract = typeof zeroSchedulesMainContract;
 export type ZeroSchedulesByNameContract = typeof zeroSchedulesByNameContract;
 export type ZeroSchedulesEnableContract = typeof zeroSchedulesEnableContract;
 export type ZeroScheduleRunContract = typeof zeroScheduleRunContract;
-export type ZeroScheduleMigrateChatContract =
-  typeof zeroScheduleMigrateChatContract;
 
 // Inferred types from response schemas
 export type ScheduleResponse = z.infer<typeof scheduleResponseSchema>;
