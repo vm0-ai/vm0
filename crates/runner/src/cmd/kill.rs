@@ -519,7 +519,7 @@ async fn report_kill_outcome(
         KillOutcome::OwnerAccepted(RemoteKillResult::RefusedIdle)
         | KillOutcome::RefusedManagedIdle => {
             println!(
-                "Refused to kill managed idle or parking sandbox {} (PID {}) - owning runner still owns its resources",
+                "Refused to kill managed idle sandbox {} (PID {}) - owning runner still owns its resources",
                 current.sandbox_id, current.pid
             );
             println!(

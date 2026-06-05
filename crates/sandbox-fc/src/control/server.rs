@@ -461,7 +461,9 @@ mod tests {
         ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
         TerminateStatus, send_exec, send_terminate,
     };
-    use crate::park_coordinator::{CoordinatorState, ParkCoordinator, PrepareParkEvidence};
+    use crate::park_coordinator::{
+        CoordinatorState, DirtyReason, ParkCoordinator, PrepareParkEvidence,
+    };
 
     fn test_gate(
         guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
@@ -481,6 +483,15 @@ mod tests {
             .complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced)
             .unwrap();
         coordinator.mark_parked(&attempt).unwrap();
+        coordinator
+    }
+
+    fn ready_for_park_coordinator() -> ParkCoordinator {
+        let coordinator = ParkCoordinator::new();
+        let attempt = coordinator.begin_prepare_park().unwrap();
+        coordinator
+            .complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced)
+            .unwrap();
         coordinator
     }
 
@@ -653,6 +664,31 @@ mod tests {
         assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
         assert_eq!(coordinator.state(), CoordinatorState::Terminating);
         assert!(coordinator.begin_prepare_park().is_err());
+        assert_eq!(kill_rx.len(), 1);
+    }
+
+    #[test]
+    fn termination_handle_accepts_dirty_policy() {
+        let (kill_tx, kill_rx) = mpsc::channel(1);
+        let coordinator = ParkCoordinator::new();
+        coordinator.mark_dirty(DirtyReason::new("transport failed"));
+        let termination =
+            ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
+
+        assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
+        assert_eq!(coordinator.state(), CoordinatorState::Terminating);
+        assert_eq!(kill_rx.len(), 1);
+    }
+
+    #[test]
+    fn termination_handle_accepts_ready_for_park_policy() {
+        let (kill_tx, kill_rx) = mpsc::channel(1);
+        let coordinator = ready_for_park_coordinator();
+        let termination =
+            ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
+
+        assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
+        assert_eq!(coordinator.state(), CoordinatorState::Terminating);
         assert_eq!(kill_rx.len(), 1);
     }
 

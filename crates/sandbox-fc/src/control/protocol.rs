@@ -89,8 +89,8 @@ pub struct TerminateRequest {
 pub enum TerminateStatus {
     Accepted,
     AlreadyStopped,
-    /// The sandbox is parked or entering idle ownership; direct process
-    /// termination would leave runner-owned idle resources retained.
+    /// The sandbox is parked in idle ownership; direct process termination
+    /// would leave runner-owned idle resources retained.
     RefusedIdle,
 }
 
