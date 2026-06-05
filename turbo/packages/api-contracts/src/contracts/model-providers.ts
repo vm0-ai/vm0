@@ -518,6 +518,35 @@ export const MODEL_PROVIDER_TYPES = {
     ] as string[],
     defaultModel: "anthropic/claude-sonnet-4.6",
   },
+  // Evolink (https://evolink.ai) is a multi-protocol LLM gateway that exposes an
+  // Anthropic Messages API surface at https://direct.evolink.ai/v1/messages.
+  // Mirrors the openrouter-api-key shape (Bearer token mapped into
+  // ANTHROPIC_AUTH_TOKEN). Its Claude model identifiers already match our
+  // canonical names, so no PROVIDER_RUNTIME_MODEL_ALIASES entry is required.
+  "evolink-api-key": {
+    framework: "claude-code" as const,
+    secretName: "EVOLINK_API_KEY",
+    label: "Evolink",
+    secretLabel: "API key",
+    helpText: "Get your API key at: https://evolink.ai/dashboard/keys",
+    envBindings: {
+      ANTHROPIC_AUTH_TOKEN: "$secret",
+      ANTHROPIC_BASE_URL: "https://direct.evolink.ai",
+      ANTHROPIC_API_KEY: "",
+      ANTHROPIC_MODEL: "$model",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "$model",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
+      CLAUDE_CODE_SUBAGENT_MODEL: "$model",
+    } satisfies ModelProviderEnvBindings,
+    models: [
+      "claude-opus-4-8",
+      "claude-opus-4-7",
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+    ] as string[],
+    defaultModel: "claude-sonnet-4-6",
+  },
   // Codex-framework twin of openrouter-api-key. Same upstream gateway (OpenRouter)
   // and same API key (shared secretName), but routes through OpenRouter's
   // OpenAI-compatible endpoint surface for GPT models that codex CLI requires.
@@ -767,6 +796,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
+    "evolink-api-key",
   ],
   "claude-opus-4-7": [
     "vm0",
@@ -774,6 +804,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
+    "evolink-api-key",
   ],
   "claude-opus-4-6": [
     "vm0",
@@ -781,6 +812,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
+    "evolink-api-key",
   ],
   "claude-sonnet-4-6": [
     "vm0",
@@ -788,6 +820,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
+    "evolink-api-key",
   ],
   "gpt-5.5": [
     "vm0",
@@ -1096,6 +1129,11 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
     { name: "Authorization", valuePrefix: "Bearer" },
     MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
+  "evolink-api-key": mpFirewall(
+    "evolink-api-key",
+    { name: "Authorization", valuePrefix: "Bearer" },
+    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+  ),
   // Codex-framework twin of openrouter-api-key. It reuses the same stored
   // OpenRouter secret, but the sandbox env name is OPENAI_API_KEY because codex
   // SDK hits OpenAI-compatible paths (/chat/completions, /responses) under
@@ -1210,6 +1248,7 @@ export const modelProviderTypeSchema = z.enum([
   "deepseek-api-key",
   "zai-api-key",
   "vercel-ai-gateway",
+  "evolink-api-key",
   "openrouter-codex",
   "vercel-ai-gateway-codex",
   "openai-api-key",

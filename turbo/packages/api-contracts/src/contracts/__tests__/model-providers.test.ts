@@ -130,6 +130,7 @@ describe("model-first canonical catalog", () => {
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
+      "evolink-api-key",
     ]);
     expect(getProvidersForModel("gpt-5.5")).toEqual([
       "vm0",
@@ -430,6 +431,70 @@ describe("removed poor agent backend models", () => {
   it("uses DeepSeek Pro as the direct DeepSeek default", () => {
     expect(getModels("deepseek-api-key")).toEqual(["deepseek-v4-pro"]);
     expect(getDefaultModel("deepseek-api-key")).toBe("deepseek-v4-pro");
+  });
+});
+
+describe("evolink-api-key provider", () => {
+  it("declares claude-code framework", () => {
+    expect(getFrameworkForType("evolink-api-key")).toBe("claude-code");
+  });
+
+  it("maps the API key into ANTHROPIC_AUTH_TOKEN with the Evolink base URL", () => {
+    const envBindings = getModelProviderEnvBindings("evolink-api-key");
+    expect(envBindings).toBeDefined();
+    expect(envBindings!["ANTHROPIC_AUTH_TOKEN"]).toBe("$secret");
+    expect(envBindings!["ANTHROPIC_BASE_URL"]).toBe(
+      "https://direct.evolink.ai",
+    );
+    expect(envBindings!["ANTHROPIC_MODEL"]).toBe("$model");
+  });
+
+  it("exposes the Evolink base URL for session-continuation checks", () => {
+    expect(getProviderBaseUrl("evolink-api-key")).toBe(
+      "https://direct.evolink.ai",
+    );
+  });
+
+  it("offers Claude models with sonnet as the default", () => {
+    expect(getModels("evolink-api-key")).toEqual([
+      "claude-opus-4-8",
+      "claude-opus-4-7",
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+    ]);
+    expect(getDefaultModel("evolink-api-key")).toBe("claude-sonnet-4-6");
+    expect(hasModelSelection("evolink-api-key")).toBe(true);
+  });
+
+  it("passes canonical Claude model ids through unchanged (no runtime alias)", () => {
+    expect(getProviderRuntimeModel("evolink-api-key", "claude-opus-4-8")).toBe(
+      "claude-opus-4-8",
+    );
+    expect(
+      isModelSupportedByProvider("claude-sonnet-4-6", "evolink-api-key"),
+    ).toBe(true);
+  });
+
+  it("appears in selectable provider types", () => {
+    expect(getSelectableProviderTypes()).toContain("evolink-api-key");
+  });
+
+  it("scopes the firewall to the Anthropic Messages path with Bearer auth", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["evolink-api-key"];
+    expect(config.apis).toHaveLength(1);
+    expect(config.apis[0]!.base).toBe("https://direct.evolink.ai/v1/messages");
+    expect(config.apis[0]!.auth.headers).toEqual({
+      Authorization: "Bearer ${{ secrets.EVOLINK_API_KEY }}",
+    });
+    expect(config.placeholders).toMatchObject({
+      EVOLINK_API_KEY: MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+    });
+  });
+
+  it("modelProviderTypeSchema accepts evolink-api-key", () => {
+    expect(modelProviderTypeSchema.safeParse("evolink-api-key").success).toBe(
+      true,
+    );
   });
 });
 

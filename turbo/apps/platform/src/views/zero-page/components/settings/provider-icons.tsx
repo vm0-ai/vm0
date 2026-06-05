@@ -7,6 +7,7 @@ import bedrockIcon from "./icons/bedrock.svg";
 import chatglmIcon from "./icons/chatglm.svg";
 import claudeCodeIcon from "./icons/claude-code.svg";
 import deepseekIcon from "./icons/deepseek.svg";
+import evolinkIcon from "./icons/evolink.svg";
 import kimiIcon from "./icons/kimi.svg";
 import minimaxIcon from "./icons/minimax.svg";
 import openaiIcon from "./icons/openai.svg";
@@ -24,6 +25,7 @@ const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
     "zai-api-key": chatglmIcon,
     "moonshot-api-key": kimiIcon,
     "vercel-ai-gateway": vercelIcon,
+    "evolink-api-key": evolinkIcon,
     "openrouter-codex": openrouterIcon,
     "vercel-ai-gateway-codex": vercelIcon,
     "openai-api-key": openaiIcon,
@@ -40,6 +42,7 @@ const DARK_INVERT_PROVIDER_ICONS: Readonly<
   "codex-oauth-token": true,
   "moonshot-api-key": true,
   "zai-api-key": true,
+  "evolink-api-key": true,
 });
 
 function providerIconNeedsDarkInvert(type: ModelProviderType): boolean {

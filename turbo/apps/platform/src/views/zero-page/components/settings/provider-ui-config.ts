@@ -86,6 +86,10 @@ const PROVIDER_UI_OVERRIDES = Object.freeze<
     description:
       "Access Claude models through Vercel AI Gateway with a unified API.",
   },
+  "evolink-api-key": {
+    description:
+      "Route Claude models through the Evolink gateway with a unified API.",
+  },
   "openrouter-codex": {
     description: "Route GPT models through OpenRouter for codex-style agents.",
     defaultModel: "openai/gpt-5.5",
