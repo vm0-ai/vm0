@@ -135,7 +135,6 @@ describe("zero chat thread page display - schedule menu", () => {
       path: `/chats/${threadId}`,
       featureSwitches: {
         ...chatArtifactSidebarOff(),
-        [FeatureSwitchKey.ScheduledChat]: true,
       },
     });
 
@@ -169,7 +168,6 @@ describe("zero chat thread page display - schedule menu", () => {
       path: `/chats/${threadId}`,
       featureSwitches: {
         ...chatArtifactSidebarOff(),
-        [FeatureSwitchKey.ScheduledChat]: true,
       },
     });
 

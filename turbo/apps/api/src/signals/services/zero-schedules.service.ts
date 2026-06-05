@@ -8,11 +8,7 @@ import {
   ScheduleListResponse,
   ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
-import {
-  isFeatureEnabled,
-  type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { type FeatureSwitchContext } from "@vm0/core/feature-switch";
 import type {
   ScheduleCronCallbackPayload,
   ScheduleLoopCallbackPayload,
@@ -478,13 +474,11 @@ type ChatThreadLinkResult =
   | { readonly ok: false; readonly error: DeployScheduleResult };
 
 /**
- * Resolve the chat-thread link for a deploy, enforcing the ScheduledChat gate:
- * switch ON links a NEW schedule to either the supplied owned chat thread or a
- * server-created thread; switch OFF ignores the field (legacy schedule).
+ * Resolve the chat-thread link for a deploy: link a NEW schedule to either the
+ * supplied owned chat thread or a server-created thread.
  */
 async function resolveScheduleChatThreadLink(args: {
   readonly db: Db;
-  readonly chatModeEnabled: boolean;
   readonly chatThreadId: string | undefined;
   readonly agentId: string;
   readonly userId: string;
@@ -501,9 +495,6 @@ async function resolveScheduleChatThreadLink(args: {
             "chatThreadId is immutable: a schedule's chat thread can only be set when it is first created",
         },
       };
-    }
-    if (!args.chatModeEnabled) {
-      return { ok: true, chatThreadId: null, createChatThread: false };
     }
     const linkable = await isChatThreadLinkable(args.db, {
       chatThreadId: args.chatThreadId,
@@ -527,7 +518,7 @@ async function resolveScheduleChatThreadLink(args: {
       createChatThread: false,
     };
   }
-  if (!args.existing && args.chatModeEnabled) {
+  if (!args.existing) {
     return { ok: true, chatThreadId: null, createChatThread: true };
   }
   return { ok: true, chatThreadId: null, createChatThread: false };
@@ -683,24 +674,11 @@ export const deploySchedule$ = command(
     });
     signal.throwIfAborted();
 
-    // Chat-mode linkage, gated by the ScheduledChat switch:
-    // - Switch ON: a NEW schedule is linked to either an owned supplied thread
-    //   or a server-created web chat thread. The link is create-only /
-    //   immutable.
-    // - Switch OFF: chatThreadId is ignored (legacy schedule), so creation from
-    //   contexts that auto-send a thread id never breaks.
-    const overrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
-    const chatModeEnabled = isFeatureEnabled(FeatureSwitchKey.ScheduledChat, {
-      orgId: args.orgId,
-      userId: args.userId,
-      overrides,
-    });
+    // Chat-mode linkage: a NEW schedule is linked to either an owned supplied
+    // thread or a server-created web chat thread. The link is create-only /
+    // immutable.
     const chatLink = await resolveScheduleChatThreadLink({
       db,
-      chatModeEnabled,
       chatThreadId: args.body.chatThreadId,
       agentId: args.body.agentId,
       userId: args.userId,
@@ -1132,40 +1110,6 @@ export const executeDueSchedules$ = command(
         });
         skipped++;
         continue;
-      }
-
-      // Feature-switch-OFF skip (locked): a chat-mode schedule whose owner does
-      // NOT have the ScheduledChat switch enabled must not fire. The CAS above
-      // already nulled next_run_at; re-advance it inline so there is no
-      // catch-up burst when the switch is re-enabled. Legacy (unlinked)
-      // schedules are unaffected — they fall through and run normally.
-      if (isChatMode(claimed)) {
-        const overrides = await get(
-          userFeatureSwitchOverrides(claimed.orgId, claimed.userId),
-        );
-        signal.throwIfAborted();
-        const chatModeEnabled = isFeatureEnabled(
-          FeatureSwitchKey.ScheduledChat,
-          { userId: claimed.userId, orgId: claimed.orgId, overrides },
-        );
-        if (!chatModeEnabled) {
-          const skipNextRunAt = nextRunAfterPreRunFailure({
-            schedule: claimed,
-            failureTime: currentTime,
-            shouldDisable: false,
-          });
-          await db
-            .update(zeroAgentSchedules)
-            .set({ nextRunAt: skipNextRunAt, updatedAt: currentTime })
-            .where(eq(zeroAgentSchedules.id, claimed.id));
-          signal.throwIfAborted();
-          log.debug("Skipping chat-mode schedule: feature switch off", {
-            scheduleId: claimed.id,
-            scheduleName: claimed.name,
-          });
-          skipped++;
-          continue;
-        }
       }
 
       const runResult = await settle(
