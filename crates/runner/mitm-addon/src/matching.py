@@ -317,6 +317,11 @@ def _split_base_match_url(
     are rendered as integers. The returned path excludes query and fragment so
     callers can apply base-path prefix semantics without accidentally comparing
     query strings.
+
+    ``allow_runtime_backslash_syntax`` only bypasses the early backslash gate.
+    Compiled firewall matching uses this so a backslash-bearing request can
+    still match a base URL and fail closed as ``unsafe_path`` instead of being
+    treated as an unrelated no-match.
     """
     if not allow_unsafe_runtime_url_syntax and has_unsafe_runtime_url_syntax(
         value,
