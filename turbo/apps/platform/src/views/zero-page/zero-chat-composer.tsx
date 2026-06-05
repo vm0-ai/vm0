@@ -5,7 +5,9 @@ import type {
   ClipboardEvent,
   DragEvent,
   KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
 } from "react";
+import { useState } from "react";
 import {
   useGet,
   useSet,
@@ -560,12 +562,44 @@ function TemplatePreview({
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
+  const slideImages = presentationTemplateSlideImages(item);
+  const [hoverSlideIndex, setHoverSlideIndex] = useState(0);
+  const previewImage = slideImages[hoverSlideIndex] ?? item.previewImage;
+
+  const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (slideImages.length < 2) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) {
+      return;
+    }
+    const offsetX = Math.min(
+      rect.width - 1,
+      Math.max(0, event.clientX - rect.left),
+    );
+    const nextIndex = Math.min(
+      slideImages.length - 1,
+      Math.round((offsetX / rect.width) * (slideImages.length - 1)),
+    );
+    if (nextIndex !== hoverSlideIndex) {
+      setHoverSlideIndex(nextIndex);
+    }
+  };
+
   return (
-    <div className="relative aspect-[16/9] overflow-hidden bg-muted">
-      {item.previewImage ? (
+    <div
+      className="relative aspect-[16/9] overflow-hidden bg-muted"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => {
+        setHoverSlideIndex(0);
+      }}
+    >
+      {previewImage ? (
         <img
-          src={item.previewImage}
+          src={previewImage}
           alt=""
+          title={`${item.title} card preview slide ${hoverSlideIndex + 1}`}
           className="h-full w-full object-cover"
           loading="lazy"
         />
