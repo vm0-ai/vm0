@@ -171,10 +171,13 @@ describe("sidebar chat delete", () => {
   });
 
   it("should warn that deleting a scheduled chat deletes linked schedules", async () => {
+    // chatThreadId is a UUID in the schedule contract, so the thread id must be
+    // a valid UUID for the linked-schedule list to pass response validation.
+    const scheduledThreadId = "a0000000-0000-4000-a000-000000000099";
     let threads = [
       {
         ...makeThread(
-          "thread-scheduled",
+          scheduledThreadId,
           "Scheduled chat",
           "2026-03-10T00:00:00Z",
         ),
@@ -190,13 +193,13 @@ describe("sidebar chat delete", () => {
               id: "f0000001-0000-4000-a000-000000000010",
               name: "morning-briefing",
               description: "Morning briefing",
-              chatThreadId: "thread-scheduled",
+              chatThreadId: scheduledThreadId,
             }),
             createMockScheduleResponse({
               id: "f0000001-0000-4000-a000-000000000011",
               name: "weekly-report",
               description: "Weekly report",
-              chatThreadId: "thread-scheduled",
+              chatThreadId: scheduledThreadId,
             }),
           ],
         });
@@ -225,7 +228,7 @@ describe("sidebar chat delete", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-scheduled" });
+    detachedSetupPage({ context, path: `/chats/${scheduledThreadId}` });
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled chat")).toBeInTheDocument();
