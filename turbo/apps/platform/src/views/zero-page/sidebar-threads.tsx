@@ -618,10 +618,92 @@ function LoadMoreThreadsButton({
   );
 }
 
-function ChatThreads() {
+function DeleteChatThreadDialog() {
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const deleteChatThread = useSet(deleteChatThread$);
+  const pageSignal = useGet(pageSignal$);
+  const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
+  const pendingDeleteSchedules =
+    useLastResolved(pendingDeleteThreadSchedules$) ?? [];
+
+  const pendingDeleteThread = pendingDeleteThreadId
+    ? chatThreads.find((thread) => {
+        return thread.id === pendingDeleteThreadId;
+      })
+    : null;
+  const scheduleCount = pendingDeleteThread?.scheduleCount ?? 0;
+  const hasSchedules = scheduleCount > 0;
+
+  function confirmDelete() {
+    if (!pendingDeleteThreadId) {
+      return;
+    }
+    const threadId = pendingDeleteThreadId;
+    setPendingDeleteThreadId(null);
+    detach(deleteChatThread(threadId, pageSignal), Reason.DomCallback);
+  }
+
+  return (
+    <Dialog
+      open={pendingDeleteThreadId !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          setPendingDeleteThreadId(null);
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {hasSchedules ? "Delete chat and schedules?" : "Delete chat?"}
+          </DialogTitle>
+          <DialogDescription>
+            {hasSchedules
+              ? `This will permanently delete this chat and its ${scheduleCount} linked ${
+                  scheduleCount === 1 ? "schedule" : "schedules"
+                }. Any task currently running in this chat will be stopped immediately. This action cannot be undone.`
+              : "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone."}
+          </DialogDescription>
+        </DialogHeader>
+        {hasSchedules && pendingDeleteSchedules.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm font-medium">
+              These schedules will be deleted
+            </p>
+            <ul className="flex list-disc flex-col gap-1 pl-5">
+              {pendingDeleteSchedules.map((schedule) => {
+                return (
+                  <li
+                    key={schedule.id}
+                    className="break-words text-sm text-muted-foreground"
+                  >
+                    {schedule.title}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setPendingDeleteThreadId(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={confirmDelete}>
+            {hasSchedules ? "Delete chat and schedules" : "Delete"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ChatThreads() {
   const pageSignal = useGet(pageSignal$);
 
   const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
@@ -640,30 +722,12 @@ function ChatThreads() {
   const cursorForLoadMore = hasLoadedExtraPages
     ? extraLatestCursor
     : firstPageNextCursor;
-  const pendingDeleteThread = pendingDeleteThreadId
-    ? chatThreads.find((thread) => {
-        return thread.id === pendingDeleteThreadId;
-      })
-    : null;
-  const pendingDeleteScheduleCount = pendingDeleteThread?.scheduleCount ?? 0;
-  const pendingDeleteHasSchedules = pendingDeleteScheduleCount > 0;
-  const pendingDeleteSchedules =
-    useLastResolved(pendingDeleteThreadSchedules$) ?? [];
 
   function handleLoadMore() {
     if (!cursorForLoadMore || loadingMore) {
       return;
     }
     detach(loadMore(cursorForLoadMore, pageSignal), Reason.DomCallback);
-  }
-
-  function confirmDelete() {
-    if (!pendingDeleteThreadId) {
-      return;
-    }
-    const threadId = pendingDeleteThreadId;
-    setPendingDeleteThreadId(null);
-    detach(deleteChatThread(threadId, pageSignal), Reason.DomCallback);
   }
 
   if (chatThreads.length === 0) {
@@ -686,65 +750,7 @@ function ChatThreads() {
         />
       )}
       <ChatThreadRenameDialog />
-      <Dialog
-        open={pendingDeleteThreadId !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPendingDeleteThreadId(null);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {pendingDeleteHasSchedules
-                ? "Delete chat and schedules?"
-                : "Delete chat?"}
-            </DialogTitle>
-            <DialogDescription>
-              {pendingDeleteHasSchedules
-                ? `This will permanently delete this chat and its ${pendingDeleteScheduleCount} linked ${
-                    pendingDeleteScheduleCount === 1 ? "schedule" : "schedules"
-                  }. Any task currently running in this chat will be stopped immediately. This action cannot be undone.`
-                : "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone."}
-            </DialogDescription>
-          </DialogHeader>
-          {pendingDeleteHasSchedules && pendingDeleteSchedules.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-sm font-medium">
-                These schedules will be deleted
-              </p>
-              <ul className="flex list-disc flex-col gap-1 pl-5">
-                {pendingDeleteSchedules.map((schedule) => {
-                  return (
-                    <li
-                      key={schedule.id}
-                      className="break-words text-sm text-muted-foreground"
-                    >
-                      {schedule.title}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setPendingDeleteThreadId(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              {pendingDeleteHasSchedules
-                ? "Delete chat and schedules"
-                : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteChatThreadDialog />
     </>
   );
 }
