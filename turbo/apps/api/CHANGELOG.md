@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.108.0](https://github.com/vm0-ai/vm0/compare/api-v1.107.3...api-v1.108.0) (2026-06-05)
+
+
+### Features
+
+* preserve hosted artifact kind ([#16316](https://github.com/vm0-ai/vm0/issues/16316)) ([d4befd9](https://github.com/vm0-ai/vm0/commit/d4befd9ff13968e9c3e2f2788ef1c178c8f875bb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.0
+    * @vm0/core bumped to 8.313.1
+    * @vm0/db bumped to 1.33.0
+
 ## [1.107.3](https://github.com/vm0-ai/vm0/compare/api-v1.107.2...api-v1.107.3) (2026-06-05)
 
 

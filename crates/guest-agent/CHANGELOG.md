@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.16...guest-agent-v0.34.17) (2026-06-05)
+
+
+### Bug Fixes
+
+* strip guest-agent reqwest urls from logs ([#16314](https://github.com/vm0-ai/vm0/issues/16314)) ([9f063de](https://github.com/vm0-ai/vm0/commit/9f063dec7ab44c8fb9584b6122ee6797ece645bf))
+
 ## [0.34.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.15...guest-agent-v0.34.16) (2026-06-05)
 
 
