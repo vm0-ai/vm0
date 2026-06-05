@@ -44,11 +44,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Ahrefs SEO connector",
     enabled: false,
   },
-  [FeatureSwitchKey.AshbyConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the Ashby recruiting connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.BentomlConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the BentoML model serving connector",

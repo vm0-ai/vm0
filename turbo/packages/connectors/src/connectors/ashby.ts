@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const ashby = {
   ashby: {
@@ -9,7 +8,6 @@ export const ashby = {
       "Connect your Ashby account to read candidates, applications, jobs, openings, job postings, and recruiting projects via the Ashby API",
     authMethods: {
       "api-token": {
-        featureFlag: FeatureSwitchKey.AshbyConnector,
         label: "API Key",
         helpText:
           "1. In Ashby, open **Admin** → **Integrations** → **API Keys**\n2. Create or select an API key with the candidate and job access your workflow needs\n3. Copy the raw API key and paste it here.",

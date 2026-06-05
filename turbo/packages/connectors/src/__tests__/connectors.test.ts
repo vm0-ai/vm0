@@ -1837,13 +1837,10 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["api-token"]);
   });
 
-  it("exposes Ashby API-token auth only when its switch is enabled", () => {
-    expect(getAvailableConnectorAuthMethodIds("ashby", {})).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethodIds("ashby", {
-        [FeatureSwitchKey.AshbyConnector]: true,
-      }),
-    ).toStrictEqual(["api-token"]);
+  it("exposes Ashby API-token auth without a feature switch", () => {
+    expect(getAvailableConnectorAuthMethodIds("ashby", {})).toStrictEqual([
+      "api-token",
+    ]);
   });
 
   it("exposes Base44 OAuth without a feature switch", () => {
