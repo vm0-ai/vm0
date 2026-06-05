@@ -4,8 +4,10 @@ import { cronExecuteSchedulesContract } from "@vm0/api-contracts/contracts/cron"
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { desc, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -59,6 +61,15 @@ async function seedFixture(
       context.signal,
     ),
   );
+}
+
+async function disableChatMode(fixture: SchedulesFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    switches: { [FeatureSwitchKey.ScheduledChat]: false },
+  });
 }
 
 async function findSchedule(scheduleId: string) {
@@ -323,6 +334,7 @@ describe("GET /api/cron/execute-schedules", () => {
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
+    await disableChatMode(fixture);
     mockNow(DUE_TIME);
 
     const firstResponse = await accept(
