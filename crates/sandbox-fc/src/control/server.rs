@@ -57,14 +57,14 @@ impl ProcessTerminationHandle {
         let (ack_tx, ack_rx) = oneshot::channel();
         match self
             .kill_tx
-            .try_send(ProcessTerminationRequest::with_ack(ack_tx))
+            .send(ProcessTerminationRequest::with_ack(ack_tx))
+            .await
         {
             Ok(()) => match ack_rx.await {
                 Ok(()) => TerminateStatus::Accepted,
                 Err(_) => TerminateStatus::AlreadyStopped,
             },
-            Err(mpsc::error::TrySendError::Full(_)) => TerminateStatus::Accepted,
-            Err(mpsc::error::TrySendError::Closed(_)) => TerminateStatus::AlreadyStopped,
+            Err(_) => TerminateStatus::AlreadyStopped,
         }
     }
 }
@@ -686,18 +686,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn termination_handle_treats_full_channel_as_accepted() {
-        let (kill_tx, kill_rx) = mpsc::channel(1);
+    async fn termination_handle_waits_behind_full_channel() {
+        let (kill_tx, mut kill_rx) = mpsc::channel(1);
         kill_tx
             .try_send(ProcessTerminationRequest::fire_and_forget())
             .unwrap();
         let termination = ProcessTerminationHandle::new(kill_tx);
+        let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
 
-        assert_eq!(
-            termination.request_terminate().await,
-            TerminateStatus::Accepted
-        );
-        assert_eq!(kill_rx.len(), 1);
+        let queued_request = recv_termination_request(&mut kill_rx).await;
+
+        assert!(!terminate_task.is_finished());
+        queued_request.acknowledge();
+        let request = recv_termination_request(&mut kill_rx).await;
+        assert!(!terminate_task.is_finished());
+        request.acknowledge();
+        assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
     }
 
     #[tokio::test]

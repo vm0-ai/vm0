@@ -1400,6 +1400,12 @@ fn monitor_process_with_log_readers(
                 if let Some(request) = request {
                     kill_process_group(&child);
                     request.acknowledge();
+                    kill_rx.close();
+                    // Closed receivers can still observe sends that already
+                    // reserved capacity, so drain through `None` before wait.
+                    while let Some(request) = kill_rx.recv().await {
+                        request.acknowledge();
+                    }
                 }
                 child.wait().await
             }
