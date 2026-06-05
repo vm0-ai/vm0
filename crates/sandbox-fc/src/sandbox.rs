@@ -1740,7 +1740,8 @@ impl Sandbox for FirecrackerSandbox {
             });
         }
 
-        // Start control socket server for `runner exec`.
+        // Start control socket server for `runner exec` and host-side
+        // termination requests.
         self.runtime
             .set_control(control_server.spawn(runtime_cancel));
 

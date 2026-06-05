@@ -47,8 +47,8 @@ pub enum SandboxControlError {
 
 /// Remote control interface for running sandboxes.
 ///
-/// Provides exec and path-resolution capabilities without exposing
-/// backend-specific types (sockets, paths, wire protocol).
+/// Provides exec, host-side termination, and path-resolution capabilities
+/// without exposing backend-specific types (sockets, paths, wire protocol).
 #[async_trait]
 pub trait SandboxControl: Send + Sync {
     /// Execute a command inside a running sandbox identified by sandbox ID
