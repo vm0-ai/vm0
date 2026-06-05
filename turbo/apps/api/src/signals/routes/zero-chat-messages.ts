@@ -46,6 +46,7 @@ import {
 } from "../../lib/error";
 import { env } from "../../lib/env";
 import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import {
@@ -420,7 +421,10 @@ function generateCallbackSecret(): string {
 }
 
 function chatCallbackUrl(): string {
-  return new URL("/api/internal/callbacks/chat", env("VM0_API_URL")).toString();
+  return new URL(
+    "/api/internal/callbacks/chat",
+    internalApiBaseUrl(),
+  ).toString();
 }
 
 function buildWebChatPrompt(): string {

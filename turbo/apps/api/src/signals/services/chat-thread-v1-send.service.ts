@@ -8,8 +8,8 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq } from "drizzle-orm";
 
-import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -48,7 +48,10 @@ function generateCallbackSecret(): string {
 }
 
 function chatCallbackUrl(): string {
-  return new URL("/api/internal/callbacks/chat", env("VM0_API_URL")).toString();
+  return new URL(
+    "/api/internal/callbacks/chat",
+    internalApiBaseUrl(),
+  ).toString();
 }
 
 export const sendChatThreadMessageV1$ = command(

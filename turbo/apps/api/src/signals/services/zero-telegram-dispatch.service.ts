@@ -14,6 +14,7 @@ import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { env } from "../../lib/env";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import {
   buildTelegramErrorResponse,
@@ -909,7 +910,7 @@ const runAgentForTelegram$ = command(
         userInfoExtras: args.userInfoExtras,
         callbacks: [
           {
-            url: `${env("VM0_API_URL")}/api/internal/callbacks/telegram`,
+            url: `${internalApiBaseUrl()}/api/internal/callbacks/telegram`,
             secret: randomBytes(32).toString("hex"),
             payload: args.callbackPayload,
           },

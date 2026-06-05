@@ -27,7 +27,8 @@ import { Cron } from "croner";
 import { and, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
 
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
@@ -1211,10 +1212,6 @@ function buildSchedulePrompt(triggerType: string): string {
   ].join("\n");
 }
 
-function apiUrl(): string {
-  return env("VM0_API_URL");
-}
-
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
@@ -1227,7 +1224,7 @@ function buildScheduleCallbacks(
   if (schedule.triggerType === "loop") {
     const payload: ScheduleLoopCallbackPayload = { scheduleId: schedule.id };
     callbacks.push({
-      url: `${apiUrl()}/api/internal/callbacks/schedule/loop`,
+      url: `${internalApiBaseUrl()}/api/internal/callbacks/schedule/loop`,
       secret: generateCallbackSecret(),
       payload,
     });
@@ -1243,7 +1240,7 @@ function buildScheduleCallbacks(
       timezone: schedule.timezone,
     };
     callbacks.push({
-      url: `${apiUrl()}/api/internal/callbacks/schedule/cron`,
+      url: `${internalApiBaseUrl()}/api/internal/callbacks/schedule/cron`,
       secret: generateCallbackSecret(),
       payload,
     });
@@ -1255,7 +1252,7 @@ function buildScheduleCallbacks(
   // callback writes the run summary (D9), so callback dispatch order is safe.
   if (isChatMode(schedule)) {
     callbacks.push({
-      url: `${apiUrl()}/api/internal/callbacks/chat`,
+      url: `${internalApiBaseUrl()}/api/internal/callbacks/chat`,
       secret: generateCallbackSecret(),
       payload: { threadId: schedule.chatThreadId, agentId: schedule.agentId },
     });
