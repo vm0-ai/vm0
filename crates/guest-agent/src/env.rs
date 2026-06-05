@@ -6,8 +6,8 @@ use std::sync::LazyLock;
 
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 
+use crate::constants;
 use crate::error::AgentError;
-use crate::{constants, paths};
 use guest_common::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -286,7 +286,18 @@ fn is_user_env_private_dir(path: &Path) -> bool {
 }
 
 fn validate_user_env_file_path(path: &Path) -> Result<(), String> {
-    validate_user_env_file_path_for_runtime(path, paths::runtime_dir())
+    let runtime_dir = guest_runtime_dir_for_user_env()?;
+    validate_user_env_file_path_for_runtime(path, &runtime_dir)
+}
+
+fn guest_runtime_dir_for_user_env() -> Result<PathBuf, String> {
+    let run_id = env_or_empty("VM0_RUN_ID");
+    guest_runtime_dir_for_user_env_run_id(&run_id)
+}
+
+fn guest_runtime_dir_for_user_env_run_id(run_id: &str) -> Result<PathBuf, String> {
+    guest_runtime_paths::run_dir_from_env(run_id)
+        .map_err(|e| format!("resolve guest runtime dir for {USER_ENV_FILE_ENV_KEY}: {e}"))
 }
 
 fn user_env_file_path_for_runtime(runtime_dir: &Path) -> PathBuf {
@@ -627,6 +638,13 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn guest_runtime_dir_for_user_env_returns_error_when_run_id_missing() {
+        let err = guest_runtime_dir_for_user_env_run_id("").unwrap_err();
+
+        assert!(err.contains("VM0_RUN_ID is required"));
     }
 
     #[test]
