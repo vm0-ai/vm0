@@ -85,6 +85,7 @@ const CONNECTOR_ICON_COLORFUL = {
   "brave-search": true,
   brevo: true,
   browserbase: true,
+  browserstack: true,
   calendly: true,
   canva: true,
   chatglm: true,
