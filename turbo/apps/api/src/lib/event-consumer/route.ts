@@ -10,7 +10,16 @@ interface EventConsumerErrorResponse {
   readonly body: { readonly error: string };
 }
 
-const eventConsumerPayloadState$ = state<EventConsumerPayload | null>(null);
+/**
+ * Backing store for {@link eventConsumerPayload$}. Written by
+ * `eventConsumerRoute` after HMAC verification of an inbound HTTP request, and
+ * also by in-process callers (e.g. the agent events webhook) that invoke an
+ * event-consumer command directly without the network hop — they set this with
+ * an already-trusted payload before calling the consumer command.
+ */
+export const eventConsumerPayloadState$ = state<EventConsumerPayload | null>(
+  null,
+);
 
 /**
  * Parsed event-consumer payload, available inside an `eventConsumerRoute`
