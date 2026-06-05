@@ -4,11 +4,14 @@ import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 
 import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
+import { clearAllDetached } from "../../utils";
 import {
   deleteZeroChatThread$,
   seedZeroChatThread$,
@@ -18,6 +21,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { seedRun$ } from "./helpers/zero-usage-insight";
 
 const context = testContext();
 const store = createStore();
@@ -44,6 +48,25 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
       .from(zeroAgentSchedules)
       .where(eq(zeroAgentSchedules.id, scheduleId));
     return Boolean(row);
+  }
+
+  async function getRunStatus(runId: string): Promise<string | undefined> {
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId));
+    return row?.status;
+  }
+
+  // dispatchCancelSideEffects$ reads org credit metadata during the detached
+  // queue-drain / credit-reconcile pass; seed it so that work runs cleanly.
+  async function seedOrgMetadata(orgId: string): Promise<void> {
+    const writeDb = store.set(writeDb$);
+    await writeDb
+      .insert(orgMetadata)
+      .values({ orgId, tier: "free", credits: 10_000 })
+      .onConflictDoNothing();
   }
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -225,5 +248,133 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     // Seeded thread untouched (path validation short-circuits before DB).
     await expect(getThreadRowExists(fixture.threadId)).resolves.toBeTruthy();
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+  });
+
+  it("cancels in-flight runs linked to the deleted thread", async () => {
+    const fixture = await track(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    await seedOrgMetadata(fixture.orgId);
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: fixture.composeId,
+        status: "running",
+        chatThreadId: fixture.threadId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadByIdContract);
+    await accept(
+      client.delete({
+        params: { id: fixture.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [204],
+    );
+
+    // The run is cancelled synchronously as part of the delete, and the thread
+    // is gone.
+    await expect(getRunStatus(runId)).resolves.toBe("cancelled");
+    await expect(getThreadRowExists(fixture.threadId)).resolves.toBeFalsy();
+
+    // Post-cancel side effects land on the detached path.
+    await clearAllDetached();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `runChanged:${runId}`,
+      { status: "cancelled" },
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "queue:changed",
+      null,
+    );
+  });
+
+  it("leaves terminal runs linked to the deleted thread untouched", async () => {
+    const fixture = await track(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    await seedOrgMetadata(fixture.orgId);
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: fixture.composeId,
+        status: "completed",
+        chatThreadId: fixture.threadId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadByIdContract);
+    await accept(
+      client.delete({
+        params: { id: fixture.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [204],
+    );
+
+    // A completed run is not cancellable; its status is preserved.
+    await expect(getRunStatus(runId)).resolves.toBe("completed");
+  });
+
+  it("only cancels runs linked to the thread being deleted", async () => {
+    const fixture = await track(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    const other = await track(
+      store.set(
+        seedZeroChatThread$,
+        { userId: fixture.userId, orgId: fixture.orgId },
+        context.signal,
+      ),
+    );
+    await seedOrgMetadata(fixture.orgId);
+    const { runId: deletedThreadRun } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: fixture.composeId,
+        status: "running",
+        chatThreadId: fixture.threadId,
+      },
+      context.signal,
+    );
+    const { runId: otherThreadRun } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: other.composeId,
+        status: "running",
+        chatThreadId: other.threadId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadByIdContract);
+    await accept(
+      client.delete({
+        params: { id: fixture.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [204],
+    );
+
+    // Only the deleted thread's run is cancelled; the sibling thread's run
+    // keeps running.
+    await expect(getRunStatus(deletedThreadRun)).resolves.toBe("cancelled");
+    await expect(getRunStatus(otherThreadRun)).resolves.toBe("running");
+
+    await clearAllDetached();
   });
 });
