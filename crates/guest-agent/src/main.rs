@@ -713,6 +713,27 @@ mod tests {
         HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO).unwrap()
     }
 
+    fn test_runtime_dir() -> std::path::PathBuf {
+        std::env::temp_dir()
+            .join(format!("vm0-guest-agent-main-tests-{}", std::process::id()))
+            .join("main-recovery-checkpoint")
+    }
+
+    unsafe fn set_test_env(server: &MockServer, prompt: Option<&str>) {
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var(
+                guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                test_runtime_dir(),
+            );
+            if let Some(prompt) = prompt {
+                std::env::set_var("VM0_PROMPT", prompt);
+            }
+        }
+    }
+
     struct SystemLogOverrideGuard;
 
     impl SystemLogOverrideGuard {
@@ -1251,9 +1272,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            set_test_env(server, None);
         }
 
         let tmp = tempfile::tempdir().unwrap();
@@ -1361,10 +1380,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "/event-upload-failure");
+            set_test_env(server, Some("/event-upload-failure"));
         }
 
         let cleanup_paths = [
@@ -1434,10 +1450,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "/checkpoint-failure");
+            set_test_env(server, Some("/checkpoint-failure"));
         }
 
         let cleanup_paths = [
@@ -1504,10 +1517,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "plain prompt");
+            set_test_env(server, Some("plain prompt"));
         }
 
         let cleanup_paths = [
@@ -1580,10 +1590,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "/help");
+            set_test_env(server, Some("/help"));
         }
 
         let cleanup_paths = [
@@ -1664,10 +1671,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "plain prompt");
+            set_test_env(server, Some("plain prompt"));
         }
 
         let cleanup_paths = [
