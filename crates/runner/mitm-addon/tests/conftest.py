@@ -25,6 +25,7 @@ from mitmproxy import http, tcp
 from mitmproxy.test import tflow, tutils
 
 import auth
+import auth_base_forwarder
 import mitm_addon
 import registry
 import usage
@@ -44,6 +45,7 @@ def _reset_module_state() -> Iterator[None]:
     The usage buffer owns a background timer in production, so tests reset
     it before and after each case to avoid cross-test callbacks.
     """
+    auth_base_forwarder.reset_forward_request_state_for_tests()
     registry.reset_cache_for_tests()
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
@@ -51,6 +53,7 @@ def _reset_module_state() -> Iterator[None]:
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.reset_usage_buffer_for_tests()
     yield
+    auth_base_forwarder.reset_forward_request_state_for_tests()
     usage.reset_usage_buffer_for_tests()
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
