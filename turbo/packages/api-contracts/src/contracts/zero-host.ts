@@ -9,6 +9,12 @@ const RANDOM_SLUG_SUFFIX_LENGTH = 8;
 const PUBLIC_SLUG_SEPARATOR_LENGTH = 2;
 const MAX_HOSTED_SITE_PUBLIC_SLUG_LENGTH = 96;
 
+export const hostedArtifactKindSchema = z.enum([
+  "hosted-site",
+  "presentation-html",
+]);
+export type HostedArtifactKind = z.infer<typeof hostedArtifactKindSchema>;
+
 export const hostedSiteSlugSchema = z
   .string()
   .trim()
@@ -41,6 +47,7 @@ export const hostedSitePrepareRequestSchema = z
   .object({
     site: hostedSiteSlugSchema,
     slugSuffix: hostedSiteSlugSuffixSchema.optional(),
+    artifactKind: hostedArtifactKindSchema.default("hosted-site"),
     spaFallback: z.boolean().default(false),
     files: z.array(hostedSiteFileSchema).min(1).max(5000),
   })
