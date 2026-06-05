@@ -1484,36 +1484,36 @@ impl PooledNbdCowDevice {
     ) -> std::result::Result<(), PooledDestroyError> {
         let attempts = policy.attempts();
 
-        match Self::run_destroy_attempt(device, lease, pool, mode).await {
+        let mut last_device_err = match Self::run_destroy_attempt(device, lease, pool, mode).await {
             Ok(()) => {
                 Self::release_clean(pool, lease).await;
-                Ok(())
+                return Ok(());
             }
-            Err(mut last_err) => {
-                for _ in 1..attempts {
-                    tokio::time::sleep(policy.delay).await;
-                    match Self::run_destroy_attempt(device, lease, pool, mode).await {
-                        Ok(()) => {
-                            Self::release_clean(pool, lease).await;
-                            return Ok(());
-                        }
-                        Err(e) => last_err = e,
-                    }
-                }
+            Err(DestroyAttemptError::Storage(source)) => {
+                Self::release_clean(pool, lease).await;
+                return Err(PooledDestroyError::storage_cleanup(source));
+            }
+            Err(DestroyAttemptError::Device(source)) => source,
+        };
 
-                match last_err {
-                    DestroyAttemptError::Device(source) => {
-                        device.abandon();
-                        Self::retire_uncertain(pool, lease).await;
-                        Err(PooledDestroyError::device_cleanup(source))
-                    }
-                    DestroyAttemptError::Storage(source) => {
-                        Self::release_clean(pool, lease).await;
-                        Err(PooledDestroyError::storage_cleanup(source))
-                    }
+        for _ in 1..attempts {
+            tokio::time::sleep(policy.delay).await;
+            match Self::run_destroy_attempt(device, lease, pool, mode).await {
+                Ok(()) => {
+                    Self::release_clean(pool, lease).await;
+                    return Ok(());
                 }
+                Err(DestroyAttemptError::Storage(source)) => {
+                    Self::release_clean(pool, lease).await;
+                    return Err(PooledDestroyError::storage_cleanup(source));
+                }
+                Err(DestroyAttemptError::Device(source)) => last_device_err = source,
             }
         }
+
+        device.abandon();
+        Self::retire_uncertain(pool, lease).await;
+        Err(PooledDestroyError::device_cleanup(last_device_err))
     }
 
     async fn run_destroy_attempt(
@@ -1999,6 +1999,27 @@ mod tests {
             err.backing_files_safe_to_delete(),
             "storage cleanup errors must not be treated as NBD ownership failures"
         );
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn detailed_destroy_storage_failure_does_not_sleep_before_returning() {
+        let harness = PooledDestroyHarness::new();
+        harness.replace_cow_file_with_directory();
+        let PooledDestroyHarness { pool, device, .. } = harness;
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            device.destroy_with_retries_detailed(DestroyRetryPolicy {
+                attempts: 2,
+                delay: std::time::Duration::from_secs(60),
+            }),
+        )
+        .await
+        .expect("storage cleanup failures should not wait for device retry delay");
+
+        let err = result.expect_err("destroy should report cow removal failure");
+        assert!(err.backing_files_safe_to_delete());
         pool.cleanup().await;
     }
 
