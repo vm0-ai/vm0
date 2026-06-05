@@ -4,7 +4,22 @@ use crate::env;
 
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const DEFAULT_SHELL: &str = "/bin/bash";
-const OPTIONAL_BASE_ENV_KEYS: &[&str] = &["USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TERM"];
+const OPTIONAL_BASE_ENV_KEYS: &[&str] = &[
+    "USER",
+    "LOGNAME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TERM",
+    // Rootfs-wide runtime settings from /etc/environment. Keep these out of
+    // guest-agent bootstrap control while preserving the CLI contract that
+    // tools trust the injected proxy CA by default.
+    "NPM_CONFIG_UPDATE_NOTIFIER",
+    "NODE_EXTRA_CA_CERTS",
+    "SSL_CERT_FILE",
+    "REQUESTS_CA_BUNDLE",
+    "CARGO_HTTP_CAINFO",
+];
 
 pub(super) fn apply_to_tokio_command(cmd: &mut tokio::process::Command) {
     cmd.env_clear();

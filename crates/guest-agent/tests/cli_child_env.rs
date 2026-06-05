@@ -28,6 +28,11 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             process_control_ipc::BOOTSTRAP_ENV,
             "runner-control-endpoint",
         );
+        std::env::set_var("NODE_EXTRA_CA_CERTS", "/rootfs/vm0-proxy-ca.crt");
+        std::env::set_var("SSL_CERT_FILE", "/etc/ssl/certs/ca-certificates.crt");
+        std::env::set_var("REQUESTS_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt");
+        std::env::set_var("CARGO_HTTP_CAINFO", "/etc/ssl/certs/ca-certificates.crt");
+        std::env::set_var("NPM_CONFIG_UPDATE_NOTIFIER", "false");
     }
 
     let run_id = std::env::var("VM0_RUN_ID")?;
@@ -42,6 +47,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "BASH_ENV": "/tmp/user-bash-env",
             "OPENAI_API_KEY": "sk-user",
             "HOME": user_home_str,
+            "NODE_EXTRA_CA_CERTS": "/tmp/user-ca.pem",
         }))?,
     )?;
     unsafe {
@@ -78,6 +84,28 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert_eq!(
         cli_env.get("HOME").map(String::as_str),
         Some(user_home_str.as_str())
+    );
+    assert_eq!(
+        cli_env.get("NODE_EXTRA_CA_CERTS").map(String::as_str),
+        Some("/tmp/user-ca.pem")
+    );
+    assert_eq!(
+        cli_env.get("SSL_CERT_FILE").map(String::as_str),
+        Some("/etc/ssl/certs/ca-certificates.crt")
+    );
+    assert_eq!(
+        cli_env.get("REQUESTS_CA_BUNDLE").map(String::as_str),
+        Some("/etc/ssl/certs/ca-certificates.crt")
+    );
+    assert_eq!(
+        cli_env.get("CARGO_HTTP_CAINFO").map(String::as_str),
+        Some("/etc/ssl/certs/ca-certificates.crt")
+    );
+    assert_eq!(
+        cli_env
+            .get("NPM_CONFIG_UPDATE_NOTIFIER")
+            .map(String::as_str),
+        Some("false")
     );
     assert!(cli_env.contains_key("PATH"));
 
