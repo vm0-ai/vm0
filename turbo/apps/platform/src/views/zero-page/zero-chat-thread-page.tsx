@@ -957,7 +957,7 @@ function GithubPrTrackingButton({
 
 // Loads schedules and only renders once this thread has at least one linked
 // schedule.
-function ScheduleMenuButton({ threadId }: { threadId: string }) {
+export function ScheduleMenuButton({ threadId }: { threadId: string }) {
   const navigate = useSet(detachedNavigateTo$);
   const reloadSchedules = useSet(reloadHeaderScheduleMenu$);
   const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
