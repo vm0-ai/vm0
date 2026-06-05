@@ -33,6 +33,7 @@ function makeThread(
   updatedAt: string;
   isRead: boolean;
   running: boolean;
+  scheduleCount?: number;
 } {
   return {
     id,
@@ -165,6 +166,79 @@ describe("sidebar chat delete", () => {
     await waitFor(() => {
       expect(getLastDeletedId()).toBe("thread-1");
     });
+  });
+
+  it("should warn that deleting a scheduled chat deletes linked schedules", async () => {
+    let threads = [
+      {
+        ...makeThread(
+          "thread-scheduled",
+          "Scheduled chat",
+          "2026-03-10T00:00:00Z",
+        ),
+        scheduleCount: 2,
+      },
+    ];
+
+    server.use(
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, splitChatThreadListResponse(threads));
+      }),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
+          title: "Scheduled chat",
+          agentId: AGENT_ID,
+          latestSessionId: null,
+          activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+      mockApi(chatThreadByIdContract.delete, ({ params, respond }) => {
+        threads = threads.filter((t) => {
+          return t.id !== params.id;
+        });
+        return respond(204);
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-scheduled" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Scheduled chat")).toBeInTheDocument();
+    });
+
+    const menuTrigger = await waitFor(() => {
+      return screen.getByLabelText("Open chat menu");
+    });
+    click(menuTrigger);
+
+    const deleteItem = await waitFor(() => {
+      const item = queryAllByRoleFast("menuitem").find((el) => {
+        return /Delete chat/i.test(el.textContent ?? "");
+      });
+      if (!item) {
+        throw new Error("Delete chat menu item not visible yet");
+      }
+      return item;
+    });
+    click(deleteItem);
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+
+    expect(
+      within(dialog).getByText("Delete chat and schedules?"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "This will permanently delete this chat and 2 linked schedules. This action cannot be undone.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("should send the correct thread ID when deleting a middle thread", async () => {
