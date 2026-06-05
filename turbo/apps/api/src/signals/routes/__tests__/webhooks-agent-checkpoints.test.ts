@@ -884,7 +884,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .update(agentRuns)
       .set({
         additionalVolumes: [
-          { name: "my-vol", version: "v1.0", mountPath: "/mnt" },
+          { name: "my-vol", version: "v1.0", mountPath: "/mnt", system: true },
         ],
       })
       .where(eq(agentRuns.id, fixture.runId));
@@ -911,7 +911,12 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     expect(checkpoint?.volumeVersionsSnapshot).toStrictEqual({
       versions: {},
       additionalVolumes: [
-        { name: "my-vol", versionId: "v1.0", mountPath: "/mnt" },
+        {
+          name: "my-vol",
+          versionId: "v1.0",
+          mountPath: "/mnt",
+          system: true,
+        },
       ],
     });
   });

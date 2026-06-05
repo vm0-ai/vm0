@@ -16,7 +16,12 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
-import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
+import {
+  getCustomSkillStorageName,
+  getSkillStorageName,
+  SYSTEM_ORG_ID,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
 import { connectors } from "@vm0/db/schema/connector";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -288,27 +293,29 @@ async function seedStorage(args: {
   readonly fixture: UsageInsightFixture;
   readonly type: StorageType;
   readonly name: string;
+  readonly orgId?: string;
   readonly versionId?: string;
 }): Promise<string> {
   const db = store.set(writeDb$);
   const storageId = randomUUID();
   const versionId = args.versionId ?? randomUUID().replaceAll("-", "");
+  const orgId = args.orgId ?? args.fixture.orgId;
   const userId =
     args.type === "volume" ? VOLUME_ORG_USER_ID : args.fixture.userId;
   await db.insert(storages).values({
     id: storageId,
-    orgId: args.fixture.orgId,
+    orgId,
     userId,
     name: args.name,
     type: args.type,
-    s3Prefix: `${args.fixture.orgId}/${args.type}/${args.name}`,
+    s3Prefix: `${orgId}/${args.type}/${args.name}`,
     size: 100,
     fileCount: 1,
   });
   await db.insert(storageVersions).values({
     id: versionId,
     storageId,
-    s3Key: `${args.fixture.orgId}/${args.type}/${args.name}/${versionId}`,
+    s3Key: `${orgId}/${args.type}/${args.name}/${versionId}`,
     size: 100,
     fileCount: 1,
     createdBy: args.fixture.userId,
@@ -2717,6 +2724,138 @@ describe("POST /api/agent/runs", () => {
       .from(agentRuns)
       .where(eq(agentRuns.id, response.body.runId));
     expect(run?.resumedFromCheckpointId).toBe(checkpoint.id);
+  });
+
+  it("restores checkpoint framework skill volumes to provisioning destinations", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    const skillName = "research-kit";
+    const skillStorageName = getCustomSkillStorageName(skillName);
+    const skillVersion = await seedStorage({
+      fixture: fx,
+      type: "volume",
+      name: skillStorageName,
+    });
+    const systemSkillName = `official-${randomUUID().slice(0, 8)}`;
+    const systemSkillStorageName = getSkillStorageName(
+      `vm0-ai/vm0-skills/tree/main/skills/${systemSkillName}`,
+    );
+    const systemSkillVersion = await seedStorage({
+      fixture: fx,
+      type: "volume",
+      name: systemSkillStorageName,
+      orgId: SYSTEM_ORG_ID,
+    });
+    const first = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "first" },
+      }),
+      [201],
+    );
+    const conversationId = await store.set(
+      seedConversationForSession$,
+      { runId: first.body.runId, sessionId: first.body.sessionId },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, first.body.runId));
+    const [checkpoint] = await db
+      .insert(checkpoints)
+      .values({
+        runId: first.body.runId,
+        conversationId,
+        agentComposeSnapshot: { agentComposeVersionId: compose.versionId },
+        volumeVersionsSnapshot: {
+          versions: {},
+          additionalVolumes: [
+            {
+              name: skillStorageName,
+              versionId: skillVersion,
+              mountPath: `/home/user/.claude/skills/${skillName}`,
+            },
+            {
+              name: systemSkillStorageName,
+              versionId: systemSkillVersion,
+              mountPath: `/home/user/.claude/skills/${systemSkillName}`,
+              system: true,
+            },
+          ],
+        },
+      })
+      .returning({ id: checkpoints.id });
+    if (!checkpoint) {
+      throw new Error("checkpoint insert returned no row");
+    }
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { checkpointId: checkpoint.id, prompt: "resume" },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageProvisioningManifest: {
+        readonly entries: readonly {
+          readonly intent: string;
+          readonly source: {
+            readonly kind: string;
+            readonly name: string;
+            readonly vasVersionId: string;
+          };
+          readonly destination: {
+            readonly type: string;
+            readonly framework?: string;
+            readonly skillName?: string;
+          };
+        }[];
+      };
+    };
+
+    expect(
+      executionContext.storageProvisioningManifest.entries.find((entry) => {
+        return entry.source.name === skillStorageName;
+      }),
+    ).toMatchObject({
+      intent: "skill",
+      source: {
+        kind: "storage",
+        name: skillStorageName,
+        vasVersionId: skillVersion,
+      },
+      destination: {
+        type: "framework-skill",
+        framework: "claude-code",
+        skillName,
+      },
+    });
+    expect(
+      executionContext.storageProvisioningManifest.entries.find((entry) => {
+        return entry.source.name === systemSkillStorageName;
+      }),
+    ).toMatchObject({
+      intent: "skill",
+      source: {
+        kind: "storage",
+        name: systemSkillStorageName,
+        vasVersionId: systemSkillVersion,
+      },
+      destination: {
+        type: "framework-skill",
+        framework: "claude-code",
+        skillName: systemSkillName,
+      },
+    });
   });
 
   it("does not add missing root policy when resuming legacy checkpoint artifacts", async () => {

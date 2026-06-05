@@ -130,6 +130,7 @@ import { prepareAgentRunStorageManifests } from "./agent-run-storage.service";
 import {
   frameworkMemoryDestination,
   frameworkSkillDestination,
+  legacyFrameworkSkillMountPathToProvisioningDestination,
 } from "./storage-provisioning-destinations.service";
 import {
   encryptQueuedRunnerJobPayload,
@@ -2300,6 +2301,7 @@ function parseAdditionalVolumeSnapshot(
   }
   const candidate = value as {
     readonly name?: unknown;
+    readonly system?: unknown;
     readonly versionId?: unknown;
     readonly mountPath?: unknown;
   };
@@ -2310,10 +2312,17 @@ function parseAdditionalVolumeSnapshot(
   ) {
     return null;
   }
+  const provisioningDestination =
+    legacyFrameworkSkillMountPathToProvisioningDestination(
+      candidate.mountPath,
+      `Checkpoint volume "${candidate.name}" mountPath`,
+    );
   return {
     name: candidate.name,
     version: candidate.versionId,
     mountPath: candidate.mountPath,
+    ...(candidate.system === true ? { system: true } : {}),
+    ...(provisioningDestination ? { provisioningDestination } : {}),
   };
 }
 

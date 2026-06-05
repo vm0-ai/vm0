@@ -42,6 +42,7 @@ interface AdditionalVolumeSnapshot {
   readonly name: string;
   readonly versionId: string;
   readonly mountPath: string;
+  readonly system?: boolean;
 }
 
 interface EnrichedVolumeVersionsSnapshot {
@@ -110,6 +111,7 @@ function enrichVolumeSnapshot(args: {
         readonly name: string;
         readonly version?: string;
         readonly mountPath: string;
+        readonly system?: boolean;
       }[]
     | null;
 }): EnrichedVolumeVersionsSnapshot | null {
@@ -127,6 +129,7 @@ function enrichVolumeSnapshot(args: {
             name: volume.name,
             versionId,
             mountPath: volume.mountPath,
+            ...(volume.system === true ? { system: true } : {}),
           };
         })
       : undefined;
