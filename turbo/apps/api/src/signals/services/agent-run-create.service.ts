@@ -133,6 +133,10 @@ import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { dispatchRunCallbacks } from "./agent-run-callback.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
+import {
+  connectorRuntimeCredentialStatus,
+  type ConnectorCredentialStatus,
+} from "./connector-credential-status.service";
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 
@@ -1703,28 +1707,22 @@ function allowedStoredConnectorRows(
     return (
       (!allowedConnectorTypes ||
         allowedConnectorTypes.includes(row.connectorType)) &&
-      storedConnectorRuntimeRowIsAvailable(row, now)
+      storedConnectorRuntimeCredentialStatus(row, now) === "available"
     );
   });
 }
 
-function storedConnectorRuntimeRowIsAvailable(
+function storedConnectorRuntimeCredentialStatus(
   row: StoredConnectorRuntimeRow,
   now: Date,
-): boolean {
-  const accessMetadata = getConnectorAuthMethodAccessMetadata(
-    row.connectorType,
-    row.authMethod,
-  );
-  if (!accessMetadata || accessMetadata.kind === "refresh-token") {
-    return true;
-  }
-  if (row.needsReconnect) {
-    return false;
-  }
-  return (
-    row.tokenExpiresAt === null || row.tokenExpiresAt.getTime() > now.getTime()
-  );
+): ConnectorCredentialStatus {
+  return connectorRuntimeCredentialStatus({
+    type: row.connectorType,
+    authMethod: row.authMethod,
+    storedNeedsReconnect: row.needsReconnect,
+    tokenExpiresAt: row.tokenExpiresAt,
+    now,
+  });
 }
 
 function connectorEnvBindingSets(

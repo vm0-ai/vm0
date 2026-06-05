@@ -34,7 +34,7 @@ import {
   manualGrantFormValuesFor$,
   selectedConnectorType$,
   isStandaloneMode,
-  connectorNeedsReconnectForDisplay,
+  connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
   type ConnectorOAuthDeviceAuthState,
   type ConnectorTypeWithStatus,
@@ -52,10 +52,11 @@ import { ConnectorHelpText } from "./connector-help-text.tsx";
 // ---------------------------------------------------------------------------
 
 function connectedStatusText(item: ConnectorTypeWithStatus): string {
-  if (connectorNeedsReconnectForDisplay(item)) {
+  const connectionStatus = connectorCurrentConnectionStatus(item);
+  if (connectionStatus === "reconnect-required") {
     return "Connection expired";
   }
-  if (item.scopeMismatch) {
+  if (connectionStatus === "scope-mismatch") {
     return "Permissions update available";
   }
   const expiryText = connectorExpiryCountdownText(item);

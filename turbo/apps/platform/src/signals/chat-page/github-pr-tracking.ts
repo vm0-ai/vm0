@@ -8,7 +8,10 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { allConnectorTypes$ } from "../zero-page/settings/connectors.ts";
+import {
+  allConnectorTypes$,
+  connectorCurrentConnectionStatus,
+} from "../zero-page/settings/connectors.ts";
 import { agentConnectorAuthorizationsReload$ } from "../zero-page/agent-connector-authorizations.ts";
 import { githubIntegrationData$ } from "../zero-page/zero-github.ts";
 import { detach, Reason, resetSignal } from "../utils.ts";
@@ -96,7 +99,11 @@ function createAgentGithubPrTrackingAvailableFactory(): (
       const githubConnector = allConnectors.find((connector) => {
         return connector.type === "github";
       });
-      if (!githubConnector?.connected || githubConnector.needsReconnect) {
+      if (
+        !githubConnector?.connected ||
+        connectorCurrentConnectionStatus(githubConnector) ===
+          "reconnect-required"
+      ) {
         return false;
       }
 

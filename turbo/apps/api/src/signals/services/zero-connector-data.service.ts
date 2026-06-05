@@ -10,7 +10,6 @@ import {
   connectorAuthMethodRefHasRevokeKind,
   getAvailableConnectorAuthMethodIds,
   getConnectorAuthMethodGrantMetadata,
-  getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodRevokeMetadata,
   getConnectorAuthMethodRuntimeMetadata,
   getConnectorAuthMethodScopeDiff,
@@ -58,6 +57,7 @@ import {
   userFeatureSwitchContext,
   userFeatureSwitchOverrides,
 } from "./feature-switches.service";
+import { connectorCredentialStatus } from "./connector-credential-status.service";
 
 type StoredConnectorRow = {
   readonly id: string;
@@ -150,6 +150,13 @@ function storedConnectorRowToResponse(
   type: ConnectorType,
   now: Date,
 ): ConnectorResponse {
+  const credentialStatus = connectorCredentialStatus({
+    type,
+    authMethod: row.authMethod,
+    storedNeedsReconnect: row.needsReconnect,
+    tokenExpiresAt: row.tokenExpiresAt,
+    now,
+  });
   return {
     id: row.id,
     type,
@@ -158,46 +165,11 @@ function storedConnectorRowToResponse(
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
     oauthScopes: parseOauthScopes(row.oauthScopes),
-    needsReconnect: deriveConnectorNeedsReconnect({
-      type,
-      authMethod: row.authMethod,
-      needsReconnect: row.needsReconnect,
-      tokenExpiresAt: row.tokenExpiresAt,
-      now,
-    }),
+    needsReconnect: credentialStatus === "reconnect-required",
     tokenExpiresAt: row.tokenExpiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
-}
-
-function connectorAuthMethodSupportsRefresh(
-  type: ConnectorType,
-  authMethod: string,
-): boolean {
-  return (
-    getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
-    "refresh-token"
-  );
-}
-
-function deriveConnectorNeedsReconnect(args: {
-  readonly type: ConnectorType;
-  readonly authMethod: string;
-  readonly needsReconnect: boolean;
-  readonly tokenExpiresAt: Date | null;
-  readonly now: Date;
-}): boolean {
-  if (args.needsReconnect) {
-    return true;
-  }
-  if (args.tokenExpiresAt === null) {
-    return false;
-  }
-  if (connectorAuthMethodSupportsRefresh(args.type, args.authMethod)) {
-    return false;
-  }
-  return args.tokenExpiresAt.getTime() <= args.now.getTime();
 }
 
 function storedConnectorTypeIsVisible(
