@@ -1347,6 +1347,52 @@ mod tests {
             .unwrap();
     }
 
+    #[test]
+    fn netlink_critical_section_queued_task_survives_future_drop() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .max_blocking_threads(1)
+            .enable_time()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let (blocker_started_tx, blocker_started_rx) = tokio::sync::oneshot::channel();
+            let (release_blocker_tx, release_blocker_rx) = std::sync::mpsc::channel();
+            let blocker = tokio::task::spawn_blocking(move || {
+                let _ = blocker_started_tx.send(());
+                release_blocker_rx.recv().unwrap();
+            });
+            blocker_started_rx.await.unwrap();
+
+            let (done_tx, done_rx) = std::sync::mpsc::channel();
+            let mut future = Box::pin(run_netlink_critical_section(
+                "test netlink operation",
+                move || {
+                    done_tx.send(()).unwrap();
+                },
+            ));
+            let waker = std::task::Waker::noop();
+            let mut cx = std::task::Context::from_waker(waker);
+            assert!(matches!(
+                future.as_mut().poll(&mut cx),
+                std::task::Poll::Pending
+            ));
+            drop(future);
+
+            release_blocker_tx.send(()).unwrap();
+            blocker.await.unwrap();
+
+            tokio::task::spawn_blocking(move || {
+                done_rx
+                    .recv_timeout(std::time::Duration::from_secs(1))
+                    .unwrap()
+            })
+            .await
+            .unwrap();
+        });
+    }
+
     #[tokio::test]
     async fn pooled_finalizer_starts_before_returned_future_is_polled() {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
