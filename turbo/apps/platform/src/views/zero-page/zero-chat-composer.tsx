@@ -7,7 +7,6 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
-import { useRef } from "react";
 import {
   useGet,
   useSet,
@@ -151,6 +150,8 @@ import {
   setTemplatePickerPreviewSlug$,
   templatePickerPreviewSlideIndex$,
   setTemplatePickerPreviewSlideIndex$,
+  templateCardHover$,
+  setTemplateCardHover$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -563,20 +564,10 @@ function TemplatePreview({
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
   const slideImages = presentationTemplateSlideImages(item);
-  const previewImageRef = useRef<HTMLImageElement | null>(null);
-  const hoverSlideIndexRef = useRef(0);
-  const previewImage = slideImages[0] ?? item.previewImage;
-
-  const setPreviewSlide = (index: number) => {
-    const image = slideImages[index] ?? item.previewImage;
-    const previewImageElement = previewImageRef.current;
-    hoverSlideIndexRef.current = index;
-    if (!previewImageElement) {
-      return;
-    }
-    previewImageElement.src = image;
-    previewImageElement.title = `${item.title} card preview slide ${index + 1}`;
-  };
+  const hover = useGet(templateCardHover$);
+  const setHover = useSet(setTemplateCardHover$);
+  const hoverSlideIndex = hover?.slug === item.slug ? hover.index : 0;
+  const previewImage = slideImages[hoverSlideIndex] ?? item.previewImage;
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (slideImages.length < 2) {
@@ -594,8 +585,8 @@ function TemplatePreview({
       slideImages.length - 1,
       Math.round((offsetX / rect.width) * (slideImages.length - 1)),
     );
-    if (nextIndex !== hoverSlideIndexRef.current) {
-      setPreviewSlide(nextIndex);
+    if (nextIndex !== hoverSlideIndex) {
+      setHover({ slug: item.slug, index: nextIndex });
     }
   };
 
@@ -604,15 +595,14 @@ function TemplatePreview({
       className="relative aspect-[16/9] overflow-hidden bg-muted"
       onMouseMove={handleMouseMove}
       onMouseLeave={() => {
-        setPreviewSlide(0);
+        setHover(null);
       }}
     >
       {previewImage ? (
         <img
-          ref={previewImageRef}
           src={previewImage}
           alt=""
-          title={`${item.title} card preview slide 1`}
+          title={`${item.title} card preview slide ${hoverSlideIndex + 1}`}
           className="h-full w-full object-cover"
           loading="lazy"
         />

@@ -129,6 +129,24 @@ export const setTemplatePickerPreviewSlideIndex$ = command(
   },
 );
 
+// Hover scrubbing on template cards. Only one card is hovered at a time, so a
+// single signal tracks the active card's slug plus the scrubbed slide index;
+// each card resolves its own index by matching the stored slug.
+interface TemplateCardHoverState {
+  readonly slug: string;
+  readonly index: number;
+}
+
+const internalTemplateCardHover$ = state<TemplateCardHoverState | null>(null);
+export const templateCardHover$ = computed((get) => {
+  return get(internalTemplateCardHover$);
+});
+export const setTemplateCardHover$ = command(
+  ({ set }, value: TemplateCardHoverState | null) => {
+    set(internalTemplateCardHover$, value);
+  },
+);
+
 // -- Per-message generation template selections --------------------------------
 
 const internalNewThreadGenerationTemplate$ = state<
