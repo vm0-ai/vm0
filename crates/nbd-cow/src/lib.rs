@@ -155,6 +155,14 @@ async fn observe_detached_finalizer<T: Send + 'static>(handle: JoinHandle<Result
     }
 }
 
+fn run_netlink_critical_section<T>(f: impl FnOnce() -> T) -> T {
+    match tokio::runtime::Handle::try_current().map(|handle| handle.runtime_flavor()) {
+        Ok(tokio::runtime::RuntimeFlavor::MultiThread) => tokio::task::block_in_place(f),
+        Ok(tokio::runtime::RuntimeFlavor::CurrentThread) | Err(_) => f(),
+        Ok(_) => f(),
+    }
+}
+
 /// Result of checking NBD device ownership via sysfs PID.
 enum DeviceOwnership {
     /// We own the device (sysfs PID matches our PID).
@@ -240,10 +248,9 @@ impl CreateAttemptGuard {
 
     async fn disconnect_owned_and_release(mut self) {
         self.abort_servers().await;
-        let disconnected = self
-            .connected
-            .take()
-            .is_some_and(disconnect_connected_if_owned);
+        let disconnected = self.connected.take().is_some_and(|connected| {
+            run_netlink_critical_section(|| disconnect_connected_if_owned(connected))
+        });
         if let Some(lease) = self.lease.take() {
             if disconnected {
                 self.pool.release_clean(lease).await;
@@ -255,10 +262,9 @@ impl CreateAttemptGuard {
 
     async fn disconnect_and_release(mut self) -> bool {
         self.abort_servers().await;
-        let disconnected = self
-            .connected
-            .take()
-            .is_some_and(|connected| netlink::disconnect(connected.index).is_ok());
+        let disconnected = self.connected.take().is_some_and(|connected| {
+            run_netlink_critical_section(|| netlink::disconnect(connected.index).is_ok())
+        });
         if let Some(lease) = self.lease.take() {
             if disconnected {
                 self.pool.release_clean(lease).await;
@@ -425,12 +431,14 @@ impl NbdCowDevice {
                     return Err(e);
                 }
 
-                match netlink::connect_device_with_state(
-                    device_index,
-                    &client_fds,
-                    size,
-                    BLOCK_SIZE as u64,
-                ) {
+                match run_netlink_critical_section(|| {
+                    netlink::connect_device_with_state(
+                        device_index,
+                        &client_fds,
+                        size,
+                        BLOCK_SIZE as u64,
+                    )
+                }) {
                     Ok(connected) => {
                         attempt.mark_connected(connected.connect_tid);
                         break attempt;
@@ -591,7 +599,7 @@ impl NbdCowDevice {
         if !self.disconnected {
             match self.device_ownership() {
                 DeviceOwnership::Ours => {
-                    netlink::disconnect(self.device_index)?;
+                    run_netlink_critical_section(|| netlink::disconnect(self.device_index))?;
                     self.disconnected = true;
                 }
                 DeviceOwnership::Foreign(pid) => {
@@ -1091,6 +1099,20 @@ mod tests {
             attempts: 0,
             delay: std::time::Duration::from_secs(60),
         }
+    }
+
+    #[test]
+    fn netlink_critical_section_runs_without_runtime() {
+        let value = run_netlink_critical_section(|| 42);
+
+        assert_eq!(value, 42);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn netlink_critical_section_current_thread_fallback_runs() {
+        let value = run_netlink_critical_section(|| "connected");
+
+        assert_eq!(value, "connected");
     }
 
     #[tokio::test]
