@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { MemoryChangeItem } from "../memory-activity-diff.service";
-import { buildMemorySummaryPrompt } from "../memory-activity-summarize.service";
+import {
+  buildMemorySummaryPrompt,
+  MEMORY_SUMMARY_SYSTEM_PROMPT,
+} from "../memory-activity-summarize.service";
 
 function addedItem(
   filePath: string,
@@ -34,6 +37,24 @@ function addedItem(
 }
 
 describe("buildMemorySummaryPrompt", () => {
+  it("instructs the model to describe user-facing memory changes instead of storage operations", () => {
+    expect(MEMORY_SUMMARY_SYSTEM_PROMPT).toContain(
+      'Phrase natural memory changes in third person with "Zero" as the subject',
+    );
+    expect(MEMORY_SUMMARY_SYSTEM_PROMPT).toContain(
+      '"Zero learned...", "Zero remembered...", "Zero forgot...", or "Zero no longer assumes..."',
+    );
+    expect(MEMORY_SUMMARY_SYSTEM_PROMPT).toContain(
+      "Never phrase a memory update as if Zero is speaking",
+    );
+    expect(MEMORY_SUMMARY_SYSTEM_PROMPT).toContain(
+      "Never say or imply that Zero modified, deleted, created, consulted, or will no longer consult memory files",
+    );
+    expect(MEMORY_SUMMARY_SYSTEM_PROMPT).toContain(
+      "do not describe deleted files, removed references, or missing storage",
+    );
+  });
+
   it("limits rendered diff lines per changed file", () => {
     const lines = Array.from({ length: 170 }, (_, index) => {
       return `line-${index}`;
@@ -61,8 +82,12 @@ describe("buildMemorySummaryPrompt", () => {
     const prompt = buildMemorySummaryPrompt({ changed: true, items });
 
     expect(prompt.length).toBeLessThanOrEqual(24_000);
-    expect(prompt).toContain("File: facts/00.md");
-    expect(prompt).not.toContain("File: facts/39.md");
+    expect(prompt).toContain(
+      "Internal source path (do not mention): facts/00.md",
+    );
+    expect(prompt).not.toContain(
+      "Internal source path (do not mention): facts/39.md",
+    );
     expect(prompt).toContain("prompt budget was reached");
   });
 });
