@@ -39,7 +39,7 @@ const restoreAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     if (result.reason === "no_subscription") {
       return conflict("Org has no active subscription");
     }
-    return conflict("Subscription is not scheduled for cancellation");
+    return conflict("Subscription has no scheduled billing change");
   }
 
   return {

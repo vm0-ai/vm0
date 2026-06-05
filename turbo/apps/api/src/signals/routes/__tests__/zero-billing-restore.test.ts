@@ -137,7 +137,7 @@ describe("POST /api/zero/billing/restore", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Subscription is not scheduled for cancellation",
+        message: "Subscription has no scheduled billing change",
         code: "CONFLICT",
       },
     });
@@ -178,10 +178,78 @@ describe("POST /api/zero/billing/restore", () => {
 
     const writeDb = store.set(writeDb$);
     const [row] = await writeDb
-      .select({ cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd })
+      .select({
+        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
+        pendingSubscriptionScheduleId:
+          orgMetadata.pendingSubscriptionScheduleId,
+        pendingSubscriptionTargetTier:
+          orgMetadata.pendingSubscriptionTargetTier,
+        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
+      })
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, fixture.orgId))
       .limit(1);
     expect(row?.cancelAtPeriodEnd).toBeFalsy();
+    expect(row?.pendingSubscriptionScheduleId).toBeNull();
+    expect(row?.pendingSubscriptionTargetTier).toBeNull();
+    expect(row?.pendingSubscriptionChangeAt).toBeNull();
+  });
+
+  it("restores a scheduled downgrade by releasing its subscription schedule", async () => {
+    const subId = `sub-restore-schedule-${randomUUID().slice(0, 8)}`;
+    const scheduleId = `sched-restore-${randomUUID().slice(0, 8)}`;
+    const changeAt = new Date("2099-07-04T00:00:00Z");
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeSubscriptionId: subId,
+          subscriptionStatus: "active",
+          tier: "team",
+          cancelAtPeriodEnd: false,
+          pendingSubscriptionScheduleId: scheduleId,
+          pendingSubscriptionTargetTier: "pro",
+          pendingSubscriptionChangeAt: changeAt,
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.stripe.subscriptionSchedules.release.mockResolvedValue({
+      id: scheduleId,
+    });
+
+    const client = setupApp({ context })(zeroBillingRestoreContract);
+    const response = await accept(
+      client.create({
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.release,
+    ).toHaveBeenCalledWith(scheduleId);
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
+        pendingSubscriptionScheduleId:
+          orgMetadata.pendingSubscriptionScheduleId,
+        pendingSubscriptionTargetTier:
+          orgMetadata.pendingSubscriptionTargetTier,
+        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+    expect(row?.cancelAtPeriodEnd).toBeFalsy();
+    expect(row?.pendingSubscriptionScheduleId).toBeNull();
+    expect(row?.pendingSubscriptionTargetTier).toBeNull();
+    expect(row?.pendingSubscriptionChangeAt).toBeNull();
   });
 });

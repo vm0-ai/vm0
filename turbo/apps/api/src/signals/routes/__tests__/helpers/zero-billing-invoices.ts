@@ -19,6 +19,9 @@ interface InvoicesSeedValues {
   readonly tier?: string;
   readonly currentPeriodEnd?: Date | null;
   readonly cancelAtPeriodEnd?: boolean;
+  readonly pendingSubscriptionScheduleId?: string | null;
+  readonly pendingSubscriptionTargetTier?: string | null;
+  readonly pendingSubscriptionChangeAt?: Date | null;
 }
 
 export const seedInvoicesOrg$ = command(
@@ -44,6 +47,19 @@ export const seedInvoicesOrg$ = command(
         : {}),
       ...(values.cancelAtPeriodEnd !== undefined
         ? { cancelAtPeriodEnd: values.cancelAtPeriodEnd }
+        : {}),
+      ...(values.pendingSubscriptionScheduleId !== undefined
+        ? {
+            pendingSubscriptionScheduleId: values.pendingSubscriptionScheduleId,
+          }
+        : {}),
+      ...(values.pendingSubscriptionTargetTier !== undefined
+        ? {
+            pendingSubscriptionTargetTier: values.pendingSubscriptionTargetTier,
+          }
+        : {}),
+      ...(values.pendingSubscriptionChangeAt !== undefined
+        ? { pendingSubscriptionChangeAt: values.pendingSubscriptionChangeAt }
         : {}),
     });
     signal.throwIfAborted();

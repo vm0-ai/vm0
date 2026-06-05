@@ -27,6 +27,23 @@ export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
 
+function formatEffectiveDate(effectiveDate: string | null): string | null {
+  if (!effectiveDate) {
+    return null;
+  }
+
+  const date = new Date(effectiveDate);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
 export function apiTierToBillingTier(tier: string | undefined): BillingTier {
   if (
     tier === "free" ||
@@ -53,6 +70,7 @@ interface CompletedBillingCheckout {
 const internalCompletedBillingCheckout$ =
   state<CompletedBillingCheckout | null>(null);
 const internalDowngradeDialogOpen$ = state(false);
+const internalRestoreDialogOpen$ = state(false);
 const internalPendingEnabled$ = state<boolean | null>(null);
 const internalFormThresholdOverride$ = state<string | null>(null);
 const internalFormAmountOverride$ = state<string | null>(null);
@@ -66,6 +84,9 @@ export const billingDialogOpen$ = computed((get) => {
 });
 export const downgradeDialogOpen$ = computed((get) => {
   return get(internalDowngradeDialogOpen$);
+});
+export const restoreDialogOpen$ = computed((get) => {
+  return get(internalRestoreDialogOpen$);
 });
 export const pendingEnabled$ = computed((get) => {
   return get(internalPendingEnabled$);
@@ -256,6 +277,14 @@ export const closeDowngradeDialog$ = command(({ set }) => {
   set(internalDowngradeDialogOpen$, false);
 });
 
+export const openRestoreDialog$ = command(({ set }) => {
+  set(internalRestoreDialogOpen$, true);
+});
+
+export const closeRestoreDialog$ = command(({ set }) => {
+  set(internalRestoreDialogOpen$, false);
+});
+
 export const confirmDowngrade$ = command(
   async (
     { get, set },
@@ -264,7 +293,7 @@ export const confirmDowngrade$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingDowngradeContract);
-    await accept(
+    const result = await accept(
       client.create({
         body: { targetTier },
         fetchOptions: { signal },
@@ -278,12 +307,18 @@ export const confirmDowngrade$ = command(
       return x + 1;
     });
     if (targetTier === "pro-suspend") {
+      const effectiveDate = formatEffectiveDate(result.body.effectiveDate);
       toast.success(
-        "Cancellation scheduled. Your current plan stays active until the billing period ends.",
+        effectiveDate
+          ? `Cancellation scheduled. Your current plan stays active until ${effectiveDate}.`
+          : "Cancellation scheduled. Your current plan stays active until the billing period ends.",
       );
     } else {
+      const effectiveDate = formatEffectiveDate(result.body.effectiveDate);
       toast.success(
-        "Downgrade started. Your plan and credits will update after Stripe confirms payment.",
+        effectiveDate
+          ? `Downgrade scheduled. Your current plan stays active until ${effectiveDate}.`
+          : "Downgrade scheduled. Your current plan stays active until the billing period ends.",
       );
     }
   },
@@ -301,6 +336,7 @@ export const restorePlan$ = command(
       [200],
     );
     signal.throwIfAborted();
+    set(internalRestoreDialogOpen$, false);
     set(billingReload$, (x) => {
       return x + 1;
     });

@@ -40,12 +40,19 @@ const creditGrantSchema = z.object({
   expiresAt: z.string(),
 });
 
+const scheduledBillingChangeSchema = z.object({
+  type: z.enum(["cancel", "downgrade"]),
+  targetTier: z.enum(["pro-suspend", "pro", "team"]).nullable(),
+  effectiveDate: z.string().nullable(),
+});
+
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
   credits: z.number(),
   subscriptionStatus: z.string().nullable(),
   currentPeriodEnd: z.string().nullable(),
   cancelAtPeriodEnd: z.boolean(),
+  scheduledChange: scheduledBillingChangeSchema.nullable(),
   hasSubscription: z.boolean(),
   autoRecharge: autoRechargeSchema,
   creditExpiry: creditExpirySchema,

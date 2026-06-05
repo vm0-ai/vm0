@@ -39,6 +39,9 @@ export const orgMetadata = pgTable(
     subscriptionStatus: varchar("subscription_status", { length: 20 }),
     currentPeriodEnd: timestamp("current_period_end"),
     cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    pendingSubscriptionScheduleId: text("pending_subscription_schedule_id"),
+    pendingSubscriptionTargetTier: text("pending_subscription_target_tier"),
+    pendingSubscriptionChangeAt: timestamp("pending_subscription_change_at"),
     lastProcessedInvoiceId: text("last_processed_invoice_id"),
     // Auto-recharge configuration
     autoRechargeEnabled: boolean("auto_recharge_enabled")

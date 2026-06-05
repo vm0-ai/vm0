@@ -14,6 +14,7 @@ import {
   checkoutTierConflictMessage,
   checkoutWouldReplaceWithSameOrLowerTier,
   type SubscriptionCheckoutTier,
+  tierForKnownPriceId,
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
 
@@ -57,6 +58,7 @@ interface SubscriptionInput {
   readonly trial_end?: number | null;
   readonly cancel_at?: number | null;
   readonly cancel_at_period_end: boolean;
+  readonly schedule?: string | { readonly id: string } | null;
   readonly items: {
     readonly data: readonly {
       readonly price: { readonly id: string };
@@ -82,6 +84,7 @@ interface InvoicePaidOrg {
   readonly orgId: string;
   readonly lastProcessedInvoiceId: string | null;
   readonly stripeSubscriptionId: string | null;
+  readonly subscriptionStatus: string | null;
   readonly tier: string;
 }
 
@@ -113,6 +116,16 @@ function subscriptionWillCancel(subscription: SubscriptionInput): boolean {
     subscription.cancel_at_period_end ||
     subscriptionCancelAt(subscription) !== null
   );
+}
+
+function subscriptionScheduleId(
+  subscription: SubscriptionInput,
+): string | null {
+  const schedule = subscription.schedule;
+  if (typeof schedule === "string") {
+    return schedule;
+  }
+  return schedule?.id ?? null;
 }
 
 function subscriptionScheduledEnd(
@@ -250,6 +263,7 @@ async function lockInvoicePaidOrg(
       orgId: orgMetadata.orgId,
       lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      subscriptionStatus: orgMetadata.subscriptionStatus,
       tier: orgMetadata.tier,
     })
     .from(orgMetadata)
@@ -667,6 +681,7 @@ async function invoicePaidOrgForCustomer(
       orgId: orgMetadata.orgId,
       lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      subscriptionStatus: orgMetadata.subscriptionStatus,
       tier: orgMetadata.tier,
     })
     .from(orgMetadata)
@@ -764,6 +779,134 @@ function invoiceWouldReplaceWithSameOrLowerTier(args: {
   );
 }
 
+function replacedProSubscriptionId(args: {
+  readonly currentSubscriptionId: string | null;
+  readonly currentSubscriptionStatus: string | null;
+  readonly currentTier: string;
+  readonly newSubscriptionId: string;
+  readonly targetTier: SubscriptionCheckoutTier;
+}): string | null {
+  if (
+    args.targetTier !== "team" ||
+    !args.currentSubscriptionId ||
+    args.currentSubscriptionId === args.newSubscriptionId
+  ) {
+    return null;
+  }
+
+  if (
+    args.currentTier === "pro" ||
+    args.currentSubscriptionStatus === "trialing"
+  ) {
+    return args.currentSubscriptionId;
+  }
+
+  return null;
+}
+
+function tierFromSubscription(subscription: Stripe.Subscription) {
+  const priceId = subscription.items.data[0]?.price?.id;
+  if (!priceId) {
+    return null;
+  }
+
+  return tierForKnownPriceId(priceId);
+}
+
+function isReplaceableProSubscription(args: {
+  readonly orgId: string;
+  readonly newSubscriptionId: string;
+  readonly subscription: Stripe.Subscription;
+}): boolean {
+  const subscription = args.subscription;
+  return (
+    subscription.id !== args.newSubscriptionId &&
+    subscription.metadata?.orgId === args.orgId &&
+    (subscription.status === "active" || subscription.status === "trialing") &&
+    tierFromSubscription(subscription) === "pro"
+  );
+}
+
+async function replacedProSubscriptionIdsForCustomer(args: {
+  readonly orgId: string;
+  readonly customerId: string;
+  readonly newSubscriptionId: string;
+  readonly targetTier: SubscriptionCheckoutTier;
+}): Promise<readonly string[]> {
+  if (args.targetTier !== "team") {
+    return [];
+  }
+
+  const stripe = getStripeClient();
+  const subscriptions = await stripe.subscriptions.list({
+    customer: args.customerId,
+    status: "all",
+    limit: 100,
+  });
+
+  return subscriptions.data
+    .filter((subscription) => {
+      return isReplaceableProSubscription({
+        orgId: args.orgId,
+        newSubscriptionId: args.newSubscriptionId,
+        subscription,
+      });
+    })
+    .map((subscription) => {
+      return subscription.id;
+    });
+}
+
+async function cancelReplacedProSubscriptions(args: {
+  readonly orgId: string;
+  readonly invoiceId: string;
+  readonly oldSubscriptionIds: readonly string[];
+  readonly newSubscriptionId: string;
+}): Promise<void> {
+  const stripe = getStripeClient();
+  for (const oldSubscriptionId of new Set(args.oldSubscriptionIds)) {
+    await stripe.subscriptions.cancel(oldSubscriptionId, {
+      invoice_now: false,
+      prorate: false,
+    });
+    L.debug("canceled replaced Pro subscription after Team invoice paid", {
+      orgId: args.orgId,
+      invoiceId: args.invoiceId,
+      oldSubscriptionId,
+      newSubscriptionId: args.newSubscriptionId,
+    });
+  }
+}
+
+async function cancelReplacedProSubscriptionsAfterTeamInvoice(args: {
+  readonly orgId: string;
+  readonly customerId: string;
+  readonly invoiceId: string;
+  readonly newSubscriptionId: string;
+  readonly targetTier: SubscriptionCheckoutTier;
+  readonly knownOldSubscriptionId: string | null;
+}): Promise<void> {
+  const replacedSubscriptionIds = [
+    ...(args.knownOldSubscriptionId ? [args.knownOldSubscriptionId] : []),
+    ...(await replacedProSubscriptionIdsForCustomer({
+      orgId: args.orgId,
+      customerId: args.customerId,
+      newSubscriptionId: args.newSubscriptionId,
+      targetTier: args.targetTier,
+    })),
+  ];
+  if (replacedSubscriptionIds.length === 0) {
+    return;
+  }
+
+  await cancelReplacedProSubscriptions({
+    orgId: args.orgId,
+    invoiceId: args.invoiceId,
+    oldSubscriptionIds: replacedSubscriptionIds,
+    newSubscriptionId: args.newSubscriptionId,
+  });
+}
+
 function subscriptionIdFromInvoice(invoice: InvoiceInput): string | null {
   const subscription = invoice.parent?.subscription_details?.subscription;
   return typeof subscription === "string"
@@ -850,6 +993,9 @@ async function updateSubscriptionInvoiceMetadata(
       onboardingPaymentPending: false,
       lastProcessedInvoiceId: args.invoiceId,
       currentPeriodEnd: args.details.periodEndDate,
+      pendingSubscriptionScheduleId: null,
+      pendingSubscriptionTargetTier: null,
+      pendingSubscriptionChangeAt: null,
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.orgId, args.orgId));
@@ -869,8 +1015,23 @@ async function processSubscriptionInvoicePaid(
   if (!lockedOrg) {
     return;
   }
+  const replacedSubscriptionId = replacedProSubscriptionId({
+    currentSubscriptionId: lockedOrg.stripeSubscriptionId,
+    currentSubscriptionStatus: lockedOrg.subscriptionStatus,
+    currentTier: lockedOrg.tier,
+    newSubscriptionId: args.subscriptionId,
+    targetTier: args.details.tier,
+  });
 
   if (lockedOrg.lastProcessedInvoiceId === args.invoice.id) {
+    await cancelReplacedProSubscriptionsAfterTeamInvoice({
+      orgId: args.orgId,
+      customerId: args.customerId,
+      invoiceId: args.invoice.id,
+      newSubscriptionId: args.subscriptionId,
+      targetTier: args.details.tier,
+      knownOldSubscriptionId: replacedSubscriptionId,
+    });
     L.debug("invoice.paid already processed by concurrent delivery", {
       invoiceId: args.invoice.id,
       orgId: args.orgId,
@@ -947,6 +1108,14 @@ async function processSubscriptionInvoicePaid(
     invoiceId: args.invoice.id,
     subscriptionId: args.subscriptionId,
     details: args.details,
+  });
+  await cancelReplacedProSubscriptionsAfterTeamInvoice({
+    orgId: args.orgId,
+    customerId: args.customerId,
+    invoiceId: args.invoice.id,
+    newSubscriptionId: args.subscriptionId,
+    targetTier: args.details.tier,
+    knownOldSubscriptionId: replacedSubscriptionId,
   });
 }
 
@@ -1029,6 +1198,14 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
   }
 
   if (org.lastProcessedInvoiceId === invoice.id) {
+    await cancelReplacedProSubscriptionsAfterTeamInvoice({
+      orgId: org.orgId,
+      customerId,
+      invoiceId: invoice.id,
+      newSubscriptionId: subscriptionId,
+      targetTier: org.tier === "team" ? "team" : "pro",
+      knownOldSubscriptionId: null,
+    });
     L.debug("invoice.paid already processed", {
       invoiceId: invoice.id,
       orgId: org.orgId,
@@ -1063,6 +1240,7 @@ async function handleSubscriptionUpdated(
   const periodEnd = subscriptionWillCancel(subscription)
     ? subscriptionScheduledEnd(subscription)
     : null;
+  const pendingScheduleId = subscriptionScheduleId(subscription);
   const trialEnd = subscriptionTrialEnd(subscription);
   const previousTrialEnd =
     typeof previousAttributes?.trial_end === "number"
@@ -1082,6 +1260,13 @@ async function handleSubscriptionUpdated(
         cancelAtPeriodEnd: subscriptionWillCancel(subscription),
         updatedAt: nowDate(),
         ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+        ...(periodEnd && pendingScheduleId
+          ? {
+              pendingSubscriptionScheduleId: pendingScheduleId,
+              pendingSubscriptionTargetTier: "pro-suspend",
+              pendingSubscriptionChangeAt: periodEnd,
+            }
+          : {}),
         ...(trialShortened ? { currentPeriodEnd: trialEnd } : {}),
       })
       .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
@@ -1119,6 +1304,9 @@ async function handleSubscriptionDeleted(
       stripeSubscriptionId: null,
       cancelAtPeriodEnd: false,
       currentPeriodEnd: null,
+      pendingSubscriptionScheduleId: null,
+      pendingSubscriptionTargetTier: null,
+      pendingSubscriptionChangeAt: null,
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.stripeSubscriptionId, subscription.id));
