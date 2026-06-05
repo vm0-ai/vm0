@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.12](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.11...sandbox-fc-v0.37.12) (2026-06-05)
+
+
+### Bug Fixes
+
+* offload nbd netlink critical sections ([#16246](https://github.com/vm0-ai/vm0/issues/16246)) ([0e25bae](https://github.com/vm0-ai/vm0/commit/0e25bae1f967857478a454ba7448653a8e7cf058))
+
 ## [0.37.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.10...sandbox-fc-v0.37.11) (2026-06-05)
 
 ## [0.37.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.9...sandbox-fc-v0.37.10) (2026-06-04)

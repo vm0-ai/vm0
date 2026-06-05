@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.108.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.8...runner-rs-v0.108.9) (2026-06-05)
+
+
+### Bug Fixes
+
+* **mitm-addon:** handle tld updater fetch failures ([#16293](https://github.com/vm0-ai/vm0/issues/16293)) ([901cb7e](https://github.com/vm0-ai/vm0/commit/901cb7ed48660db25ec92b05a2da7226b2f5fa30))
+
 ## [0.108.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.7...runner-rs-v0.108.8) (2026-06-05)
 
 

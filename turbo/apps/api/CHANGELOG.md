@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.107.2](https://github.com/vm0-ai/vm0/compare/api-v1.107.1...api-v1.107.2) (2026-06-05)
+
+
+### Bug Fixes
+
+* **api:** block claude loop skill in zero runs ([#16301](https://github.com/vm0-ai/vm0/issues/16301)) ([9795144](https://github.com/vm0-ai/vm0/commit/9795144f49731acb60b8ce27476f39c473333674))
+* drain billing queues after entitlement updates ([#16298](https://github.com/vm0-ai/vm0/issues/16298)) ([58f5674](https://github.com/vm0-ai/vm0/commit/58f5674fb1bd2a57bb091274549e8726287cc297))
+* stop schedules and runs when deleting a chat thread ([#16279](https://github.com/vm0-ai/vm0/issues/16279)) ([83efb00](https://github.com/vm0-ai/vm0/commit/83efb00210f82125ad875267a776c369898b562f))
+
+
+### Performance Improvements
+
+* route internal callback dispatch via internal api base url ([#16282](https://github.com/vm0-ai/vm0/issues/16282)) ([1b43e33](https://github.com/vm0-ai/vm0/commit/1b43e3324cb853a0ff8d5aeaea217e222bc2ac85))
+
 ## [1.107.1](https://github.com/vm0-ai/vm0/compare/api-v1.107.0...api-v1.107.1) (2026-06-05)
 
 
