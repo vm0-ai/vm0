@@ -1462,6 +1462,14 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: turbo/pnpm-lock.yaml
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install CLI dependencies
@@ -1494,7 +1502,7 @@ jobs:
           done
           echo "CLI package verification passed"
       - name: Deploy CLI with production dependencies
-        run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy --config.node-linker=hoisted /tmp/cli-deploy
+        run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy --config.node-linker=hoisted --config.ignore-scripts=true /tmp/cli-deploy
       - name: Smoke test deployed CLI
         shell: bash
         run: |
