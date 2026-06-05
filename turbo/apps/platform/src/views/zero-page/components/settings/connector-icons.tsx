@@ -135,6 +135,7 @@ const CONNECTOR_ICON_COLORFUL = {
   "google-sheets": true,
   granola: true,
   greenhouse: true,
+  groq: true,
   helicone: true,
   heygen: true,
   honcho: true,
