@@ -156,6 +156,8 @@ async fn observe_detached_finalizer<T: Send + 'static>(handle: JoinHandle<Result
 }
 
 fn run_netlink_critical_section<T>(f: impl FnOnce() -> T) -> T {
+    // Keep connect/disconnect ownership transitions synchronous from the caller's
+    // point of view; `spawn_blocking().await` would add a cancellation boundary.
     match tokio::runtime::Handle::try_current().map(|handle| handle.runtime_flavor()) {
         Ok(tokio::runtime::RuntimeFlavor::MultiThread) => tokio::task::block_in_place(f),
         Ok(tokio::runtime::RuntimeFlavor::CurrentThread) | Err(_) => f(),
