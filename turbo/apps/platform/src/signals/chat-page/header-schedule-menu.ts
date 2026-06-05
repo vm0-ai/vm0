@@ -4,7 +4,6 @@ import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-sch
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { scheduleTitle } from "../zero-page/schedule-title.ts";
-import { pendingDeleteThreadId$ } from "../zero-page/zero-sidebar-state.ts";
 
 interface HeaderScheduleEntry {
   readonly id: string;
@@ -55,20 +54,3 @@ export function schedulesForThread(
     return schedule.chatThreadId === threadId;
   });
 }
-
-/**
- * Schedules linked to the chat thread that is pending deletion, for the delete
- * confirmation dialog. Resolves to an empty list without fetching while no
- * delete is pending, so the sidebar only loads the schedule list once the
- * dialog opens.
- */
-export const pendingDeleteThreadSchedules$ = computed(
-  async (get): Promise<readonly HeaderScheduleEntry[]> => {
-    const threadId = get(pendingDeleteThreadId$);
-    if (!threadId) {
-      return [];
-    }
-    const schedules = await get(headerScheduleMenu$);
-    return schedulesForThread(schedules, threadId);
-  },
-);

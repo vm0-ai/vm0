@@ -78,7 +78,10 @@ import {
 } from "../../signals/chat-page/sidebar-chat-threads-pagination.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
-import { pendingDeleteThreadSchedules$ } from "../../signals/chat-page/header-schedule-menu.ts";
+import {
+  headerScheduleMenu$,
+  schedulesForThread,
+} from "../../signals/chat-page/header-schedule-menu.ts";
 import {
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
@@ -624,8 +627,12 @@ function DeleteChatThreadDialog() {
   const deleteChatThread = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
   const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
-  const pendingDeleteSchedules =
-    useLastResolved(pendingDeleteThreadSchedules$) ?? [];
+  const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
+  const lastResolvedSchedules = useLastResolved(headerScheduleMenu$);
+  const allSchedules =
+    schedulesLoadable.state === "hasData"
+      ? schedulesLoadable.data
+      : (lastResolvedSchedules ?? []);
 
   const pendingDeleteThread = pendingDeleteThreadId
     ? chatThreads.find((thread) => {
@@ -634,6 +641,9 @@ function DeleteChatThreadDialog() {
     : null;
   const scheduleCount = pendingDeleteThread?.scheduleCount ?? 0;
   const hasSchedules = scheduleCount > 0;
+  const pendingDeleteSchedules = pendingDeleteThreadId
+    ? schedulesForThread(allSchedules, pendingDeleteThreadId)
+    : [];
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
