@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.312.0](https://github.com/vm0-ai/vm0/compare/core-v8.311.1...core-v8.312.0) (2026-06-05)
+
+
+### Features
+
+* roll out scheduled chat ([#16260](https://github.com/vm0-ai/vm0/issues/16260)) ([00bf130](https://github.com/vm0-ai/vm0/commit/00bf130980a3989ee7b48b6f13ad05fc681ec9ff))
+
 ## [8.311.1](https://github.com/vm0-ai/vm0/compare/core-v8.311.0...core-v8.311.1) (2026-06-05)
 
 
