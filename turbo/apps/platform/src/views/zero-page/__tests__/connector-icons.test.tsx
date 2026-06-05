@@ -78,6 +78,7 @@ describe("connector icon component", () => {
       "groq",
       "browserstack",
       "explorium",
+      "servicenow",
     ] as const) {
       const { container, unmount } = render(<ConnectorIcon type={type} />);
       const img = container.querySelector("img");
