@@ -1329,6 +1329,9 @@ function requiredConnectorTokenSecretRequirements(args: {
   const requiredOutputNames = new Set<string>();
   const requiredExtraSecretNames = new Set<string>();
   for (const binding of runtimeMetadata.runtimeBindings) {
+    if (binding.optional) {
+      continue;
+    }
     if (binding.source.kind !== "connector-secret") {
       continue;
     }
