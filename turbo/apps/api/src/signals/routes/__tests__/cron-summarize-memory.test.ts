@@ -60,7 +60,7 @@ interface OpenRouterRequestMessage {
 interface OpenRouterRequestBody {
   readonly model: string;
   readonly messages: readonly OpenRouterRequestMessage[];
-  readonly max_tokens: number;
+  readonly max_tokens?: number;
 }
 
 /**
@@ -484,8 +484,8 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(llm.calls).toBe(1);
     expect(llm.requests[0]).toMatchObject({
       model: "google/gemini-3.5-flash",
-      max_tokens: 1000,
     });
+    expect(llm.requests[0]).not.toHaveProperty("max_tokens");
     const systemMessage = llm.requests[0]?.messages.find((message) => {
       return message.role === "system";
     })?.content;
@@ -917,10 +917,9 @@ describe("POST /api/zero/memory/dev-refresh", () => {
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(
-      devRefreshClient().refresh({ headers: {} }),
-      [401],
-    );
+    const response = await accept(devRefreshClient().refresh({ headers: {} }), [
+      401,
+    ]);
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });

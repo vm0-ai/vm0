@@ -60,7 +60,7 @@ describe("zero generate presentation command", () => {
       "Write the artifact under `./generated/mockups/api-migration-plan/`.",
     );
     expect(stdout).toContain(
-      "zero host ./generated/mockups/api-migration-plan --site api-migration-plan",
+      "zero host ./generated/mockups/api-migration-plan --site api-migration-plan --artifact-kind presentation-html",
     );
     expect(stdout).toContain("Slide count: 10");
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
