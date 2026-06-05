@@ -917,9 +917,10 @@ describe("POST /api/zero/memory/dev-refresh", () => {
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(devRefreshClient().refresh({ headers: {} }), [
-      401,
-    ]);
+    const response = await accept(
+      devRefreshClient().refresh({ headers: {} }),
+      [401],
+    );
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
