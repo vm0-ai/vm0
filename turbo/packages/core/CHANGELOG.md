@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.313.2](https://github.com/vm0-ai/vm0/compare/core-v8.313.1...core-v8.313.2) (2026-06-05)
+
+
+### Bug Fixes
+
+* treat expired connectors as reconnect required ([#16313](https://github.com/vm0-ai/vm0/issues/16313)) ([523c20b](https://github.com/vm0-ai/vm0/commit/523c20bcf51fb1e30e3b126b1e5a37357c866f85))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.1
+
 ## [8.313.1](https://github.com/vm0-ai/vm0/compare/core-v8.313.0...core-v8.313.1) (2026-06-05)
 
 

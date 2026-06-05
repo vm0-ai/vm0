@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.108.1](https://github.com/vm0-ai/vm0/compare/api-v1.108.0...api-v1.108.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* treat expired connectors as reconnect required ([#16313](https://github.com/vm0-ai/vm0/issues/16313)) ([523c20b](https://github.com/vm0-ai/vm0/commit/523c20bcf51fb1e30e3b126b1e5a37357c866f85))
+
+
+### Refactoring
+
+* assume schedules always have a chat thread ([#16332](https://github.com/vm0-ai/vm0/issues/16332)) ([d371992](https://github.com/vm0-ai/vm0/commit/d371992d53c2681ed4b1b398ca881b095799f715))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.1
+    * @vm0/core bumped to 8.313.2
+    * @vm0/db bumped to 1.33.1
+
 ## [1.108.0](https://github.com/vm0-ai/vm0/compare/api-v1.107.3...api-v1.108.0) (2026-06-05)
 
 

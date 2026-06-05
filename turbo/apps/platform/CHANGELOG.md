@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.419.4](https://github.com/vm0-ai/vm0/compare/app-v0.419.3...app-v0.419.4) (2026-06-05)
+
+
+### Bug Fixes
+
+* **platform:** treat groq connector icon as colorful ([#16339](https://github.com/vm0-ai/vm0/issues/16339)) ([a528f34](https://github.com/vm0-ai/vm0/commit/a528f34af5d36b8c9141923942268a7731d01b06))
+* **platform:** update alchemy connector logo ([#16352](https://github.com/vm0-ai/vm0/issues/16352)) ([83260e1](https://github.com/vm0-ai/vm0/commit/83260e17136d615930cea11259f756fa944bdbf0))
+* **platform:** update altium 365 connector icon ([#16345](https://github.com/vm0-ai/vm0/issues/16345)) ([e7b33d9](https://github.com/vm0-ai/vm0/commit/e7b33d97396fee560cb342f2bcda8322377b1360))
+* **platform:** update browserstack connector logo ([#16344](https://github.com/vm0-ai/vm0/issues/16344)) ([0694c92](https://github.com/vm0-ai/vm0/commit/0694c92de3093845c8935c0c98214744ac579129))
+* **platform:** update cal.com connector logo ([#16337](https://github.com/vm0-ai/vm0/issues/16337)) ([a2497a3](https://github.com/vm0-ai/vm0/commit/a2497a30fa044aa64478469a5b1ec48896c7cf1d))
+* **platform:** update explorium connector logo ([#16347](https://github.com/vm0-ai/vm0/issues/16347)) ([896a955](https://github.com/vm0-ai/vm0/commit/896a95589aeaef297fefede14c47459cf0d10a83))
+* **platform:** update klaviyo connector icon ([#16351](https://github.com/vm0-ai/vm0/issues/16351)) ([ae5df3d](https://github.com/vm0-ai/vm0/commit/ae5df3dafb193d1ff17b2d98399d3b8fee60eda9))
+* **platform:** update onyx connector logo ([#16343](https://github.com/vm0-ai/vm0/issues/16343)) ([cc2c459](https://github.com/vm0-ai/vm0/commit/cc2c4599085871dcb381272a2ba97e83500a8f16))
+* **platform:** update pipedrive connector icon ([#16350](https://github.com/vm0-ai/vm0/issues/16350)) ([9f5611a](https://github.com/vm0-ai/vm0/commit/9f5611a91be766844e12eeef8bd4b687de5a431e))
+* **platform:** update servicenow connector logo ([#16346](https://github.com/vm0-ai/vm0/issues/16346)) ([68e4c9e](https://github.com/vm0-ai/vm0/commit/68e4c9e99f7cf6be3287d6c97ddc9961699ab82f))
+* **platform:** update tldv connector logo ([#16341](https://github.com/vm0-ai/vm0/issues/16341)) ([11b2723](https://github.com/vm0-ai/vm0/commit/11b2723bd94c122cdf37fa3c3c2b8c30d7c5b146))
+* **platform:** update twilio connector logo ([#16336](https://github.com/vm0-ai/vm0/issues/16336)) ([ae4ff87](https://github.com/vm0-ai/vm0/commit/ae4ff87629d35d4dfb0625cf1b05476d8fb25af3))
+* treat expired connectors as reconnect required ([#16313](https://github.com/vm0-ai/vm0/issues/16313)) ([523c20b](https://github.com/vm0-ai/vm0/commit/523c20bcf51fb1e30e3b126b1e5a37357c866f85))
+
+
+### Refactoring
+
+* assume schedules always have a chat thread ([#16332](https://github.com/vm0-ai/vm0/issues/16332)) ([d371992](https://github.com/vm0-ai/vm0/commit/d371992d53c2681ed4b1b398ca881b095799f715))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.1
+    * @vm0/core bumped to 8.313.2
+
 ## [0.419.3](https://github.com/vm0-ai/vm0/compare/app-v0.419.2...app-v0.419.3) (2026-06-05)
 
 

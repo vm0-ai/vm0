@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.7](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.6...guest-mock-claude-v0.18.7) (2026-06-05)
+
+
+### Bug Fixes
+
+* **runner:** split guest-agent bootstrap env ([#16295](https://github.com/vm0-ai/vm0/issues/16295)) ([b77e7c7](https://github.com/vm0-ai/vm0/commit/b77e7c7c2dfd54e7c97596fee8ca371654e7c7b7))
+
 ## [0.18.6](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.5...guest-mock-claude-v0.18.6) (2026-06-05)
 
 ## [0.18.5](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.4...guest-mock-claude-v0.18.5) (2026-06-04)

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.17...guest-agent-v0.34.18) (2026-06-05)
+
+
+### Bug Fixes
+
+* **runner:** split guest-agent bootstrap env ([#16295](https://github.com/vm0-ai/vm0/issues/16295)) ([b77e7c7](https://github.com/vm0-ai/vm0/commit/b77e7c7c2dfd54e7c97596fee8ca371654e7c7b7))
+
 ## [0.34.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.16...guest-agent-v0.34.17) (2026-06-05)
 
 

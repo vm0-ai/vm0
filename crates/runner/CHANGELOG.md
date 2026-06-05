@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.108.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.10...runner-rs-v0.108.11) (2026-06-05)
+
+
+### Bug Fixes
+
+* **mitm-addon:** reject nested encoded unsafe paths ([#16309](https://github.com/vm0-ai/vm0/issues/16309)) ([2533197](https://github.com/vm0-ai/vm0/commit/2533197d15212008784285d19e36167a1335dbd4))
+* **runner:** split guest-agent bootstrap env ([#16295](https://github.com/vm0-ai/vm0/issues/16295)) ([b77e7c7](https://github.com/vm0-ai/vm0/commit/b77e7c7c2dfd54e7c97596fee8ca371654e7c7b7))
+
 ## [0.108.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.9...runner-rs-v0.108.10) (2026-06-05)
 
 ## [0.108.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.8...runner-rs-v0.108.9) (2026-06-05)

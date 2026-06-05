@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.182.1](https://github.com/vm0-ai/vm0/compare/cli-v9.182.0...cli-v9.182.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* treat expired connectors as reconnect required ([#16313](https://github.com/vm0-ai/vm0/issues/16313)) ([523c20b](https://github.com/vm0-ai/vm0/commit/523c20bcf51fb1e30e3b126b1e5a37357c866f85))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.66.1
+    * @vm0/core bumped to 8.313.2
+
 ## [9.182.0](https://github.com/vm0-ai/vm0/compare/cli-v9.181.6...cli-v9.182.0) (2026-06-05)
 
 
