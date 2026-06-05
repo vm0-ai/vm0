@@ -75,27 +75,91 @@ pub struct KeptCow {
     pub bitmap_file: PathBuf,
 }
 
-struct PooledCowFinalizer<T: Send + 'static> {
-    handle: Option<JoinHandle<Result<T>>>,
+/// Error returned by detailed pooled COW destroy finalizers.
+#[derive(Debug)]
+pub struct PooledDestroyError {
+    source: error::NbdCowError,
+    backing_files_safe_to_delete: bool,
 }
 
-impl<T: Send + 'static> PooledCowFinalizer<T> {
-    fn new(handle: JoinHandle<Result<T>>) -> Self {
+impl PooledDestroyError {
+    fn device_cleanup(source: error::NbdCowError) -> Self {
+        Self {
+            source,
+            backing_files_safe_to_delete: false,
+        }
+    }
+
+    fn storage_cleanup(source: error::NbdCowError) -> Self {
+        Self {
+            source,
+            backing_files_safe_to_delete: true,
+        }
+    }
+
+    /// Whether the NBD device has been disconnected and backing files are no
+    /// longer referenced by this pooled device.
+    pub fn backing_files_safe_to_delete(&self) -> bool {
+        self.backing_files_safe_to_delete
+    }
+
+    /// Consume this detailed error and return the underlying `nbd-cow` error.
+    pub fn into_inner(self) -> error::NbdCowError {
+        self.source
+    }
+}
+
+impl std::fmt::Display for PooledDestroyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.source.fmt(f)
+    }
+}
+
+impl std::error::Error for PooledDestroyError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+impl From<error::NbdCowError> for PooledDestroyError {
+    fn from(source: error::NbdCowError) -> Self {
+        Self::device_cleanup(source)
+    }
+}
+
+struct PooledCowFinalizer<T, E = error::NbdCowError>
+where
+    T: Send + 'static,
+    E: std::fmt::Display + Send + 'static,
+{
+    handle: Option<JoinHandle<std::result::Result<T, E>>>,
+}
+
+impl<T, E> PooledCowFinalizer<T, E>
+where
+    T: Send + 'static,
+    E: std::fmt::Display + Send + 'static,
+{
+    fn new(handle: JoinHandle<std::result::Result<T, E>>) -> Self {
         Self {
             handle: Some(handle),
         }
     }
 }
 
-impl<T: Send + 'static> Future for PooledCowFinalizer<T> {
-    type Output = Result<T>;
+impl<T, E> Future for PooledCowFinalizer<T, E>
+where
+    T: Send + 'static,
+    E: From<error::NbdCowError> + std::fmt::Display + Send + 'static,
+{
+    type Output = std::result::Result<T, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
         let Some(handle) = this.handle.as_mut() else {
-            return Poll::Ready(Err(error::NbdCowError::Io(std::io::Error::other(
+            return Poll::Ready(Err(E::from(error::NbdCowError::Io(std::io::Error::other(
                 "pooled NBD COW finalizer polled after completion",
-            ))));
+            )))));
         };
 
         match Pin::new(handle).poll(cx) {
@@ -108,7 +172,11 @@ impl<T: Send + 'static> Future for PooledCowFinalizer<T> {
     }
 }
 
-impl<T: Send + 'static> Drop for PooledCowFinalizer<T> {
+impl<T, E> Drop for PooledCowFinalizer<T, E>
+where
+    T: Send + 'static,
+    E: std::fmt::Display + Send + 'static,
+{
     fn drop(&mut self) {
         let Some(handle) = self.handle.take() else {
             return;
@@ -128,19 +196,26 @@ impl<T: Send + 'static> Drop for PooledCowFinalizer<T> {
     }
 }
 
-fn finish_finalizer_join<T>(
-    result: std::result::Result<Result<T>, tokio::task::JoinError>,
-) -> Result<T> {
+fn finish_finalizer_join<T, E>(
+    result: std::result::Result<std::result::Result<T, E>, tokio::task::JoinError>,
+) -> std::result::Result<T, E>
+where
+    E: From<error::NbdCowError>,
+{
     match result {
         Ok(result) => result,
         Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
-        Err(e) => Err(error::NbdCowError::Io(std::io::Error::other(format!(
-            "pooled NBD COW finalizer task was cancelled: {e}"
+        Err(e) => Err(E::from(error::NbdCowError::Io(std::io::Error::other(
+            format!("pooled NBD COW finalizer task was cancelled: {e}"),
         )))),
     }
 }
 
-async fn observe_detached_finalizer<T: Send + 'static>(handle: JoinHandle<Result<T>>) {
+async fn observe_detached_finalizer<T, E>(handle: JoinHandle<std::result::Result<T, E>>)
+where
+    T: Send + 'static,
+    E: std::fmt::Display + Send + 'static,
+{
     match handle.await {
         Ok(Ok(_)) => {}
         Ok(Err(e)) => {
@@ -1245,6 +1320,11 @@ enum DestroyMode {
     KeepCow,
 }
 
+enum DestroyAttemptError {
+    Device(error::NbdCowError),
+    Storage(error::NbdCowError),
+}
+
 /// A COW device whose NBD pool ownership is tied to the device lifecycle.
 pub struct PooledNbdCowDevice {
     device: NbdCowDevice,
@@ -1318,16 +1398,35 @@ impl PooledNbdCowDevice {
         self,
         policy: DestroyRetryPolicy,
     ) -> impl std::future::Future<Output = Result<()>> + Send + 'static {
+        let finalizer = self.destroy_with_retries_detailed(policy);
+        async move { finalizer.await.map_err(PooledDestroyError::into_inner) }
+    }
+
+    /// Destroy the device and distinguish NBD shutdown failures from COW file
+    /// cleanup failures.
+    ///
+    /// Finalization starts immediately. When this returns an error with
+    /// [`PooledDestroyError::backing_files_safe_to_delete`] set, the NBD device
+    /// was released and callers may safely delete the containing workspace or
+    /// snapshot attempt directory.
+    pub fn destroy_with_retries_detailed(
+        self,
+        policy: DestroyRetryPolicy,
+    ) -> impl std::future::Future<Output = std::result::Result<(), PooledDestroyError>> + Send + 'static
+    {
         // Once finalization starts, let it run to completion even if the caller's
         // future is cancelled. Otherwise dropping the owned device mid-finalizer
         // can disconnect best-effort but leave the pool lease in flight.
         //
         // This must spawn before returning the Future: an `async fn` body would
         // not run if the returned future was dropped before its first poll.
-        Self::run_finalizer(async move { self.destroy_with_retries_inner(policy).await })
+        Self::run_finalizer(async move { self.destroy_with_retries_detailed_inner(policy).await })
     }
 
-    async fn destroy_with_retries_inner(mut self, policy: DestroyRetryPolicy) -> Result<()> {
+    async fn destroy_with_retries_detailed_inner(
+        mut self,
+        policy: DestroyRetryPolicy,
+    ) -> std::result::Result<(), PooledDestroyError> {
         let pool = self.pool.clone();
         Self::destroy_with_mode(
             &mut self.device,
@@ -1367,7 +1466,8 @@ impl PooledNbdCowDevice {
             policy,
             DestroyMode::KeepCow,
         )
-        .await?;
+        .await
+        .map_err(PooledDestroyError::into_inner)?;
 
         Ok(KeptCow {
             cow_file,
@@ -1381,7 +1481,7 @@ impl PooledNbdCowDevice {
         pool: &pool::DevicePoolHandle,
         policy: DestroyRetryPolicy,
         mode: DestroyMode,
-    ) -> Result<()> {
+    ) -> std::result::Result<(), PooledDestroyError> {
         let attempts = policy.attempts();
 
         match Self::run_destroy_attempt(device, lease, pool, mode).await {
@@ -1401,9 +1501,17 @@ impl PooledNbdCowDevice {
                     }
                 }
 
-                device.abandon();
-                Self::retire_uncertain(pool, lease).await;
-                Err(last_err)
+                match last_err {
+                    DestroyAttemptError::Device(source) => {
+                        device.abandon();
+                        Self::retire_uncertain(pool, lease).await;
+                        Err(PooledDestroyError::device_cleanup(source))
+                    }
+                    DestroyAttemptError::Storage(source) => {
+                        Self::release_clean(pool, lease).await;
+                        Err(PooledDestroyError::storage_cleanup(source))
+                    }
+                }
             }
         }
     }
@@ -1413,15 +1521,17 @@ impl PooledNbdCowDevice {
         lease: &mut LeaseGuard,
         pool: &pool::DevicePoolHandle,
         mode: DestroyMode,
-    ) -> Result<()> {
+    ) -> std::result::Result<(), DestroyAttemptError> {
         match mode {
             DestroyMode::RemoveCow => {
-                Self::shutdown_device_with_lease(device, lease, pool, false).await?;
-                remove_cow_files(&device.cow_file)
+                Self::shutdown_device_with_lease(device, lease, pool, false)
+                    .await
+                    .map_err(DestroyAttemptError::Device)?;
+                remove_cow_files(&device.cow_file).map_err(DestroyAttemptError::Storage)
             }
-            DestroyMode::KeepCow => {
-                Self::shutdown_device_with_lease(device, lease, pool, true).await
-            }
+            DestroyMode::KeepCow => Self::shutdown_device_with_lease(device, lease, pool, true)
+                .await
+                .map_err(DestroyAttemptError::Device),
         }
     }
 
@@ -1464,7 +1574,7 @@ impl PooledNbdCowDevice {
     pub fn abandon(self) -> impl std::future::Future<Output = ()> + Send + 'static {
         let finalizer = Self::run_finalizer(async move {
             self.abandon_inner().await;
-            Ok(())
+            Ok::<(), error::NbdCowError>(())
         });
         async move {
             if let Err(e) = finalizer.await {
@@ -1479,11 +1589,12 @@ impl PooledNbdCowDevice {
         Self::retire_uncertain(&pool, &mut self.lease).await;
     }
 
-    fn run_finalizer<T>(
-        future: impl std::future::Future<Output = Result<T>> + Send + 'static,
-    ) -> PooledCowFinalizer<T>
+    fn run_finalizer<T, E>(
+        future: impl std::future::Future<Output = std::result::Result<T, E>> + Send + 'static,
+    ) -> PooledCowFinalizer<T, E>
     where
         T: Send + 'static,
+        E: From<error::NbdCowError> + std::fmt::Display + Send + 'static,
     {
         PooledCowFinalizer::new(tokio::spawn(future))
     }
@@ -1796,7 +1907,7 @@ mod tests {
                 )))
             })?;
             let _ = done_tx.send(());
-            Ok(())
+            Ok::<(), error::NbdCowError>(())
         });
 
         started_rx.await.unwrap();
@@ -1812,10 +1923,9 @@ mod tests {
     #[tokio::test]
     #[should_panic(expected = "pooled finalizer panic")]
     async fn pooled_finalizer_propagates_panic_when_awaited() {
-        let finalizer =
-            PooledNbdCowDevice::run_finalizer::<()>(
-                async move { panic!("pooled finalizer panic") },
-            );
+        let finalizer = PooledNbdCowDevice::run_finalizer::<(), error::NbdCowError>(async move {
+            panic!("pooled finalizer panic")
+        });
 
         let _ = finalizer.await;
     }
@@ -1871,6 +1981,24 @@ mod tests {
             "unexpected error: {err}"
         );
         assert!(cow_file.is_dir());
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn detailed_destroy_reports_storage_failure_as_safe_to_delete() {
+        let harness = PooledDestroyHarness::new();
+        harness.replace_cow_file_with_directory();
+        let PooledDestroyHarness { pool, device, .. } = harness;
+
+        let err = device
+            .destroy_with_retries_detailed(zero_attempt_destroy_policy())
+            .await
+            .expect_err("destroy should report cow removal failure");
+
+        assert!(
+            err.backing_files_safe_to_delete(),
+            "storage cleanup errors must not be treated as NBD ownership failures"
+        );
         pool.cleanup().await;
     }
 
