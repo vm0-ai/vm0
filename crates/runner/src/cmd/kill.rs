@@ -69,6 +69,26 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
     let current = match rediscover_same_target(&args, &initial.target).await {
         Ok(current) => current,
         Err(error) => {
+            let discovered_after_error = process::discover_all().await;
+            if error.allows_disappeared_orphan_cleanup()
+                && should_cleanup_disappeared_initial_orphan(
+                    &initial.target,
+                    is_initial_orphan,
+                    &discovered_after_error,
+                )
+            {
+                let outcome = KillOutcome::OrphanAlreadyExited(initial.target.clone());
+                report_kill_outcome(&initial.target, &initial.target, &outcome, control).await;
+                info!(
+                    sandbox_id = %initial.target.sandbox_id,
+                    pid = initial.target.pid,
+                    orphan = true,
+                    rediscover_error = %error,
+                    outcome = ?outcome,
+                    "kill command cleaned up orphan target that disappeared during rediscovery"
+                );
+                return Ok(ExitCode::SUCCESS);
+            }
             println!(
                 "Refused to kill sandbox {} (PID {}) - {error}",
                 initial.target.sandbox_id, initial.target.pid
@@ -99,6 +119,25 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
         Ok(ExitCode::SUCCESS)
     } else {
         Ok(ExitCode::FAILURE)
+    }
+}
+
+enum RediscoverTargetError {
+    Resolve(String),
+    Changed(String),
+}
+
+impl RediscoverTargetError {
+    fn allows_disappeared_orphan_cleanup(&self) -> bool {
+        matches!(self, Self::Resolve(_))
+    }
+}
+
+impl std::fmt::Display for RediscoverTargetError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Resolve(error) | Self::Changed(error) => f.write_str(error),
+        }
     }
 }
 
@@ -188,11 +227,12 @@ async fn resolve_target<'a>(
 async fn rediscover_same_target(
     args: &KillArgs,
     initial: &KillTarget,
-) -> Result<ResolvedKillTarget, String> {
+) -> Result<ResolvedKillTarget, RediscoverTargetError> {
     let current = discover_and_resolve_target(args)
         .await
-        .map_err(|error| error.to_string())?;
-    ensure_same_target_after_confirmation(args, initial, &current.target)?;
+        .map_err(|error| RediscoverTargetError::Resolve(error.to_string()))?;
+    ensure_same_target_after_confirmation(args, initial, &current.target)
+        .map_err(RediscoverTargetError::Changed)?;
     Ok(current)
 }
 
@@ -232,6 +272,35 @@ fn same_firecracker_identity(initial: &KillTarget, current: &KillTarget) -> bool
         (Some(initial), Some(current)) => initial == current,
         _ => false,
     }
+}
+
+fn should_cleanup_disappeared_initial_orphan(
+    initial: &KillTarget,
+    was_orphan: bool,
+    discovered_after_error: &DiscoveredProcesses,
+) -> bool {
+    was_orphan
+        && target_has_workspace_identity(initial)
+        && !discovered_has_same_or_unidentified_firecracker(initial, discovered_after_error)
+}
+
+fn target_has_workspace_identity(target: &KillTarget) -> bool {
+    match (&target.base_dir, &target.identity) {
+        (Some(base_dir), Some(identity)) => {
+            identity.sandbox_id == target.sandbox_id && identity.base_dir.as_ref() == Some(base_dir)
+        }
+        _ => false,
+    }
+}
+
+fn discovered_has_same_or_unidentified_firecracker(
+    initial: &KillTarget,
+    discovered: &DiscoveredProcesses,
+) -> bool {
+    discovered
+        .firecrackers
+        .iter()
+        .any(|process| process.sandbox_id == initial.sandbox_id || process.base_dir.is_none())
 }
 
 /// Resolve a `--run` prefix to a single Firecracker process.
@@ -323,7 +392,7 @@ async fn retry_as_orphan_if_owner_disappeared(
 ) -> KillOutcome {
     let refreshed = match rediscover_same_target(args, initial).await {
         Ok(refreshed) => refreshed,
-        Err(error) => return KillOutcome::RefusedTargetChanged(error),
+        Err(error) => return KillOutcome::RefusedTargetChanged(error.to_string()),
     };
     if !process::is_orphan(refreshed.target.pid, &refreshed.runner_pids).await {
         return KillOutcome::RefusedManagedControlFailed(owner_error.to_string());
@@ -803,6 +872,84 @@ mod tests {
         assert!(error.contains("run target changed"), "{error}");
         assert!(error.contains("sbox-old"), "{error}");
         assert!(error.contains("sbox-new"), "{error}");
+    }
+
+    fn discovered_with_firecrackers(
+        firecrackers: Vec<FirecrackerProcessInfo>,
+    ) -> DiscoveredProcesses {
+        DiscoveredProcesses {
+            runners: vec![],
+            firecrackers,
+            mitmdumps: vec![],
+            dnsmasqs: vec![],
+        }
+    }
+
+    #[test]
+    fn disappeared_initial_orphan_with_identity_allows_cleanup() {
+        let initial = make_target(200, "sbox-123");
+        let discovered = discovered_with_firecrackers(vec![]);
+
+        assert!(should_cleanup_disappeared_initial_orphan(
+            &initial,
+            true,
+            &discovered
+        ));
+    }
+
+    #[test]
+    fn disappeared_initial_managed_target_rejects_cleanup() {
+        let initial = make_target(200, "sbox-123");
+        let discovered = discovered_with_firecrackers(vec![]);
+
+        assert!(!should_cleanup_disappeared_initial_orphan(
+            &initial,
+            false,
+            &discovered
+        ));
+    }
+
+    #[test]
+    fn disappeared_initial_without_workspace_identity_rejects_cleanup() {
+        let mut initial = make_target(200, "sbox-123");
+        initial.identity.as_mut().unwrap().base_dir = None;
+        let discovered = discovered_with_firecrackers(vec![]);
+
+        assert!(!should_cleanup_disappeared_initial_orphan(
+            &initial,
+            true,
+            &discovered
+        ));
+    }
+
+    #[test]
+    fn disappeared_initial_with_same_sandbox_still_running_rejects_cleanup() {
+        let initial = make_target(200, "sbox-123");
+        let discovered = discovered_with_firecrackers(vec![make_fc(201, "sbox-123")]);
+
+        assert!(!should_cleanup_disappeared_initial_orphan(
+            &initial,
+            true,
+            &discovered
+        ));
+    }
+
+    #[test]
+    fn disappeared_initial_with_unidentified_firecracker_rejects_cleanup() {
+        let initial = make_target(200, "sbox-123");
+        let discovered = discovered_with_firecrackers(vec![FirecrackerProcessInfo {
+            pid: 201,
+            ppid: None,
+            sandbox_id: "pid-201".into(),
+            base_dir: None,
+            identity: None,
+        }]);
+
+        assert!(!should_cleanup_disappeared_initial_orphan(
+            &initial,
+            true,
+            &discovered
+        ));
     }
 
     #[test]
