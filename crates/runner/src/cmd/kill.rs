@@ -96,7 +96,8 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
                     &initial.target,
                     is_initial_orphan,
                     &discovered_after_error,
-                ) {
+                ) && !initial_process_still_live(&initial.target).await
+                {
                     let outcome = KillOutcome::OrphanAlreadyExited(initial.target.clone());
                     report_kill_outcome(&initial.target, &initial.target, &outcome, control).await;
                     info!(
@@ -484,7 +485,9 @@ async fn kill_orphan_process_group(target: &KillTarget) -> KillOutcome {
 
 async fn already_gone_orphan_outcome(target: &KillTarget) -> KillOutcome {
     let discovered = process::discover_all().await;
-    if should_cleanup_disappeared_initial_orphan(target, true, &discovered) {
+    if should_cleanup_disappeared_initial_orphan(target, true, &discovered)
+        && !initial_process_still_live(target).await
+    {
         KillOutcome::OrphanAlreadyExited(target.clone())
     } else {
         KillOutcome::AlreadyExitedOrChanged(target.clone())
@@ -616,6 +619,18 @@ async fn classify_orphan_validation_after_unreadable_pid_fact(
         Some(_) => OrphanTargetValidation::Changed,
         None => OrphanTargetValidation::AlreadyGone,
     }
+}
+
+async fn initial_process_still_live(target: &KillTarget) -> bool {
+    let stat = process::read_process_stat(target.pid).await;
+    same_initial_process_still_live(target, stat.as_ref())
+}
+
+fn same_initial_process_still_live(target: &KillTarget, stat: Option<&ProcessStat>) -> bool {
+    let (Some(identity), Some(stat)) = (&target.identity, stat) else {
+        return false;
+    };
+    process_stat_matches_identity(identity, stat) && !process_stat_is_zombie(stat)
 }
 
 fn process_stat_matches_identity(
@@ -1265,6 +1280,40 @@ mod tests {
 
         assert!(process_stat_matches_identity(identity, &zombie));
         assert!(process_stat_is_zombie(&zombie));
+    }
+
+    #[test]
+    fn same_initial_process_still_live_detects_matching_non_zombie() {
+        let target = make_target(200, "sbox-123");
+        let stat = process_stat(target.identity.as_ref().unwrap());
+
+        assert!(same_initial_process_still_live(&target, Some(&stat)));
+    }
+
+    #[test]
+    fn same_initial_process_still_live_rejects_zombie() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let stat = ProcessStat {
+            state: 'Z',
+            pgid: identity.pgid,
+            starttime: identity.starttime,
+        };
+
+        assert!(!same_initial_process_still_live(&target, Some(&stat)));
+    }
+
+    #[test]
+    fn same_initial_process_still_live_rejects_changed_identity() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let stat = ProcessStat {
+            state: 'S',
+            pgid: identity.pgid,
+            starttime: identity.starttime + 1,
+        };
+
+        assert!(!same_initial_process_still_live(&target, Some(&stat)));
     }
 
     #[tokio::test]
