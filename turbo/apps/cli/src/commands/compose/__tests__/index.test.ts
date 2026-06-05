@@ -2510,7 +2510,7 @@ agents:
       expect(logCalls).toContain("REGION");
     });
 
-    it("should not show missing items for required connector-provided bindings", async () => {
+    it("should not show missing items for guaranteed connector-provided bindings", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         yaml.stringify({
