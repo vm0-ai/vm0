@@ -544,17 +544,24 @@ function TemplateEmptyPanel({
   );
 }
 
-function presentationTemplateSlideImages(
+const PRESENTATION_TEMPLATE_PREVIEW_SLIDE_COUNT = 6;
+
+function presentationTemplateSlideUrl(
+  item: PresentationTemplateItem,
+  index: number,
+): string {
+  return `${item.embedUrl.split("#")[0]}#${String(index + 1).padStart(2, "0")}`;
+}
+
+function presentationTemplateSlideUrls(
   item: PresentationTemplateItem,
 ): readonly string[] {
-  const match = item.previewImage.match(/^(.*\/)(\d{2})(\.[a-z0-9]+)$/i);
-  if (!match) {
-    return [item.previewImage];
-  }
-  const [, prefix, , extension] = match;
-  return Array.from({ length: 6 }, (_, index) => {
-    return `${prefix}${String(index + 1).padStart(2, "0")}${extension}`;
-  });
+  return Array.from(
+    { length: PRESENTATION_TEMPLATE_PREVIEW_SLIDE_COUNT },
+    (_, index) => {
+      return presentationTemplateSlideUrl(item, index);
+    },
+  );
 }
 
 function TemplatePreview({
@@ -606,14 +613,17 @@ function TemplatePreviewPage({
   onBack: () => void;
   onSelect: (item: PresentationTemplateItem) => void;
 }) {
-  const slideImages = presentationTemplateSlideImages(item);
-  const safeSlideIndex = Math.min(selectedSlideIndex, slideImages.length - 1);
-  const selectedSlideImage = slideImages[safeSlideIndex] ?? item.previewImage;
+  const slideUrls = presentationTemplateSlideUrls(item);
+  const safeSlideIndex = Math.max(
+    0,
+    Math.min(selectedSlideIndex, slideUrls.length - 1),
+  );
+  const selectedSlideUrl = slideUrls[safeSlideIndex] ?? item.embedUrl;
   const kind = formatPresentationTemplateKind(item.templateId);
 
   const changeSlide = (direction: -1 | 1) => {
     onSlideChange(
-      (safeSlideIndex + direction + slideImages.length) % slideImages.length,
+      (safeSlideIndex + direction + slideUrls.length) % slideUrls.length,
     );
   };
 
@@ -638,12 +648,14 @@ function TemplatePreviewPage({
         <div className="rounded-lg border border-border bg-background p-4">
           <div className="relative overflow-hidden rounded-lg bg-muted">
             <div className="absolute left-3 top-3 z-10 rounded-md bg-black/80 px-2 py-1 text-xs font-semibold text-white">
-              {safeSlideIndex + 1} of {slideImages.length}
+              {safeSlideIndex + 1} of {slideUrls.length}
             </div>
-            <img
-              src={selectedSlideImage}
-              alt=""
-              className="aspect-[16/9] w-full object-cover"
+            <iframe
+              key={selectedSlideUrl}
+              src={selectedSlideUrl}
+              title={`${item.title} preview slide ${safeSlideIndex + 1}`}
+              className="aspect-[16/9] w-full border-0 bg-muted"
+              loading="lazy"
             />
             <button
               type="button"
@@ -667,16 +679,16 @@ function TemplatePreviewPage({
             </button>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
-            {slideImages.map((image, index) => {
+            {slideUrls.map((url, index) => {
               const selected = index === safeSlideIndex;
               return (
                 <button
-                  key={image}
+                  key={url}
                   type="button"
                   aria-label={`Show slide ${index + 1}`}
                   aria-pressed={selected}
                   className={cn(
-                    "overflow-hidden rounded-md border bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "relative overflow-hidden rounded-md border bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     selected ? "border-primary" : "border-border",
                   )}
                   onClick={() => {
@@ -684,11 +696,14 @@ function TemplatePreviewPage({
                   }}
                 >
                   <img
-                    src={image}
+                    src={item.previewImage}
                     alt=""
                     className="aspect-[16/9] w-full object-cover"
                     loading="lazy"
                   />
+                  <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {index + 1}
+                  </span>
                 </button>
               );
             })}
@@ -700,7 +715,7 @@ function TemplatePreviewPage({
               {item.title}
             </h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              {kind} · {slideImages.length} slides
+              {kind} · {slideUrls.length} preview slides
             </p>
           </div>
           <div className="rounded-lg border border-border bg-background p-5">
@@ -709,7 +724,7 @@ function TemplatePreviewPage({
             </h3>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                {slideImages.length} slides
+                {slideUrls.length} preview slides
               </span>
               <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
                 Confident tone
