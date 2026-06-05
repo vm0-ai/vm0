@@ -1011,7 +1011,7 @@ function ScheduleMenuButtonInner({ threadId }: { threadId: string }) {
                   size={15}
                   className="mr-2 shrink-0 text-muted-foreground"
                 />
-                <span className="truncate">{schedule.name}</span>
+                <span className="truncate">{schedule.title}</span>
               </DropdownMenuItem>
             );
           })

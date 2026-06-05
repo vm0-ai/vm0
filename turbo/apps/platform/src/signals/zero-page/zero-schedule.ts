@@ -133,6 +133,8 @@ interface ZeroScheduleEntry {
   timezone: string;
   /** Raw interval in seconds for loop schedules */
   intervalSeconds: number | null;
+  /** Linked chat thread for chat-mode schedules. */
+  chatThreadId: string | null;
 }
 
 export const zeroScheduleEntries$ = computed((get) => {
@@ -151,6 +153,7 @@ export const zeroScheduleEntries$ = computed((get) => {
         name: s.name,
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
+        chatThreadId: s.chatThreadId,
       };
     });
 });
@@ -363,6 +366,7 @@ export interface OrgScheduleEntry {
   displayName: string | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
+  chatThreadId: string | null;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
@@ -393,6 +397,7 @@ export const allOrgScheduleEntries$ = computed((get) => {
         displayName: s.displayName,
         nextRunAt: s.nextRunAt,
         lastRunAt: s.lastRunAt,
+        chatThreadId: s.chatThreadId,
       };
     });
 });

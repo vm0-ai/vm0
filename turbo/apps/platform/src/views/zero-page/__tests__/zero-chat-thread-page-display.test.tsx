@@ -32,6 +32,10 @@ import {
   createDefaultMockGithubIntegration,
   setMockGithubIntegration,
 } from "../../../mocks/handlers/api-integrations-github.ts";
+import {
+  createMockScheduleResponse,
+  setMockSchedules,
+} from "../../../mocks/handlers/api-schedules.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -102,6 +106,47 @@ beforeEach(() => {
       });
     }),
   );
+});
+
+describe("zero chat thread page display - schedule menu", () => {
+  it("shows linked schedule titles instead of internal names", async () => {
+    const user = userEvent.setup();
+    const threadId = "d0000000-0000-4000-a000-000000000001";
+    mockChatLifecycle({ threadId });
+    setMockSchedules([
+      createMockScheduleResponse({
+        id: "e0000000-0000-4000-a000-000000000001",
+        name: "e0000000-0000-4000-a000-000000000001",
+        description: "Daily morning briefing",
+        chatThreadId: threadId,
+      }),
+      createMockScheduleResponse({
+        id: "e0000000-0000-4000-a000-000000000002",
+        name: "other-internal-name",
+        description: "Other thread schedule",
+        chatThreadId: "d0000000-0000-4000-a000-000000000002",
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        ...chatArtifactSidebarOff(),
+        [FeatureSwitchKey.ScheduledChat]: true,
+      },
+    });
+
+    await user.click(await screen.findByLabelText("Schedules"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Daily morning briefing")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("e0000000-0000-4000-a000-000000000001"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Other thread schedule")).not.toBeInTheDocument();
+  });
 });
 
 describe("zero chat thread page display - permission action card", () => {
