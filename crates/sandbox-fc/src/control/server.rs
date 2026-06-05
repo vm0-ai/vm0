@@ -369,11 +369,7 @@ async fn handle_connection(
     };
 
     if let Ok(request) = serde_json::from_slice::<TerminateRequest>(&frame) {
-        let response = tokio::select! {
-            biased;
-            () = shutdown.cancelled() => return Ok(()),
-            response = terminate(request, &termination) => response,
-        };
+        let response = terminate(request, &termination).await;
         return write_json_frame(&mut stream, &response).await;
     }
 
@@ -682,6 +678,45 @@ mod tests {
             Err(mpsc::error::TryRecvError::Empty)
         ));
 
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn terminate_response_survives_shutdown_after_request_is_queued() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let (kill_tx, mut kill_rx) = mpsc::channel(1);
+        let shutdown = CancellationToken::new();
+        let mut handle = bind_server(
+            sock_path.clone(),
+            test_gate(guest),
+            ProcessTerminationHandle::new(kill_tx),
+        )
+        .unwrap()
+        .spawn(shutdown.clone());
+
+        let client = tokio::spawn({
+            let sock_path = sock_path.clone();
+            async move {
+                let request = TerminateRequest {
+                    action: TerminateAction::Terminate,
+                };
+                send_terminate(&sock_path, &request, Duration::from_secs(5)).await
+            }
+        });
+        let request = recv_termination_request(&mut kill_rx).await;
+
+        shutdown.cancel();
+        request.acknowledge();
+        let response = client.await.unwrap().unwrap();
+
+        assert_eq!(
+            response,
+            TerminateResponse::Status {
+                status: TerminateStatus::Accepted
+            }
+        );
         handle.shutdown().await;
     }
 
