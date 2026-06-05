@@ -15,6 +15,10 @@ import {
   chatThreadByIdContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { createNewChatThreadOptimistically$ } from "../../../signals/chat-page/optimistic-chat-thread-page.ts";
+import {
+  createMockScheduleResponse,
+  setMockSchedules,
+} from "../../../mocks/handlers/api-schedules.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -180,6 +184,21 @@ describe("sidebar chat delete", () => {
       },
     ];
 
+    setMockSchedules([
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000010",
+        name: "morning-briefing",
+        description: "Morning briefing",
+        chatThreadId: "thread-scheduled",
+      }),
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000011",
+        name: "weekly-report",
+        description: "Weekly report",
+        chatThreadId: "thread-scheduled",
+      }),
+    ]);
+
     server.use(
       mockApi(chatThreadsContract.list, ({ respond }) => {
         return respond(200, splitChatThreadListResponse(threads));
@@ -236,9 +255,18 @@ describe("sidebar chat delete", () => {
     ).toBeInTheDocument();
     expect(
       within(dialog).getByText(
-        "This will permanently delete this chat and 2 linked schedules. This action cannot be undone.",
+        "This will permanently delete this chat and its 2 linked schedules. Any task currently running in this chat will be stopped immediately. This action cannot be undone.",
       ),
     ).toBeInTheDocument();
+
+    // The linked schedules are listed by their description.
+    expect(
+      within(dialog).getByText("These schedules will be deleted"),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(dialog).getByText("Morning briefing")).toBeInTheDocument();
+    });
+    expect(within(dialog).getByText("Weekly report")).toBeInTheDocument();
   });
 
   it("should send the correct thread ID when deleting a middle thread", async () => {

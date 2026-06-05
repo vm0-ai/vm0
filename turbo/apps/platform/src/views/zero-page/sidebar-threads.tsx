@@ -78,6 +78,7 @@ import {
 } from "../../signals/chat-page/sidebar-chat-threads-pagination.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
+import { pendingDeleteThreadSchedules$ } from "../../signals/chat-page/header-schedule-menu.ts";
 import {
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
@@ -646,6 +647,8 @@ function ChatThreads() {
     : null;
   const pendingDeleteScheduleCount = pendingDeleteThread?.scheduleCount ?? 0;
   const pendingDeleteHasSchedules = pendingDeleteScheduleCount > 0;
+  const pendingDeleteSchedules =
+    useLastResolved(pendingDeleteThreadSchedules$) ?? [];
 
   function handleLoadMore() {
     if (!cursorForLoadMore || loadingMore) {
@@ -700,12 +703,31 @@ function ChatThreads() {
             </DialogTitle>
             <DialogDescription>
               {pendingDeleteHasSchedules
-                ? `This will permanently delete this chat and ${pendingDeleteScheduleCount} linked ${
+                ? `This will permanently delete this chat and its ${pendingDeleteScheduleCount} linked ${
                     pendingDeleteScheduleCount === 1 ? "schedule" : "schedules"
-                  }. This action cannot be undone.`
-                : "This will permanently delete this chat. This action cannot be undone."}
+                  }. Any task currently running in this chat will be stopped immediately. This action cannot be undone.`
+                : "This will permanently delete this chat. Any task currently running in this chat will be stopped immediately. This action cannot be undone."}
             </DialogDescription>
           </DialogHeader>
+          {pendingDeleteHasSchedules && pendingDeleteSchedules.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-sm font-medium">
+                These schedules will be deleted
+              </p>
+              <ul className="flex list-disc flex-col gap-1 pl-5">
+                {pendingDeleteSchedules.map((schedule) => {
+                  return (
+                    <li
+                      key={schedule.id}
+                      className="break-words text-sm text-muted-foreground"
+                    >
+                      {schedule.title}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
           <DialogFooter>
             <Button
               variant="outline"
