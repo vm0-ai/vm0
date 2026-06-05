@@ -584,6 +584,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         name: "memory",
         version: "version-bbb",
         mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        missingRootPolicy: "preserveParentVersion" as const,
       },
       {
         name: "memory",
@@ -607,6 +608,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         name: "memory",
         version: "version-bbb",
         mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        missingRootPolicy: "preserveParentVersion",
       },
       {
         name: "memory",
@@ -683,6 +685,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         version: "version-bbb",
         mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
         generatedBy: "apiAutoMemory" as const,
+        missingRootPolicy: "preserveParentVersion" as const,
       },
     ];
     const body = {
@@ -711,6 +714,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         name: "memory",
         version: "version-bbb",
         mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        missingRootPolicy: "preserveParentVersion",
       },
     ]);
   });

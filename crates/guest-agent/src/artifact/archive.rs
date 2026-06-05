@@ -151,6 +151,16 @@ pub(super) enum ArchiveError {
     FinishGzip { source: io::Error },
 }
 
+impl ArchiveError {
+    pub(super) fn is_root_not_found(&self) -> bool {
+        matches!(
+            self,
+            Self::RootOpen { source, .. } | Self::RootRead { source, .. }
+                if source.kind() == io::ErrorKind::NotFound
+        )
+    }
+}
+
 /// Create a tar.gz archive containing only the listed manifest files.
 ///
 /// This ensures the archive matches the manifest exactly — no symlinks or other

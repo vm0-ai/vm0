@@ -139,6 +139,11 @@ import { recordSandboxOperation } from "../external/sandbox-op-log";
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
+type ArtifactMissingRootPolicy = NonNullable<
+  StorageManifest["artifacts"][number]["missingRootPolicy"]
+>;
+const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
+  "preserveParentVersion";
 
 const TIER_LIMITS = Object.freeze({
   free: 1,
@@ -185,6 +190,7 @@ interface ContextArtifact {
   readonly name: string;
   readonly version?: string;
   readonly mountPath: string;
+  readonly missingRootPolicy?: ArtifactMissingRootPolicy;
   readonly generatedBy?: "apiAutoMemory";
 }
 
@@ -602,10 +608,10 @@ function autoMemoryMountPath(framework: SupportedFramework): string {
 }
 
 function autoMemoryArtifact(framework: SupportedFramework): ContextArtifact {
-  return {
+  return withAutoMemoryMissingRootPolicy({
     name: AUTO_MEMORY_ARTIFACT_NAME,
     mountPath: autoMemoryMountPath(framework),
-  };
+  });
 }
 
 function isCanonicalAutoMemoryArtifact(
@@ -616,6 +622,15 @@ function isCanonicalAutoMemoryArtifact(
     artifact.name === AUTO_MEMORY_ARTIFACT_NAME &&
     artifact.mountPath === autoMemoryMountPath(framework)
   );
+}
+
+function withAutoMemoryMissingRootPolicy(
+  artifact: ContextArtifact,
+): ContextArtifact {
+  return {
+    ...artifact,
+    missingRootPolicy: AUTO_MEMORY_MISSING_ROOT_POLICY,
+  };
 }
 
 function claimsAutoMemorySlot(

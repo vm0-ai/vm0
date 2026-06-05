@@ -90,6 +90,9 @@ function artifactSnapshotsForDb(args: {
       name: snapshot.name,
       version: snapshot.version,
       mountPath: snapshot.mountPath,
+      ...(snapshot.missingRootPolicy
+        ? { missingRootPolicy: snapshot.missingRootPolicy }
+        : {}),
     };
   });
 }

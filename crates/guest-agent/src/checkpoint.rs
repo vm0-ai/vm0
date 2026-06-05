@@ -8,6 +8,7 @@ use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::paths;
 use crate::session_history;
+use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 use bytes::Bytes;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
@@ -63,17 +64,33 @@ fn fail(
 
 /// Shape one entry of the `artifactSnapshots` payload. Keys are the
 /// camelCase names the web Zod receiver (`artifactSnapshotsSchema`) expects.
-fn build_artifact_snapshot_entry(name: &str, version: &str, mount_path: &str) -> serde_json::Value {
-    json!({
+fn build_artifact_snapshot_entry(
+    name: &str,
+    version: &str,
+    mount_path: &str,
+    missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
+) -> serde_json::Value {
+    let mut entry = json!({
         "name": name,
         "version": version,
         "mountPath": mount_path,
-    })
+    });
+    if let Some(policy) = missing_root_policy
+        && let Some(object) = entry.as_object_mut()
+    {
+        object.insert("missingRootPolicy".to_string(), json!(policy));
+    }
+    entry
 }
 
-struct ArtifactSnapshotPlan<'a> {
-    entry: &'a env::ArtifactEnv,
-    files: Vec<artifact::FileEntry>,
+enum ArtifactSnapshotPlan<'a> {
+    Snapshot {
+        entry: &'a env::ArtifactEnv,
+        files: Vec<artifact::FileEntry>,
+    },
+    PreserveParentVersion {
+        entry: &'a env::ArtifactEnv,
+    },
 }
 
 /// Prepare + upload the session history to S3 via a presigned URL. If the
@@ -187,14 +204,44 @@ async fn snapshot_artifact_entries(
             entry.name,
             entry.mount_path
         );
-        let files = artifact::walk_files_for_checkpoint(&entry.mount_path)
-            .await
-            .map_err(|error| error.into_agent_error())?;
-        plans.push(ArtifactSnapshotPlan { entry, files });
+        match artifact::walk_files_for_checkpoint(&entry.mount_path).await {
+            Ok(files) => {
+                plans.push(ArtifactSnapshotPlan::Snapshot { entry, files });
+            }
+            Err(error)
+                if error.is_missing_root()
+                    && matches!(
+                        entry.missing_root_policy,
+                        Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
+                    ) =>
+            {
+                error.record_preserved_missing_root(&entry.name, &entry.mount_path);
+                plans.push(ArtifactSnapshotPlan::PreserveParentVersion { entry });
+            }
+            Err(error) => return Err(error.into_agent_error()),
+        }
     }
 
     let mut results = Vec::with_capacity(plans.len());
-    for ArtifactSnapshotPlan { entry, files } in plans {
+    for plan in plans {
+        let (entry, files) = match plan {
+            ArtifactSnapshotPlan::Snapshot { entry, files } => (entry, files),
+            ArtifactSnapshotPlan::PreserveParentVersion { entry } => {
+                log_info!(
+                    LOG_TAG,
+                    "VAS artifact snapshot preserved parent version for missing root: {}@{}",
+                    entry.name,
+                    entry.version_id
+                );
+                results.push(build_artifact_snapshot_entry(
+                    &entry.name,
+                    &entry.version_id,
+                    &entry.mount_path,
+                    entry.missing_root_policy,
+                ));
+                continue;
+            }
+        };
         // Skip the VAS round-trips when the mount is byte-identical to what
         // was originally mounted. `version_id` in VAS *is* the content hash
         // (same SHA-256 the web producer emits), so an equality check on the
@@ -222,6 +269,7 @@ async fn snapshot_artifact_entries(
                 &entry.name,
                 &entry.version_id,
                 &entry.mount_path,
+                entry.missing_root_policy,
             ));
             continue;
         }
@@ -255,6 +303,7 @@ async fn snapshot_artifact_entries(
             &entry.name,
             &snapshot.version_id,
             &entry.mount_path,
+            entry.missing_root_policy,
         ));
     }
     Ok(Some(serde_json::Value::Array(results)))
@@ -510,7 +559,7 @@ mod tests {
 
     #[test]
     fn artifact_snapshot_entry_shape_matches_receiver_schema() {
-        let entry = build_artifact_snapshot_entry("workspace", "v-abc-123", "/workspace");
+        let entry = build_artifact_snapshot_entry("workspace", "v-abc-123", "/workspace", None);
         assert_eq!(
             entry,
             json!({
@@ -523,15 +572,22 @@ mod tests {
 
     #[test]
     fn artifact_snapshot_entry_uses_camel_case_keys() {
-        let entry = build_artifact_snapshot_entry("n", "v", "/m");
+        let entry = build_artifact_snapshot_entry(
+            "n",
+            "v",
+            "/m",
+            Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
+        );
         let obj = entry.as_object().expect("entry must be a JSON object");
         // Contract-boundary invariant: the web Zod receiver requires camelCase
-        // `mountPath`; a snake_case slip would silently cause a 400 on the
-        // webhook side.
+        // `mountPath` and `missingRootPolicy`; a snake_case slip would
+        // silently cause a 400 on the webhook side.
         assert!(obj.contains_key("name"));
         assert!(obj.contains_key("version"));
         assert!(obj.contains_key("mountPath"));
+        assert!(obj.contains_key("missingRootPolicy"));
         assert!(!obj.contains_key("mount_path"));
+        assert!(!obj.contains_key("missing_root_policy"));
     }
 
     #[tokio::test]
@@ -658,7 +714,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn artifact_snapshot_preserve_policy_missing_mount_still_fails() {
+    async fn artifact_snapshot_preserve_policy_missing_mount_preserves_parent_version() {
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -682,13 +738,21 @@ mod tests {
             missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
         }];
 
-        let err = snapshot_artifact_entries(&http, &entries)
+        let snapshots = snapshot_artifact_entries(&http, &entries)
             .await
-            .unwrap_err();
+            .unwrap()
+            .unwrap();
 
-        assert!(
-            err.to_string().contains("Failed to walk artifact files"),
-            "got: {err}"
+        assert_eq!(
+            snapshots,
+            json!([
+                {
+                    "name": "memory",
+                    "version": "old-memory-version",
+                    "mountPath": missing_mount.to_string_lossy(),
+                    "missingRootPolicy": "preserveParentVersion",
+                }
+            ])
         );
         prepare.assert_calls(0);
         commit.assert_calls(0);

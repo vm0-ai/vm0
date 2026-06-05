@@ -1497,20 +1497,13 @@ describe("POST /api/agent/runs", () => {
         .sort(),
     ).toStrictEqual(["artifact", "memory"]);
     expect(
-      session?.artifacts.some((artifact) => {
-        return Object.prototype.hasOwnProperty.call(
-          artifact,
-          "missingRootPolicy",
-        );
-      }),
-    ).toBeFalsy();
-    expect(
       session?.artifacts.find((artifact) => {
         return artifact.name === "memory";
       }),
     ).toStrictEqual({
       name: "memory",
       mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+      missingRootPolicy: "preserveParentVersion",
     });
 
     const [job] = await db
@@ -1564,7 +1557,7 @@ describe("POST /api/agent/runs", () => {
         return artifact.vasStorageName === "artifact";
       },
     );
-    expect(memoryArtifact?.missingRootPolicy).toBeUndefined();
+    expect(memoryArtifact?.missingRootPolicy).toBe("preserveParentVersion");
     expect(requestedArtifact?.missingRootPolicy).toBeUndefined();
   });
 
@@ -2203,7 +2196,7 @@ describe("POST /api/agent/runs", () => {
           artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
         );
       })?.missingRootPolicy,
-    ).toBeUndefined();
+    ).toBe("preserveParentVersion");
     expect(runContextSnapshot(continued.body.runId)).toMatchObject({
       runId: continued.body.runId,
       userId: fx.userId,
@@ -2630,7 +2623,7 @@ describe("POST /api/agent/runs", () => {
     ).toBeUndefined();
   });
 
-  it("does not add missing root policy to continued canonical memory checkpoint artifacts", async () => {
+  it("preserves missing root policy from continued canonical memory checkpoint artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
     const first = await accept(
@@ -2695,6 +2688,7 @@ describe("POST /api/agent/runs", () => {
             name: "memory",
             mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
             version: memoryStorage.headVersionId,
+            missingRootPolicy: "preserveParentVersion",
           },
         ],
       })
@@ -2733,6 +2727,6 @@ describe("POST /api/agent/runs", () => {
           artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
         );
       })?.missingRootPolicy,
-    ).toBeUndefined();
+    ).toBe("preserveParentVersion");
   });
 });

@@ -12,7 +12,7 @@
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info};
+use guest_common::{log_error, log_info, log_warn};
 use serde::Serialize;
 
 mod api;
@@ -110,14 +110,42 @@ pub(crate) enum WalkFilesError {
     Checkpoint {
         message: String,
         elapsed: std::time::Duration,
+        missing_root: bool,
     },
 }
 
 impl WalkFilesError {
+    pub(crate) fn is_missing_root(&self) -> bool {
+        matches!(
+            self,
+            Self::Checkpoint {
+                missing_root: true,
+                ..
+            }
+        )
+    }
+
+    pub(crate) fn record_preserved_missing_root(self, storage_name: &str, mount_path: &str) {
+        if let Self::Checkpoint {
+            message, elapsed, ..
+        } = self
+        {
+            log_warn!(
+                LOG_TAG,
+                "Artifact root missing for '{}' at {}; preserving parent version: {message}",
+                storage_name,
+                mount_path
+            );
+            record_sandbox_op("artifact_missing_root_preserved", elapsed, true, None);
+        }
+    }
+
     pub(crate) fn into_agent_error(self) -> AgentError {
         match self {
             Self::Execution(message) => AgentError::Execution(message),
-            Self::Checkpoint { message, elapsed } => {
+            Self::Checkpoint {
+                message, elapsed, ..
+            } => {
                 record_sandbox_op("artifact_hash_compute", elapsed, false, Some(&message));
                 log_error!(LOG_TAG, "{message}");
                 AgentError::Checkpoint(message)
@@ -153,6 +181,7 @@ pub(crate) async fn walk_files_for_checkpoint(
             return Err(WalkFilesError::Checkpoint {
                 message,
                 elapsed: hash_start.elapsed(),
+                missing_root: e.is_root_not_found(),
             });
         }
     };

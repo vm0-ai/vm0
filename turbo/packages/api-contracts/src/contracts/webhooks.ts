@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { secretConnectorMetadataMapSchema } from "./runners";
+import {
+  artifactMissingRootPolicySchema,
+  secretConnectorMetadataMapSchema,
+} from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
 import {
   storageTypeSchema,
@@ -149,18 +152,20 @@ const agentEventSchema = z
   .passthrough();
 
 /**
- * Artifact snapshots schema — canonical `Array<{name, version, mountPath}>`
- * form. Legacy `Record<name, version>` support was removed in #10913 after
- * the DB migration and guest-agent writer flip completed.
+ * Artifact snapshots schema — canonical
+ * `Array<{name, version, mountPath, missingRootPolicy?}>` form. Legacy
+ * `Record<name, version>` support was removed in #10913 after the DB
+ * migration and guest-agent writer flip completed.
  */
 const artifactSnapshotsSchema = z.array(
   z.object({
     name: z.string(),
     version: z.string(),
     mountPath: z.string(),
-    // Legacy internal provenance accepted for older guest agents. Run creation
-    // decides checkpoint-time behavior from the canonical artifact slot.
+    // Legacy internal provenance accepted for older guest agents; checkpoint
+    // storage strips it while preserving the artifact policy below.
     generatedBy: z.literal("apiAutoMemory").optional(),
+    missingRootPolicy: artifactMissingRootPolicySchema.optional(),
   }),
 );
 
