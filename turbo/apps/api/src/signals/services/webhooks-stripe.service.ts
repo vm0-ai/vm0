@@ -17,6 +17,7 @@ import {
   tierForKnownPriceId,
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
+import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
 
 const L = logger("WebhookStripe");
 
@@ -103,6 +104,11 @@ interface SubscriptionInvoiceDetails {
   readonly credits: number;
   readonly periodEndDate: Date;
   readonly expiresAt: Date;
+}
+
+interface PaidWebhookOutcome {
+  readonly handled: boolean;
+  readonly drainOrgId: string | null;
 }
 
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
@@ -390,10 +396,10 @@ async function expireCredits(tx: WriteTx, orgId: string): Promise<number> {
 async function handleAutoRechargeInvoicePaid(
   db: Db,
   invoice: Pick<InvoiceInput, "id" | "metadata">,
-): Promise<boolean> {
+): Promise<PaidWebhookOutcome> {
   const metadata = invoice.metadata;
   if (!metadata || metadata.type !== "auto_recharge") {
-    return false;
+    return { handled: false, drainOrgId: null };
   }
 
   const orgId = metadata.orgId;
@@ -403,34 +409,36 @@ async function handleAutoRechargeInvoicePaid(
       invoiceId: invoice.id,
       metadata,
     });
-    return false;
+    return { handled: false, drainOrgId: null };
   }
 
-  const granted = await db.transaction(async (tx) => {
-    const inserted = await createExpiresRecord(tx, orgId, {
-      source: "auto_recharge",
-      stripeInvoiceId: invoice.id,
-      amount: creditsAmount,
-      expiresAt: autoRechargeNeverExpiresAt(),
-    });
-
-    if (!inserted) {
-      L.debug("Auto-recharge invoice already processed", {
-        orgId,
-        invoiceId: invoice.id,
+  const grantResult = await db.transaction(
+    async (tx): Promise<"duplicate" | "granted"> => {
+      const inserted = await createExpiresRecord(tx, orgId, {
+        source: "auto_recharge",
+        stripeInvoiceId: invoice.id,
+        amount: creditsAmount,
+        expiresAt: autoRechargeNeverExpiresAt(),
       });
-      return false;
-    }
 
-    await grantOrgCredits(tx, orgId, creditsAmount);
-    await tx
-      .update(orgMetadata)
-      .set({ autoRechargePendingAt: null, updatedAt: nowDate() })
-      .where(eq(orgMetadata.orgId, orgId));
-    return true;
-  });
+      if (!inserted) {
+        L.debug("Auto-recharge invoice already processed", {
+          orgId,
+          invoiceId: invoice.id,
+        });
+        return "duplicate";
+      }
 
-  if (granted) {
+      await grantOrgCredits(tx, orgId, creditsAmount);
+      await tx
+        .update(orgMetadata)
+        .set({ autoRechargePendingAt: null, updatedAt: nowDate() })
+        .where(eq(orgMetadata.orgId, orgId));
+      return "granted";
+    },
+  );
+
+  if (grantResult === "granted") {
     L.debug("Auto-recharge credits granted", {
       orgId,
       creditsAmount,
@@ -438,13 +446,13 @@ async function handleAutoRechargeInvoicePaid(
     });
   }
 
-  return true;
+  return { handled: true, drainOrgId: orgId };
 }
 
 async function handleOneTimePurchaseCompleted(
   db: Db,
   session: CheckoutSessionInput,
-): Promise<void> {
+): Promise<string | null> {
   const metadata = session.metadata ?? {};
   const orgId = metadata.orgId;
   const campaignKey = metadata.campaignKey;
@@ -455,7 +463,7 @@ async function handleOneTimePurchaseCompleted(
       hasOrgId: Boolean(orgId),
       hasCampaignKey: Boolean(campaignKey),
     });
-    return;
+    return null;
   }
 
   const campaign = getCampaign(campaignKey);
@@ -464,7 +472,7 @@ async function handleOneTimePurchaseCompleted(
       sessionId: session.id,
       campaignKey,
     });
-    return;
+    return null;
   }
 
   const expiresAt = new Date(
@@ -489,12 +497,14 @@ async function handleOneTimePurchaseCompleted(
 
     await grantOrgCredits(tx, orgId, campaign.credits);
   });
+
+  return orgId;
 }
 
 async function handleCreditPurchaseCompleted(
   db: Db,
   session: CheckoutSessionInput,
-): Promise<void> {
+): Promise<string | null> {
   const metadata = session.metadata ?? {};
   const orgId = metadata.orgId;
   const creditsAmount = creditPurchaseAmount(session);
@@ -505,7 +515,7 @@ async function handleCreditPurchaseCompleted(
       hasOrgId: Boolean(orgId),
       creditsAmount: metadata.creditsAmount ?? null,
     });
-    return;
+    return null;
   }
 
   await db.transaction(async (tx) => {
@@ -526,15 +536,17 @@ async function handleCreditPurchaseCompleted(
 
     await grantOrgCredits(tx, orgId, creditsAmount);
   });
+
+  return orgId;
 }
 
 async function handlePaidCheckoutPurpose(
   db: Db,
   session: CheckoutSessionInput,
   purpose: "credit_purchase" | "one_time_purchase",
-): Promise<boolean> {
+): Promise<PaidWebhookOutcome> {
   if (session.metadata?.purpose !== purpose) {
-    return false;
+    return { handled: false, drainOrgId: null };
   }
 
   if (session.payment_status !== "paid") {
@@ -542,16 +554,15 @@ async function handlePaidCheckoutPurpose(
       sessionId: session.id,
       paymentStatus: session.payment_status ?? null,
     });
-    return true;
+    return { handled: true, drainOrgId: null };
   }
 
-  if (purpose === "credit_purchase") {
-    await handleCreditPurchaseCompleted(db, session);
-  } else {
-    await handleOneTimePurchaseCompleted(db, session);
-  }
+  const drainOrgId =
+    purpose === "credit_purchase"
+      ? await handleCreditPurchaseCompleted(db, session)
+      : await handleOneTimePurchaseCompleted(db, session);
 
-  return true;
+  return { handled: true, drainOrgId };
 }
 
 function checkoutSubscriptionContext(
@@ -1035,10 +1046,10 @@ async function processSubscriptionInvoicePaid(
     readonly orgId: string;
     readonly details: SubscriptionInvoiceDetails;
   },
-): Promise<void> {
+): Promise<boolean> {
   const lockedOrg = await lockInvoicePaidOrg(tx, args.orgId);
   if (!lockedOrg) {
-    return;
+    return false;
   }
   const replacedSubscriptionId = replacedProSubscriptionId({
     currentSubscriptionId: lockedOrg.stripeSubscriptionId,
@@ -1061,7 +1072,7 @@ async function processSubscriptionInvoicePaid(
       invoiceId: args.invoice.id,
       orgId: args.orgId,
     });
-    return;
+    return true;
   }
 
   if (
@@ -1084,7 +1095,7 @@ async function processSubscriptionInvoicePaid(
         targetTier: args.details.tier,
       }),
     });
-    return;
+    return false;
   }
 
   const trialingExistingSubscription =
@@ -1108,7 +1119,7 @@ async function processSubscriptionInvoicePaid(
       subscriptionId: args.subscriptionId,
       details: args.details,
     });
-    return;
+    return true;
   }
 
   await expireCredits(tx, args.orgId);
@@ -1124,7 +1135,7 @@ async function processSubscriptionInvoicePaid(
       invoiceId: args.invoice.id,
       orgId: args.orgId,
     });
-    return;
+    return true;
   }
 
   await grantOrgCredits(tx, args.orgId, args.details.credits);
@@ -1142,23 +1153,34 @@ async function processSubscriptionInvoicePaid(
     targetTier: args.details.tier,
     knownOldSubscriptionId: replacedSubscriptionId,
   });
+  return true;
 }
 
 async function handleCheckoutCompleted(
   db: Db,
   session: CheckoutSessionInput,
-): Promise<void> {
-  if (await handlePaidCheckoutPurpose(db, session, "credit_purchase")) {
-    return;
+): Promise<string | null> {
+  const creditPurchaseResult = await handlePaidCheckoutPurpose(
+    db,
+    session,
+    "credit_purchase",
+  );
+  if (creditPurchaseResult.handled) {
+    return creditPurchaseResult.drainOrgId;
   }
 
-  if (await handlePaidCheckoutPurpose(db, session, "one_time_purchase")) {
-    return;
+  const oneTimePurchaseResult = await handlePaidCheckoutPurpose(
+    db,
+    session,
+    "one_time_purchase",
+  );
+  if (oneTimePurchaseResult.handled) {
+    return oneTimePurchaseResult.drainOrgId;
   }
 
   const checkoutContext = checkoutSubscriptionContext(session);
   if (!checkoutContext) {
-    return;
+    return null;
   }
   const { customerId, subscriptionId } = checkoutContext;
 
@@ -1169,6 +1191,7 @@ async function handleCheckoutCompleted(
     subscription,
     source: "checkout.session.completed",
   });
+  return null;
 }
 
 async function handleSubscriptionCreated(
@@ -1190,10 +1213,13 @@ async function handleSubscriptionCreated(
   });
 }
 
-async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
-  const handled = await handleAutoRechargeInvoicePaid(db, invoice);
-  if (handled) {
-    return;
+async function handleInvoicePaid(
+  db: Db,
+  invoice: InvoiceInput,
+): Promise<string | null> {
+  const autoRechargeResult = await handleAutoRechargeInvoicePaid(db, invoice);
+  if (autoRechargeResult.handled) {
+    return autoRechargeResult.drainOrgId;
   }
 
   const subscriptionId = subscriptionIdFromInvoice(invoice);
@@ -1201,13 +1227,13 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     L.warn("invoice.paid without subscription; skipping", {
       invoiceId: invoice.id,
     });
-    return;
+    return null;
   }
 
   const customerId = customerIdFromInvoice(invoice);
   if (!customerId) {
     L.warn("invoice.paid without customer ID", { invoiceId: invoice.id });
-    return;
+    return null;
   }
 
   const org = await invoicePaidOrgForCustomerOrMetadata(db, {
@@ -1219,7 +1245,7 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
       customerId,
       invoiceId: invoice.id,
     });
-    return;
+    return null;
   }
 
   if (org.lastProcessedInvoiceId === invoice.id) {
@@ -1235,7 +1261,7 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
       invoiceId: invoice.id,
       orgId: org.orgId,
     });
-    return;
+    return org.orgId;
   }
 
   const details = await subscriptionInvoiceDetails(invoice, {
@@ -1243,11 +1269,11 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     orgId: org.orgId,
   });
   if (!details) {
-    return;
+    return null;
   }
 
-  await db.transaction(async (tx) => {
-    await processSubscriptionInvoicePaid(tx, {
+  const processed = await db.transaction(async (tx) => {
+    return await processSubscriptionInvoicePaid(tx, {
       invoice,
       customerId,
       subscriptionId,
@@ -1255,6 +1281,7 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
       details,
     });
   });
+  return processed ? org.orgId : null;
 }
 
 async function handleSubscriptionUpdated(
@@ -1402,21 +1429,22 @@ async function handleSubscriptionDeleted(
 export const handleStripeWebhookEvent$ = command(
   async ({ set }, event: Stripe.Event, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
+    let drainOrgId: string | null = null;
     L.debug("stripe webhook received", { type: event.type, id: event.id });
 
     switch (event.type) {
       case "checkout.session.completed": {
-        await handleCheckoutCompleted(db, event.data.object);
+        drainOrgId = await handleCheckoutCompleted(db, event.data.object);
         signal.throwIfAborted();
         break;
       }
       case "checkout.session.async_payment_succeeded": {
-        await handleCheckoutCompleted(db, event.data.object);
+        drainOrgId = await handleCheckoutCompleted(db, event.data.object);
         signal.throwIfAborted();
         break;
       }
       case "invoice.paid": {
-        await handleInvoicePaid(db, event.data.object);
+        drainOrgId = await handleInvoicePaid(db, event.data.object);
         signal.throwIfAborted();
         break;
       }
@@ -1456,5 +1484,9 @@ export const handleStripeWebhookEvent$ = command(
     }
 
     signal.throwIfAborted();
+    if (drainOrgId) {
+      await set(drainOrgQueueToCapacity$, { orgId: drainOrgId }, signal);
+      signal.throwIfAborted();
+    }
   },
 );
