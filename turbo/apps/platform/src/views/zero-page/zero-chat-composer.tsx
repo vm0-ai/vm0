@@ -7,7 +7,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
-import { useState } from "react";
+import { useRef } from "react";
 import {
   useGet,
   useSet,
@@ -563,8 +563,20 @@ function TemplatePreview({
   onPreview: (item: PresentationTemplateItem) => void;
 }) {
   const slideImages = presentationTemplateSlideImages(item);
-  const [hoverSlideIndex, setHoverSlideIndex] = useState(0);
-  const previewImage = slideImages[hoverSlideIndex] ?? item.previewImage;
+  const previewImageRef = useRef<HTMLImageElement | null>(null);
+  const hoverSlideIndexRef = useRef(0);
+  const previewImage = slideImages[0] ?? item.previewImage;
+
+  const setPreviewSlide = (index: number) => {
+    const image = slideImages[index] ?? item.previewImage;
+    const previewImageElement = previewImageRef.current;
+    hoverSlideIndexRef.current = index;
+    if (!previewImageElement) {
+      return;
+    }
+    previewImageElement.src = image;
+    previewImageElement.title = `${item.title} card preview slide ${index + 1}`;
+  };
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (slideImages.length < 2) {
@@ -582,8 +594,8 @@ function TemplatePreview({
       slideImages.length - 1,
       Math.round((offsetX / rect.width) * (slideImages.length - 1)),
     );
-    if (nextIndex !== hoverSlideIndex) {
-      setHoverSlideIndex(nextIndex);
+    if (nextIndex !== hoverSlideIndexRef.current) {
+      setPreviewSlide(nextIndex);
     }
   };
 
@@ -592,14 +604,15 @@ function TemplatePreview({
       className="relative aspect-[16/9] overflow-hidden bg-muted"
       onMouseMove={handleMouseMove}
       onMouseLeave={() => {
-        setHoverSlideIndex(0);
+        setPreviewSlide(0);
       }}
     >
       {previewImage ? (
         <img
+          ref={previewImageRef}
           src={previewImage}
           alt=""
-          title={`${item.title} card preview slide ${hoverSlideIndex + 1}`}
+          title={`${item.title} card preview slide 1`}
           className="h-full w-full object-cover"
           loading="lazy"
         />
