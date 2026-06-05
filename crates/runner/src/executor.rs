@@ -2306,7 +2306,8 @@ fn filter_unchanged_storages(
         .collect();
     for prev_key in prev.storages.keys() {
         if !current_storage_keys.contains(prev_key.as_str()) {
-            push_safe_cleanup_path(&mut cleanup_paths, prev.storage_cleanup_path(prev_key))?;
+            let cleanup_path = prev.storage_cleanup_path(prev_key);
+            push_safe_cleanup_path(&mut cleanup_paths, cleanup_path.as_ref())?;
         }
     }
 
@@ -2350,7 +2351,8 @@ fn filter_unchanged_storages(
         .collect();
     for prev_key in prev.artifacts.keys() {
         if !current_artifact_keys.contains(prev_key.as_str()) {
-            push_safe_cleanup_path(&mut cleanup_paths, prev.artifact_cleanup_path(prev_key))?;
+            let cleanup_path = prev.artifact_cleanup_path(prev_key);
+            push_safe_cleanup_path(&mut cleanup_paths, cleanup_path.as_ref())?;
         }
     }
     if skipped > 0 {
@@ -8252,6 +8254,59 @@ mod tests {
         let result = filter_unchanged_storages(&manifest, &current_keys, &prev).unwrap();
 
         assert!(result.cleanup_paths.contains(&"/mnt/old".to_string()));
+        assert!(!result.cleanup_paths.contains(&key));
+    }
+
+    #[test]
+    fn filter_removed_typed_storage_derives_missing_cleanup_path_from_key() {
+        let key = "{\"type\":\"mnt\",\"name\":\"old\"}".to_string();
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+        let current_keys = StorageFingerprintKeys {
+            storages: vec![],
+            artifacts: vec![],
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::from([(key.clone(), ("old".into(), "v1".into()))]),
+            artifacts: HashMap::new(),
+            storage_cleanup_paths: HashMap::new(),
+            artifact_cleanup_paths: HashMap::new(),
+        };
+
+        let result = filter_unchanged_storages(&manifest, &current_keys, &prev).unwrap();
+
+        assert_eq!(result.cleanup_paths, vec!["/mnt/old".to_string()]);
+        assert!(!result.cleanup_paths.contains(&key));
+    }
+
+    #[test]
+    fn filter_removed_typed_artifact_derives_missing_cleanup_path_from_key() {
+        let key = "{\"type\":\"workspace\",\"subPath\":\"reports\"}".to_string();
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+        let current_keys = StorageFingerprintKeys {
+            storages: vec![],
+            artifacts: vec![],
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::new(),
+            artifacts: HashMap::from([(key.clone(), ("reports".into(), "v1".into()))]),
+            storage_cleanup_paths: HashMap::new(),
+            artifact_cleanup_paths: HashMap::new(),
+        };
+
+        let result = filter_unchanged_storages(&manifest, &current_keys, &prev).unwrap();
+
+        assert_eq!(
+            result.cleanup_paths,
+            vec!["/home/user/workspace/reports".to_string()]
+        );
         assert!(!result.cleanup_paths.contains(&key));
     }
 

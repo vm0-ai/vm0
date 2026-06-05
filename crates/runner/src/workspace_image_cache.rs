@@ -761,7 +761,10 @@ impl SessionWorkspaceCache {
                         true,
                     );
                 }
-                let previous = metadata.storage_fingerprints.clone();
+                let previous = filter_storage_fingerprints_for_working_dir(
+                    &metadata.storage_fingerprints,
+                    working_dir,
+                );
                 if let Err(e) = self
                     .write_metadata(
                         &cache_key,
@@ -2379,10 +2382,15 @@ pub(crate) fn filter_storage_fingerprints_for_working_dir(
     fingerprints: &StorageFingerprints,
     working_dir: &str,
 ) -> StorageFingerprints {
-    let keep_storage_key =
-        |key: &str| is_workspace_scoped_path(fingerprints.storage_cleanup_path(key), working_dir);
-    let keep_artifact_key =
-        |key: &str| is_workspace_scoped_path(fingerprints.artifact_cleanup_path(key), working_dir);
+    let keep_storage_key = |key: &str| {
+        is_workspace_scoped_path(fingerprints.storage_cleanup_path(key).as_ref(), working_dir)
+    };
+    let keep_artifact_key = |key: &str| {
+        is_workspace_scoped_path(
+            fingerprints.artifact_cleanup_path(key).as_ref(),
+            working_dir,
+        )
+    };
     StorageFingerprints {
         storages: fingerprints
             .storages
@@ -3783,6 +3791,100 @@ mod tests {
                 .storages
                 .contains_key("{\"type\":\"mnt\",\"name\":\"typed\"}")
         );
+    }
+
+    #[tokio::test]
+    async fn prepare_filters_legacy_previous_storage_to_workspace_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let session_id = "sess-legacy-storage";
+        let key = cache.scoped_cache_key(TEST_PROFILE_NAME, session_id, "/home/user/workspace", 5);
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        fs::write(&current, b"image").await.unwrap();
+        let current_metadata = fs::metadata(&current).await.unwrap();
+        let workspace_storage_key = "{\"type\":\"workspace\",\"subPath\":\"typed\"}".to_string();
+        let mnt_storage_key = "{\"type\":\"mnt\",\"name\":\"docs\"}".to_string();
+        let workspace_artifact_key =
+            "{\"type\":\"workspace\",\"subPath\":\"artifact\"}".to_string();
+        let mnt_artifact_key = "{\"type\":\"mnt\",\"name\":\"artifact\"}".to_string();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: cache.inner.cache_scope.clone(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: session_id.into(),
+                    working_dir: "/home/user/workspace".into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints {
+                        storages: HashMap::from([
+                            (
+                                "/home/user/workspace/repo".into(),
+                                ("repo".into(), "v1".into()),
+                            ),
+                            ("/mnt/docs".into(), ("docs".into(), "v1".into())),
+                            (workspace_storage_key.clone(), ("typed".into(), "v1".into())),
+                            (mnt_storage_key.clone(), ("docs".into(), "v1".into())),
+                        ]),
+                        artifacts: HashMap::from([
+                            (
+                                "/home/user/workspace/art".into(),
+                                ("art".into(), "v1".into()),
+                            ),
+                            ("/mnt/art".into(), ("mnt-art".into(), "v1".into())),
+                            (
+                                workspace_artifact_key.clone(),
+                                ("typed-art".into(), "v1".into()),
+                            ),
+                            (mnt_artifact_key.clone(), ("mnt-art".into(), "v1".into())),
+                        ]),
+                        storage_cleanup_paths: HashMap::new(),
+                        artifact_cleanup_paths: HashMap::new(),
+                    },
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/home/user/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: true,
+            })
+            .await;
+
+        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Hit);
+        let previous = lease.previous_storage().expect("previous storage");
+        assert!(previous.storages.contains_key("/home/user/workspace/repo"));
+        assert!(!previous.storages.contains_key("/mnt/docs"));
+        assert!(previous.storages.contains_key(&workspace_storage_key));
+        assert!(!previous.storages.contains_key(&mnt_storage_key));
+        assert!(previous.artifacts.contains_key("/home/user/workspace/art"));
+        assert!(!previous.artifacts.contains_key("/mnt/art"));
+        assert!(previous.artifacts.contains_key(&workspace_artifact_key));
+        assert!(!previous.artifacts.contains_key(&mnt_artifact_key));
     }
 
     #[test]

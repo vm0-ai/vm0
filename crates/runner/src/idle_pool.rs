@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::{
@@ -7,7 +8,8 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 use api_contracts::generated::types::runners::storage::{
-    StorageManifest, StorageProvisioningEntryIntent, StorageProvisioningManifest,
+    StorageManifest, StorageProvisioningEntryDestination, StorageProvisioningEntryIntent,
+    StorageProvisioningManifest,
 };
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
@@ -15,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::resource_budget::BudgetLease;
 use crate::status::IdleVm;
-use crate::types::GuestDownloadManifest;
 use crate::types::HeldSessionState;
+use crate::types::{GuestDownloadManifest, resolve_provisioning_mount_path};
 use crate::workspace_image_cache::WorkspaceImagePromotionContext;
 use crate::workspace_promotion::promote_workspace_image_from_parked_sandbox;
 
@@ -125,18 +127,12 @@ impl StorageFingerprints {
         Self::from_guest_download_manifest_with_keys(&guest_manifest, &keys)
     }
 
-    pub(crate) fn storage_cleanup_path<'a>(&'a self, key: &'a str) -> &'a str {
-        self.storage_cleanup_paths
-            .get(key)
-            .map(String::as_str)
-            .unwrap_or(key)
+    pub(crate) fn storage_cleanup_path<'a>(&'a self, key: &'a str) -> Cow<'a, str> {
+        cleanup_path_for_key(&self.storage_cleanup_paths, key)
     }
 
-    pub(crate) fn artifact_cleanup_path<'a>(&'a self, key: &'a str) -> &'a str {
-        self.artifact_cleanup_paths
-            .get(key)
-            .map(String::as_str)
-            .unwrap_or(key)
+    pub(crate) fn artifact_cleanup_path<'a>(&'a self, key: &'a str) -> Cow<'a, str> {
+        cleanup_path_for_key(&self.artifact_cleanup_paths, key)
     }
 
     pub(crate) fn tainted_paths(&self) -> Self {
@@ -166,6 +162,21 @@ impl StorageFingerprints {
         fingerprint.0 == TAINTED_STORAGE_FINGERPRINT_NAME
             && fingerprint.1 == TAINTED_STORAGE_FINGERPRINT_VERSION
     }
+}
+
+fn cleanup_path_for_key<'a>(paths: &'a HashMap<String, String>, key: &'a str) -> Cow<'a, str> {
+    if let Some(path) = paths.get(key) {
+        return Cow::Borrowed(path);
+    }
+    if let Some(path) = cleanup_path_from_destination_key(key) {
+        return Cow::Owned(path);
+    }
+    Cow::Borrowed(key)
+}
+
+fn cleanup_path_from_destination_key(key: &str) -> Option<String> {
+    let destination = serde_json::from_str::<StorageProvisioningEntryDestination>(key).ok()?;
+    resolve_provisioning_mount_path(&destination).ok()
 }
 
 impl StorageFingerprintKeys {

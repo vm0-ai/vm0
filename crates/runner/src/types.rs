@@ -404,7 +404,7 @@ fn validate_artifact_provisioning_entry(entry: &StorageProvisioningEntry) -> Res
     }
 }
 
-fn resolve_provisioning_mount_path(
+pub(crate) fn resolve_provisioning_mount_path(
     destination: &StorageProvisioningEntryDestination,
 ) -> Result<String, String> {
     match destination.type_ {

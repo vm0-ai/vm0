@@ -2781,7 +2781,6 @@ describe("POST /api/agent/runs", () => {
               name: systemSkillStorageName,
               versionId: systemSkillVersion,
               mountPath: `/home/user/.claude/skills/${systemSkillName}`,
-              system: true,
             },
           ],
         },
