@@ -142,7 +142,7 @@ export function PersonalUsageRecord() {
       {loadable.state === "loading" && <UsageRecordSkeleton />}
       {loadable.state === "hasError" && (
         <p className="text-sm text-muted-foreground" role="alert">
-          Couldn't load your usage record. Please try again later.
+          Couldn&apos;t load your usage record. Please try again later.
         </p>
       )}
       {loadable.state === "hasData" &&
