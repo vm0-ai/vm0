@@ -80,7 +80,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
   },
   [FeatureSwitchKey.GoogleCloudConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "liangyou@vm0.ai",
     description: "Enable the Google Cloud connector integration",
     enabled: false,
   },
