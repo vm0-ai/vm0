@@ -547,14 +547,10 @@ function TemplateEmptyPanel({
 function presentationTemplateSlideImages(
   item: PresentationTemplateItem,
 ): readonly string[] {
-  const match = item.previewImage.match(/^(.*\/)(\d{2})(\.[a-z0-9]+)$/i);
-  if (!match) {
-    return [item.previewImage];
+  if (item.previewImages && item.previewImages.length > 0) {
+    return item.previewImages;
   }
-  const [, prefix, , extension] = match;
-  return Array.from({ length: 6 }, (_, index) => {
-    return `${prefix}${String(index + 1).padStart(2, "0")}${extension}`;
-  });
+  return [item.previewImage];
 }
 
 function TemplatePreview({
@@ -607,11 +603,18 @@ function TemplatePreviewPage({
   onSelect: (item: PresentationTemplateItem) => void;
 }) {
   const slideImages = presentationTemplateSlideImages(item);
-  const safeSlideIndex = Math.min(selectedSlideIndex, slideImages.length - 1);
+  const safeSlideIndex = Math.max(
+    0,
+    Math.min(selectedSlideIndex, slideImages.length - 1),
+  );
   const selectedSlideImage = slideImages[safeSlideIndex] ?? item.previewImage;
+  const hasMultipleSlides = slideImages.length > 1;
   const kind = formatPresentationTemplateKind(item.templateId);
 
   const changeSlide = (direction: -1 | 1) => {
+    if (!hasMultipleSlides) {
+      return;
+    }
     onSlideChange(
       (safeSlideIndex + direction + slideImages.length) % slideImages.length,
     );
@@ -649,6 +652,7 @@ function TemplatePreviewPage({
               type="button"
               aria-label="Previous slide"
               className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              disabled={!hasMultipleSlides}
               onClick={() => {
                 changeSlide(-1);
               }}
@@ -659,6 +663,7 @@ function TemplatePreviewPage({
               type="button"
               aria-label="Next slide"
               className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              disabled={!hasMultipleSlides}
               onClick={() => {
                 changeSlide(1);
               }}

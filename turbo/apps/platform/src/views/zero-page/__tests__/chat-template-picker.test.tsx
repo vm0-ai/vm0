@@ -285,12 +285,16 @@ describe("zero chat template picker", () => {
       expect(screen.getByText("Use this template")).toBeInTheDocument();
     });
     expect(screen.getByText("Dials")).toBeInTheDocument();
-    expect(screen.getByText("1 of 6")).toBeInTheDocument();
+    expect(
+      screen.getByText(`1 of ${template.previewImages.length}`),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Next slide"));
 
     await waitFor(() => {
-      expect(screen.getByText("2 of 6")).toBeInTheDocument();
+      expect(
+        screen.getByText(`2 of ${template.previewImages.length}`),
+      ).toBeInTheDocument();
     });
 
     await user.click(screen.getByText("Templates"));
