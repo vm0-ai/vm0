@@ -40,6 +40,11 @@ const malformedChatThreadIdCases = [
     path: "/api/zero/chat-threads/:id/mark-read",
     paramName: "id",
   },
+  {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/model-selection",
+    paramName: "id",
+  },
   { method: "POST", path: "/api/zero/chat-threads/:id/pin", paramName: "id" },
   {
     method: "POST",
