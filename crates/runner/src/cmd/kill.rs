@@ -136,6 +136,7 @@ struct ResolvedKillTarget {
 enum KillOutcome {
     OwnerAccepted(RemoteKillResult),
     OrphanKilled(KillTarget),
+    OrphanAlreadyExited(KillTarget),
     AlreadyExitedOrChanged(KillTarget),
     SignalFailed(KillTarget),
     RefusedManagedIdle,
@@ -150,6 +151,7 @@ impl KillOutcome {
             KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
                 | KillOutcome::OwnerAccepted(RemoteKillResult::AlreadyStopped)
                 | KillOutcome::OrphanKilled(_)
+                | KillOutcome::OrphanAlreadyExited(_)
         )
     }
 }
@@ -335,10 +337,10 @@ async fn kill_orphan_process_group(target: &KillTarget) -> KillOutcome {
         return KillOutcome::AlreadyExitedOrChanged(target.clone());
     };
 
-    if signal_process_group(target.pid, pgid) {
-        KillOutcome::OrphanKilled(target.clone())
-    } else {
-        KillOutcome::SignalFailed(target.clone())
+    match signal_process_group(target.pid, pgid) {
+        ProcessGroupSignalResult::Signaled => KillOutcome::OrphanKilled(target.clone()),
+        ProcessGroupSignalResult::AlreadyGone => KillOutcome::OrphanAlreadyExited(target.clone()),
+        ProcessGroupSignalResult::Failed => KillOutcome::SignalFailed(target.clone()),
     }
 }
 
@@ -435,19 +437,26 @@ fn workspace_identity_matches(
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProcessGroupSignalResult {
+    Signaled,
+    AlreadyGone,
+    Failed,
+}
+
 /// Send `SIGKILL` to a validated process group.
-fn signal_process_group(pid: u32, pgid: u32) -> bool {
+fn signal_process_group(pid: u32, pgid: u32) -> ProcessGroupSignalResult {
     if pgid <= 1 {
         tracing::warn!(pid, pgid, "refusing to signal system process group");
-        return false;
+        return ProcessGroupSignalResult::Failed;
     }
 
     let Ok(pgid_i32) = i32::try_from(pgid) else {
-        return false;
+        return ProcessGroupSignalResult::Failed;
     };
     if nix::unistd::getpgrp().as_raw() == pgid_i32 {
         tracing::warn!(pid, pgid = pgid_i32, "refusing to signal own process group");
-        return false;
+        return ProcessGroupSignalResult::Failed;
     }
 
     match nix::sys::signal::killpg(
@@ -456,11 +465,19 @@ fn signal_process_group(pid: u32, pgid: u32) -> bool {
     ) {
         Ok(()) => {
             info!(pid, pgid = pgid_i32, "killed process group");
-            true
+            ProcessGroupSignalResult::Signaled
+        }
+        Err(nix::errno::Errno::ESRCH) => {
+            info!(
+                pid,
+                pgid = pgid_i32,
+                "process group already exited before signal"
+            );
+            ProcessGroupSignalResult::AlreadyGone
         }
         Err(e) => {
             tracing::warn!(pid, pgid = pgid_i32, error = %e, "failed to kill process group");
-            false
+            ProcessGroupSignalResult::Failed
         }
     }
 }
@@ -491,14 +508,14 @@ async fn report_kill_outcome(
                 "Killed orphan sandbox {} (PID {})",
                 target.sandbox_id, target.pid
             );
-            if let Some(base_dir) = target.base_dir.as_deref() {
-                let results = cleanup_orphan(&target.sandbox_id, base_dir, control).await;
-                print_cleanup_results(&results);
-            } else {
-                println!(
-                    "Skipped orphan cleanup because sandbox workspace identity is unavailable."
-                );
-            }
+            cleanup_validated_orphan(target, control).await;
+        }
+        KillOutcome::OrphanAlreadyExited(target) => {
+            println!(
+                "Orphan sandbox {} (PID {}) already exited before signal.",
+                target.sandbox_id, target.pid
+            );
+            cleanup_validated_orphan(target, control).await;
         }
         KillOutcome::AlreadyExitedOrChanged(target) => {
             println!(
@@ -534,6 +551,15 @@ async fn report_kill_outcome(
                 initial.sandbox_id, initial.pid
             );
         }
+    }
+}
+
+async fn cleanup_validated_orphan(target: &KillTarget, control: &dyn SandboxControl) {
+    if let Some(base_dir) = target.base_dir.as_deref() {
+        let results = cleanup_orphan(&target.sandbox_id, base_dir, control).await;
+        print_cleanup_results(&results);
+    } else {
+        println!("Skipped orphan cleanup because sandbox workspace identity is unavailable.");
     }
 }
 
@@ -942,19 +968,46 @@ mod tests {
 
     #[test]
     fn signal_process_group_rejects_zero_pgid() {
-        assert!(!signal_process_group(1234, 0));
+        assert_eq!(
+            signal_process_group(1234, 0),
+            ProcessGroupSignalResult::Failed
+        );
     }
 
     #[test]
     fn signal_process_group_rejects_init_pgid() {
-        assert!(!signal_process_group(1234, 1));
+        assert_eq!(
+            signal_process_group(1234, 1),
+            ProcessGroupSignalResult::Failed
+        );
     }
 
     #[test]
     fn signal_process_group_rejects_own_pgid() {
         let current_pgid = u32::try_from(nix::unistd::getpgrp().as_raw()).unwrap();
 
-        assert!(!signal_process_group(1234, current_pgid));
+        assert_eq!(
+            signal_process_group(1234, current_pgid),
+            ProcessGroupSignalResult::Failed
+        );
+    }
+
+    #[test]
+    fn signal_process_group_reports_already_gone_for_missing_group() {
+        let missing_pgid = i32::MAX as u32;
+
+        assert_eq!(
+            signal_process_group(1234, missing_pgid),
+            ProcessGroupSignalResult::AlreadyGone
+        );
+    }
+
+    #[test]
+    fn orphan_already_exited_outcome_is_success() {
+        let target = make_target(200, "sbox-123");
+        let outcome = KillOutcome::OrphanAlreadyExited(target);
+
+        assert!(outcome.is_success());
     }
 
     #[tokio::test]
