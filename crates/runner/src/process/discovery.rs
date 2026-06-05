@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use super::procfs::{read_cwd, read_ppid, read_process_stat, scan_proc_cmdlines};
+use super::procfs::{read_cmdline, read_cwd, read_ppid, read_process_stat, scan_proc_cmdlines};
 use super::types::{
     DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessIdentity, FirecrackerProcessInfo,
-    MitmproxyProcessInfo, RunnerProcessInfo,
+    MitmproxyProcessInfo, ProcessStat, RunnerProcessInfo,
 };
 
 /// Parse a runner argv for `start`/`benchmark` subcommand and `--config` path.
@@ -76,6 +76,21 @@ pub(crate) fn parse_workspace_cwd(cwd: &Path) -> Option<(String, PathBuf)> {
     }
 }
 
+async fn read_stable_firecracker_stat(pid: u32) -> Option<ProcessStat> {
+    let before = read_process_stat(pid).await?;
+    let argv = read_cmdline(pid).await?;
+    let after = read_process_stat(pid).await?;
+    if process_stat_identity_matches(&before, &after) && is_firecracker_cmdline(&argv) {
+        Some(after)
+    } else {
+        None
+    }
+}
+
+fn process_stat_identity_matches(left: &ProcessStat, right: &ProcessStat) -> bool {
+    left.pgid == right.pgid && left.starttime == right.starttime
+}
+
 /// Scan `/proc` once and discover all runner, firecracker, and mitmdump processes.
 pub async fn discover_all() -> DiscoveredProcesses {
     let procs = scan_proc_cmdlines().await;
@@ -107,19 +122,27 @@ pub async fn discover_all() -> DiscoveredProcesses {
     // Resolve sandbox_id + base_dir + ppid from CWD for firecracker processes
     let mut fc_infos = Vec::with_capacity(firecrackers.len());
     for pid in firecrackers {
+        let Some(initial_stat) = read_stable_firecracker_stat(pid).await else {
+            continue;
+        };
         let cwd_info = read_cwd(pid)
             .await
             .and_then(|cwd| parse_workspace_cwd(&cwd));
         let ppid = read_ppid(pid).await;
-        let process_stat = read_process_stat(pid).await;
+        let Some(process_stat) = read_stable_firecracker_stat(pid).await else {
+            continue;
+        };
+        if !process_stat_identity_matches(&initial_stat, &process_stat) {
+            continue;
+        }
         let (sandbox_id, base_dir) = match cwd_info {
             Some((id, bd)) => (id, Some(bd)),
             None => (format!("pid-{pid}"), None),
         };
-        let identity = process_stat.map(|stat| FirecrackerProcessIdentity {
+        let identity = Some(FirecrackerProcessIdentity {
             pid,
-            pgid: stat.pgid,
-            starttime: stat.starttime,
+            pgid: process_stat.pgid,
+            starttime: process_stat.starttime,
             sandbox_id: sandbox_id.clone(),
             base_dir: base_dir.clone(),
         });
@@ -363,5 +386,33 @@ mod tests {
     #[test]
     fn parse_workspace_cwd_non_workspace() {
         assert!(parse_workspace_cwd(Path::new("/tmp/something")).is_none());
+    }
+
+    #[test]
+    fn process_stat_identity_ignores_state_changes() {
+        let sleeping = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let running = ProcessStat {
+            state: 'R',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let different_group = ProcessStat {
+            state: 'S',
+            pgid: 2200,
+            starttime: 123456,
+        };
+        let different_start = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 654321,
+        };
+
+        assert!(process_stat_identity_matches(&sleeping, &running));
+        assert!(!process_stat_identity_matches(&sleeping, &different_group));
+        assert!(!process_stat_identity_matches(&sleeping, &different_start));
     }
 }
