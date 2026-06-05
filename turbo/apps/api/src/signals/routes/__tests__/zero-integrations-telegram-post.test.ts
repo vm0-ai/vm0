@@ -1278,9 +1278,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(job).toBeDefined();
   });
 
-  it("stores the internal callback url on VM0_INTERNAL_API_URL when set", async () => {
+  it("stores the internal callback url on VM0_API_BACKEND_URL when set", async () => {
     mockEnv("VM0_API_URL", "https://www.vm0.ai");
-    mockEnv("VM0_INTERNAL_API_URL", "https://api.vm0.ai");
+    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
     const fixture = await trackFixture(
       store.set(
         seedTelegramPostFixture$,
