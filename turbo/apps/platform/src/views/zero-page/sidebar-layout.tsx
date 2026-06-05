@@ -17,6 +17,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
+import { ScheduleMenuButton } from "./zero-chat-thread-page.tsx";
 import {
   currentChatAgent$,
   currentChatAgentId$,
@@ -239,6 +240,23 @@ function MobileArtifactsButtonLeaf() {
   return <MobileArtifactsButtonInner thread={thread} />;
 }
 
+function MobileScheduleButtonLeaf() {
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const thread = leftThread ?? rightThread;
+
+  if (!thread) {
+    return null;
+  }
+
+  return (
+    <ScheduleMenuButton
+      threadId={thread.threadId}
+      ariaLabel="Open mobile schedules"
+    />
+  );
+}
+
 function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const inChatRoute = isChatRoute(activeId);
   const features = useLastResolved(featureSwitch$);
@@ -247,6 +265,7 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   return (
     <>
+      {inChatRoute && <MobileScheduleButtonLeaf />}
       {inChatRoute && <MobileArtifactsButtonLeaf />}
       {inChatRoute && audioOutputEnabled && <AutoReadToggleLeaf />}
       {inChatRoute &&

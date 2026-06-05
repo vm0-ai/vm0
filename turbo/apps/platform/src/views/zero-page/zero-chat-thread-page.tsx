@@ -957,7 +957,13 @@ function GithubPrTrackingButton({
 
 // Loads schedules and only renders once this thread has at least one linked
 // schedule.
-function ScheduleMenuButton({ threadId }: { threadId: string }) {
+export function ScheduleMenuButton({
+  threadId,
+  ariaLabel = "Schedules",
+}: {
+  threadId: string;
+  ariaLabel?: string;
+}) {
   const navigate = useSet(detachedNavigateTo$);
   const reloadSchedules = useSet(reloadHeaderScheduleMenu$);
   const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
@@ -984,7 +990,7 @@ function ScheduleMenuButton({ threadId }: { threadId: string }) {
         <button
           type="button"
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
-          aria-label="Schedules"
+          aria-label={ariaLabel}
         >
           <IconClock size={18} />
         </button>
