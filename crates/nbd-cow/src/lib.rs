@@ -171,30 +171,73 @@ where
     }
 }
 
+struct DeferredLease {
+    pool: pool::DevicePoolHandle,
+    lease: Option<pool::DeviceLease>,
+}
+
+impl DeferredLease {
+    fn new(pool: pool::DevicePoolHandle, lease: pool::DeviceLease) -> Self {
+        Self {
+            pool,
+            lease: Some(lease),
+        }
+    }
+
+    fn take(&mut self) -> Option<pool::DeviceLease> {
+        self.lease.take()
+    }
+}
+
+impl Drop for DeferredLease {
+    fn drop(&mut self) {
+        if let Some(lease) = self.lease.take() {
+            self.pool.retire_uncertain_detached(lease);
+        }
+    }
+}
+
 struct ConnectDeviceOutcome {
     device_index: u32,
+    lease: DeferredLease,
     result: Option<std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>>,
 }
 
 impl ConnectDeviceOutcome {
     fn new(
         device_index: u32,
+        lease: DeferredLease,
         result: std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>,
     ) -> Self {
         Self {
             device_index,
+            lease,
             result: Some(result),
         }
     }
 
-    fn into_result(
+    fn into_parts(
         mut self,
-    ) -> std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError> {
-        match self.result.take() {
+    ) -> std::result::Result<
+        (
+            pool::DeviceLease,
+            std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>,
+        ),
+        netlink::ConnectDeviceError,
+    > {
+        let result = match self.result.take() {
             Some(result) => result,
             None => Err(netlink::ConnectDeviceError::NotSent {
                 source: error::NbdCowError::Io(std::io::Error::other(
                     "connect device outcome consumed twice",
+                )),
+            })?,
+        };
+        match self.lease.take() {
+            Some(lease) => Ok((lease, result)),
+            None => Err(netlink::ConnectDeviceError::NotSent {
+                source: error::NbdCowError::Io(std::io::Error::other(
+                    "connect device lease consumed twice",
                 )),
             }),
         }
@@ -233,21 +276,26 @@ async fn connect_device_with_state_critical_section(
     client_fds: Vec<std::os::fd::OwnedFd>,
     size: u64,
     block_size: u64,
-) -> std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError> {
+    pool: pool::DevicePoolHandle,
+    lease: pool::DeviceLease,
+) -> std::result::Result<ConnectDeviceOutcome, netlink::ConnectDeviceError> {
+    let deferred_lease = DeferredLease::new(pool, lease);
     let outcome = run_netlink_critical_section("NBD connect", move || {
         ConnectDeviceOutcome::new(
             device_index,
+            deferred_lease,
             netlink::connect_device_with_state(device_index, &client_fds, size, block_size),
         )
     })
     .await
     .map_err(|source| netlink::ConnectDeviceError::NotSent { source })?;
 
-    outcome.into_result()
+    Ok(outcome)
 }
 
 struct DisconnectOutcome {
     device_index: u32,
+    lease: Option<DeferredLease>,
     result: Option<Result<()>>,
 }
 
@@ -255,6 +303,15 @@ impl DisconnectOutcome {
     fn new(device_index: u32, result: Result<()>) -> Self {
         Self {
             device_index,
+            lease: None,
+            result: Some(result),
+        }
+    }
+
+    fn with_lease(device_index: u32, lease: DeferredLease, result: Result<()>) -> Self {
+        Self {
+            device_index,
+            lease: Some(lease),
             result: Some(result),
         }
     }
@@ -266,6 +323,24 @@ impl DisconnectOutcome {
                 "disconnect outcome consumed twice",
             ))),
         }
+    }
+
+    fn into_parts(mut self) -> Result<(pool::DeviceLease, Result<()>)> {
+        let result = match self.result.take() {
+            Some(result) => result,
+            None => Err(error::NbdCowError::Io(std::io::Error::other(
+                "disconnect outcome consumed twice",
+            )))?,
+        };
+        let lease = match self.lease.as_mut().and_then(DeferredLease::take) {
+            Some(lease) => lease,
+            None => {
+                return Err(error::NbdCowError::Io(std::io::Error::other(
+                    "disconnect outcome lease consumed twice",
+                )));
+            }
+        };
+        Ok((lease, result))
     }
 }
 
@@ -289,11 +364,67 @@ async fn disconnect_device_critical_section(device_index: u32) -> Result<()> {
     .into_result()
 }
 
+async fn disconnect_device_with_lease_critical_section(
+    device_index: u32,
+    pool: pool::DevicePoolHandle,
+    lease: pool::DeviceLease,
+) -> Result<DisconnectOutcome> {
+    let deferred_lease = DeferredLease::new(pool, lease);
+    run_netlink_critical_section("NBD disconnect", move || {
+        DisconnectOutcome::with_lease(
+            device_index,
+            deferred_lease,
+            netlink::disconnect(device_index),
+        )
+    })
+    .await
+}
+
+struct OwnedDisconnectOutcome {
+    lease: DeferredLease,
+    disconnected: Option<bool>,
+}
+
+impl OwnedDisconnectOutcome {
+    fn new(lease: DeferredLease, disconnected: bool) -> Self {
+        Self {
+            lease,
+            disconnected: Some(disconnected),
+        }
+    }
+
+    fn into_parts(mut self) -> Result<(pool::DeviceLease, bool)> {
+        let disconnected = self.disconnected.take().ok_or_else(|| {
+            error::NbdCowError::Io(std::io::Error::other(
+                "owned disconnect outcome consumed twice",
+            ))
+        })?;
+        let lease = self.lease.take().ok_or_else(|| {
+            error::NbdCowError::Io(std::io::Error::other(
+                "owned disconnect outcome lease consumed twice",
+            ))
+        })?;
+        Ok((lease, disconnected))
+    }
+}
+
 async fn disconnect_connected_if_owned_critical_section(
     connected: ConnectedDevice,
 ) -> Result<bool> {
     run_netlink_critical_section("owned NBD disconnect", move || {
         disconnect_connected_if_owned(connected)
+    })
+    .await
+}
+
+async fn disconnect_connected_if_owned_with_lease_critical_section(
+    connected: ConnectedDevice,
+    pool: pool::DevicePoolHandle,
+    lease: pool::DeviceLease,
+) -> Result<OwnedDisconnectOutcome> {
+    let deferred_lease = DeferredLease::new(pool, lease);
+    run_netlink_critical_section("owned NBD disconnect", move || {
+        OwnedDisconnectOutcome::new(deferred_lease, disconnect_connected_if_owned(connected))
     })
     .await
 }
@@ -355,6 +486,14 @@ impl CreateAttemptGuard {
         });
     }
 
+    fn take_lease(&mut self) -> Option<pool::DeviceLease> {
+        self.lease.take()
+    }
+
+    fn restore_lease(&mut self, lease: pool::DeviceLease) {
+        self.lease = Some(lease);
+    }
+
     async fn abort_servers(&mut self) {
         self.shutdown.cancel();
         abort_server_handles(std::mem::take(&mut self.server_handles)).await;
@@ -384,8 +523,38 @@ impl CreateAttemptGuard {
     async fn disconnect_owned_and_release(mut self) {
         self.abort_servers().await;
         let disconnected = match self.connected.take() {
-            Some(connected) => {
-                match disconnect_connected_if_owned_critical_section(connected).await {
+            Some(connected) => match self.take_lease() {
+                Some(lease) => match disconnect_connected_if_owned_with_lease_critical_section(
+                    connected,
+                    self.pool.clone(),
+                    lease,
+                )
+                .await
+                {
+                    Ok(outcome) => match outcome.into_parts() {
+                        Ok((lease, disconnected)) => {
+                            self.restore_lease(lease);
+                            disconnected
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                device_index = connected.index,
+                                error = %e,
+                                "owned NBD disconnect result failed during create cleanup"
+                            );
+                            false
+                        }
+                    },
+                    Err(e) => {
+                        tracing::warn!(
+                            device_index = connected.index,
+                            error = %e,
+                            "owned NBD disconnect task failed during create cleanup"
+                        );
+                        false
+                    }
+                },
+                None => match disconnect_connected_if_owned_critical_section(connected).await {
                     Ok(disconnected) => disconnected,
                     Err(e) => {
                         tracing::warn!(
@@ -395,8 +564,8 @@ impl CreateAttemptGuard {
                         );
                         false
                     }
-                }
-            }
+                },
+            },
             None => false,
         };
         if let Some(lease) = self.lease.take() {
@@ -411,16 +580,58 @@ impl CreateAttemptGuard {
     async fn disconnect_and_release(mut self) -> bool {
         self.abort_servers().await;
         let disconnected = match self.connected.take() {
-            Some(connected) => match disconnect_device_critical_section(connected.index).await {
-                Ok(()) => true,
-                Err(e) => {
-                    tracing::warn!(
-                        device_index = connected.index,
-                        error = %e,
-                        "NBD disconnect task failed during create retry cleanup"
-                    );
-                    false
-                }
+            Some(connected) => match self.take_lease() {
+                Some(lease) => match disconnect_device_with_lease_critical_section(
+                    connected.index,
+                    self.pool.clone(),
+                    lease,
+                )
+                .await
+                {
+                    Ok(outcome) => match outcome.into_parts() {
+                        Ok((lease, disconnect_result)) => {
+                            self.restore_lease(lease);
+                            match disconnect_result {
+                                Ok(()) => true,
+                                Err(e) => {
+                                    tracing::warn!(
+                                        device_index = connected.index,
+                                        error = %e,
+                                        "NBD disconnect failed during create retry cleanup"
+                                    );
+                                    false
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                device_index = connected.index,
+                                error = %e,
+                                "NBD disconnect result failed during create retry cleanup"
+                            );
+                            false
+                        }
+                    },
+                    Err(e) => {
+                        tracing::warn!(
+                            device_index = connected.index,
+                            error = %e,
+                            "NBD disconnect task failed during create retry cleanup"
+                        );
+                        false
+                    }
+                },
+                None => match disconnect_device_critical_section(connected.index).await {
+                    Ok(()) => true,
+                    Err(e) => {
+                        tracing::warn!(
+                            device_index = connected.index,
+                            error = %e,
+                            "NBD disconnect task failed during create retry cleanup"
+                        );
+                        false
+                    }
+                },
             },
             None => false,
         };
@@ -590,14 +801,36 @@ impl NbdCowDevice {
                     return Err(e);
                 }
 
-                match connect_device_with_state_critical_section(
-                    device_index,
-                    client_fds,
-                    size,
-                    BLOCK_SIZE as u64,
-                )
-                .await
-                {
+                let connect_result = match attempt.take_lease() {
+                    Some(lease) => {
+                        match connect_device_with_state_critical_section(
+                            device_index,
+                            client_fds,
+                            size,
+                            BLOCK_SIZE as u64,
+                            device_pool.clone(),
+                            lease,
+                        )
+                        .await
+                        {
+                            Ok(outcome) => match outcome.into_parts() {
+                                Ok((lease, result)) => {
+                                    attempt.restore_lease(lease);
+                                    result
+                                }
+                                Err(e) => Err(e),
+                            },
+                            Err(e) => Err(e),
+                        }
+                    }
+                    None => Err(netlink::ConnectDeviceError::NotSent {
+                        source: error::NbdCowError::Io(std::io::Error::other(
+                            "pool lease missing during NBD connect",
+                        )),
+                    }),
+                };
+
+                match connect_result {
                     Ok(connected) => {
                         attempt.mark_connected(connected.connect_tid);
                         break attempt;
@@ -758,13 +991,8 @@ impl NbdCowDevice {
         if !self.disconnected {
             match self.device_ownership() {
                 DeviceOwnership::Ours => {
-                    // The blocking task keeps running if this future is
-                    // cancelled; do not let Drop issue a second disconnect.
+                    disconnect_device_critical_section(self.device_index).await?;
                     self.disconnected = true;
-                    if let Err(e) = disconnect_device_critical_section(self.device_index).await {
-                        self.disconnected = false;
-                        return Err(e);
-                    }
                 }
                 DeviceOwnership::Foreign(pid) => {
                     self.disconnected = true;
@@ -1348,7 +1576,17 @@ mod tests {
     }
 
     #[test]
-    fn netlink_critical_section_queued_task_survives_future_drop() {
+    fn netlink_critical_section_queued_task_drops_unobserved_output() {
+        struct DropNotify(Option<std::sync::mpsc::Sender<()>>);
+
+        impl Drop for DropNotify {
+            fn drop(&mut self) {
+                if let Some(tx) = self.0.take() {
+                    let _ = tx.send(());
+                }
+            }
+        }
+
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .max_blocking_threads(1)
@@ -1365,12 +1603,10 @@ mod tests {
             });
             blocker_started_rx.await.unwrap();
 
-            let (done_tx, done_rx) = std::sync::mpsc::channel();
+            let (dropped_tx, dropped_rx) = std::sync::mpsc::channel();
             let mut future = Box::pin(run_netlink_critical_section(
                 "test netlink operation",
-                move || {
-                    done_tx.send(()).unwrap();
-                },
+                move || DropNotify(Some(dropped_tx)),
             ));
             let waker = std::task::Waker::noop();
             let mut cx = std::task::Context::from_waker(waker);
@@ -1384,7 +1620,7 @@ mod tests {
             blocker.await.unwrap();
 
             tokio::task::spawn_blocking(move || {
-                done_rx
+                dropped_rx
                     .recv_timeout(std::time::Duration::from_secs(1))
                     .unwrap()
             })
