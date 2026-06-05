@@ -87,6 +87,29 @@ async function seedCachedOrgMember(
   });
 }
 
+function mockCurrentOrgMembers(
+  orgId: string,
+  userIds: readonly string[],
+): void {
+  context.mocks.clerk.organizations.getOrganizationMembershipList.mockImplementation(
+    (args: unknown) => {
+      const input = args as {
+        readonly organizationId?: string;
+        readonly limit?: number;
+        readonly offset?: number;
+      };
+      const members = input.organizationId === orgId ? userIds : [];
+      const offset = input.offset ?? 0;
+      const limit = input.limit ?? members.length;
+      return Promise.resolve({
+        data: members.slice(offset, offset + limit).map((userId) => {
+          return { publicUserData: { userId } };
+        }),
+      });
+    },
+  );
+}
+
 describe("GET /api/zero/insights", () => {
   const track = createFixtureTracker<InsightsFixture>((fixture) => {
     return store.set(deleteInsightsForFixture$, fixture, context.signal);
@@ -173,8 +196,10 @@ describe("GET /api/zero/insights", () => {
       store.set(seedInsightsFixture$, undefined, context.signal),
     );
     const removedUserId = `user_${randomUUID()}`;
+    const cachedOtherUserId = `user_${randomUUID()}`;
     const yesterday = daysAgo(1);
-    await seedCachedOrgMember(fixture.orgId, fixture.userId);
+    await seedCachedOrgMember(fixture.orgId, cachedOtherUserId);
+    mockCurrentOrgMembers(fixture.orgId, [fixture.userId, cachedOtherUserId]);
     await store.set(
       seedInsightsDaily$,
       {

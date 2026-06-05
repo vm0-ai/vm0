@@ -121,6 +121,29 @@ async function seedCachedOrgMember(
   });
 }
 
+function mockCurrentOrgMembers(
+  orgId: string,
+  userIds: readonly string[],
+): void {
+  context.mocks.clerk.organizations.getOrganizationMembershipList.mockImplementation(
+    (args: unknown) => {
+      const input = args as {
+        readonly organizationId?: string;
+        readonly limit?: number;
+        readonly offset?: number;
+      };
+      const members = input.organizationId === orgId ? userIds : [];
+      const offset = input.offset ?? 0;
+      const limit = input.limit ?? members.length;
+      return Promise.resolve({
+        data: members.slice(offset, offset + limit).map((userId) => {
+          return { publicUserData: { userId } };
+        }),
+      });
+    },
+  );
+}
+
 async function seedExistingInsights(
   fixture: UsageFixture,
   updatedAt: Date,
@@ -377,7 +400,9 @@ describe("GET /api/cron/aggregate-insights", () => {
       store.set(seedUsageFixture$, {}, context.signal),
     );
     const removedUserId = `user_${randomUUID()}`;
-    await seedCachedOrgMember(fixture.orgId, fixture.userId);
+    const cachedOtherUserId = `user_${randomUUID()}`;
+    await seedCachedOrgMember(fixture.orgId, cachedOtherUserId);
+    mockCurrentOrgMembers(fixture.orgId, [fixture.userId, cachedOtherUserId]);
     await seedUserName(fixture, "active@example.com", "Active Member");
     await seedUserName(
       { userId: removedUserId },

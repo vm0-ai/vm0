@@ -9,9 +9,12 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
+import { clerk$ } from "../external/clerk";
 import { db$ } from "../external/db";
+import { settle } from "../utils";
 
 type DayInsightData = Partial<Omit<DayInsight, "date">>;
+const ORG_MEMBERSHIP_PAGE_SIZE = 100;
 
 interface StoredTeamUsageEntry {
   readonly userId?: string;
@@ -24,6 +27,20 @@ interface StoredTeamUsageEntry {
 type StoredDayInsightData = DayInsightData & {
   readonly teamUsage?: readonly StoredTeamUsageEntry[];
 };
+
+interface ClerkOrganizationMembership {
+  readonly publicUserData?: {
+    readonly userId?: string | null;
+  } | null;
+}
+
+interface ClerkOrganizationsLike {
+  readonly getOrganizationMembershipList: (args: {
+    readonly organizationId: string;
+    readonly limit: number;
+    readonly offset: number;
+  }) => Promise<{ readonly data: readonly ClerkOrganizationMembership[] }>;
+}
 
 function normalizeDays(days: number | undefined): number {
   return Math.min(Math.max(days ?? 30, 1), 90);
@@ -49,6 +66,36 @@ function filterTeamUsageByCurrentMembers(
   });
 }
 
+async function queryCurrentOrgMemberUserIds(
+  organizations: ClerkOrganizationsLike,
+  orgId: string,
+): Promise<Set<string> | null> {
+  const userIds = new Set<string>();
+  for (let offset = 0; ; offset += ORG_MEMBERSHIP_PAGE_SIZE) {
+    const result = await settle(
+      organizations.getOrganizationMembershipList({
+        organizationId: orgId,
+        limit: ORG_MEMBERSHIP_PAGE_SIZE,
+        offset,
+      }),
+    );
+    if (!result.ok) {
+      return null;
+    }
+
+    for (const membership of result.value.data) {
+      const userId = membership.publicUserData?.userId;
+      if (userId) {
+        userIds.add(userId);
+      }
+    }
+
+    if (result.value.data.length < ORG_MEMBERSHIP_PAGE_SIZE) {
+      return userIds;
+    }
+  }
+}
+
 export function zeroInsights(args: {
   readonly orgId: string;
   readonly userId: string;
@@ -62,10 +109,9 @@ export function zeroInsights(args: {
       .where(eq(orgMembersCache.orgId, args.orgId));
     const currentMemberUserIds =
       memberRows.length > 0
-        ? new Set(
-            memberRows.map((row) => {
-              return row.userId;
-            }),
+        ? await queryCurrentOrgMemberUserIds(
+            get(clerk$).organizations,
+            args.orgId,
           )
         : null;
 

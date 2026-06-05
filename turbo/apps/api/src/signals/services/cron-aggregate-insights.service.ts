@@ -25,6 +25,7 @@ const L = logger("CronAggregateInsights");
 const OTHER_USAGE_AGENT_NAME = "Other usage";
 const NETWORK_RUN_ATTRIBUTION_BATCH_SIZE = 10_000;
 const AGGREGATION_REPROCESS_OVERLAP_MS = 5 * 60_000;
+const ORG_MEMBERSHIP_PAGE_SIZE = 100;
 
 interface AgentInfo {
   readonly agentId: string | null;
@@ -148,7 +149,7 @@ interface WindowScope {
   readonly users: OrgUserPair[];
   readonly orgIds: string[];
   readonly userIds: string[];
-  readonly cachedOrgMembers: CachedOrgMemberScope;
+  readonly currentOrgMembers: CurrentOrgMemberScope;
 }
 
 interface ClerkUserListUser {
@@ -162,12 +163,25 @@ interface ClerkUserListUser {
   readonly username: string | null;
 }
 
+interface ClerkOrganizationMembership {
+  readonly publicUserData?: {
+    readonly userId?: string | null;
+  } | null;
+}
+
 interface ClerkLike {
   readonly users: {
     readonly getUserList: (args: {
       readonly userId: string[];
       readonly limit: number;
     }) => Promise<{ readonly data: readonly ClerkUserListUser[] }>;
+  };
+  readonly organizations: {
+    readonly getOrganizationMembershipList: (args: {
+      readonly organizationId: string;
+      readonly limit: number;
+      readonly offset: number;
+    }) => Promise<{ readonly data: readonly ClerkOrganizationMembership[] }>;
   };
 }
 
@@ -208,8 +222,8 @@ interface NetworkQueryResult {
   readonly axiomDegraded: boolean;
 }
 
-interface CachedOrgMemberScope {
-  readonly orgsWithCachedMembers: Set<string>;
+interface CurrentOrgMemberScope {
+  readonly orgsWithCurrentMembers: Set<string>;
   readonly memberKeys: Set<string>;
 }
 
@@ -507,46 +521,111 @@ function orgUserKey(args: OrgUserPair): string {
   return `${args.orgId}:${args.userId}`;
 }
 
-function isCachedOrgMember(
-  scope: CachedOrgMemberScope,
+function isCurrentOrgMember(
+  scope: CurrentOrgMemberScope,
   args: OrgUserPair,
 ): boolean {
   return (
-    !scope.orgsWithCachedMembers.has(args.orgId) ||
+    !scope.orgsWithCurrentMembers.has(args.orgId) ||
     scope.memberKeys.has(orgUserKey(args))
   );
 }
 
-async function queryCachedOrgMembers(
+async function queryCachedOrgIdsWithMembers(
   db: Db,
   orgIds: string[],
   signal: AbortSignal,
-): Promise<CachedOrgMemberScope> {
+): Promise<Set<string>> {
   if (orgIds.length === 0) {
-    return { orgsWithCachedMembers: new Set(), memberKeys: new Set() };
+    return new Set();
   }
 
   const rows = await db
     .select({
       orgId: orgMembersCache.orgId,
-      userId: orgMembersCache.userId,
     })
     .from(orgMembersCache)
     .where(inArray(orgMembersCache.orgId, orgIds));
   signal.throwIfAborted();
 
-  return {
-    orgsWithCachedMembers: new Set(
-      rows.map((row) => {
-        return row.orgId;
+  return new Set(
+    rows.map((row) => {
+      return row.orgId;
+    }),
+  );
+}
+
+async function queryClerkOrgMemberUserIds(
+  clerk: ClerkLike,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<string[] | null> {
+  const userIds: string[] = [];
+  for (let offset = 0; ; offset += ORG_MEMBERSHIP_PAGE_SIZE) {
+    const result = await settle(
+      clerk.organizations.getOrganizationMembershipList({
+        organizationId: orgId,
+        limit: ORG_MEMBERSHIP_PAGE_SIZE,
+        offset,
       }),
-    ),
-    memberKeys: new Set(
-      rows.map((row) => {
-        return orgUserKey(row);
-      }),
-    ),
-  };
+    );
+    signal.throwIfAborted();
+
+    if (!result.ok) {
+      L.warn("Failed to query Clerk organization memberships", {
+        orgId,
+        error:
+          result.error instanceof Error
+            ? result.error.message
+            : String(result.error),
+      });
+      return null;
+    }
+
+    for (const membership of result.value.data) {
+      const userId = membership.publicUserData?.userId;
+      if (userId) {
+        userIds.push(userId);
+      }
+    }
+
+    if (result.value.data.length < ORG_MEMBERSHIP_PAGE_SIZE) {
+      return userIds;
+    }
+  }
+}
+
+async function queryCurrentOrgMembers(
+  db: Db,
+  clerk: ClerkLike,
+  orgIds: string[],
+  signal: AbortSignal,
+): Promise<CurrentOrgMemberScope> {
+  const orgIdsWithCache = await queryCachedOrgIdsWithMembers(
+    db,
+    orgIds,
+    signal,
+  );
+  const orgsWithCurrentMembers = new Set<string>();
+  const memberKeys = new Set<string>();
+
+  for (const orgId of orgIdsWithCache) {
+    const memberUserIds = await queryClerkOrgMemberUserIds(
+      clerk,
+      orgId,
+      signal,
+    );
+    if (!memberUserIds) {
+      continue;
+    }
+
+    orgsWithCurrentMembers.add(orgId);
+    for (const userId of memberUserIds) {
+      memberKeys.add(orgUserKey({ orgId, userId }));
+    }
+  }
+
+  return { orgsWithCurrentMembers, memberKeys };
 }
 
 function mergeActiveUserRows(rows: ActiveUserRow[]): ActiveUserRow[] {
@@ -820,7 +899,7 @@ async function queryNetworkRunAgentRows(
 
 function windowScope(
   group: WindowGroup,
-  cachedOrgMembers: CachedOrgMemberScope,
+  currentOrgMembers: CurrentOrgMemberScope,
 ): WindowScope {
   const { dayStart, dayEnd, users } = group;
   return {
@@ -841,7 +920,7 @@ function windowScope(
         }),
       ),
     ],
-    cachedOrgMembers,
+    currentOrgMembers,
   };
 }
 
@@ -864,7 +943,7 @@ async function loadWindowUsageData(
   signal.throwIfAborted();
 
   const currentMemberCreditRows = ledgerCreditRows.filter((row) => {
-    return isCachedOrgMember(scope.cachedOrgMembers, row);
+    return isCurrentOrgMember(scope.currentOrgMembers, row);
   });
   const userAgentMap = mergeAgentRows(
     runRows,
@@ -1031,7 +1110,7 @@ function processWindowGroup(
   db: Db,
   clerk: ClerkLike,
   group: WindowGroup,
-  cachedOrgMembers: CachedOrgMemberScope,
+  currentOrgMembers: CurrentOrgMemberScope,
   signal: AbortSignal,
 ): Computed<
   Promise<{ readonly upserted: number; readonly networkRows: number }>
@@ -1040,7 +1119,7 @@ function processWindowGroup(
     async (
       get,
     ): Promise<{ readonly upserted: number; readonly networkRows: number }> => {
-      const scope = windowScope(group, cachedOrgMembers);
+      const scope = windowScope(group, currentOrgMembers);
       const usageData = await loadWindowUsageData(db, clerk, scope, signal);
       const networkData = await get(queryWindowNetworkData(db, scope, signal));
       const upserted = await upsertWindowInsights(
@@ -1085,8 +1164,9 @@ export const aggregateInsights$ = command(
         }),
       ),
     ];
-    const cachedOrgMembers = await queryCachedOrgMembers(
+    const currentOrgMembers = await queryCurrentOrgMembers(
       db,
+      clerk,
       activeOrgIds,
       signal,
     );
@@ -1156,7 +1236,7 @@ export const aggregateInsights$ = command(
     let totalNetworkRows = 0;
     for (const group of windowGroups.values()) {
       const result = await get(
-        processWindowGroup(db, clerk, group, cachedOrgMembers, signal),
+        processWindowGroup(db, clerk, group, currentOrgMembers, signal),
       );
       signal.throwIfAborted();
       upserted += result.upserted;
