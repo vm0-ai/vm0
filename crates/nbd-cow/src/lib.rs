@@ -408,6 +408,34 @@ impl OwnedDisconnectOutcome {
     }
 }
 
+struct OwnedDisconnectResultOutcome {
+    lease: DeferredLease,
+    result: Option<Result<OwnedDisconnectState>>,
+}
+
+impl OwnedDisconnectResultOutcome {
+    fn new(lease: DeferredLease, result: Result<OwnedDisconnectState>) -> Self {
+        Self {
+            lease,
+            result: Some(result),
+        }
+    }
+
+    fn into_parts(mut self) -> Result<(pool::DeviceLease, Result<OwnedDisconnectState>)> {
+        let result = self.result.take().ok_or_else(|| {
+            error::NbdCowError::Io(std::io::Error::other(
+                "owned disconnect result outcome consumed twice",
+            ))
+        })?;
+        let lease = self.lease.take().ok_or_else(|| {
+            error::NbdCowError::Io(std::io::Error::other(
+                "owned disconnect result outcome lease consumed twice",
+            ))
+        })?;
+        Ok((lease, result))
+    }
+}
+
 async fn disconnect_connected_if_owned_critical_section(
     connected: ConnectedDevice,
 ) -> Result<bool> {
@@ -424,6 +452,25 @@ async fn disconnect_connected_if_owned_result_critical_section(
         disconnect_connected_if_owned_result_with(connected, device_ownership, netlink::disconnect)
     })
     .await?
+}
+
+async fn disconnect_connected_if_owned_result_with_lease_critical_section(
+    connected: ConnectedDevice,
+    pool: pool::DevicePoolHandle,
+    lease: pool::DeviceLease,
+) -> Result<OwnedDisconnectResultOutcome> {
+    let deferred_lease = DeferredLease::new(pool, lease);
+    run_netlink_critical_section("owned NBD disconnect", move || {
+        OwnedDisconnectResultOutcome::new(
+            deferred_lease,
+            disconnect_connected_if_owned_result_with(
+                connected,
+                device_ownership,
+                netlink::disconnect,
+            ),
+        )
+    })
+    .await
 }
 
 async fn disconnect_connected_if_owned_with_lease_critical_section(
@@ -983,6 +1030,13 @@ impl NbdCowDevice {
     }
 
     async fn shutdown_inner(&mut self, save_bitmap: bool) -> Result<()> {
+        self.prepare_shutdown(save_bitmap).await?;
+        self.disconnect_for_shutdown().await?;
+        self.wait_for_kernel_release().await;
+        Ok(())
+    }
+
+    async fn prepare_shutdown(&mut self, save_bitmap: bool) -> Result<()> {
         // Signal all dispatch tasks to stop
         self.shutdown.cancel();
 
@@ -998,6 +1052,10 @@ impl NbdCowDevice {
             cow.save_bitmap(&self.bitmap_path())?;
         }
 
+        Ok(())
+    }
+
+    async fn disconnect_for_shutdown(&mut self) -> Result<()> {
         // Disconnect via netlink, only if we still own the device. On shared
         // hosts, another runner may have already disconnected our device and
         // recycled the index; blindly calling disconnect(device_index) would
@@ -1008,21 +1066,30 @@ impl NbdCowDevice {
                 index: self.device_index,
                 connect_tid: self.connect_tid,
             };
-            match disconnect_connected_if_owned_result_critical_section(connected).await? {
-                OwnedDisconnectState::Disconnected => {
-                    self.disconnected = true;
-                }
-                OwnedDisconnectState::Foreign(pid) => {
-                    self.disconnected = true;
-                    tracing::warn!(
-                        device_index = self.device_index,
-                        foreign_pid = pid,
-                        "skipping disconnect: device recycled by another process"
-                    );
-                }
-            }
+            let state = disconnect_connected_if_owned_result_critical_section(connected).await?;
+            self.apply_owned_disconnect_state(state);
         }
 
+        Ok(())
+    }
+
+    fn apply_owned_disconnect_state(&mut self, state: OwnedDisconnectState) {
+        match state {
+            OwnedDisconnectState::Disconnected => {
+                self.disconnected = true;
+            }
+            OwnedDisconnectState::Foreign(pid) => {
+                self.disconnected = true;
+                tracing::warn!(
+                    device_index = self.device_index,
+                    foreign_pid = pid,
+                    "skipping disconnect: device recycled by another process"
+                );
+            }
+        }
+    }
+
+    async fn wait_for_kernel_release(&self) {
         // Wait for kernel to release the device (poll pid file)
         let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
         for _ in 0..10 {
@@ -1037,8 +1104,6 @@ impl NbdCowDevice {
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-
-        Ok(())
     }
 
     /// Check if we still own the NBD device by comparing the sysfs PID
@@ -1168,15 +1233,6 @@ enum DestroyMode {
     KeepCow,
 }
 
-impl DestroyMode {
-    async fn run(self, device: &mut NbdCowDevice) -> Result<()> {
-        match self {
-            Self::RemoveCow => device.destroy().await,
-            Self::KeepCow => device.destroy_keep_cow().await,
-        }
-    }
-}
-
 /// A COW device whose NBD pool ownership is tied to the device lifecycle.
 pub struct PooledNbdCowDevice {
     device: NbdCowDevice,
@@ -1199,6 +1255,11 @@ impl LeaseGuard {
 
     fn take(&mut self) -> Option<pool::DeviceLease> {
         self.lease.take()
+    }
+
+    fn restore(&mut self, lease: pool::DeviceLease) {
+        debug_assert!(self.lease.is_none(), "restoring duplicate pool lease");
+        self.lease = Some(lease);
     }
 }
 
@@ -1313,7 +1374,7 @@ impl PooledNbdCowDevice {
     ) -> Result<()> {
         let attempts = policy.attempts();
 
-        match mode.run(device).await {
+        match Self::run_destroy_attempt(device, lease, pool, mode).await {
             Ok(()) => {
                 Self::release_clean(pool, lease).await;
                 Ok(())
@@ -1321,7 +1382,7 @@ impl PooledNbdCowDevice {
             Err(mut last_err) => {
                 for _ in 1..attempts {
                     tokio::time::sleep(policy.delay).await;
-                    match mode.run(device).await {
+                    match Self::run_destroy_attempt(device, lease, pool, mode).await {
                         Ok(()) => {
                             Self::release_clean(pool, lease).await;
                             return Ok(());
@@ -1335,6 +1396,58 @@ impl PooledNbdCowDevice {
                 Err(last_err)
             }
         }
+    }
+
+    async fn run_destroy_attempt(
+        device: &mut NbdCowDevice,
+        lease: &mut LeaseGuard,
+        pool: &pool::DevicePoolHandle,
+        mode: DestroyMode,
+    ) -> Result<()> {
+        match mode {
+            DestroyMode::RemoveCow => {
+                Self::shutdown_device_with_lease(device, lease, pool, false).await?;
+                let _ = std::fs::remove_file(&device.cow_file);
+                let _ = std::fs::remove_file(device.bitmap_path());
+                Ok(())
+            }
+            DestroyMode::KeepCow => {
+                Self::shutdown_device_with_lease(device, lease, pool, true).await
+            }
+        }
+    }
+
+    async fn shutdown_device_with_lease(
+        device: &mut NbdCowDevice,
+        lease: &mut LeaseGuard,
+        pool: &pool::DevicePoolHandle,
+        save_bitmap: bool,
+    ) -> Result<()> {
+        device.prepare_shutdown(save_bitmap).await?;
+
+        if !device.disconnected {
+            let connected = ConnectedDevice {
+                index: device.device_index,
+                connect_tid: device.connect_tid,
+            };
+            let Some(device_lease) = lease.take() else {
+                return Err(error::NbdCowError::Io(std::io::Error::other(
+                    "pool lease missing during pooled NBD shutdown",
+                )));
+            };
+            let outcome = disconnect_connected_if_owned_result_with_lease_critical_section(
+                connected,
+                pool.clone(),
+                device_lease,
+            )
+            .await?;
+            let (device_lease, disconnect_result) = outcome.into_parts()?;
+            lease.restore(device_lease);
+            device.apply_owned_disconnect_state(disconnect_result?);
+        }
+
+        device.wait_for_kernel_release().await;
+        Ok(())
     }
 
     /// Mark the device as abandoned and retire the pool lease as uncertain.
