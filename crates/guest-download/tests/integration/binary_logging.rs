@@ -1,6 +1,4 @@
-use crate::support::{
-    assert_does_not_contain_any, create_tar_gz, unique_run_id, write_manifest,
-};
+use crate::support::{assert_does_not_contain_any, create_tar_gz, unique_run_id, write_manifest};
 use httpmock::prelude::*;
 use std::path::PathBuf;
 use tempfile::TempDir;

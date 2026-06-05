@@ -194,8 +194,8 @@ pub unsafe fn setup_env(
         );
         // Derive run_id from the test binary's filename (which cargo
         // hashes per target) so the three reap test binaries running
-        // concurrently don't collide on the `/tmp/vm0-*-{run_id}.*`
-        // files that paths.rs creates.
+        // concurrently don't collide on the run-scoped files that
+        // paths.rs creates.
         let run_id = std::env::current_exe()
             .ok()
             .as_deref()

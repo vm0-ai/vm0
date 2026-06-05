@@ -207,16 +207,21 @@ fn set_file_private(_file: &File) -> io::Result<()> {
     Ok(())
 }
 
-pub fn write_private(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
+pub fn create_private(path: impl AsRef<Path>) -> io::Result<File> {
     let path = path.as_ref();
     ensure_parent_dir(path)?;
-    let mut file = private_file_options().open(path).map_err(|e| {
+    let file = private_file_options().open(path).map_err(|e| {
         io::Error::new(
             e.kind(),
             format!("open runtime file {}: {e}", path.display()),
         )
     })?;
     set_file_private(&file)?;
+    Ok(file)
+}
+
+pub fn write_private(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
+    let mut file = create_private(path)?;
     std::io::Write::write_all(&mut file, bytes.as_ref())
 }
 
@@ -331,5 +336,33 @@ mod tests {
                 0o600
             );
         }
+    }
+
+    #[test]
+    fn create_private_truncates_existing_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("run/logs/agent.jsonl");
+        write_private(&path, b"stale content").unwrap();
+
+        let mut file = create_private(&path).unwrap();
+        std::io::Write::write_all(&mut file, b"fresh").unwrap();
+        drop(file);
+
+        assert_eq!(fs::read(&path).unwrap(), b"fresh");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_file_opens_reject_final_symlink() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("target");
+        let link = temp.path().join("run/logs/system.log");
+        ensure_parent_dir(&link).unwrap();
+        std::fs::write(&target, b"target must survive").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(create_private(&link).is_err());
+        assert!(open_private_append(&link).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"target must survive");
     }
 }
