@@ -93,6 +93,63 @@ def usage_pending_path(tmp_path: Path) -> Iterator[Path]:
         usage.counters.reset_for_tests()
 
 
+def _write_billable_tracking_registry(tmp_path: Path) -> Path:
+    firewall_name = "model-provider:anthropic-api-key"
+    return _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name=firewall_name,
+            api_entry={
+                "base": "https://api.anthropic.com",
+                "auth": {"headers": {"x-api-key": "test-key"}},
+                "permissions": [{"name": "messages", "rules": ["POST /v1/messages"]}],
+            },
+            network_policy={
+                "allow": ["messages"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            billable_firewalls=[firewall_name],
+        ),
+    )
+
+
+def _write_non_billable_tracking_registry(tmp_path: Path) -> Path:
+    registry_dir = tmp_path / "non-billable-registry"
+    registry_dir.mkdir()
+    firewall_name = "model-provider:anthropic-api-key"
+    return _write_registry(
+        registry_dir,
+        vm_info=_single_firewall_vm(
+            registry_dir,
+            firewall_name=firewall_name,
+            api_entry={
+                "base": "https://api.anthropic.com",
+                "auth": {"headers": {"x-api-key": "test-key"}},
+                "permissions": [{"name": "messages", "rules": ["POST /v1/messages"]}],
+            },
+            network_policy={
+                "allow": ["messages"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+
+
+def _billable_tracking_flow(real_flow):
+    return real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.anthropic.com",
+        path="/v1/messages",
+        method="POST",
+    )
+
+
 async def test_billable_flow_is_tracked_before_responseheaders(
     tmp_path,
     usage_pending_path,
@@ -132,7 +189,6 @@ async def test_billable_flow_is_tracked_before_responseheaders(
     ):
         await mitm_addon.request(flow)
 
-    assert flow.metadata["_usage_flow_tracked"] is True
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -181,7 +237,6 @@ async def test_billable_flow_error_releases_tracking_after_request(
     ):
         await mitm_addon.request(flow)
 
-        assert flow.metadata["_usage_flow_tracked"] is True
         usage.write_pending_snapshot(flush_request_id="request-1")
         assert_pending(
             usage_pending_path,
@@ -194,7 +249,6 @@ async def test_billable_flow_error_releases_tracking_after_request(
         flow.error = Error("connection reset")
         mitm_addon.error(flow)
 
-    assert "_usage_flow_tracked" not in flow.metadata
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
@@ -206,7 +260,137 @@ async def test_billable_flow_error_releases_tracking_after_request(
     )
 
 
-async def test_local_firewall_error_does_not_track_usage_flow(
+async def test_duplicate_terminal_hooks_do_not_double_decrement_usage_flow(
+    tmp_path,
+    usage_pending_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    """Duplicate terminal hooks release a tracked flow at most once."""
+    reg_path = _write_billable_tracking_registry(tmp_path)
+    first_flow = _billable_tracking_flow(real_flow)
+    second_flow = _billable_tracking_flow(real_flow)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(first_flow)
+        await mitm_addon.request(second_flow)
+
+        usage.write_pending_snapshot(flush_request_id="before-terminal-hooks")
+        assert_pending(
+            usage_pending_path,
+            flows=2,
+            buffered=0,
+            reports=0,
+            flush_request_id="before-terminal-hooks",
+        )
+
+        first_flow.response = mitm_addon.http.Response.make(200)
+        mitm_addon.response(first_flow)
+        usage.write_pending_snapshot(flush_request_id="after-response")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="after-response",
+        )
+
+        first_flow.error = Error("connection reset")
+        mitm_addon.error(first_flow)
+        usage.write_pending_snapshot(flush_request_id="after-duplicate-error")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="after-duplicate-error",
+        )
+
+        second_flow.response = mitm_addon.http.Response.make(200)
+        mitm_addon.response(second_flow)
+
+    usage.write_pending_snapshot(flush_request_id="after-all-terminal-hooks")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-all-terminal-hooks",
+    )
+
+
+async def test_untracked_terminal_hook_does_not_decrement_other_usage_flow(
+    tmp_path,
+    usage_pending_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    """A terminal hook for an untracked flow leaves other tracked flows in flight."""
+    billable_reg_path = _write_billable_tracking_registry(tmp_path)
+    non_billable_reg_path = _write_non_billable_tracking_registry(tmp_path)
+    tracked_flow = _billable_tracking_flow(real_flow)
+    untracked_flow = _billable_tracking_flow(real_flow)
+
+    with (
+        mitm_ctx(registry_path=str(billable_reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(tracked_flow)
+        usage.write_pending_snapshot(flush_request_id="before-untracked-error")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="before-untracked-error",
+        )
+
+    with (
+        mitm_ctx(registry_path=str(non_billable_reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(untracked_flow)
+        assert untracked_flow.metadata["firewall_billable"] is False
+        usage.write_pending_snapshot(flush_request_id="after-untracked-request")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="after-untracked-request",
+        )
+
+        untracked_flow.error = Error("connection reset")
+        mitm_addon.error(untracked_flow)
+        usage.write_pending_snapshot(flush_request_id="after-untracked-error")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="after-untracked-error",
+        )
+
+    with mitm_ctx(registry_path=str(billable_reg_path), api_url="https://api.vm0.ai"):
+        tracked_flow.response = mitm_addon.http.Response.make(200)
+        mitm_addon.response(tracked_flow)
+
+    usage.write_pending_snapshot(flush_request_id="after-tracked-response")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="after-tracked-response",
+    )
+
+
+async def test_local_firewall_error_leaves_usage_flows_drained(
     tmp_path, usage_pending_path, real_flow, mitm_ctx, headers
 ):
     """Local auth failures do not enqueue usage and must not leak drain counters."""
@@ -241,7 +425,6 @@ async def test_local_firewall_error_does_not_track_usage_flow(
     assert flow.response is not None
     assert flow.response.status_code == 502
     assert flow.metadata["firewall_error"] == "auth_unavailable"
-    assert "_usage_flow_tracked" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -280,15 +463,25 @@ async def test_unexpected_request_exception_releases_tracking(
         with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
     )
 
+    async def return_invalid_auth_after_tracking(*_args, **_kwargs):
+        usage.write_pending_snapshot(flush_request_id="during-auth-failure")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="during-auth-failure",
+        )
+        return {}
+
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-        patch.object(auth, "get_firewall_headers", AsyncMock(return_value={})),
+        patch.object(auth, "get_firewall_headers", return_invalid_auth_after_tracking),
         pytest.raises(KeyError),
     ):
         await mitm_addon.request(flow)
 
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
-    assert "_usage_flow_tracked" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -347,7 +540,6 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     assert flow.metadata["firewall_name"] == firewall_name
     assert flow.metadata["cli_agent_type"] == "claude-code"
     assert flow.metadata["firewall_billable"] is False
-    assert "_usage_flow_tracked" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -402,7 +594,6 @@ async def test_non_billable_observable_model_provider_is_tracked_before_response
     assert flow.metadata["firewall_name"] == firewall_name
     assert flow.metadata["firewall_billable"] is False
     assert flow.metadata["model_usage_provider"] == "claude-sonnet-4-6"
-    assert flow.metadata["_usage_flow_tracked"] is True
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -462,7 +653,6 @@ async def test_billable_model_provider_records_model_usage_provider(
     assert flow.metadata["cli_agent_type"] == "codex"
     assert flow.metadata["firewall_billable"] is True
     assert flow.metadata["model_usage_provider"] == "claude-opus-4-6"
-    assert flow.metadata["_usage_flow_tracked"] is True
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -537,7 +727,6 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
             await _wait_for_forward_start(probe, request_task)
 
             assert probe.calls == 1
-            assert flow.metadata["_usage_flow_tracked"] is True
             usage.write_pending_snapshot(flush_request_id="request-1")
             assert_pending(
                 usage_pending_path,
@@ -555,7 +744,6 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
 
         assert flow.response is not None
         assert flow.metadata["auth_url_rewrite"] is True
-        assert flow.metadata["_usage_flow_tracked"] is True
         usage.write_pending_snapshot(flush_request_id="request-1")
         assert_pending(
             usage_pending_path,
@@ -567,7 +755,6 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
 
         mitm_addon.response(flow)
 
-    assert "_usage_flow_tracked" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
@@ -640,7 +827,6 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
             await _wait_for_forward_start(probe, request_task)
 
             assert probe.calls == 1
-            assert flow.metadata["_usage_flow_tracked"] is True
             usage.write_pending_snapshot(flush_request_id="request-1")
             assert_pending(
                 usage_pending_path,
@@ -660,7 +846,6 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
     assert flow.response.status_code == 502
     assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
     assert "auth_url_rewrite" not in flow.metadata
-    assert "_usage_flow_tracked" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,

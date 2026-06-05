@@ -8,6 +8,8 @@ import pytest
 import auth
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import usage
+from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import (
     _single_firewall_vm,
     _write_github_firewall_registry,
@@ -502,6 +504,8 @@ async def test_browser_firewall_match_skips_auth_injection(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     """Browser-looking UAs pass through without connector auth mutation."""
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
     reg_path = _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
@@ -554,7 +558,14 @@ async def test_browser_firewall_match_skips_auth_injection(
     assert "firewall_api_id" not in flow.metadata
     assert "auth_resolved_secrets" not in flow.metadata
     assert "auth_url_rewrite" not in flow.metadata
-    assert "_usage_flow_tracked" not in flow.metadata
+    usage.write_pending_snapshot(flush_request_id="browser-passthrough")
+    assert_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="browser-passthrough",
+    )
 
     flow.response = mitm_addon.http.Response.make(200)
     mitm_addon.response(flow)
