@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import http.client
 import importlib.util
 import re
 import ssl
@@ -29,6 +30,10 @@ TLD_RE = re.compile(r"^[a-z0-9-]+$")
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+class TldFetchError(RuntimeError):
+    """Raised when the live IANA TLD source cannot be fetched."""
 
 
 class SnapshotComparison(NamedTuple):
@@ -64,11 +69,13 @@ def fetch_source() -> str:
     try:
         with opener.open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
             if response.status != HTTPStatus.OK:
-                raise RuntimeError(f"failed to fetch {SOURCE_URL}: HTTP {response.status}")
+                raise TldFetchError(f"failed to fetch {SOURCE_URL}: HTTP {response.status}")
             return response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         with exc:
-            raise RuntimeError(f"failed to fetch {SOURCE_URL}: HTTP {exc.code}") from exc
+            raise TldFetchError(f"failed to fetch {SOURCE_URL}: HTTP {exc.code}") from exc
+    except (OSError, http.client.HTTPException) as exc:
+        raise TldFetchError(f"failed to fetch {SOURCE_URL}: {exc}") from exc
 
 
 def parse_source(source: str) -> tuple[str, tuple[str, ...]]:
@@ -262,4 +269,8 @@ def main() -> int:
         if args.source_file is None:
             parser.error("--check-source requires --source-file")
         return check_source(args.source_file)
-    return update_generated(args.source_file)
+    try:
+        return update_generated(args.source_file)
+    except TldFetchError as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 1
