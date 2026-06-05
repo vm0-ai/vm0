@@ -51,6 +51,7 @@ function makeGithubConnectorResponse(): ConnectorListResponse {
         externalEmail: "test@example.com",
         oauthScopes: ["repo", "read:user"],
         needsReconnect: false,
+        tokenExpiresAt: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -75,6 +76,7 @@ function makeTestOauthConnectorResponse(
         externalEmail: null,
         oauthScopes: ["read"],
         needsReconnect: false,
+        tokenExpiresAt: null,
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt,
       },
@@ -131,6 +133,7 @@ function makeTestOauthDeviceConnectorResponse(): ConnectorResponse {
     externalEmail: null,
     oauthScopes: ["read"],
     needsReconnect: false,
+    tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   };
@@ -905,6 +908,7 @@ describe("submitManualGrant$", () => {
           externalEmail: null,
           oauthScopes: null,
           needsReconnect: false,
+          tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         });

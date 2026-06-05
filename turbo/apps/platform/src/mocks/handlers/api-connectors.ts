@@ -44,6 +44,7 @@ function createMockOauthDeviceAuthConnector(
     externalEmail: null,
     oauthScopes: ["read"],
     needsReconnect: false,
+    tokenExpiresAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -78,6 +79,7 @@ function createMockManualGrantConnector(
     externalEmail: null,
     oauthScopes: null,
     needsReconnect: false,
+    tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };

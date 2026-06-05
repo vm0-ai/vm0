@@ -34,6 +34,8 @@ import {
   manualGrantFormValuesFor$,
   selectedConnectorType$,
   isStandaloneMode,
+  connectorNeedsReconnectForDisplay,
+  connectorExpiryCountdownText,
   type ConnectorOAuthDeviceAuthState,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
@@ -50,11 +52,15 @@ import { ConnectorHelpText } from "./connector-help-text.tsx";
 // ---------------------------------------------------------------------------
 
 function connectedStatusText(item: ConnectorTypeWithStatus): string {
-  if (item.needsReconnect) {
+  if (connectorNeedsReconnectForDisplay(item)) {
     return "Connection expired";
   }
   if (item.scopeMismatch) {
     return "Permissions update available";
+  }
+  const expiryText = connectorExpiryCountdownText(item);
+  if (expiryText) {
+    return expiryText;
   }
   if (item.connector?.externalUsername) {
     return `Connected as @${item.connector.externalUsername}`;

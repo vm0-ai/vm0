@@ -54,6 +54,7 @@ function mockConnectors(
         externalEmail: null,
         oauthScopes: null,
         needsReconnect: false,
+        tokenExpiresAt: null,
         createdAt: "2026-01-01T00:00:00Z",
         updatedAt: "2026-01-01T00:00:00Z",
       };
@@ -71,6 +72,7 @@ function manualGrantConnectorResponse(type: ConnectorType) {
     externalEmail: null,
     oauthScopes: null,
     needsReconnect: false,
+    tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
@@ -748,6 +750,7 @@ describe("directed connect page", () => {
           externalEmail: null,
           oauthScopes: ["read"],
           needsReconnect: false,
+          tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00Z",
           updatedAt: "2026-01-01T00:00:00Z",
         },

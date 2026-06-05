@@ -6,6 +6,7 @@ import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { variables } from "@vm0/db/schema/variable";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { and, eq } from "drizzle-orm";
 import { mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 import {
@@ -312,6 +313,84 @@ describe("zeroConnectorList", () => {
     );
 
     expect(connector).toBeNull();
+  });
+
+  it("derives reconnect state for expiring non-refreshable connectors", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const expiredAt = new Date("2000-01-01T00:00:00.000Z");
+    const futureAt = new Date("2100-01-01T00:00:00.000Z");
+
+    await writeDb.insert(connectors).values([
+      {
+        orgId,
+        userId,
+        type: "gitlab",
+        authMethod: "api-token",
+        tokenExpiresAt: futureAt,
+        needsReconnect: false,
+      },
+      {
+        orgId,
+        userId,
+        type: "stripe",
+        authMethod: "api-token",
+        tokenExpiresAt: expiredAt,
+        needsReconnect: false,
+      },
+      {
+        orgId,
+        userId,
+        type: "lark",
+        authMethod: "api-token",
+        tokenExpiresAt: expiredAt,
+        needsReconnect: false,
+      },
+    ]);
+
+    const list = await store.get(zeroConnectorList({ orgId, userId }));
+    const gitlab = list.connectors.find((connector) => {
+      return connector.type === "gitlab";
+    });
+    const stripe = list.connectors.find((connector) => {
+      return connector.type === "stripe";
+    });
+    const lark = list.connectors.find((connector) => {
+      return connector.type === "lark";
+    });
+
+    expect(gitlab).toMatchObject({
+      needsReconnect: false,
+      tokenExpiresAt: futureAt.toISOString(),
+    });
+    expect(stripe).toMatchObject({
+      needsReconnect: true,
+      tokenExpiresAt: expiredAt.toISOString(),
+    });
+    expect(lark).toMatchObject({
+      needsReconnect: false,
+      tokenExpiresAt: expiredAt.toISOString(),
+    });
+
+    const stripeByType = await store.get(
+      zeroConnectorByType({ orgId, userId, type: "stripe" }),
+    );
+    expect(stripeByType).toMatchObject({
+      needsReconnect: true,
+      tokenExpiresAt: expiredAt.toISOString(),
+    });
+
+    const [storedStripe] = await writeDb
+      .select({ needsReconnect: connectors.needsReconnect })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, orgId),
+          eq(connectors.userId, userId),
+          eq(connectors.type, "stripe"),
+        ),
+      );
+    expect(storedStripe?.needsReconnect).toBeFalsy();
   });
 });
 

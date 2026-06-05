@@ -14,6 +14,7 @@ export const connectorResponseSchema = z.object({
   externalEmail: z.string().nullable(),
   oauthScopes: z.array(z.string()).nullable(),
   needsReconnect: z.boolean(),
+  tokenExpiresAt: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

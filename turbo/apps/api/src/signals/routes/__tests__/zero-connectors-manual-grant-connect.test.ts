@@ -230,7 +230,6 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("stores Lark app credentials without writing the logical access token", async () => {
     const fixture = await seedFixture();
-    const db = store.set(writeDb$);
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 
     await accept(

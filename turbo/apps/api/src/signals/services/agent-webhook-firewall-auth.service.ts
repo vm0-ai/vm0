@@ -214,6 +214,23 @@ function tokenRefreshFailed(
   };
 }
 
+function connectorReconnectRequired(
+  failedConnectors: readonly string[],
+): ResolveFirewallAuthResult {
+  const connectorList = failedConnectors.join(", ");
+  return {
+    status: 502,
+    body: {
+      error: {
+        message: `Connector credential requires reconnect for: ${connectorList}.`,
+        code: "TOKEN_REFRESH_FAILED",
+        connectors: failedConnectors,
+        failureReason: "reconnect_required",
+      },
+    },
+  };
+}
+
 function tokenAccessResolutionFailed(
   failedConnectors: readonly string[],
 ): ResolveFirewallAuthResult {
@@ -2533,6 +2550,58 @@ function hasUnavailableAccessSource(args: {
   });
 }
 
+function connectorAccessNeedsReconnect(
+  connectorAccess: ConnectorAccessState,
+  nowSeconds: number,
+): boolean {
+  if (connectorAccess.accessMetadata.kind === "refresh-token") {
+    return false;
+  }
+  if (connectorAccess.needsReconnect) {
+    return true;
+  }
+  return (
+    connectorAccess.tokenExpiresAt !== null &&
+    connectorAccess.tokenExpiresAt <= nowSeconds
+  );
+}
+
+function connectorAccessSourcesNeedingReconnect(args: {
+  readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
+  readonly referencedKeys: Set<string>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+}): readonly string[] {
+  if (!args.secretConnectorMap) {
+    return [];
+  }
+  const nowSeconds = Math.floor(nowDate().getTime() / 1000);
+  const connectorsNeedingReconnect = new Set<string>();
+  for (const key of args.referencedKeys) {
+    const connectorType = args.secretConnectorMap[key];
+    if (!connectorType) {
+      continue;
+    }
+    const metadata = resolveRefreshMetadata(
+      connectorType,
+      args.secretConnectorMetadataMap?.[key],
+    );
+    if (metadata.sourceType !== "connector") {
+      continue;
+    }
+    const connectorAccess = args.connectorAccessByType.get(connectorType);
+    if (!connectorAccess || !isSelectedAccessSecretKey(key, connectorAccess)) {
+      continue;
+    }
+    if (connectorAccessNeedsReconnect(connectorAccess, nowSeconds)) {
+      connectorsNeedingReconnect.add(connectorType);
+    }
+  }
+  return [...connectorsNeedingReconnect];
+}
+
 function hasMissingUnresolvableSecrets(args: {
   readonly secrets: Record<string, string>;
   readonly referencedKeys: Set<string>;
@@ -2622,6 +2691,18 @@ async function prepareFirewallAuthResolutionContext(args: {
     })
   ) {
     return { ok: false, response: connectorNotConfigured() };
+  }
+  const connectorsNeedingReconnect = connectorAccessSourcesNeedingReconnect({
+    secretConnectorMap: args.body.secretConnectorMap,
+    secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+    referencedKeys: referenced.secrets,
+    connectorAccessByType,
+  });
+  if (connectorsNeedingReconnect.length > 0) {
+    return {
+      ok: false,
+      response: connectorReconnectRequired(connectorsNeedingReconnect),
+    };
   }
   await syncStaticConnectorAccessSecrets({
     db: args.db,

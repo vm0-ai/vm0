@@ -49,6 +49,8 @@ import {
   getAvailableAuthCodeAuthMethod,
   getOnlyAvailableAuthCodeAuthMethod,
   getConnectorConnectLaunchMode,
+  connectorNeedsReconnectForDisplay,
+  connectorExpiryCountdownText,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import {
@@ -314,6 +316,7 @@ function GlobalConnectorCard({
   isDisconnecting: boolean;
 }) {
   const status = (() => {
+    const needsReconnect = connectorNeedsReconnectForDisplay(connector);
     if (isPolling) {
       const standaloneHint = isStandaloneMode()
         ? " Switch back here after completing sign-in."
@@ -325,7 +328,7 @@ function GlobalConnectorCard({
         </span>
       );
     }
-    if (connector.connected && connector.needsReconnect) {
+    if (connector.connected && needsReconnect) {
       return (
         <span className="flex items-center gap-2 text-xs truncate">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
@@ -360,14 +363,16 @@ function GlobalConnectorCard({
       );
     }
     if (connector.connected) {
+      const expiryText = connectorExpiryCountdownText(connector);
+      const connectedText =
+        expiryText ??
+        (connector.connector?.externalUsername
+          ? `@${connector.connector.externalUsername}`
+          : "Connected");
       return (
         <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-          <span className="truncate">
-            {connector.connector?.externalUsername
-              ? `@${connector.connector.externalUsername}`
-              : "Connected"}
-          </span>
+          <span className="truncate">{connectedText}</span>
         </span>
       );
     }

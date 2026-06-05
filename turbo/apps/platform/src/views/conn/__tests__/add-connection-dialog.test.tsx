@@ -111,6 +111,7 @@ function manualGrantConnectorResponse(type: ConnectorType) {
     externalEmail: null,
     oauthScopes: null,
     needsReconnect: false,
+    tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
@@ -143,6 +144,40 @@ describe("connect modal - display", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Connected")).toBeInTheDocument();
+    });
+  });
+
+  it("shows future non-refreshable expiry in hours", async () => {
+    mockConnectors([
+      {
+        type: "gitlab",
+        authMethod: "api-token",
+        tokenExpiresAt: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+      },
+    ]);
+
+    await openConnectModal("gitlab");
+
+    await waitFor(() => {
+      expect(screen.getByText("Expires in 3 hours")).toBeInTheDocument();
+    });
+  });
+
+  it("shows sub-hour non-refreshable expiry without rounding up", async () => {
+    mockConnectors([
+      {
+        type: "gitlab",
+        authMethod: "api-token",
+        tokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      },
+    ]);
+
+    await openConnectModal("gitlab");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Expires in less than 1 hour"),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -183,6 +218,7 @@ describe("connect modal - content by auth method", () => {
           externalEmail: null,
           oauthScopes: ["read"],
           needsReconnect: false,
+          tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00Z",
           updatedAt: "2026-01-01T00:00:00Z",
         },
@@ -242,6 +278,7 @@ describe("connect modal - content by auth method", () => {
           externalEmail: null,
           oauthScopes: ["read"],
           needsReconnect: false,
+          tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00Z",
           updatedAt: "2026-01-01T00:00:00Z",
         },

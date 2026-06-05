@@ -43,6 +43,7 @@ function makeConnector(
     externalEmail: null,
     oauthScopes: null,
     needsReconnect: false,
+    tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     ...overrides,

@@ -10,6 +10,7 @@ import {
   connectorAuthMethodRefHasRevokeKind,
   getAvailableConnectorAuthMethodIds,
   getConnectorAuthMethodGrantMetadata,
+  getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodRevokeMetadata,
   getConnectorAuthMethodRuntimeMetadata,
   getConnectorAuthMethodScopeDiff,
@@ -66,6 +67,7 @@ type StoredConnectorRow = {
   readonly externalEmail: string | null;
   readonly oauthScopes: string | null;
   readonly needsReconnect: boolean;
+  readonly tokenExpiresAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
@@ -146,6 +148,7 @@ function parseOauthScopes(value: string | null): string[] | null {
 function storedConnectorRowToResponse(
   row: StoredConnectorRow,
   type: ConnectorType,
+  now: Date,
 ): ConnectorResponse {
   return {
     id: row.id,
@@ -155,10 +158,46 @@ function storedConnectorRowToResponse(
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
     oauthScopes: parseOauthScopes(row.oauthScopes),
-    needsReconnect: row.needsReconnect,
+    needsReconnect: deriveConnectorNeedsReconnect({
+      type,
+      authMethod: row.authMethod,
+      needsReconnect: row.needsReconnect,
+      tokenExpiresAt: row.tokenExpiresAt,
+      now,
+    }),
+    tokenExpiresAt: row.tokenExpiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function connectorAuthMethodSupportsRefresh(
+  type: ConnectorType,
+  authMethod: string,
+): boolean {
+  return (
+    getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
+    "refresh-token"
+  );
+}
+
+function deriveConnectorNeedsReconnect(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly needsReconnect: boolean;
+  readonly tokenExpiresAt: Date | null;
+  readonly now: Date;
+}): boolean {
+  if (args.needsReconnect) {
+    return true;
+  }
+  if (args.tokenExpiresAt === null) {
+    return false;
+  }
+  if (connectorAuthMethodSupportsRefresh(args.type, args.authMethod)) {
+    return false;
+  }
+  return args.tokenExpiresAt.getTime() <= args.now.getTime();
 }
 
 function storedConnectorTypeIsVisible(
@@ -351,6 +390,7 @@ export function zeroConnectorList(args: {
           externalEmail: connectors.externalEmail,
           oauthScopes: connectors.oauthScopes,
           needsReconnect: connectors.needsReconnect,
+          tokenExpiresAt: connectors.tokenExpiresAt,
           createdAt: connectors.createdAt,
           updatedAt: connectors.updatedAt,
         })
@@ -369,6 +409,7 @@ export function zeroConnectorList(args: {
       overrides,
     });
 
+    const now = nowDate();
     const connectorList: ConnectorResponse[] = storedRows.flatMap((row) => {
       const parsed = connectorTypeSchema.safeParse(row.type);
       if (!parsed.success) {
@@ -377,7 +418,7 @@ export function zeroConnectorList(args: {
       if (!storedConnectorTypeIsVisible(parsed.data, featureStates)) {
         return [];
       }
-      return [storedConnectorRowToResponse(row, parsed.data)];
+      return [storedConnectorRowToResponse(row, parsed.data, now)];
     });
     const connectorProvidedBindings =
       connectorProvidedBindingsForStoredConnectors(connectorList);
@@ -454,6 +495,7 @@ function storedConnectorByType(args: {
         externalEmail: connectors.externalEmail,
         oauthScopes: connectors.oauthScopes,
         needsReconnect: connectors.needsReconnect,
+        tokenExpiresAt: connectors.tokenExpiresAt,
         createdAt: connectors.createdAt,
         updatedAt: connectors.updatedAt,
       })
@@ -469,7 +511,7 @@ function storedConnectorByType(args: {
 
     const oauthRow = oauthRows[0];
     if (oauthRow) {
-      return storedConnectorRowToResponse(oauthRow, args.type);
+      return storedConnectorRowToResponse(oauthRow, args.type, nowDate());
     }
 
     return null;
@@ -906,6 +948,7 @@ async function upsertManualGrantConnectorRow(
       externalEmail: connectors.externalEmail,
       oauthScopes: connectors.oauthScopes,
       needsReconnect: connectors.needsReconnect,
+      tokenExpiresAt: connectors.tokenExpiresAt,
       createdAt: connectors.createdAt,
       updatedAt: connectors.updatedAt,
     });
@@ -1203,7 +1246,11 @@ export const connectManualGrantConnector$ = command(
 
     return {
       status: "connected",
-      connector: storedConnectorRowToResponse(connectorRow, args.type),
+      connector: storedConnectorRowToResponse(
+        connectorRow,
+        args.type,
+        nowDate(),
+      ),
     };
   },
 );
@@ -1599,6 +1646,7 @@ async function upsertConnectorTokenConnectionRow(
       externalEmail: connectors.externalEmail,
       oauthScopes: connectors.oauthScopes,
       needsReconnect: connectors.needsReconnect,
+      tokenExpiresAt: connectors.tokenExpiresAt,
       createdAt: connectors.createdAt,
       updatedAt: connectors.updatedAt,
     });
@@ -1785,7 +1833,11 @@ export const upsertConnectorTokenConnection$ = command(
     signal.throwIfAborted();
 
     return {
-      connector: storedConnectorRowToResponse(connectorRow, args.type),
+      connector: storedConnectorRowToResponse(
+        connectorRow,
+        args.type,
+        nowDate(),
+      ),
       created:
         connectorRow.createdAt.getTime() === connectorRow.updatedAt.getTime(),
     };

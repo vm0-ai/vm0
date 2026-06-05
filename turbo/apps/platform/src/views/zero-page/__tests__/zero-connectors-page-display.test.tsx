@@ -225,6 +225,41 @@ describe("connectors page - connector status indicators", () => {
     expect(screen.getByText("Review")).toBeInTheDocument();
   });
 
+  it("connector shows future non-refreshable expiry in days", async () => {
+    mockConnectors([
+      {
+        type: "gitlab",
+        authMethod: "api-token",
+        tokenExpiresAt: new Date(
+          Date.now() + 36 * 60 * 60 * 1000,
+        ).toISOString(),
+      },
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Expires in 2 days")).toBeInTheDocument();
+    });
+  });
+
+  it("does not show future refreshable expiry as user-facing status", async () => {
+    mockConnectors([
+      {
+        type: "lark",
+        authMethod: "api-token",
+        tokenExpiresAt: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+      },
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Connected")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Expires in 3 hours")).not.toBeInTheDocument();
+  });
+
   it("device auth connector opens connect dialog instead of OAuth popup", async () => {
     const open = vi.spyOn(window, "open");
     detachedSetupPage({

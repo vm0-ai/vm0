@@ -648,7 +648,11 @@ function useLarkTenantAccessTokenEndpoint(
 
 async function seedStripeApiTokenConnector(
   fixture: FirewallFixture,
-  args: { readonly token?: string } = {},
+  args: {
+    readonly token?: string;
+    readonly tokenExpiresAt?: Date | null;
+    readonly needsReconnect?: boolean;
+  } = {},
 ): Promise<void> {
   const db = store.set(writeDb$);
   await db.insert(connectors).values({
@@ -660,7 +664,8 @@ async function seedStripeApiTokenConnector(
     externalUsername: "stripe-account",
     externalEmail: "stripe@example.com",
     oauthScopes: JSON.stringify([]),
-    tokenExpiresAt: null,
+    tokenExpiresAt: args.tokenExpiresAt ?? null,
+    needsReconnect: args.needsReconnect ?? false,
   });
 
   if (args.token !== undefined) {
@@ -3265,6 +3270,102 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     );
     expect(response.body.refreshedConnectors).toStrictEqual([]);
     expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("loads current future-expiring static connector access", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeApiTokenConnector(fixture, {
+      token: "current-stripe-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-stripe-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("rejects expired static connector access as reconnect required", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeApiTokenConnector(fixture, {
+      token: "expired-stripe-token",
+      tokenExpiresAt: new Date(now() - 60_000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["stripe"],
+      failureReason: "reconnect_required",
+    });
+  });
+
+  it("rejects reconnect-required static connector access", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeApiTokenConnector(fixture, {
+      token: "current-stripe-token",
+      needsReconnect: true,
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["stripe"],
+      failureReason: "reconnect_required",
+    });
   });
 
   it("loads current static connector env aliases", async () => {
