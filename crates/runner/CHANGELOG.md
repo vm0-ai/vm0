@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.108.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.6...runner-rs-v0.108.7) (2026-06-05)
+
+
+### Documentation
+
+* **mitm-addon:** document url syntax helper semantics ([#16250](https://github.com/vm0-ai/vm0/issues/16250)) ([ff6d2cb](https://github.com/vm0-ai/vm0/commit/ff6d2cb3c290b72af2ae28dd0d939775587bf67b))
+
 ## [0.108.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.5...runner-rs-v0.108.6) (2026-06-04)
 
 

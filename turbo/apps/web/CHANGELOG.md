@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.411.0](https://github.com/vm0-ai/vm0/compare/web-v12.410.1...web-v12.411.0) (2026-06-05)
+
+
+### Features
+
+* add memory dev refresh ([#16244](https://github.com/vm0-ai/vm0/issues/16244)) ([95f3877](https://github.com/vm0-ai/vm0/commit/95f387719cc9b1d18eed2340ab6cad3039961c13))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.0
+    * @vm0/core bumped to 8.311.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.48.0
+
 ## [12.410.1](https://github.com/vm0-ai/vm0/compare/web-v12.410.0...web-v12.410.1) (2026-06-05)
 
 

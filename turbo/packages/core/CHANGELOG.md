@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.311.0](https://github.com/vm0-ai/vm0/compare/core-v8.310.2...core-v8.311.0) (2026-06-05)
+
+
+### Features
+
+* add memory dev refresh ([#16244](https://github.com/vm0-ai/vm0/issues/16244)) ([95f3877](https://github.com/vm0-ai/vm0/commit/95f387719cc9b1d18eed2340ab6cad3039961c13))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.0
+    * @vm0/connectors bumped to 1.48.0
+
 ## [8.310.2](https://github.com/vm0-ai/vm0/compare/core-v8.310.1...core-v8.310.2) (2026-06-05)
 
 

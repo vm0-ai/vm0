@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.33](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.32...nbd-cow-v0.4.33) (2026-06-05)
+
+
+### Refactoring
+
+* **nbd-cow:** use safe netlink socket wrappers ([#16249](https://github.com/vm0-ai/vm0/issues/16249)) ([ed5848b](https://github.com/vm0-ai/vm0/commit/ed5848becef1c9f86d362b54194d2007954d2521))
+
 ## [0.4.32](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.31...nbd-cow-v0.4.32) (2026-06-04)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.181.3](https://github.com/vm0-ai/vm0/compare/cli-v9.181.2...cli-v9.181.3) (2026-06-05)
+
+
+### Refactoring
+
+* rename connector env binding availability metadata ([#16225](https://github.com/vm0-ai/vm0/issues/16225)) ([9a8a399](https://github.com/vm0-ai/vm0/commit/9a8a3999233d20cc71a12efde256c9c216a8aa57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.65.0
+    * @vm0/connectors bumped to 1.48.0
+    * @vm0/core bumped to 8.311.0
+
 ## [9.181.2](https://github.com/vm0-ai/vm0/compare/cli-v9.181.1...cli-v9.181.2) (2026-06-05)
 
 
