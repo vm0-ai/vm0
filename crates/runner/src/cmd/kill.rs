@@ -241,14 +241,23 @@ fn resolve_by_run_id<'a>(
     firecrackers: &'a [FirecrackerProcessInfo],
 ) -> RunnerResult<&'a FirecrackerProcessInfo> {
     let sandbox_id = run_resolution::resolve_run_to_sandbox(input, mappings)?;
-    firecrackers
+    let fc_matches: Vec<&FirecrackerProcessInfo> = firecrackers
         .iter()
-        .find(|fc| fc.sandbox_id == sandbox_id)
-        .ok_or_else(|| {
-            RunnerError::Config(format!(
-                "run '{input}' maps to sandbox '{sandbox_id}' but no firecracker process for it"
-            ))
-        })
+        .filter(|fc| fc.sandbox_id == sandbox_id)
+        .collect();
+    match fc_matches.as_slice() {
+        [] => Err(RunnerError::Config(format!(
+            "run '{input}' maps to sandbox '{sandbox_id}' but no firecracker process for it"
+        ))),
+        [single] => Ok(single),
+        _ => {
+            let pids: Vec<String> = fc_matches.iter().map(|fc| fc.pid.to_string()).collect();
+            Err(RunnerError::Config(format!(
+                "run '{input}' maps to sandbox '{sandbox_id}' but multiple firecracker processes match it: PID {}",
+                pids.join(", ")
+            )))
+        }
+    }
 }
 
 /// Resolve a `--sandbox` prefix to a single Firecracker process.
@@ -662,6 +671,21 @@ mod tests {
         assert!(msg.contains("run 'run-x'"), "{msg}");
         assert!(msg.contains("sandbox-gone"), "{msg}");
         assert!(msg.contains("no firecracker process"), "{msg}");
+    }
+
+    #[test]
+    fn by_run_id_rejects_duplicate_sandbox_processes() {
+        let status = mappings(vec![("run-x-1".into(), "sandbox-dup".into())]);
+        let fcs = vec![make_fc(200, "sandbox-dup"), make_fc(201, "sandbox-dup")];
+
+        let Err(e) = resolve_by_run_id("run-x", &status, &fcs) else {
+            panic!("expected error when multiple firecracker processes share a sandbox id");
+        };
+        let msg = e.to_string();
+
+        assert!(msg.contains("multiple firecracker processes"), "{msg}");
+        assert!(msg.contains("200"), "{msg}");
+        assert!(msg.contains("201"), "{msg}");
     }
 
     // -- resolve_by_sandbox_id tests -----------------------------------------
