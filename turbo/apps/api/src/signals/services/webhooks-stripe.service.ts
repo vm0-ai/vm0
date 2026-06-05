@@ -59,6 +59,7 @@ interface InvoiceInput {
   readonly id: string;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
+  readonly subtotal?: number | null;
   readonly lines: {
     readonly data: readonly {
       readonly period: { readonly end: number };
@@ -247,23 +248,11 @@ function subscriptionCreditExpiresAt(
 
 const CREDITS_PER_DOLLAR = 1000;
 
-function creditPurchaseAmount(session: CheckoutSessionInput): number {
-  const metadata = session.metadata ?? {};
-  if (metadata.creditsAmountMode === "amount_subtotal") {
-    const amountSubtotal = session.amount_subtotal ?? session.amount_total;
-    if (amountSubtotal === undefined || amountSubtotal === null) {
-      return Number.NaN;
-    }
-    return Math.floor((amountSubtotal * CREDITS_PER_DOLLAR) / 100);
+function creditsFromAmountCents(amountCents: number | null | undefined): number {
+  if (amountCents === undefined || amountCents === null) {
+    return Number.NaN;
   }
-  if (metadata.creditsAmountMode === "amount_total") {
-    const amountTotal = session.amount_total;
-    if (amountTotal === undefined || amountTotal === null) {
-      return Number.NaN;
-    }
-    return Math.floor((amountTotal * CREDITS_PER_DOLLAR) / 100);
-  }
-  return Number(metadata.creditsAmount);
+  return Math.floor((amountCents * CREDITS_PER_DOLLAR) / 100);
 }
 
 function autoRechargeNeverExpiresAt(): Date {
@@ -508,6 +497,53 @@ async function handleAutoRechargeInvoicePaid(
   return { handled: true, drainOrgId: orgId };
 }
 
+async function handleCreditPurchaseInvoicePaid(
+  db: Db,
+  invoice: Pick<InvoiceInput, "id" | "metadata" | "subtotal">,
+): Promise<PaidWebhookOutcome> {
+  const metadata = invoice.metadata;
+  if (
+    !metadata ||
+    (metadata.type !== "credit_purchase" &&
+      metadata.purpose !== "credit_purchase")
+  ) {
+    return { handled: false, drainOrgId: null };
+  }
+
+  const orgId = metadata.orgId;
+  const creditsAmount = creditsFromAmountCents(invoice.subtotal);
+  if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
+    L.warn("credit_purchase invoice has invalid metadata or subtotal", {
+      invoiceId: invoice.id,
+      hasOrgId: Boolean(orgId),
+      subtotal: invoice.subtotal ?? null,
+      metadata,
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  await db.transaction(async (tx) => {
+    const inserted = await createExpiresRecord(tx, orgId, {
+      source: "auto_recharge",
+      stripeInvoiceId: invoice.id,
+      amount: creditsAmount,
+      expiresAt: autoRechargeNeverExpiresAt(),
+    });
+
+    if (!inserted) {
+      L.debug("credit_purchase invoice already processed", {
+        invoiceId: invoice.id,
+        orgId,
+      });
+      return;
+    }
+
+    await grantOrgCredits(tx, orgId, creditsAmount);
+  });
+
+  return { handled: true, drainOrgId: orgId };
+}
+
 async function handleOneTimePurchaseCompleted(
   db: Db,
   session: CheckoutSessionInput,
@@ -560,49 +596,10 @@ async function handleOneTimePurchaseCompleted(
   return orgId;
 }
 
-async function handleCreditPurchaseCompleted(
-  db: Db,
-  session: CheckoutSessionInput,
-): Promise<string | null> {
-  const metadata = session.metadata ?? {};
-  const orgId = metadata.orgId;
-  const creditsAmount = creditPurchaseAmount(session);
-
-  if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
-    L.warn("credit_purchase missing metadata", {
-      sessionId: session.id,
-      hasOrgId: Boolean(orgId),
-      creditsAmount: metadata.creditsAmount ?? null,
-    });
-    return null;
-  }
-
-  await db.transaction(async (tx) => {
-    const inserted = await createExpiresRecord(tx, orgId, {
-      source: "auto_recharge",
-      stripeInvoiceId: session.id,
-      amount: creditsAmount,
-      expiresAt: autoRechargeNeverExpiresAt(),
-    });
-
-    if (!inserted) {
-      L.debug("credit_purchase already processed", {
-        sessionId: session.id,
-        orgId,
-      });
-      return;
-    }
-
-    await grantOrgCredits(tx, orgId, creditsAmount);
-  });
-
-  return orgId;
-}
-
 async function handlePaidCheckoutPurpose(
   db: Db,
   session: CheckoutSessionInput,
-  purpose: "credit_purchase" | "one_time_purchase",
+  purpose: "one_time_purchase",
 ): Promise<PaidWebhookOutcome> {
   if (session.metadata?.purpose !== purpose) {
     return { handled: false, drainOrgId: null };
@@ -616,11 +613,7 @@ async function handlePaidCheckoutPurpose(
     return { handled: true, drainOrgId: null };
   }
 
-  const drainOrgId =
-    purpose === "credit_purchase"
-      ? await handleCreditPurchaseCompleted(db, session)
-      : await handleOneTimePurchaseCompleted(db, session);
-
+  const drainOrgId = await handleOneTimePurchaseCompleted(db, session);
   return { handled: true, drainOrgId };
 }
 
@@ -1489,19 +1482,12 @@ async function handleCheckoutCompleted(
     };
   }
 
-  const creditPurchaseResult = await handlePaidCheckoutPurpose(
-    db,
-    session,
-    "credit_purchase",
-  );
-  if (creditPurchaseResult.handled) {
-    return {
-      drainOrgId: creditPurchaseResult.drainOrgId,
-      orgIds:
-        creditPurchaseResult.drainOrgId === null
-          ? []
-          : [creditPurchaseResult.drainOrgId],
-    };
+  if (session.metadata?.purpose === "credit_purchase") {
+    L.debug("credit_purchase checkout completed; waiting for invoice.paid", {
+      sessionId: session.id,
+      paymentStatus: session.payment_status ?? null,
+    });
+    return { drainOrgId: null, orgIds: [] };
   }
 
   const oneTimePurchaseResult = await handlePaidCheckoutPurpose(
@@ -1561,6 +1547,11 @@ async function handleInvoicePaid(
   const autoRechargeResult = await handleAutoRechargeInvoicePaid(db, invoice);
   if (autoRechargeResult.handled) {
     return autoRechargeResult.drainOrgId;
+  }
+
+  const creditPurchaseResult = await handleCreditPurchaseInvoicePaid(db, invoice);
+  if (creditPurchaseResult.handled) {
+    return creditPurchaseResult.drainOrgId;
   }
 
   const subscriptionId = subscriptionIdFromInvoice(invoice);
