@@ -368,7 +368,7 @@ export type ConnectorEnvBindingValue =
   | ConnectorRefreshTokenInputValueRef
   | {
       readonly valueRef: ConnectorRefreshTokenInputValueRef;
-      readonly required?: boolean;
+      readonly optional?: boolean;
     };
 export type ConnectorEnvBindings = Record<string, ConnectorEnvBindingValue>;
 
@@ -655,9 +655,15 @@ type ConnectorRefreshOutputValueRef<Storage> =
 type ConnectorRevokeInputValueRef<Storage> =
   `$secrets.${ConnectorStorageSecretName<Storage>}`;
 
+type RejectLegacyConnectorEnvBindingRequired<Binding> = Binding extends {
+  readonly required: unknown;
+}
+  ? never
+  : Binding;
+
 type ValidatedConnectorEnvBindingValue<Binding, Storage, Access> =
   Binding extends { readonly valueRef: infer ValueRef }
-    ? Binding & {
+    ? RejectLegacyConnectorEnvBindingRequired<Binding> & {
         readonly valueRef: ValueRef extends ConnectorRuntimeValueRef<
           Storage,
           Access

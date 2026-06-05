@@ -629,10 +629,10 @@ function connectorEnvBindingValueRef(
   return typeof binding === "string" ? binding : binding.valueRef;
 }
 
-function connectorEnvBindingRequired(
+function connectorEnvBindingIsRequiredProvided(
   binding: ConnectorEnvBindingValue,
 ): boolean {
-  return typeof binding === "string" ? true : (binding.required ?? true);
+  return typeof binding === "string" ? true : !(binding.optional ?? false);
 }
 
 function connectorRuntimeEnvBindings(
@@ -652,7 +652,7 @@ function connectorRuntimeBindingEntries(args: {
   const entries: ConnectorRuntimeBindingEntry[] = [];
   for (const [envName, binding] of Object.entries(args.envBindings)) {
     const valueRef = connectorEnvBindingValueRef(binding);
-    const required = connectorEnvBindingRequired(binding);
+    const required = connectorEnvBindingIsRequiredProvided(binding);
     if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
       const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
       const platformSecret = connectorPlatformSecretSource(

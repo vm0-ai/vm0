@@ -54,7 +54,7 @@ export const agora = {
             AGORA_APP_ID: "$vars.AGORA_APP_ID",
             AGORA_APP_CERTIFICATE: {
               valueRef: "$secrets.AGORA_APP_CERTIFICATE",
-              required: false,
+              optional: true,
             },
           },
         },

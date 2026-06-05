@@ -2334,7 +2334,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
     });
   });
 
-  it("preserves optional runtime binding requiredness", () => {
+  it("preserves optional env binding availability as non-required runtime metadata", () => {
     expect(
       getConnectorAuthMethodRuntimeMetadata("agora", "api-token"),
     ).toMatchObject({
@@ -2349,6 +2349,43 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
           },
         },
       ]),
+    });
+  });
+
+  it("does not use legacy required metadata in connector envBindings", () => {
+    for (const type of connectorTypeSchema.options) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
+        const method = getConnectorAuthMethod(type, authMethod);
+        if (!method) {
+          continue;
+        }
+        if (method.access.kind === "none") {
+          continue;
+        }
+        for (const [envName, binding] of Object.entries(
+          method.access.envBindings,
+        )) {
+          if (typeof binding === "string") {
+            continue;
+          }
+          expect(
+            "required" in binding,
+            `${type}/${authMethod}: env binding ${envName} must use optional: true instead of required: false`,
+          ).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("keeps manual grant field requiredness separate from env binding availability", () => {
+    expect(getConnectorAuthMethod("gitlab", "api-token")?.grant).toMatchObject({
+      kind: "manual",
+      fields: {
+        GITLAB_HOST: {
+          required: false,
+          storage: "variable",
+        },
+      },
     });
   });
 
