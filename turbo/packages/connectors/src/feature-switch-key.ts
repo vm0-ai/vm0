@@ -53,6 +53,7 @@ export enum FeatureSwitchKey {
   ChatGithubPrTracking = "chatGithubPrTracking",
   ChatTemplatePicker = "chatTemplatePicker",
   MemoryViewer = "memoryViewer",
+  MemoryDevRefresh = "memoryDevRefresh",
   ChatRecommendedFollowups = "chatRecommendedFollowups",
   ScheduledChat = "scheduledChat",
 }

@@ -1,10 +1,11 @@
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import type { MouseEvent } from "react";
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
-import { IconChevronDown, IconLoader2 } from "@tabler/icons-react";
+import { IconChevronDown, IconLoader2, IconRefresh } from "@tabler/icons-react";
 import type { MemoryDetailResponse } from "@vm0/api-contracts/contracts/zero-memory";
 import type { MemoryActivityResponse } from "@vm0/api-contracts/contracts/zero-memory-activity";
-import { cn } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { Button, cn } from "@vm0/ui";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 
 import {
@@ -17,14 +18,17 @@ import {
   memoryActivityLatestCursor$,
   memoryActivityLoadMoreError$,
   memoryActivityLoadingMore$,
+  memoryDevRefreshState$,
   memoryDetail$,
   memoryTab$,
+  refreshMemoryDevSummaries$,
   selectedMemoryFilePath$,
   setMemoryTab$,
   setSelectedMemoryFilePath$,
   toggleMemoryItemExpanded$,
   type MemoryTab,
 } from "../../signals/memory-page/memory-signals.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Markdown } from "../components/markdown.tsx";
@@ -183,6 +187,63 @@ function isMemoryTab(value: string): value is MemoryTab {
   return value === "updates" || value === "raw";
 }
 
+function MemoryDevRefreshButton({
+  className,
+}: {
+  readonly className?: string;
+}) {
+  const features = useGet(featureSwitch$);
+  const refreshState = useGet(memoryDevRefreshState$);
+  const refresh = useSet(refreshMemoryDevSummaries$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (!features[FeatureSwitchKey.MemoryDevRefresh]) {
+    return null;
+  }
+
+  const refreshing = refreshState.status === "refreshing";
+  const status =
+    refreshState.status === "success" || refreshState.status === "error"
+      ? refreshState
+      : null;
+
+  return (
+    <div className={cn("flex shrink-0 flex-col items-end gap-1", className)}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8 gap-1.5 px-2.5 text-xs"
+        disabled={refreshing}
+        title="Force-refresh memory summaries"
+        onClick={() => {
+          detach(refresh(pageSignal), Reason.DomCallback);
+        }}
+      >
+        {refreshing ? (
+          <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <IconRefresh className="h-3.5 w-3.5" />
+        )}
+        <span>{refreshing ? "Refreshing" : "Dev refresh"}</span>
+      </Button>
+      {status ? (
+        <span
+          role={status.status === "error" ? "alert" : "status"}
+          className={cn(
+            "max-w-[180px] text-right text-[11px] leading-4",
+            status.status === "error"
+              ? "text-destructive"
+              : "text-muted-foreground",
+          )}
+        >
+          {status.message}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function MemoryPage() {
   const activeTab = useGet(memoryTab$);
   const setTab = useSet(setMemoryTab$);
@@ -191,38 +252,44 @@ export function MemoryPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
         <div className="mx-auto w-full max-w-[900px]">
-          <div className="hidden min-w-0 md:block">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Memory
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              What Zero remembers from previous work.
-            </p>
+          <div className="hidden min-w-0 items-start justify-between gap-4 md:flex">
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold tracking-tight text-foreground">
+                Memory
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                What Zero remembers from previous work.
+              </p>
+            </div>
+            <MemoryDevRefreshButton />
           </div>
-          <Tabs
-            value={activeTab}
-            onValueChange={(value) => {
-              if (isMemoryTab(value)) {
-                setTab(value);
-              }
-            }}
-            className="mt-3"
-          >
-            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-              <TabsTrigger
-                value="updates"
-                className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
-              >
-                Updates
-              </TabsTrigger>
-              <TabsTrigger
-                value="raw"
-                className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
-              >
-                Memory files
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="mt-3 flex min-w-0 items-start justify-between gap-3">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => {
+                if (isMemoryTab(value)) {
+                  setTab(value);
+                }
+              }}
+              className="min-w-0"
+            >
+              <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+                <TabsTrigger
+                  value="updates"
+                  className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+                >
+                  Updates
+                </TabsTrigger>
+                <TabsTrigger
+                  value="raw"
+                  className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+                >
+                  Memory files
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <MemoryDevRefreshButton className="md:hidden" />
+          </div>
         </div>
       </header>
 

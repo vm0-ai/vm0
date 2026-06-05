@@ -36,6 +36,17 @@ interface MemoryStorageRow {
   readonly storageId: string;
 }
 
+interface MemoryStorageFilter {
+  readonly orgId?: string;
+  readonly userId?: string;
+}
+
+interface SummarizeUserMemoryOptions {
+  readonly now: Date;
+  readonly signal: AbortSignal;
+  readonly force: boolean;
+}
+
 interface MemoryVersionRow {
   readonly id: string;
   readonly s3Key: string;
@@ -71,7 +82,19 @@ function recentClosedDateLabels(todayLabel: string): readonly string[] {
 async function loadMemoryStorages(
   db: Db,
   signal: AbortSignal,
+  filter: MemoryStorageFilter = {},
 ): Promise<MemoryStorageRow[]> {
+  const filters = [
+    eq(storages.name, MEMORY_ARTIFACT_NAME),
+    eq(storages.type, "artifact"),
+  ];
+  if (filter.orgId !== undefined) {
+    filters.push(eq(storages.orgId, filter.orgId));
+  }
+  if (filter.userId !== undefined) {
+    filters.push(eq(storages.userId, filter.userId));
+  }
+
   const rows = await db
     .select({
       orgId: storages.orgId,
@@ -79,12 +102,7 @@ async function loadMemoryStorages(
       storageId: storages.id,
     })
     .from(storages)
-    .where(
-      and(
-        eq(storages.name, MEMORY_ARTIFACT_NAME),
-        eq(storages.type, "artifact"),
-      ),
-    );
+    .where(and(...filters));
   signal.throwIfAborted();
   return rows;
 }
@@ -223,25 +241,27 @@ function summarizeUserMemory(
   db: Db,
   storage: MemoryStorageRow,
   timezone: string,
-  now: Date,
-  signal: AbortSignal,
+  options: SummarizeUserMemoryOptions,
 ): Computed<Promise<number>> {
   return computed(async (get): Promise<number> => {
+    const { now, signal, force } = options;
     const todayLabel = localDateLabel(timezone, now);
     const dateLabels = recentClosedDateLabels(todayLabel);
     const versions = await loadVersions(db, storage.storageId, signal);
 
     let summarized = 0;
     for (const dateLabel of dateLabels) {
-      // Idempotent: if a date already has a summary row, do nothing.
+      // Idempotent cron path: if a date already has a summary row, do nothing.
+      // Dev refresh sets `force` so prompt changes can regenerate old rows.
       if (
-        await summaryExists(
+        !force &&
+        (await summaryExists(
           db,
           storage.orgId,
           storage.userId,
           dateLabel,
           signal,
-        )
+        ))
       ) {
         continue;
       }
@@ -366,7 +386,13 @@ export const summarizeMemory$ = command(
       // still propagates through `settle`, so a genuine cancellation stops the
       // loop instead of being swallowed.
       const result = await settle(
-        get(summarizeUserMemory(db, storage, timezone, now, signal)),
+        get(
+          summarizeUserMemory(db, storage, timezone, {
+            now,
+            signal,
+            force: false,
+          }),
+        ),
         signal,
       );
       if (result.ok) {
@@ -382,6 +408,63 @@ export const summarizeMemory$ = command(
     }
 
     L.debug("Summarized memory changes", { summarized });
+    if (summarized === 0) {
+      return { skipped: true };
+    }
+    return { summarized };
+  },
+);
+
+export const summarizeMemoryForUser$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly force: boolean;
+    },
+    signal: AbortSignal,
+  ): Promise<SummarizeMemoryResult> => {
+    const db = set(writeDb$);
+    const now = nowDate();
+
+    const memoryStorages = await loadMemoryStorages(db, signal, {
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    if (memoryStorages.length === 0) {
+      L.debug("No memory artifact to summarize for user", {
+        orgId: args.orgId,
+        userId: args.userId,
+      });
+      return { skipped: true };
+    }
+
+    if (!(await get(memoryViewerEnabled(db, args.orgId, args.userId)))) {
+      signal.throwIfAborted();
+      return { skipped: true };
+    }
+    signal.throwIfAborted();
+
+    const timezoneMap = await resolveUserTimezones(
+      db,
+      [{ orgId: args.orgId, userId: args.userId }],
+      signal,
+    );
+    const timezone = timezoneMap.get(`${args.orgId}:${args.userId}`) ?? "UTC";
+
+    let summarized = 0;
+    for (const storage of memoryStorages) {
+      summarized += await get(
+        summarizeUserMemory(db, storage, timezone, {
+          now,
+          signal,
+          force: args.force,
+        }),
+      );
+      signal.throwIfAborted();
+    }
+
     if (summarized === 0) {
       return { skipped: true };
     }

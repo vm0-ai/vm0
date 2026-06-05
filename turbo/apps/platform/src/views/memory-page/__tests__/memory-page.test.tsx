@@ -4,6 +4,7 @@ import {
   zeroMemoryActivityContract,
   type MemoryActivityResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-activity";
+import { zeroMemoryDevRefreshContract } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -300,6 +301,65 @@ describe("memory page", () => {
         return button.textContent?.includes("Load more");
       }),
     ).toBeFalsy();
+  });
+
+  it("dev-refreshes memory summaries and reloads the activity timeline", async () => {
+    const beforeEntry = memoryActivityEntry({
+      date: "2024-03-02",
+      summary: "Before refresh",
+      toVersionId: "v2",
+      filePath: "before.md",
+    });
+    const afterEntry = memoryActivityEntry({
+      date: "2024-03-02",
+      summary: "After refresh",
+      toVersionId: "v2",
+      filePath: "after.md",
+    });
+    let activityCalls = 0;
+    let refreshCalls = 0;
+    server.use(
+      mockApi(zeroMemoryActivityContract.get, ({ respond }) => {
+        activityCalls++;
+        return respond(200, {
+          entries: [activityCalls === 1 ? beforeEntry : afterEntry],
+          nextCursor: null,
+        });
+      }),
+      mockApi(zeroMemoryDevRefreshContract.refresh, ({ respond }) => {
+        refreshCalls++;
+        return respond(200, { summarized: 1 });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.MemoryDevRefresh]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Before refresh")).toBeInTheDocument();
+    });
+
+    const refreshButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.includes("Dev refresh");
+    });
+    expect(refreshButton).toBeDefined();
+    click(refreshButton!);
+
+    await waitFor(() => {
+      expect(screen.getByText("After refresh")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Before refresh")).not.toBeInTheDocument();
+    expect(
+      screen.getAllByText("Refreshed 1 memory summary").length,
+    ).toBeGreaterThan(0);
+    expect(refreshCalls).toBe(1);
+    expect(activityCalls).toBe(2);
   });
 
   it("falls back to a deterministic summary line when the LLM summary is null", async () => {

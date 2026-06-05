@@ -1097,6 +1097,7 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/zero/memory", "/api/zero/memory"],
   ["/api/zero/memory/activity", "/api/zero/memory/activity"],
+  ["/api/zero/memory/dev-refresh", "/api/zero/memory/dev-refresh"],
   ["/api/zero/skills", "/api/zero/skills"],
   [
     ZERO_SKILLS_BY_NAME_REWRITE_SOURCE,

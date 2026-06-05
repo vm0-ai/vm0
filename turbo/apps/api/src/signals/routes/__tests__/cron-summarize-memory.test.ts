@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { cronSummarizeMemoryContract } from "@vm0/api-contracts/contracts/cron";
+import { zeroMemoryDevRefreshContract } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
 import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
@@ -26,10 +27,14 @@ import {
   seedMemoryStorage$,
   seedMemoryVersion$,
 } from "./helpers/zero-memory";
-import { createFixtureTracker } from "./helpers/zero-route-test";
+import {
+  createFixtureTracker,
+  createZeroRouteMocks,
+} from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
+const mocks = createZeroRouteMocks(context);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 // Fixed clock: "today" in UTC is 2999-01-03, so the seven most-recently-closed
 // local days are 2998-12-27 through 2999-01-02.
@@ -86,6 +91,14 @@ const track = createFixtureTracker<MemoryFixture>(async (fixture) => {
 
 function apiClient() {
   return setupApp({ context })(cronSummarizeMemoryContract);
+}
+
+function devRefreshClient() {
+  return setupApp({ context })(zeroMemoryDevRefreshContract);
+}
+
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
 }
 
 function cronHeaders(secret = "test-cron-secret") {
@@ -840,5 +853,101 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(enabledSummary).not.toBeNull();
     expect(enabledSummary?.toVersionId).toBe(enabled.v2Id);
     await expect(findSummaries(disabled.fixture)).resolves.toHaveLength(0);
+  });
+});
+
+describe("POST /api/zero/memory/dev-refresh", () => {
+  beforeEach(() => {
+    mockNow(new Date(FIXED_NOW_ISO));
+  });
+
+  afterEach(() => {
+    clearMockNow();
+  });
+
+  it("returns 401 when the request is unauthenticated", async () => {
+    const response = await accept(
+      devRefreshClient().refresh({ headers: {} }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("rejects non-staff users outside development", async () => {
+    mockEnv("ENV", "production");
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      devRefreshClient().refresh({ headers: authHeaders() }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Memory dev refresh is only available to staff",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("force-regenerates only the current user's memory summaries", async () => {
+    const current = await seedTwoVersionsNoMock();
+    const other = await seedTwoVersionsNoMock();
+    mockMemoryVersions(context, [
+      {
+        s3Key: current.v1Key,
+        files: [{ path: "facts/pets.md", content: "Has a dog" }],
+      },
+      {
+        s3Key: current.v2Key,
+        files: [
+          { path: "facts/pets.md", content: "Has a dog" },
+          { path: "facts/coffee.md", content: "Drinks oat milk lattes" },
+        ],
+      },
+      {
+        s3Key: other.v1Key,
+        files: [{ path: "facts/pets.md", content: "Has a dog" }],
+      },
+      {
+        s3Key: other.v2Key,
+        files: [
+          { path: "facts/pets.md", content: "Has a dog" },
+          { path: "facts/coffee.md", content: "Drinks oat milk lattes" },
+        ],
+      },
+    ]);
+    mocks.clerk.session(current.fixture.userId, current.fixture.orgId);
+
+    const oldLlm = mockLlm("Old prompt summary");
+    const first = await accept(
+      devRefreshClient().refresh({ headers: authHeaders() }),
+      [200],
+    );
+    expect(first.body).toStrictEqual({ summarized: 2 });
+    expect(oldLlm.calls).toBe(2);
+
+    const before = await findSummary(current.fixture);
+    expect(before?.summary).toBe("Old prompt summary");
+    await expect(findSummaries(other.fixture)).resolves.toHaveLength(0);
+
+    const newLlm = mockLlm("New prompt summary");
+    const second = await accept(
+      devRefreshClient().refresh({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(second.body).toStrictEqual({ summarized: 2 });
+    expect(newLlm.calls).toBe(2);
+    const after = await findSummary(current.fixture);
+    expect(after?.id).toBe(before?.id);
+    expect(after?.summary).toBe("New prompt summary");
+    await expect(findSummaries(current.fixture)).resolves.toHaveLength(2);
+    await expect(findSummaries(other.fixture)).resolves.toHaveLength(0);
   });
 });
