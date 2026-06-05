@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.419.3](https://github.com/vm0-ai/vm0/compare/app-v0.419.2...app-v0.419.3) (2026-06-05)
+
+
+### Bug Fixes
+
+* **platform:** update agora connector logo ([#16334](https://github.com/vm0-ai/vm0/issues/16334)) ([8b0c85e](https://github.com/vm0-ai/vm0/commit/8b0c85e1173a5495aa9c290d5e4ac93f8c354917))
+* show schedule button in mobile chat thread header ([#16333](https://github.com/vm0-ai/vm0/issues/16333)) ([2bf8b5e](https://github.com/vm0-ai/vm0/commit/2bf8b5e36466d85bb0b4ce9443882d9ab7f39b6c))
+
 ## [0.419.2](https://github.com/vm0-ai/vm0/compare/app-v0.419.1...app-v0.419.2) (2026-06-05)
 
 
