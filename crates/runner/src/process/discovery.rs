@@ -91,6 +91,38 @@ fn process_stat_identity_matches(left: &ProcessStat, right: &ProcessStat) -> boo
     left.pgid == right.pgid && left.starttime == right.starttime
 }
 
+fn should_keep_unidentified_firecracker_candidate(
+    stat: &ProcessStat,
+    argv: Option<&[String]>,
+) -> bool {
+    if stat.state == 'Z' {
+        return false;
+    }
+    match argv {
+        Some(argv) => is_firecracker_cmdline(argv),
+        None => true,
+    }
+}
+
+fn unidentified_firecracker_process(pid: u32, ppid: Option<u32>) -> FirecrackerProcessInfo {
+    FirecrackerProcessInfo {
+        pid,
+        ppid,
+        sandbox_id: format!("pid-{pid}"),
+        base_dir: None,
+        identity: None,
+    }
+}
+
+async fn unidentified_firecracker_if_present(pid: u32) -> Option<FirecrackerProcessInfo> {
+    let stat = read_process_stat(pid).await?;
+    let argv = read_cmdline(pid).await;
+    if !should_keep_unidentified_firecracker_candidate(&stat, argv.as_deref()) {
+        return None;
+    }
+    Some(unidentified_firecracker_process(pid, read_ppid(pid).await))
+}
+
 /// Scan `/proc` once and discover all runner, firecracker, and mitmdump processes.
 pub async fn discover_all() -> DiscoveredProcesses {
     let procs = scan_proc_cmdlines().await;
@@ -123,6 +155,9 @@ pub async fn discover_all() -> DiscoveredProcesses {
     let mut fc_infos = Vec::with_capacity(firecrackers.len());
     for pid in firecrackers {
         let Some(initial_stat) = read_stable_firecracker_stat(pid).await else {
+            if let Some(info) = unidentified_firecracker_if_present(pid).await {
+                fc_infos.push(info);
+            }
             continue;
         };
         let cwd_info = read_cwd(pid)
@@ -130,9 +165,13 @@ pub async fn discover_all() -> DiscoveredProcesses {
             .and_then(|cwd| parse_workspace_cwd(&cwd));
         let ppid = read_ppid(pid).await;
         let Some(process_stat) = read_stable_firecracker_stat(pid).await else {
+            if let Some(info) = unidentified_firecracker_if_present(pid).await {
+                fc_infos.push(info);
+            }
             continue;
         };
         if !process_stat_identity_matches(&initial_stat, &process_stat) {
+            fc_infos.push(unidentified_firecracker_process(pid, ppid));
             continue;
         }
         let (sandbox_id, base_dir) = match cwd_info {
@@ -414,5 +453,49 @@ mod tests {
         assert!(process_stat_identity_matches(&sleeping, &running));
         assert!(!process_stat_identity_matches(&sleeping, &different_group));
         assert!(!process_stat_identity_matches(&sleeping, &different_start));
+    }
+
+    #[test]
+    fn unidentified_firecracker_candidate_keeps_uncertain_live_processes() {
+        let stat = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert!(should_keep_unidentified_firecracker_candidate(&stat, None));
+        assert!(should_keep_unidentified_firecracker_candidate(
+            &stat,
+            Some(&argv(&["firecracker"]))
+        ));
+    }
+
+    #[test]
+    fn unidentified_firecracker_candidate_rejects_known_non_firecracker() {
+        let stat = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert!(!should_keep_unidentified_firecracker_candidate(
+            &stat,
+            Some(&argv(&["bash"]))
+        ));
+    }
+
+    #[test]
+    fn unidentified_firecracker_candidate_rejects_zombie_processes() {
+        let stat = ProcessStat {
+            state: 'Z',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert!(!should_keep_unidentified_firecracker_candidate(&stat, None));
+        assert!(!should_keep_unidentified_firecracker_candidate(
+            &stat,
+            Some(&argv(&["firecracker"]))
+        ));
     }
 }
