@@ -227,6 +227,9 @@ interface StripeBillingRow {
   readonly subscriptionStatus: string | null;
   readonly currentPeriodEnd: Date | null;
   readonly cancelAtPeriodEnd: boolean;
+  readonly pendingSubscriptionScheduleId: string | null;
+  readonly pendingSubscriptionTargetTier: string | null;
+  readonly pendingSubscriptionChangeAt: Date | null;
   readonly lastProcessedInvoiceId: string | null;
   readonly autoRechargePendingAt: Date | null;
   readonly onboardingPaymentPending: boolean;
@@ -694,6 +697,9 @@ async function selectStripeBilling(
       subscriptionStatus: orgMetadata.subscriptionStatus,
       currentPeriodEnd: orgMetadata.currentPeriodEnd,
       cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
+      pendingSubscriptionScheduleId: orgMetadata.pendingSubscriptionScheduleId,
+      pendingSubscriptionTargetTier: orgMetadata.pendingSubscriptionTargetTier,
+      pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
       lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
       autoRechargePendingAt: orgMetadata.autoRechargePendingAt,
       onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
@@ -3295,6 +3301,111 @@ describe("POST /api/webhooks/stripe", () => {
       expect(
         (await selectStripeBilling(fixture)).cancelAtPeriodEnd,
       ).toBeFalsy();
+    });
+
+    it("clears pending billing changes when subscription cancellation is restored in Stripe", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const changeAt = new Date("2026-07-04T00:00:00.000Z");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        cancelAtPeriodEnd: true,
+        pendingSubscriptionTargetTier: "pro-suspend",
+        pendingSubscriptionChangeAt: changeAt,
+        tier: "pro",
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.updated",
+        dataObject: {
+          id: subId,
+          status: "active",
+          cancel_at_period_end: false,
+          items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+        },
+        previousAttributes: { cancel_at_period_end: true },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.cancelAtPeriodEnd).toBeFalsy();
+      expect(billing.pendingSubscriptionScheduleId).toBeNull();
+      expect(billing.pendingSubscriptionTargetTier).toBeNull();
+      expect(billing.pendingSubscriptionChangeAt).toBeNull();
+    });
+
+    it("does not clear pending schedules on unrelated active subscription updates", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const scheduleId = stripeId("sched");
+      const changeAt = new Date("2026-07-04T00:00:00.000Z");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        cancelAtPeriodEnd: false,
+        pendingSubscriptionScheduleId: scheduleId,
+        pendingSubscriptionTargetTier: "pro",
+        pendingSubscriptionChangeAt: changeAt,
+        tier: "team",
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.updated",
+        dataObject: {
+          id: subId,
+          status: "active",
+          cancel_at_period_end: false,
+          items: { data: [{ price: { id: STRIPE_PRICE_TEAM } }] },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.pendingSubscriptionScheduleId).toBe(scheduleId);
+      expect(billing.pendingSubscriptionTargetTier).toBe("pro");
+      expect(billing.pendingSubscriptionChangeAt).toStrictEqual(changeAt);
+    });
+
+    it("clears pending billing changes when subscription schedule is released in Stripe", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const scheduleId = stripeId("sched");
+      const changeAt = new Date("2026-07-04T00:00:00.000Z");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        cancelAtPeriodEnd: true,
+        pendingSubscriptionScheduleId: scheduleId,
+        pendingSubscriptionTargetTier: "pro-suspend",
+        pendingSubscriptionChangeAt: changeAt,
+        tier: "team",
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "subscription_schedule.released",
+        dataObject: {
+          id: scheduleId,
+          status: "released",
+          released_subscription: subId,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.cancelAtPeriodEnd).toBeFalsy();
+      expect(billing.pendingSubscriptionScheduleId).toBeNull();
+      expect(billing.pendingSubscriptionTargetTier).toBeNull();
+      expect(billing.pendingSubscriptionChangeAt).toBeNull();
     });
 
     it("does not refresh current period end for active subscriptions before invoice payment", async () => {

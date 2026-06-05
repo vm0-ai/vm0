@@ -73,6 +73,13 @@ interface SubscriptionDeletedInput {
 
 interface SubscriptionPreviousAttributes {
   readonly trial_end?: number | null;
+  readonly cancel_at?: number | null;
+  readonly cancel_at_period_end?: boolean;
+  readonly schedule?: string | { readonly id: string } | null;
+}
+
+interface SubscriptionScheduleInput {
+  readonly id: string;
 }
 
 interface CheckoutSubscriptionContext {
@@ -148,6 +155,24 @@ function subscriptionTrialEnd(subscription: SubscriptionInput): Date | null {
   return typeof subscription.trial_end === "number"
     ? new Date(subscription.trial_end * 1000)
     : null;
+}
+
+function subscriptionPendingChangeCleared(
+  subscription: SubscriptionInput,
+  previousAttributes: SubscriptionPreviousAttributes | undefined,
+): boolean {
+  if (
+    subscriptionWillCancel(subscription) ||
+    subscriptionScheduleId(subscription)
+  ) {
+    return false;
+  }
+
+  return (
+    previousAttributes?.schedule !== undefined ||
+    previousAttributes?.cancel_at !== undefined ||
+    previousAttributes?.cancel_at_period_end === true
+  );
 }
 
 function requiredSubscriptionTrialEnd(subscription: SubscriptionInput): Date {
@@ -1241,6 +1266,10 @@ async function handleSubscriptionUpdated(
     ? subscriptionScheduledEnd(subscription)
     : null;
   const pendingScheduleId = subscriptionScheduleId(subscription);
+  const clearPendingChange = subscriptionPendingChangeCleared(
+    subscription,
+    previousAttributes,
+  );
   const trialEnd = subscriptionTrialEnd(subscription);
   const previousTrialEnd =
     typeof previousAttributes?.trial_end === "number"
@@ -1267,6 +1296,13 @@ async function handleSubscriptionUpdated(
               pendingSubscriptionChangeAt: periodEnd,
             }
           : {}),
+        ...(clearPendingChange
+          ? {
+              pendingSubscriptionScheduleId: null,
+              pendingSubscriptionTargetTier: null,
+              pendingSubscriptionChangeAt: null,
+            }
+          : {}),
         ...(trialShortened ? { currentPeriodEnd: trialEnd } : {}),
       })
       .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
@@ -1290,6 +1326,57 @@ async function handleSubscriptionUpdated(
         );
     }
   });
+}
+
+async function handleSubscriptionScheduleReleased(
+  db: Db,
+  schedule: SubscriptionScheduleInput,
+): Promise<void> {
+  const rows = await db
+    .update(orgMetadata)
+    .set({
+      cancelAtPeriodEnd: false,
+      pendingSubscriptionScheduleId: null,
+      pendingSubscriptionTargetTier: null,
+      pendingSubscriptionChangeAt: null,
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.pendingSubscriptionScheduleId, schedule.id))
+    .returning({ orgId: orgMetadata.orgId });
+
+  if (rows.length > 0) {
+    L.debug("subscription schedule released; cleared pending billing change", {
+      scheduleId: schedule.id,
+      orgIds: rows.map((row) => {
+        return row.orgId;
+      }),
+    });
+  }
+}
+
+async function handleSubscriptionScheduleEnded(
+  db: Db,
+  schedule: SubscriptionScheduleInput,
+): Promise<void> {
+  const rows = await db
+    .update(orgMetadata)
+    .set({
+      pendingSubscriptionScheduleId: null,
+      pendingSubscriptionTargetTier: null,
+      pendingSubscriptionChangeAt: null,
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.pendingSubscriptionScheduleId, schedule.id))
+    .returning({ orgId: orgMetadata.orgId });
+
+  if (rows.length > 0) {
+    L.debug("subscription schedule ended; cleared pending billing change", {
+      scheduleId: schedule.id,
+      orgIds: rows.map((row) => {
+        return row.orgId;
+      }),
+    });
+  }
 }
 
 async function handleSubscriptionDeleted(
@@ -1349,6 +1436,17 @@ export const handleStripeWebhookEvent$ = command(
       }
       case "customer.subscription.deleted": {
         await handleSubscriptionDeleted(db, event.data.object);
+        signal.throwIfAborted();
+        break;
+      }
+      case "subscription_schedule.released": {
+        await handleSubscriptionScheduleReleased(db, event.data.object);
+        signal.throwIfAborted();
+        break;
+      }
+      case "subscription_schedule.canceled":
+      case "subscription_schedule.aborted": {
+        await handleSubscriptionScheduleEnded(db, event.data.object);
         signal.throwIfAborted();
         break;
       }
