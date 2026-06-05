@@ -15,6 +15,11 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     let tmp = tempfile::tempdir()?;
     let cli_env_path = tmp.path().join("cli-env.json");
     let prompt = format!("@write-env-json:{}", cli_env_path.display());
+    let user_home = tmp.path().join("user-home");
+    let user_home_str = user_home
+        .to_str()
+        .ok_or("test user HOME path must be UTF-8")?
+        .to_string();
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &prompt, 3, 1)?;
@@ -35,6 +40,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
             "CUSTOM_USER_ENV": "visible-to-cli",
             "BASH_ENV": "/tmp/user-bash-env",
             "OPENAI_API_KEY": "sk-user",
+            "HOME": user_home_str,
         }))?,
     )?;
     unsafe {
@@ -44,6 +50,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     guest_agent::env::init_user_env()?;
     assert!(!user_env_path.exists());
     assert!(!user_env_dir.path().exists());
+    assert_eq!(guest_agent::env::home_dir(), user_home_str);
 
     let result = cli::execute_cli(
         &SecretMasker::from_raw(""),
@@ -67,7 +74,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         cli_env.get("OPENAI_API_KEY").map(String::as_str),
         Some("sk-user")
     );
-    assert_eq!(cli_env.get("HOME").map(String::as_str), tmp.path().to_str());
+    assert_eq!(
+        cli_env.get("HOME").map(String::as_str),
+        Some(user_home_str.as_str())
+    );
     assert!(cli_env.contains_key("PATH"));
 
     assert!(!cli_env.contains_key("VM0_SECRET_VALUES"));

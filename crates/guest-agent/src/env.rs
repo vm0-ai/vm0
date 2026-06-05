@@ -123,17 +123,22 @@ static MOCK_CODEX_PATH: LazyLock<String> = LazyLock::new(|| {
     std::env::var("VM0_MOCK_CODEX_PATH").unwrap_or_else(|_| DEFAULT_MOCK_CODEX_PATH.to_string())
 });
 
-/// `$HOME` is always set in the guest sandbox (rootfs init guarantees it).
-/// If it isn't, the rootfs is misconfigured and we want a loud, visible
-/// failure rather than papering over it with a magic path that would
-/// silently land codex auth state in the wrong directory.
+/// `$HOME` is always set in the guest sandbox (rootfs init guarantees it),
+/// unless the loaded user env intentionally overrides it for the CLI child.
+/// If neither source sets it, the rootfs is misconfigured and we want a loud,
+/// visible failure rather than papering over it with a magic path that would
+/// silently land session/auth state in the wrong directory.
 ///
 /// # Panics
-/// Panics if `HOME` is unset. This indicates a rootfs/runner contract
-/// violation and is not user-recoverable; the same fail-fast policy as
-/// `load_artifacts` (`VM0_ARTIFACTS`).
+/// Panics if `HOME` is unset in both loaded user env and the guest process env.
+/// This indicates a rootfs/runner contract violation and is not
+/// user-recoverable; the same fail-fast policy as `load_artifacts`
+/// (`VM0_ARTIFACTS`).
 #[allow(clippy::expect_used)]
 fn load_home_dir() -> String {
+    if let Some(home) = user_env_map().get("HOME") {
+        return home.clone();
+    }
     std::env::var("HOME").expect("HOME must be set in guest sandbox (rootfs init contract)")
 }
 
@@ -484,11 +489,11 @@ pub fn use_mock_codex() -> bool {
 pub fn mock_codex_path() -> String {
     MOCK_CODEX_PATH.clone()
 }
-/// Guest home directory from `HOME`.
+/// Guest home directory from loaded user env `HOME`, or process `HOME`.
 ///
 /// # Panics
-/// Panics if `HOME` is unset, which indicates a rootfs/runner contract
-/// violation.
+/// Panics if `HOME` is unset in both sources, which indicates a rootfs/runner
+/// contract violation.
 pub fn home_dir() -> &'static str {
     &HOME_DIR
 }
