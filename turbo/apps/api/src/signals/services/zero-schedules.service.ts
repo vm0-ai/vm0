@@ -31,10 +31,7 @@ import { now, nowDate } from "../external/time";
 import { isValidTimeZone, settle } from "../utils";
 import { decryptStoredSecretsMap } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import {
-  resolveDefaultModelFirstPin,
-  resolveModelFirstProviderAdmission,
-} from "./zero-model-selection.service";
+import { resolveModelFirstProviderAdmission } from "./zero-model-selection.service";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import {
@@ -1432,90 +1429,6 @@ const runScheduleChatModeNow$ = command(
         modelProviderCredentialScope:
           threadModelPin.modelProviderCredentialScope,
         selectedModel: threadModelPin.selectedModel,
-      })
-      .where(eq(zeroRuns.id, result.body.runId));
-    signal.throwIfAborted();
-
-    await db
-      .update(zeroAgentSchedules)
-      .set({ lastRunId: result.body.runId })
-      .where(eq(zeroAgentSchedules.id, schedule.id));
-    signal.throwIfAborted();
-
-    return { kind: "ok", runId: result.body.runId };
-  },
-);
-
-const runScheduleLegacyNow$ = command(
-  async (
-    { set },
-    args: {
-      readonly schedule: typeof zeroAgentSchedules.$inferSelect;
-      readonly apiStartTime: number;
-    },
-    signal: AbortSignal,
-  ): Promise<RunScheduleNowResult> => {
-    const db = set(writeDb$);
-    const { schedule } = args;
-    const modelPin = await resolveDefaultModelFirstPin(
-      db,
-      schedule.orgId,
-      schedule.userId,
-    );
-    signal.throwIfAborted();
-    const providerAdmission = await resolveModelFirstProviderAdmission({
-      db,
-      orgId: schedule.orgId,
-      userId: schedule.userId,
-      modelPin,
-      requestedModelProvider: undefined,
-    });
-    signal.throwIfAborted();
-    if (providerAdmission.error) {
-      return { kind: "run_error", response: providerAdmission.error };
-    }
-
-    const result = await set(
-      createZeroRun$,
-      {
-        auth: {
-          orgId: schedule.orgId,
-          orgRole: "member",
-          userId: schedule.userId,
-          tokenType: "session",
-        },
-        body: {
-          prompt: schedule.prompt,
-          agentId: schedule.agentId,
-          ...(providerAdmission.effectiveModelProvider
-            ? { modelProvider: providerAdmission.effectiveModelProvider }
-            : {}),
-        },
-        apiStartTime: args.apiStartTime,
-        triggerSource: "schedule",
-        modelProviderId: modelPin.modelProviderId ?? undefined,
-        modelProviderCredentialScope:
-          modelPin.modelProviderCredentialScope ?? undefined,
-        selectedModelOverride: modelPin.selectedModel ?? undefined,
-        appendSystemPrompt: buildScheduleAppendSystemPrompt(schedule),
-        callbacks: buildScheduleCallbacks(schedule),
-        zeroRunMetadata: { scheduleId: schedule.id },
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.status !== 201) {
-      return { kind: "run_error", response: result };
-    }
-
-    await db
-      .update(zeroRuns)
-      .set({
-        modelProvider: providerAdmission.effectiveModelProvider,
-        modelProviderId: modelPin.modelProviderId,
-        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
-        selectedModel: modelPin.selectedModel,
       })
       .where(eq(zeroRuns.id, result.body.runId));
     signal.throwIfAborted();
