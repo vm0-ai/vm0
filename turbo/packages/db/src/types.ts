@@ -5,5 +5,4 @@ export interface ContextArtifact {
   version?: string;
   mountPath: string;
   missingRootPolicy?: ArtifactMissingRootPolicy;
-  generatedBy?: "apiAutoMemory";
 }
