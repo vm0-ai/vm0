@@ -19,6 +19,7 @@ use super::protocol::{
     TerminateStatus, read_frame, write_frame,
 };
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
+use crate::park_coordinator::ParkCoordinator;
 
 const RUNNER_EXEC_CAPTURE_LIMIT_BYTES: u32 = 7 * 1024 * 1024;
 const CONTROL_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
@@ -29,14 +30,30 @@ const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 #[derive(Clone)]
 pub(crate) struct ProcessTerminationHandle {
     kill_tx: mpsc::Sender<()>,
+    park_coordinator: ParkCoordinator,
 }
 
 impl ProcessTerminationHandle {
+    #[cfg(test)]
     pub(crate) fn new(kill_tx: mpsc::Sender<()>) -> Self {
-        Self { kill_tx }
+        Self::with_park_coordinator(kill_tx, ParkCoordinator::new())
+    }
+
+    pub(crate) fn with_park_coordinator(
+        kill_tx: mpsc::Sender<()>,
+        park_coordinator: ParkCoordinator,
+    ) -> Self {
+        Self {
+            kill_tx,
+            park_coordinator,
+        }
     }
 
     fn request_terminate(&self) -> TerminateStatus {
+        if !self.park_coordinator.begin_terminate() {
+            return TerminateStatus::RefusedIdle;
+        }
+
         match self.kill_tx.try_send(()) {
             Ok(()) => TerminateStatus::Accepted,
             Err(mpsc::error::TrySendError::Full(())) => TerminateStatus::Accepted,
@@ -444,7 +461,7 @@ mod tests {
         ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
         TerminateStatus, send_exec, send_terminate,
     };
-    use crate::park_coordinator::{CoordinatorState, ParkCoordinator};
+    use crate::park_coordinator::{CoordinatorState, ParkCoordinator, PrepareParkEvidence};
 
     fn test_gate(
         guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
@@ -455,6 +472,16 @@ mod tests {
     fn test_termination_handle() -> ProcessTerminationHandle {
         let (kill_tx, _kill_rx) = mpsc::channel(1);
         ProcessTerminationHandle::new(kill_tx)
+    }
+
+    fn parked_coordinator() -> ParkCoordinator {
+        let coordinator = ParkCoordinator::new();
+        let attempt = coordinator.begin_prepare_park().unwrap();
+        coordinator
+            .complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced)
+            .unwrap();
+        coordinator.mark_parked(&attempt).unwrap();
+        coordinator
     }
 
     fn bind_test_server(
@@ -572,6 +599,41 @@ mod tests {
         handle.shutdown().await;
     }
 
+    #[tokio::test]
+    async fn client_server_terminate_refuses_idle_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let (kill_tx, mut kill_rx) = mpsc::channel(1);
+        let mut handle = bind_server(
+            sock_path.clone(),
+            test_gate(guest),
+            ProcessTerminationHandle::with_park_coordinator(kill_tx, parked_coordinator()),
+        )
+        .unwrap()
+        .spawn(CancellationToken::new());
+
+        let request = TerminateRequest {
+            action: TerminateAction::Terminate,
+        };
+        let response = send_terminate(&sock_path, &request, Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response,
+            TerminateResponse::Status {
+                status: TerminateStatus::RefusedIdle
+            }
+        );
+        assert!(matches!(
+            kill_rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+
+        handle.shutdown().await;
+    }
+
     #[test]
     fn termination_handle_treats_full_channel_as_accepted() {
         let (kill_tx, kill_rx) = mpsc::channel(1);
@@ -580,6 +642,32 @@ mod tests {
         assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
         assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
         assert_eq!(kill_rx.len(), 1);
+    }
+
+    #[test]
+    fn termination_handle_blocks_future_park_before_queueing_kill() {
+        let (kill_tx, kill_rx) = mpsc::channel(1);
+        let coordinator = ParkCoordinator::new();
+        let termination =
+            ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
+
+        assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
+        assert_eq!(coordinator.state(), CoordinatorState::Terminating);
+        assert!(coordinator.begin_prepare_park().is_err());
+        assert_eq!(kill_rx.len(), 1);
+    }
+
+    #[test]
+    fn termination_handle_refuses_when_parked_without_queueing() {
+        let (kill_tx, kill_rx) = mpsc::channel(1);
+        let termination =
+            ProcessTerminationHandle::with_park_coordinator(kill_tx, parked_coordinator());
+
+        assert_eq!(
+            termination.request_terminate(),
+            TerminateStatus::RefusedIdle
+        );
+        assert_eq!(kill_rx.len(), 0);
     }
 
     #[tokio::test]

@@ -111,6 +111,9 @@ impl SandboxControl for FirecrackerControl {
             TerminateResponse::Status {
                 status: TerminateStatus::AlreadyStopped,
             } => Ok(RemoteKillResult::AlreadyStopped),
+            TerminateResponse::Status {
+                status: TerminateStatus::RefusedIdle,
+            } => Ok(RemoteKillResult::RefusedIdle),
             TerminateResponse::Error { error } => Err(SandboxControlError::Remote(error)),
         }
     }

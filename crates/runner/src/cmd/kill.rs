@@ -138,6 +138,7 @@ enum KillOutcome {
     OrphanKilled,
     AlreadyExitedOrChanged,
     SignalFailed,
+    RefusedManagedIdle,
     RefusedManagedControlFailed(String),
     RefusedTargetChanged(String),
 }
@@ -146,7 +147,9 @@ impl KillOutcome {
     fn is_success(&self) -> bool {
         matches!(
             self,
-            KillOutcome::OwnerAccepted(_) | KillOutcome::OrphanKilled
+            KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
+                | KillOutcome::OwnerAccepted(RemoteKillResult::AlreadyStopped)
+                | KillOutcome::OrphanKilled
         )
     }
 }
@@ -305,6 +308,7 @@ async fn kill_current_target(
     }
 
     match control.kill_remote(&current.sandbox_id).await {
+        Ok(RemoteKillResult::RefusedIdle) => KillOutcome::RefusedManagedIdle,
         Ok(result) => KillOutcome::OwnerAccepted(result),
         Err(error) => retry_as_orphan_if_owner_disappeared(args, initial, error).await,
     }
@@ -510,6 +514,16 @@ async fn report_kill_outcome(
             println!(
                 "Refused direct kill for managed sandbox {} (PID {}) - owning runner control failed: {error}",
                 current.sandbox_id, current.pid
+            );
+        }
+        KillOutcome::OwnerAccepted(RemoteKillResult::RefusedIdle)
+        | KillOutcome::RefusedManagedIdle => {
+            println!(
+                "Refused to kill managed idle or parking sandbox {} (PID {}) - owning runner still owns its resources",
+                current.sandbox_id, current.pid
+            );
+            println!(
+                "Use runner drain/shutdown or wait for idle eviction so the owner can destroy it cleanly."
             );
         }
         KillOutcome::RefusedTargetChanged(error) => {
@@ -870,6 +884,24 @@ mod tests {
             outcome,
             KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
         ));
+        assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
+    }
+
+    #[tokio::test]
+    async fn managed_idle_target_is_refused() {
+        let control = MockSandboxControl::new("/tmp/test");
+        control.push_kill_remote_result(Ok(RemoteKillResult::RefusedIdle));
+        let initial = make_target(200, "sbox-123");
+        let current = initial.clone();
+        let args = KillArgs {
+            run: None,
+            sandbox: Some("sbox-123".into()),
+            force: true,
+        };
+
+        let outcome = kill_current_target(&args, &initial, current, false, &control).await;
+
+        assert!(matches!(outcome, KillOutcome::RefusedManagedIdle));
         assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
     }
 

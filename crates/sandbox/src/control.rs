@@ -25,6 +25,9 @@ pub enum RemoteKillResult {
     Accepted,
     /// The owning sandbox runtime is already stopping or stopped.
     AlreadyStopped,
+    /// The owning sandbox is parked or entering idle ownership, so direct
+    /// process termination would leave idle-pool resources retained.
+    RefusedIdle,
 }
 
 /// Errors from sandbox control operations.

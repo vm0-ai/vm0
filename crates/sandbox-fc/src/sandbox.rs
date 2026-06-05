@@ -424,8 +424,14 @@ impl ProcessMonitorHandle {
         let _ = self.kill_tx.try_send(());
     }
 
-    fn termination_handle(&self) -> control::ProcessTerminationHandle {
-        control::ProcessTerminationHandle::new(self.kill_tx.clone())
+    fn termination_handle(
+        &self,
+        park_coordinator: ParkCoordinator,
+    ) -> control::ProcessTerminationHandle {
+        control::ProcessTerminationHandle::with_park_coordinator(
+            self.kill_tx.clone(),
+            park_coordinator,
+        )
     }
 
     async fn wait(self) {
@@ -453,10 +459,13 @@ impl SandboxRuntimeHandles {
         self.balloon = Some(balloon);
     }
 
-    fn process_termination_handle(&self) -> Option<control::ProcessTerminationHandle> {
+    fn process_termination_handle(
+        &self,
+        park_coordinator: ParkCoordinator,
+    ) -> Option<control::ProcessTerminationHandle> {
         self.process
             .as_ref()
-            .map(ProcessMonitorHandle::termination_handle)
+            .map(|process| process.termination_handle(park_coordinator))
     }
 
     fn balloon_mut(&mut self) -> &mut Option<balloon::ControllerHandle> {
@@ -1685,7 +1694,10 @@ impl Sandbox for FirecrackerSandbox {
         *self.guest.lock().await = Some(Arc::new(vsock_guest));
 
         let control_sock_path = self.sock_paths.control_sock();
-        let Some(termination_handle) = self.runtime.process_termination_handle() else {
+        let Some(termination_handle) = self
+            .runtime
+            .process_termination_handle(self.park_coordinator.clone())
+        else {
             self.guest.lock().await.take();
             self.runtime.kill_process().await;
             return Err(SandboxError::Start {
@@ -5600,7 +5612,7 @@ mod tests {
         let mut control = crate::control::bind_server(
             sock_path.clone(),
             GuestOperationStartGate::new(Arc::clone(&guest), ParkCoordinator::new()),
-            handle.termination_handle(),
+            handle.termination_handle(ParkCoordinator::new()),
         )
         .unwrap()
         .spawn(runtime_cancel.clone());

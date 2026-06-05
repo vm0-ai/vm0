@@ -89,6 +89,9 @@ pub struct TerminateRequest {
 pub enum TerminateStatus {
     Accepted,
     AlreadyStopped,
+    /// The sandbox is parked or entering idle ownership; direct process
+    /// termination would leave runner-owned idle resources retained.
+    RefusedIdle,
 }
 
 /// Response to a host-side termination client.
@@ -296,6 +299,18 @@ mod tests {
             decoded,
             TerminateResponse::Status {
                 status: TerminateStatus::Accepted
+            }
+        );
+
+        let response = TerminateResponse::Status {
+            status: TerminateStatus::RefusedIdle,
+        };
+        let response_json = serde_json::to_vec(&response).unwrap();
+        let decoded: TerminateResponse = serde_json::from_slice(&response_json).unwrap();
+        assert_eq!(
+            decoded,
+            TerminateResponse::Status {
+                status: TerminateStatus::RefusedIdle
             }
         );
 
