@@ -58,6 +58,25 @@ export function clearPostHogUser(): void {
   posthog.reset();
 }
 
+// ── Onboarding step funnel ─────────────────────────────────────────
+//
+// Fires on each onboarding step transition. The single choke point is
+// setZeroStep$ in zero-onboarding.ts, so one capture there gives us a
+// per-step funnel to see which onboarding step has the highest drop-off.
+export function captureOnboardingStep(step: string): void {
+  if (!POSTHOG_KEY) {
+    return;
+  }
+  posthog.capture("onboarding_step_viewed", { step });
+}
+
+export function captureTaskCompletedSuccessfully(): void {
+  if (!POSTHOG_KEY) {
+    return;
+  }
+  posthog.capture("task_completed_successfully", { surface: "chat_thread" });
+}
+
 // ── Scoped session replay ──────────────────────────────────────────
 //
 // Replay is disabled at init (see initPostHog). These helpers turn it on for a

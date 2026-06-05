@@ -43,6 +43,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
+import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
@@ -114,6 +115,23 @@ function isCancelledAssistantMessage(msg: PagedChatMessage): boolean {
     (msg.runLifecycleEvent === "cancelled" ||
       msg.error?.trim().toLowerCase() === "run cancelled")
   );
+}
+
+function completedRunIdsFromMessages(
+  messages: readonly PagedChatMessage[],
+): string[] {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (
+      message.role === "assistant" &&
+      message.runId !== undefined &&
+      (message.runLifecycleEvent === "completed" ||
+        message.status === "completed")
+    ) {
+      ids.add(message.runId);
+    }
+  }
+  return Array.from(ids);
 }
 
 function isUnterminatedAssistantRunMessage(
@@ -871,10 +889,29 @@ type ServerMessages$ = State<PagedChatMessage[]>;
 function createAppendServerMessages(
   threadId: string,
   serverMessages$: ServerMessages$,
+  reportedCompletedRunIds$: State<Set<string>>,
 ) {
-  return command(({ set }, msgs: PagedChatMessage[]) => {
+  return command(({ get, set }, msgs: PagedChatMessage[]) => {
     if (msgs.length === 0) {
       return;
+    }
+    const reportedCompletedRunIds = get(reportedCompletedRunIds$);
+    const newlyCompletedRunIds = completedRunIdsFromMessages(msgs).filter(
+      (runId) => {
+        return !reportedCompletedRunIds.has(runId);
+      },
+    );
+    for (const _ of newlyCompletedRunIds) {
+      captureTaskCompletedSuccessfully();
+    }
+    if (newlyCompletedRunIds.length > 0) {
+      set(reportedCompletedRunIds$, (prev) => {
+        const next = new Set(prev);
+        for (const runId of newlyCompletedRunIds) {
+          next.add(runId);
+        }
+        return next;
+      });
     }
     set(serverMessages$, (prev) => {
       const byId = new Map<string, PagedChatMessage>();
@@ -1060,12 +1097,14 @@ function createFetchNextPageCommand({
   initialPage$,
   nextCursorId$,
   appendServerMessages$,
+  reportedCompletedRunIds$,
   dataSource,
 }: {
   threadId: string;
   initialPage$: Computed<Promise<InitialPage>>;
   nextCursorId$: State<string | undefined>;
   appendServerMessages$: Command<void, [PagedChatMessage[]]>;
+  reportedCompletedRunIds$: State<Set<string>>;
   dataSource: ChatThreadDataSource;
 }): Command<Promise<boolean>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal) => {
@@ -1076,6 +1115,17 @@ function createFetchNextPageCommand({
       set(reconcileOptimisticChatMessages$, {
         threadId,
         messages: initial.messages,
+      });
+      set(reportedCompletedRunIds$, (prev) => {
+        const ids = completedRunIdsFromMessages(initial.messages);
+        if (ids.length === 0) {
+          return prev;
+        }
+        const next = new Set(prev);
+        for (const runId of ids) {
+          next.add(runId);
+        }
+        return next;
       });
       sinceId = initial.messages[initial.messages.length - 1]?.id;
       L.debug("fetchNextPage$ initialPage seeded sinceId", {
@@ -1132,9 +1182,11 @@ function createPagedMessages(
   const initialPage$ = createInitialPage(dataSource);
 
   const serverMessages$ = state<PagedChatMessage[]>([]);
+  const reportedCompletedRunIds$ = state(new Set<string>());
   const appendServerMessages$ = createAppendServerMessages(
     threadId,
     serverMessages$,
+    reportedCompletedRunIds$,
   );
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
 
@@ -1194,6 +1246,7 @@ function createPagedMessages(
     initialPage$,
     nextCursorId$,
     appendServerMessages$,
+    reportedCompletedRunIds$,
     dataSource,
   });
 

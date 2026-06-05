@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.106.0](https://github.com/vm0-ai/vm0/compare/api-v1.105.0...api-v1.106.0) (2026-06-05)
+
+
+### Features
+
+* add sandbox claim timing spans ([#16264](https://github.com/vm0-ai/vm0/issues/16264)) ([bfef241](https://github.com/vm0-ai/vm0/commit/bfef2416317ca36253f05a2ebf8f19377b7b9f9b))
+
+
+### Bug Fixes
+
+* remove schedule chat migration flow ([#16262](https://github.com/vm0-ai/vm0/issues/16262)) ([5df9c43](https://github.com/vm0-ai/vm0/commit/5df9c43dadd24b3b03ea5c68b7331052bd446613))
+* render memory summaries as markdown ([#16265](https://github.com/vm0-ai/vm0/issues/16265)) ([391e64f](https://github.com/vm0-ai/vm0/commit/391e64f33522f64d090b544d837e414a43172bcd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.1
+    * @vm0/core bumped to 8.311.1
+    * @vm0/db bumped to 1.32.3
+
 ## [1.105.0](https://github.com/vm0-ai/vm0/compare/api-v1.104.1...api-v1.105.0) (2026-06-05)
 
 

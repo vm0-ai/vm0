@@ -8,6 +8,7 @@ import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
 import { accept } from "../../lib/accept.ts";
+import { captureOnboardingStep } from "../../lib/posthog.ts";
 
 const L = logger("ZeroOnboarding");
 
@@ -129,6 +130,7 @@ export const zeroSelectedConnectors$ = computed((get) => {
 
 export const setZeroStep$ = command(({ set }, step: ZeroOnboardingStep) => {
   set(userStep$, step);
+  captureOnboardingStep(step);
 });
 
 export const setZeroAgentName$ = command(({ set }, name: string) => {
