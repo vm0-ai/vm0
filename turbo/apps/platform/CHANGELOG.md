@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.419.1](https://github.com/vm0-ai/vm0/compare/app-v0.419.0...app-v0.419.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* stop schedules and runs when deleting a chat thread ([#16279](https://github.com/vm0-ai/vm0/issues/16279)) ([83efb00](https://github.com/vm0-ai/vm0/commit/83efb00210f82125ad875267a776c369898b562f))
+
 ## [0.419.0](https://github.com/vm0-ai/vm0/compare/app-v0.418.0...app-v0.419.0) (2026-06-05)
 
 
