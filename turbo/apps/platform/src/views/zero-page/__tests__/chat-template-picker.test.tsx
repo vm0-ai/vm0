@@ -264,6 +264,81 @@ describe("zero chat template picker", () => {
     expect(screen.queryByText("Nothing saved yet")).toBeNull();
   });
 
+  it("opens a PPT preview page from the template eye button", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    const templateButton = await waitFor(() => {
+      return screen.getByLabelText("Template");
+    });
+    click(templateButton);
+
+    await user.click(screen.getByLabelText(`View template ${template.title}`));
+
+    await waitFor(() => {
+      expect(screen.getByText("Use this template")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Dials")).toBeInTheDocument();
+    expect(screen.getByText("1 of 6")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Next slide"));
+
+    await waitFor(() => {
+      expect(screen.getByText("2 of 6")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Templates"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText(`View template ${template.title}`));
+    await user.click(screen.getByText("Use this template"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expectTemplateChip(template);
+  });
+
+  it("returns to the template picker when closing the PPT preview page", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
+    const templateButton = await waitFor(() => {
+      return screen.getByLabelText("Template");
+    });
+    click(templateButton);
+
+    await user.click(screen.getByLabelText(`View template ${template.title}`));
+
+    await waitFor(() => {
+      expect(screen.getByText("Use this template")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText(template.title)).toBeInTheDocument();
+    expect(screen.queryByText("Use this template")).toBeNull();
+  });
+
   it("sends selected generation template from the new-thread composer and clears it", async () => {
     const user = userEvent.setup();
     mockChatLifecycle();
