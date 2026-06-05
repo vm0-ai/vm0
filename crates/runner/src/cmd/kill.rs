@@ -431,9 +431,7 @@ fn workspace_identity_matches(
         (Some(expected_base_dir), Some((sandbox_id, base_dir))) => {
             sandbox_id == &identity.sandbox_id && base_dir == expected_base_dir
         }
-        (Some(_), None) => false,
-        (None, Some(_)) => false,
-        (None, None) => true,
+        _ => false,
     }
 }
 
@@ -869,6 +867,20 @@ mod tests {
             true,
             Some(&cwd_info)
         ));
+    }
+
+    #[test]
+    fn orphan_identity_rejects_missing_workspace_identity() {
+        let mut target = make_target(200, "sbox-123");
+        target.base_dir = None;
+        target.identity.as_mut().unwrap().base_dir = None;
+        let identity = target.identity.as_ref().unwrap();
+        let stat = ProcessStat {
+            pgid: identity.pgid,
+            starttime: identity.starttime,
+        };
+
+        assert!(!orphan_identity_matches_facts(identity, &stat, true, None));
     }
 
     #[tokio::test]
