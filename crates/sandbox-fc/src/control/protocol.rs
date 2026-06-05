@@ -6,6 +6,7 @@ use tokio::net::UnixStream;
 
 /// Request from a `runner exec` client.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExecRequest {
     /// Command text to execute inside the guest.
     pub command: String,
@@ -330,5 +331,16 @@ mod tests {
         });
 
         assert!(serde_json::from_value::<TerminateRequest>(request_json).is_err());
+    }
+
+    #[test]
+    fn exec_request_rejects_terminate_fields() {
+        let request_json = serde_json::json!({
+            "command": "true",
+            "timeout_secs": 1,
+            "action": "terminate",
+        });
+
+        assert!(serde_json::from_value::<ExecRequest>(request_json).is_err());
     }
 }
