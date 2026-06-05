@@ -134,6 +134,7 @@ import { dispatchRunCallbacks } from "./agent-run-callback.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
 import { logger } from "../../lib/log";
+import { capturePostHogEvent } from "../../lib/posthog";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
@@ -3975,6 +3976,53 @@ function completePendingRun(input: {
   );
 }
 
+async function captureRunStartedTelemetry(args: {
+  readonly run: RunRecord;
+  readonly input: CreateAgentRunArgs;
+  readonly context: PreparedRunContext;
+  readonly response: Extract<CreateRunRouteResult, { readonly status: 201 }>;
+}): Promise<void> {
+  if (args.response.body.status === "failed") {
+    return;
+  }
+
+  const connectorTypes = args.context.connectorContext.connectorTypes;
+  const properties = {
+    org_id: args.input.orgId,
+    user_id: args.input.userId,
+    run_id: args.run.id,
+    run_status: args.response.body.status,
+    trigger_source: args.context.body.triggerSource ?? "cli",
+    model_provider_type: args.context.modelProvider?.type,
+    concrete_model_provider_type: args.context.modelProvider?.concreteType,
+    selected_model: args.context.modelProvider?.selectedModel,
+    chat_thread_id: args.input.chatThreadId,
+    has_chat_thread: Boolean(args.input.chatThreadId),
+    trigger_agent_id: args.input.zeroRunMetadata?.triggerAgentId,
+    schedule_id: args.input.zeroRunMetadata?.scheduleId,
+    connector_count: connectorTypes.length,
+    connector_types: connectorTypes,
+  };
+
+  await capturePostHogEvent({
+    event: "task_started",
+    distinctId: args.input.userId,
+    groups: { organizationId: args.input.orgId },
+    properties,
+  });
+
+  if (connectorTypes.length === 0) {
+    return;
+  }
+
+  await capturePostHogEvent({
+    event: "connector_used_in_task",
+    distinctId: args.input.userId,
+    groups: { organizationId: args.input.orgId },
+    properties,
+  });
+}
+
 export const createAgentRun$ = command(
   async (
     { get, set },
@@ -4010,7 +4058,7 @@ export const createAgentRun$ = command(
     }
 
     if (transactionResult.status === "queued") {
-      return await get(
+      const response = await get(
         completeQueuedRun({
           db,
           args,
@@ -4019,9 +4067,18 @@ export const createAgentRun$ = command(
           signal,
         }),
       );
+      signal.throwIfAborted();
+      await captureRunStartedTelemetry({
+        run: transactionResult,
+        input: args,
+        context,
+        response,
+      });
+      signal.throwIfAborted();
+      return response;
     }
 
-    return await get(
+    const response = await get(
       completePendingRun({
         db,
         args,
@@ -4033,5 +4090,14 @@ export const createAgentRun$ = command(
         signal,
       }),
     );
+    signal.throwIfAborted();
+    await captureRunStartedTelemetry({
+      run: transactionResult,
+      input: args,
+      context,
+      response,
+    });
+    signal.throwIfAborted();
+    return response;
   },
 );

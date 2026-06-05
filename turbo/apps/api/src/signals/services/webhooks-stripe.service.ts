@@ -16,6 +16,7 @@ import {
   type SubscriptionCheckoutTier,
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
+import { capturePostHogEvent } from "../../lib/posthog";
 
 const L = logger("WebhookStripe");
 
@@ -93,6 +94,22 @@ interface SubscriptionInvoiceDetails {
   readonly credits: number;
   readonly periodEndDate: Date;
   readonly expiresAt: Date;
+}
+
+async function captureOrgStripeEvent(args: {
+  readonly event: string;
+  readonly orgId: string;
+  readonly properties?: Readonly<Record<string, unknown>>;
+}): Promise<void> {
+  await capturePostHogEvent({
+    event: args.event,
+    distinctId: args.orgId,
+    groups: { organizationId: args.orgId },
+    properties: {
+      ...args.properties,
+      org_id: args.orgId,
+    },
+  });
 }
 
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
@@ -701,7 +718,7 @@ async function bindSubscriptionToCustomerOrg(
       | "checkout.session.completed"
       | "customer.subscription.created";
   },
-): Promise<void> {
+): Promise<readonly string[]> {
   if (
     args.source === "customer.subscription.created" &&
     !(await bindStripeCustomerFromMetadata(db, {
@@ -709,7 +726,7 @@ async function bindSubscriptionToCustomerOrg(
       subscriptionId: args.subscription.id,
     }))
   ) {
-    return;
+    return [];
   }
 
   const priceId = args.subscription.items.data[0]?.price?.id;
@@ -725,7 +742,7 @@ async function bindSubscriptionToCustomerOrg(
       tier: tierFromPriceId(priceId),
     })
   ) {
-    return;
+    return [];
   }
 
   const rows = await db
@@ -746,6 +763,9 @@ async function bindSubscriptionToCustomerOrg(
       source: args.source,
     });
   }
+  return rows.map((row) => {
+    return row.orgId;
+  });
 }
 
 function invoiceWouldReplaceWithSameOrLowerTier(args: {
@@ -864,10 +884,10 @@ async function processSubscriptionInvoicePaid(
     readonly orgId: string;
     readonly details: SubscriptionInvoiceDetails;
   },
-): Promise<void> {
+): Promise<boolean> {
   const lockedOrg = await lockInvoicePaidOrg(tx, args.orgId);
   if (!lockedOrg) {
-    return;
+    return false;
   }
 
   if (lockedOrg.lastProcessedInvoiceId === args.invoice.id) {
@@ -875,7 +895,7 @@ async function processSubscriptionInvoicePaid(
       invoiceId: args.invoice.id,
       orgId: args.orgId,
     });
-    return;
+    return false;
   }
 
   if (
@@ -898,7 +918,7 @@ async function processSubscriptionInvoicePaid(
         targetTier: args.details.tier,
       }),
     });
-    return;
+    return false;
   }
 
   const trialingExistingSubscription =
@@ -922,7 +942,7 @@ async function processSubscriptionInvoicePaid(
       subscriptionId: args.subscriptionId,
       details: args.details,
     });
-    return;
+    return true;
   }
 
   await expireCredits(tx, args.orgId);
@@ -938,7 +958,7 @@ async function processSubscriptionInvoicePaid(
       invoiceId: args.invoice.id,
       orgId: args.orgId,
     });
-    return;
+    return false;
   }
 
   await grantOrgCredits(tx, args.orgId, args.details.credits);
@@ -948,6 +968,7 @@ async function processSubscriptionInvoicePaid(
     subscriptionId: args.subscriptionId,
     details: args.details,
   });
+  return true;
 }
 
 async function handleCheckoutCompleted(
@@ -970,11 +991,22 @@ async function handleCheckoutCompleted(
 
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-  await bindSubscriptionToCustomerOrg(db, {
+  const orgIds = await bindSubscriptionToCustomerOrg(db, {
     customerId,
     subscription,
     source: "checkout.session.completed",
   });
+  for (const orgId of orgIds) {
+    await captureOrgStripeEvent({
+      event: "stripe_checkout_completed",
+      orgId,
+      properties: {
+        subscription_status: subscription.status,
+        stripe_subscription_id: subscription.id,
+        payment_status: session.payment_status ?? null,
+      },
+    });
+  }
 }
 
 async function handleSubscriptionCreated(
@@ -989,11 +1021,21 @@ async function handleSubscriptionCreated(
     return;
   }
 
-  await bindSubscriptionToCustomerOrg(db, {
+  const orgIds = await bindSubscriptionToCustomerOrg(db, {
     customerId,
     subscription,
     source: "customer.subscription.created",
   });
+  for (const orgId of orgIds) {
+    await captureOrgStripeEvent({
+      event: "stripe_subscription_created",
+      orgId,
+      properties: {
+        subscription_status: subscription.status,
+        stripe_subscription_id: subscription.id,
+      },
+    });
+  }
 }
 
 async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
@@ -1044,14 +1086,29 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     return;
   }
 
-  await db.transaction(async (tx) => {
-    await processSubscriptionInvoicePaid(tx, {
+  const processed = await db.transaction(async (tx) => {
+    return await processSubscriptionInvoicePaid(tx, {
       invoice,
       customerId,
       subscriptionId,
       orgId: org.orgId,
       details,
     });
+  });
+  if (!processed) {
+    return;
+  }
+
+  await captureOrgStripeEvent({
+    event: "stripe_invoice_paid",
+    orgId: org.orgId,
+    properties: {
+      stripe_invoice_id: invoice.id,
+      stripe_subscription_id: subscriptionId,
+      subscription_status: details.subscription.status,
+      tier: details.tier,
+      credits: details.credits,
+    },
   });
 }
 
@@ -1074,7 +1131,7 @@ async function handleSubscriptionUpdated(
     previousTrialEnd !== null &&
     trialEnd < previousTrialEnd;
 
-  await db.transaction(async (tx) => {
+  const rows = await db.transaction(async (tx) => {
     const rows = await tx
       .update(orgMetadata)
       .set({
@@ -1088,7 +1145,7 @@ async function handleSubscriptionUpdated(
       .returning({ orgId: orgMetadata.orgId });
 
     if (!trialShortened) {
-      return;
+      return rows;
     }
 
     for (const row of rows) {
@@ -1104,14 +1161,47 @@ async function handleSubscriptionUpdated(
           ),
         );
     }
+    return rows;
   });
+  for (const row of rows) {
+    await captureOrgStripeEvent({
+      event: "stripe_subscription_updated",
+      orgId: row.orgId,
+      properties: {
+        stripe_subscription_id: subscription.id,
+        subscription_status: subscription.status,
+        trial_shortened: trialShortened,
+        cancel_at_period_end: subscription.cancel_at_period_end,
+      },
+    });
+    if (subscription.status === "trialing") {
+      await captureOrgStripeEvent({
+        event: "stripe_subscription_trialing",
+        orgId: row.orgId,
+        properties: {
+          stripe_subscription_id: subscription.id,
+          subscription_status: subscription.status,
+        },
+      });
+    }
+    if (subscription.status === "active") {
+      await captureOrgStripeEvent({
+        event: "stripe_subscription_active",
+        orgId: row.orgId,
+        properties: {
+          stripe_subscription_id: subscription.id,
+          subscription_status: subscription.status,
+        },
+      });
+    }
+  }
 }
 
 async function handleSubscriptionDeleted(
   db: Db,
   subscription: SubscriptionDeletedInput,
 ): Promise<void> {
-  await db
+  const rows = await db
     .update(orgMetadata)
     .set({
       tier: "pro-suspend",
@@ -1121,7 +1211,18 @@ async function handleSubscriptionDeleted(
       currentPeriodEnd: null,
       updatedAt: nowDate(),
     })
-    .where(eq(orgMetadata.stripeSubscriptionId, subscription.id));
+    .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
+    .returning({ orgId: orgMetadata.orgId });
+  for (const row of rows) {
+    await captureOrgStripeEvent({
+      event: "stripe_subscription_deleted",
+      orgId: row.orgId,
+      properties: {
+        stripe_subscription_id: subscription.id,
+        subscription_status: "canceled",
+      },
+    });
+  }
 }
 
 export const handleStripeWebhookEvent$ = command(

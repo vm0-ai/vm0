@@ -7,6 +7,10 @@ import { bodyResultOf } from "../context/request";
 import { clerk$ } from "../external/clerk";
 import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route";
+import {
+  capturePostHogEvent,
+  safeAcquisitionAttributionProperties,
+} from "../../lib/posthog";
 
 const SIGNUP_ATTRIBUTION_KEY = "signup_attribution";
 
@@ -57,6 +61,20 @@ const recordSignupInner$ = command(async ({ get }, signal: AbortSignal) => {
         ...bodyResult.data.attribution,
         recorded_at: nowDate().toISOString(),
       },
+    },
+  });
+  signal.throwIfAborted();
+
+  const groups = auth.orgId ? { organizationId: auth.orgId } : undefined;
+  await capturePostHogEvent({
+    event: "signup_attribution_recorded",
+    distinctId: auth.userId,
+    ...(groups ? { groups } : {}),
+    properties: {
+      ...safeAcquisitionAttributionProperties(bodyResult.data.attribution),
+      user_id: auth.userId,
+      org_id: auth.orgId,
+      recorded: true,
     },
   });
   signal.throwIfAborted();

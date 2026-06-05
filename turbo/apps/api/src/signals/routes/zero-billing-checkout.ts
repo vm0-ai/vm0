@@ -6,6 +6,10 @@ import { eq } from "drizzle-orm";
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
+import {
+  capturePostHogEvent,
+  safeAcquisitionAttributionProperties,
+} from "../../lib/posthog";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -110,6 +114,21 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
   signal.throwIfAborted();
+  await capturePostHogEvent({
+    event: "stripe_checkout_created",
+    distinctId: auth.userId,
+    groups: { organizationId: auth.orgId },
+    properties: {
+      ...safeAcquisitionAttributionProperties(adAttribution),
+      org_id: auth.orgId,
+      user_id: auth.userId,
+      tier,
+      trial_days: trialDays,
+      has_trial: trialDays !== undefined,
+    },
+  });
+  signal.throwIfAborted();
+
   return { status: 200 as const, body: { url } };
 });
 
@@ -163,6 +182,19 @@ const checkoutCompleteAuthed$ = command(
         }),
       );
     }
+
+    await capturePostHogEvent({
+      event: "stripe_checkout_complete_checked",
+      distinctId: auth.userId,
+      groups: { organizationId: auth.orgId },
+      properties: {
+        org_id: auth.orgId,
+        user_id: auth.userId,
+        completion_status: result.status,
+        completed: result.status === "completed",
+      },
+    });
+    signal.throwIfAborted();
 
     return {
       status: 200 as const,

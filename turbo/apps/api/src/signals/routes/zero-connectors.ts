@@ -23,6 +23,7 @@ import { request$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
+import { capturePostHogEvent } from "../../lib/posthog";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
@@ -258,6 +259,29 @@ const connectManualGrantConnectorInner$ = command(
     if (result.status === "invalid") {
       return badRequestMessage(result.message);
     }
+
+    const telemetryProperties = {
+      org_id: auth.orgId,
+      user_id: auth.userId,
+      connector_type: params.type,
+      auth_method: bodyResult.data.authMethod,
+      connection_method: "manual",
+      needs_reconnect: result.connector.needsReconnect,
+    };
+    await capturePostHogEvent({
+      event: "connector_connection_success",
+      distinctId: auth.userId,
+      groups: { organizationId: auth.orgId },
+      properties: telemetryProperties,
+    });
+    signal.throwIfAborted();
+    await capturePostHogEvent({
+      event: "connector_connected",
+      distinctId: auth.userId,
+      groups: { organizationId: auth.orgId },
+      properties: telemetryProperties,
+    });
+    signal.throwIfAborted();
 
     return { status: 200 as const, body: result.connector };
   },

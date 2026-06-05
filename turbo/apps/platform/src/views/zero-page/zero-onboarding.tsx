@@ -1,5 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
+import type { ReactNode } from "react";
 import {
   useGet,
   useSet,
@@ -87,6 +88,7 @@ import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
 import { clerk$ } from "../../signals/auth.ts";
 import { userInvitations$ } from "../../signals/user-invitations.ts";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
+import { captureOnboardingStepViewed$ } from "../../lib/posthog.ts";
 
 // ---------------------------------------------------------------------------
 // Progress bar
@@ -1151,7 +1153,7 @@ function OnboardingOrgSwitcher() {
   return <ZeroOrgSwitcher />;
 }
 
-function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
+function OnboardingPageLayout({ children }: { children: ReactNode }) {
   return (
     <div className="zero-app flex h-dvh bg-muted/30 relative">
       {/* Left panel — brand / illustration */}
@@ -1319,6 +1321,57 @@ function OnboardingStepContent() {
   }
 }
 
+function OnboardingStepTelemetry() {
+  const captureStepViewed = useSet(captureOnboardingStepViewed$);
+  const effectiveStep = useLastResolved(onboardingEffectiveStep$);
+  const stepKey = useLastResolved(onboardingStepKey$);
+  const currentStepIndex = useLastResolved(onboardingCurrentStepIndex$) ?? 0;
+  const visibleSteps = useLastResolved(onboardingVisibleSteps$) ?? [];
+  const selectedConnectors =
+    useLastResolved(onboardingEffectiveConnectors$) ?? [];
+  const isUseCase = useGet(onboardingIsUseCase$);
+  const isAdmin = useLastResolved(onboardingIsAdmin$) ?? false;
+  const visibleStepsKey = visibleSteps.join(",");
+  const selectedConnectorsKey = selectedConnectors.join(",");
+
+  if (!effectiveStep || !stepKey) {
+    return null;
+  }
+
+  const telemetryKey = [
+    effectiveStep,
+    stepKey,
+    currentStepIndex,
+    visibleStepsKey,
+    selectedConnectorsKey,
+    isUseCase ? "use-case" : "default",
+    isAdmin ? "admin" : "member",
+  ].join("|");
+
+  return (
+    <span
+      hidden
+      ref={(node) => {
+        if (!node) {
+          return;
+        }
+        captureStepViewed({
+          telemetryKey,
+          step: effectiveStep,
+          stepKey,
+          currentStepIndex,
+          visibleSteps: visibleStepsKey ? visibleStepsKey.split(",") : [],
+          selectedConnectors: selectedConnectorsKey
+            ? selectedConnectorsKey.split(",")
+            : [],
+          isUseCase,
+          isAdmin,
+        });
+      }}
+    />
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Zero onboarding — main export
 // ---------------------------------------------------------------------------
@@ -1342,6 +1395,7 @@ export function ZeroOnboarding() {
 
   return (
     <>
+      <OnboardingStepTelemetry />
       <OnboardingPageLayout>
         <OnboardingStepContent />
       </OnboardingPageLayout>

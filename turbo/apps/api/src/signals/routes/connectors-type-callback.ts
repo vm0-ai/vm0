@@ -32,6 +32,7 @@ import {
 } from "../services/github-oauth.service";
 import { settle } from "../utils";
 import type { RouteEntry } from "../route";
+import { capturePostHogEvent } from "../../lib/posthog";
 import {
   getConnectorOAuthCanonicalRedirectUrl,
   getConnectorOAuthOrigin,
@@ -419,6 +420,31 @@ const completeOAuthCallback$ = command(
       identity: args.identity,
       token,
       signal,
+    });
+    signal.throwIfAborted();
+
+    const telemetryProperties = {
+      org_id: args.identity.orgId,
+      user_id: args.identity.userId,
+      connector_type: args.connectorType,
+      auth_method: args.authMethod,
+      connection_method: "oauth",
+      needs_reconnect: result.connector.needsReconnect,
+      has_external_username: Boolean(result.connector.externalUsername),
+      has_external_email: Boolean(result.connector.externalEmail),
+    };
+    await capturePostHogEvent({
+      event: "connector_connection_success",
+      distinctId: args.identity.userId,
+      groups: { organizationId: args.identity.orgId },
+      properties: telemetryProperties,
+    });
+    signal.throwIfAborted();
+    await capturePostHogEvent({
+      event: "connector_connected",
+      distinctId: args.identity.userId,
+      groups: { organizationId: args.identity.orgId },
+      properties: telemetryProperties,
     });
     signal.throwIfAborted();
 

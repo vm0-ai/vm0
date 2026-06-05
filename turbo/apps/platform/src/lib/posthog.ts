@@ -142,6 +142,48 @@ export function capturePageView(): void {
   posthog.capture("$pageview");
 }
 
+interface OnboardingStepViewedTelemetry {
+  readonly telemetryKey: string;
+  readonly step: string;
+  readonly stepKey: string;
+  readonly currentStepIndex: number;
+  readonly visibleSteps: readonly string[];
+  readonly selectedConnectors: readonly string[];
+  readonly isUseCase: boolean;
+  readonly isAdmin: boolean;
+}
+
+const lastOnboardingStepTelemetryKey$ = state<string | null>(null);
+
+export function captureOnboardingStepViewed(
+  args: Omit<OnboardingStepViewedTelemetry, "telemetryKey">,
+): void {
+  if (!POSTHOG_KEY) {
+    return;
+  }
+  posthog.capture("onboarding_step_viewed", {
+    step: args.step,
+    step_key: args.stepKey,
+    current_step_index: args.currentStepIndex,
+    visible_step_count: args.visibleSteps.length,
+    visible_steps: args.visibleSteps,
+    selected_connector_count: args.selectedConnectors.length,
+    selected_connectors: args.selectedConnectors,
+    is_use_case: args.isUseCase,
+    is_admin: args.isAdmin,
+  });
+}
+
+export const captureOnboardingStepViewed$ = command(
+  ({ get, set }, args: OnboardingStepViewedTelemetry): void => {
+    if (get(lastOnboardingStepTelemetryKey$) === args.telemetryKey) {
+      return;
+    }
+    set(lastOnboardingStepTelemetryKey$, args.telemetryKey);
+    captureOnboardingStepViewed(args);
+  },
+);
+
 const firstSkeletonHideReported$ = state(false);
 
 /**

@@ -9,6 +9,7 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
+import { capturePostHogEvent } from "../../lib/posthog";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
@@ -216,6 +217,28 @@ function successResponse(
   };
 }
 
+async function captureRunTerminalTelemetry(args: {
+  readonly event: "task_completed_successfully" | "task_failed";
+  readonly runId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly status: TerminalStatus;
+  readonly exitCode: number | undefined;
+}): Promise<void> {
+  await capturePostHogEvent({
+    event: args.event,
+    distinctId: args.userId,
+    groups: { organizationId: args.orgId },
+    properties: {
+      org_id: args.orgId,
+      user_id: args.userId,
+      run_id: args.runId,
+      run_status: args.status,
+      exit_code: args.exitCode,
+    },
+  });
+}
+
 async function currentStatusResponse(
   db: Db,
   input: CompleteAgentRunInput,
@@ -330,6 +353,16 @@ async function handleSuccessfulCompletion(
   });
   signal.throwIfAborted();
 
+  await captureRunTerminalTelemetry({
+    event: "task_completed_successfully",
+    runId: input.body.runId,
+    orgId: run.orgId,
+    userId: run.userId,
+    status: "completed",
+    exitCode: input.body.exitCode,
+  });
+  signal.throwIfAborted();
+
   L.debug("Run completed successfully", { runId: input.body.runId });
   return successResponse(input.body.runId, run.orgId, "completed");
 }
@@ -362,6 +395,16 @@ async function handleFailedCompletion(
 
   await publishRunChangedForUserSafely(run.userId, input.body.runId, {
     status: "failed",
+  });
+  signal.throwIfAborted();
+
+  await captureRunTerminalTelemetry({
+    event: "task_failed",
+    runId: input.body.runId,
+    orgId: run.orgId,
+    userId: run.userId,
+    status: "failed",
+    exitCode: input.body.exitCode,
   });
   signal.throwIfAborted();
 
