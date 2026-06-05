@@ -11,6 +11,10 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  type HostedArtifactKind,
+  hostedArtifactKindSchema,
+} from "@vm0/api-contracts/contracts/zero-host";
+import {
   formatRunErrorForExternalSurface,
   isActionableRunError,
   isGenericRunErrorForDisplay,
@@ -237,6 +241,13 @@ function inferMimetype(filename: string): string {
   return ext
     ? (EXT_MIMETYPE_MAP[ext] ?? "application/octet-stream")
     : "application/octet-stream";
+}
+
+function parseHostedArtifactKind(
+  value: unknown,
+): HostedArtifactKind | undefined {
+  const parsed = hostedArtifactKindSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function hasAgentSessionId(
@@ -1038,19 +1049,21 @@ export function zeroChatThreadArtifacts(args: {
         )
         .orderBy(asc(agentRuns.createdAt), asc(runUploadedFiles.createdAt));
 
-      const hostedSiteRunIds = new Set(
+      const hostedArtifactRunIds = new Set(
         rows
           .filter((row) => {
-            return row.metadata.artifactKind === "hosted-site";
+            return (
+              parseHostedArtifactKind(row.metadata.artifactKind) !== undefined
+            );
           })
           .map((row) => {
             return row.runId;
           }),
       );
       const visibleRows = rows.filter((row) => {
+        const artifactKind = parseHostedArtifactKind(row.metadata.artifactKind);
         return (
-          !hostedSiteRunIds.has(row.runId) ||
-          row.metadata.artifactKind === "hosted-site"
+          !hostedArtifactRunIds.has(row.runId) || artifactKind !== undefined
         );
       });
 
@@ -1073,12 +1086,14 @@ export function zeroChatThreadArtifacts(args: {
           runId: row.runId,
           files: [],
         };
+        const artifactKind = parseHostedArtifactKind(row.metadata.artifactKind);
         existing.files.push({
           id: row.externalId,
           filename,
           contentType: row.contentType ?? inferMimetype(filename),
           size: row.sizeBytes ?? 0,
           url: row.url,
+          ...(artifactKind ? { artifactKind } : {}),
           createdAt: row.createdAt.toISOString(),
         });
         byRun.set(row.runId, existing);
