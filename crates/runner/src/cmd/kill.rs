@@ -69,25 +69,46 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
     let current = match rediscover_same_target(&args, &initial.target).await {
         Ok(current) => current,
         Err(error) => {
-            let discovered_after_error = process::discover_all().await;
-            if error.allows_disappeared_orphan_cleanup()
-                && should_cleanup_disappeared_initial_orphan(
+            if error.allows_disappeared_orphan_cleanup() {
+                if let Ok(refreshed) = rediscover_same_sandbox_process(&initial.target).await
+                    && process::is_orphan(refreshed.target.pid, &refreshed.runner_pids).await
+                {
+                    let outcome = kill_orphan_process_group(&refreshed.target).await;
+                    report_kill_outcome(&initial.target, &refreshed.target, &outcome, control)
+                        .await;
+                    info!(
+                        sandbox_id = %refreshed.target.sandbox_id,
+                        pid = refreshed.target.pid,
+                        orphan = true,
+                        rediscover_error = %error,
+                        outcome = ?outcome,
+                        "kill command fell back to orphan kill after target rediscovery failed"
+                    );
+                    return if outcome.is_success() {
+                        Ok(ExitCode::SUCCESS)
+                    } else {
+                        Ok(ExitCode::FAILURE)
+                    };
+                }
+
+                let discovered_after_error = process::discover_all().await;
+                if should_cleanup_disappeared_initial_orphan(
                     &initial.target,
                     is_initial_orphan,
                     &discovered_after_error,
-                )
-            {
-                let outcome = KillOutcome::OrphanAlreadyExited(initial.target.clone());
-                report_kill_outcome(&initial.target, &initial.target, &outcome, control).await;
-                info!(
-                    sandbox_id = %initial.target.sandbox_id,
-                    pid = initial.target.pid,
-                    orphan = true,
-                    rediscover_error = %error,
-                    outcome = ?outcome,
-                    "kill command cleaned up orphan target that disappeared during rediscovery"
-                );
-                return Ok(ExitCode::SUCCESS);
+                ) {
+                    let outcome = KillOutcome::OrphanAlreadyExited(initial.target.clone());
+                    report_kill_outcome(&initial.target, &initial.target, &outcome, control).await;
+                    info!(
+                        sandbox_id = %initial.target.sandbox_id,
+                        pid = initial.target.pid,
+                        orphan = true,
+                        rediscover_error = %error,
+                        outcome = ?outcome,
+                        "kill command cleaned up orphan target that disappeared during rediscovery"
+                    );
+                    return Ok(ExitCode::SUCCESS);
+                }
             }
             println!(
                 "Refused to kill sandbox {} (PID {}) - {error}",
@@ -97,14 +118,7 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
         }
     };
     let is_orphan = process::is_orphan(current.target.pid, &current.runner_pids).await;
-    let outcome = kill_current_target(
-        &args,
-        &initial.target,
-        current.target.clone(),
-        is_orphan,
-        control,
-    )
-    .await;
+    let outcome = kill_current_target(current.target.clone(), is_orphan, control).await;
     report_kill_outcome(&initial.target, &current.target, &outcome, control).await;
 
     info!(
@@ -122,6 +136,7 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
     }
 }
 
+#[derive(Debug)]
 enum RediscoverTargetError {
     Resolve(String),
     Changed(String),
@@ -234,6 +249,57 @@ async fn rediscover_same_target(
     ensure_same_target_after_confirmation(args, initial, &current.target)
         .map_err(RediscoverTargetError::Changed)?;
     Ok(current)
+}
+
+async fn rediscover_same_sandbox_process(
+    expected: &KillTarget,
+) -> Result<ResolvedKillTarget, RediscoverTargetError> {
+    let discovered = process::discover_all().await;
+    let runner_pids: Vec<u32> = discovered.runners.iter().map(|r| r.pid).collect();
+    let target = resolve_same_sandbox_process(expected, &discovered)?;
+
+    Ok(ResolvedKillTarget {
+        target,
+        runner_pids,
+    })
+}
+
+fn resolve_same_sandbox_process(
+    expected: &KillTarget,
+    discovered: &DiscoveredProcesses,
+) -> Result<KillTarget, RediscoverTargetError> {
+    let matches: Vec<&FirecrackerProcessInfo> = discovered
+        .firecrackers
+        .iter()
+        .filter(|process| process.sandbox_id == expected.sandbox_id)
+        .collect();
+    let process = match matches.as_slice() {
+        [single] => *single,
+        [] => {
+            return Err(RediscoverTargetError::Resolve(format!(
+                "sandbox '{}' no longer has a firecracker process",
+                expected.sandbox_id
+            )));
+        }
+        _ => {
+            let pids: Vec<String> = matches
+                .iter()
+                .map(|process| process.pid.to_string())
+                .collect();
+            return Err(RediscoverTargetError::Resolve(format!(
+                "sandbox '{}' has multiple firecracker processes: PID {}",
+                expected.sandbox_id,
+                pids.join(", ")
+            )));
+        }
+    };
+    let target = KillTarget::from(process);
+    if !same_firecracker_identity(expected, &target) {
+        return Err(RediscoverTargetError::Changed(
+            "sandbox process already exited or changed identity".into(),
+        ));
+    }
+    Ok(target)
 }
 
 fn ensure_same_target_after_confirmation(
@@ -368,8 +434,6 @@ fn resolve_by_sandbox_id<'a>(
 // ---------------------------------------------------------------------------
 
 async fn kill_current_target(
-    args: &KillArgs,
-    initial: &KillTarget,
     current: KillTarget,
     is_orphan: bool,
     control: &dyn SandboxControl,
@@ -381,16 +445,15 @@ async fn kill_current_target(
     match control.kill_remote(&current.sandbox_id).await {
         Ok(RemoteKillResult::RefusedIdle) => KillOutcome::RefusedManagedIdle,
         Ok(result) => KillOutcome::OwnerAccepted(result),
-        Err(error) => retry_as_orphan_if_owner_disappeared(args, initial, error).await,
+        Err(error) => retry_as_orphan_if_owner_disappeared(&current, error).await,
     }
 }
 
 async fn retry_as_orphan_if_owner_disappeared(
-    args: &KillArgs,
-    initial: &KillTarget,
+    expected: &KillTarget,
     owner_error: SandboxControlError,
 ) -> KillOutcome {
-    let refreshed = match rediscover_same_target(args, initial).await {
+    let refreshed = match rediscover_same_sandbox_process(expected).await {
         Ok(refreshed) => refreshed,
         Err(error) => return KillOutcome::RefusedTargetChanged(error.to_string()),
     };
@@ -838,6 +901,16 @@ mod tests {
         }
     }
 
+    fn make_fc_from_target(target: &KillTarget) -> FirecrackerProcessInfo {
+        FirecrackerProcessInfo {
+            pid: target.pid,
+            ppid: target.ppid,
+            sandbox_id: target.sandbox_id.clone(),
+            base_dir: target.base_dir.clone(),
+            identity: target.identity.clone(),
+        }
+    }
+
     fn process_stat(identity: &FirecrackerProcessIdentity) -> ProcessStat {
         ProcessStat {
             state: 'S',
@@ -963,6 +1036,28 @@ mod tests {
         assert!(error.contains("run target changed"), "{error}");
         assert!(error.contains("sbox-old"), "{error}");
         assert!(error.contains("sbox-new"), "{error}");
+    }
+
+    #[test]
+    fn same_sandbox_fallback_accepts_exact_identity_without_run_status() {
+        let expected = make_target(200, "sbox-123");
+        let discovered = discovered_with_firecrackers(vec![make_fc_from_target(&expected)]);
+
+        let target = resolve_same_sandbox_process(&expected, &discovered).unwrap();
+
+        assert_eq!(target, expected);
+    }
+
+    #[test]
+    fn same_sandbox_fallback_rejects_changed_process_identity() {
+        let expected = make_target(200, "sbox-123");
+        let mut changed = make_target(200, "sbox-123");
+        changed.identity.as_mut().unwrap().starttime += 1;
+        let discovered = discovered_with_firecrackers(vec![make_fc_from_target(&changed)]);
+
+        let error = resolve_same_sandbox_process(&expected, &discovered).unwrap_err();
+
+        assert!(error.to_string().contains("changed identity"));
     }
 
     fn discovered_with_firecrackers(
@@ -1175,15 +1270,9 @@ mod tests {
     #[tokio::test]
     async fn managed_target_requests_owner_control() {
         let control = MockSandboxControl::new("/tmp/test");
-        let initial = make_target(200, "sbox-123");
-        let current = initial.clone();
-        let args = KillArgs {
-            run: None,
-            sandbox: Some("sbox-123".into()),
-            force: true,
-        };
+        let current = make_target(200, "sbox-123");
 
-        let outcome = kill_current_target(&args, &initial, current, false, &control).await;
+        let outcome = kill_current_target(current, false, &control).await;
 
         assert!(matches!(
             outcome,
@@ -1196,15 +1285,9 @@ mod tests {
     async fn managed_idle_target_is_refused() {
         let control = MockSandboxControl::new("/tmp/test");
         control.push_kill_remote_result(Ok(RemoteKillResult::RefusedIdle));
-        let initial = make_target(200, "sbox-123");
-        let current = initial.clone();
-        let args = KillArgs {
-            run: None,
-            sandbox: Some("sbox-123".into()),
-            force: true,
-        };
+        let current = make_target(200, "sbox-123");
 
-        let outcome = kill_current_target(&args, &initial, current, false, &control).await;
+        let outcome = kill_current_target(current, false, &control).await;
 
         assert!(matches!(outcome, KillOutcome::RefusedManagedIdle));
         assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
@@ -1213,15 +1296,9 @@ mod tests {
     #[tokio::test]
     async fn orphan_target_uses_current_reresolved_identity() {
         let control = MockSandboxControl::new("/tmp/test");
-        let args = KillArgs {
-            run: Some("run".into()),
-            sandbox: None,
-            force: true,
-        };
-        let initial = make_target(u32::MAX - 3_000, "sbox-123");
         let current = make_target(u32::MAX - 2_000, "sbox-123");
 
-        let outcome = kill_current_target(&args, &initial, current.clone(), true, &control).await;
+        let outcome = kill_current_target(current.clone(), true, &control).await;
 
         match outcome {
             KillOutcome::OrphanAlreadyExited(target) => assert_eq!(target, current),
