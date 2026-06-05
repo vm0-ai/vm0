@@ -3546,7 +3546,7 @@ function RecommendedFollowupList({
             <span className="shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground">
               <RecommendedFollowupIcon followup={followup} />
             </span>
-            <span className="min-w-0 flex-1 truncate text-xs font-medium leading-5 text-muted-foreground group-hover:text-foreground">
+            <span className="min-w-0 flex-1 break-words text-xs font-medium leading-5 text-muted-foreground group-hover:text-foreground">
               {followup.prompt}
             </span>
             <IconArrowUpRight
