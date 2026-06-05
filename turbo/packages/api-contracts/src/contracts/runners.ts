@@ -174,6 +174,136 @@ export const storageProvisioningSourceSchema = z.object({
   manifestUrl: z.string().min(1).optional(),
 });
 
+function guestPathSegmentIssue(
+  segment: string,
+  label: string,
+): string | undefined {
+  if (segment === "" || segment === "." || segment === "..") {
+    return `${label} cannot contain empty or traversal segments`;
+  }
+  if (segment.includes("/") || segment.includes("\0")) {
+    return `${label} cannot contain slash or NUL bytes`;
+  }
+  return undefined;
+}
+
+function guestRelativeSubPathIssue(path: string): string | undefined {
+  if (path === "") {
+    return undefined;
+  }
+  if (path.startsWith("/") || path.includes("\0")) {
+    return "destination subPath must be relative";
+  }
+  for (const segment of path.split("/")) {
+    const issue = guestPathSegmentIssue(segment, "destination subPath");
+    if (issue) {
+      return issue;
+    }
+  }
+  return undefined;
+}
+
+type StorageProvisioningDestinationCandidate = {
+  readonly type: z.infer<typeof storageProvisioningDestinationTypeSchema>;
+  readonly name?: string;
+  readonly subPath?: string;
+  readonly framework?: z.infer<typeof storageProvisioningFrameworkSchema>;
+  readonly skillName?: string;
+};
+
+type DestinationIssueAdder = (message: string, path: string[]) => void;
+
+function addDestinationSubPathIssue(
+  subPath: string | undefined,
+  addIssue: DestinationIssueAdder,
+): void {
+  const issue =
+    subPath !== undefined ? guestRelativeSubPathIssue(subPath) : undefined;
+  if (issue) {
+    addIssue(issue, ["subPath"]);
+  }
+}
+
+function validateWorkspaceProvisioningDestination(
+  destination: StorageProvisioningDestinationCandidate,
+  addIssue: DestinationIssueAdder,
+): void {
+  if (destination.name !== undefined) {
+    addIssue("workspace destinations cannot include name", ["name"]);
+  }
+  if (destination.framework !== undefined) {
+    addIssue("workspace destinations cannot include framework", ["framework"]);
+  }
+  if (destination.skillName !== undefined) {
+    addIssue("workspace destinations cannot include skillName", ["skillName"]);
+  }
+  addDestinationSubPathIssue(destination.subPath, addIssue);
+}
+
+function validateMntProvisioningDestination(
+  destination: StorageProvisioningDestinationCandidate,
+  addIssue: DestinationIssueAdder,
+): void {
+  if (destination.name === undefined) {
+    addIssue("mnt destinations require name", ["name"]);
+  } else {
+    const issue = guestPathSegmentIssue(
+      destination.name,
+      "mnt destination name",
+    );
+    if (issue) {
+      addIssue(issue, ["name"]);
+    }
+  }
+  if (destination.framework !== undefined) {
+    addIssue("mnt destinations cannot include framework", ["framework"]);
+  }
+  if (destination.skillName !== undefined) {
+    addIssue("mnt destinations cannot include skillName", ["skillName"]);
+  }
+  addDestinationSubPathIssue(destination.subPath, addIssue);
+}
+
+function validateFrameworkProvisioningDestination(
+  destination: StorageProvisioningDestinationCandidate,
+  addIssue: DestinationIssueAdder,
+): void {
+  if (destination.framework === undefined) {
+    addIssue(`${destination.type} destinations require framework`, [
+      "framework",
+    ]);
+  }
+  if (destination.name !== undefined) {
+    addIssue(`${destination.type} destinations cannot include name`, ["name"]);
+  }
+  if (destination.subPath !== undefined) {
+    addIssue(`${destination.type} destinations cannot include subPath`, [
+      "subPath",
+    ]);
+  }
+
+  if (destination.type === "framework-skill") {
+    if (destination.skillName === undefined) {
+      addIssue("framework-skill destinations require skillName", ["skillName"]);
+    } else {
+      const issue = guestPathSegmentIssue(
+        destination.skillName,
+        "framework skill name",
+      );
+      if (issue) {
+        addIssue(issue, ["skillName"]);
+      }
+    }
+    return;
+  }
+
+  if (destination.skillName !== undefined) {
+    addIssue(`${destination.type} destinations cannot include skillName`, [
+      "skillName",
+    ]);
+  }
+}
+
 export const storageProvisioningDestinationSchema = z
   .object({
     type: storageProvisioningDestinationTypeSchema,
@@ -192,65 +322,16 @@ export const storageProvisioningDestinationSchema = z
     };
 
     if (destination.type === "workspace") {
-      if (destination.name !== undefined) {
-        addIssue("workspace destinations cannot include name", ["name"]);
-      }
-      if (destination.framework !== undefined) {
-        addIssue("workspace destinations cannot include framework", [
-          "framework",
-        ]);
-      }
-      if (destination.skillName !== undefined) {
-        addIssue("workspace destinations cannot include skillName", [
-          "skillName",
-        ]);
-      }
+      validateWorkspaceProvisioningDestination(destination, addIssue);
       return;
     }
 
     if (destination.type === "mnt") {
-      if (destination.name === undefined) {
-        addIssue("mnt destinations require name", ["name"]);
-      }
-      if (destination.framework !== undefined) {
-        addIssue("mnt destinations cannot include framework", ["framework"]);
-      }
-      if (destination.skillName !== undefined) {
-        addIssue("mnt destinations cannot include skillName", ["skillName"]);
-      }
+      validateMntProvisioningDestination(destination, addIssue);
       return;
     }
 
-    if (destination.framework === undefined) {
-      addIssue(`${destination.type} destinations require framework`, [
-        "framework",
-      ]);
-    }
-    if (destination.name !== undefined) {
-      addIssue(`${destination.type} destinations cannot include name`, [
-        "name",
-      ]);
-    }
-    if (destination.subPath !== undefined) {
-      addIssue(`${destination.type} destinations cannot include subPath`, [
-        "subPath",
-      ]);
-    }
-
-    if (destination.type === "framework-skill") {
-      if (destination.skillName === undefined) {
-        addIssue("framework-skill destinations require skillName", [
-          "skillName",
-        ]);
-      }
-      return;
-    }
-
-    if (destination.skillName !== undefined) {
-      addIssue(`${destination.type} destinations cannot include skillName`, [
-        "skillName",
-      ]);
-    }
+    validateFrameworkProvisioningDestination(destination, addIssue);
   });
 
 export const storageProvisioningEntrySchema = z

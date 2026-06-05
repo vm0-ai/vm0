@@ -36,8 +36,33 @@ function splitStrictAbsoluteGuestPath(
   return normalized;
 }
 
+function validateGuestPathSegment(segment: string, label: string): void {
+  if (segment === "" || segment === "." || segment === "..") {
+    throw new Error(`${label} cannot contain empty or traversal segments`);
+  }
+  if (segment.includes("/") || segment.includes("\0")) {
+    throw new Error(`${label} cannot contain slash or NUL bytes`);
+  }
+}
+
+function validateGuestRelativeSubPath(path: string): void {
+  if (path === "") {
+    return;
+  }
+  if (path.startsWith("/") || path.includes("\0")) {
+    throw new Error("destination subPath must be relative");
+  }
+  for (const segment of path.split("/")) {
+    validateGuestPathSegment(segment, "destination subPath");
+  }
+}
+
 function joinGuestPath(basePath: string, subPath: string | undefined): string {
-  return subPath ? `${basePath}/${subPath}` : basePath;
+  if (!subPath) {
+    return basePath;
+  }
+  validateGuestRelativeSubPath(subPath);
+  return `${basePath}/${subPath}`;
 }
 
 function subPath(
@@ -122,6 +147,7 @@ export function resolveProvisioningDestinationMountPath(
       if (!destination.name) {
         throw new Error("mnt provisioning destinations require name");
       }
+      validateGuestPathSegment(destination.name, "mnt destination name");
       return joinGuestPath(
         `${MNT_ROOT}/${destination.name}`,
         destination.subPath,
@@ -140,6 +166,7 @@ export function resolveProvisioningDestinationMountPath(
       if (!destination.skillName) {
         throw new Error("framework skill destinations require skillName");
       }
+      validateGuestPathSegment(destination.skillName, "framework skill name");
       if (destination.framework === "codex") {
         return `${CODEX_HOME_DIR}/skills/${destination.skillName}`;
       }

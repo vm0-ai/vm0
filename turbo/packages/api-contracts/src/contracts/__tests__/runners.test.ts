@@ -316,6 +316,53 @@ describe("runner storage manifest contract", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects unsafe storage provisioning destination path components", () => {
+    for (const destination of [
+      {
+        type: "workspace",
+        subPath: "../secrets",
+      },
+      {
+        type: "workspace",
+        subPath: "reports//today",
+      },
+      {
+        type: "mnt",
+        name: ".",
+      },
+      {
+        type: "mnt",
+        name: "docs",
+        subPath: "/absolute",
+      },
+      {
+        type: "framework-skill",
+        framework: "codex",
+        skillName: "research/notes",
+      },
+    ]) {
+      const result = storageProvisioningManifestSchema.safeParse({
+        version: "2",
+        entries: [
+          {
+            intent:
+              destination.type === "framework-skill" ? "skill" : "user-volume",
+            source: {
+              kind: "storage",
+              name: "docs",
+              vasStorageName: "docs",
+              vasVersionId: "version-1",
+              archiveUrl: "https://storage.example/docs.tar.gz",
+            },
+            destination,
+          },
+        ],
+      });
+
+      expect(result.success).toBe(false);
+    }
+  });
+
   it("rejects artifact provisioning sources without storage ids", () => {
     const result = storageProvisioningManifestSchema.safeParse({
       version: "2",
