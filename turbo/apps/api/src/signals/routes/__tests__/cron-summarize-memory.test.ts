@@ -402,7 +402,10 @@ async function findItems(summaryId: string): Promise<string[]> {
   });
 }
 
-function mockLlm(content = "Today Zero learned one new thing about you."): {
+function mockLlm(
+  content = "Today Zero learned one new thing about you.",
+  finishReason = "stop",
+): {
   calls: number;
   requests: OpenRouterRequestBody[];
 } {
@@ -415,7 +418,9 @@ function mockLlm(content = "Today Zero learned one new thing about you."): {
     http.post(OPENROUTER_URL, async ({ request }) => {
       state.calls++;
       state.requests.push((await request.json()) as OpenRouterRequestBody);
-      return HttpResponse.json({ choices: [{ message: { content } }] });
+      return HttpResponse.json({
+        choices: [{ finish_reason: finishReason, message: { content } }],
+      });
     }),
   );
   return state;
@@ -634,6 +639,28 @@ describe("GET /api/cron/summarize-memory", () => {
     );
 
     expect(response.body).toStrictEqual({ summarized: 7 });
+    const summary = await findSummary(seeded.fixture);
+    expect(summary?.summary).toBeNull();
+    await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(2);
+  });
+
+  it("persists deterministic items with a null summary when the LLM response is incomplete", async () => {
+    const llm = mockLlm(
+      "Zero learned about a runner claim bug followed by a",
+      "length",
+    );
+    const seeded = await seedTwoVersions(
+      [{ path: "facts/pets.md", content: "Has a dog" }],
+      [{ path: "facts/coffee.md", content: "Drinks oat milk lattes" }],
+    );
+
+    const response = await accept(
+      apiClient().summarize({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ summarized: 7 });
+    expect(llm.calls).toBe(1);
     const summary = await findSummary(seeded.fixture);
     expect(summary?.summary).toBeNull();
     await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(2);
