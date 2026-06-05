@@ -155,14 +155,147 @@ async fn observe_detached_finalizer<T: Send + 'static>(handle: JoinHandle<Result
     }
 }
 
-fn run_netlink_critical_section<T>(f: impl FnOnce() -> T) -> T {
-    // Keep connect/disconnect ownership transitions synchronous from the caller's
-    // point of view; `spawn_blocking().await` would add a cancellation boundary.
-    match tokio::runtime::Handle::try_current().map(|handle| handle.runtime_flavor()) {
-        Ok(tokio::runtime::RuntimeFlavor::MultiThread) => tokio::task::block_in_place(f),
-        Ok(tokio::runtime::RuntimeFlavor::CurrentThread) | Err(_) => f(),
-        Ok(_) => f(),
+async fn run_netlink_critical_section<T>(
+    operation: &'static str,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> Result<T>
+where
+    T: Send + 'static,
+{
+    match tokio::task::spawn_blocking(f).await {
+        Ok(value) => Ok(value),
+        Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+        Err(e) => Err(error::NbdCowError::Io(std::io::Error::other(format!(
+            "{operation} task was cancelled: {e}",
+        )))),
     }
+}
+
+struct ConnectDeviceOutcome {
+    device_index: u32,
+    result: Option<std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>>,
+}
+
+impl ConnectDeviceOutcome {
+    fn new(
+        device_index: u32,
+        result: std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>,
+    ) -> Self {
+        Self {
+            device_index,
+            result: Some(result),
+        }
+    }
+
+    fn into_result(
+        mut self,
+    ) -> std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError> {
+        match self.result.take() {
+            Some(result) => result,
+            None => Err(netlink::ConnectDeviceError::NotSent {
+                source: error::NbdCowError::Io(std::io::Error::other(
+                    "connect device outcome consumed twice",
+                )),
+            }),
+        }
+    }
+}
+
+impl Drop for ConnectDeviceOutcome {
+    fn drop(&mut self) {
+        let Some(result) = self.result.take() else {
+            return;
+        };
+
+        let connect_tid = match result {
+            Ok(success) => success.connect_tid,
+            Err(netlink::ConnectDeviceError::AmbiguousAfterSend { connect_tid, .. }) => connect_tid,
+            Err(
+                netlink::ConnectDeviceError::NotSent { .. }
+                | netlink::ConnectDeviceError::DefiniteAfterSend { .. },
+            ) => return,
+        };
+
+        tracing::warn!(
+            device_index = self.device_index,
+            connect_tid,
+            "NBD connect result dropped before observation; disconnecting owned device"
+        );
+        disconnect_connected_if_owned(ConnectedDevice {
+            index: self.device_index,
+            connect_tid,
+        });
+    }
+}
+
+async fn connect_device_with_state_critical_section(
+    device_index: u32,
+    client_fds: Vec<std::os::fd::OwnedFd>,
+    size: u64,
+    block_size: u64,
+) -> std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError> {
+    let outcome = run_netlink_critical_section("NBD connect", move || {
+        ConnectDeviceOutcome::new(
+            device_index,
+            netlink::connect_device_with_state(device_index, &client_fds, size, block_size),
+        )
+    })
+    .await
+    .map_err(|source| netlink::ConnectDeviceError::NotSent { source })?;
+
+    outcome.into_result()
+}
+
+struct DisconnectOutcome {
+    device_index: u32,
+    result: Option<Result<()>>,
+}
+
+impl DisconnectOutcome {
+    fn new(device_index: u32, result: Result<()>) -> Self {
+        Self {
+            device_index,
+            result: Some(result),
+        }
+    }
+
+    fn into_result(mut self) -> Result<()> {
+        match self.result.take() {
+            Some(result) => result,
+            None => Err(error::NbdCowError::Io(std::io::Error::other(
+                "disconnect outcome consumed twice",
+            ))),
+        }
+    }
+}
+
+impl Drop for DisconnectOutcome {
+    fn drop(&mut self) {
+        if let Some(Err(e)) = self.result.take() {
+            tracing::warn!(
+                device_index = self.device_index,
+                error = %e,
+                "detached NBD disconnect failed"
+            );
+        }
+    }
+}
+
+async fn disconnect_device_critical_section(device_index: u32) -> Result<()> {
+    run_netlink_critical_section("NBD disconnect", move || {
+        DisconnectOutcome::new(device_index, netlink::disconnect(device_index))
+    })
+    .await?
+    .into_result()
+}
+
+async fn disconnect_connected_if_owned_critical_section(
+    connected: ConnectedDevice,
+) -> Result<bool> {
+    run_netlink_critical_section("owned NBD disconnect", move || {
+        disconnect_connected_if_owned(connected)
+    })
+    .await
 }
 
 /// Result of checking NBD device ownership via sysfs PID.
@@ -250,9 +383,22 @@ impl CreateAttemptGuard {
 
     async fn disconnect_owned_and_release(mut self) {
         self.abort_servers().await;
-        let disconnected = self.connected.take().is_some_and(|connected| {
-            run_netlink_critical_section(|| disconnect_connected_if_owned(connected))
-        });
+        let disconnected = match self.connected.take() {
+            Some(connected) => {
+                match disconnect_connected_if_owned_critical_section(connected).await {
+                    Ok(disconnected) => disconnected,
+                    Err(e) => {
+                        tracing::warn!(
+                            device_index = connected.index,
+                            error = %e,
+                            "owned NBD disconnect task failed during create cleanup"
+                        );
+                        false
+                    }
+                }
+            }
+            None => false,
+        };
         if let Some(lease) = self.lease.take() {
             if disconnected {
                 self.pool.release_clean(lease).await;
@@ -264,9 +410,20 @@ impl CreateAttemptGuard {
 
     async fn disconnect_and_release(mut self) -> bool {
         self.abort_servers().await;
-        let disconnected = self.connected.take().is_some_and(|connected| {
-            run_netlink_critical_section(|| netlink::disconnect(connected.index).is_ok())
-        });
+        let disconnected = match self.connected.take() {
+            Some(connected) => match disconnect_device_critical_section(connected.index).await {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::warn!(
+                        device_index = connected.index,
+                        error = %e,
+                        "NBD disconnect task failed during create retry cleanup"
+                    );
+                    false
+                }
+            },
+            None => false,
+        };
         if let Some(lease) = self.lease.take() {
             if disconnected {
                 self.pool.release_clean(lease).await;
@@ -433,14 +590,14 @@ impl NbdCowDevice {
                     return Err(e);
                 }
 
-                match run_netlink_critical_section(|| {
-                    netlink::connect_device_with_state(
-                        device_index,
-                        &client_fds,
-                        size,
-                        BLOCK_SIZE as u64,
-                    )
-                }) {
+                match connect_device_with_state_critical_section(
+                    device_index,
+                    client_fds,
+                    size,
+                    BLOCK_SIZE as u64,
+                )
+                .await
+                {
                     Ok(connected) => {
                         attempt.mark_connected(connected.connect_tid);
                         break attempt;
@@ -601,8 +758,13 @@ impl NbdCowDevice {
         if !self.disconnected {
             match self.device_ownership() {
                 DeviceOwnership::Ours => {
-                    run_netlink_critical_section(|| netlink::disconnect(self.device_index))?;
+                    // The blocking task keeps running if this future is
+                    // cancelled; do not let Drop issue a second disconnect.
                     self.disconnected = true;
+                    if let Err(e) = disconnect_device_critical_section(self.device_index).await {
+                        self.disconnected = false;
+                        return Err(e);
+                    }
                 }
                 DeviceOwnership::Foreign(pid) => {
                     self.disconnected = true;
@@ -1103,23 +1265,32 @@ mod tests {
         }
     }
 
-    #[test]
-    fn netlink_critical_section_runs_without_runtime() {
-        let value = run_netlink_critical_section(|| 42);
-
-        assert_eq!(value, 42);
-    }
-
     #[tokio::test(flavor = "current_thread")]
-    async fn netlink_critical_section_current_thread_fallback_runs() {
-        let value = run_netlink_critical_section(|| "connected");
+    async fn netlink_critical_section_current_thread_runtime_runs() {
+        let value = run_netlink_critical_section("test netlink operation", || "connected")
+            .await
+            .unwrap();
 
         assert_eq!(value, "connected");
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn netlink_critical_section_multi_thread_runtime_runs() {
-        let value = run_netlink_critical_section(|| "connected");
+        let value = run_netlink_critical_section("test netlink operation", || "connected")
+            .await
+            .unwrap();
+
+        assert_eq!(value, "connected");
+    }
+
+    #[test]
+    fn netlink_critical_section_block_on_multi_thread_runtime_runs() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let value = runtime.block_on(async {
+            run_netlink_critical_section("test netlink operation", || "connected")
+                .await
+                .unwrap()
+        });
 
         assert_eq!(value, "connected");
     }
@@ -1128,9 +1299,52 @@ mod tests {
     fn netlink_critical_section_entered_multi_thread_runtime_runs() {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let _guard = runtime.enter();
-        let value = run_netlink_critical_section(|| "connected");
+        let value = runtime.block_on(async {
+            run_netlink_critical_section("test netlink operation", || "connected")
+                .await
+                .unwrap()
+        });
 
         assert_eq!(value, "connected");
+    }
+
+    #[test]
+    fn netlink_critical_section_local_set_multi_thread_runtime_runs() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let local = tokio::task::LocalSet::new();
+        let value = local.block_on(&runtime, async {
+            run_netlink_critical_section("test netlink operation", || "connected")
+                .await
+                .unwrap()
+        });
+
+        assert_eq!(value, "connected");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn netlink_critical_section_continues_after_awaiter_abort() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = std::sync::mpsc::channel();
+
+        let handle = tokio::spawn(async move {
+            run_netlink_critical_section("test netlink operation", move || {
+                let _ = started_tx.send(());
+                finish_rx.recv().expect("finish signal");
+                let _ = done_tx.send(());
+            })
+            .await
+            .unwrap();
+        });
+
+        started_rx.await.unwrap();
+        handle.abort();
+        finish_tx.send(()).unwrap();
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), done_rx)
+            .await
+            .unwrap()
+            .unwrap();
     }
 
     #[tokio::test]
