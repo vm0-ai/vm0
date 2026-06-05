@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.411.1](https://github.com/vm0-ai/vm0/compare/web-v12.411.0...web-v12.411.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* remove schedule chat migration flow ([#16262](https://github.com/vm0-ai/vm0/issues/16262)) ([5df9c43](https://github.com/vm0-ai/vm0/commit/5df9c43dadd24b3b03ea5c68b7331052bd446613))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.1
+    * @vm0/core bumped to 8.311.1
+
 ## [12.411.0](https://github.com/vm0-ai/vm0/compare/web-v12.410.1...web-v12.411.0) (2026-06-05)
 
 

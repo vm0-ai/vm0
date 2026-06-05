@@ -3,12 +3,13 @@ import {
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
   zeroScheduleRunContract,
-  zeroScheduleMigrateChatContract,
   type ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
 import { mockApi } from "../msw-contract.ts";
 
 let mockSchedules: ScheduleResponse[] = [];
+
+const DEFAULT_CHAT_THREAD_ID = "d0000000-0000-4000-a000-000000000001";
 
 export function createMockScheduleResponse(
   overrides?: Partial<ScheduleResponse>,
@@ -35,7 +36,7 @@ export function createMockScheduleResponse(
     lastRunAt: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
-    chatThreadId: null,
+    chatThreadId: DEFAULT_CHAT_THREAD_ID,
     createdAt: "2026-03-01T00:00:00Z",
     updatedAt: "2026-03-01T00:00:00Z",
     ...overrides,
@@ -81,7 +82,7 @@ export const apiSchedulesHandlers = [
       lastRunAt: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
-      chatThreadId: body.chatThreadId ?? null,
+      chatThreadId: body.chatThreadId ?? crypto.randomUUID(),
       createdAt: now,
       updatedAt: now,
     };
@@ -135,29 +136,5 @@ export const apiSchedulesHandlers = [
   // POST /api/zero/schedules/run
   mockApi(zeroScheduleRunContract.run, ({ respond }) =>
     respond(201, { runId: crypto.randomUUID() }),
-  ),
-
-  // POST /api/zero/schedules/:name/migrate-to-chat
-  mockApi(
-    zeroScheduleMigrateChatContract.migrateToChat,
-    ({ params, body, respond }) => {
-      const schedule = mockSchedules.find((s) => {
-        return s.name === params.name && s.agentId === body.agentId;
-      });
-      if (!schedule) {
-        return respond(404, {
-          error: { message: "Not found", code: "NOT_FOUND" },
-        });
-      }
-      const updated = {
-        ...schedule,
-        chatThreadId: schedule.chatThreadId ?? crypto.randomUUID(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockSchedules = mockSchedules.map((s) => {
-        return s.id === updated.id ? updated : s;
-      });
-      return respond(200, updated);
-    },
   ),
 ];

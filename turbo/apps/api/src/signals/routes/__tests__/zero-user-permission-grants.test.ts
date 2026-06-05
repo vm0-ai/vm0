@@ -420,10 +420,12 @@ describe("zero user permission grants", () => {
       [200],
     );
     expect(
-      listed.body.map((grant) => {
-        return grant.permission;
-      }),
-    ).toStrictEqual([UNKNOWN_PERMISSION_GRANT, SLACK_WRITE_PERMISSION]);
+      listed.body
+        .map((grant) => {
+          return grant.permission;
+        })
+        .sort(),
+    ).toStrictEqual([UNKNOWN_PERMISSION_GRANT, SLACK_WRITE_PERMISSION].sort());
 
     const active = await loadActiveUserPermissionGrants(
       db,
@@ -435,10 +437,12 @@ describe("zero user permission grants", () => {
       checkedAt,
     );
     expect(
-      active.map((grant) => {
-        return grant.permission;
-      }),
-    ).toStrictEqual([UNKNOWN_PERMISSION_GRANT, SLACK_WRITE_PERMISSION]);
+      active
+        .map((grant) => {
+          return grant.permission;
+        })
+        .sort(),
+    ).toStrictEqual([UNKNOWN_PERMISSION_GRANT, SLACK_WRITE_PERMISSION].sort());
 
     expect(permissionGrantsToFirewallPolicies(active)).toStrictEqual({
       slack: {

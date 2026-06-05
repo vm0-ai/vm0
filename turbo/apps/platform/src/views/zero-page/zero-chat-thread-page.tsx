@@ -957,8 +957,8 @@ function GithubPrTrackingButton({
 
 function ScheduleMenuButton({ threadId }: { threadId: string }) {
   const features = useLastResolved(featureSwitch$);
-  // Shown whenever the ScheduledChat switch is on. The list is scoped to the
-  // schedules linked to this chat thread.
+  // The inner component loads schedules and only renders once this thread has
+  // at least one linked schedule.
   if (!(features?.[FeatureSwitchKey.ScheduledChat] ?? false)) {
     return null;
   }
@@ -969,10 +969,16 @@ function ScheduleMenuButtonInner({ threadId }: { threadId: string }) {
   const navigate = useSet(detachedNavigateTo$);
   const reloadSchedules = useSet(reloadHeaderScheduleMenu$);
   const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
-  const schedules =
+  const lastResolvedSchedules = useLastResolved(headerScheduleMenu$);
+  const allSchedules =
     schedulesLoadable.state === "hasData"
-      ? schedulesForThread(schedulesLoadable.data, threadId)
-      : [];
+      ? schedulesLoadable.data
+      : (lastResolvedSchedules ?? []);
+  const schedules = schedulesForThread(allSchedules, threadId);
+
+  if (schedules.length === 0) {
+    return null;
+  }
 
   return (
     <DropdownMenu
@@ -992,28 +998,24 @@ function ScheduleMenuButtonInner({ threadId }: { threadId: string }) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        {schedules.length === 0 ? (
-          <DropdownMenuItem disabled>No schedules</DropdownMenuItem>
-        ) : (
-          schedules.map((schedule) => {
-            return (
-              <DropdownMenuItem
-                key={schedule.id}
-                onClick={() => {
-                  navigate("/schedules/:scheduleId", {
-                    pathParams: { scheduleId: schedule.id },
-                  });
-                }}
-              >
-                <IconClock
-                  size={15}
-                  className="mr-2 shrink-0 text-muted-foreground"
-                />
-                <span className="truncate">{schedule.title}</span>
-              </DropdownMenuItem>
-            );
-          })
-        )}
+        {schedules.map((schedule) => {
+          return (
+            <DropdownMenuItem
+              key={schedule.id}
+              onClick={() => {
+                navigate("/schedules/:scheduleId", {
+                  pathParams: { scheduleId: schedule.id },
+                });
+              }}
+            >
+              <IconClock
+                size={15}
+                className="mr-2 shrink-0 text-muted-foreground"
+              />
+              <span className="truncate">{schedule.title}</span>
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

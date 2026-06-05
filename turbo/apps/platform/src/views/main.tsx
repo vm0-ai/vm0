@@ -5,7 +5,6 @@ import { Toaster } from "@vm0/ui/components/ui/sonner";
 import { ErrorBoundary } from "./error-boundary.tsx";
 import { Router } from "./router.tsx";
 import { VM0ClerkProvider } from "./clerk/clerk-provider.tsx";
-import { MigrateSchedulesDialogContainer } from "./zero-page/migrate-schedules-dialog.tsx";
 import { subscribeThreadListChanged$ } from "../signals/chat-thread-list-reload.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { detach, Reason } from "../signals/utils.ts";
@@ -23,7 +22,6 @@ export const setupRouter = (
         <VM0ClerkProvider>
           <ErrorBoundary>
             <Router />
-            <MigrateSchedulesDialogContainer />
           </ErrorBoundary>
         </VM0ClerkProvider>
         <Toaster position="top-center" visibleToasts={1} />
