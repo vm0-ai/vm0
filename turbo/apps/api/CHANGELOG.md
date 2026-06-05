@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.107.3](https://github.com/vm0-ai/vm0/compare/api-v1.107.2...api-v1.107.3) (2026-06-05)
+
+
+### Bug Fixes
+
+* reject incomplete memory summaries ([#16308](https://github.com/vm0-ai/vm0/issues/16308)) ([8bc74ad](https://github.com/vm0-ai/vm0/commit/8bc74ad4b3ff4c3735303cb57da79383248045a5))
+
 ## [1.107.2](https://github.com/vm0-ai/vm0/compare/api-v1.107.1...api-v1.107.2) (2026-06-05)
 
 
