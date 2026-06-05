@@ -12,7 +12,7 @@ export const ashby = {
         featureFlag: FeatureSwitchKey.AshbyConnector,
         label: "API Key",
         helpText:
-          "1. In Ashby, open **Admin** → **Integrations** → **API Keys**\n2. Create or select an API key with the candidate and job access your workflow needs\n3. Copy the raw API key and paste it here. Do not base64-encode it; vm0 sends it as the HTTP Basic Auth username with an empty password.",
+          "1. In Ashby, open **Admin** → **Integrations** → **API Keys**\n2. Create or select an API key with the candidate and job access your workflow needs\n3. Copy the raw API key and paste it here.",
         storage: {
           secrets: ["ASHBY_TOKEN"],
           variables: [],
