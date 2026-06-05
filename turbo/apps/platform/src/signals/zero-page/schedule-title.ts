@@ -1,6 +1,6 @@
-export const SCHEDULE_TITLE_EXCERPT_MAX = 30;
+const SCHEDULE_TITLE_EXCERPT_MAX = 30;
 
-export interface ScheduleTitleInput {
+interface ScheduleTitleInput {
   readonly description?: string | null;
   readonly prompt: string;
   readonly name?: string | null;
