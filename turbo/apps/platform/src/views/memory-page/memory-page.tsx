@@ -9,6 +9,7 @@ import { Button, cn } from "@vm0/ui";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 
 import {
+  expandedMemoryEntries$,
   expandedMemoryItems$,
   loadMoreMemoryActivity$,
   memoryActivity$,
@@ -25,6 +26,7 @@ import {
   selectedMemoryFilePath$,
   setMemoryTab$,
   setSelectedMemoryFilePath$,
+  toggleMemoryEntryExpanded$,
   toggleMemoryItemExpanded$,
   type MemoryTab,
 } from "../../signals/memory-page/memory-signals.ts";
@@ -577,6 +579,26 @@ function formatLineStatsText(stats: {
   return parts.length === 0 ? "0" : parts.join(" ");
 }
 
+function getMemoryItemsStats(items: readonly MemoryActivityItem[]): {
+  readonly added: number;
+  readonly removed: number;
+} {
+  return items.reduce(
+    (totals, item) => {
+      return {
+        added: totals.added + item.diff.stats.added,
+        removed: totals.removed + item.diff.stats.removed,
+      };
+    },
+    { added: 0, removed: 0 },
+  );
+}
+
+function formatMemoryFileCount(count: number): string {
+  const noun = count === 1 ? "memory file" : "memory files";
+  return `${count} ${noun} changed`;
+}
+
 function MemoryUpdates() {
   const activityLoadable = useLoadable(memoryActivity$);
   const extraEntries = useLastResolved(memoryActivityExtraEntries$) ?? [];
@@ -660,11 +682,18 @@ function MemoryUpdatesLoadMore({
 }
 
 function MemoryUpdateCard({ entry }: { readonly entry: MemoryActivityEntry }) {
+  const expandedByKey = useGet(expandedMemoryEntries$);
+  const toggleExpanded = useSet(toggleMemoryEntryExpanded$);
   const summary = entry.summary ?? buildFallbackSummary(entry.items);
+  const entryKey = entry.toVersionId;
+  const expanded = expandedByKey[entryKey] ?? false;
+  const hasFiles = entry.items.length > 0;
+  const stats = getMemoryItemsStats(entry.items);
+  const filesListId = `memory-update-files-${entryKey}`;
 
   return (
     <section className="zero-card flex shrink-0 flex-col overflow-hidden">
-      <header className="border-b border-border/70 px-4 py-3">
+      <header className="px-4 py-3">
         <h2 className="text-sm font-semibold tracking-tight text-foreground">
           {formatActivityDate(entry.date)}
         </h2>
@@ -673,13 +702,58 @@ function MemoryUpdateCard({ entry }: { readonly entry: MemoryActivityEntry }) {
           className="mt-2 [&_p]:my-0 [&_p]:text-muted-foreground [&_ul]:my-1.5 [&_ul]:pl-5 [&_li]:my-0.5 [&_li]:text-muted-foreground [&_strong]:text-foreground"
         />
       </header>
-      <div className="flex flex-col gap-2 px-4 py-3">
-        {entry.items.map((item) => {
-          const itemKey = `${entry.toVersionId}:${item.filePath}`;
-          return (
-            <MemoryUpdateItem key={itemKey} itemKey={itemKey} item={item} />
-          );
-        })}
+      <div className="mx-4 border-t border-border/70">
+        <div className="flex min-h-10 items-center justify-between gap-3 py-1.5">
+          <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/60"
+            />
+            <span className="truncate">
+              {formatMemoryFileCount(entry.items.length)}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <MemorySummaryLineStats stats={stats} />
+            {hasFiles ? (
+              <button
+                type="button"
+                aria-label={expanded ? "Hide files" : "View files"}
+                aria-controls={filesListId}
+                aria-expanded={expanded}
+                onClick={() => {
+                  toggleExpanded(entryKey);
+                }}
+                className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+              >
+                <span className="hidden sm:inline">
+                  {expanded ? "Hide files" : "View files"}
+                </span>
+                <span className="sm:hidden">{expanded ? "Hide" : "View"}</span>
+                <IconChevronDown
+                  size={13}
+                  className={cn(
+                    "transition-transform",
+                    expanded && "rotate-180",
+                  )}
+                />
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {expanded && hasFiles ? (
+          <div
+            id={filesListId}
+            className="flex flex-col border-t border-border/70 py-2"
+          >
+            {entry.items.map((item) => {
+              const itemKey = `${entry.toVersionId}:${item.filePath}`;
+              return (
+                <MemoryUpdateItem key={itemKey} itemKey={itemKey} item={item} />
+              );
+            })}
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -698,7 +772,7 @@ function MemoryUpdateItem({
   const hasEvidence = hasDiffEvidence(item.diff);
 
   return (
-    <div className="rounded-md border border-border/70 bg-background">
+    <div>
       <button
         type="button"
         aria-expanded={expanded}
@@ -707,7 +781,7 @@ function MemoryUpdateItem({
           toggleExpanded(itemKey);
         }}
         className={cn(
-          "flex w-full min-w-0 items-center justify-between gap-3 px-3 py-2 text-left",
+          "flex w-full min-w-0 items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left",
           hasEvidence
             ? "transition-colors hover:bg-accent/40"
             : "cursor-default",
@@ -719,11 +793,43 @@ function MemoryUpdateItem({
         <MemoryLineStats diff={item.diff} />
       </button>
       {expanded && hasEvidence ? (
-        <div className="border-t border-border/70 px-3 py-2">
+        <div className="px-2 pb-2 pt-1">
           <MemoryDiffView diff={item.diff} />
         </div>
       ) : null}
     </div>
+  );
+}
+
+function MemorySummaryLineStats({
+  stats,
+}: {
+  readonly stats: { readonly added: number; readonly removed: number };
+}) {
+  const { added, removed } = stats;
+
+  if (added > 0 && removed > 0) {
+    return (
+      <span className="flex shrink-0 items-center gap-1 font-mono text-xs">
+        <span className="text-emerald-700 dark:text-emerald-300">+{added}</span>
+        <span className="text-muted-foreground">/</span>
+        <span className="text-rose-700 dark:text-rose-300">-{removed}</span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex shrink-0 items-center gap-1 font-mono text-xs">
+      {added > 0 ? (
+        <span className="text-emerald-700 dark:text-emerald-300">+{added}</span>
+      ) : null}
+      {removed > 0 ? (
+        <span className="text-rose-700 dark:text-rose-300">-{removed}</span>
+      ) : null}
+      {added === 0 && removed === 0 ? (
+        <span className="text-muted-foreground">0</span>
+      ) : null}
+    </span>
   );
 }
 
