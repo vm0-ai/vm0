@@ -17,6 +17,8 @@ import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
   IconArrowUp,
+  IconChevronLeft,
+  IconChevronRight,
   IconChartBar,
   IconEye,
   IconLoader2,
@@ -143,6 +145,10 @@ import {
   setTemplatePickerCategory$,
   templatePickerSearch$,
   setTemplatePickerSearch$,
+  templatePickerPreviewSlug$,
+  setTemplatePickerPreviewSlug$,
+  templatePickerPreviewSlideIndex$,
+  setTemplatePickerPreviewSlideIndex$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -538,7 +544,33 @@ function TemplateEmptyPanel({
   );
 }
 
-function TemplatePreview({ item }: { item: PresentationTemplateItem }) {
+const PRESENTATION_TEMPLATE_PREVIEW_SLIDE_COUNT = 6;
+
+function presentationTemplateSlideUrl(
+  item: PresentationTemplateItem,
+  index: number,
+): string {
+  return `${item.embedUrl.split("#")[0]}#${String(index + 1).padStart(2, "0")}`;
+}
+
+function presentationTemplateSlideUrls(
+  item: PresentationTemplateItem,
+): readonly string[] {
+  return Array.from(
+    { length: PRESENTATION_TEMPLATE_PREVIEW_SLIDE_COUNT },
+    (_, index) => {
+      return presentationTemplateSlideUrl(item, index);
+    },
+  );
+}
+
+function TemplatePreview({
+  item,
+  onPreview,
+}: {
+  item: PresentationTemplateItem;
+  onPreview: (item: PresentationTemplateItem) => void;
+}) {
   return (
     <div className="relative aspect-[16/9] overflow-hidden bg-muted">
       {item.previewImage ? (
@@ -553,19 +585,168 @@ function TemplatePreview({ item }: { item: PresentationTemplateItem }) {
           <IconTemplate size={28} stroke={1.5} />
         </div>
       )}
-      <a
-        href={item.embedUrl}
-        target="_blank"
-        rel="noreferrer"
+      <button
+        type="button"
         aria-label={`View template ${item.title}`}
-        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md text-background opacity-0 drop-shadow transition-colors hover:text-background group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(0,0,0,.3)] text-white opacity-0 shadow-sm transition-colors hover:bg-[rgba(0,0,0,.45)] hover:text-white group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={(event) => {
           event.stopPropagation();
+          onPreview(item);
         }}
       >
         <IconEye size={16} stroke={1.8} />
-      </a>
+      </button>
     </div>
+  );
+}
+
+function TemplatePreviewPage({
+  item,
+  selectedSlideIndex,
+  onSlideChange,
+  onBack,
+  onSelect,
+}: {
+  item: PresentationTemplateItem;
+  selectedSlideIndex: number;
+  onSlideChange: (index: number) => void;
+  onBack: () => void;
+  onSelect: (item: PresentationTemplateItem) => void;
+}) {
+  const slideUrls = presentationTemplateSlideUrls(item);
+  const safeSlideIndex = Math.max(
+    0,
+    Math.min(selectedSlideIndex, slideUrls.length - 1),
+  );
+  const selectedSlideUrl = slideUrls[safeSlideIndex] ?? item.embedUrl;
+  const kind = formatPresentationTemplateKind(item.templateId);
+
+  const changeSlide = (direction: -1 | 1) => {
+    onSlideChange(
+      (safeSlideIndex + direction + slideUrls.length) % slideUrls.length,
+    );
+  };
+
+  return (
+    <>
+      <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
+        <DialogTitle className="flex min-w-0 items-center gap-2 text-base">
+          <button
+            type="button"
+            className="shrink-0 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onBack}
+          >
+            Templates
+          </button>
+          <span className="shrink-0 text-muted-foreground">/</span>
+          <span className="shrink-0 text-muted-foreground">PPT</span>
+          <span className="shrink-0 text-muted-foreground">/</span>
+          <span className="min-w-0 truncate">{item.title}</span>
+        </DialogTitle>
+      </DialogHeader>
+      <div className="grid max-h-[72vh] gap-5 overflow-y-auto bg-muted/20 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="rounded-lg border border-border bg-background p-4">
+          <div className="relative overflow-hidden rounded-lg bg-muted">
+            <div className="absolute left-3 top-3 z-10 rounded-md bg-black/80 px-2 py-1 text-xs font-semibold text-white">
+              {safeSlideIndex + 1} of {slideUrls.length}
+            </div>
+            <iframe
+              key={selectedSlideUrl}
+              src={selectedSlideUrl}
+              title={`${item.title} preview slide ${safeSlideIndex + 1}`}
+              className="aspect-[16/9] w-full border-0 bg-muted"
+              loading="lazy"
+            />
+            <button
+              type="button"
+              aria-label="Previous slide"
+              className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                changeSlide(-1);
+              }}
+            >
+              <IconChevronLeft size={22} stroke={1.8} />
+            </button>
+            <button
+              type="button"
+              aria-label="Next slide"
+              className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/95 text-foreground shadow-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                changeSlide(1);
+              }}
+            >
+              <IconChevronRight size={22} stroke={1.8} />
+            </button>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {slideUrls.map((url, index) => {
+              const selected = index === safeSlideIndex;
+              return (
+                <button
+                  key={url}
+                  type="button"
+                  aria-label={`Show slide ${index + 1}`}
+                  aria-pressed={selected}
+                  className={cn(
+                    "relative overflow-hidden rounded-md border bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    selected ? "border-primary" : "border-border",
+                  )}
+                  onClick={() => {
+                    onSlideChange(index);
+                  }}
+                >
+                  <img
+                    src={item.previewImage}
+                    alt=""
+                    className="aspect-[16/9] w-full object-cover"
+                    loading="lazy"
+                  />
+                  <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {index + 1}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex flex-col gap-4">
+          <div className="rounded-lg border border-border bg-background p-5">
+            <h3 className="text-lg font-semibold text-foreground">
+              {item.title}
+            </h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {kind} · {slideUrls.length} preview slides
+            </p>
+          </div>
+          <div className="rounded-lg border border-border bg-background p-5">
+            <h3 className="text-sm font-semibold text-muted-foreground">
+              Dials
+            </h3>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
+                {slideUrls.length} preview slides
+              </span>
+              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
+                Confident tone
+              </span>
+              <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
+                Dark theme
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label={`Select template ${item.title}`}
+            className="h-11 rounded-md bg-foreground px-4 text-sm font-semibold text-background transition-colors hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              onSelect(item);
+            }}
+          >
+            Use this template
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -582,6 +763,14 @@ function TemplatePickerDialog({
   const setCategory = useSet(setTemplatePickerCategory$);
   const search = useGet(templatePickerSearch$);
   const setSearch = useSet(setTemplatePickerSearch$);
+  const previewSlug = useGet(templatePickerPreviewSlug$);
+  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const selectedSlideIndex = useGet(templatePickerPreviewSlideIndex$);
+  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
+  const previewItem =
+    PRESENTATION_TEMPLATE_ITEMS.find((item) => {
+      return item.slug === previewSlug;
+    }) ?? null;
   const filteredItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
   });
@@ -591,110 +780,147 @@ function TemplatePickerDialog({
     onClose();
   };
 
+  const handlePreview = (item: PresentationTemplateItem) => {
+    setSelectedSlideIndex(0);
+    setPreviewSlug(item.slug);
+  };
+
   return (
     <Dialog
       open
       onOpenChange={(open) => {
         if (!open) {
+          if (previewItem) {
+            setPreviewSlug(null);
+            return;
+          }
           onClose();
         }
       }}
     >
       <DialogContent
-        className="max-w-4xl p-0 gap-0 overflow-hidden"
+        className={cn(
+          "p-0 gap-0 overflow-hidden",
+          previewItem ? "max-w-6xl" : "max-w-4xl",
+        )}
         aria-describedby={undefined}
       >
-        <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
-          <DialogTitle>Templates</DialogTitle>
-        </DialogHeader>
-        <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <Tabs value={category} onValueChange={setCategory}>
-            <TabsList className="h-auto rounded-none bg-transparent p-0">
-              <TabsTrigger
-                value="slides"
-                className="h-11 gap-2 rounded-none border-b-2 border-foreground bg-transparent px-1 pb-3 pt-2 text-base font-semibold text-foreground shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-              >
-                <IconChartBar className="h-5 w-5 text-blue-500" stroke={1.8} />
-                PPT
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <div className="relative w-full sm:w-64">
-            <IconSearch
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              stroke={1.8}
-            />
-            <Input
-              aria-label="Search templates"
-              className="h-8 pl-9 text-sm"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-              }}
-              placeholder="Search templates"
-            />
-          </div>
-        </div>
-        {category === "slides" && (
-          <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
-            <TemplateSectionHeader
-              label="VM0 templates"
-              count={filteredItems.length}
-            />
-            {filteredItems.length > 0 ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredItems.map((item) => {
-                  const selected = isSelectedPresentationTemplate(item, value);
-                  return (
-                    <div
-                      key={item.slug}
-                      className={cn(
-                        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
-                        selected
-                          ? "border-primary ring-1 ring-primary"
-                          : "border-border",
-                      )}
-                    >
-                      <TemplatePreview item={item} />
-                      <div className="flex items-start justify-between gap-3 px-3.5 py-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-foreground">
-                            {item.title}
-                          </p>
-                          <p className="mt-1 truncate text-xs text-muted-foreground">
-                            {formatPresentationTemplateKind(item.templateId)}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-center">
-                          <button
-                            type="button"
-                            aria-label={`Select template ${item.title}`}
-                            aria-pressed={selected}
-                            onClick={() => {
-                              handleSelect(item);
-                            }}
-                            className={cn(
-                              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                              selected
-                                ? "border-primary/40 bg-primary/10 text-primary"
-                                : "border-border bg-background text-foreground hover:bg-muted",
-                            )}
-                          >
-                            Use
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+        {previewItem ? (
+          <TemplatePreviewPage
+            item={previewItem}
+            selectedSlideIndex={selectedSlideIndex}
+            onSlideChange={setSelectedSlideIndex}
+            onBack={() => {
+              setPreviewSlug(null);
+            }}
+            onSelect={handleSelect}
+          />
+        ) : (
+          <>
+            <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
+              <DialogTitle>Templates</DialogTitle>
+            </DialogHeader>
+            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <Tabs value={category} onValueChange={setCategory}>
+                <TabsList className="h-auto rounded-none bg-transparent p-0">
+                  <TabsTrigger
+                    value="slides"
+                    className="h-11 gap-2 rounded-none border-b-2 border-foreground bg-transparent px-1 pb-3 pt-2 text-base font-semibold text-foreground shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                  >
+                    <IconChartBar
+                      className="h-5 w-5 text-blue-500"
+                      stroke={1.8}
+                    />
+                    PPT
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <div className="relative w-full sm:w-64">
+                <IconSearch
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                  stroke={1.8}
+                />
+                <Input
+                  aria-label="Search templates"
+                  className="h-8 pl-9 text-sm"
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                  }}
+                  placeholder="Search templates"
+                />
               </div>
-            ) : (
-              <TemplateEmptyPanel
-                title="No matches"
-                description="Try a different search."
-              />
+            </div>
+            {category === "slides" && (
+              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+                <TemplateSectionHeader
+                  label="VM0 templates"
+                  count={filteredItems.length}
+                />
+                {filteredItems.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {filteredItems.map((item) => {
+                      const selected = isSelectedPresentationTemplate(
+                        item,
+                        value,
+                      );
+                      return (
+                        <div
+                          key={item.slug}
+                          className={cn(
+                            "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+                            selected
+                              ? "border-primary ring-1 ring-primary"
+                              : "border-border",
+                          )}
+                        >
+                          <TemplatePreview
+                            item={item}
+                            onPreview={handlePreview}
+                          />
+                          <div className="flex items-start justify-between gap-3 px-3.5 py-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-foreground">
+                                {item.title}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-muted-foreground">
+                                {formatPresentationTemplateKind(
+                                  item.templateId,
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 items-center">
+                              <button
+                                type="button"
+                                aria-label={`Select template ${item.title}`}
+                                aria-pressed={selected}
+                                onClick={() => {
+                                  handleSelect(item);
+                                }}
+                                className={cn(
+                                  "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                  selected
+                                    ? "border-primary/40 bg-primary/10 text-primary"
+                                    : "border-border bg-background text-foreground hover:bg-muted",
+                                )}
+                              >
+                                Use
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <TemplateEmptyPanel
+                    title="No matches"
+                    description="Try a different search."
+                  />
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
       </DialogContent>
     </Dialog>
@@ -767,6 +993,8 @@ function TemplatePickerButton({ picker }: { picker: ComposerTemplatePicker }) {
   const open = useGet(templatePickerOpen$);
   const setOpen = useSet(setTemplatePickerOpen$);
   const setSearch = useSet(setTemplatePickerSearch$);
+  const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
+  const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const selectedTitle = selectedTemplateTitle(picker.value);
 
   return (
@@ -784,6 +1012,8 @@ function TemplatePickerButton({ picker }: { picker: ComposerTemplatePicker }) {
               aria-pressed={picker.value !== undefined}
               onClick={() => {
                 setSearch("");
+                setPreviewSlug(null);
+                setSelectedSlideIndex(0);
                 setOpen(true);
               }}
             >

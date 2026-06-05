@@ -120,6 +120,12 @@ const chatThreadListItemSchema = z.object({
    */
   hasDraft: z.boolean().optional(),
   /**
+   * Number of schedules linked to this chat thread. Drives the stronger delete
+   * confirmation copy before removing a scheduled chat thread. Optional for
+   * back-compat with fixtures predating the field.
+   */
+  scheduleCount: z.number().int().nonnegative().optional(),
+  /**
    * ISO timestamp at which the user pinned this thread. Null/undefined means
    * unpinned. Pinned threads sort above unpinned in the sidebar; both groups
    * keep recency order. Optional for back-compat with fixtures that predate

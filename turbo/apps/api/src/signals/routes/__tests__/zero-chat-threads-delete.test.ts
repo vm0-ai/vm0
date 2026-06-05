@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
@@ -33,6 +34,15 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
       .select({ id: chatThreads.id })
       .from(chatThreads)
       .where(eq(chatThreads.id, threadId));
+    return Boolean(row);
+  }
+
+  async function getScheduleRowExists(scheduleId: string): Promise<boolean> {
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({ id: zeroAgentSchedules.id })
+      .from(zeroAgentSchedules)
+      .where(eq(zeroAgentSchedules.id, scheduleId));
     return Boolean(row);
   }
 
@@ -89,6 +99,43 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     expect(response.body).toBeUndefined();
 
     await expect(getThreadRowExists(fixture.threadId)).resolves.toBeFalsy();
+  });
+
+  it("deletes schedules linked to the deleted thread", async () => {
+    const fixture = await track(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    const writeDb = store.set(writeDb$);
+    const [schedule] = await writeDb
+      .insert(zeroAgentSchedules)
+      .values({
+        agentId: fixture.composeId,
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        name: "linked",
+        triggerType: "cron",
+        cronExpression: "0 9 * * *",
+        prompt: "Daily update",
+        timezone: "UTC",
+        chatThreadId: fixture.threadId,
+      })
+      .returning({ id: zeroAgentSchedules.id });
+    if (!schedule) {
+      throw new Error("Expected linked schedule fixture");
+    }
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadByIdContract);
+    await accept(
+      client.delete({
+        params: { id: fixture.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [204],
+    );
+
+    await expect(getThreadRowExists(fixture.threadId)).resolves.toBeFalsy();
+    await expect(getScheduleRowExists(schedule.id)).resolves.toBeFalsy();
   });
 
   it("returns 204 with body undefined (c.noBody contract)", async () => {

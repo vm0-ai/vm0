@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.14...guest-agent-v0.34.15) (2026-06-05)
+
+
+### Bug Fixes
+
+* preserve missing auto-memory artifact roots ([#16245](https://github.com/vm0-ai/vm0/issues/16245)) ([44cd72a](https://github.com/vm0-ai/vm0/commit/44cd72a947c260572181cf6735e2ecbfe85624d8))
+
 ## [0.34.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.13...guest-agent-v0.34.14) (2026-06-04)
 
 ## [0.34.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.12...guest-agent-v0.34.13) (2026-06-04)

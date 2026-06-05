@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.105.0](https://github.com/vm0-ai/vm0/compare/api-v1.104.1...api-v1.105.0) (2026-06-05)
+
+
+### Features
+
+* add memory dev refresh ([#16244](https://github.com/vm0-ai/vm0/issues/16244)) ([95f3877](https://github.com/vm0-ai/vm0/commit/95f387719cc9b1d18eed2340ab6cad3039961c13))
+
+
+### Bug Fixes
+
+* preserve missing auto-memory artifact roots ([#16245](https://github.com/vm0-ai/vm0/issues/16245)) ([44cd72a](https://github.com/vm0-ai/vm0/commit/44cd72a947c260572181cf6735e2ecbfe85624d8))
+* preserve sandbox operation timestamps ([#16257](https://github.com/vm0-ai/vm0/issues/16257)) ([0ce68fd](https://github.com/vm0-ai/vm0/commit/0ce68fda135563ce87491fe615a4933a7c8c0df1))
+* remove follow-up prompt length limit ([#16209](https://github.com/vm0-ai/vm0/issues/16209)) ([e9baf7f](https://github.com/vm0-ai/vm0/commit/e9baf7f927947c99a1843e28ffa0f525c96aed53))
+
+
+### Refactoring
+
+* rename connector env binding availability metadata ([#16225](https://github.com/vm0-ai/vm0/issues/16225)) ([9a8a399](https://github.com/vm0-ai/vm0/commit/9a8a3999233d20cc71a12efde256c9c216a8aa57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.0
+    * @vm0/connectors bumped to 1.48.0
+    * @vm0/core bumped to 8.311.0
+    * @vm0/db bumped to 1.32.2
+
 ## [1.104.1](https://github.com/vm0-ai/vm0/compare/api-v1.104.0...api-v1.104.1) (2026-06-05)
 
 

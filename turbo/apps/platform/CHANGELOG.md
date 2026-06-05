@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.417.0](https://github.com/vm0-ai/vm0/compare/app-v0.416.2...app-v0.417.0) (2026-06-05)
+
+
+### Features
+
+* add ashby connector ([#16200](https://github.com/vm0-ai/vm0/issues/16200)) ([12d77f4](https://github.com/vm0-ai/vm0/commit/12d77f44f5ec307f10b8b997af66997ade41e3e2))
+
+
+### Bug Fixes
+
+* focus website artifact previews ([#16255](https://github.com/vm0-ai/vm0/issues/16255)) ([78b8456](https://github.com/vm0-ai/vm0/commit/78b8456d86a2c8ceb6bd18ff8c19d2d7650ab4e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.0
+    * @vm0/connectors bumped to 1.48.0
+    * @vm0/core bumped to 8.311.0
+
 ## [0.416.2](https://github.com/vm0-ai/vm0/compare/app-v0.416.1...app-v0.416.2) (2026-06-05)
 
 

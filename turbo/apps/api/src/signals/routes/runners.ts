@@ -25,7 +25,7 @@ import {
   publishRunChangedForUserSafely,
 } from "../external/realtime";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { nowDate } from "../external/time";
+import { now, nowDate } from "../external/time";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { generateSandboxToken } from "../auth/tokens";
@@ -532,42 +532,68 @@ async function secretValuesForRunner(
 function scheduleClaimSucceededSideEffects(args: {
   readonly runId: string;
   readonly userId: string;
+  readonly runnerGroup: string;
+  readonly profile: string;
+  readonly authType: RunnerAuthContext["type"];
+  readonly apiToClaimRequestMs: number | undefined;
   readonly apiToClaimMs: number | undefined;
+  readonly claimRequestToRunningMs: number;
 }): void {
   waitUntil(
     publishRunChangedForUserSafely(args.userId, args.runId, {
       status: "running",
     }),
   );
-  const apiToClaimMs = args.apiToClaimMs;
-  if (apiToClaimMs === undefined) {
-    return;
-  }
 
   waitUntil(
-    tapError(
-      recordClaimApiToClaimMetric({
-        runId: args.runId,
-        durationMs: apiToClaimMs,
-      }),
-      (error) => {
-        L.warn("recordSandboxOperation failed", { runId: args.runId, error });
-      },
-    ),
+    tapError(recordClaimTimingMetrics(args), (error) => {
+      L.warn("recordSandboxOperation failed", { runId: args.runId, error });
+    }),
   );
 }
 
-async function recordClaimApiToClaimMetric(args: {
+async function recordClaimTimingMetrics(args: {
   readonly runId: string;
-  readonly durationMs: number;
+  readonly runnerGroup: string;
+  readonly profile: string;
+  readonly authType: RunnerAuthContext["type"];
+  readonly apiToClaimRequestMs: number | undefined;
+  readonly apiToClaimMs: number | undefined;
+  readonly claimRequestToRunningMs: number;
 }): Promise<void> {
   await Promise.resolve();
+  const dimensions = {
+    runner_group: args.runnerGroup,
+    profile: args.profile,
+    auth_type: args.authType,
+  };
+  if (args.apiToClaimRequestMs !== undefined) {
+    recordSandboxOperation({
+      sandboxType: "runner",
+      actionType: "api_to_claim_request",
+      durationMs: args.apiToClaimRequestMs,
+      success: true,
+      runId: args.runId,
+      dimensions,
+    });
+  }
+  if (args.apiToClaimMs !== undefined) {
+    recordSandboxOperation({
+      sandboxType: "runner",
+      actionType: "api_to_claim",
+      durationMs: args.apiToClaimMs,
+      success: true,
+      runId: args.runId,
+      dimensions,
+    });
+  }
   recordSandboxOperation({
     sandboxType: "runner",
-    actionType: "api_to_claim",
-    durationMs: args.durationMs,
+    actionType: "claim_request_to_running",
+    durationMs: args.claimRequestToRunningMs,
     success: true,
     runId: args.runId,
+    dimensions,
   });
 }
 
@@ -611,6 +637,7 @@ const scheduleClaimFailedSideEffects$ = command(
 );
 
 const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const claimRequestStartedAtMs = now();
   const auth = await set(runnerAuth$, get(authorization$), signal);
   signal.throwIfAborted();
   if (!auth) {
@@ -707,9 +734,20 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   scheduleClaimSucceededSideEffects({
     runId,
     userId: run.userId,
+    runnerGroup: jobWithRun.job.runnerGroup,
+    profile: jobWithRun.job.profile,
+    authType: auth.type,
+    apiToClaimRequestMs: elapsedSinceApiStartMs(
+      storedContext.apiStartTime,
+      claimRequestStartedAtMs,
+    ),
     apiToClaimMs: elapsedSinceApiStartMs(
       storedContext.apiStartTime,
       claimResult.claimedAt.getTime(),
+    ),
+    claimRequestToRunningMs: Math.max(
+      0,
+      claimResult.claimedAt.getTime() - claimRequestStartedAtMs,
     ),
   });
 

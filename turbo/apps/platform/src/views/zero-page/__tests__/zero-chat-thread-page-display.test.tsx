@@ -18,6 +18,7 @@ import {
   chatThreadArtifactsContract,
   chatThreadGithubPrsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -109,6 +110,41 @@ beforeEach(() => {
 });
 
 describe("zero chat thread page display - schedule menu", () => {
+  it("hides the schedule button when no schedules are linked to the thread", async () => {
+    const threadId = "d0000000-0000-4000-a000-000000000001";
+    let schedulesRequested = false;
+    mockChatLifecycle({ threadId });
+    server.use(
+      mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
+        schedulesRequested = true;
+        return respond(200, {
+          schedules: [
+            createMockScheduleResponse({
+              id: "e0000000-0000-4000-a000-000000000002",
+              name: "other-internal-name",
+              description: "Other thread schedule",
+              chatThreadId: "d0000000-0000-4000-a000-000000000002",
+            }),
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        ...chatArtifactSidebarOff(),
+        [FeatureSwitchKey.ScheduledChat]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(schedulesRequested).toBeTruthy();
+    });
+    expect(screen.queryByLabelText("Schedules")).not.toBeInTheDocument();
+  });
+
   it("shows linked schedule titles instead of internal names", async () => {
     const user = userEvent.setup();
     const threadId = "d0000000-0000-4000-a000-000000000001";

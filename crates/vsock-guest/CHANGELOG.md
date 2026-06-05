@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.22](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.21...vsock-guest-v0.18.22) (2026-06-05)
+
+
+### Refactoring
+
+* model exec operation cleanup lifecycle ([#16248](https://github.com/vm0-ai/vm0/issues/16248)) ([f8817e0](https://github.com/vm0-ai/vm0/commit/f8817e056e47b6b3065ea327e02dda01264b09cc))
+
 ## [0.18.21](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.20...vsock-guest-v0.18.21) (2026-06-04)
 
 

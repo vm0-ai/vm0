@@ -639,6 +639,13 @@ function ChatThreads() {
   const cursorForLoadMore = hasLoadedExtraPages
     ? extraLatestCursor
     : firstPageNextCursor;
+  const pendingDeleteThread = pendingDeleteThreadId
+    ? chatThreads.find((thread) => {
+        return thread.id === pendingDeleteThreadId;
+      })
+    : null;
+  const pendingDeleteScheduleCount = pendingDeleteThread?.scheduleCount ?? 0;
+  const pendingDeleteHasSchedules = pendingDeleteScheduleCount > 0;
 
   function handleLoadMore() {
     if (!cursorForLoadMore || loadingMore) {
@@ -686,10 +693,17 @@ function ChatThreads() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete chat?</DialogTitle>
+            <DialogTitle>
+              {pendingDeleteHasSchedules
+                ? "Delete chat and schedules?"
+                : "Delete chat?"}
+            </DialogTitle>
             <DialogDescription>
-              This will permanently delete this chat. This action cannot be
-              undone.
+              {pendingDeleteHasSchedules
+                ? `This will permanently delete this chat and ${pendingDeleteScheduleCount} linked ${
+                    pendingDeleteScheduleCount === 1 ? "schedule" : "schedules"
+                  }. This action cannot be undone.`
+                : "This will permanently delete this chat. This action cannot be undone."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -702,7 +716,9 @@ function ChatThreads() {
               Cancel
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>
-              Delete
+              {pendingDeleteHasSchedules
+                ? "Delete chat and schedules"
+                : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

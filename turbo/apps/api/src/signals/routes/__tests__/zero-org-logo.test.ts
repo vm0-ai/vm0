@@ -264,9 +264,15 @@ describe("POST /api/zero/org/logo", () => {
       logoUrl: "https://img.clerk.test/new-logo.png",
       hasImage: true,
     });
-    expect(
-      context.mocks.clerk.organizations.updateOrganizationLogo,
-    ).toHaveBeenCalledWith(orgId, { file });
+    const updateOrganizationLogo =
+      context.mocks.clerk.organizations.updateOrganizationLogo;
+    expect(updateOrganizationLogo).toHaveBeenCalledWith(orgId, {
+      file: expect.objectContaining({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      }),
+    });
   });
 
   it("returns null logoUrl when Clerk clears the image URL", async () => {

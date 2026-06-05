@@ -28,6 +28,7 @@ import {
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   and,
@@ -843,6 +844,11 @@ function chatThreadListProjection(lastMessage: LastMessageSubquery) {
         AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
       )
     )`,
+    scheduleCount: sql<number>`(
+      SELECT COUNT(*)::int
+      FROM ${zeroAgentSchedules}
+      WHERE ${zeroAgentSchedules.chatThreadId} = ${chatThreads.id}
+    )`,
   } as const;
 }
 
@@ -859,6 +865,7 @@ type ChatThreadListRow = {
   readonly isRead: boolean;
   readonly running: boolean;
   readonly hasDraft: boolean;
+  readonly scheduleCount: number;
 };
 
 function rowToChatThreadListItem(
@@ -876,6 +883,7 @@ function rowToChatThreadListItem(
     isRead: thread.isRead,
     running: thread.running,
     hasDraft: thread.hasDraft,
+    scheduleCount: thread.scheduleCount,
     pinnedAt: thread.pinnedAt?.toISOString() ?? null,
     renamedAt: thread.renamedAt?.toISOString() ?? null,
   };
@@ -1468,17 +1476,33 @@ export const deleteChatThread$ = command(
     signal: AbortSignal,
   ): Promise<{ deleted: boolean }> => {
     const writeDb = set(writeDb$);
-    const deleted = await writeDb
-      .delete(chatThreads)
-      .where(
-        and(
-          eq(chatThreads.id, args.threadId),
-          eq(chatThreads.userId, args.userId),
-        ),
-      )
-      .returning({ id: chatThreads.id });
+    const deleted = await writeDb.transaction(async (tx) => {
+      const [ownedThread] = await tx
+        .select({ id: chatThreads.id })
+        .from(chatThreads)
+        .where(
+          and(
+            eq(chatThreads.id, args.threadId),
+            eq(chatThreads.userId, args.userId),
+          ),
+        )
+        .limit(1);
+      if (!ownedThread) {
+        return false;
+      }
+
+      await tx
+        .delete(zeroAgentSchedules)
+        .where(eq(zeroAgentSchedules.chatThreadId, ownedThread.id));
+
+      const deletedThreads = await tx
+        .delete(chatThreads)
+        .where(eq(chatThreads.id, ownedThread.id))
+        .returning({ id: chatThreads.id });
+      return deletedThreads.length > 0;
+    });
     signal.throwIfAborted();
-    return { deleted: deleted.length > 0 };
+    return { deleted };
   },
 );
 

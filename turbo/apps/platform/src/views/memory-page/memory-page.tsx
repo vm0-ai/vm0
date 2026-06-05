@@ -668,9 +668,10 @@ function MemoryUpdateCard({ entry }: { readonly entry: MemoryActivityEntry }) {
         <h2 className="text-sm font-semibold tracking-tight text-foreground">
           {formatActivityDate(entry.date)}
         </h2>
-        <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-muted-foreground">
-          {summary}
-        </p>
+        <Markdown
+          source={summary}
+          className="mt-2 [&_p]:my-0 [&_p]:text-muted-foreground [&_ul]:my-1.5 [&_ul]:pl-5 [&_li]:my-0.5 [&_li]:text-muted-foreground [&_strong]:text-foreground"
+        />
       </header>
       <div className="flex flex-col gap-2 px-4 py-3">
         {entry.items.map((item) => {

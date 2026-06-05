@@ -165,6 +165,7 @@ interface ThreadListItem {
   updatedAt: string;
   isRead: boolean;
   running: boolean;
+  scheduleCount?: number;
   pinnedAt?: string | null;
 }
 

@@ -109,6 +109,26 @@ export const setTemplatePickerSearch$ = command(({ set }, value: string) => {
   set(internalTemplatePickerSearch$, value);
 });
 
+const internalTemplatePickerPreviewSlug$ = state<string | null>(null);
+export const templatePickerPreviewSlug$ = computed((get) => {
+  return get(internalTemplatePickerPreviewSlug$);
+});
+export const setTemplatePickerPreviewSlug$ = command(
+  ({ set }, slug: string | null) => {
+    set(internalTemplatePickerPreviewSlug$, slug);
+  },
+);
+
+const internalTemplatePickerPreviewSlideIndex$ = state(0);
+export const templatePickerPreviewSlideIndex$ = computed((get) => {
+  return get(internalTemplatePickerPreviewSlideIndex$);
+});
+export const setTemplatePickerPreviewSlideIndex$ = command(
+  ({ set }, index: number) => {
+    set(internalTemplatePickerPreviewSlideIndex$, index);
+  },
+);
+
 // -- Per-message generation template selections --------------------------------
 
 const internalNewThreadGenerationTemplate$ = state<

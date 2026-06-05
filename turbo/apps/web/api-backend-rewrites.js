@@ -53,10 +53,6 @@ const ZERO_SCHEDULES_DISABLE_PATH_RE =
   /^\/api\/zero\/schedules\/[^/]+\/disable$/;
 const ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE = "/api/zero/schedules/:name/enable";
 const ZERO_SCHEDULES_ENABLE_PATH_RE = /^\/api\/zero\/schedules\/[^/]+\/enable$/;
-const ZERO_SCHEDULES_MIGRATE_CHAT_REWRITE_SOURCE =
-  "/api/zero/schedules/:name/migrate-to-chat";
-const ZERO_SCHEDULES_MIGRATE_CHAT_PATH_RE =
-  /^\/api\/zero\/schedules\/[^/]+\/migrate-to-chat$/;
 const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
 const ZERO_SKILLS_BY_NAME_PATH_RE = /^\/api\/zero\/skills\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
@@ -1107,11 +1103,6 @@ export const API_BACKEND_REWRITES = [
     ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE,
     "/api/zero/schedules/:name/enable",
     ZERO_SCHEDULES_ENABLE_PATH_RE,
-  ],
-  [
-    ZERO_SCHEDULES_MIGRATE_CHAT_REWRITE_SOURCE,
-    "/api/zero/schedules/:name/migrate-to-chat",
-    ZERO_SCHEDULES_MIGRATE_CHAT_PATH_RE,
   ],
   ["/api/zero/memory", "/api/zero/memory"],
   ["/api/zero/memory/activity", "/api/zero/memory/activity"],
