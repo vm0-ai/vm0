@@ -44,7 +44,7 @@ export const connectorProvidedBindingSchema = z.object({
   authMethod: z.string(),
   namespace: connectorProvidedBindingNamespaceSchema,
   name: z.string(),
-  required: z.boolean(),
+  optional: z.boolean(),
   source: connectorProvidedBindingSourceSchema,
 });
 
@@ -61,7 +61,7 @@ export function connectorProvidedBindingNames(args: {
 }): Set<string> {
   const names = new Set<string>();
   for (const binding of args.bindings) {
-    if (binding.namespace === args.namespace && binding.required) {
+    if (binding.namespace === args.namespace && !binding.optional) {
       names.add(binding.name);
     }
   }

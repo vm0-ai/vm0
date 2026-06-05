@@ -2227,7 +2227,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GH_TOKEN",
           valueRef: "$secrets.GITHUB_ACCESS_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "GITHUB_ACCESS_TOKEN",
@@ -2236,7 +2236,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GITHUB_TOKEN",
           valueRef: "$secrets.GITHUB_ACCESS_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "GITHUB_ACCESS_TOKEN",
@@ -2258,7 +2258,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "STRIPE_TOKEN",
           valueRef: "$secrets.STRIPE_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "STRIPE_TOKEN",
@@ -2284,7 +2284,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "SLOCK_TOKEN",
           valueRef: "$secrets.SLOCK_ACCESS_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "SLOCK_ACCESS_TOKEN",
@@ -2293,7 +2293,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "SLOCK_SERVER_ID",
           valueRef: "$secrets.SLOCK_SERVER_ID",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "SLOCK_SERVER_ID",
@@ -2315,7 +2315,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GOOGLE_ADS_TOKEN",
           valueRef: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "GOOGLE_ADS_ACCESS_TOKEN",
@@ -2324,7 +2324,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GOOGLE_ADS_DEVELOPER_TOKEN",
           valueRef: "$secrets.GOOGLE_ADS_DEVELOPER_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "platform-secret",
             name: "GOOGLE_ADS_DEVELOPER_TOKEN",
@@ -2334,7 +2334,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
     });
   });
 
-  it("preserves optional env binding availability as non-required runtime metadata", () => {
+  it("preserves optional env binding availability as optional runtime metadata", () => {
     expect(
       getConnectorAuthMethodRuntimeMetadata("agora", "api-token"),
     ).toMatchObject({
@@ -2342,7 +2342,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "AGORA_APP_CERTIFICATE",
           valueRef: "$secrets.AGORA_APP_CERTIFICATE",
-          required: false,
+          optional: true,
           source: {
             kind: "connector-secret",
             name: "AGORA_APP_CERTIFICATE",
@@ -2419,9 +2419,9 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
           );
           for (const binding of runtimeBindings) {
             expect(
-              binding.required,
-              `${type}/${authMethod}: optional field ${fieldName} must not be marked as a required runtime binding`,
-            ).toBe(false);
+              binding.optional,
+              `${type}/${authMethod}: optional field ${fieldName} must be marked as an optional runtime binding`,
+            ).toBe(true);
           }
         }
       }

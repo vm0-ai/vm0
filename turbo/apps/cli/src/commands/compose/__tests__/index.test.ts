@@ -2547,7 +2547,7 @@ agents:
                 authMethod: "oauth",
                 namespace: "secrets",
                 name: "GH_TOKEN",
-                required: true,
+                optional: false,
                 source: {
                   kind: "connector-secret",
                   name: "GITHUB_ACCESS_TOKEN",
@@ -2558,7 +2558,7 @@ agents:
                 authMethod: "api-token",
                 namespace: "vars",
                 name: "REGION",
-                required: true,
+                optional: false,
                 source: {
                   kind: "connector-variable",
                   name: "GITLAB_REGION",
@@ -2569,7 +2569,7 @@ agents:
                 authMethod: "api-token",
                 namespace: "vars",
                 name: "GITLAB_HOST",
-                required: false,
+                optional: true,
                 source: {
                   kind: "connector-variable",
                   name: "GITLAB_HOST",
