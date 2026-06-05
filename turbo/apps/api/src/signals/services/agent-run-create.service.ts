@@ -1642,6 +1642,8 @@ function filterSecretConnectorMetadataMap(args: {
 interface StoredConnectorRuntimeRow {
   readonly connectorType: ConnectorType;
   readonly authMethod: string;
+  readonly needsReconnect: boolean;
+  readonly tokenExpiresAt: Date | null;
 }
 
 interface ConnectorEnvBindingSet {
@@ -1675,21 +1677,54 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
 }
 
 function allowedStoredConnectorRows(
-  rows: readonly { readonly type: string; readonly authMethod: string }[],
+  rows: readonly {
+    readonly type: string;
+    readonly authMethod: string;
+    readonly needsReconnect: boolean;
+    readonly tokenExpiresAt: Date | null;
+  }[],
   allowedConnectorTypes: readonly ConnectorType[] | undefined,
+  now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
   const validRows = rows.flatMap((row) => {
     const parsed = connectorTypeSchema.safeParse(row.type);
     return parsed.success
-      ? [{ connectorType: parsed.data, authMethod: row.authMethod }]
+      ? [
+          {
+            connectorType: parsed.data,
+            authMethod: row.authMethod,
+            needsReconnect: row.needsReconnect,
+            tokenExpiresAt: row.tokenExpiresAt,
+          },
+        ]
       : [];
   });
-  if (!allowedConnectorTypes) {
-    return validRows;
-  }
   return validRows.filter((row) => {
-    return allowedConnectorTypes.includes(row.connectorType);
+    return (
+      (!allowedConnectorTypes ||
+        allowedConnectorTypes.includes(row.connectorType)) &&
+      storedConnectorRuntimeRowIsAvailable(row, now)
+    );
   });
+}
+
+function storedConnectorRuntimeRowIsAvailable(
+  row: StoredConnectorRuntimeRow,
+  now: Date,
+): boolean {
+  const accessMetadata = getConnectorAuthMethodAccessMetadata(
+    row.connectorType,
+    row.authMethod,
+  );
+  if (!accessMetadata || accessMetadata.kind === "refresh-token") {
+    return true;
+  }
+  if (row.needsReconnect) {
+    return false;
+  }
+  return (
+    row.tokenExpiresAt === null || row.tokenExpiresAt.getTime() > now.getTime()
+  );
 }
 
 function connectorEnvBindingSets(
@@ -1912,7 +1947,12 @@ async function loadStoredConnectorContext(
       sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
     );
     const connectorRows = await tx
-      .select({ type: connectors.type, authMethod: connectors.authMethod })
+      .select({
+        type: connectors.type,
+        authMethod: connectors.authMethod,
+        needsReconnect: connectors.needsReconnect,
+        tokenExpiresAt: connectors.tokenExpiresAt,
+      })
       .from(connectors)
       .where(
         and(
@@ -1927,6 +1967,7 @@ async function loadStoredConnectorContext(
     const allowedConnectorRows = allowedStoredConnectorRows(
       connectorRows,
       args.allowedConnectorTypes,
+      nowDate(),
     );
     if (allowedConnectorRows.length === 0) {
       return emptyConnectorRuntimeContext();

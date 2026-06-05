@@ -856,6 +856,98 @@ describe("POST /api/agent/runs", () => {
     expect(zendesk?.apis[0]?.base).toBe("https://acme.zendesk.com");
   });
 
+  it("omits expired non-refreshable connectors from run context", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        type: "stripe",
+        authMethod: "api-token",
+        tokenExpiresAt: new Date(now() - 60_000),
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        type: "notion",
+        authMethod: "oauth",
+        tokenExpiresAt: new Date(now() - 60_000),
+      },
+    ]);
+    await db.insert(secretsTable).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "STRIPE_TOKEN",
+        encryptedValue: encryptSecretForTests("expired-stripe-token"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "NOTION_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("expired-notion-token"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "NOTION_REFRESH_TOKEN",
+        encryptedValue: encryptSecretForTests("notion-refresh-token"),
+        type: "connector",
+      },
+    ]);
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use connectors",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly { readonly name: string }[];
+    };
+    expect(executionContext.environment.STRIPE_TOKEN).toBeUndefined();
+    expect(executionContext.environment.NOTION_TOKEN).toBeDefined();
+    expect(executionContext.secretConnectorMap).toMatchObject({
+      NOTION_TOKEN: "notion",
+    });
+    expect(executionContext.secretConnectorMap).not.toHaveProperty(
+      "STRIPE_TOKEN",
+    );
+    const decryptedSecrets = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
+    expect(decryptedSecrets).toMatchObject({
+      NOTION_TOKEN: "expired-notion-token",
+    });
+    expect(decryptedSecrets).not.toHaveProperty("STRIPE_TOKEN");
+    expect(
+      executionContext.firewalls.some((firewall) => {
+        return firewall.name === "stripe";
+      }),
+    ).toBeFalsy();
+    expect(
+      executionContext.firewalls.some((firewall) => {
+        return firewall.name === "notion";
+      }),
+    ).toBeTruthy();
+  });
+
   it("does not enable a manual connector from run-provided env values alone", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
