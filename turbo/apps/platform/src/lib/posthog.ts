@@ -35,13 +35,15 @@ export function initPostHog(): void {
 
 interface PostHogUser {
   id: string;
+  email: string | undefined;
+  name: string | undefined;
 }
 
 export function setPostHogUser(user: PostHogUser): void {
   if (!POSTHOG_KEY) {
     return;
   }
-  posthog.identify(user.id);
+  posthog.identify(user.id, { email: user.email, name: user.name });
 }
 
 export function clearPostHogUser(): void {
@@ -61,6 +63,13 @@ export function captureOnboardingStep(step: string): void {
     return;
   }
   posthog.capture("onboarding_step_viewed", { step });
+}
+
+export function captureTaskCompletedSuccessfully(): void {
+  if (!POSTHOG_KEY) {
+    return;
+  }
+  posthog.capture("task_completed_successfully", { surface: "chat_thread" });
 }
 
 // ── Scoped session replay ──────────────────────────────────────────

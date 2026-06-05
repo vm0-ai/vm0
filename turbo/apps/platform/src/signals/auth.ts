@@ -65,6 +65,8 @@ export const setupClerk$ = command(
       setSentryUser(clerk.user.id);
       setPostHogUser({
         id: clerk.user.id,
+        email: clerk.user.primaryEmailAddress?.emailAddress,
+        name: clerk.user.fullName ?? undefined,
       });
     }
 
@@ -78,6 +80,8 @@ export const setupClerk$ = command(
         setSentryUser(clerk.user.id);
         setPostHogUser({
           id: clerk.user.id,
+          email: clerk.user.primaryEmailAddress?.emailAddress,
+          name: clerk.user.fullName ?? undefined,
         });
       } else {
         clearSentryUser();
