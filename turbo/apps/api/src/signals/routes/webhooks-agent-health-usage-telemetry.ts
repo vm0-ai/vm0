@@ -333,6 +333,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
         durationMs: op.duration_ms,
         success: op.success,
         runId: body.runId,
+        timestamp: op.ts,
         dimensions: {
           source: "sandbox",
           ...(op.error ? { error: op.error } : {}),

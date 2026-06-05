@@ -1482,6 +1482,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       "vm0-sandbox-op-log-dev",
       [
         expect.objectContaining({
+          _time: "2026-05-14T01:00:02.000Z",
           source: "sandbox",
           op_type: "codex_exec",
           sandbox_type: "runner",

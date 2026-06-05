@@ -37,6 +37,7 @@ import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
 import { apify } from "./connectors/apify";
 import { apollo } from "./connectors/apollo";
 import { asana } from "./connectors/asana";
+import { ashby } from "./connectors/ashby";
 import { atlassian } from "./connectors/atlassian";
 import { attio } from "./connectors/attio";
 import { atlascloud } from "./connectors/atlascloud";
@@ -368,7 +369,7 @@ export type ConnectorEnvBindingValue =
   | ConnectorRefreshTokenInputValueRef
   | {
       readonly valueRef: ConnectorRefreshTokenInputValueRef;
-      readonly required?: boolean;
+      readonly optional?: boolean;
     };
 export type ConnectorEnvBindings = Record<string, ConnectorEnvBindingValue>;
 
@@ -655,9 +656,15 @@ type ConnectorRefreshOutputValueRef<Storage> =
 type ConnectorRevokeInputValueRef<Storage> =
   `$secrets.${ConnectorStorageSecretName<Storage>}`;
 
+type RejectLegacyConnectorEnvBindingRequired<Binding> = Binding extends {
+  readonly required: unknown;
+}
+  ? never
+  : Binding;
+
 type ValidatedConnectorEnvBindingValue<Binding, Storage, Access> =
   Binding extends { readonly valueRef: infer ValueRef }
-    ? Binding & {
+    ? RejectLegacyConnectorEnvBindingRequired<Binding> & {
         readonly valueRef: ValueRef extends ConnectorRuntimeValueRef<
           Storage,
           Access
@@ -912,6 +919,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...apify,
   ...apollo,
   ...asana,
+  ...ashby,
   ...atlassian,
   ...attio,
   ...atlascloud,

@@ -44,7 +44,7 @@ export const connectorProvidedBindingSchema = z.object({
   authMethod: z.string(),
   namespace: connectorProvidedBindingNamespaceSchema,
   name: z.string(),
-  required: z.boolean(),
+  optional: z.boolean(),
   source: connectorProvidedBindingSourceSchema,
 });
 
@@ -55,13 +55,18 @@ export type ConnectorProvidedBindingNamespace = z.infer<
   typeof connectorProvidedBindingNamespaceSchema
 >;
 
-export function connectorProvidedBindingNames(args: {
+/**
+ * Names that a stored connector guarantees at runtime. Optional bindings are
+ * omitted because they describe possible connector supply, not guaranteed
+ * connector supply.
+ */
+export function guaranteedConnectorProvidedBindingNames(args: {
   readonly bindings: readonly ConnectorProvidedBinding[];
   readonly namespace: ConnectorProvidedBindingNamespace;
 }): Set<string> {
   const names = new Set<string>();
   for (const binding of args.bindings) {
-    if (binding.namespace === args.namespace && binding.required) {
+    if (binding.namespace === args.namespace && !binding.optional) {
       names.add(binding.name);
     }
   }

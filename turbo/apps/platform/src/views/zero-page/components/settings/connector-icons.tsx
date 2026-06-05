@@ -74,6 +74,7 @@ const CONNECTOR_ICON_COLORFUL = {
   anthropic: true,
   apify: true,
   asana: true,
+  ashby: true,
   azure: true,
   base44: true,
   bedrock: true,

@@ -65,7 +65,7 @@ describe("zeroConnectorList", () => {
           authMethod: "api-token",
           namespace: "secrets",
           name: "GITLAB_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "GITLAB_TOKEN",
@@ -76,7 +76,7 @@ describe("zeroConnectorList", () => {
           authMethod: "api-token",
           namespace: "vars",
           name: "GITLAB_HOST",
-          required: false,
+          optional: true,
           source: {
             kind: "connector-variable",
             name: "GITLAB_HOST",
@@ -126,7 +126,7 @@ describe("zeroConnectorList", () => {
         authMethod: "oauth",
         namespace: "secrets",
         name: "GH_TOKEN",
-        required: true,
+        optional: false,
         source: {
           kind: "connector-secret",
           name: "GITHUB_ACCESS_TOKEN",
@@ -137,7 +137,7 @@ describe("zeroConnectorList", () => {
         authMethod: "oauth",
         namespace: "secrets",
         name: "GITHUB_TOKEN",
-        required: true,
+        optional: false,
         source: {
           kind: "connector-secret",
           name: "GITHUB_ACCESS_TOKEN",
@@ -188,7 +188,7 @@ describe("zeroConnectorList", () => {
           authMethod: "oauth",
           namespace: "secrets",
           name: "GOOGLE_ADS_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "GOOGLE_ADS_ACCESS_TOKEN",
@@ -237,7 +237,7 @@ describe("zeroConnectorList", () => {
           authMethod: "api-token",
           namespace: "vars",
           name: "GITLAB_HOST",
-          required: false,
+          optional: true,
           source: {
             kind: "connector-variable",
             name: "GITLAB_HOST",

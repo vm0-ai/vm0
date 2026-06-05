@@ -58,6 +58,7 @@ import {
   artifactFallbackSubtitle,
   artifactTitleSubtitle,
 } from "./zero-artifact-display.ts";
+import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — page-level pane for previewing the artifact pointed to
@@ -932,9 +933,12 @@ function ArtifactIframeBody({
   // (thumbnails / bookmarks) so the embedded preview shows just the page
   // and toolbar by default. Firefox/PDF.js silently ignores it.
   const src = kind === "pdf" ? `${url}#navpanes=0` : url;
+  const fullscreen = useGet(artifactFullscreen$);
   if (kind === "html") {
     return (
-      <iframe
+      <AutoFocusedArtifactIframe
+        focusKey={`${src}:${fullscreen ? "fullscreen" : "sidebar"}`}
+        focusOnMount={fullscreen}
         src={src}
         title={`${filename} preview`}
         sandbox="allow-scripts"

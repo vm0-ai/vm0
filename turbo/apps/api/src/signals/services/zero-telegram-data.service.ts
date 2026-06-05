@@ -4,7 +4,7 @@ import type {
   TelegramBotStatus,
   TelegramLinkStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { connectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
+import { guaranteedConnectorProvidedBindingNames } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import {
@@ -281,7 +281,7 @@ function telegramEnvironment(args: {
       ...secretList.secrets.map((secret) => {
         return secret.name;
       }),
-      ...connectorProvidedBindingNames({
+      ...guaranteedConnectorProvidedBindingNames({
         bindings: connectorList.connectorProvidedBindings,
         namespace: "secrets",
       }),
@@ -290,7 +290,7 @@ function telegramEnvironment(args: {
       ...variableList.variables.map((variable) => {
         return variable.name;
       }),
-      ...connectorProvidedBindingNames({
+      ...guaranteedConnectorProvidedBindingNames({
         bindings: connectorList.connectorProvidedBindings,
         namespace: "vars",
       }),

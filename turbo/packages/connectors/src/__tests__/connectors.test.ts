@@ -1890,6 +1890,12 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["api-token"]);
   });
 
+  it("exposes Ashby API-token auth without a feature switch", () => {
+    expect(getAvailableConnectorAuthMethodIds("ashby", {})).toStrictEqual([
+      "api-token",
+    ]);
+  });
+
   it("exposes Base44 OAuth without a feature switch", () => {
     expect(getAvailableConnectorAuthMethodIds("base44", {})).toStrictEqual([
       "oauth",
@@ -2227,7 +2233,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GH_TOKEN",
           valueRef: "$secrets.GITHUB_ACCESS_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "GITHUB_ACCESS_TOKEN",
@@ -2236,7 +2242,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GITHUB_TOKEN",
           valueRef: "$secrets.GITHUB_ACCESS_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "GITHUB_ACCESS_TOKEN",
@@ -2258,7 +2264,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "STRIPE_TOKEN",
           valueRef: "$secrets.STRIPE_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "STRIPE_TOKEN",
@@ -2284,7 +2290,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "SLOCK_TOKEN",
           valueRef: "$secrets.SLOCK_ACCESS_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "SLOCK_ACCESS_TOKEN",
@@ -2293,7 +2299,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "SLOCK_SERVER_ID",
           valueRef: "$secrets.SLOCK_SERVER_ID",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "SLOCK_SERVER_ID",
@@ -2315,7 +2321,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GOOGLE_ADS_TOKEN",
           valueRef: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "GOOGLE_ADS_ACCESS_TOKEN",
@@ -2324,7 +2330,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "GOOGLE_ADS_DEVELOPER_TOKEN",
           valueRef: "$secrets.GOOGLE_ADS_DEVELOPER_TOKEN",
-          required: true,
+          optional: false,
           source: {
             kind: "platform-secret",
             name: "GOOGLE_ADS_DEVELOPER_TOKEN",
@@ -2334,7 +2340,7 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
     });
   });
 
-  it("preserves optional runtime binding requiredness", () => {
+  it("preserves optional env binding availability as optional runtime metadata", () => {
     expect(
       getConnectorAuthMethodRuntimeMetadata("agora", "api-token"),
     ).toMatchObject({
@@ -2342,13 +2348,50 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
         {
           envName: "AGORA_APP_CERTIFICATE",
           valueRef: "$secrets.AGORA_APP_CERTIFICATE",
-          required: false,
+          optional: true,
           source: {
             kind: "connector-secret",
             name: "AGORA_APP_CERTIFICATE",
           },
         },
       ]),
+    });
+  });
+
+  it("does not use legacy required metadata in connector envBindings", () => {
+    for (const type of connectorTypeSchema.options) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
+        const method = getConnectorAuthMethod(type, authMethod);
+        if (!method) {
+          continue;
+        }
+        if (method.access.kind === "none") {
+          continue;
+        }
+        for (const [envName, binding] of Object.entries(
+          method.access.envBindings,
+        )) {
+          if (typeof binding === "string") {
+            continue;
+          }
+          expect(
+            "required" in binding,
+            `${type}/${authMethod}: env binding ${envName} must use optional: true instead of required: false`,
+          ).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("keeps manual grant field requiredness separate from env binding availability", () => {
+    expect(getConnectorAuthMethod("gitlab", "api-token")?.grant).toMatchObject({
+      kind: "manual",
+      fields: {
+        GITLAB_HOST: {
+          required: false,
+          storage: "variable",
+        },
+      },
     });
   });
 
@@ -2382,9 +2425,9 @@ describe("getConnectorAuthMethodRuntimeMetadata", () => {
           );
           for (const binding of runtimeBindings) {
             expect(
-              binding.required,
-              `${type}/${authMethod}: optional field ${fieldName} must not be marked as a required runtime binding`,
-            ).toBe(false);
+              binding.optional,
+              `${type}/${authMethod}: optional field ${fieldName} must be marked as an optional runtime binding`,
+            ).toBe(true);
           }
         }
       }
@@ -2465,6 +2508,12 @@ describe("getConnectorEnvBindingEntries", () => {
   it("returns correct env binding entries for API-token-only connector", () => {
     expect(envBindingsForSingleMethod("axiom", "api-token")).toEqual({
       AXIOM_TOKEN: "$secrets.AXIOM_TOKEN",
+    });
+  });
+
+  it("returns correct env binding entries for Ashby", () => {
+    expect(envBindingsForSingleMethod("ashby", "api-token")).toEqual({
+      ASHBY_TOKEN: "$secrets.ASHBY_TOKEN",
     });
   });
 

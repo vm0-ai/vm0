@@ -54,6 +54,7 @@ import { pikaFirewall } from "./pika.generated";
 import { dopplerFirewall } from "./doppler.generated";
 import { infisicalFirewall } from "./infisical.generated";
 import { asanaFirewall } from "./asana.generated";
+import { ashbyFirewall } from "./ashby.generated";
 import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
 import { atlascloudFirewall } from "./atlascloud.generated";
@@ -316,6 +317,7 @@ const CONNECTOR_FIREWALLS = {
   pika: pikaFirewall,
   apify: apifyFirewall,
   asana: asanaFirewall,
+  ashby: ashbyFirewall,
   attio: attioFirewall,
   atlassian: atlassianFirewall,
   atlascloud: atlascloudFirewall,

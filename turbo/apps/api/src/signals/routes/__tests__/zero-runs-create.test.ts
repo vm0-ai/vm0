@@ -1674,6 +1674,73 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMetadataMap).toBeNull();
   });
 
+  it("injects stored optional API-token connector env fields", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    const db = store.set(writeDb$);
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "gitlab",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "gitlab",
+      authMethod: "api-token",
+    });
+    await db.insert(secrets).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "GITLAB_TOKEN",
+      encryptedValue: encryptSecretForTests("glpat-token"),
+      type: "connector",
+    });
+    await db.insert(variables).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "GITLAB_HOST",
+      value: "gitlab.example.com",
+      type: "connector",
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt: "use gitlab with optional host",
+          agentId: agent.agentId,
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly secretConnectorMetadataMap: Record<string, unknown> | null;
+    };
+    expect(executionContext.environment.GITLAB_TOKEN).toBe(
+      connectorSecretPlaceholder("gitlab", "GITLAB_TOKEN"),
+    );
+    expect(executionContext.environment.GITLAB_HOST).toBe("gitlab.example.com");
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
+      GITLAB_TOKEN: "glpat-token",
+    });
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      GITLAB_TOKEN: "gitlab",
+    });
+    expect(executionContext.secretConnectorMetadataMap).toBeNull();
+  });
+
   it("injects authorized connector token secrets and refresh metadata", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);

@@ -404,7 +404,7 @@ function connectorProvidedBindingsForStoredConnectors(
     if (!metadata) {
       continue;
     }
-    for (const { envName, required, source } of metadata.runtimeBindings) {
+    for (const { envName, optional, source } of metadata.runtimeBindings) {
       switch (source.kind) {
         case "connector-secret": {
           provided.push({
@@ -412,7 +412,7 @@ function connectorProvidedBindingsForStoredConnectors(
             authMethod: connector.authMethod,
             namespace: "secrets",
             name: envName,
-            required,
+            optional,
             source,
           });
           break;
@@ -423,7 +423,7 @@ function connectorProvidedBindingsForStoredConnectors(
             authMethod: connector.authMethod,
             namespace: "vars",
             name: envName,
-            required,
+            optional,
             source,
           });
           break;
@@ -1329,6 +1329,9 @@ function requiredConnectorTokenSecretRequirements(args: {
   const requiredOutputNames = new Set<string>();
   const requiredExtraSecretNames = new Set<string>();
   for (const binding of runtimeMetadata.runtimeBindings) {
+    if (binding.optional) {
+      continue;
+    }
     if (binding.source.kind !== "connector-secret") {
       continue;
     }

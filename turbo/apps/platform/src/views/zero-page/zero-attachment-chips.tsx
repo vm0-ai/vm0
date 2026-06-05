@@ -88,6 +88,7 @@ import {
   type ZoomableImageControls,
   zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
+import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 
 export {
   downloadAttachmentUrl,
@@ -1084,12 +1085,15 @@ function ArtifactDialogBody({
         className="h-full w-full bg-background"
         data-testid="artifact-dialog-site-frame"
       >
-        <iframe
+        <AutoFocusedArtifactIframe
+          focusKey={`${preview.url}:${fullscreen ? "fullscreen" : "dialog"}`}
+          focusOnMount
           src={preview.url}
           title={`${filename} preview`}
           sandbox="allow-scripts"
           scrolling="yes"
           className="block h-full w-full border-0 bg-background"
+          data-testid="artifact-dialog-body-html"
         />
       </div>
     );

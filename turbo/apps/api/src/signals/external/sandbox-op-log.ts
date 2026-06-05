@@ -20,6 +20,7 @@ interface SandboxOperationAttrs {
   readonly durationMs: number;
   readonly success: boolean;
   readonly runId: string;
+  readonly timestamp?: string;
   readonly dimensions?: Record<string, unknown>;
 }
 
@@ -47,7 +48,7 @@ export function recordSandboxOperation(attrs: SandboxOperationAttrs): void {
       Promise.resolve(
         client.ingest(dataset, [
           {
-            _time: nowDate().toISOString(),
+            _time: attrs.timestamp ?? nowDate().toISOString(),
             source: "api",
             op_type: attrs.actionType,
             sandbox_type: attrs.sandboxType,

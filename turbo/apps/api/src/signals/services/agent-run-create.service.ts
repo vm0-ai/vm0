@@ -1651,8 +1651,6 @@ interface ConnectorEnvBindingSet {
   readonly accessKind: "static" | "refresh-token" | "none";
   readonly refreshableSecretNames: ReadonlySet<string>;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
-  readonly optionalSecretNames: ReadonlySet<string>;
-  readonly optionalVariableNames: ReadonlySet<string>;
 }
 
 interface StoredConnectorRequirements {
@@ -1713,20 +1711,6 @@ function connectorEnvBindingSets(
         `Invalid auth method "${row.authMethod}" for stored connector "${row.connectorType}"`,
       );
     }
-    const optionalSecretNames = new Set<string>();
-    const optionalVariableNames = new Set<string>();
-    if (method.grant.kind === "manual") {
-      for (const [name, field] of Object.entries(method.grant.fields)) {
-        if (field.required !== false) {
-          continue;
-        }
-        if (field.storage === "variable") {
-          optionalVariableNames.add(name);
-        } else {
-          optionalSecretNames.add(name);
-        }
-      }
-    }
     return {
       connectorType: row.connectorType,
       authMethod: row.authMethod,
@@ -1736,8 +1720,6 @@ function connectorEnvBindingSets(
           ? new Set(accessMetadata.refreshableSecrets)
           : new Set<string>(),
       runtimeBindings: metadata.runtimeBindings,
-      optionalSecretNames,
-      optionalVariableNames,
     };
   });
 }
@@ -1854,10 +1836,8 @@ function resolveStoredConnectorState(
     accessKind,
     refreshableSecretNames,
     runtimeBindings,
-    optionalSecretNames,
-    optionalVariableNames,
   } of bindingSets) {
-    for (const { envName, valueRef, source } of runtimeBindings) {
+    for (const { envName, valueRef, optional, source } of runtimeBindings) {
       switch (source.kind) {
         case "connector-secret": {
           const secretName = source.name;
@@ -1865,7 +1845,7 @@ function resolveStoredConnectorState(
           if (secretValue !== undefined) {
             secrets[envName] = secretValue;
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
-          } else if (!optionalSecretNames.has(secretName)) {
+          } else if (!optional) {
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
           }
           break;
@@ -1876,7 +1856,7 @@ function resolveStoredConnectorState(
           if (variableValue !== undefined) {
             vars[envName] = variableValue;
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
-          } else if (!optionalVariableNames.has(variableName)) {
+          } else if (!optional) {
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
           }
           break;

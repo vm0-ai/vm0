@@ -37,7 +37,7 @@ export const gitlab = {
             GITLAB_TOKEN: "$secrets.GITLAB_TOKEN",
             GITLAB_HOST: {
               valueRef: "$vars.GITLAB_HOST",
-              required: false,
+              optional: true,
             },
           },
         },
