@@ -178,12 +178,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.LarkConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable the Lark connector while tenant access-token exchange is being repaired.",
-    enabled: false,
-  },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Lab page for toggling experimental features",

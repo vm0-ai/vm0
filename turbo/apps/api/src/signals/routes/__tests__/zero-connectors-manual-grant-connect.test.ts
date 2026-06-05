@@ -231,11 +231,6 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
   it("stores Lark app credentials without writing the logical access token", async () => {
     const fixture = await seedFixture();
     const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { [FeatureSwitchKey.LarkConnector]: true },
-    });
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 
     await accept(
@@ -280,11 +275,6 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
   it("clears stale Lark access token state on reconnect", async () => {
     const fixture = await seedFixture();
     const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { [FeatureSwitchKey.LarkConnector]: true },
-    });
     await db.insert(connectors).values({
       orgId: fixture.orgId,
       userId: fixture.userId,

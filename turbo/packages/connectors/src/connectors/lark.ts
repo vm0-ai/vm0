@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const lark = {
   lark: {
@@ -9,7 +8,6 @@ export const lark = {
       "Connect your Lark app to manage messages, documents, calendars, and workflows",
     authMethods: {
       "api-token": {
-        featureFlag: FeatureSwitchKey.LarkConnector,
         label: "App Credentials",
         helpText:
           "1. Log in to the [Lark Developer Console](https://open.larksuite.com/app/)\n2. Select your app from the list (or create a new one)\n3. Go to the **Credentials & Basic Info** page\n4. Copy your **App ID** and **App Secret**",
