@@ -203,6 +203,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   gmail: "https://accounts.google.com/o/oauth2/v2/auth",
   "google-ads": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-calendar": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-cloud": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-docs": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-drive": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-meet": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -2547,6 +2548,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ]);
   });
 
+  it("exposes Google Cloud OAuth only when its switch is enabled", () => {
+    expect(
+      getAvailableConnectorAuthMethodIds("google-cloud", {}),
+    ).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("google-cloud", {
+        [FeatureSwitchKey.GoogleCloudConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
   it("exposes Doubao API-token auth without a feature switch", () => {
     expect(getAvailableConnectorAuthMethodIds("doubao", {})).toStrictEqual([
       "api-token",
@@ -3993,6 +4005,17 @@ describe("getConnectorAuthMethodGrantScopes - google-meet scopes", () => {
     expect(
       getConnectorAuthMethodGrantScopes("google-meet", "oauth"),
     ).not.toContain("test-mutated-scope");
+  });
+});
+
+describe("getConnectorAuthMethodGrantScopes - google-cloud scopes", () => {
+  it("uses cloud-platform and userinfo.email for google cloud oauth scopes", () => {
+    const scopes = getConnectorAuthMethodGrantScopes("google-cloud", "oauth");
+
+    expect(scopes).toStrictEqual([
+      "https://www.googleapis.com/auth/cloud-platform",
+      "https://www.googleapis.com/auth/userinfo.email",
+    ]);
   });
 });
 

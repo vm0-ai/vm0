@@ -107,6 +107,7 @@
     "generate:gmail": "tsx src/index.ts gmail",
     "generate:gong": "tsx src/index.ts gong",
     "generate:google-ads": "tsx src/index.ts google-ads",
+    "generate:google-cloud": "tsx src/index.ts google-cloud",
     "generate:google-calendar": "tsx src/index.ts google-calendar",
     "generate:google-docs": "tsx src/index.ts google-docs",
     "generate:google-drive": "tsx src/index.ts google-drive",

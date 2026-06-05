@@ -7,6 +7,7 @@ export const GOOGLE_OAUTH_CONNECTOR_TYPES = [
   "gmail",
   "google-ads",
   "google-calendar",
+  "google-cloud",
   "google-docs",
   "google-drive",
   "google-meet",
