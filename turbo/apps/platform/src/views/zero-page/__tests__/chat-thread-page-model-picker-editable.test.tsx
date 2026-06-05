@@ -2,8 +2,9 @@
  * Thread-page model picker model-first behaviour.
  *
  * Rule: the composer's model picker remains editable in an existing chat
- * thread. Switching away from the thread-pinned model sends forceNewSession so
- * the backend starts a compatible CLI session.
+ * thread. Changing it writes the thread model pin immediately, and switching
+ * away from the previous thread-pinned model sends forceNewSession so the
+ * backend starts a compatible CLI session.
  *
  * Entry point: /chats/:threadId thread page.
  * Mock (external): Web API via MSW (feature switch + org providers + thread
@@ -17,6 +18,7 @@ import userEvent from "@testing-library/user-event";
 import {
   chatMessagesContract,
   chatThreadByIdContract,
+  chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -201,9 +203,10 @@ describe("chat thread page — model picker editable", () => {
     });
   });
 
-  // CHAT-MODEL-EDIT-005: changing the model on an existing thread sends the
-  // forceNewSession flag expected by the backend model-switch path.
-  it("sends forceNewSession when changing model on an existing thread (CHAT-MODEL-EDIT-005)", async () => {
+  // CHAT-MODEL-EDIT-005: changing the model on an existing thread persists the
+  // thread pin and sends the forceNewSession flag expected by the backend
+  // model-switch path.
+  it("updates the thread model and sends forceNewSession when changing model on an existing thread (CHAT-MODEL-EDIT-005)", async () => {
     const user = userEvent.setup();
     let capturedBody:
       | {
@@ -214,11 +217,23 @@ describe("chat thread page — model picker editable", () => {
           forceNewSession?: boolean;
         }
       | undefined;
+    let capturedModelSelectionBody:
+      | {
+          modelSelection?: {
+            modelProviderId: string;
+            selectedModel: string;
+          } | null;
+        }
+      | undefined;
 
     setupMocks([makeUserMessage(), makeCompletionMarker()], {
       selectedModel: "claude-sonnet-4-6",
     });
     server.use(
+      mockApi(chatThreadModelSelectionContract.update, ({ body, respond }) => {
+        capturedModelSelectionBody = body;
+        return respond(204);
+      }),
       mockApi(chatMessagesContract.send, ({ body, respond }) => {
         capturedBody = {
           modelSelection:
@@ -253,6 +268,9 @@ describe("chat thread page — model picker editable", () => {
     await waitFor(() => {
       expect(capturedBody).toBeDefined();
     });
+    expect(capturedModelSelectionBody?.modelSelection?.selectedModel).toBe(
+      "claude-opus-4-8",
+    );
     expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-8");
     expect(capturedBody?.forceNewSession).toBeTruthy();
   });
@@ -270,6 +288,14 @@ describe("chat thread page — model picker editable", () => {
           forceNewSession?: boolean;
         }
       | undefined;
+    let capturedModelSelectionBody:
+      | {
+          modelSelection?: {
+            modelProviderId: string;
+            selectedModel: string;
+          } | null;
+        }
+      | undefined;
 
     const activeUserMessage: PagedChatMessage = {
       id: "msg-active-user-1",
@@ -283,6 +309,10 @@ describe("chat thread page — model picker editable", () => {
       selectedModel: "claude-sonnet-4-6",
     });
     server.use(
+      mockApi(chatThreadModelSelectionContract.update, ({ body, respond }) => {
+        capturedModelSelectionBody = body;
+        return respond(204);
+      }),
       mockApi(chatMessagesContract.send, ({ body, respond }) => {
         capturedBody = {
           modelSelection:
@@ -318,6 +348,9 @@ describe("chat thread page — model picker editable", () => {
     await waitFor(() => {
       expect(capturedBody).toBeDefined();
     });
+    expect(capturedModelSelectionBody?.modelSelection?.selectedModel).toBe(
+      "claude-opus-4-8",
+    );
     expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-8");
     expect(capturedBody?.forceNewSession).toBeTruthy();
   });

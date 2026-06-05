@@ -34,6 +34,7 @@ import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifact
 import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "./zero-chat-threads-delete";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
+import { zeroChatThreadModelSelectionRoutes } from "./zero-chat-threads-model-selection";
 import { zeroChatThreadPatchRoutes } from "./zero-chat-threads-patch";
 import { zeroChatThreadPinRoutes } from "./zero-chat-threads-pin";
 import { zeroChatThreadRenameRoutes } from "./zero-chat-threads-rename";
@@ -282,6 +283,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   ...zeroChatThreadCreateRoutes,
   ...zeroChatThreadDeleteRoutes,
   ...zeroChatThreadMarkReadRoutes,
+  ...zeroChatThreadModelSelectionRoutes,
   ...zeroChatThreadPatchRoutes,
   ...zeroChatThreadPinRoutes,
   ...zeroChatThreadRenameRoutes,

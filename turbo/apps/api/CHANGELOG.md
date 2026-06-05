@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.104.1](https://github.com/vm0-ai/vm0/compare/api-v1.104.0...api-v1.104.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* backfill schedule chat threads ([#16218](https://github.com/vm0-ai/vm0/issues/16218)) ([8081d91](https://github.com/vm0-ai/vm0/commit/8081d91d611a8f7b387cf8cdf4c1f5e655fa28d1))
+* persist thread composer model selection ([#16219](https://github.com/vm0-ai/vm0/issues/16219)) ([b1e7682](https://github.com/vm0-ai/vm0/commit/b1e768217fab71380d4b4dc3f0f72f5fabb7379a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.64.1
+    * @vm0/core bumped to 8.310.2
+    * @vm0/db bumped to 1.32.1
+
 ## [1.104.0](https://github.com/vm0-ai/vm0/compare/api-v1.103.0...api-v1.104.0) (2026-06-04)
 
 

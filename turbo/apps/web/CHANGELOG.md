@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.410.1](https://github.com/vm0-ai/vm0/compare/web-v12.410.0...web-v12.410.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* persist thread composer model selection ([#16219](https://github.com/vm0-ai/vm0/issues/16219)) ([b1e7682](https://github.com/vm0-ai/vm0/commit/b1e768217fab71380d4b4dc3f0f72f5fabb7379a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.64.1
+    * @vm0/core bumped to 8.310.2
+
 ## [12.410.0](https://github.com/vm0-ai/vm0/compare/web-v12.409.11...web-v12.410.0) (2026-06-04)
 
 

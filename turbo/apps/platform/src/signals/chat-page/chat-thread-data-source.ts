@@ -26,6 +26,11 @@ export interface PatchDraftArgs {
   attachments: PersistedAttachment[] | null;
 }
 
+export interface PatchModelSelectionArgs {
+  threadId: string;
+  modelSelection: ModelSelectionRequest | null;
+}
+
 export interface AppendQueuedMessageArgs {
   threadId: string;
   agentId: string;
@@ -81,6 +86,10 @@ export interface ChatThreadDataSource {
   reloadThread$: Command<void, []>;
   initialPage$: Computed<Promise<InitialPage>>;
   patchDraft$: Command<Promise<void>, [PatchDraftArgs, AbortSignal]>;
+  patchModelSelection$: Command<
+    Promise<void>,
+    [PatchModelSelectionArgs, AbortSignal]
+  >;
   appendQueuedMessage$: Command<
     Promise<PagedChatMessage>,
     [AppendQueuedMessageArgs, AbortSignal]

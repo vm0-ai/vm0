@@ -73,7 +73,6 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { IN_VITEST } from "../../env.ts";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
@@ -208,7 +207,6 @@ import {
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
-import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
 import {
   resolveChatComposerSubmitBlocker,
   usePersonalOauthConfigurationAction,
@@ -3712,21 +3710,13 @@ function useChatComposerModel(
   const modelSelection = modelSelectionResolved ?? null;
   const defaultModelSelection = defaultModelSelectionResolved ?? null;
   const setModelSelection = useSet(thread.setModelSelection$);
-  const updateUserModelPreference = useSet(updateUserModelPreference$);
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
   const handleModelSelectionChange = (
     selection: ModelProviderSelection | null,
   ): void => {
-    setModelSelection(selection);
-    const selectedModel = selection?.selectedModel;
-    if (isSupportedRunModel(selectedModel)) {
-      detach(
-        updateUserModelPreference({ selectedModel }, pageSignal),
-        Reason.DomCallback,
-      );
-    }
+    detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
   };
 
   const modelPicker = resolveChatComposerModelPicker({
