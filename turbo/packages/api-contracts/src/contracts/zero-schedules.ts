@@ -29,8 +29,9 @@ export const scheduleResponseSchema = z.object({
   lastRunAt: z.string().nullable(),
   retryStartedAt: z.string().nullable(),
   consecutiveFailures: z.number(),
-  // Linked chat thread (chat mode). Read-only: set at creation, immutable after.
-  // Null = legacy schedule (no chat thread).
+  // Linked chat thread (chat mode). Read-only for clients. Null means the
+  // schedule has not been linked yet; execution creates a web chat thread and
+  // attaches it before starting the run.
   chatThreadId: z.string().uuid().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -64,7 +65,8 @@ const zeroDeployScheduleRequestSchema = z
     // Chat-mode linkage, accepted only on creation of a new schedule. When
     // provided, links the schedule to an existing chat thread; when omitted and
     // chat-mode schedules are enabled, the server creates a web chat thread and
-    // links it. Rejected on update of an existing schedule (link is immutable).
+    // links it. Execution also repairs missing links before starting a run.
+    // Rejected on update of an existing schedule.
     chatThreadId: z.string().uuid("Invalid chat thread ID").optional(),
   })
   .refine(

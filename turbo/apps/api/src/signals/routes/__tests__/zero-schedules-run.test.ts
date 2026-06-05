@@ -188,10 +188,32 @@ describe("POST /api/zero/schedules/run", () => {
 
     const db = store.set(writeDb$);
     const [schedule] = await db
-      .select({ lastRunId: zeroAgentSchedules.lastRunId })
+      .select({
+        lastRunId: zeroAgentSchedules.lastRunId,
+        chatThreadId: zeroAgentSchedules.chatThreadId,
+      })
       .from(zeroAgentSchedules)
       .where(eq(zeroAgentSchedules.id, scheduleId));
     expect(schedule?.lastRunId).toBe(body.runId);
+    const chatThreadId = schedule?.chatThreadId;
+    expect(chatThreadId).toStrictEqual(expect.any(String));
+    if (!chatThreadId) {
+      throw new Error("Expected schedule to be linked to a chat thread");
+    }
+
+    const [thread] = await db
+      .select({
+        userId: chatThreads.userId,
+        agentComposeId: chatThreads.agentComposeId,
+        title: chatThreads.title,
+      })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, chatThreadId));
+    expect(thread).toStrictEqual({
+      userId: fixture.userId,
+      agentComposeId: fixture.composeId,
+      title: "run-test",
+    });
 
     const [run] = await db
       .select({
@@ -213,25 +235,52 @@ describe("POST /api/zero/schedules/run", () => {
       .select({
         triggerSource: zeroRuns.triggerSource,
         scheduleId: zeroRuns.scheduleId,
+        chatThreadId: zeroRuns.chatThreadId,
       })
       .from(zeroRuns)
       .where(eq(zeroRuns.id, body.runId));
     expect(zeroRun).toStrictEqual({
       triggerSource: "schedule",
       scheduleId,
+      chatThreadId,
     });
 
-    const [callback] = await db
+    const callbacks = await db
       .select({
         url: agentRunCallbacks.url,
         payload: agentRunCallbacks.payload,
       })
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, body.runId));
-    expect(callback?.url).toMatch(
-      /\/api\/internal\/callbacks\/schedule\/cron$/,
-    );
-    expect(callback?.payload).toMatchObject({ scheduleId });
+    const scheduleCallback = callbacks.find((callback) => {
+      return callback.url.endsWith("/callbacks/schedule/cron");
+    });
+    expect(scheduleCallback?.payload).toMatchObject({ scheduleId });
+    expect(
+      callbacks.some((callback) => {
+        return callback.url.endsWith("/callbacks/chat");
+      }),
+    ).toBeTruthy();
+
+    const messages = await db
+      .select({
+        chatThreadId: chatMessages.chatThreadId,
+        content: chatMessages.content,
+        role: chatMessages.role,
+        scheduleId: chatMessages.scheduleId,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.runId, body.runId));
+    expect(
+      messages.some((message) => {
+        return (
+          message.chatThreadId === chatThreadId &&
+          message.role === "user" &&
+          message.content === "Manual run test" &&
+          message.scheduleId === scheduleId
+        );
+      }),
+    ).toBeTruthy();
   });
 
   it("runs in chat mode: posts a user message + adds the chat callback", async () => {
