@@ -26,4 +26,6 @@ pub use protocol::{
     TerminateStatus,
 };
 pub use provider::FirecrackerControl;
-pub(crate) use server::{ControlServerHandle, ProcessTerminationHandle, bind_server};
+pub(crate) use server::{
+    ControlServerHandle, ProcessTerminationHandle, ProcessTerminationRequest, bind_server,
+};

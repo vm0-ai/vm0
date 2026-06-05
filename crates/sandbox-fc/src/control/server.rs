@@ -8,7 +8,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::Serialize;
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -29,18 +29,18 @@ const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 /// terminate the sandbox process group.
 #[derive(Clone)]
 pub(crate) struct ProcessTerminationHandle {
-    kill_tx: mpsc::Sender<()>,
+    kill_tx: mpsc::Sender<ProcessTerminationRequest>,
     park_coordinator: ParkCoordinator,
 }
 
 impl ProcessTerminationHandle {
     #[cfg(test)]
-    pub(crate) fn new(kill_tx: mpsc::Sender<()>) -> Self {
+    pub(crate) fn new(kill_tx: mpsc::Sender<ProcessTerminationRequest>) -> Self {
         Self::with_park_coordinator(kill_tx, ParkCoordinator::new())
     }
 
     pub(crate) fn with_park_coordinator(
-        kill_tx: mpsc::Sender<()>,
+        kill_tx: mpsc::Sender<ProcessTerminationRequest>,
         park_coordinator: ParkCoordinator,
     ) -> Self {
         Self {
@@ -49,15 +49,42 @@ impl ProcessTerminationHandle {
         }
     }
 
-    fn request_terminate(&self) -> TerminateStatus {
+    async fn request_terminate(&self) -> TerminateStatus {
         if !self.park_coordinator.begin_terminate() {
             return TerminateStatus::RefusedIdle;
         }
 
-        match self.kill_tx.try_send(()) {
-            Ok(()) => TerminateStatus::Accepted,
-            Err(mpsc::error::TrySendError::Full(())) => TerminateStatus::Accepted,
-            Err(mpsc::error::TrySendError::Closed(())) => TerminateStatus::AlreadyStopped,
+        let (ack_tx, ack_rx) = oneshot::channel();
+        match self
+            .kill_tx
+            .try_send(ProcessTerminationRequest::with_ack(ack_tx))
+        {
+            Ok(()) => match ack_rx.await {
+                Ok(()) => TerminateStatus::Accepted,
+                Err(_) => TerminateStatus::AlreadyStopped,
+            },
+            Err(mpsc::error::TrySendError::Full(_)) => TerminateStatus::Accepted,
+            Err(mpsc::error::TrySendError::Closed(_)) => TerminateStatus::AlreadyStopped,
+        }
+    }
+}
+
+pub(crate) struct ProcessTerminationRequest {
+    ack: Option<oneshot::Sender<()>>,
+}
+
+impl ProcessTerminationRequest {
+    pub(crate) fn fire_and_forget() -> Self {
+        Self { ack: None }
+    }
+
+    fn with_ack(ack: oneshot::Sender<()>) -> Self {
+        Self { ack: Some(ack) }
+    }
+
+    pub(crate) fn acknowledge(self) {
+        if let Some(ack) = self.ack {
+            let _ = ack.send(());
         }
     }
 }
@@ -342,7 +369,11 @@ async fn handle_connection(
     };
 
     if let Ok(request) = serde_json::from_slice::<TerminateRequest>(&frame) {
-        let response = terminate(request, &termination);
+        let response = tokio::select! {
+            biased;
+            () = shutdown.cancelled() => return Ok(()),
+            response = terminate(request, &termination) => response,
+        };
         return write_json_frame(&mut stream, &response).await;
     }
 
@@ -367,13 +398,13 @@ async fn handle_connection(
     Ok(())
 }
 
-fn terminate(
+async fn terminate(
     request: TerminateRequest,
     termination: &ProcessTerminationHandle,
 ) -> TerminateResponse {
     match request.action {
         TerminateAction::Terminate => TerminateResponse::Status {
-            status: termination.request_terminate(),
+            status: termination.request_terminate().await,
         },
     }
 }
@@ -512,6 +543,15 @@ mod tests {
         )
     }
 
+    async fn recv_termination_request(
+        kill_rx: &mut mpsc::Receiver<ProcessTerminationRequest>,
+    ) -> ProcessTerminationRequest {
+        kill_rx
+            .recv()
+            .await
+            .expect("terminate request should notify process monitor")
+    }
+
     #[tokio::test]
     async fn client_server_no_guest() {
         let dir = tempfile::tempdir().unwrap();
@@ -557,12 +597,17 @@ mod tests {
         .unwrap()
         .spawn(CancellationToken::new());
 
-        let request = TerminateRequest {
-            action: TerminateAction::Terminate,
-        };
-        let response = send_terminate(&sock_path, &request, Duration::from_secs(5))
-            .await
-            .unwrap();
+        let client = tokio::spawn({
+            let sock_path = sock_path.clone();
+            async move {
+                let request = TerminateRequest {
+                    action: TerminateAction::Terminate,
+                };
+                send_terminate(&sock_path, &request, Duration::from_secs(5)).await
+            }
+        });
+        recv_termination_request(&mut kill_rx).await.acknowledge();
+        let response = client.await.unwrap().unwrap();
 
         assert_eq!(
             response,
@@ -570,10 +615,6 @@ mod tests {
                 status: TerminateStatus::Accepted
             }
         );
-        kill_rx
-            .try_recv()
-            .expect("terminate request should notify process monitor");
-
         handle.shutdown().await;
     }
 
@@ -644,62 +685,85 @@ mod tests {
         handle.shutdown().await;
     }
 
-    #[test]
-    fn termination_handle_treats_full_channel_as_accepted() {
+    #[tokio::test]
+    async fn termination_handle_treats_full_channel_as_accepted() {
         let (kill_tx, kill_rx) = mpsc::channel(1);
+        kill_tx
+            .try_send(ProcessTerminationRequest::fire_and_forget())
+            .unwrap();
         let termination = ProcessTerminationHandle::new(kill_tx);
 
-        assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
-        assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
+        assert_eq!(
+            termination.request_terminate().await,
+            TerminateStatus::Accepted
+        );
         assert_eq!(kill_rx.len(), 1);
     }
 
-    #[test]
-    fn termination_handle_blocks_future_park_before_queueing_kill() {
-        let (kill_tx, kill_rx) = mpsc::channel(1);
+    #[tokio::test]
+    async fn termination_handle_waits_for_monitor_ack_before_accepting() {
+        let (kill_tx, mut kill_rx) = mpsc::channel(1);
+        let termination = ProcessTerminationHandle::new(kill_tx);
+        let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
+
+        let request = recv_termination_request(&mut kill_rx).await;
+
+        assert!(!terminate_task.is_finished());
+        request.acknowledge();
+        assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
+    }
+
+    #[tokio::test]
+    async fn termination_handle_blocks_future_park_before_queueing_kill() {
+        let (kill_tx, mut kill_rx) = mpsc::channel(1);
         let coordinator = ParkCoordinator::new();
         let termination =
             ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
+        let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
 
-        assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
+        let request = recv_termination_request(&mut kill_rx).await;
         assert_eq!(coordinator.state(), CoordinatorState::Terminating);
         assert!(coordinator.begin_prepare_park().is_err());
-        assert_eq!(kill_rx.len(), 1);
+        assert!(!terminate_task.is_finished());
+        request.acknowledge();
+        assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
     }
 
-    #[test]
-    fn termination_handle_accepts_dirty_policy() {
-        let (kill_tx, kill_rx) = mpsc::channel(1);
+    #[tokio::test]
+    async fn termination_handle_accepts_dirty_policy() {
+        let (kill_tx, mut kill_rx) = mpsc::channel(1);
         let coordinator = ParkCoordinator::new();
         coordinator.mark_dirty(DirtyReason::new("transport failed"));
         let termination =
             ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
+        let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
 
-        assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
+        recv_termination_request(&mut kill_rx).await.acknowledge();
+        assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
         assert_eq!(coordinator.state(), CoordinatorState::Terminating);
-        assert_eq!(kill_rx.len(), 1);
     }
 
-    #[test]
-    fn termination_handle_accepts_ready_for_park_policy() {
-        let (kill_tx, kill_rx) = mpsc::channel(1);
+    #[tokio::test]
+    async fn termination_handle_accepts_ready_for_park_policy() {
+        let (kill_tx, mut kill_rx) = mpsc::channel(1);
         let coordinator = ready_for_park_coordinator();
         let termination =
             ProcessTerminationHandle::with_park_coordinator(kill_tx, coordinator.clone());
+        let terminate_task = tokio::spawn(async move { termination.request_terminate().await });
 
-        assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
+        recv_termination_request(&mut kill_rx).await.acknowledge();
+        assert_eq!(terminate_task.await.unwrap(), TerminateStatus::Accepted);
         assert_eq!(coordinator.state(), CoordinatorState::Terminating);
-        assert_eq!(kill_rx.len(), 1);
     }
 
-    #[test]
-    fn termination_handle_refuses_when_parked_without_queueing() {
+    #[tokio::test]
+    async fn termination_handle_refuses_when_parked_without_queueing() {
         let (kill_tx, kill_rx) = mpsc::channel(1);
         let termination =
             ProcessTerminationHandle::with_park_coordinator(kill_tx, parked_coordinator());
 
         assert_eq!(
-            termination.request_terminate(),
+            termination.request_terminate().await,
             TerminateStatus::RefusedIdle
         );
         assert_eq!(kill_rx.len(), 0);
