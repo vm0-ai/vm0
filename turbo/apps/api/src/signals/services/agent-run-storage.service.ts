@@ -1,6 +1,11 @@
 import { gzipSync } from "node:zlib";
 
-import type { StorageManifest } from "@vm0/api-contracts/contracts/runners";
+import type {
+  StorageManifest,
+  StorageProvisioningDestination,
+  StorageProvisioningEntry,
+  StorageProvisioningManifest,
+} from "@vm0/api-contracts/contracts/runners";
 import { expandVariablesInString } from "@vm0/core/variable-expander";
 import {
   getInstructionsFilename,
@@ -22,6 +27,11 @@ import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
+import {
+  frameworkInstructionsDestination,
+  legacyUserMountPathToProvisioningDestination,
+  resolveProvisioningDestinationMountPath,
+} from "./storage-provisioning-destinations.service";
 
 type StorageType = "artifact" | "volume";
 type ManifestStorage = StorageManifest["storages"][number];
@@ -32,6 +42,7 @@ interface ContextArtifact {
   readonly version?: string;
   readonly mountPath: string;
   readonly missingRootPolicy?: ManifestArtifact["missingRootPolicy"];
+  readonly provisioningDestination?: StorageProvisioningDestination;
 }
 
 interface AdditionalVolume {
@@ -39,6 +50,7 @@ interface AdditionalVolume {
   readonly version?: string;
   readonly mountPath: string;
   readonly system?: boolean;
+  readonly provisioningDestination?: StorageProvisioningDestination;
 }
 
 interface VolumeConfig {
@@ -68,6 +80,22 @@ interface ResolvedVolume {
   readonly instructionsTargetFilename?: string;
   readonly optional?: boolean;
   readonly system?: boolean;
+  readonly provisioningDestination?: StorageProvisioningDestination;
+}
+
+interface PreparedStorageManifestEntry {
+  readonly legacy: ManifestStorage;
+  readonly provisioning: StorageProvisioningEntry;
+}
+
+interface PreparedArtifactManifestEntry {
+  readonly legacy: ManifestArtifact;
+  readonly provisioning: StorageProvisioningEntry;
+}
+
+interface PreparedAgentRunStorageManifests {
+  readonly storageManifest: StorageManifest;
+  readonly storageProvisioningManifest: StorageProvisioningManifest;
 }
 
 interface StorageResolution {
@@ -199,6 +227,7 @@ function resolveComposeVolumes(args: {
       vasStorageName: storageName,
       vasVersion: "latest",
       instructionsTargetFilename: getInstructionsFilename(args.framework),
+      provisioningDestination: frameworkInstructionsDestination(args.framework),
     });
   }
 
@@ -563,15 +592,87 @@ async function resolveVolumeStorage(args: {
   );
 }
 
+function volumeProvisioningDestination(
+  volume: ResolvedVolume | AdditionalVolume,
+): StorageProvisioningDestination {
+  return (
+    volume.provisioningDestination ??
+    legacyUserMountPathToProvisioningDestination(
+      volume.mountPath,
+      `Volume "${volume.name}" mountPath`,
+    )
+  );
+}
+
+function artifactProvisioningDestination(
+  artifact: ContextArtifact,
+): StorageProvisioningDestination {
+  return (
+    artifact.provisioningDestination ??
+    legacyUserMountPathToProvisioningDestination(
+      artifact.mountPath,
+      `Artifact "${artifact.name}" mountPath`,
+    )
+  );
+}
+
+function storageProvisioningIntent(
+  destination: StorageProvisioningDestination,
+): StorageProvisioningEntry["intent"] {
+  switch (destination.type) {
+    case "framework-instructions": {
+      return "instructions";
+    }
+    case "framework-skill": {
+      return "skill";
+    }
+    case "framework-memory": {
+      throw new Error("memory destinations require artifact sources");
+    }
+    case "workspace":
+    case "mnt": {
+      return "user-volume";
+    }
+    default: {
+      const exhaustive: never = destination.type;
+      throw new Error(`Unsupported storage destination: ${exhaustive}`);
+    }
+  }
+}
+
+function artifactProvisioningIntent(
+  destination: StorageProvisioningDestination,
+): StorageProvisioningEntry["intent"] {
+  switch (destination.type) {
+    case "framework-memory": {
+      return "memory";
+    }
+    case "workspace":
+    case "mnt": {
+      return "user-artifact";
+    }
+    case "framework-instructions":
+    case "framework-skill": {
+      throw new Error(
+        `${destination.type} destinations require storage sources`,
+      );
+    }
+    default: {
+      const exhaustive: never = destination.type;
+      throw new Error(`Unsupported artifact destination: ${exhaustive}`);
+    }
+  }
+}
+
 function buildStorageEntry(args: {
   readonly bucket: string;
   readonly name: string;
-  readonly mountPath: string;
+  readonly destination: StorageProvisioningDestination;
   readonly vasStorageName: string;
   readonly instructionsTargetFilename?: string;
   readonly resolved: StorageResolution;
-}): Computed<Promise<ManifestStorage>> {
-  return computed(async (get): Promise<ManifestStorage> => {
+}): Computed<Promise<PreparedStorageManifestEntry>> {
+  return computed(async (get): Promise<PreparedStorageManifestEntry> => {
     const archiveUrl = await get(
       generatePresignedGetUrl(
         args.bucket,
@@ -581,15 +682,33 @@ function buildStorageEntry(args: {
         true,
       ),
     );
-    return {
+    const mountPath = resolveProvisioningDestinationMountPath(args.destination);
+    const legacy: ManifestStorage = {
       name: args.name,
-      mountPath: args.mountPath,
+      mountPath,
       vasStorageName: args.vasStorageName,
       vasVersionId: args.resolved.versionId,
       ...(args.instructionsTargetFilename
         ? { instructionsTargetFilename: args.instructionsTargetFilename }
         : {}),
       archiveUrl,
+    };
+    return {
+      legacy,
+      provisioning: {
+        intent: storageProvisioningIntent(args.destination),
+        source: {
+          kind: "storage",
+          name: args.name,
+          vasStorageName: args.vasStorageName,
+          vasVersionId: args.resolved.versionId,
+          archiveUrl,
+        },
+        destination: args.destination,
+        ...(args.instructionsTargetFilename
+          ? { instructionsTargetFilename: args.instructionsTargetFilename }
+          : {}),
+      },
     };
   });
 }
@@ -600,8 +719,8 @@ function buildComposeStorageEntry(args: {
   readonly bucket: string;
   readonly agentOrgId: string;
   readonly volume: ResolvedVolume;
-}): Computed<Promise<ManifestStorage | null>> {
-  return computed(async (get): Promise<ManifestStorage | null> => {
+}): Computed<Promise<PreparedStorageManifestEntry | null>> {
+  return computed(async (get): Promise<PreparedStorageManifestEntry | null> => {
     const resolvedResult = await settle(
       resolveVolumeStorage({
         db: args.db,
@@ -624,7 +743,7 @@ function buildComposeStorageEntry(args: {
       buildStorageEntry({
         bucket: args.bucket,
         name: args.volume.name,
-        mountPath: args.volume.mountPath,
+        destination: volumeProvisioningDestination(args.volume),
         vasStorageName: args.volume.vasStorageName,
         instructionsTargetFilename: args.volume.instructionsTargetFilename,
         resolved: resolvedResult.value,
@@ -639,8 +758,8 @@ function buildAdditionalStorageEntry(args: {
   readonly bucket: string;
   readonly runtimeOrgId: string;
   readonly volume: AdditionalVolume;
-}): Computed<Promise<ManifestStorage | null>> {
-  return computed(async (get): Promise<ManifestStorage | null> => {
+}): Computed<Promise<PreparedStorageManifestEntry | null>> {
+  return computed(async (get): Promise<PreparedStorageManifestEntry | null> => {
     const resolvedResult = await settle(
       resolveVolumeStorage({
         db: args.db,
@@ -663,7 +782,7 @@ function buildAdditionalStorageEntry(args: {
       buildStorageEntry({
         bucket: args.bucket,
         name: args.volume.name,
-        mountPath: args.volume.mountPath,
+        destination: volumeProvisioningDestination(args.volume),
         vasStorageName: args.volume.name,
         resolved: resolvedResult.value,
       }),
@@ -678,8 +797,8 @@ function buildArtifactEntry(args: {
   readonly runtimeOrgId: string;
   readonly userId: string;
   readonly artifact: ContextArtifact;
-}): Computed<Promise<ManifestArtifact>> {
-  return computed(async (get): Promise<ManifestArtifact> => {
+}): Computed<Promise<PreparedArtifactManifestEntry>> {
+  return computed(async (get): Promise<PreparedArtifactManifestEntry> => {
     const resolved = await resolveStorageVersion(
       args.db,
       args.index,
@@ -712,8 +831,10 @@ function buildArtifactEntry(args: {
       ),
     ]);
 
-    return {
-      mountPath: args.artifact.mountPath,
+    const destination = artifactProvisioningDestination(args.artifact);
+    const mountPath = resolveProvisioningDestinationMountPath(destination);
+    const legacy: ManifestArtifact = {
+      mountPath,
       vasStorageName: args.artifact.name,
       vasStorageId: resolved.storageId,
       vasVersionId: resolved.versionId,
@@ -723,27 +844,46 @@ function buildArtifactEntry(args: {
         ? { missingRootPolicy: args.artifact.missingRootPolicy }
         : {}),
     };
+    return {
+      legacy,
+      provisioning: {
+        intent: artifactProvisioningIntent(destination),
+        source: {
+          kind: "artifact",
+          name: args.artifact.name,
+          vasStorageName: args.artifact.name,
+          vasStorageId: resolved.storageId,
+          vasVersionId: resolved.versionId,
+          archiveUrl,
+          manifestUrl,
+        },
+        destination,
+        ...(args.artifact.missingRootPolicy
+          ? { missingRootPolicy: args.artifact.missingRootPolicy }
+          : {}),
+      },
+    };
   });
 }
 
 function mergeStorageEntries(args: {
-  readonly composeEntries: readonly ManifestStorage[];
-  readonly additionalEntries: readonly ManifestStorage[];
-}): readonly ManifestStorage[] {
+  readonly composeEntries: readonly PreparedStorageManifestEntry[];
+  readonly additionalEntries: readonly PreparedStorageManifestEntry[];
+}): readonly PreparedStorageManifestEntry[] {
   const additionalMountPaths = new Set(
     args.additionalEntries.map((entry) => {
-      return entry.mountPath;
+      return entry.legacy.mountPath;
     }),
   );
   return [
     ...args.composeEntries.filter((entry) => {
-      return !additionalMountPaths.has(entry.mountPath);
+      return !additionalMountPaths.has(entry.legacy.mountPath);
     }),
     ...args.additionalEntries,
   ];
 }
 
-export function prepareAgentRunStorageManifest(args: {
+export function prepareAgentRunStorageManifests(args: {
   readonly db: Db;
   readonly content: AgentComposeContent;
   readonly vars: Record<string, string> | undefined;
@@ -754,8 +894,8 @@ export function prepareAgentRunStorageManifest(args: {
   readonly volumeVersionOverrides: Record<string, string> | undefined;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly framework: SupportedFramework;
-}): Computed<Promise<StorageManifest>> {
-  return computed(async (get): Promise<StorageManifest> => {
+}): Computed<Promise<PreparedAgentRunStorageManifests>> {
+  return computed(async (get): Promise<PreparedAgentRunStorageManifests> => {
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const artifacts = dedupArtifacts(args.artifacts);
     const composeVolumes = resolveComposeVolumes({
@@ -832,22 +972,39 @@ export function prepareAgentRunStorageManifest(args: {
         ),
       ]);
 
+    const storageEntries = mergeStorageEntries({
+      composeEntries: composeEntries.filter(
+        (entry): entry is PreparedStorageManifestEntry => {
+          return entry !== null;
+        },
+      ),
+      additionalEntries: additionalEntries.filter(
+        (entry): entry is PreparedStorageManifestEntry => {
+          return entry !== null;
+        },
+      ),
+    });
+
     return {
-      storages: [
-        ...mergeStorageEntries({
-          composeEntries: composeEntries.filter(
-            (entry): entry is ManifestStorage => {
-              return entry !== null;
-            },
-          ),
-          additionalEntries: additionalEntries.filter(
-            (entry): entry is ManifestStorage => {
-              return entry !== null;
-            },
-          ),
+      storageManifest: {
+        storages: storageEntries.map((entry) => {
+          return entry.legacy;
         }),
-      ],
-      artifacts: artifactEntries,
+        artifacts: artifactEntries.map((entry) => {
+          return entry.legacy;
+        }),
+      },
+      storageProvisioningManifest: {
+        version: "2",
+        entries: [
+          ...storageEntries.map((entry) => {
+            return entry.provisioning;
+          }),
+          ...artifactEntries.map((entry) => {
+            return entry.provisioning;
+          }),
+        ],
+      },
     };
   });
 }

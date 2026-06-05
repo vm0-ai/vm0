@@ -35,6 +35,7 @@ use tracing::{info, warn};
 use crate::ids::RunId;
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use api_contracts::generated::constants::runners::paths::{
+    CANONICAL_CLAUDE_MEMORY_MOUNT_PATH, CANONICAL_CODEX_MEMORY_MOUNT_PATH,
     CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR,
 };
 
@@ -1398,10 +1399,9 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
     sync_guest_timezone(sandbox, context).await;
 
     // 3. Download storages (skipping entries unchanged since the previous turn)
-    if let Some(manifest) = &context.storage_manifest {
-        let guest_manifest = GuestDownloadManifest::from(manifest);
+    if let Some(guest_manifest) = guest_download_manifest_for_context(context)? {
         let mut effective: GuestDownloadManifest = match start.prev_storage {
-            Some(prev) => filter_unchanged_storages(&guest_manifest, prev),
+            Some(prev) => filter_unchanged_storages(&guest_manifest, prev)?,
             None => guest_manifest,
         };
         // Short-circuit: skip the vsock exec if every entry was filtered out
@@ -1756,6 +1756,20 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
             .map(|failure| failure.error.as_str()),
     );
     Ok(agent_result)
+}
+
+fn guest_download_manifest_for_context(
+    context: &ExecutionContext,
+) -> RunnerResult<Option<GuestDownloadManifest>> {
+    if let Some(manifest) = &context.storage_provisioning_manifest {
+        return GuestDownloadManifest::try_from(manifest)
+            .map(Some)
+            .map_err(|e| RunnerError::Internal(format!("storage provisioning manifest: {e}")));
+    }
+    Ok(context
+        .storage_manifest
+        .as_ref()
+        .map(GuestDownloadManifest::from))
 }
 
 /// Read a structured error file from the guest filesystem.
@@ -2222,7 +2236,7 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
 fn filter_unchanged_storages(
     manifest: &GuestDownloadManifest,
     prev: &StorageFingerprints,
-) -> GuestDownloadManifest {
+) -> RunnerResult<GuestDownloadManifest> {
     let mut skipped: usize = 0;
     let mut cleanup_paths: Vec<String> = Vec::new();
 
@@ -2238,9 +2252,9 @@ fn filter_unchanged_storages(
             if unchanged {
                 skipped += 1;
             } else {
-                cleanup_paths.push(s.mount_path.clone());
+                push_cleanup_path_if_safe(&mut cleanup_paths, &s.mount_path);
             }
-            GuestDownloadStorageEntry {
+            Ok(GuestDownloadStorageEntry {
                 archive_url: if unchanged {
                     None
                 } else {
@@ -2249,9 +2263,9 @@ fn filter_unchanged_storages(
                 instructions_target_filename: s.instructions_target_filename.clone(),
                 cached: unchanged,
                 ..s.clone()
-            }
+            })
         })
-        .collect();
+        .collect::<RunnerResult<Vec<_>>>()?;
 
     // Detect removed storages: paths in previous fingerprints not in current manifest.
     let current_paths: std::collections::HashSet<&str> = manifest
@@ -2261,14 +2275,15 @@ fn filter_unchanged_storages(
         .collect();
     for prev_path in prev.storages.keys() {
         if !current_paths.contains(prev_path.as_str()) {
-            cleanup_paths.push(prev_path.clone());
+            push_safe_cleanup_path(&mut cleanup_paths, prev_path)?;
         }
     }
 
     let filter_artifact = |a: &GuestDownloadArtifactEntry,
                            prev_ver: Option<&(String, String)>,
                            skipped: &mut usize,
-                           cleanup: &mut Vec<String>| {
+                           cleanup: &mut Vec<String>|
+     -> RunnerResult<GuestDownloadArtifactEntry> {
         let same = prev_ver.is_some_and(|fingerprint| {
             !StorageFingerprints::fingerprint_is_tainted(fingerprint)
                 && fingerprint.0.as_str() == a.vas_storage_name.as_str()
@@ -2277,13 +2292,13 @@ fn filter_unchanged_storages(
         if same {
             *skipped += 1;
         } else {
-            cleanup.push(a.mount_path.clone());
+            push_cleanup_path_if_safe(cleanup, &a.mount_path);
         }
-        GuestDownloadArtifactEntry {
+        Ok(GuestDownloadArtifactEntry {
             archive_url: a.archive_url.clone(),
             cached: same,
             ..a.clone()
-        }
+        })
     };
 
     let artifacts: Vec<GuestDownloadArtifactEntry> = manifest
@@ -2293,7 +2308,7 @@ fn filter_unchanged_storages(
             let prev_ver = prev.artifacts.get(&a.mount_path);
             filter_artifact(a, prev_ver, &mut skipped, &mut cleanup_paths)
         })
-        .collect();
+        .collect::<RunnerResult<Vec<_>>>()?;
     // Detect removed artifacts: previous artifact mount_paths not in current manifest.
     let current_artifact_paths: std::collections::HashSet<&str> = manifest
         .artifacts
@@ -2302,7 +2317,7 @@ fn filter_unchanged_storages(
         .collect();
     for prev_path in prev.artifacts.keys() {
         if !current_artifact_paths.contains(prev_path.as_str()) {
-            cleanup_paths.push(prev_path.clone());
+            push_safe_cleanup_path(&mut cleanup_paths, prev_path)?;
         }
     }
     if skipped > 0 {
@@ -2317,11 +2332,63 @@ fn filter_unchanged_storages(
         );
     }
 
-    GuestDownloadManifest {
+    Ok(GuestDownloadManifest {
         storages,
         artifacts,
         cleanup_paths,
+    })
+}
+
+fn push_safe_cleanup_path(paths: &mut Vec<String>, path: &str) -> RunnerResult<()> {
+    if !is_safe_storage_cleanup_path(path) {
+        return Err(RunnerError::Internal(format!(
+            "unsafe storage cleanup path: {path}"
+        )));
     }
+    paths.push(path.to_string());
+    Ok(())
+}
+
+fn push_cleanup_path_if_safe(paths: &mut Vec<String>, path: &str) {
+    if is_safe_storage_cleanup_path(path) {
+        paths.push(path.to_string());
+    } else {
+        warn!(path = %path, "skipping unsafe storage cleanup path");
+    }
+}
+
+fn is_safe_storage_cleanup_path(path: &str) -> bool {
+    if path.contains('\0') {
+        return false;
+    }
+    if path == CANONICAL_WORKING_DIR || path.starts_with(&format!("{CANONICAL_WORKING_DIR}/")) {
+        return !has_traversal_segment(path);
+    }
+    if let Some(rest) = path.strip_prefix("/mnt/") {
+        return first_segment_is_safe(rest) && !has_traversal_segment(path);
+    }
+    if is_framework_skill_path(path) {
+        return !has_traversal_segment(path);
+    }
+    path == CANONICAL_CODEX_MEMORY_MOUNT_PATH || path == CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
+}
+
+fn is_framework_skill_path(path: &str) -> bool {
+    ["/home/user/.claude/skills/", "/home/user/.codex/skills/"]
+        .iter()
+        .any(|prefix| path.strip_prefix(prefix).is_some_and(first_segment_is_safe))
+}
+
+fn first_segment_is_safe(rest: &str) -> bool {
+    let Some(first) = rest.split('/').next() else {
+        return false;
+    };
+    !first.is_empty() && first != "." && first != ".."
+}
+
+fn has_traversal_segment(path: &str) -> bool {
+    path.split('/')
+        .any(|segment| segment == "." || segment == "..")
 }
 
 /// Download storage volumes into the guest.
@@ -2702,7 +2769,7 @@ fn build_env_json_with_host_env(
     //
     // Empty-list case: do not set the env var at all (matches the prior
     // "unset = no artifact" convention).
-    if let Some(manifest) = &context.storage_manifest
+    if let Some(manifest) = guest_download_manifest_for_context(context)?
         && !manifest.artifacts.is_empty()
     {
         let payload: Vec<serde_json::Value> = manifest
@@ -3114,6 +3181,7 @@ mod tests {
             checkpoint_id: None,
             sandbox_token: "tok".into(),
             storage_manifest: None,
+            storage_provisioning_manifest: None,
             environment: None,
             resume_session: None,
             secret_values: None,
@@ -8010,7 +8078,7 @@ mod tests {
         missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
     ) -> GuestDownloadArtifactEntry {
         GuestDownloadArtifactEntry {
-            mount_path: "/workspace".into(),
+            mount_path: CANONICAL_WORKING_DIR.into(),
             archive_url: url.map(str::to_string),
             cached: false,
             vas_storage_name: name.into(),
@@ -8051,15 +8119,19 @@ mod tests {
         };
         let prev = crate::idle_pool::StorageFingerprints {
             storages: HashMap::new(),
-            artifacts: art_fp("/workspace", "my-art", "v1"),
+            artifacts: art_fp(CANONICAL_WORKING_DIR, "my-art", "v1"),
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         assert_eq!(
             result.artifacts[0].archive_url.as_deref(),
             Some("https://s3/v1")
         );
         assert!(result.artifacts[0].cached);
-        assert!(!result.cleanup_paths.contains(&"/workspace".to_string()));
+        assert!(
+            !result
+                .cleanup_paths
+                .contains(&CANONICAL_WORKING_DIR.to_string())
+        );
     }
 
     #[test]
@@ -8071,9 +8143,9 @@ mod tests {
         };
         let prev = crate::idle_pool::StorageFingerprints {
             storages: HashMap::new(),
-            artifacts: art_fp("/workspace", "my-art", "v1"),
+            artifacts: art_fp(CANONICAL_WORKING_DIR, "my-art", "v1"),
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         assert_eq!(
             result.artifacts[0].archive_url.as_deref(),
             Some("https://s3/v2"),
@@ -8089,9 +8161,9 @@ mod tests {
         };
         let prev = crate::idle_pool::StorageFingerprints {
             storages: HashMap::new(),
-            artifacts: art_fp("/workspace", "my-art", "v1"),
+            artifacts: art_fp(CANONICAL_WORKING_DIR, "my-art", "v1"),
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         assert!(result.artifacts[0].archive_url.is_some());
     }
 
@@ -8103,7 +8175,7 @@ mod tests {
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints::default();
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         assert!(result.artifacts[0].archive_url.is_some());
     }
 
@@ -8111,7 +8183,7 @@ mod tests {
     fn filter_empty_prev_downloads_everything() {
         let manifest = GuestDownloadManifest {
             storages: vec![guest_storage(
-                "/data",
+                "/mnt/data",
                 "vol-1",
                 "v1",
                 Some("https://s3/data"),
@@ -8120,7 +8192,7 @@ mod tests {
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints::default();
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         assert!(result.storages[0].archive_url.is_some());
         assert!(result.artifacts[0].archive_url.is_some());
     }
@@ -8129,7 +8201,7 @@ mod tests {
     fn filter_all_unchanged_nulls_storage_urls_and_keeps_artifact_urls() {
         let manifest = GuestDownloadManifest {
             storages: vec![guest_storage(
-                "/data",
+                "/mnt/data",
                 "vol-1",
                 "v1",
                 Some("https://s3/same-url"),
@@ -8138,12 +8210,12 @@ mod tests {
             cleanup_paths: vec![],
         };
         let mut storages = HashMap::new();
-        storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
+        storages.insert("/mnt/data".into(), ("vol-1".into(), "v1".into()));
         let prev = crate::idle_pool::StorageFingerprints {
             storages,
-            artifacts: art_fp("/workspace", "my-art", "v1"),
+            artifacts: art_fp(CANONICAL_WORKING_DIR, "my-art", "v1"),
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         assert!(result.storages[0].archive_url.is_none());
         assert!(result.storages[0].cached);
         assert_eq!(
@@ -8156,7 +8228,7 @@ mod tests {
     #[test]
     fn filter_two_artifacts_at_different_mount_paths() {
         let art_a = GuestDownloadArtifactEntry {
-            mount_path: "/workspace".into(),
+            mount_path: CANONICAL_WORKING_DIR.into(),
             archive_url: Some("https://s3/a-v2".into()),
             cached: false,
             vas_storage_name: "art-a".into(),
@@ -8165,7 +8237,7 @@ mod tests {
             missing_root_policy: None,
         };
         let art_b = GuestDownloadArtifactEntry {
-            mount_path: "/data".into(),
+            mount_path: "/mnt/data".into(),
             archive_url: Some("https://s3/b-v1".into()),
             cached: false,
             vas_storage_name: "art-b".into(),
@@ -8180,18 +8252,22 @@ mod tests {
         };
         // Previous fingerprints: art-a was v1 (changed), art-b was v1 (unchanged).
         let mut artifacts = HashMap::new();
-        artifacts.insert("/workspace".into(), ("art-a".into(), "v1".into()));
-        artifacts.insert("/data".into(), ("art-b".into(), "v1".into()));
+        artifacts.insert(CANONICAL_WORKING_DIR.into(), ("art-a".into(), "v1".into()));
+        artifacts.insert("/mnt/data".into(), ("art-b".into(), "v1".into()));
         let prev = crate::idle_pool::StorageFingerprints {
             storages: HashMap::new(),
             artifacts,
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         assert_eq!(result.artifacts.len(), 2);
         // art-a changed → keeps URL, not cached, cleanup path added
         assert!(result.artifacts[0].archive_url.is_some());
         assert!(!result.artifacts[0].cached);
-        assert!(result.cleanup_paths.contains(&"/workspace".to_string()));
+        assert!(
+            result
+                .cleanup_paths
+                .contains(&CANONICAL_WORKING_DIR.to_string())
+        );
         // art-b unchanged -> URL retained for missing-root repair, still cached.
         assert_eq!(
             result.artifacts[1].archive_url.as_deref(),
@@ -8209,27 +8285,22 @@ mod tests {
             cleanup_paths: vec![],
         };
         let mut artifacts = HashMap::new();
-        artifacts.insert("/workspace".into(), ("kept".into(), "v1".into()));
-        artifacts.insert("/old".into(), ("removed".into(), "v1".into()));
+        artifacts.insert(CANONICAL_WORKING_DIR.into(), ("kept".into(), "v1".into()));
+        artifacts.insert("/mnt/old".into(), ("removed".into(), "v1".into()));
         let prev = crate::idle_pool::StorageFingerprints {
             storages: HashMap::new(),
             artifacts,
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         // Removed artifact path must appear in cleanup_paths.
-        assert!(result.cleanup_paths.contains(&"/old".to_string()));
+        assert!(result.cleanup_paths.contains(&"/mnt/old".to_string()));
     }
 
     #[test]
     fn filter_computes_cleanup_for_changed_storages() {
         let manifest = GuestDownloadManifest {
             storages: vec![
-                guest_storage(
-                    "/home/user/.claude",
-                    "instructions",
-                    "v2",
-                    Some("https://s3/instructions"),
-                ),
+                guest_storage("/mnt/data", "data", "v2", Some("https://s3/data")),
                 guest_storage(
                     "/home/user/.claude/skills/foo",
                     "skill-foo",
@@ -8241,10 +8312,7 @@ mod tests {
             cleanup_paths: vec![],
         };
         let mut storages = HashMap::new();
-        storages.insert(
-            "/home/user/.claude".into(),
-            ("instructions".into(), "v1".into()),
-        );
+        storages.insert("/mnt/data".into(), ("data".into(), "v1".into()));
         storages.insert(
             "/home/user/.claude/skills/foo".into(),
             ("skill-foo".into(), "v1".into()),
@@ -8253,14 +8321,43 @@ mod tests {
             storages,
             artifacts: HashMap::new(),
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
-        // Instructions changed (v1→v2), skill-foo unchanged
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
+        // Data volume changed (v1→v2), skill-foo unchanged
         assert!(result.storages[0].archive_url.is_some());
         assert!(!result.storages[0].cached);
         assert!(result.storages[1].archive_url.is_none());
         assert!(result.storages[1].cached);
         // Only changed storage in cleanup_paths
-        assert_eq!(result.cleanup_paths, vec!["/home/user/.claude"]);
+        assert_eq!(result.cleanup_paths, vec!["/mnt/data"]);
+    }
+
+    #[test]
+    fn filter_changed_framework_instructions_skips_broad_cleanup_root() {
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/home/user/.claude",
+                "instructions",
+                "v2",
+                Some("https://s3/instructions-v2"),
+            )],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+        let mut storages = HashMap::new();
+        storages.insert(
+            "/home/user/.claude".into(),
+            ("instructions".into(), "v1".into()),
+        );
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages,
+            artifacts: HashMap::new(),
+        };
+
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
+
+        assert!(result.storages[0].archive_url.is_some());
+        assert!(!result.storages[0].cached);
+        assert!(result.cleanup_paths.is_empty());
     }
 
     #[test]
@@ -8288,7 +8385,7 @@ mod tests {
             storages,
             artifacts: HashMap::new(),
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         // instructions unchanged, old-skill removed
         assert!(result.storages[0].archive_url.is_none());
         assert!(
@@ -8296,6 +8393,23 @@ mod tests {
                 .cleanup_paths
                 .contains(&"/home/user/.claude/skills/old-skill".to_string())
         );
+    }
+
+    #[test]
+    fn filter_rejects_unsafe_removed_legacy_fingerprints() {
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::from([("/home/user".into(), ("old".into(), "v1".into()))]),
+            artifacts: HashMap::new(),
+        };
+
+        let error = filter_unchanged_storages(&manifest, &prev).unwrap_err();
+
+        assert!(error.to_string().contains("unsafe storage cleanup path"));
     }
 
     #[test]
@@ -8307,9 +8421,9 @@ mod tests {
         };
         let prev = crate::idle_pool::StorageFingerprints {
             storages: HashMap::new(),
-            artifacts: art_fp("/workspace", "my-art", "v1"),
+            artifacts: art_fp(CANONICAL_WORKING_DIR, "my-art", "v1"),
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         assert!(result.artifacts[0].archive_url.is_some());
         assert!(
             result
@@ -8327,11 +8441,15 @@ mod tests {
         };
         let prev = crate::idle_pool::StorageFingerprints {
             storages: HashMap::new(),
-            artifacts: art_fp("/workspace", "my-art", "v1"),
+            artifacts: art_fp(CANONICAL_WORKING_DIR, "my-art", "v1"),
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         // Version changed → must be in cleanup_paths even though URL is absent.
-        assert!(result.cleanup_paths.contains(&"/workspace".to_string()));
+        assert!(
+            result
+                .cleanup_paths
+                .contains(&CANONICAL_WORKING_DIR.to_string())
+        );
         assert!(!result.artifacts[0].cached);
     }
 
@@ -8349,35 +8467,39 @@ mod tests {
         };
         let prev = crate::idle_pool::StorageFingerprints {
             storages: HashMap::new(),
-            artifacts: art_fp("/workspace", "memory", "v1"),
+            artifacts: art_fp(CANONICAL_WORKING_DIR, "memory", "v1"),
         };
 
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
 
         assert_eq!(
             result.artifacts[0].archive_url.as_deref(),
             Some("https://s3/memory")
         );
         assert!(result.artifacts[0].cached);
-        assert!(!result.cleanup_paths.contains(&"/workspace".to_string()));
+        assert!(
+            !result
+                .cleanup_paths
+                .contains(&CANONICAL_WORKING_DIR.to_string())
+        );
     }
 
     #[test]
     fn filter_changed_storage_with_null_url_adds_cleanup_path() {
         let manifest = GuestDownloadManifest {
-            storages: vec![guest_storage("/data", "vol-1", "v2", None)],
+            storages: vec![guest_storage("/mnt/data", "vol-1", "v2", None)],
             artifacts: vec![],
             cleanup_paths: vec![],
         };
         let mut storages = HashMap::new();
-        storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
+        storages.insert("/mnt/data".into(), ("vol-1".into(), "v1".into()));
         let prev = crate::idle_pool::StorageFingerprints {
             storages,
             artifacts: HashMap::new(),
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         // Version changed → must be in cleanup_paths even though URL is absent.
-        assert!(result.cleanup_paths.contains(&"/data".to_string()));
+        assert!(result.cleanup_paths.contains(&"/mnt/data".to_string()));
         assert!(!result.storages[0].cached);
     }
 
@@ -8385,7 +8507,7 @@ mod tests {
     fn filter_unchanged_storage_sets_cached_true() {
         let manifest = GuestDownloadManifest {
             storages: vec![guest_storage(
-                "/data",
+                "/mnt/data",
                 "vol-1",
                 "v1",
                 Some("https://s3/data"),
@@ -8394,27 +8516,29 @@ mod tests {
             cleanup_paths: vec![],
         };
         let mut storages = HashMap::new();
-        storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
+        storages.insert("/mnt/data".into(), ("vol-1".into(), "v1".into()));
         let prev = crate::idle_pool::StorageFingerprints {
             storages,
             artifacts: HashMap::new(),
         };
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
         assert!(result.storages[0].cached);
         assert!(result.storages[0].archive_url.is_none());
     }
 
     #[test]
     fn filter_tainted_paths_force_download_even_when_versions_match() {
+        let repo_path = format!("{CANONICAL_WORKING_DIR}/repo");
+        let artifact_path = format!("{CANONICAL_WORKING_DIR}/artifact");
         let manifest = GuestDownloadManifest {
             storages: vec![guest_storage(
-                "/workspace/repo",
+                &repo_path,
                 "repo",
                 "v1",
                 Some("https://s3/repo"),
             )],
             artifacts: vec![GuestDownloadArtifactEntry {
-                mount_path: "/workspace/artifact".into(),
+                mount_path: artifact_path.clone(),
                 archive_url: Some("https://s3/artifact".into()),
                 cached: false,
                 vas_storage_name: "artifact".into(),
@@ -8425,15 +8549,12 @@ mod tests {
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
-            storages: HashMap::from([("/workspace/repo".into(), ("repo".into(), "v1".into()))]),
-            artifacts: HashMap::from([(
-                "/workspace/artifact".into(),
-                ("artifact".into(), "v1".into()),
-            )]),
+            storages: HashMap::from([(repo_path.clone(), ("repo".into(), "v1".into()))]),
+            artifacts: HashMap::from([(artifact_path.clone(), ("artifact".into(), "v1".into()))]),
         }
         .tainted_paths();
 
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
 
         assert_eq!(
             result.storages[0].archive_url.as_deref(),
@@ -8445,49 +8566,32 @@ mod tests {
             Some("https://s3/artifact")
         );
         assert!(!result.artifacts[0].cached);
-        assert!(
-            result
-                .cleanup_paths
-                .contains(&"/workspace/repo".to_string())
-        );
-        assert!(
-            result
-                .cleanup_paths
-                .contains(&"/workspace/artifact".to_string())
-        );
+        assert!(result.cleanup_paths.contains(&repo_path));
+        assert!(result.cleanup_paths.contains(&artifact_path));
     }
 
     #[test]
     fn filter_tainted_removed_paths_are_cleaned() {
+        let removed_storage_path = format!("{CANONICAL_WORKING_DIR}/removed-storage");
+        let removed_artifact_path = format!("{CANONICAL_WORKING_DIR}/removed-artifact");
         let manifest = GuestDownloadManifest {
             storages: vec![],
             artifacts: vec![],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
-            storages: HashMap::from([(
-                "/workspace/removed-storage".into(),
-                ("repo".into(), "v1".into()),
-            )]),
+            storages: HashMap::from([(removed_storage_path.clone(), ("repo".into(), "v1".into()))]),
             artifacts: HashMap::from([(
-                "/workspace/removed-artifact".into(),
+                removed_artifact_path.clone(),
                 ("artifact".into(), "v1".into()),
             )]),
         }
         .tainted_paths();
 
-        let result = filter_unchanged_storages(&manifest, &prev);
+        let result = filter_unchanged_storages(&manifest, &prev).unwrap();
 
-        assert!(
-            result
-                .cleanup_paths
-                .contains(&"/workspace/removed-storage".to_string())
-        );
-        assert!(
-            result
-                .cleanup_paths
-                .contains(&"/workspace/removed-artifact".to_string())
-        );
+        assert!(result.cleanup_paths.contains(&removed_storage_path));
+        assert!(result.cleanup_paths.contains(&removed_artifact_path));
     }
 
     // -----------------------------------------------------------------------

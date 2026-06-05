@@ -6,13 +6,16 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use api_contracts::generated::types::runners::storage::StorageManifest;
+use api_contracts::generated::types::runners::storage::{
+    StorageManifest, StorageProvisioningManifest,
+};
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 use serde::{Deserialize, Serialize};
 
 use crate::resource_budget::BudgetLease;
 use crate::status::IdleVm;
+use crate::types::GuestDownloadManifest;
 use crate::types::HeldSessionState;
 use crate::workspace_image_cache::WorkspaceImagePromotionContext;
 use crate::workspace_promotion::promote_workspace_image_from_parked_sandbox;
@@ -58,6 +61,34 @@ impl StorageFingerprints {
             storages,
             artifacts,
         }
+    }
+
+    pub fn from_guest_download_manifest(manifest: &GuestDownloadManifest) -> Self {
+        let mut storages = HashMap::new();
+        for s in &manifest.storages {
+            storages.insert(
+                s.mount_path.clone(),
+                (s.vas_storage_name.clone(), s.vas_version_id.clone()),
+            );
+        }
+        let mut artifacts = HashMap::new();
+        for a in &manifest.artifacts {
+            artifacts.insert(
+                a.mount_path.clone(),
+                (a.vas_storage_name.clone(), a.vas_version_id.clone()),
+            );
+        }
+        Self {
+            storages,
+            artifacts,
+        }
+    }
+
+    pub fn from_storage_provisioning_manifest(
+        manifest: &StorageProvisioningManifest,
+    ) -> Result<Self, String> {
+        let guest_manifest = GuestDownloadManifest::try_from(manifest)?;
+        Ok(Self::from_guest_download_manifest(&guest_manifest))
     }
 
     pub(crate) fn tainted_paths(&self) -> Self {

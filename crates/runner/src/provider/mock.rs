@@ -364,6 +364,7 @@ mod tests {
             checkpoint_id: None,
             sandbox_token: "tok".into(),
             storage_manifest: None,
+            storage_provisioning_manifest: None,
             environment: None,
             resume_session: None,
             secret_values: None,

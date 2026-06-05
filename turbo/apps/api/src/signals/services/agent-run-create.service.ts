@@ -5,6 +5,8 @@ import {
   DEFAULT_PROFILE,
   type SecretConnectorMetadata,
   type StorageManifest,
+  type StorageProvisioningDestination,
+  type StorageProvisioningManifest,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
@@ -124,7 +126,11 @@ import {
   encryptPersistentSecretValue,
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
-import { prepareAgentRunStorageManifest } from "./agent-run-storage.service";
+import { prepareAgentRunStorageManifests } from "./agent-run-storage.service";
+import {
+  frameworkMemoryDestination,
+  frameworkSkillDestination,
+} from "./storage-provisioning-destinations.service";
 import {
   encryptQueuedRunnerJobPayload,
   queuedRunnerJobPayload,
@@ -186,11 +192,36 @@ function withPendingZeroTokenSecret(body: CreateRunBody): CreateRunBody {
   return withZeroTokenSecret(body, "__pending_zero_token__");
 }
 
+function persistedContextArtifact(
+  artifact: ContextArtifact,
+): PersistedContextArtifact {
+  return {
+    name: artifact.name,
+    ...(artifact.version !== undefined ? { version: artifact.version } : {}),
+    mountPath: artifact.mountPath,
+    ...(artifact.missingRootPolicy !== undefined
+      ? { missingRootPolicy: artifact.missingRootPolicy }
+      : {}),
+  };
+}
+
+function persistedAdditionalVolume(
+  volume: AdditionalVolume,
+): PersistedAdditionalVolume {
+  return {
+    name: volume.name,
+    ...(volume.version !== undefined ? { version: volume.version } : {}),
+    mountPath: volume.mountPath,
+    ...(volume.system !== undefined ? { system: volume.system } : {}),
+  };
+}
+
 interface ContextArtifact {
   readonly name: string;
   readonly version?: string;
   readonly mountPath: string;
   readonly missingRootPolicy?: ArtifactMissingRootPolicy;
+  readonly provisioningDestination?: StorageProvisioningDestination;
 }
 
 interface RunArtifacts {
@@ -204,6 +235,21 @@ interface ComposeArtifact {
 }
 
 interface AdditionalVolume {
+  readonly name: string;
+  readonly version?: string;
+  readonly mountPath: string;
+  readonly system?: boolean;
+  readonly provisioningDestination?: StorageProvisioningDestination;
+}
+
+interface PersistedContextArtifact {
+  readonly name: string;
+  readonly version?: string;
+  readonly mountPath: string;
+  readonly missingRootPolicy?: ArtifactMissingRootPolicy;
+}
+
+interface PersistedAdditionalVolume {
   readonly name: string;
   readonly version?: string;
   readonly mountPath: string;
@@ -468,6 +514,10 @@ function buildSystemSkillVolumes(
         name: getSkillStorageName(parsed.fullPath),
         mountPath: skillMountPath(framework, parsed.skillName),
         system: true,
+        provisioningDestination: frameworkSkillDestination(
+          framework,
+          parsed.skillName,
+        ),
       },
     ];
   });
@@ -481,6 +531,7 @@ function buildCustomSkillVolumes(
     return {
       name: getCustomSkillStorageName(name),
       mountPath: skillMountPath(framework, name),
+      provisioningDestination: frameworkSkillDestination(framework, name),
     };
   });
 }
@@ -610,6 +661,7 @@ function autoMemoryArtifact(framework: SupportedFramework): ContextArtifact {
   return withAutoMemoryMissingRootPolicy({
     name: AUTO_MEMORY_ARTIFACT_NAME,
     mountPath: autoMemoryMountPath(framework),
+    provisioningDestination: frameworkMemoryDestination(framework),
   });
 }
 
@@ -629,6 +681,19 @@ function withAutoMemoryMissingRootPolicy(
   return {
     ...artifact,
     missingRootPolicy: AUTO_MEMORY_MISSING_ROOT_POLICY,
+  };
+}
+
+function restoreHistoricalAutoMemoryMetadata(
+  artifact: ContextArtifact,
+  framework: SupportedFramework,
+): ContextArtifact {
+  if (!isCanonicalAutoMemoryArtifact(artifact, framework)) {
+    return artifact;
+  }
+  return {
+    ...artifact,
+    provisioningDestination: frameworkMemoryDestination(framework),
   };
 }
 
@@ -682,9 +747,13 @@ function artifactsForRun(args: {
   const composeContextArtifacts = isContinuation
     ? []
     : composeArtifacts(args.resolved.content);
-  const baseArtifacts = isContinuation
-    ? args.resolved.artifacts
-    : [...composeContextArtifacts, ...args.resolved.artifacts];
+  const baseArtifacts = (
+    isContinuation
+      ? args.resolved.artifacts
+      : [...composeContextArtifacts, ...args.resolved.artifacts]
+  ).map((artifact) => {
+    return restoreHistoricalAutoMemoryMetadata(artifact, args.framework);
+  });
   const bodyArtifacts = args.bodyArtifacts ?? [];
   const artifacts = [...baseArtifacts, ...bodyArtifacts];
 
@@ -2761,7 +2830,9 @@ async function insertRunRecord(
           userId: args.userId,
           orgId: args.orgId,
           agentComposeId: args.resolved.composeId,
-          artifacts: [...args.artifacts],
+          artifacts: args.artifacts.map((artifact) => {
+            return persistedContextArtifact(artifact);
+          }),
           conversationId: null,
         })
         .returning({ id: agentSessions.id })
@@ -2783,7 +2854,9 @@ async function insertRunRecord(
       vars: args.body.vars ?? null,
       secretNames: args.body.secrets ? Object.keys(args.body.secrets) : null,
       additionalVolumes: args.additionalVolumes
-        ? [...args.additionalVolumes]
+        ? args.additionalVolumes.map((volume) => {
+            return persistedAdditionalVolume(volume);
+          })
         : null,
       resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
       continuedFromSessionId: args.resolved.continuedFromSessionId ?? null,
@@ -2853,7 +2926,9 @@ async function insertQueuedRunRecord(
           userId: args.userId,
           orgId: args.orgId,
           agentComposeId: args.resolved.composeId,
-          artifacts: [...args.artifacts],
+          artifacts: args.artifacts.map((artifact) => {
+            return persistedContextArtifact(artifact);
+          }),
           conversationId: null,
         })
         .returning({ id: agentSessions.id })
@@ -2875,7 +2950,9 @@ async function insertQueuedRunRecord(
       vars: args.body.vars ?? null,
       secretNames: args.body.secrets ? Object.keys(args.body.secrets) : null,
       additionalVolumes: args.additionalVolumes
-        ? [...args.additionalVolumes]
+        ? args.additionalVolumes.map((volume) => {
+            return persistedAdditionalVolume(volume);
+          })
         : null,
       resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
       continuedFromSessionId: args.resolved.continuedFromSessionId ?? null,
@@ -2932,6 +3009,7 @@ async function buildStoredExecutionContext(args: {
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly apiStartTime: number;
   readonly storageManifest: StorageManifest;
+  readonly storageProvisioningManifest: StorageProvisioningManifest;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
@@ -2961,6 +3039,7 @@ async function buildStoredExecutionContext(args: {
   return {
     context: {
       storageManifest: args.storageManifest,
+      storageProvisioningManifest: args.storageProvisioningManifest,
       environment: {
         ...expandEnvironment({
           content: args.resolved.content,
@@ -3248,8 +3327,8 @@ function buildRunnerJobPayload(
             ),
           )
         : args.body;
-      const storageManifest = await get(
-        prepareAgentRunStorageManifest({
+      const preparedStorage = await get(
+        prepareAgentRunStorageManifests({
           db,
           content: args.resolved.content,
           vars: body.vars,
@@ -3266,7 +3345,9 @@ function buildRunnerJobPayload(
         ...args,
         body,
         runId: args.run.id,
-        storageManifest,
+        storageManifest: preparedStorage.storageManifest,
+        storageProvisioningManifest:
+          preparedStorage.storageProvisioningManifest,
         userTimezone: args.userTimezone,
         featureSwitchContext: args.featureSwitchContext,
       });

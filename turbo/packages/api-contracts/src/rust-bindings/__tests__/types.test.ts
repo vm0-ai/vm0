@@ -9,6 +9,7 @@ import {
   artifactEntrySchema,
   storageEntrySchema,
   storageManifestSchema,
+  storageProvisioningManifestSchema,
 } from "../../contracts/runners";
 import { fileEntryWithHashSchema } from "../../contracts/storages";
 import {
@@ -30,6 +31,16 @@ const expectedBindings = [
   {
     rustModulePath: ["runners", "storage"],
     rustTypeName: "StorageManifest",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "StorageProvisioningManifest",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "StorageProvisioningEntry",
     direction: "response",
   },
   {
@@ -127,6 +138,32 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub struct StorageManifest {");
     expect(firstRender).toContain("pub storages: Vec<StorageEntry>,");
     expect(firstRender).toContain("pub artifacts: Vec<ArtifactEntry>,");
+    expect(firstRender).toContain("pub struct StorageProvisioningManifest {");
+    expect(firstRender).toContain("pub version: String,");
+    expect(firstRender).toContain(
+      "pub entries: Vec<StorageProvisioningEntry>,",
+    );
+    expect(firstRender).toContain("pub enum StorageProvisioningEntryIntent {");
+    expect(firstRender).toContain("UserVolume,");
+    expect(firstRender).toContain("UserArtifact,");
+    expect(firstRender).toContain("Instructions,");
+    expect(firstRender).toContain("Skill,");
+    expect(firstRender).toContain("Memory,");
+    expect(firstRender).toContain(
+      "pub enum StorageProvisioningEntrySourceKind {",
+    );
+    expect(firstRender).toContain(
+      "pub enum StorageProvisioningEntryDestinationType {",
+    );
+    expect(firstRender).toContain("FrameworkInstructions,");
+    expect(firstRender).toContain("FrameworkSkill,");
+    expect(firstRender).toContain("FrameworkMemory,");
+    expect(firstRender).toContain(
+      "pub enum StorageProvisioningEntryDestinationFramework {",
+    );
+    expect(firstRender).toContain(
+      "pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,",
+    );
     expect(firstRender).toContain("pub enum ArtifactEntryMissingRootPolicy {");
     expect(firstRender).toContain("Fail,");
     expect(firstRender).toContain("PreserveParentVersion,");
@@ -152,6 +189,22 @@ describe("Rust type bindings", () => {
         artifacts: {
           type: "array",
           items: artifactSchema,
+        },
+      },
+    });
+  });
+
+  it("keeps storage provisioning manifest field overrides aligned with entry schema", () => {
+    const manifestSchema = z.toJSONSchema(storageProvisioningManifestSchema);
+
+    expect(manifestSchema).toMatchObject({
+      required: ["version", "entries"],
+      properties: {
+        version: {
+          const: "2",
+        },
+        entries: {
+          type: "array",
         },
       },
     });

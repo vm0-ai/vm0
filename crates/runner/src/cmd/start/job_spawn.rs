@@ -435,11 +435,21 @@ pub(super) fn spawn_job(
     };
     let job_device_rate_limits = params.device_rate_limits.clone();
 
-    let storage_fingerprints = context
-        .storage_manifest
-        .as_ref()
-        .map(crate::idle_pool::StorageFingerprints::from_manifest)
-        .unwrap_or_default();
+    let storage_fingerprints = if let Some(manifest) = &context.storage_provisioning_manifest {
+        match StorageFingerprints::from_storage_provisioning_manifest(manifest) {
+            Ok(fingerprints) => fingerprints,
+            Err(error) => {
+                warn!(run_id = %run_id, error = %error, "failed to build v2 storage fingerprints");
+                StorageFingerprints::default()
+            }
+        }
+    } else {
+        context
+            .storage_manifest
+            .as_ref()
+            .map(StorageFingerprints::from_manifest)
+            .unwrap_or_default()
+    };
 
     let provider = Arc::clone(&ctx.provider);
     let exec_config = Arc::clone(&ctx.exec_config);

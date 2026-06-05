@@ -44,6 +44,98 @@ pub mod runners {
             pub storages: Vec<StorageEntry>,
             pub artifacts: Vec<ArtifactEntry>,
         }
+
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum StorageProvisioningEntryIntent {
+            #[serde(rename = "user-volume")]
+            UserVolume,
+            #[serde(rename = "user-artifact")]
+            UserArtifact,
+            #[serde(rename = "instructions")]
+            Instructions,
+            #[serde(rename = "skill")]
+            Skill,
+            #[serde(rename = "memory")]
+            Memory,
+        }
+
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum StorageProvisioningEntrySourceKind {
+            #[serde(rename = "storage")]
+            Storage,
+            #[serde(rename = "artifact")]
+            Artifact,
+        }
+
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct StorageProvisioningEntrySource {
+            pub kind: StorageProvisioningEntrySourceKind,
+            pub name: String,
+            pub vas_storage_name: String,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub vas_storage_id: Option<String>,
+            pub vas_version_id: String,
+            pub archive_url: String,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub manifest_url: Option<String>,
+        }
+
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum StorageProvisioningEntryDestinationType {
+            #[serde(rename = "workspace")]
+            Workspace,
+            #[serde(rename = "mnt")]
+            Mnt,
+            #[serde(rename = "framework-instructions")]
+            FrameworkInstructions,
+            #[serde(rename = "framework-skill")]
+            FrameworkSkill,
+            #[serde(rename = "framework-memory")]
+            FrameworkMemory,
+        }
+
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum StorageProvisioningEntryDestinationFramework {
+            #[serde(rename = "claude-code")]
+            ClaudeCode,
+            #[serde(rename = "codex")]
+            Codex,
+        }
+
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct StorageProvisioningEntryDestination {
+            #[serde(rename = "type")]
+            pub type_: StorageProvisioningEntryDestinationType,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub name: Option<String>,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub sub_path: Option<String>,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub framework: Option<StorageProvisioningEntryDestinationFramework>,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub skill_name: Option<String>,
+        }
+
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct StorageProvisioningEntry {
+            pub intent: StorageProvisioningEntryIntent,
+            pub source: StorageProvisioningEntrySource,
+            pub destination: StorageProvisioningEntryDestination,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub instructions_target_filename: Option<String>,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
+        }
+
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct StorageProvisioningManifest {
+            pub version: String,
+            pub entries: Vec<StorageProvisioningEntry>,
+        }
     }
 }
 

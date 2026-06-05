@@ -63,6 +63,15 @@ pub mod model_provider_env {
 pub mod runners {
     /// Runner and guest filesystem path constants shared across Rust and TypeScript.
     pub mod paths {
+        /// Canonical Claude Code memory artifact path inside runner guests.
+        /// Rust and TypeScript components use this shared contract value when resolving memory provisioning destinations.
+        pub const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH: &str =
+            "/home/user/.claude/projects/-home-user-workspace/memory";
+
+        /// Canonical Codex memory artifact path inside runner guests.
+        /// Rust and TypeScript components use this shared contract value when resolving memory provisioning destinations.
+        pub const CANONICAL_CODEX_MEMORY_MOUNT_PATH: &str = "/home/user/.codex/memories";
+
         /// Canonical home directory path expected for the sandbox user inside runner guests.
         /// Rust and TypeScript components use this shared contract value when building runner guest paths.
         pub const CANONICAL_GUEST_HOME_DIR: &str = "/home/user";

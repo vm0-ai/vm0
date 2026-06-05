@@ -2692,6 +2692,46 @@ describe("POST /api/zero/runs", () => {
       name: "custom-skill@research-kit",
     });
     expect(volumes[customIndex]?.system).toBeUndefined();
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly storageProvisioningManifest: {
+        readonly entries: readonly {
+          readonly intent: string;
+          readonly source: {
+            readonly kind: string;
+            readonly name: string;
+          };
+          readonly destination: {
+            readonly type: string;
+            readonly framework?: string;
+            readonly skillName?: string;
+          };
+        }[];
+      };
+    };
+    expect(
+      executionContext.storageProvisioningManifest.entries.filter((entry) => {
+        return entry.intent === "skill";
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: expect.objectContaining({
+            kind: "storage",
+            name: expect.stringContaining("slack"),
+          }),
+          destination: expect.objectContaining({
+            type: "framework-skill",
+            framework: "claude-code",
+            skillName: "slack",
+          }),
+        }),
+      ]),
+    );
   });
 
   it("mounts skills using the model provider framework, not the compose framework", async () => {

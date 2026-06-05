@@ -4,6 +4,7 @@ import {
   elapsedSinceApiStartMs,
   executionContextSchema,
   storageManifestSchema,
+  storageProvisioningManifestSchema,
   storedExecutionContextSchema,
 } from "../runners";
 
@@ -156,6 +157,186 @@ describe("runner storage manifest contract", () => {
       ],
       artifacts: [],
     });
+  });
+
+  it("accepts typed storage provisioning manifests", () => {
+    expect(
+      storageProvisioningManifestSchema.parse({
+        version: "2",
+        entries: [
+          {
+            intent: "user-volume",
+            source: {
+              kind: "storage",
+              name: "docs",
+              vasStorageName: "docs",
+              vasVersionId: "version-1",
+              archiveUrl: "https://storage.example/docs.tar.gz",
+            },
+            destination: {
+              type: "mnt",
+              name: "docs",
+              subPath: "guides",
+            },
+          },
+          {
+            intent: "user-artifact",
+            source: {
+              kind: "artifact",
+              name: "workspace",
+              vasStorageName: "workspace",
+              vasStorageId: "storage-id-1",
+              vasVersionId: "version-2",
+              archiveUrl: "https://storage.example/workspace.tar.gz",
+              manifestUrl: "https://storage.example/workspace.json",
+            },
+            destination: {
+              type: "workspace",
+              subPath: "project",
+            },
+            missingRootPolicy: "fail",
+          },
+          {
+            intent: "instructions",
+            source: {
+              kind: "storage",
+              name: "instructions",
+              vasStorageName: "instructions",
+              vasVersionId: "version-3",
+              archiveUrl: "https://storage.example/instructions.tar.gz",
+            },
+            destination: {
+              type: "framework-instructions",
+              framework: "codex",
+            },
+            instructionsTargetFilename: "AGENTS.md",
+          },
+          {
+            intent: "skill",
+            source: {
+              kind: "storage",
+              name: "research-kit",
+              vasStorageName: "research-kit",
+              vasVersionId: "version-4",
+              archiveUrl: "https://storage.example/skill.tar.gz",
+            },
+            destination: {
+              type: "framework-skill",
+              framework: "claude-code",
+              skillName: "research-kit",
+            },
+          },
+          {
+            intent: "memory",
+            source: {
+              kind: "artifact",
+              name: "memory",
+              vasStorageName: "memory",
+              vasStorageId: "storage-id-2",
+              vasVersionId: "version-5",
+              archiveUrl: "https://storage.example/memory.tar.gz",
+              manifestUrl: "https://storage.example/memory.json",
+            },
+            destination: {
+              type: "framework-memory",
+              framework: "codex",
+            },
+            missingRootPolicy: "preserveParentVersion",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      version: "2",
+      entries: [
+        {
+          intent: "user-volume",
+          destination: {
+            type: "mnt",
+            name: "docs",
+            subPath: "guides",
+          },
+        },
+        {
+          intent: "user-artifact",
+          source: {
+            vasStorageId: "storage-id-1",
+          },
+          destination: {
+            type: "workspace",
+            subPath: "project",
+          },
+        },
+        {
+          intent: "instructions",
+          destination: {
+            type: "framework-instructions",
+            framework: "codex",
+          },
+        },
+        {
+          intent: "skill",
+          destination: {
+            type: "framework-skill",
+            framework: "claude-code",
+            skillName: "research-kit",
+          },
+        },
+        {
+          intent: "memory",
+          destination: {
+            type: "framework-memory",
+            framework: "codex",
+          },
+        },
+      ],
+    });
+  });
+
+  it("rejects invalid storage provisioning destination shapes", () => {
+    const result = storageProvisioningManifestSchema.safeParse({
+      version: "2",
+      entries: [
+        {
+          intent: "skill",
+          source: {
+            kind: "storage",
+            name: "research-kit",
+            vasStorageName: "research-kit",
+            vasVersionId: "version-1",
+            archiveUrl: "https://storage.example/skill.tar.gz",
+          },
+          destination: {
+            type: "framework-skill",
+            framework: "claude-code",
+          },
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects artifact provisioning sources without storage ids", () => {
+    const result = storageProvisioningManifestSchema.safeParse({
+      version: "2",
+      entries: [
+        {
+          intent: "user-artifact",
+          source: {
+            kind: "artifact",
+            name: "workspace",
+            vasStorageName: "workspace",
+            vasVersionId: "version-1",
+            archiveUrl: "https://storage.example/workspace.tar.gz",
+          },
+          destination: {
+            type: "workspace",
+          },
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 

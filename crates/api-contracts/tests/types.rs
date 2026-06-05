@@ -296,3 +296,93 @@ fn generated_storage_manifest_rejects_guest_download_null_archive_url() {
 
     assert!(result.is_err());
 }
+
+#[test]
+fn generated_storage_provisioning_manifest_deserializes_v2_shape() {
+    let manifest: runner_storage::StorageProvisioningManifest = serde_json::from_value(json!({
+        "version": "2",
+        "entries": [{
+            "intent": "user-artifact",
+            "source": {
+                "kind": "artifact",
+                "name": "workspace",
+                "vasStorageName": "workspace",
+                "vasStorageId": "storage-id-1",
+                "vasVersionId": "version-1",
+                "archiveUrl": "https://storage.example/workspace.tar.gz",
+                "manifestUrl": "https://storage.example/workspace.json"
+            },
+            "destination": {
+                "type": "workspace",
+                "subPath": "reports"
+            },
+            "missingRootPolicy": "fail"
+        }]
+    }))
+    .unwrap();
+
+    let entry = &manifest.entries[0];
+    assert_eq!(manifest.version, "2");
+    assert_eq!(
+        entry.intent,
+        runner_storage::StorageProvisioningEntryIntent::UserArtifact
+    );
+    assert_eq!(
+        entry.source.kind,
+        runner_storage::StorageProvisioningEntrySourceKind::Artifact
+    );
+    assert_eq!(entry.source.vas_storage_id.as_deref(), Some("storage-id-1"));
+    assert_eq!(
+        entry.destination.type_,
+        runner_storage::StorageProvisioningEntryDestinationType::Workspace
+    );
+    assert_eq!(entry.destination.sub_path.as_deref(), Some("reports"));
+    assert_eq!(
+        entry.missing_root_policy,
+        Some(runner_storage::ArtifactEntryMissingRootPolicy::Fail)
+    );
+}
+
+#[test]
+fn generated_storage_provisioning_manifest_serializes_skill_destination() {
+    let manifest = runner_storage::StorageProvisioningManifest {
+        version: "2".to_string(),
+        entries: vec![runner_storage::StorageProvisioningEntry {
+            intent: runner_storage::StorageProvisioningEntryIntent::Skill,
+            source: runner_storage::StorageProvisioningEntrySource {
+                kind: runner_storage::StorageProvisioningEntrySourceKind::Storage,
+                name: "slack".to_string(),
+                vas_storage_name: "slack".to_string(),
+                vas_storage_id: None,
+                vas_version_id: "version-1".to_string(),
+                archive_url: "https://storage.example/slack.tar.gz".to_string(),
+                manifest_url: None,
+            },
+            destination: runner_storage::StorageProvisioningEntryDestination {
+                type_: runner_storage::StorageProvisioningEntryDestinationType::FrameworkSkill,
+                name: None,
+                sub_path: None,
+                framework: Some(
+                    runner_storage::StorageProvisioningEntryDestinationFramework::ClaudeCode,
+                ),
+                skill_name: Some("slack".to_string()),
+            },
+            instructions_target_filename: None,
+            missing_root_policy: None,
+        }],
+    };
+
+    let value = serde_json::to_value(manifest).unwrap();
+
+    assert_eq!(value["version"], "2");
+    assert_eq!(value["entries"][0]["intent"], "skill");
+    assert_eq!(
+        value["entries"][0]["destination"]["type"],
+        "framework-skill"
+    );
+    assert_eq!(
+        value["entries"][0]["destination"]["framework"],
+        "claude-code"
+    );
+    assert_eq!(value["entries"][0]["destination"]["skillName"], "slack");
+}

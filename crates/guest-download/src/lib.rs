@@ -11,6 +11,7 @@ mod download;
 mod error;
 mod instructions;
 mod manifest;
+mod path_policy;
 mod plan;
 mod source;
 
@@ -35,6 +36,11 @@ pub fn run(manifest_path: &str) -> bool {
             return false;
         }
     };
+
+    if let Err(error) = path_policy::validate_manifest_paths(&manifest) {
+        log_error!(LOG_TAG, "{error}");
+        return false;
+    }
 
     let RunPlan {
         cleanup_paths,

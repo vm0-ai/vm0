@@ -4,8 +4,14 @@ use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use api_contracts::generated::constants::runners::paths::{
+    CANONICAL_CLAUDE_MEMORY_MOUNT_PATH, CANONICAL_CODEX_MEMORY_MOUNT_PATH, CANONICAL_WORKING_DIR,
+};
 use api_contracts::generated::types::runners::storage::{
-    ArtifactEntryMissingRootPolicy, StorageManifest,
+    ArtifactEntryMissingRootPolicy, StorageManifest, StorageProvisioningEntry,
+    StorageProvisioningEntryDestination, StorageProvisioningEntryDestinationFramework,
+    StorageProvisioningEntryDestinationType, StorageProvisioningEntryIntent,
+    StorageProvisioningEntrySourceKind, StorageProvisioningManifest,
 };
 
 use crate::ids::RunId;
@@ -57,6 +63,8 @@ pub struct ExecutionContext {
     pub sandbox_token: String,
     #[serde(default)]
     pub storage_manifest: Option<StorageManifest>,
+    #[serde(default)]
+    pub storage_provisioning_manifest: Option<StorageProvisioningManifest>,
     #[serde(default)]
     pub environment: Option<HashMap<String, String>>,
     #[serde(default)]
@@ -261,6 +269,259 @@ impl From<&StorageManifest> for GuestDownloadManifest {
     }
 }
 
+impl TryFrom<&StorageProvisioningManifest> for GuestDownloadManifest {
+    type Error = String;
+
+    fn try_from(manifest: &StorageProvisioningManifest) -> Result<Self, Self::Error> {
+        if manifest.version != "2" {
+            return Err(format!(
+                "unsupported storage provisioning manifest version {}",
+                manifest.version
+            ));
+        }
+
+        let mut storages = Vec::new();
+        let mut artifacts = Vec::new();
+        for entry in &manifest.entries {
+            let mount_path = resolve_provisioning_mount_path(&entry.destination)?;
+            match entry.intent {
+                StorageProvisioningEntryIntent::UserVolume
+                | StorageProvisioningEntryIntent::Instructions
+                | StorageProvisioningEntryIntent::Skill => {
+                    validate_storage_provisioning_entry(entry)?;
+                    storages.push(GuestDownloadStorageEntry {
+                        mount_path,
+                        archive_url: Some(entry.source.archive_url.clone()),
+                        instructions_target_filename: entry.instructions_target_filename.clone(),
+                        cached: false,
+                        vas_storage_name: entry.source.vas_storage_name.clone(),
+                        vas_version_id: entry.source.vas_version_id.clone(),
+                    });
+                }
+                StorageProvisioningEntryIntent::UserArtifact
+                | StorageProvisioningEntryIntent::Memory => {
+                    validate_artifact_provisioning_entry(entry)?;
+                    let vas_storage_id = entry.source.vas_storage_id.clone().ok_or_else(|| {
+                        "artifact provisioning source missing vasStorageId".to_string()
+                    })?;
+                    artifacts.push(GuestDownloadArtifactEntry {
+                        mount_path,
+                        archive_url: Some(entry.source.archive_url.clone()),
+                        cached: false,
+                        vas_storage_name: entry.source.vas_storage_name.clone(),
+                        vas_storage_id,
+                        vas_version_id: entry.source.vas_version_id.clone(),
+                        missing_root_policy: entry.missing_root_policy,
+                    });
+                }
+            }
+        }
+
+        Ok(Self {
+            storages,
+            artifacts,
+            cleanup_paths: Vec::new(),
+        })
+    }
+}
+
+fn validate_storage_provisioning_entry(entry: &StorageProvisioningEntry) -> Result<(), String> {
+    if entry.source.kind != StorageProvisioningEntrySourceKind::Storage {
+        return Err(format!(
+            "{:?} entries require storage sources",
+            entry.intent
+        ));
+    }
+    match entry.intent {
+        StorageProvisioningEntryIntent::UserVolume => match entry.destination.type_ {
+            StorageProvisioningEntryDestinationType::Workspace
+            | StorageProvisioningEntryDestinationType::Mnt => Ok(()),
+            _ => Err("user-volume entries require workspace or mnt destinations".to_string()),
+        },
+        StorageProvisioningEntryIntent::Instructions => {
+            if entry.destination.type_
+                != StorageProvisioningEntryDestinationType::FrameworkInstructions
+            {
+                return Err(
+                    "instructions entries require framework-instructions destinations".to_string(),
+                );
+            }
+            if entry.instructions_target_filename.is_none() {
+                return Err("instructions entries require instructionsTargetFilename".to_string());
+            }
+            Ok(())
+        }
+        StorageProvisioningEntryIntent::Skill => {
+            if entry.destination.type_ != StorageProvisioningEntryDestinationType::FrameworkSkill {
+                return Err("skill entries require framework-skill destinations".to_string());
+            }
+            Ok(())
+        }
+        StorageProvisioningEntryIntent::UserArtifact | StorageProvisioningEntryIntent::Memory => {
+            Err("artifact intents cannot be storage entries".to_string())
+        }
+    }
+}
+
+fn validate_artifact_provisioning_entry(entry: &StorageProvisioningEntry) -> Result<(), String> {
+    if entry.source.kind != StorageProvisioningEntrySourceKind::Artifact {
+        return Err(format!(
+            "{:?} entries require artifact sources",
+            entry.intent
+        ));
+    }
+    match entry.intent {
+        StorageProvisioningEntryIntent::UserArtifact => match entry.destination.type_ {
+            StorageProvisioningEntryDestinationType::Workspace
+            | StorageProvisioningEntryDestinationType::Mnt => Ok(()),
+            _ => Err("user-artifact entries require workspace or mnt destinations".to_string()),
+        },
+        StorageProvisioningEntryIntent::Memory => {
+            if entry.destination.type_ != StorageProvisioningEntryDestinationType::FrameworkMemory {
+                return Err("memory entries require framework-memory destinations".to_string());
+            }
+            Ok(())
+        }
+        StorageProvisioningEntryIntent::UserVolume
+        | StorageProvisioningEntryIntent::Instructions
+        | StorageProvisioningEntryIntent::Skill => {
+            Err("storage intents cannot be artifact entries".to_string())
+        }
+    }
+}
+
+fn resolve_provisioning_mount_path(
+    destination: &StorageProvisioningEntryDestination,
+) -> Result<String, String> {
+    match destination.type_ {
+        StorageProvisioningEntryDestinationType::Workspace => {
+            reject_unexpected_destination_fields(destination, false, true, false, false)?;
+            join_guest_sub_path(CANONICAL_WORKING_DIR, destination.sub_path.as_deref())
+        }
+        StorageProvisioningEntryDestinationType::Mnt => {
+            reject_unexpected_destination_fields(destination, true, true, false, false)?;
+            let name = destination
+                .name
+                .as_deref()
+                .ok_or_else(|| "mnt destinations require name".to_string())?;
+            validate_guest_path_segment(name, "mnt destination name")?;
+            join_guest_sub_path(&format!("/mnt/{name}"), destination.sub_path.as_deref())
+        }
+        StorageProvisioningEntryDestinationType::FrameworkInstructions => {
+            reject_unexpected_destination_fields(destination, false, false, true, false)?;
+            match required_framework(destination)? {
+                StorageProvisioningEntryDestinationFramework::Codex => {
+                    Ok("/home/user/.codex".to_string())
+                }
+                StorageProvisioningEntryDestinationFramework::ClaudeCode => {
+                    Ok("/home/user/.claude".to_string())
+                }
+            }
+        }
+        StorageProvisioningEntryDestinationType::FrameworkSkill => {
+            reject_unexpected_destination_fields(destination, false, false, true, true)?;
+            let skill_name = destination
+                .skill_name
+                .as_deref()
+                .ok_or_else(|| "framework-skill destinations require skillName".to_string())?;
+            validate_guest_path_segment(skill_name, "framework skill name")?;
+            match required_framework(destination)? {
+                StorageProvisioningEntryDestinationFramework::Codex => {
+                    Ok(format!("/home/user/.codex/skills/{skill_name}"))
+                }
+                StorageProvisioningEntryDestinationFramework::ClaudeCode => {
+                    Ok(format!("/home/user/.claude/skills/{skill_name}"))
+                }
+            }
+        }
+        StorageProvisioningEntryDestinationType::FrameworkMemory => {
+            reject_unexpected_destination_fields(destination, false, false, true, false)?;
+            match required_framework(destination)? {
+                StorageProvisioningEntryDestinationFramework::Codex => {
+                    Ok(CANONICAL_CODEX_MEMORY_MOUNT_PATH.to_string())
+                }
+                StorageProvisioningEntryDestinationFramework::ClaudeCode => {
+                    Ok(CANONICAL_CLAUDE_MEMORY_MOUNT_PATH.to_string())
+                }
+            }
+        }
+    }
+}
+
+fn reject_unexpected_destination_fields(
+    destination: &StorageProvisioningEntryDestination,
+    allow_name: bool,
+    allow_sub_path: bool,
+    allow_framework: bool,
+    allow_skill_name: bool,
+) -> Result<(), String> {
+    if !allow_name && destination.name.is_some() {
+        return Err(format!(
+            "{:?} destinations cannot include name",
+            destination.type_
+        ));
+    }
+    if !allow_framework && destination.framework.is_some() {
+        return Err(format!(
+            "{:?} destinations cannot include framework",
+            destination.type_
+        ));
+    }
+    if !allow_sub_path && destination.sub_path.is_some() {
+        return Err(format!(
+            "{:?} destinations cannot include subPath",
+            destination.type_
+        ));
+    }
+    if !allow_skill_name && destination.skill_name.is_some() {
+        return Err(format!(
+            "{:?} destinations cannot include skillName",
+            destination.type_
+        ));
+    }
+    Ok(())
+}
+
+fn required_framework(
+    destination: &StorageProvisioningEntryDestination,
+) -> Result<StorageProvisioningEntryDestinationFramework, String> {
+    destination
+        .framework
+        .ok_or_else(|| format!("{:?} destinations require framework", destination.type_))
+}
+
+fn join_guest_sub_path(base: &str, sub_path: Option<&str>) -> Result<String, String> {
+    match sub_path {
+        Some(path) if !path.is_empty() => {
+            validate_guest_relative_sub_path(path)?;
+            Ok(format!("{base}/{path}"))
+        }
+        _ => Ok(base.to_string()),
+    }
+}
+
+fn validate_guest_relative_sub_path(path: &str) -> Result<(), String> {
+    if path.contains('\0') || path.starts_with('/') {
+        return Err("destination subPath must be relative".to_string());
+    }
+    for segment in path.split('/') {
+        validate_guest_path_segment(segment, "destination subPath")?;
+    }
+    Ok(())
+}
+
+fn validate_guest_path_segment(segment: &str, label: &str) -> Result<(), String> {
+    if segment.is_empty() || segment == "." || segment == ".." {
+        return Err(format!(
+            "{label} cannot contain empty or traversal segments"
+        ));
+    }
+    if segment.contains('/') || segment.contains('\0') {
+        return Err(format!("{label} cannot contain slash or NUL bytes"));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResumeSession {
@@ -372,7 +633,7 @@ impl SandboxReuseResult {
 mod tests {
     use super::*;
     use api_contracts::generated::types::runners::storage::{
-        ArtifactEntry, ArtifactEntryMissingRootPolicy, StorageEntry,
+        ArtifactEntry, ArtifactEntryMissingRootPolicy, StorageEntry, StorageProvisioningManifest,
     };
     use serde_json::json;
 
@@ -798,6 +1059,145 @@ mod tests {
             guest_manifest.artifacts[0].missing_root_policy,
             Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
         );
+    }
+
+    #[test]
+    fn storage_provisioning_manifest_resolves_guest_download_paths() {
+        let manifest: StorageProvisioningManifest = serde_json::from_value(json!({
+            "version": "2",
+            "entries": [
+                {
+                    "intent": "user-volume",
+                    "source": {
+                        "kind": "storage",
+                        "name": "docs",
+                        "vasStorageName": "docs",
+                        "vasVersionId": "v1",
+                        "archiveUrl": "https://example.com/docs.tar.gz"
+                    },
+                    "destination": {
+                        "type": "mnt",
+                        "name": "docs",
+                        "subPath": "guides"
+                    }
+                },
+                {
+                    "intent": "user-artifact",
+                    "source": {
+                        "kind": "artifact",
+                        "name": "workspace",
+                        "vasStorageName": "workspace",
+                        "vasStorageId": "storage-id",
+                        "vasVersionId": "v2",
+                        "archiveUrl": "https://example.com/workspace.tar.gz"
+                    },
+                    "destination": {
+                        "type": "workspace",
+                        "subPath": "reports"
+                    }
+                },
+                {
+                    "intent": "instructions",
+                    "source": {
+                        "kind": "storage",
+                        "name": "instructions",
+                        "vasStorageName": "instructions",
+                        "vasVersionId": "v3",
+                        "archiveUrl": "https://example.com/instructions.tar.gz"
+                    },
+                    "destination": {
+                        "type": "framework-instructions",
+                        "framework": "codex"
+                    },
+                    "instructionsTargetFilename": "AGENTS.md"
+                },
+                {
+                    "intent": "skill",
+                    "source": {
+                        "kind": "storage",
+                        "name": "slack",
+                        "vasStorageName": "slack",
+                        "vasVersionId": "v4",
+                        "archiveUrl": "https://example.com/slack.tar.gz"
+                    },
+                    "destination": {
+                        "type": "framework-skill",
+                        "framework": "claude-code",
+                        "skillName": "slack"
+                    }
+                },
+                {
+                    "intent": "memory",
+                    "source": {
+                        "kind": "artifact",
+                        "name": "memory",
+                        "vasStorageName": "memory",
+                        "vasStorageId": "memory-id",
+                        "vasVersionId": "v5",
+                        "archiveUrl": "https://example.com/memory.tar.gz"
+                    },
+                    "destination": {
+                        "type": "framework-memory",
+                        "framework": "codex"
+                    },
+                    "missingRootPolicy": "preserveParentVersion"
+                }
+            ]
+        }))
+        .unwrap();
+
+        let guest_manifest = GuestDownloadManifest::try_from(&manifest).unwrap();
+
+        assert_eq!(guest_manifest.storages[0].mount_path, "/mnt/docs/guides");
+        assert_eq!(
+            guest_manifest.artifacts[0].mount_path,
+            format!("{CANONICAL_WORKING_DIR}/reports")
+        );
+        assert_eq!(guest_manifest.storages[1].mount_path, "/home/user/.codex");
+        assert_eq!(
+            guest_manifest.storages[1]
+                .instructions_target_filename
+                .as_deref(),
+            Some("AGENTS.md")
+        );
+        assert_eq!(
+            guest_manifest.storages[2].mount_path,
+            "/home/user/.claude/skills/slack"
+        );
+        assert_eq!(
+            guest_manifest.artifacts[1].mount_path,
+            CANONICAL_CODEX_MEMORY_MOUNT_PATH
+        );
+        assert_eq!(
+            guest_manifest.artifacts[1].missing_root_policy,
+            Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
+        );
+    }
+
+    #[test]
+    fn storage_provisioning_manifest_rejects_invalid_destinations() {
+        let manifest: StorageProvisioningManifest = serde_json::from_value(json!({
+            "version": "2",
+            "entries": [{
+                "intent": "skill",
+                "source": {
+                    "kind": "storage",
+                    "name": "slack",
+                    "vasStorageName": "slack",
+                    "vasVersionId": "v1",
+                    "archiveUrl": "https://example.com/slack.tar.gz"
+                },
+                "destination": {
+                    "type": "framework-skill",
+                    "framework": "claude-code"
+                }
+            }]
+        }))
+        .unwrap();
+
+        let error = GuestDownloadManifest::try_from(&manifest).unwrap_err();
+
+        assert!(error.contains("skillName"));
     }
 
     #[test]

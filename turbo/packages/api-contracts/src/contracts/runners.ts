@@ -138,6 +138,188 @@ export const storageManifestSchema = z.object({
   artifacts: z.array(artifactEntrySchema),
 });
 
+export const storageProvisioningIntentSchema = z.enum([
+  "user-volume",
+  "user-artifact",
+  "instructions",
+  "skill",
+  "memory",
+]);
+
+export const storageProvisioningSourceKindSchema = z.enum([
+  "storage",
+  "artifact",
+]);
+
+export const storageProvisioningFrameworkSchema = z.enum([
+  "claude-code",
+  "codex",
+]);
+
+export const storageProvisioningDestinationTypeSchema = z.enum([
+  "workspace",
+  "mnt",
+  "framework-instructions",
+  "framework-skill",
+  "framework-memory",
+]);
+
+export const storageProvisioningSourceSchema = z.object({
+  kind: storageProvisioningSourceKindSchema,
+  name: z.string().min(1),
+  vasStorageName: z.string().min(1),
+  vasStorageId: z.string().min(1).optional(),
+  vasVersionId: z.string().min(1),
+  archiveUrl: z.string().min(1),
+  manifestUrl: z.string().min(1).optional(),
+});
+
+export const storageProvisioningDestinationSchema = z
+  .object({
+    type: storageProvisioningDestinationTypeSchema,
+    name: z.string().min(1).optional(),
+    subPath: z.string().optional(),
+    framework: storageProvisioningFrameworkSchema.optional(),
+    skillName: z.string().min(1).optional(),
+  })
+  .superRefine((destination, ctx) => {
+    const addIssue = (message: string, path: string[]): void => {
+      ctx.addIssue({
+        code: "custom",
+        message,
+        path,
+      });
+    };
+
+    if (destination.type === "workspace") {
+      if (destination.name !== undefined) {
+        addIssue("workspace destinations cannot include name", ["name"]);
+      }
+      if (destination.framework !== undefined) {
+        addIssue("workspace destinations cannot include framework", [
+          "framework",
+        ]);
+      }
+      if (destination.skillName !== undefined) {
+        addIssue("workspace destinations cannot include skillName", [
+          "skillName",
+        ]);
+      }
+      return;
+    }
+
+    if (destination.type === "mnt") {
+      if (destination.name === undefined) {
+        addIssue("mnt destinations require name", ["name"]);
+      }
+      if (destination.framework !== undefined) {
+        addIssue("mnt destinations cannot include framework", ["framework"]);
+      }
+      if (destination.skillName !== undefined) {
+        addIssue("mnt destinations cannot include skillName", ["skillName"]);
+      }
+      return;
+    }
+
+    if (destination.framework === undefined) {
+      addIssue(`${destination.type} destinations require framework`, [
+        "framework",
+      ]);
+    }
+    if (destination.name !== undefined) {
+      addIssue(`${destination.type} destinations cannot include name`, [
+        "name",
+      ]);
+    }
+    if (destination.subPath !== undefined) {
+      addIssue(`${destination.type} destinations cannot include subPath`, [
+        "subPath",
+      ]);
+    }
+
+    if (destination.type === "framework-skill") {
+      if (destination.skillName === undefined) {
+        addIssue("framework-skill destinations require skillName", [
+          "skillName",
+        ]);
+      }
+      return;
+    }
+
+    if (destination.skillName !== undefined) {
+      addIssue(`${destination.type} destinations cannot include skillName`, [
+        "skillName",
+      ]);
+    }
+  });
+
+export const storageProvisioningEntrySchema = z
+  .object({
+    intent: storageProvisioningIntentSchema,
+    source: storageProvisioningSourceSchema,
+    destination: storageProvisioningDestinationSchema,
+    instructionsTargetFilename: z.string().min(1).optional(),
+    missingRootPolicy: artifactMissingRootPolicySchema.optional(),
+  })
+  .superRefine((entry, ctx) => {
+    const sourceKindByIntent = {
+      "user-volume": "storage",
+      "user-artifact": "artifact",
+      instructions: "storage",
+      skill: "storage",
+      memory: "artifact",
+    } as const satisfies Record<
+      z.infer<typeof storageProvisioningIntentSchema>,
+      z.infer<typeof storageProvisioningSourceKindSchema>
+    >;
+
+    if (entry.source.kind !== sourceKindByIntent[entry.intent]) {
+      ctx.addIssue({
+        code: "custom",
+        message: `${entry.intent} entries require ${sourceKindByIntent[entry.intent]} sources`,
+        path: ["source", "kind"],
+      });
+    }
+
+    if (
+      entry.source.kind === "artifact" &&
+      entry.source.vasStorageId === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "artifact sources require vasStorageId",
+        path: ["source", "vasStorageId"],
+      });
+    }
+
+    if (
+      entry.instructionsTargetFilename !== undefined &&
+      entry.intent !== "instructions"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "instructionsTargetFilename is only valid for instructions",
+        path: ["instructionsTargetFilename"],
+      });
+    }
+
+    if (
+      entry.missingRootPolicy !== undefined &&
+      entry.source.kind !== "artifact"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "missingRootPolicy is only valid for artifacts",
+        path: ["missingRootPolicy"],
+      });
+    }
+  });
+
+export const storageProvisioningManifestSchema = z.object({
+  version: z.literal("2"),
+  entries: z.array(storageProvisioningEntrySchema),
+});
+
 /**
  * Resume session information
  */
@@ -165,6 +347,9 @@ export const secretConnectorMetadataMapSchema = z.record(
  */
 export const storedExecutionContextSchema = z.object({
   storageManifest: storageManifestSchema.nullable(),
+  storageProvisioningManifest: storageProvisioningManifestSchema
+    .nullable()
+    .optional(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
   // AES-256-GCM encrypted Record<string, string>. Keys are the runtime secret
@@ -225,6 +410,9 @@ export const executionContextSchema = z.object({
   checkpointId: z.uuid().nullable(),
   sandboxToken: z.string(),
   storageManifest: storageManifestSchema.nullable(),
+  storageProvisioningManifest: storageProvisioningManifestSchema
+    .nullable()
+    .optional(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
   // Plain secret values used by the runner for redaction. These are values, not
@@ -355,4 +543,28 @@ export type SecretConnectorMetadata = z.infer<
 export type StorageEntry = z.infer<typeof storageEntrySchema>;
 export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
+export type StorageProvisioningIntent = z.infer<
+  typeof storageProvisioningIntentSchema
+>;
+export type StorageProvisioningSourceKind = z.infer<
+  typeof storageProvisioningSourceKindSchema
+>;
+export type StorageProvisioningFramework = z.infer<
+  typeof storageProvisioningFrameworkSchema
+>;
+export type StorageProvisioningDestinationType = z.infer<
+  typeof storageProvisioningDestinationTypeSchema
+>;
+export type StorageProvisioningSource = z.infer<
+  typeof storageProvisioningSourceSchema
+>;
+export type StorageProvisioningDestination = z.infer<
+  typeof storageProvisioningDestinationSchema
+>;
+export type StorageProvisioningEntry = z.infer<
+  typeof storageProvisioningEntrySchema
+>;
+export type StorageProvisioningManifest = z.infer<
+  typeof storageProvisioningManifestSchema
+>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;

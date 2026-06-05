@@ -199,6 +199,7 @@ impl JobProvider for LocalProvider {
             checkpoint_id: None,
             sandbox_token: String::new(),
             storage_manifest: None,
+            storage_provisioning_manifest: None,
             environment: req.environment,
             resume_session: req
                 .session_id

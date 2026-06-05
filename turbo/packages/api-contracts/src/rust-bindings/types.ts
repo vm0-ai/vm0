@@ -3,6 +3,8 @@ import {
   artifactEntrySchema,
   storageEntrySchema,
   storageManifestSchema,
+  storageProvisioningEntrySchema,
+  storageProvisioningManifestSchema,
 } from "../contracts/runners";
 import { fileEntryWithHashSchema } from "../contracts/storages";
 import {
@@ -39,6 +41,24 @@ export const rustTypeBindings = [
     fieldTypeOverrides: {
       storages: "Vec<StorageEntry>",
       artifacts: "Vec<ArtifactEntry>",
+    },
+  },
+  {
+    schema: storageProvisioningManifestSchema,
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "StorageProvisioningManifest",
+    direction: "response",
+    fieldTypeOverrides: {
+      entries: "Vec<StorageProvisioningEntry>",
+    },
+  },
+  {
+    schema: storageProvisioningEntrySchema,
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "StorageProvisioningEntry",
+    direction: "response",
+    fieldTypeOverrides: {
+      missingRootPolicy: "ArtifactEntryMissingRootPolicy",
     },
   },
   {

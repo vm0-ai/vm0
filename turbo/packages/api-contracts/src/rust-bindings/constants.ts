@@ -3,6 +3,8 @@ import {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../contracts/model-providers";
 import {
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
 } from "../contracts/runners";
@@ -145,6 +147,24 @@ export const rustStringConstantBindings = [
     rustDoc: [
       "Canonical working directory path expected inside runner guests.",
       "Rust and TypeScript components use this shared contract value when building runner commands and paths.",
+    ],
+  },
+  {
+    rustModulePath: runnerPathsModule,
+    rustConstName: "CANONICAL_CLAUDE_MEMORY_MOUNT_PATH",
+    value: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+    rustDoc: [
+      "Canonical Claude Code memory artifact path inside runner guests.",
+      "Rust and TypeScript components use this shared contract value when resolving memory provisioning destinations.",
+    ],
+  },
+  {
+    rustModulePath: runnerPathsModule,
+    rustConstName: "CANONICAL_CODEX_MEMORY_MOUNT_PATH",
+    value: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+    rustDoc: [
+      "Canonical Codex memory artifact path inside runner guests.",
+      "Rust and TypeScript components use this shared contract value when resolving memory provisioning destinations.",
     ],
   },
   ...codexOauthPlaceholderNames.map((name) => {

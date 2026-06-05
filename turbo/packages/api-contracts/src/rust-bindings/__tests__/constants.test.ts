@@ -13,6 +13,8 @@ import {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../../contracts/model-providers";
 import {
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
 } from "../../contracts/runners";
@@ -28,6 +30,16 @@ const canonicalGuestHomeDirDoc = [
 const canonicalWorkingDirDoc = [
   "Canonical working directory path expected inside runner guests.",
   "Rust and TypeScript components use this shared contract value when building runner commands and paths.",
+] as const;
+
+const canonicalClaudeMemoryMountPathDoc = [
+  "Canonical Claude Code memory artifact path inside runner guests.",
+  "Rust and TypeScript components use this shared contract value when resolving memory provisioning destinations.",
+] as const;
+
+const canonicalCodexMemoryMountPathDoc = [
+  "Canonical Codex memory artifact path inside runner guests.",
+  "Rust and TypeScript components use this shared contract value when resolving memory provisioning destinations.",
 ] as const;
 
 function placeholderRustDoc(name: string): readonly string[] {
@@ -49,6 +61,18 @@ const expectedBindings = [
     rustConstName: "CANONICAL_WORKING_DIR",
     value: CANONICAL_WORKING_DIR,
     rustDoc: canonicalWorkingDirDoc,
+  },
+  {
+    rustModulePath: ["runners", "paths"],
+    rustConstName: "CANONICAL_CLAUDE_MEMORY_MOUNT_PATH",
+    value: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+    rustDoc: canonicalClaudeMemoryMountPathDoc,
+  },
+  {
+    rustModulePath: ["runners", "paths"],
+    rustConstName: "CANONICAL_CODEX_MEMORY_MOUNT_PATH",
+    value: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+    rustDoc: canonicalCodexMemoryMountPathDoc,
   },
   {
     rustModulePath: ["codex_oauth_token", "placeholders"],
@@ -194,6 +218,19 @@ describe("Rust string constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const CANONICAL_WORKING_DIR: &str = "${CANONICAL_WORKING_DIR}";`,
+    );
+    expect(firstRender).toContain(
+      "/// Canonical Claude Code memory artifact path inside runner guests.",
+    );
+    expect(firstRender).toContain(
+      "pub const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH: &str =",
+    );
+    expect(firstRender).toContain(`"${CANONICAL_CLAUDE_MEMORY_MOUNT_PATH}";`);
+    expect(firstRender).toContain(
+      "/// Canonical Codex memory artifact path inside runner guests.",
+    );
+    expect(firstRender).toContain(
+      `pub const CANONICAL_CODEX_MEMORY_MOUNT_PATH: &str = "${CANONICAL_CODEX_MEMORY_MOUNT_PATH}";`,
     );
     expect(firstRender).toContain(
       `pub const CHATGPT_ACCOUNT_ID: &str = "${codexOauthPlaceholders.CHATGPT_ACCOUNT_ID}";`,
