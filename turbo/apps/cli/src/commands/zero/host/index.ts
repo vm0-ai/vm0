@@ -1,13 +1,22 @@
 import { Command } from "commander";
 import chalk from "chalk";
+import {
+  hostedArtifactKindSchema,
+  type HostedArtifactKind,
+} from "@vm0/api-contracts/contracts/zero-host";
 import { withErrorHandler } from "../../../lib/command";
 import { publishStaticSite } from "../../../lib/host/publish-static-site";
 
 interface HostOptions {
   readonly site: string;
   readonly slugSuffix?: string;
+  readonly artifactKind?: HostedArtifactKind;
   readonly spa?: boolean;
   readonly json?: boolean;
+}
+
+function parseArtifactKind(value: string): HostedArtifactKind {
+  return hostedArtifactKindSchema.parse(value);
 }
 
 function formatBytes(bytes: number): string {
@@ -22,6 +31,11 @@ export const zeroHostCommand = new Command()
   .argument("<dir>", "Static build directory, for example ./dist")
   .requiredOption("--site <slug>", "Public site slug, e.g. my-product-demo")
   .option("--slug-suffix <suffix>", "Reuse a generated site URL suffix")
+  .option(
+    "--artifact-kind <kind>",
+    "Artifact kind to record for this hosted deployment",
+    parseArtifactKind,
+  )
   .option("--spa", "Serve unknown HTML navigation paths from index.html")
   .option("--json", "Output only the final result as JSON")
   .addHelpText(
@@ -44,6 +58,7 @@ Notes:
         dir,
         site: options.site,
         slugSuffix: options.slugSuffix,
+        artifactKind: options.artifactKind,
         spaFallback: Boolean(options.spa),
         onProgress: options.json
           ? undefined

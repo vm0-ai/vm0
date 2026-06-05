@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { command } from "ccstate";
-import type { HostedSitePrepareRequest } from "@vm0/api-contracts/contracts/zero-host";
+import type {
+  HostedArtifactKind,
+  HostedSitePrepareRequest,
+} from "@vm0/api-contracts/contracts/zero-host";
 import {
   hostedDeployments,
   hostedSites,
@@ -232,6 +235,7 @@ function buildManifest(args: {
   readonly deploymentId: string;
   readonly siteId: string;
   readonly publicSlug: string;
+  readonly artifactKind: HostedArtifactKind;
   readonly spaFallback: boolean;
   readonly files: readonly HostedSitePrepareRequest["files"][number][];
   readonly createdAt: Date;
@@ -252,16 +256,19 @@ function buildManifest(args: {
     siteId: args.siteId,
     publicSlug: args.publicSlug,
     createdAt: args.createdAt.toISOString(),
+    artifactKind: args.artifactKind,
     spaFallback: args.spaFallback,
     files: manifestFiles,
   };
 }
 
 function hostedSiteArtifactArgs(deployment: HostedDeploymentRow) {
+  const artifactKind = deployment.manifest.artifactKind ?? "hosted-site";
   return {
     runId: deployment.runId,
     userId: deployment.userId,
     orgId: deployment.orgId,
+    artifactKind,
     siteId: deployment.siteId,
     deploymentId: deployment.id,
     publicSlug: deployment.manifest.publicSlug,
@@ -324,6 +331,7 @@ function createHostedSiteDeployment(
       deploymentId,
       siteId: site.id,
       publicSlug: context.publicSlug,
+      artifactKind: args.body.artifactKind,
       spaFallback: args.body.spaFallback,
       files: args.body.files,
       createdAt: context.now,
