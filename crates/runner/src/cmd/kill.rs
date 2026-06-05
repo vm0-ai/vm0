@@ -439,14 +439,18 @@ fn workspace_identity_matches(
 
 /// Send `SIGKILL` to a validated process group.
 fn signal_process_group(pid: u32, pgid: u32) -> bool {
-    if pgid == 0 {
-        tracing::warn!(pid, "refusing to signal process group 0");
+    if pgid <= 1 {
+        tracing::warn!(pid, pgid, "refusing to signal system process group");
         return false;
     }
 
     let Ok(pgid_i32) = i32::try_from(pgid) else {
         return false;
     };
+    if nix::unistd::getpgrp().as_raw() == pgid_i32 {
+        tracing::warn!(pid, pgid = pgid_i32, "refusing to signal own process group");
+        return false;
+    }
 
     match nix::sys::signal::killpg(
         nix::unistd::Pid::from_raw(pgid_i32),
@@ -908,6 +912,18 @@ mod tests {
     #[test]
     fn signal_process_group_rejects_zero_pgid() {
         assert!(!signal_process_group(1234, 0));
+    }
+
+    #[test]
+    fn signal_process_group_rejects_init_pgid() {
+        assert!(!signal_process_group(1234, 1));
+    }
+
+    #[test]
+    fn signal_process_group_rejects_own_pgid() {
+        let current_pgid = u32::try_from(nix::unistd::getpgrp().as_raw()).unwrap();
+
+        assert!(!signal_process_group(1234, current_pgid));
     }
 
     #[tokio::test]
