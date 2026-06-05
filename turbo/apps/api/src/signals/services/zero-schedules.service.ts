@@ -474,13 +474,17 @@ async function isChatThreadLinkable(
 }
 
 type ChatThreadLinkResult =
-  | { readonly ok: true; readonly chatThreadId: string | null }
+  | {
+      readonly ok: true;
+      readonly chatThreadId: string | null;
+      readonly createChatThread: boolean;
+    }
   | { readonly ok: false; readonly error: DeployScheduleResult };
 
 /**
  * Resolve the chat-thread link for a deploy, enforcing the ScheduledChat gate:
- * switch ON requires a NEW schedule to carry an owned chat thread (immutable
- * after create); switch OFF ignores the field (legacy schedule).
+ * switch ON links a NEW schedule to either the supplied owned chat thread or a
+ * server-created thread; switch OFF ignores the field (legacy schedule).
  */
 async function resolveScheduleChatThreadLink(args: {
   readonly db: Db;
@@ -503,7 +507,7 @@ async function resolveScheduleChatThreadLink(args: {
       };
     }
     if (!args.chatModeEnabled) {
-      return { ok: true, chatThreadId: null };
+      return { ok: true, chatThreadId: null, createChatThread: false };
     }
     const linkable = await isChatThreadLinkable(args.db, {
       chatThreadId: args.chatThreadId,
@@ -521,19 +525,16 @@ async function resolveScheduleChatThreadLink(args: {
         },
       };
     }
-    return { ok: true, chatThreadId: args.chatThreadId };
-  }
-  if (!args.existing && args.chatModeEnabled) {
     return {
-      ok: false,
-      error: {
-        kind: "bad_request",
-        message:
-          "chatThreadId is required when chat-mode schedules are enabled",
-      },
+      ok: true,
+      chatThreadId: args.chatThreadId,
+      createChatThread: false,
     };
   }
-  return { ok: true, chatThreadId: null };
+  if (!args.existing && args.chatModeEnabled) {
+    return { ok: true, chatThreadId: null, createChatThread: true };
+  }
+  return { ok: true, chatThreadId: null, createChatThread: false };
 }
 
 async function updateExistingSchedule(
@@ -585,34 +586,58 @@ async function insertNewSchedule(
     // Resolved chat-thread link (null = legacy). Computed in deploySchedule$
     // after the switch + ownership checks — NOT read from the request body.
     readonly chatThreadId: string | null;
+    readonly createChatThread: boolean;
   },
 ): Promise<typeof zeroAgentSchedules.$inferSelect> {
-  const [created] = await db
-    .insert(zeroAgentSchedules)
-    .values({
-      agentId: args.request.agentId,
-      userId: args.userId,
-      orgId: args.orgId,
-      name: args.request.name,
-      triggerType: args.triggerType,
-      cronExpression: args.request.cronExpression ?? null,
-      atTime: args.request.atTime ? new Date(args.request.atTime) : null,
-      intervalSeconds: args.request.intervalSeconds ?? null,
-      timezone: args.request.timezone,
-      prompt: args.request.prompt,
-      description: args.request.description ?? null,
-      appendSystemPrompt: args.request.appendSystemPrompt ?? null,
-      vars: null,
-      encryptedSecrets: null,
-      volumeVersions: args.request.volumeVersions ?? null,
-      chatThreadId: args.chatThreadId,
-      enabled: args.request.enabled ?? false,
-      nextRunAt: args.nextRunAt,
-      consecutiveFailures: 0,
-      createdAt: args.currentTime,
-      updatedAt: args.currentTime,
-    })
-    .returning();
+  const created = await db.transaction(async (tx) => {
+    let chatThreadId = args.chatThreadId;
+    if (args.createChatThread) {
+      const [thread] = await tx
+        .insert(chatThreads)
+        .values({
+          userId: args.userId,
+          agentComposeId: args.request.agentId,
+          title: args.request.description ?? args.request.name,
+          lastMessageAt: args.currentTime,
+          createdAt: args.currentTime,
+          updatedAt: args.currentTime,
+        })
+        .returning({ id: chatThreads.id });
+      if (!thread) {
+        throw new Error("Failed to create chat thread");
+      }
+      chatThreadId = thread.id;
+    }
+
+    const [schedule] = await tx
+      .insert(zeroAgentSchedules)
+      .values({
+        agentId: args.request.agentId,
+        userId: args.userId,
+        orgId: args.orgId,
+        name: args.request.name,
+        triggerType: args.triggerType,
+        cronExpression: args.request.cronExpression ?? null,
+        atTime: args.request.atTime ? new Date(args.request.atTime) : null,
+        intervalSeconds: args.request.intervalSeconds ?? null,
+        timezone: args.request.timezone,
+        prompt: args.request.prompt,
+        description: args.request.description ?? null,
+        appendSystemPrompt: args.request.appendSystemPrompt ?? null,
+        vars: null,
+        encryptedSecrets: null,
+        volumeVersions: args.request.volumeVersions ?? null,
+        chatThreadId,
+        enabled: args.request.enabled ?? false,
+        nextRunAt: args.nextRunAt,
+        consecutiveFailures: 0,
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
+      })
+      .returning();
+
+    return schedule;
+  });
 
   if (!created) {
     throw new Error(`Failed to create schedule ${args.request.name}`);
@@ -663,10 +688,9 @@ export const deploySchedule$ = command(
     signal.throwIfAborted();
 
     // Chat-mode linkage, gated by the ScheduledChat switch:
-    // - Switch ON: a NEW schedule MUST be linked to an owned chat thread. The
-    //   CLI/agent default chatThreadId to $ZERO_CHAT_THREAD_ID, so it is
-    //   normally present; a create without one is rejected. The link is
-    //   create-only / immutable.
+    // - Switch ON: a NEW schedule is linked to either an owned supplied thread
+    //   or a server-created web chat thread. The link is create-only /
+    //   immutable.
     // - Switch OFF: chatThreadId is ignored (legacy schedule), so creation from
     //   contexts that auto-send a thread id never breaks.
     const overrides = await get(
@@ -728,6 +752,7 @@ export const deploySchedule$ = command(
           nextRunAt,
           currentTime,
           chatThreadId: chatThreadIdToLink,
+          createChatThread: chatLink.createChatThread,
         });
     signal.throwIfAborted();
 
