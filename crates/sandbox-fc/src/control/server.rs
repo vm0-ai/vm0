@@ -28,18 +28,19 @@ const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 /// terminate the sandbox process group.
 #[derive(Clone)]
 pub(crate) struct ProcessTerminationHandle {
-    kill_tx: mpsc::UnboundedSender<()>,
+    kill_tx: mpsc::Sender<()>,
 }
 
 impl ProcessTerminationHandle {
-    pub(crate) fn new(kill_tx: mpsc::UnboundedSender<()>) -> Self {
+    pub(crate) fn new(kill_tx: mpsc::Sender<()>) -> Self {
         Self { kill_tx }
     }
 
     fn request_terminate(&self) -> TerminateStatus {
-        match self.kill_tx.send(()) {
+        match self.kill_tx.try_send(()) {
             Ok(()) => TerminateStatus::Accepted,
-            Err(_) => TerminateStatus::AlreadyStopped,
+            Err(mpsc::error::TrySendError::Full(())) => TerminateStatus::Accepted,
+            Err(mpsc::error::TrySendError::Closed(())) => TerminateStatus::AlreadyStopped,
         }
     }
 }
@@ -452,7 +453,7 @@ mod tests {
     }
 
     fn test_termination_handle() -> ProcessTerminationHandle {
-        let (kill_tx, _kill_rx) = mpsc::unbounded_channel();
+        let (kill_tx, _kill_rx) = mpsc::channel(1);
         ProcessTerminationHandle::new(kill_tx)
     }
 
@@ -509,7 +510,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let (kill_tx, mut kill_rx) = mpsc::unbounded_channel();
+        let (kill_tx, mut kill_rx) = mpsc::channel(1);
         let mut handle = bind_server(
             sock_path.clone(),
             test_gate(guest),
@@ -544,7 +545,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let (kill_tx, kill_rx) = mpsc::unbounded_channel();
+        let (kill_tx, kill_rx) = mpsc::channel(1);
         drop(kill_rx);
         let mut handle = bind_server(
             sock_path.clone(),
@@ -569,6 +570,16 @@ mod tests {
         );
 
         handle.shutdown().await;
+    }
+
+    #[test]
+    fn termination_handle_treats_full_channel_as_accepted() {
+        let (kill_tx, kill_rx) = mpsc::channel(1);
+        let termination = ProcessTerminationHandle::new(kill_tx);
+
+        assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
+        assert_eq!(termination.request_terminate(), TerminateStatus::Accepted);
+        assert_eq!(kill_rx.len(), 1);
     }
 
     #[tokio::test]

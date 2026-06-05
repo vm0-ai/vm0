@@ -415,13 +415,13 @@ async fn unmount_snapshot_drive_bind_target(path: &Path) -> Result<(), SandboxEr
 }
 
 struct ProcessMonitorHandle {
-    kill_tx: mpsc::UnboundedSender<()>,
+    kill_tx: mpsc::Sender<()>,
     task: tokio::task::JoinHandle<()>,
 }
 
 impl ProcessMonitorHandle {
     fn kill(&self) {
-        let _ = self.kill_tx.send(());
+        let _ = self.kill_tx.try_send(());
     }
 
     fn termination_handle(&self) -> control::ProcessTerminationHandle {
@@ -1381,7 +1381,7 @@ fn monitor_process_with_log_readers(
 ) -> ProcessMonitorHandle {
     let process_group_pid = child.id();
     let id = id.to_owned();
-    let (kill_tx, mut kill_rx) = mpsc::unbounded_channel();
+    let (kill_tx, mut kill_rx) = mpsc::channel(1);
     let task = tokio::spawn(async move {
         let status = tokio::select! {
             status = child.wait() => status,
