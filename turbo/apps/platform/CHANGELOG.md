@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.416.2](https://github.com/vm0-ai/vm0/compare/app-v0.416.1...app-v0.416.2) (2026-06-05)
+
+
+### Bug Fixes
+
+* show schedule titles in chat schedule navigation ([#16221](https://github.com/vm0-ai/vm0/issues/16221)) ([d1605b3](https://github.com/vm0-ai/vm0/commit/d1605b34813562da3d155fa2d6d7e5d7c970577f))
+
 ## [0.416.1](https://github.com/vm0-ai/vm0/compare/app-v0.416.0...app-v0.416.1) (2026-06-05)
 
 
