@@ -57,8 +57,8 @@ export type ConnectorProvidedBindingNamespace = z.infer<
 
 /**
  * Names that a stored connector guarantees at runtime. Optional bindings are
- * omitted because they are not guaranteed unless the optional connector field
- * is set.
+ * omitted because they describe possible connector supply, not guaranteed
+ * connector supply.
  */
 export function guaranteedConnectorProvidedBindingNames(args: {
   readonly bindings: readonly ConnectorProvidedBinding[];
