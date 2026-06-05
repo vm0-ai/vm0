@@ -1,11 +1,20 @@
+#![deny(unsafe_code)]
+
 use std::cell::Cell;
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, OwnedFd};
+
+use nix::errno::Errno;
+#[cfg(test)]
+use nix::sys::socket::socketpair;
+use nix::sys::socket::{
+    AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType, bind, recv, send,
+    setsockopt, socket, sockopt,
+};
+use nix::sys::time::{TimeVal, TimeValLike};
 
 use crate::error::{NbdCowError, Result};
 
 use super::wire;
-
-const NETLINK_GENERIC: i32 = 16;
 
 pub(super) struct GenlSocket {
     fd: OwnedFd,
@@ -20,46 +29,25 @@ impl GenlSocket {
     }
 }
 
-pub(super) fn open_genl_socket() -> Result<GenlSocket> {
-    let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_DGRAM, NETLINK_GENERIC) };
-    if fd < 0 {
-        return Err(NbdCowError::Io(std::io::Error::last_os_error()));
-    }
-    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+fn errno_to_io(err: Errno) -> NbdCowError {
+    NbdCowError::Io(err.into())
+}
 
-    // Bind to kernel
-    let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
-    addr.nl_family = libc::AF_NETLINK as u16;
-    let ret = unsafe {
-        libc::bind(
-            fd.as_raw_fd(),
-            std::ptr::from_ref(&addr).cast(),
-            std::mem::size_of::<libc::sockaddr_nl>() as u32,
-        )
-    };
-    if ret < 0 {
-        return Err(NbdCowError::Io(std::io::Error::last_os_error()));
-    }
+pub(super) fn open_genl_socket() -> Result<GenlSocket> {
+    let fd = socket(
+        AddressFamily::Netlink,
+        SockType::Datagram,
+        SockFlag::empty(),
+        SockProtocol::NetlinkGeneric,
+    )
+    .map_err(errno_to_io)?;
+
+    bind(fd.as_raw_fd(), &NetlinkAddr::new(0, 0)).map_err(errno_to_io)?;
 
     // Set a receive timeout so recv() doesn't block forever if the
     // kernel never sends a completion message (e.g., nbd module unloaded
     // mid-call).
-    let timeout = libc::timeval {
-        tv_sec: 5,
-        tv_usec: 0,
-    };
-    let ret = unsafe {
-        libc::setsockopt(
-            fd.as_raw_fd(),
-            libc::SOL_SOCKET,
-            libc::SO_RCVTIMEO,
-            std::ptr::from_ref(&timeout).cast(),
-            std::mem::size_of::<libc::timeval>() as u32,
-        )
-    };
-    if ret < 0 {
-        return Err(NbdCowError::Io(std::io::Error::last_os_error()));
-    }
+    setsockopt(&fd, sockopt::ReceiveTimeout, &TimeVal::seconds(5)).map_err(errno_to_io)?;
 
     Ok(GenlSocket {
         fd,
@@ -91,36 +79,31 @@ pub(super) fn recv_for_seq(sock: &GenlSocket, buf: &mut [u8], expected_seq: u32)
 }
 
 fn send_nl(sock: &GenlSocket, msg: &[u8]) -> Result<()> {
-    let ret = unsafe { libc::send(sock.fd.as_raw_fd(), msg.as_ptr().cast(), msg.len(), 0) };
-    if ret < 0 {
-        return Err(NbdCowError::Io(std::io::Error::last_os_error()));
-    }
-
+    send(sock.fd.as_raw_fd(), msg, MsgFlags::empty()).map_err(errno_to_io)?;
     Ok(())
 }
 
 fn recv_nl(sock: &GenlSocket, buf: &mut [u8]) -> Result<usize> {
     loop {
-        let n = unsafe { libc::recv(sock.fd.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len(), 0) };
-        if n >= 0 {
-            return Ok(n as usize);
+        match recv(sock.fd.as_raw_fd(), buf, MsgFlags::empty()) {
+            Ok(n) => return Ok(n),
+            Err(Errno::EINTR) => {
+                // EINTR — retry
+            }
+            Err(err) => return Err(errno_to_io(err)),
         }
-        let err = std::io::Error::last_os_error();
-        if err.kind() != std::io::ErrorKind::Interrupted {
-            return Err(NbdCowError::Io(err));
-        }
-        // EINTR — retry
     }
 }
 
 #[cfg(test)]
 pub(super) fn test_genl_socket_pair() -> (GenlSocket, OwnedFd) {
-    let mut fds = [0i32; 2];
-    let ret = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_DGRAM, 0, fds.as_mut_ptr()) };
-    assert_eq!(ret, 0);
-
-    let recv_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
-    let send_fd = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+    let (recv_fd, send_fd) = socketpair(
+        AddressFamily::Unix,
+        SockType::Datagram,
+        None,
+        SockFlag::empty(),
+    )
+    .unwrap();
     set_test_recv_timeout(&recv_fd);
     (
         GenlSocket {
@@ -133,26 +116,15 @@ pub(super) fn test_genl_socket_pair() -> (GenlSocket, OwnedFd) {
 
 #[cfg(test)]
 pub(super) fn send_test_nl(peer: &OwnedFd, msg: &[u8]) {
-    let ret = unsafe { libc::send(peer.as_raw_fd(), msg.as_ptr().cast(), msg.len(), 0) };
-    assert_eq!(ret, msg.len() as isize);
+    assert_eq!(
+        send(peer.as_raw_fd(), msg, MsgFlags::empty()).unwrap(),
+        msg.len()
+    );
 }
 
 #[cfg(test)]
 fn set_test_recv_timeout(fd: &OwnedFd) {
-    let timeout = libc::timeval {
-        tv_sec: 0,
-        tv_usec: 100_000,
-    };
-    let ret = unsafe {
-        libc::setsockopt(
-            fd.as_raw_fd(),
-            libc::SOL_SOCKET,
-            libc::SO_RCVTIMEO,
-            std::ptr::from_ref(&timeout).cast(),
-            std::mem::size_of::<libc::timeval>() as u32,
-        )
-    };
-    assert_eq!(ret, 0);
+    setsockopt(fd, sockopt::ReceiveTimeout, &TimeVal::microseconds(100_000)).unwrap();
 }
 
 #[cfg(test)]
