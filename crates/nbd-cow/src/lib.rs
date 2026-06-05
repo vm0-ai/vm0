@@ -1115,6 +1115,13 @@ mod tests {
         assert_eq!(value, "connected");
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn netlink_critical_section_multi_thread_runtime_runs() {
+        let value = run_netlink_critical_section(|| "connected");
+
+        assert_eq!(value, "connected");
+    }
+
     #[tokio::test]
     async fn pooled_finalizer_starts_before_returned_future_is_polled() {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
