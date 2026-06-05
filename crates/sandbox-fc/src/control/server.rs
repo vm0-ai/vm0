@@ -559,9 +559,8 @@ mod tests {
                 status: TerminateStatus::Accepted
             }
         );
-        tokio::time::timeout(Duration::from_secs(1), kill_rx.recv())
-            .await
-            .unwrap()
+        kill_rx
+            .try_recv()
             .expect("terminate request should notify process monitor");
 
         handle.shutdown().await;
