@@ -135,9 +135,9 @@ struct ResolvedKillTarget {
 #[derive(Debug)]
 enum KillOutcome {
     OwnerAccepted(RemoteKillResult),
-    OrphanKilled,
-    AlreadyExitedOrChanged,
-    SignalFailed,
+    OrphanKilled(KillTarget),
+    AlreadyExitedOrChanged(KillTarget),
+    SignalFailed(KillTarget),
     RefusedManagedIdle,
     RefusedManagedControlFailed(String),
     RefusedTargetChanged(String),
@@ -149,7 +149,7 @@ impl KillOutcome {
             self,
             KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
                 | KillOutcome::OwnerAccepted(RemoteKillResult::AlreadyStopped)
-                | KillOutcome::OrphanKilled
+                | KillOutcome::OrphanKilled(_)
         )
     }
 }
@@ -304,7 +304,7 @@ async fn kill_current_target(
     control: &dyn SandboxControl,
 ) -> KillOutcome {
     if is_orphan {
-        return kill_orphan_process_group(initial).await;
+        return kill_orphan_process_group(&current).await;
     }
 
     match control.kill_remote(&current.sandbox_id).await {
@@ -327,18 +327,18 @@ async fn retry_as_orphan_if_owner_disappeared(
         return KillOutcome::RefusedManagedControlFailed(owner_error.to_string());
     }
 
-    kill_orphan_process_group(initial).await
+    kill_orphan_process_group(&refreshed.target).await
 }
 
 async fn kill_orphan_process_group(target: &KillTarget) -> KillOutcome {
     let Some(pgid) = validated_orphan_pgid(target).await else {
-        return KillOutcome::AlreadyExitedOrChanged;
+        return KillOutcome::AlreadyExitedOrChanged(target.clone());
     };
 
     if signal_process_group(target.pid, pgid) {
-        KillOutcome::OrphanKilled
+        KillOutcome::OrphanKilled(target.clone())
     } else {
-        KillOutcome::SignalFailed
+        KillOutcome::SignalFailed(target.clone())
     }
 }
 
@@ -486,13 +486,13 @@ async fn report_kill_outcome(
             );
             println!("Owning runner will handle cleanup.");
         }
-        KillOutcome::OrphanKilled => {
+        KillOutcome::OrphanKilled(target) => {
             println!(
                 "Killed orphan sandbox {} (PID {})",
-                initial.sandbox_id, initial.pid
+                target.sandbox_id, target.pid
             );
-            if let Some(base_dir) = initial.base_dir.as_deref() {
-                let results = cleanup_orphan(&initial.sandbox_id, base_dir, control).await;
+            if let Some(base_dir) = target.base_dir.as_deref() {
+                let results = cleanup_orphan(&target.sandbox_id, base_dir, control).await;
                 print_cleanup_results(&results);
             } else {
                 println!(
@@ -500,16 +500,16 @@ async fn report_kill_outcome(
                 );
             }
         }
-        KillOutcome::AlreadyExitedOrChanged => {
+        KillOutcome::AlreadyExitedOrChanged(target) => {
             println!(
                 "Refused to kill sandbox {} (PID {}) - process already exited or changed identity",
-                initial.sandbox_id, initial.pid
+                target.sandbox_id, target.pid
             );
         }
-        KillOutcome::SignalFailed => {
+        KillOutcome::SignalFailed(target) => {
             println!(
                 "Failed to kill sandbox {} (PID {})",
-                initial.sandbox_id, initial.pid
+                target.sandbox_id, target.pid
             );
         }
         KillOutcome::RefusedManagedControlFailed(error) => {
@@ -921,6 +921,25 @@ mod tests {
         assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
     }
 
+    #[tokio::test]
+    async fn orphan_target_uses_current_reresolved_identity() {
+        let control = MockSandboxControl::new("/tmp/test");
+        let args = KillArgs {
+            run: Some("run".into()),
+            sandbox: None,
+            force: true,
+        };
+        let initial = make_target(u32::MAX - 3_000, "sbox-123");
+        let current = make_target(u32::MAX - 2_000, "sbox-123");
+
+        let outcome = kill_current_target(&args, &initial, current.clone(), true, &control).await;
+
+        match outcome {
+            KillOutcome::AlreadyExitedOrChanged(target) => assert_eq!(target, current),
+            other => panic!("expected current target to fail closed, got {other:?}"),
+        }
+    }
+
     #[test]
     fn signal_process_group_rejects_zero_pgid() {
         assert!(!signal_process_group(1234, 0));
@@ -957,7 +976,7 @@ mod tests {
 
         assert!(matches!(
             kill_orphan_process_group(&target).await,
-            KillOutcome::AlreadyExitedOrChanged
+            KillOutcome::AlreadyExitedOrChanged(_)
         ));
     }
 
