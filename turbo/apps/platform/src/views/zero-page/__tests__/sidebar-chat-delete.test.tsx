@@ -14,11 +14,9 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
 import { createNewChatThreadOptimistically$ } from "../../../signals/chat-page/optimistic-chat-thread-page.ts";
-import {
-  createMockScheduleResponse,
-  setMockSchedules,
-} from "../../../mocks/handlers/api-schedules.ts";
+import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -184,22 +182,25 @@ describe("sidebar chat delete", () => {
       },
     ];
 
-    setMockSchedules([
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000010",
-        name: "morning-briefing",
-        description: "Morning briefing",
-        chatThreadId: "thread-scheduled",
-      }),
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000011",
-        name: "weekly-report",
-        description: "Weekly report",
-        chatThreadId: "thread-scheduled",
-      }),
-    ]);
-
     server.use(
+      mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
+        return respond(200, {
+          schedules: [
+            createMockScheduleResponse({
+              id: "f0000001-0000-4000-a000-000000000010",
+              name: "morning-briefing",
+              description: "Morning briefing",
+              chatThreadId: "thread-scheduled",
+            }),
+            createMockScheduleResponse({
+              id: "f0000001-0000-4000-a000-000000000011",
+              name: "weekly-report",
+              description: "Weekly report",
+              chatThreadId: "thread-scheduled",
+            }),
+          ],
+        });
+      }),
       mockApi(chatThreadsContract.list, ({ respond }) => {
         return respond(200, splitChatThreadListResponse(threads));
       }),
