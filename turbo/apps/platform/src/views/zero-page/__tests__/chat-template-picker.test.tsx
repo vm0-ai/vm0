@@ -279,23 +279,31 @@ describe("zero chat template picker", () => {
     });
     click(templateButton);
 
-    await user.click(screen.getByLabelText(`View template ${template.title}`));
+    await user.click(
+      screen.getByLabelText(`View template ${nextTemplate.title}`),
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Use this template")).toBeInTheDocument();
     });
     expect(screen.getByText("Dials")).toBeInTheDocument();
     expect(
-      screen.getByText(`1 of ${template.previewImages.length}`),
+      screen.getByText(`1 of ${nextTemplate.previewImages.length}`),
     ).toBeInTheDocument();
+    expect(
+      screen.getByTitle(`${nextTemplate.title} preview slide 1`),
+    ).toHaveAttribute("src", nextTemplate.previewImages[0]);
 
     await user.click(screen.getByLabelText("Next slide"));
 
     await waitFor(() => {
       expect(
-        screen.getByText(`2 of ${template.previewImages.length}`),
+        screen.getByText(`2 of ${nextTemplate.previewImages.length}`),
       ).toBeInTheDocument();
     });
+    expect(
+      screen.getByTitle(`${nextTemplate.title} preview slide 2`),
+    ).toHaveAttribute("src", nextTemplate.previewImages[1]);
 
     await user.click(screen.getByText("Templates"));
 
@@ -303,13 +311,15 @@ describe("zero chat template picker", () => {
       expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText(`View template ${template.title}`));
+    await user.click(
+      screen.getByLabelText(`View template ${nextTemplate.title}`),
+    );
     await user.click(screen.getByText("Use this template"));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    expectTemplateChip(template);
+    expectTemplateChip(nextTemplate);
   });
 
   it("returns to the template picker when closing the PPT preview page", async () => {

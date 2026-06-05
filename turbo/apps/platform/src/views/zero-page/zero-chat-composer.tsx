@@ -547,7 +547,7 @@ function TemplateEmptyPanel({
 function presentationTemplateSlideImages(
   item: PresentationTemplateItem,
 ): readonly string[] {
-  if (item.previewImages && item.previewImages.length > 0) {
+  if (item.previewImages.length > 0) {
     return item.previewImages;
   }
   return [item.previewImage];
@@ -644,9 +644,12 @@ function TemplatePreviewPage({
               {safeSlideIndex + 1} of {slideImages.length}
             </div>
             <img
+              key={selectedSlideImage}
               src={selectedSlideImage}
+              title={`${item.title} preview slide ${safeSlideIndex + 1}`}
               alt=""
               className="aspect-[16/9] w-full object-cover"
+              loading="lazy"
             />
             <button
               type="button"
@@ -681,7 +684,7 @@ function TemplatePreviewPage({
                   aria-label={`Show slide ${index + 1}`}
                   aria-pressed={selected}
                   className={cn(
-                    "overflow-hidden rounded-md border bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "relative overflow-hidden rounded-md border bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     selected ? "border-primary" : "border-border",
                   )}
                   onClick={() => {
@@ -694,6 +697,9 @@ function TemplatePreviewPage({
                     className="aspect-[16/9] w-full object-cover"
                     loading="lazy"
                   />
+                  <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {index + 1}
+                  </span>
                 </button>
               );
             })}
@@ -705,7 +711,7 @@ function TemplatePreviewPage({
               {item.title}
             </h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              {kind} · {slideImages.length} slides
+              {kind} · {slideImages.length} preview slides
             </p>
           </div>
           <div className="rounded-lg border border-border bg-background p-5">
@@ -714,7 +720,7 @@ function TemplatePreviewPage({
             </h3>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                {slideImages.length} slides
+                {slideImages.length} preview slides
               </span>
               <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
                 Confident tone
