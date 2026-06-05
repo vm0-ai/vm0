@@ -4,10 +4,8 @@ import { cronExecuteSchedulesContract } from "@vm0/api-contracts/contracts/cron"
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { desc, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -61,15 +59,6 @@ async function seedFixture(
       context.signal,
     ),
   );
-}
-
-async function disableChatMode(fixture: SchedulesFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.ScheduledChat]: false },
-  });
 }
 
 async function findSchedule(scheduleId: string) {
@@ -324,17 +313,16 @@ describe("GET /api/cron/execute-schedules", () => {
     expect(schedule?.nextRunAt).toBeNull();
   });
 
-  it("keeps feature-off recurring schedules in legacy mode across due runs", async () => {
+  it("keeps recurring schedules linked to the same chat thread across due runs", async () => {
     const fixture = await seedFixture([
       {
-        name: "legacy-recurring",
-        prompt: "Legacy recurring task",
+        name: "chat-recurring",
+        prompt: "Chat recurring task",
         intervalSeconds: 300,
         nextRunAt: dueDate(),
       },
     ]);
     const scheduleId = fixture.scheduleIds[0]!;
-    await disableChatMode(fixture);
     mockNow(DUE_TIME);
 
     const firstResponse = await accept(
@@ -344,8 +332,12 @@ describe("GET /api/cron/execute-schedules", () => {
 
     expect(firstResponse.body).toMatchObject({ executed: 1, skipped: 0 });
     const firstSchedule = await findSchedule(scheduleId);
-    expect(firstSchedule?.chatThreadId).toBeNull();
+    expect(firstSchedule?.chatThreadId).toStrictEqual(expect.any(String));
     expect(firstSchedule?.nextRunAt).toBeNull();
+    const chatThreadId = firstSchedule?.chatThreadId;
+    if (!chatThreadId) {
+      throw new Error("Expected schedule to be linked to a chat thread");
+    }
     const firstRuns = await findScheduleRuns(scheduleId);
     expect(firstRuns).toHaveLength(1);
     const firstRunId = firstRuns[0]?.id;
@@ -370,7 +362,7 @@ describe("GET /api/cron/execute-schedules", () => {
 
     expect(secondResponse.body).toMatchObject({ executed: 1, skipped: 0 });
     const secondSchedule = await findSchedule(scheduleId);
-    expect(secondSchedule?.chatThreadId).toBeNull();
+    expect(secondSchedule?.chatThreadId).toBe(chatThreadId);
     expect(secondSchedule?.nextRunAt).toBeNull();
     const secondRuns = await findScheduleRuns(scheduleId);
     expect(secondRuns).toHaveLength(2);

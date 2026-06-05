@@ -15,8 +15,6 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { writeDb$ } from "../../external/db";
 import {
   type SchedulesFixture,
@@ -101,24 +99,6 @@ async function seedFixture(
   return fixture;
 }
 
-async function enableChatMode(fixture: SchedulesFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.ScheduledChat]: true },
-  });
-}
-
-async function disableChatMode(fixture: SchedulesFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.ScheduledChat]: false },
-  });
-}
-
 async function seedThread(
   fixture: SchedulesFixture,
   userId: string = fixture.userId,
@@ -135,9 +115,8 @@ async function seedThread(
 }
 
 describe("POST /api/zero/schedules — chat-mode linkage", () => {
-  it("links a chat thread when the ScheduledChat switch is on", async () => {
+  it("links a supplied chat thread to a new schedule", async () => {
     const fixture = await seedFixture();
-    await enableChatMode(fixture);
     const threadId = await seedThread(fixture);
 
     const response = await deploySchedule({
@@ -154,28 +133,8 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
     expect(body.schedule.chatThreadId).toBe(threadId);
   });
 
-  it("ignores the chat thread (legacy) when the switch is off", async () => {
+  it("creates a chat thread for a new schedule when no thread is supplied", async () => {
     const fixture = await seedFixture();
-    await disableChatMode(fixture);
-    const threadId = await seedThread(fixture);
-
-    const response = await deploySchedule({
-      name: "legacy-sched",
-      agentId: fixture.composeId,
-      cronExpression: "0 9 * * *",
-      prompt: "daily report",
-      description: "d",
-      chatThreadId: threadId,
-    });
-
-    expect(response.status).toBe(201);
-    const body = deployScheduleResponseSchema.parse(response.body);
-    expect(body.schedule.chatThreadId).toBeNull();
-  });
-
-  it("creates a chat thread for a new schedule when the switch is on and no thread is supplied", async () => {
-    const fixture = await seedFixture();
-    await enableChatMode(fixture);
 
     const response = await deploySchedule({
       name: "needs-thread",
@@ -210,7 +169,6 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
 
   it("rejects changing the chat thread on an existing schedule", async () => {
     const fixture = await seedFixture();
-    await enableChatMode(fixture);
     const threadId = await seedThread(fixture);
     const otherThreadId = await seedThread(fixture);
 
@@ -238,7 +196,6 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
 
   it("rejects a chat thread owned by a different user", async () => {
     const fixture = await seedFixture();
-    await enableChatMode(fixture);
     const otherThreadId = await seedThread(fixture, `user_${randomUUID()}`);
 
     const response = await deploySchedule({
@@ -258,7 +215,6 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
 describe("chat-mode schedule realtime signals", () => {
   it("publishes chatThreadSchedulesChanged when a chat-mode schedule is created", async () => {
     const fixture = await seedFixture();
-    await enableChatMode(fixture);
     const threadId = await seedThread(fixture);
 
     const response = await deploySchedule({
@@ -277,29 +233,8 @@ describe("chat-mode schedule realtime signals", () => {
     );
   });
 
-  it("does not publish chatThreadSchedulesChanged for a legacy schedule", async () => {
-    const fixture = await seedFixture();
-    const threadId = await seedThread(fixture);
-
-    const response = await deploySchedule({
-      name: "legacy-sched",
-      agentId: fixture.composeId,
-      cronExpression: "0 9 * * *",
-      prompt: "daily report",
-      description: "d",
-      chatThreadId: threadId,
-    });
-    expect(response.status).toBe(201);
-
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      expect.stringContaining("chatThreadSchedulesChanged:"),
-      expect.anything(),
-    );
-  });
-
   it("publishes chatThreadSchedulesChanged when a chat-mode schedule is deleted", async () => {
     const fixture = await seedFixture();
-    await enableChatMode(fixture);
     const threadId = await seedThread(fixture);
 
     await deploySchedule({

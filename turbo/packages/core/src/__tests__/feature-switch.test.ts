@@ -12,7 +12,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ChatArtifactSidebar, {})).toBe(
       true,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.ScheduledChat, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -79,7 +78,6 @@ describe("getAllFeatureStates", () => {
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     expect(states[FeatureSwitchKey.ChatArtifactSidebar]).toBe(true);
-    expect(states[FeatureSwitchKey.ScheduledChat]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -115,7 +113,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ScheduledChat]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -128,7 +125,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ScheduledChat]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {

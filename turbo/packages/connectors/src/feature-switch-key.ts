@@ -54,5 +54,4 @@ export enum FeatureSwitchKey {
   MemoryViewer = "memoryViewer",
   MemoryDevRefresh = "memoryDevRefresh",
   ChatRecommendedFollowups = "chatRecommendedFollowups",
-  ScheduledChat = "scheduledChat",
 }

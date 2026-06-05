@@ -955,17 +955,9 @@ function GithubPrTrackingButton({
   );
 }
 
+// Loads schedules and only renders once this thread has at least one linked
+// schedule.
 function ScheduleMenuButton({ threadId }: { threadId: string }) {
-  const features = useLastResolved(featureSwitch$);
-  // The inner component loads schedules and only renders once this thread has
-  // at least one linked schedule.
-  if (!(features?.[FeatureSwitchKey.ScheduledChat] ?? false)) {
-    return null;
-  }
-  return <ScheduleMenuButtonInner threadId={threadId} />;
-}
-
-function ScheduleMenuButtonInner({ threadId }: { threadId: string }) {
   const navigate = useSet(detachedNavigateTo$);
   const reloadSchedules = useSet(reloadHeaderScheduleMenu$);
   const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
