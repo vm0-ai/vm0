@@ -13,6 +13,8 @@ use guest_common::log_warn;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = "VM0_USER_ENV_FILE";
 const USER_ENV_PRIVATE_DIR_PREFIX: &str = "vm0-user-env-";
+const USER_ENV_PRIVATE_ROOT: &str = "/tmp";
+const USER_ENV_FILENAME: &str = "env.json";
 const ENV_KEY_DIAGNOSTIC_MAX_CHARS: usize = 128;
 
 fn env_or_empty(name: &str) -> String {
@@ -102,7 +104,6 @@ static MOCK_CLAUDE_PATH: LazyLock<String> = LazyLock::new(|| {
 static CLI_AGENT_TYPE: LazyLock<String> = LazyLock::new(|| env_or_empty("CLI_AGENT_TYPE"));
 static USER_ENV: LazyLock<Result<HashMap<String, String>, String>> =
     LazyLock::new(load_user_env_from_process);
-static EMPTY_USER_ENV: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
 
 /// `USE_MOCK_CODEX` accepts both `"true"` and `"1"` (matches the Codex
 /// epic's documented invocation shape `USE_MOCK_CODEX=1`). The
@@ -240,16 +241,24 @@ fn load_user_env_from_process() -> Result<HashMap<String, String>, String> {
         return Ok(HashMap::new());
     }
 
-    load_user_env_from_path(Path::new(&path))
+    let path = Path::new(&path);
+    validate_user_env_file_path(path)?;
+    load_user_env_from_path(path)
 }
 
 fn load_user_env_from_path(path: &Path) -> Result<HashMap<String, String>, String> {
     let raw = std::fs::read_to_string(path)
         .map_err(|e| format!("read {USER_ENV_FILE_ENV_KEY} {}: {e}", path.display()))?;
+    remove_user_env_file(path)?;
+
     let user_env: HashMap<String, String> = serde_json::from_str(&raw)
         .map_err(|e| format!("parse {USER_ENV_FILE_ENV_KEY} JSON: {e}"))?;
     validate_user_env(&user_env)?;
 
+    Ok(user_env)
+}
+
+fn remove_user_env_file(path: &Path) -> Result<(), String> {
     std::fs::remove_file(path)
         .map_err(|e| format!("remove {USER_ENV_FILE_ENV_KEY} {}: {e}", path.display()))?;
     if let Some(parent) = path.parent()
@@ -263,13 +272,32 @@ fn load_user_env_from_path(path: &Path) -> Result<HashMap<String, String>, Strin
         })?;
     }
 
-    Ok(user_env)
+    Ok(())
 }
 
 fn is_user_env_private_dir(path: &Path) -> bool {
+    if path.parent() != Some(Path::new(USER_ENV_PRIVATE_ROOT)) {
+        return false;
+    }
+
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.starts_with(USER_ENV_PRIVATE_DIR_PREFIX))
+}
+
+fn validate_user_env_file_path(path: &Path) -> Result<(), String> {
+    let valid_file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == USER_ENV_FILENAME);
+    let valid_parent = path.parent().is_some_and(is_user_env_private_dir);
+    if valid_file_name && valid_parent {
+        return Ok(());
+    }
+
+    Err(format!(
+        "{USER_ENV_FILE_ENV_KEY} must point to {USER_ENV_PRIVATE_ROOT}/{USER_ENV_PRIVATE_DIR_PREFIX}*/{USER_ENV_FILENAME}"
+    ))
 }
 
 fn validate_user_env(user_env: &HashMap<String, String>) -> Result<(), String> {
@@ -320,15 +348,12 @@ fn sanitize_env_key_for_diagnostic(key: &str) -> String {
     truncated
 }
 
+#[allow(clippy::panic)] // Entry points must call init_user_env; bypassing it is a code bug.
 fn user_env_map() -> &'static HashMap<String, String> {
     match &*USER_ENV {
         Ok(user_env) => user_env,
         Err(message) => {
-            log_warn!(
-                LOG_TAG,
-                "{USER_ENV_FILE_ENV_KEY} failed to load before accessor use: {message}"
-            );
-            &EMPTY_USER_ENV
+            panic!("{USER_ENV_FILE_ENV_KEY} failed to load before accessor use: {message}")
         }
     }
 }
@@ -513,10 +538,11 @@ mod tests {
     use super::*;
 
     fn write_user_env_fixture(json: &str) -> (tempfile::TempDir, std::path::PathBuf) {
-        let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path().join("vm0-user-env-test");
-        std::fs::create_dir(&dir).unwrap();
-        let path = dir.join("env.json");
+        let tmp = tempfile::Builder::new()
+            .prefix("vm0-user-env-test")
+            .tempdir_in(USER_ENV_PRIVATE_ROOT)
+            .unwrap();
+        let path = tmp.path().join(USER_ENV_FILENAME);
         std::fs::write(&path, json).unwrap();
         (tmp, path)
     }
@@ -541,12 +567,28 @@ mod tests {
     fn load_user_env_from_path_rejects_invalid_key_without_value_leak() {
         let (_tmp, path) =
             write_user_env_fixture(r#"{"BAD-KEY":"secret-value","OPENAI_API_KEY":"sk-test"}"#);
+        let parent = path.parent().unwrap().to_path_buf();
 
         let err = load_user_env_from_path(&path).unwrap_err();
 
         assert!(err.contains("BAD-KEY"));
         assert!(!err.contains("secret-value"));
         assert!(!err.contains("sk-test"));
+        assert!(!path.exists());
+        assert!(!parent.exists());
+    }
+
+    #[test]
+    fn load_user_env_from_path_removes_file_before_parse_error() {
+        let (_tmp, path) = write_user_env_fixture(r#"{"OPENAI_API_KEY":"sk-test""#);
+        let parent = path.parent().unwrap().to_path_buf();
+
+        let err = load_user_env_from_path(&path).unwrap_err();
+
+        assert!(err.contains("parse"));
+        assert!(!err.contains("sk-test"));
+        assert!(!path.exists());
+        assert!(!parent.exists());
     }
 
     #[test]
@@ -565,13 +607,25 @@ mod tests {
     }
 
     #[test]
+    fn validate_user_env_file_path_rejects_unexpected_path() {
+        let err = validate_user_env_file_path(Path::new("/home/user/vm0-user-env-test/env.json"))
+            .unwrap_err();
+
+        assert!(err.contains("/tmp/vm0-user-env-"));
+        assert!(!err.contains("/home/user"));
+    }
+
+    #[test]
     fn load_user_env_from_path_rejects_nul_value_without_value_leak() {
         let (_tmp, path) = write_user_env_fixture("{\"OPENAI_API_KEY\":\"sk-test\\u0000secret\"}");
+        let parent = path.parent().unwrap().to_path_buf();
 
         let err = load_user_env_from_path(&path).unwrap_err();
 
         assert!(err.contains("OPENAI_API_KEY"));
         assert!(!err.contains("sk-test"));
         assert!(!err.contains("secret"));
+        assert!(!path.exists());
+        assert!(!parent.exists());
     }
 }

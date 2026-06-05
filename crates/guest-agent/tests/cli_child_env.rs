@@ -25,9 +25,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         );
     }
 
-    let user_env_dir = tmp.path().join("vm0-user-env-test");
-    std::fs::create_dir(&user_env_dir)?;
-    let user_env_path = user_env_dir.join("env.json");
+    let user_env_dir = tempfile::Builder::new()
+        .prefix("vm0-user-env-test")
+        .tempdir_in("/tmp")?;
+    let user_env_path = user_env_dir.path().join("env.json");
     std::fs::write(
         &user_env_path,
         serde_json::to_vec(&serde_json::json!({
@@ -42,7 +43,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 
     guest_agent::env::init_user_env()?;
     assert!(!user_env_path.exists());
-    assert!(!user_env_dir.exists());
+    assert!(!user_env_dir.path().exists());
 
     let result = cli::execute_cli(
         &SecretMasker::from_raw(""),
