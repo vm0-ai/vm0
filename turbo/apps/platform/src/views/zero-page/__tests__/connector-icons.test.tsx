@@ -73,7 +73,12 @@ describe("connector icon component", () => {
   });
 
   it("should not apply zero-icon-mono to colorful icons", () => {
-    for (const type of ["slack", "groq", "browserstack"] as const) {
+    for (const type of [
+      "slack",
+      "groq",
+      "browserstack",
+      "explorium",
+    ] as const) {
       const { container, unmount } = render(<ConnectorIcon type={type} />);
       const img = container.querySelector("img");
       expect(img).not.toHaveClass("zero-icon-mono");
