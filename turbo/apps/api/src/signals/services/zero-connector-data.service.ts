@@ -438,6 +438,9 @@ function connectorProvidedBindingsForStoredConnectors(
 ): ConnectorProvidedBinding[] {
   const provided: ConnectorProvidedBinding[] = [];
   for (const connector of connectorList) {
+    if (connector.needsReconnect) {
+      continue;
+    }
     const metadata = getConnectorAuthMethodRuntimeMetadata(
       connector.type,
       connector.authMethod,

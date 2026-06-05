@@ -371,6 +371,20 @@ describe("zeroConnectorList", () => {
       needsReconnect: false,
       tokenExpiresAt: expiredAt.toISOString(),
     });
+    expect(list.connectorProvidedBindings).not.toContainEqual(
+      expect.objectContaining({
+        connectorType: "stripe",
+        namespace: "secrets",
+        name: "STRIPE_TOKEN",
+      }),
+    );
+    expect(list.connectorProvidedBindings).toContainEqual(
+      expect.objectContaining({
+        connectorType: "lark",
+        namespace: "secrets",
+        name: "LARK_TOKEN",
+      }),
+    );
 
     const stripeByType = await store.get(
       zeroConnectorByType({ orgId, userId, type: "stripe" }),
