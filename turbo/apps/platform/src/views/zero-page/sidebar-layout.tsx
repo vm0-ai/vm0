@@ -249,7 +249,12 @@ function MobileScheduleButtonLeaf() {
     return null;
   }
 
-  return <ScheduleMenuButton threadId={thread.threadId} />;
+  return (
+    <ScheduleMenuButton
+      threadId={thread.threadId}
+      ariaLabel="Open mobile schedules"
+    />
+  );
 }
 
 function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
