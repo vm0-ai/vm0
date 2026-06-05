@@ -68,6 +68,7 @@ const CONNECTOR_ICON_COLORFUL = {
   ahrefs: true,
   agora: true,
   airtable: true,
+  "altium-365": true,
   alchemy: true,
   amadeus: true,
   amplitude: true,
