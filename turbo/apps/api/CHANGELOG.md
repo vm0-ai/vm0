@@ -5,6 +5,7 @@
 
 ### Bug Fixes
 
+* auto-create chat threads for scheduled chat ([#16220](https://github.com/vm0-ai/vm0/issues/16220)) ([3109b21](https://github.com/vm0-ai/vm0/commit/3109b2180e76a0e6ef6c645152c0ee325bcb479b))
 * backfill schedule chat threads ([#16218](https://github.com/vm0-ai/vm0/issues/16218)) ([8081d91](https://github.com/vm0-ai/vm0/commit/8081d91d611a8f7b387cf8cdf4c1f5e655fa28d1))
 * persist thread composer model selection ([#16219](https://github.com/vm0-ai/vm0/issues/16219)) ([b1e7682](https://github.com/vm0-ai/vm0/commit/b1e768217fab71380d4b4dc3f0f72f5fabb7379a))
 
