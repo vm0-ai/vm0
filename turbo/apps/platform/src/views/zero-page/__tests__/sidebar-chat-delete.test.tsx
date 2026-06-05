@@ -259,13 +259,14 @@ describe("sidebar chat delete", () => {
       ),
     ).toBeInTheDocument();
 
-    // The linked schedules are listed by their description.
-    expect(
-      within(dialog).getByText("These schedules will be deleted"),
-    ).toBeInTheDocument();
+    // The linked schedules are fetched asynchronously and listed by their
+    // description once loaded.
     await waitFor(() => {
       expect(within(dialog).getByText("Morning briefing")).toBeInTheDocument();
     });
+    expect(
+      within(dialog).getByText("These schedules will be deleted"),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText("Weekly report")).toBeInTheDocument();
   });
 
