@@ -35,6 +35,7 @@ import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
   chatThreadArtifactsContract,
+  type AttachFile,
   type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
   type ModelSelectionRequest,
@@ -395,7 +396,10 @@ export interface ChatThreadSignals {
   // Seeded from threadData$ on first resolve; user edits via setModelSelection$
   // take over and are preserved across subsequent threadData$ reloads.
   modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
-  setModelSelection$: Command<void, [ModelProviderSelection | null]>;
+  setModelSelection$: Command<
+    Promise<void>,
+    [ModelProviderSelection | null, AbortSignal]
+  >;
   sendMessage$: Command<
     Promise<void>,
     [
@@ -497,7 +501,9 @@ function createThreadData(dataSource: ChatThreadDataSource) {
 // ---------------------------------------------------------------------------
 
 function createModelSelection(
+  threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
+  dataSource: ChatThreadDataSource,
 ) {
   // Discriminated union so we can tell "user hasn't picked anything yet" from
   // "user explicitly picked inherit (null)". Without the flag, clearing the
@@ -506,6 +512,7 @@ function createModelSelection(
   const internalUserOverride$ = state<
     { kind: "unset" } | { kind: "set"; value: ModelProviderSelection | null }
   >({ kind: "unset" });
+  const modelChangeRequiresNewSession$ = state(false);
 
   const modelSelection$ = computed(
     async (get): Promise<ModelProviderSelection | null> => {
@@ -527,12 +534,39 @@ function createModelSelection(
   );
 
   const setModelSelection$ = command(
-    ({ set }, value: ModelProviderSelection | null) => {
+    async (
+      { get, set },
+      value: ModelProviderSelection | null,
+      signal: AbortSignal,
+    ) => {
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      const previousSelectedModel = thread?.selectedModel ?? null;
+      const nextSelectedModel = value?.selectedModel ?? null;
+      const requiresNewSession =
+        previousSelectedModel !== null &&
+        nextSelectedModel !== null &&
+        previousSelectedModel !== nextSelectedModel;
+
       set(internalUserOverride$, { kind: "set", value });
+      set(modelChangeRequiresNewSession$, requiresNewSession);
+
+      await set(
+        dataSource.patchModelSelection$,
+        { threadId, modelSelection: value },
+        signal,
+      );
+      signal.throwIfAborted();
+      set(dataSource.reloadThread$);
+      set(reloadChatThreads$);
     },
   );
 
-  return { modelSelection$, setModelSelection$ };
+  return {
+    modelSelection$,
+    setModelSelection$,
+    modelChangeRequiresNewSession$,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1584,7 +1618,16 @@ interface SendMessageOptions {
   readonly generationTemplate?: GenerationTemplateRequest;
 }
 
-function prepareTextOnlyUserMessage(prompt: string) {
+interface PreparedSendMessageResult {
+  prompt: string;
+  attachFiles: AttachFile[] | undefined;
+  attachments: PagedChatMessage["attachFiles"];
+  hasTextContent: boolean;
+}
+
+function prepareTextOnlyUserMessage(
+  prompt: string,
+): PreparedSendMessageResult | null {
   const trimmedPrompt = prompt.trim();
   if (!trimmedPrompt) {
     return null;
@@ -1594,6 +1637,32 @@ function prepareTextOnlyUserMessage(prompt: string) {
     attachFiles: undefined,
     attachments: undefined,
     hasTextContent: true,
+  };
+}
+
+function createSendOptimisticMessageEntry({
+  threadId,
+  clientMessageId,
+  result,
+  options,
+}: {
+  threadId: string;
+  clientMessageId: string;
+  result: PreparedSendMessageResult;
+  options: SendMessageOptions | undefined;
+}): OptimisticChatMessageEntry {
+  return {
+    threadId,
+    optimisticUserMessageAssociation: "run",
+    message: {
+      id: clientMessageId,
+      role: "user",
+      content: result.prompt,
+      attachFiles: result.attachments,
+      generationTemplate: options?.generationTemplate,
+      ...sendMessageRevocationPatch(options),
+      createdAt: new Date().toISOString(),
+    },
   };
 }
 
@@ -1616,6 +1685,7 @@ function hasVisualDraftAttachments(
 interface SendMessageDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
+  modelChangeRequiresNewSession$: State<boolean>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
@@ -1627,6 +1697,7 @@ function createSendMessage(deps: SendMessageDeps) {
   const {
     threadId,
     threadData$,
+    modelChangeRequiresNewSession$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,
@@ -1684,24 +1755,18 @@ function createSendMessage(deps: SendMessageDeps) {
         return;
       }
       signal.throwIfAborted();
-
       set(cancelDraftSync$);
       set(draft.clear$);
-
       const clientMessageId = crypto.randomUUID();
-      set(appendOptimisticChatMessage$, {
-        threadId,
-        optimisticUserMessageAssociation: "run",
-        message: {
-          id: clientMessageId,
-          role: "user",
-          content: result.prompt,
-          attachFiles: result.attachments,
-          generationTemplate: options?.generationTemplate,
-          ...sendMessageRevocationPatch(options),
-          createdAt: new Date().toISOString(),
-        },
-      });
+      set(
+        appendOptimisticChatMessage$,
+        createSendOptimisticMessageEntry({
+          threadId,
+          clientMessageId,
+          result,
+          options,
+        }),
+      );
       animationFrame(
         () => {
           set(scrollToBottom$);
@@ -1709,12 +1774,9 @@ function createSendMessage(deps: SendMessageDeps) {
         { signal },
       );
 
-      // Model-first starts a fresh session when a mid-thread model change
-      // would make the existing CLI session incompatible.
-      const forceNewSession = shouldForceNewSessionForModelChange(
-        thread,
-        effectiveSelectedModel,
-      );
+      const forceNewSession =
+        get(modelChangeRequiresNewSession$) ||
+        shouldForceNewSessionForModelChange(thread, effectiveSelectedModel);
 
       const client = get(zeroClient$)(chatMessagesContract);
       const [, sendResult] = await Promise.all([
@@ -1752,6 +1814,7 @@ function createSendMessage(deps: SendMessageDeps) {
         set(scrollToBottom$);
       }
 
+      set(modelChangeRequiresNewSession$, false);
       set(reloadChatThreads$);
       L.debug("sendMessage$ done", {
         threadId,
@@ -1765,6 +1828,7 @@ interface QueueMessageDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
   modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
+  modelChangeRequiresNewSession$: State<boolean>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
@@ -1777,6 +1841,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
     threadId,
     threadData$,
     modelSelection$,
+    modelChangeRequiresNewSession$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,
@@ -1801,10 +1866,12 @@ function createQueueMessage(deps: QueueMessageDeps) {
 
       const modelSelection = await get(modelSelection$);
       signal.throwIfAborted();
-      const forceNewSession = shouldForceNewSessionForModelChange(
-        thread,
-        modelSelection?.selectedModel,
-      );
+      const forceNewSession =
+        get(modelChangeRequiresNewSession$) ||
+        shouldForceNewSessionForModelChange(
+          thread,
+          modelSelection?.selectedModel,
+        );
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,
@@ -1867,6 +1934,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       ]);
       signal.throwIfAborted();
 
+      set(modelChangeRequiresNewSession$, false);
       set(reloadChatThreads$);
       L.debug("queueMessage$ done", { threadId });
     },
@@ -2105,8 +2173,11 @@ export function createChatThreadSignals(
   dataSource: ChatThreadDataSource = createRemoteChatThreadDataSource(threadId),
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(dataSource);
-  const { modelSelection$, setModelSelection$ } =
-    createModelSelection(threadData$);
+  const {
+    modelSelection$,
+    setModelSelection$,
+    modelChangeRequiresNewSession$,
+  } = createModelSelection(threadId, threadData$, dataSource);
   const { recordScrollHeightForPrepend$, ...scrollSignals } =
     createScrollSignals(threadId);
   const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
@@ -2155,6 +2226,7 @@ export function createChatThreadSignals(
     threadId,
     threadData$,
     modelSelection$,
+    modelChangeRequiresNewSession$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,

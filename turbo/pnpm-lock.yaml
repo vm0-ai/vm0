@@ -132,10 +132,10 @@ importers:
         version: 2.7.0
       '@hono/node-server':
         specifier: ^1.19.14
-        version: 1.19.14(hono@4.12.18)
+        version: 1.19.14(hono@4.12.23)
       '@hono/otel':
         specifier: ^1.1.1
-        version: 1.1.1(hono@4.12.18)
+        version: 1.1.1(hono@4.12.23)
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -200,8 +200,8 @@ importers:
         specifier: ^3.4.0
         version: 3.4.0
       hono:
-        specifier: ^4.12.18
-        version: 4.12.18
+        specifier: ^4.12.23
+        version: 4.12.23
       html-to-text:
         specifier: ^9.0.5
         version: 9.0.5
@@ -238,7 +238,7 @@ importers:
     devDependencies:
       '@hono/vite-build':
         specifier: ^1.11.1
-        version: 1.11.1(hono@4.12.18)
+        version: 1.11.1(hono@4.12.23)
       '@ts-rest/core':
         specifier: 3.53.0-rc.1
         version: 3.53.0-rc.1(@types/node@24.3.0)
@@ -1682,7 +1682,7 @@ packages:
     engines: {node: '>=22.12.0'}
 
   '@electron/node-gyp@https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2':
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
+    resolution: {gitHosted: true, integrity: sha512-MXgzlTDEEndJB3TBbvd5uFQO/8gaINo1Hfen8vef5rq/VHVPeB63uuv/uO5+8GFsAJ/rauu6XB79S6K4+aXc+w==, tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
     version: 10.2.0-electron.1
     engines: {node: '>=12.13.0'}
     hasBin: true
@@ -7172,8 +7172,8 @@ packages:
   hoist-non-react-statics@3.3.2:
     resolution: {integrity: sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==}
 
-  hono@4.12.18:
-    resolution: {integrity: sha512-RWzP96k/yv0PQfyXnWjs6zot20TqfpfsNXhOnev8d1InAxubW93L11/oNUc3tQqn2G0bSdAOBpX+2uDFHV7kdQ==}
+  hono@4.12.23:
+    resolution: {integrity: sha512-eIaZ9qDgu7XV0pxOCrg7/WhnQ6Ivm22UcxhXx/A3dcbqbbYgBEkc6e/J/s7j2tS96zoB0S9VBdLwQNCWwUo4LA==}
     engines: {node: '>=16.9.0'}
 
   hosted-git-info@2.8.9:
@@ -11714,19 +11714,19 @@ snapshots:
     dependencies:
       graphql: 16.13.2
 
-  '@hono/node-server@1.19.14(hono@4.12.18)':
+  '@hono/node-server@1.19.14(hono@4.12.23)':
     dependencies:
-      hono: 4.12.18
+      hono: 4.12.23
 
-  '@hono/otel@1.1.1(hono@4.12.18)':
+  '@hono/otel@1.1.1(hono@4.12.23)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/semantic-conventions': 1.40.0
-      hono: 4.12.18
+      hono: 4.12.23
 
-  '@hono/vite-build@1.11.1(hono@4.12.18)':
+  '@hono/vite-build@1.11.1(hono@4.12.23)':
     dependencies:
-      hono: 4.12.18
+      hono: 4.12.23
 
   '@humanfs/core@0.19.1': {}
 
@@ -16806,7 +16806,7 @@ snapshots:
     dependencies:
       react-is: 16.13.1
 
-  hono@4.12.18: {}
+  hono@4.12.23: {}
 
   hosted-git-info@2.8.9: {}
 

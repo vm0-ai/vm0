@@ -516,6 +516,29 @@ export const chatThreadRenameContract = c.router({
 });
 
 /**
+ * Update a chat thread's model pin. Kept separate from
+ * `chatThreadByIdContract.patch`, which intentionally remains draft-only.
+ */
+export const chatThreadModelSelectionContract = c.router({
+  update: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/model-selection",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: z.object({
+      modelSelection: modelSelectionRequestSchema.nullable(),
+    }),
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update a chat thread model selection",
+  },
+});
+
+/**
  * Chat messages contract (/api/zero/chat/messages)
  * Unified endpoint: create thread (if needed) + run + association in one call.
  */
@@ -791,6 +814,8 @@ export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
+export type ChatThreadModelSelectionContract =
+  typeof chatThreadModelSelectionContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;

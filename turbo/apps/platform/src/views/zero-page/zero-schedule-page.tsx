@@ -76,6 +76,7 @@ export type CombinedEntry = ScheduleEntry & {
   timezone: string;
   nextRunAt: string | null;
   lastRunAt: string | null;
+  chatThreadId: string | null;
 };
 
 export function buildCombinedSchedule(
@@ -95,6 +96,7 @@ export function buildCombinedSchedule(
       timezone: e.timezone,
       nextRunAt: e.nextRunAt,
       lastRunAt: e.lastRunAt,
+      chatThreadId: e.chatThreadId,
     };
   });
 }

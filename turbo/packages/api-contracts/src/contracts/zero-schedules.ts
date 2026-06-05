@@ -61,9 +61,10 @@ const zeroDeployScheduleRequestSchema = z
     volumeVersions: z.record(z.string(), z.string()).optional(),
     agentId: z.string().uuid("Invalid agent ID"),
     enabled: z.boolean().optional(),
-    // Chat-mode linkage, accepted only on creation of a new schedule. Links the
-    // schedule to an existing chat thread; the run then renders as a web-chat
-    // turn. Rejected on update of an existing schedule (link is immutable).
+    // Chat-mode linkage, accepted only on creation of a new schedule. When
+    // provided, links the schedule to an existing chat thread; when omitted and
+    // chat-mode schedules are enabled, the server creates a web chat thread and
+    // links it. Rejected on update of an existing schedule (link is immutable).
     chatThreadId: z.string().uuid("Invalid chat thread ID").optional(),
   })
   .refine(

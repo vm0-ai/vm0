@@ -6,6 +6,7 @@ import {
   scheduleListResponseSchema,
 } from "@vm0/api-contracts/contracts/zero-schedules";
 import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 
 import { testContext } from "../../../__tests__/test-helpers";
@@ -162,7 +163,7 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
     expect(body.schedule.chatThreadId).toBeNull();
   });
 
-  it("requires a chat thread for a new schedule when the switch is on", async () => {
+  it("creates a chat thread for a new schedule when the switch is on and no thread is supplied", async () => {
     const fixture = await seedFixture();
     await enableChatMode(fixture);
 
@@ -174,8 +175,27 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
       description: "d",
     });
 
-    expect(response.status).toBe(400);
-    expectErrorCode(response, "BAD_REQUEST");
+    expect(response.status).toBe(201);
+    const body = deployScheduleResponseSchema.parse(response.body);
+    expect(body.schedule.chatThreadId).not.toBeNull();
+
+    const db = store.set(writeDb$);
+    const [thread] = await db
+      .select({
+        id: chatThreads.id,
+        userId: chatThreads.userId,
+        agentComposeId: chatThreads.agentComposeId,
+        title: chatThreads.title,
+      })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, body.schedule.chatThreadId ?? ""))
+      .limit(1);
+    expect(thread).toStrictEqual({
+      id: body.schedule.chatThreadId,
+      userId: fixture.userId,
+      agentComposeId: fixture.composeId,
+      title: "d",
+    });
   });
 
   it("rejects changing the chat thread on an existing schedule", async () => {

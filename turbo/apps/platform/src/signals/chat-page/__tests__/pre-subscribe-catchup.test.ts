@@ -64,6 +64,9 @@ function createRemoteEmptyDataSource(input: {
     patchDraft$: command(() => {
       return Promise.resolve();
     }),
+    patchModelSelection$: command(() => {
+      return Promise.resolve();
+    }),
     appendQueuedMessage$: command(() => {
       return Promise.resolve(fallbackMessage);
     }),

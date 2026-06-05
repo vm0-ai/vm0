@@ -18,6 +18,7 @@ function makeEntry(
     displayName: null,
     nextRunAt: null,
     lastRunAt: null,
+    chatThreadId: null,
     ...overrides,
   };
 }

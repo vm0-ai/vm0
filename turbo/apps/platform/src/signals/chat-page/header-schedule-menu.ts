@@ -3,10 +3,12 @@ import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-sch
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { scheduleTitle } from "../zero-page/schedule-title.ts";
 
 interface HeaderScheduleEntry {
   readonly id: string;
   readonly name: string;
+  readonly title: string;
   readonly chatThreadId: string | null;
 }
 
@@ -36,6 +38,7 @@ export const headerScheduleMenu$ = computed(
       return {
         id: schedule.id,
         name: schedule.name,
+        title: scheduleTitle(schedule),
         chatThreadId: schedule.chatThreadId,
       };
     });

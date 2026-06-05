@@ -13,6 +13,7 @@ import { allOrgScheduleEntries$ } from "./zero-schedule.ts";
 import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { scheduleTitleExcerpt } from "./schedule-title.ts";
 
 interface MobileBreadcrumb {
   section: string;
@@ -31,49 +32,6 @@ function getStringParam(params: Params, key: string): string | null {
 }
 
 const CHAT_PATH = "/" as RoutePath;
-
-const SCHEDULE_DETAIL_TITLE_MAX = 30;
-
-function excerptText(text: string, maxLen: number): string {
-  const t = text.trim();
-  if (t.length <= maxLen) {
-    return t;
-  }
-  return `${t.slice(0, maxLen - 1)}\u2026`;
-}
-
-function firstSentenceFromInstruction(text: string): string {
-  const t = text.trim();
-  if (t.length === 0) {
-    return "";
-  }
-  const match = t.match(/^[\s\S]*?(?:[。！？]|[.!?](?:\s|$))/);
-  if (match) {
-    return match[0].trim();
-  }
-  return t.split(/\r?\n/)[0]?.trim() ?? t;
-}
-
-function scheduleEntryLabel(entry: {
-  description: string | null;
-  prompt: string;
-  name: string;
-}): string {
-  const desc = entry.description?.trim();
-  if (desc && desc.length > 0) {
-    return excerptText(desc, SCHEDULE_DETAIL_TITLE_MAX);
-  }
-  const promptTrim = entry.prompt.trim();
-  if (promptTrim.length > 0) {
-    const first = firstSentenceFromInstruction(promptTrim);
-    const label = first.length > 0 ? first : promptTrim;
-    return excerptText(label, SCHEDULE_DETAIL_TITLE_MAX);
-  }
-  if (entry.name.trim().length > 0) {
-    return entry.name.trim();
-  }
-  return "Schedule";
-}
 
 const teamDetailBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb> => {
@@ -130,7 +88,7 @@ const scheduleBreadcrumb$ = computed((get): MobileBreadcrumb => {
       return {
         section: "Scheduled",
         sectionPath: ROUTES.schedules,
-        name: scheduleEntryLabel(entry),
+        name: scheduleTitleExcerpt(entry),
       };
     }
   }

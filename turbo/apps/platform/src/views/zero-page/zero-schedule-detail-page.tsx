@@ -8,6 +8,7 @@ import {
   IconCircleDot,
   IconFileText,
   IconPlayerPlay,
+  IconMessageCircle,
   IconRotateClockwise2,
   IconSettings,
   IconTrash,
@@ -95,6 +96,10 @@ import {
   syncInstructionDraftEntry$,
   type ScheduleSettingsSnapshot,
 } from "../../signals/schedule-page/schedule-form.ts";
+import {
+  scheduleTitle,
+  scheduleTitleExcerpt,
+} from "../../signals/zero-page/schedule-title.ts";
 
 const SCHEDULE_DETAIL_TAB_TRIGGER_CLASS =
   "gap-1.5 text-sm data-[state=active]:bg-background px-3";
@@ -109,50 +114,24 @@ function formatRunAt(iso: string | null): string {
   });
 }
 
-/** Max length for schedule detail heading and breadcrumb (instruction-derived). */
-const SCHEDULE_DETAIL_TITLE_MAX = 30;
+function ScheduleBreadcrumbLink({
+  chatThreadId,
+}: {
+  chatThreadId?: string | null;
+}) {
+  if (chatThreadId) {
+    return (
+      <Link
+        pathname="/chats/:threadId"
+        options={{ pathParams: { threadId: chatThreadId } }}
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
+      >
+        <IconMessageCircle size={14} stroke={1.5} className="shrink-0" />
+        Chat thread
+      </Link>
+    );
+  }
 
-function excerptText(text: string, maxLen: number): string {
-  const t = text.trim();
-  if (t.length <= maxLen) {
-    return t;
-  }
-  return `${t.slice(0, maxLen - 1)}\u2026`;
-}
-
-/** First sentence for titles (Latin . ! ? + space/end; CJK 。！？); else first line. */
-function firstSentenceFromInstruction(text: string): string {
-  const t = text.trim();
-  if (t.length === 0) {
-    return "";
-  }
-  const match = t.match(/^[\s\S]*?(?:[。！？]|[.!?](?:\s|$))/);
-  if (match) {
-    return match[0].trim();
-  }
-  const firstLine = t.split(/\r?\n/)[0]?.trim() ?? t;
-  return firstLine;
-}
-
-/** Short label for breadcrumb when the full instruction summary is long. */
-function scheduleDetailBreadcrumbLabel(entry: CombinedEntry): string {
-  const desc = entry.description?.trim();
-  if (desc && desc.length > 0) {
-    return excerptText(desc, SCHEDULE_DETAIL_TITLE_MAX);
-  }
-  const promptTrim = entry.prompt.trim();
-  if (promptTrim.length > 0) {
-    const first = firstSentenceFromInstruction(promptTrim);
-    const label = first.length > 0 ? first : promptTrim;
-    return excerptText(label, SCHEDULE_DETAIL_TITLE_MAX);
-  }
-  if (entry.name !== undefined && entry.name.trim().length > 0) {
-    return entry.name.trim();
-  }
-  return "Schedule";
-}
-
-function ScheduleBreadcrumbLink() {
   return (
     <Link
       pathname="/schedules"
@@ -743,22 +722,8 @@ function ScheduleDetailView({
   onDelete: () => void;
   onInstructionSavePrompt: (prompt: string) => void;
 }) {
-  const promptTrim = entry.prompt.trim();
-  const summaryTitle = (() => {
-    const desc = entry.description?.trim();
-    if (desc && desc.length > 0) {
-      return desc;
-    }
-    if (promptTrim.length === 0) {
-      return "No instruction";
-    }
-    const first = firstSentenceFromInstruction(promptTrim);
-    if (first.length === 0) {
-      return "No instruction";
-    }
-    return first;
-  })();
-  const breadcrumbLabel = scheduleDetailBreadcrumbLabel(entry);
+  const summaryTitle = scheduleTitle(entry);
+  const breadcrumbLabel = scheduleTitleExcerpt(entry);
   const nextRunLabel = formatRunAt(entry.nextRunAt);
   const isActive = entry.enabled !== false;
 
@@ -777,7 +742,7 @@ function ScheduleDetailView({
         className="flex flex-1 flex-col min-h-0"
       >
         <nav className="hidden sm:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-          <ScheduleBreadcrumbLink />
+          <ScheduleBreadcrumbLink chatThreadId={entry.chatThreadId} />
           <span className="text-muted-foreground/40 select-none">/</span>
           <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate min-w-0">
             {breadcrumbLabel}
