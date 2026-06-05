@@ -320,8 +320,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Run schedules in chat mode: a schedule linked to a chat thread posts its prompt as a user message and renders the run as a normal web-chat turn. Gates the schedule timer icon in chat thread headers, the server-side requirement that a chat-mode schedule carry a thread, and the CLI --thread flag. When off, an already-linked schedule skips its fire (but advances next_run_at); unlinked schedules are unaffected.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
 };
 

@@ -110,6 +110,15 @@ async function enableChatMode(fixture: SchedulesFixture): Promise<void> {
   });
 }
 
+async function disableChatMode(fixture: SchedulesFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    switches: { [FeatureSwitchKey.ScheduledChat]: false },
+  });
+}
+
 async function seedThread(
   fixture: SchedulesFixture,
   userId: string = fixture.userId,
@@ -147,6 +156,7 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
 
   it("ignores the chat thread (legacy) when the switch is off", async () => {
     const fixture = await seedFixture();
+    await disableChatMode(fixture);
     const threadId = await seedThread(fixture);
 
     const response = await deploySchedule({

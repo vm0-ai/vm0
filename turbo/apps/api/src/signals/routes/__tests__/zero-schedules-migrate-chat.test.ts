@@ -48,6 +48,15 @@ async function enableChatMode(fixture: SchedulesFixture): Promise<void> {
   });
 }
 
+async function disableChatMode(fixture: SchedulesFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    switches: { [FeatureSwitchKey.ScheduledChat]: false },
+  });
+}
+
 describe("POST /api/zero/schedules/:name/migrate-to-chat", () => {
   const track = createFixtureTracker<SchedulesFixture>((fixture) => {
     return store.set(deleteSchedulesScenario$, fixture, context.signal);
@@ -177,6 +186,7 @@ describe("POST /api/zero/schedules/:name/migrate-to-chat", () => {
 
   it("returns 400 when chat mode is not enabled", async () => {
     const fixture = await seedLegacy("legacy-no-switch");
+    await disableChatMode(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
