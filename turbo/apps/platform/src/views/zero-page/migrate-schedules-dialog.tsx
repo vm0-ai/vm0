@@ -21,7 +21,7 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgSchedulesLoaded$,
@@ -32,10 +32,7 @@ import {
   type LegacyScheduleEntry,
   type MigrationStatus,
 } from "../../signals/zero-page/zero-schedule.ts";
-import {
-  migrateDialogDismissed$,
-  setMigrateDialogDismissed$,
-} from "../../signals/schedule-page/schedule-page-ui.ts";
+import { pathname$ } from "../../signals/route.ts";
 
 function StatusIcon({ status }: { status: MigrationStatus | undefined }) {
   if (status === "migrating") {
@@ -78,6 +75,9 @@ function MigrateScheduleRow({
 }
 
 export function MigrateSchedulesDialogContainer() {
+  const pathname = useGet(pathname$);
+  const onScheduleRoute =
+    pathname === "/schedules" || pathname.startsWith("/schedules/");
   const features = useLastResolved(featureSwitch$);
   const chatEnabled = features?.[FeatureSwitchKey.ScheduledChat] ?? false;
 
@@ -88,50 +88,46 @@ export function MigrateSchedulesDialogContainer() {
 
   const status = useGet(migrationStatus$);
   const running = useGet(migrationRunning$);
-  const dismissed = useGet(migrateDialogDismissed$);
-  const setDismissed = useSet(setMigrateDialogDismissed$);
   const migrateAll = useSet(migrateAllLegacySchedules$);
-  const pageSignal = useGet(pageSignal$);
+  const rootSignal = useGet(rootSignal$);
 
-  // Auto-surface on entry when chat mode is on and legacy schedules remain.
+  // Auto-surface on schedule routes when chat mode is on and legacy schedules remain.
   // Stay open while a migration is running so progress stays visible even as
   // the list drains.
   const open =
-    chatEnabled && loaded && !dismissed && (running || legacy.length > 0);
+    onScheduleRoute && chatEnabled && loaded && (running || legacy.length > 0);
 
-  const allDone =
-    legacy.length > 0 &&
-    legacy.every((s) => {
-      return status.get(s.id) === "done";
-    });
-
-  const close = () => {
-    if (running) {
-      return;
-    }
-    setDismissed(true);
-  };
+  const scheduleCountLabel =
+    legacy.length === 1 ? "1 schedule was" : `${legacy.length} schedules were`;
+  const hasErrors = legacy.some((s) => {
+    return status.get(s.id) === "error";
+  });
 
   const startMigration = () => {
-    detach(migrateAll(pageSignal), Reason.DomCallback);
+    detach(migrateAll(rootSignal), Reason.DomCallback);
   };
 
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => {
-        if (!next) {
-          close();
-        }
+      onOpenChange={() => {
+        // This migration is required once the org has schedule chat enabled.
       }}
     >
-      <DialogContent>
+      <DialogContent
+        className="[&>button[aria-label=Close]:last-child]:hidden"
+        onEscapeKeyDown={(event) => {
+          event.preventDefault();
+        }}
+        onPointerDownOutside={(event) => {
+          event.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Migrate schedules to chat</DialogTitle>
           <DialogDescription>
-            {legacy.length} schedule(s) were created before chat was available
-            and have no chat thread yet. Migrate them to give each its own chat
-            thread.
+            {scheduleCountLabel} created before chat was available and have no
+            chat thread yet. Migrate them to give each its own chat thread.
           </DialogDescription>
         </DialogHeader>
 
@@ -148,16 +144,17 @@ export function MigrateSchedulesDialogContainer() {
         </ul>
 
         <DialogFooter>
-          <Button variant="outline" disabled={running} onClick={close}>
-            {allDone ? "Close" : "Not now"}
-          </Button>
           <Button className="gap-2" disabled={running} onClick={startMigration}>
             {running ? (
               <IconLoader2 size={14} className="animate-spin" />
             ) : (
               <IconMessagePlus size={14} stroke={2} />
             )}
-            {running ? "Migrating…" : "Migrate to chat thread"}
+            {running
+              ? "Migrating..."
+              : hasErrors
+                ? "Retry migration"
+                : "Migrate to chat thread"}
           </Button>
         </DialogFooter>
       </DialogContent>

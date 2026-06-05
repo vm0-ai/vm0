@@ -3,6 +3,7 @@ import {
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
   zeroScheduleRunContract,
+  zeroScheduleMigrateChatContract,
   type ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
 import { mockApi } from "../msw-contract.ts";
@@ -134,5 +135,29 @@ export const apiSchedulesHandlers = [
   // POST /api/zero/schedules/run
   mockApi(zeroScheduleRunContract.run, ({ respond }) =>
     respond(201, { runId: crypto.randomUUID() }),
+  ),
+
+  // POST /api/zero/schedules/:name/migrate-to-chat
+  mockApi(
+    zeroScheduleMigrateChatContract.migrateToChat,
+    ({ params, body, respond }) => {
+      const schedule = mockSchedules.find((s) => {
+        return s.name === params.name && s.agentId === body.agentId;
+      });
+      if (!schedule) {
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
+      }
+      const updated = {
+        ...schedule,
+        chatThreadId: schedule.chatThreadId ?? crypto.randomUUID(),
+        updatedAt: new Date().toISOString(),
+      };
+      mockSchedules = mockSchedules.map((s) => {
+        return s.id === updated.id ? updated : s;
+      });
+      return respond(200, updated);
+    },
   ),
 ];

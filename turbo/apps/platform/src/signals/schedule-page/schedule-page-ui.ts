@@ -112,14 +112,6 @@ export const { get$: pageRunningIds$, set$: setPageRunningIds$ } = cell<
 export const { get$: pagePendingDelete$, set$: setPagePendingDelete$ } =
   cell<CombinedEntry | null>(null);
 
-// Whether the user has dismissed the "migrate legacy schedules to chat" modal
-// for this session. In-memory only: the modal may re-surface on a fresh page
-// load while legacy schedules remain.
-export const {
-  get$: migrateDialogDismissed$,
-  set$: setMigrateDialogDismissed$,
-} = cell(false);
-
 // ---------------------------------------------------------------------------
 // Calendar view state
 // ---------------------------------------------------------------------------
