@@ -1,19 +1,18 @@
 //! Environment variable accessors — each value is read once via `LazyLock`.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 
-use crate::constants;
 use crate::error::AgentError;
+use crate::{constants, paths};
 use guest_common::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = "VM0_USER_ENV_FILE";
-const USER_ENV_PRIVATE_DIR_PREFIX: &str = "vm0-user-env-";
-const USER_ENV_PRIVATE_ROOT: &str = "/tmp";
+const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 const USER_ENV_FILENAME: &str = "env.json";
 const ENV_KEY_DIAGNOSTIC_MAX_CHARS: usize = 128;
 
@@ -281,27 +280,28 @@ fn remove_user_env_file(path: &Path) -> Result<(), String> {
 }
 
 fn is_user_env_private_dir(path: &Path) -> bool {
-    if path.parent() != Some(Path::new(USER_ENV_PRIVATE_ROOT)) {
-        return false;
-    }
-
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with(USER_ENV_PRIVATE_DIR_PREFIX))
+        .is_some_and(|name| name == USER_ENV_PRIVATE_DIR_NAME)
 }
 
 fn validate_user_env_file_path(path: &Path) -> Result<(), String> {
-    let valid_file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name == USER_ENV_FILENAME);
-    let valid_parent = path.parent().is_some_and(is_user_env_private_dir);
-    if valid_file_name && valid_parent {
+    validate_user_env_file_path_for_runtime(path, paths::runtime_dir())
+}
+
+fn user_env_file_path_for_runtime(runtime_dir: &Path) -> PathBuf {
+    runtime_dir
+        .join(USER_ENV_PRIVATE_DIR_NAME)
+        .join(USER_ENV_FILENAME)
+}
+
+fn validate_user_env_file_path_for_runtime(path: &Path, runtime_dir: &Path) -> Result<(), String> {
+    if path == user_env_file_path_for_runtime(runtime_dir) {
         return Ok(());
     }
 
     Err(format!(
-        "{USER_ENV_FILE_ENV_KEY} must point to {USER_ENV_PRIVATE_ROOT}/{USER_ENV_PRIVATE_DIR_PREFIX}*/{USER_ENV_FILENAME}"
+        "{USER_ENV_FILE_ENV_KEY} must point to guest runtime {USER_ENV_PRIVATE_DIR_NAME}/{USER_ENV_FILENAME}"
     ))
 }
 
@@ -543,11 +543,10 @@ mod tests {
     use super::*;
 
     fn write_user_env_fixture(json: &str) -> (tempfile::TempDir, std::path::PathBuf) {
-        let tmp = tempfile::Builder::new()
-            .prefix("vm0-user-env-test")
-            .tempdir_in(USER_ENV_PRIVATE_ROOT)
-            .unwrap();
-        let path = tmp.path().join(USER_ENV_FILENAME);
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join(USER_ENV_PRIVATE_DIR_NAME);
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join(USER_ENV_FILENAME);
         std::fs::write(&path, json).unwrap();
         (tmp, path)
     }
@@ -613,11 +612,21 @@ mod tests {
 
     #[test]
     fn validate_user_env_file_path_rejects_unexpected_path() {
-        let err = validate_user_env_file_path(Path::new("/home/user/vm0-user-env-test/env.json"))
-            .unwrap_err();
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_dir = tmp.path().join("runtime");
+        let unexpected = tmp.path().join("other").join("user-env").join("env.json");
 
-        assert!(err.contains("/tmp/vm0-user-env-"));
-        assert!(!err.contains("/home/user"));
+        let err = validate_user_env_file_path_for_runtime(&unexpected, &runtime_dir).unwrap_err();
+
+        assert!(err.contains("user-env/env.json"));
+        assert!(!err.contains(unexpected.to_string_lossy().as_ref()));
+        assert!(
+            validate_user_env_file_path_for_runtime(
+                &user_env_file_path_for_runtime(&runtime_dir),
+                &runtime_dir,
+            )
+            .is_ok()
+        );
     }
 
     #[test]

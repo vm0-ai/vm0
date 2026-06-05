@@ -78,7 +78,7 @@ const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "NODE_OPTIONS",
 ];
 const USER_ENV_FILE_ENV_KEY: &str = "VM0_USER_ENV_FILE";
-const GUEST_USER_ENV_DIR_PREFIX: &str = "/tmp/vm0-user-env-";
+const GUEST_USER_ENV_DIR_NAME: &str = "user-env";
 const GUEST_USER_ENV_FILENAME: &str = "env.json";
 const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
     "VM0_STUCK_TOOL_TIMEOUT_SECS",
@@ -2647,16 +2647,15 @@ fn build_user_env_json(context: &ExecutionContext) -> HashMap<String, String> {
     env
 }
 
-fn guest_user_env_dir_path(run_id: RunId) -> String {
-    format!("{GUEST_USER_ENV_DIR_PREFIX}{run_id}")
+fn guest_user_env_dir_path(run_id: RunId) -> RunnerResult<String> {
+    guest_runtime_path(run_id, |dir| dir.join(GUEST_USER_ENV_DIR_NAME))
 }
 
-fn guest_user_env_file_path(run_id: RunId) -> String {
-    format!(
-        "{}/{}",
-        guest_user_env_dir_path(run_id),
-        GUEST_USER_ENV_FILENAME
-    )
+fn guest_user_env_file_path(run_id: RunId) -> RunnerResult<String> {
+    guest_runtime_path(run_id, |dir| {
+        dir.join(GUEST_USER_ENV_DIR_NAME)
+            .join(GUEST_USER_ENV_FILENAME)
+    })
 }
 
 async fn write_user_env_file(
@@ -2668,9 +2667,11 @@ async fn write_user_env_file(
         return Ok(None);
     }
 
-    let dir_path = guest_user_env_dir_path(run_id);
-    let file_path = guest_user_env_file_path(run_id);
-    let mkdir_cmd = format!("rm -rf {dir_path} && mkdir -m 700 {dir_path}");
+    let runtime_dir = guest_runtime_dir(run_id)?;
+    let dir_path = guest_user_env_dir_path(run_id)?;
+    let file_path = guest_user_env_file_path(run_id)?;
+    let mkdir_cmd =
+        format!("mkdir -p -m 700 {runtime_dir} {dir_path} && chmod 700 {runtime_dir} {dir_path}");
     let mkdir_result = sandbox
         .exec(&ExecRequest {
             cmd: &mkdir_cmd,
@@ -2691,6 +2692,23 @@ async fn write_user_env_file(
     let payload = serde_json::to_vec(user_env)
         .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
     sandbox.write_file(&file_path, &payload).await?;
+    let chmod_cmd = format!("chmod 600 {file_path}");
+    let chmod_result = sandbox
+        .exec(&ExecRequest {
+            cmd: &chmod_cmd,
+            timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
+            sudo: false,
+            stdin_bytes: None,
+            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+        })
+        .await?;
+    if chmod_result.exit_code != 0 {
+        return Err(RunnerError::Internal(format_guest_exec_failure(
+            "user env file permission update",
+            &chmod_result,
+        )));
+    }
 
     Ok(Some(file_path))
 }
@@ -6314,11 +6332,13 @@ mod tests {
         let start_calls = overrides.start_process_calls();
         assert_eq!(start_calls.len(), 1);
         let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
+        let expected_user_env_dir = guest_user_env_dir_path(ctx.run_id).unwrap();
+        let expected_user_env_file = guest_user_env_file_path(ctx.run_id).unwrap();
         assert_eq!(start_env.get("VM0_API_TOKEN").unwrap(), "tok");
         assert_eq!(start_env.get("VM0_STUCK_TOOL_TIMEOUT_SECS").unwrap(), "3");
         assert_eq!(
             start_env.get(USER_ENV_FILE_ENV_KEY).map(String::as_str),
-            Some(guest_user_env_file_path(ctx.run_id).as_str())
+            Some(expected_user_env_file.as_str())
         );
         for key in ["CUSTOM_USER_ENV", "BASH_ENV", "NODE_OPTIONS", "TZ"] {
             assert!(
@@ -6330,17 +6350,24 @@ mod tests {
         let mkdir_call = overrides
             .exec_calls()
             .into_iter()
-            .find(|call| call.cmd.contains(GUEST_USER_ENV_DIR_PREFIX))
+            .find(|call| call.cmd.contains(&expected_user_env_dir))
             .expect("user env directory should be created before agent start");
-        assert!(mkdir_call.cmd.starts_with("rm -rf "));
-        assert!(mkdir_call.cmd.contains(" && mkdir -m 700 "));
+        assert!(mkdir_call.cmd.starts_with("mkdir -p -m 700 "));
+        assert!(mkdir_call.cmd.contains(" && chmod 700 "));
         assert!(mkdir_call.env_keys.is_empty());
         assert!(!mkdir_call.sudo);
+        let chmod_call = overrides
+            .exec_calls()
+            .into_iter()
+            .find(|call| call.cmd == format!("chmod 600 {expected_user_env_file}"))
+            .expect("user env file mode should be tightened after write");
+        assert!(chmod_call.env_keys.is_empty());
+        assert!(!chmod_call.sudo);
 
         let writes = overrides.write_file_calls();
         let user_env_write = writes
             .iter()
-            .find(|call| call.path == guest_user_env_file_path(ctx.run_id))
+            .find(|call| call.path == expected_user_env_file)
             .expect("user env JSON should be written");
         let user_env: HashMap<String, String> =
             serde_json::from_slice(&user_env_write.content).unwrap();
