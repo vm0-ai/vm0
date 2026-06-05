@@ -1908,13 +1908,10 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ]);
   });
 
-  it("exposes Lark API-token auth only when its switch is enabled", () => {
-    expect(getAvailableConnectorAuthMethodIds("lark", {})).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethodIds("lark", {
-        [FeatureSwitchKey.LarkConnector]: true,
-      }),
-    ).toStrictEqual(["api-token"]);
+  it("exposes Lark API-token auth without a feature switch", () => {
+    expect(getAvailableConnectorAuthMethodIds("lark", {})).toStrictEqual([
+      "api-token",
+    ]);
   });
 
   it("exposes Doubao API-token auth without a feature switch", () => {

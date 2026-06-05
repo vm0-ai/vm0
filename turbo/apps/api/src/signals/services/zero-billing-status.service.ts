@@ -13,6 +13,13 @@ const TIER_MONTHLY_CREDITS = Object.freeze<Record<PlanCreditTier, number>>({
 
 type CreditBreakdownCategory = "plan" | "free" | "promotional" | "payAsYouGo";
 type PlanCreditTier = "pro" | "team";
+type ScheduledBillingTargetTier = "pro-suspend" | "pro" | "team";
+
+interface ScheduledBillingChange {
+  type: "cancel" | "downgrade";
+  targetTier: ScheduledBillingTargetTier | null;
+  effectiveDate: string | null;
+}
 
 interface CreditBreakdownSegment {
   category: CreditBreakdownCategory;
@@ -36,6 +43,9 @@ interface BillingOrgRow {
   subscriptionStatus: string | null;
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
+  pendingSubscriptionScheduleId: string | null;
+  pendingSubscriptionTargetTier: string | null;
+  pendingSubscriptionChangeAt: Date | null;
   stripeSubscriptionId: string | null;
   autoRechargeEnabled: boolean;
   autoRechargeThreshold: number | null;
@@ -48,6 +58,7 @@ interface BillingStatusResponse {
   subscriptionStatus: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  scheduledChange: ScheduledBillingChange | null;
   hasSubscription: boolean;
   autoRecharge: {
     enabled: boolean;
@@ -76,6 +87,9 @@ const DEFAULT_BILLING_ORG = Object.freeze<BillingOrgRow>({
   subscriptionStatus: null,
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
+  pendingSubscriptionScheduleId: null,
+  pendingSubscriptionTargetTier: null,
+  pendingSubscriptionChangeAt: null,
   stripeSubscriptionId: null,
   autoRechargeEnabled: false,
   autoRechargeThreshold: null,
@@ -253,6 +267,44 @@ function creditExpiry(records: readonly ActiveCreditRecord[]): {
   };
 }
 
+function scheduledTargetTier(
+  value: string | null,
+): ScheduledBillingTargetTier | null {
+  if (value === "pro-suspend" || value === "pro" || value === "team") {
+    return value;
+  }
+  return null;
+}
+
+function scheduledBillingChange(
+  org: BillingOrgRow,
+): ScheduledBillingChange | null {
+  if (org.cancelAtPeriodEnd) {
+    return {
+      type: "cancel",
+      targetTier: "pro-suspend",
+      effectiveDate:
+        org.pendingSubscriptionChangeAt?.toISOString() ??
+        org.currentPeriodEnd?.toISOString() ??
+        null,
+    };
+  }
+
+  const targetTier = scheduledTargetTier(org.pendingSubscriptionTargetTier);
+  if (!targetTier) {
+    return null;
+  }
+
+  return {
+    type: "downgrade",
+    targetTier,
+    effectiveDate:
+      org.pendingSubscriptionChangeAt?.toISOString() ??
+      org.currentPeriodEnd?.toISOString() ??
+      null,
+  };
+}
+
 function billingStatusResponse(args: {
   orgId: string;
   org: BillingOrgRow | undefined;
@@ -268,6 +320,7 @@ function billingStatusResponse(args: {
     subscriptionStatus: org.subscriptionStatus,
     currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: org.cancelAtPeriodEnd,
+    scheduledChange: scheduledBillingChange(org),
     hasSubscription: org.stripeSubscriptionId !== null,
     autoRecharge: {
       enabled: org.autoRechargeEnabled,
@@ -299,6 +352,11 @@ export function zeroBillingStatus(
           subscriptionStatus: orgMetadata.subscriptionStatus,
           currentPeriodEnd: orgMetadata.currentPeriodEnd,
           cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
+          pendingSubscriptionScheduleId:
+            orgMetadata.pendingSubscriptionScheduleId,
+          pendingSubscriptionTargetTier:
+            orgMetadata.pendingSubscriptionTargetTier,
+          pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
           stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
           autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
           autoRechargeThreshold: orgMetadata.autoRechargeThreshold,

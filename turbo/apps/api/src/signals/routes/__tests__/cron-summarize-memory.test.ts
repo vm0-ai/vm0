@@ -488,15 +488,32 @@ describe("GET /api/cron/summarize-memory", () => {
     expect(systemMessage).toContain("**How Zero will use this**");
     expect(systemMessage).toContain('Always refer to the agent as "Zero"');
     expect(systemMessage).toContain("Do not use first person");
+    expect(systemMessage).toContain(
+      'Phrase natural memory changes in third person with "Zero" as the subject',
+    );
+    expect(systemMessage).toContain(
+      "Never phrase a memory update as if Zero is speaking",
+    );
+    expect(systemMessage).toContain(
+      "Never say or imply that Zero modified, deleted, created, consulted, or will no longer consult memory files",
+    );
     const userMessage = llm.requests[0]?.messages.find((message) => {
       return message.role === "user";
     })?.content;
-    expect(userMessage).toContain("Memory file diffs today:");
-    expect(userMessage).toContain("File: facts/coffee.md");
-    expect(userMessage).toContain("Change: added");
+    expect(userMessage).toContain("Internal memory diffs today");
+    expect(userMessage).toContain(
+      "Internal source path (do not mention): facts/coffee.md",
+    );
+    expect(userMessage).toContain(
+      "Internal storage operation (do not mention): added",
+    );
     expect(userMessage).toContain("+ Drinks oat milk lattes");
-    expect(userMessage).toContain("File: facts/pets.md");
-    expect(userMessage).toContain("Change: modified");
+    expect(userMessage).toContain(
+      "Internal source path (do not mention): facts/pets.md",
+    );
+    expect(userMessage).toContain(
+      "Internal storage operation (do not mention): modified",
+    );
     expect(userMessage).toContain("- Has a dog");
     expect(userMessage).toContain("+ Has a dog and a cat");
     expect(userMessage).not.toContain("Learned:");

@@ -30,6 +30,10 @@ export const restoreSubscription$ = command(
       .select({
         stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
         cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
+        pendingSubscriptionScheduleId:
+          orgMetadata.pendingSubscriptionScheduleId,
+        pendingSubscriptionTargetTier:
+          orgMetadata.pendingSubscriptionTargetTier,
       })
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, args.orgId))
@@ -40,25 +44,37 @@ export const restoreSubscription$ = command(
       return { ok: false, reason: "no_subscription" };
     }
 
-    if (!org.cancelAtPeriodEnd) {
+    const pendingScheduleId = org.pendingSubscriptionScheduleId;
+    if (!org.cancelAtPeriodEnd && !pendingScheduleId) {
       return { ok: false, reason: "not_scheduled" };
     }
 
     const stripe = getStripeClient();
-    await stripe.subscriptions.update(org.stripeSubscriptionId, {
-      cancel_at_period_end: false,
-    });
+    if (pendingScheduleId) {
+      await stripe.subscriptionSchedules.release(pendingScheduleId);
+    } else {
+      await stripe.subscriptions.update(org.stripeSubscriptionId, {
+        cancel_at_period_end: false,
+      });
+    }
     signal.throwIfAborted();
 
     await writeDb
       .update(orgMetadata)
-      .set({ cancelAtPeriodEnd: false, updatedAt: nowDate() })
+      .set({
+        cancelAtPeriodEnd: false,
+        pendingSubscriptionScheduleId: null,
+        pendingSubscriptionTargetTier: null,
+        pendingSubscriptionChangeAt: null,
+        updatedAt: nowDate(),
+      })
       .where(eq(orgMetadata.orgId, args.orgId));
     signal.throwIfAborted();
 
-    L.debug("subscription cancellation restored", {
+    L.debug("scheduled subscription change restored", {
       orgId: args.orgId,
       stripeSubscriptionId: org.stripeSubscriptionId,
+      pendingSubscriptionTargetTier: org.pendingSubscriptionTargetTier,
     });
 
     return { ok: true };

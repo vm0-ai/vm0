@@ -38,6 +38,13 @@ NAT64_WELL_KNOWN_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
 _forward_request_semaphore_state: tuple[asyncio.AbstractEventLoop, asyncio.Semaphore] | None = None
 
 
+def reset_forward_request_state_for_tests() -> None:
+    """Reset per-loop forwarder state between tests."""
+    global _forward_request_semaphore_state
+
+    _forward_request_semaphore_state = None
+
+
 class ForwardedResponseTooLargeError(Exception):
     """Raised when an auth.base upstream response exceeds the local body cap."""
 

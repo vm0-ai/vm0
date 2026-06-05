@@ -227,6 +227,9 @@ interface StripeBillingRow {
   readonly subscriptionStatus: string | null;
   readonly currentPeriodEnd: Date | null;
   readonly cancelAtPeriodEnd: boolean;
+  readonly pendingSubscriptionScheduleId: string | null;
+  readonly pendingSubscriptionTargetTier: string | null;
+  readonly pendingSubscriptionChangeAt: Date | null;
   readonly lastProcessedInvoiceId: string | null;
   readonly autoRechargePendingAt: Date | null;
   readonly onboardingPaymentPending: boolean;
@@ -694,6 +697,9 @@ async function selectStripeBilling(
       subscriptionStatus: orgMetadata.subscriptionStatus,
       currentPeriodEnd: orgMetadata.currentPeriodEnd,
       cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
+      pendingSubscriptionScheduleId: orgMetadata.pendingSubscriptionScheduleId,
+      pendingSubscriptionTargetTier: orgMetadata.pendingSubscriptionTargetTier,
+      pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
       lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
       autoRechargePendingAt: orgMetadata.autoRechargePendingAt,
       onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
@@ -2720,6 +2726,8 @@ describe("POST /api/webhooks/stripe", () => {
       await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
       context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
         id: subId,
+        status: "active",
+        cancel_at_period_end: false,
         items: { data: [{ price: { id: STRIPE_PRICE_TEAM } }] },
       });
       const creditsBefore = (await selectStripeBilling(fixture)).credits;
@@ -2739,6 +2747,225 @@ describe("POST /api/webhooks/stripe", () => {
       expect((await selectStripeBilling(fixture)).credits - creditsBefore).toBe(
         120_000,
       );
+      expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+    });
+
+    it("cancels the replaced Pro subscription after the Team invoice is paid", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const proSubId = stripeId("sub");
+      const teamSubId = stripeId("sub");
+      const invId = stripeId("inv");
+      const periodEnd = 1_800_000_000;
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: proSubId,
+        subscriptionStatus: "active",
+        tier: "pro",
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: teamSubId,
+        status: "active",
+        cancel_at_period_end: false,
+        items: { data: [{ price: { id: STRIPE_PRICE_TEAM } }] },
+      });
+      context.mocks.stripe.subscriptions.cancel.mockResolvedValue({
+        id: proSubId,
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
+          parent: { subscription_details: { subscription: teamSubId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+        proSubId,
+        { invoice_now: false, prorate: false },
+      );
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.tier).toBe("team");
+      expect(billing.stripeSubscriptionId).toBe(teamSubId);
+      expect(billing.subscriptionStatus).toBe("active");
+      expect(billing.lastProcessedInvoiceId).toBe(invId);
+    });
+
+    it("cancels an old Pro subscription when subscription.created already stored the Team subscription", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const proSubId = stripeId("sub");
+      const teamSubId = stripeId("sub");
+      const invId = stripeId("inv");
+      const periodEnd = 1_800_000_000;
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: teamSubId,
+        subscriptionStatus: "active",
+        tier: "pro",
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: teamSubId,
+        status: "active",
+        cancel_at_period_end: false,
+        items: { data: [{ price: { id: STRIPE_PRICE_TEAM } }] },
+      });
+      context.mocks.stripe.subscriptions.list.mockResolvedValue({
+        data: [
+          {
+            id: teamSubId,
+            status: "active",
+            metadata: { orgId: fixture.orgId },
+            items: { data: [{ price: { id: STRIPE_PRICE_TEAM } }] },
+          },
+          {
+            id: proSubId,
+            status: "active",
+            metadata: { orgId: fixture.orgId },
+            items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+          },
+        ],
+      });
+      context.mocks.stripe.subscriptions.cancel.mockResolvedValue({
+        id: proSubId,
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
+          parent: { subscription_details: { subscription: teamSubId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.stripe.subscriptions.list).toHaveBeenCalledWith({
+        customer: fixture.stripeCustomerId,
+        status: "all",
+        limit: 100,
+      });
+      expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+        proSubId,
+        { invoice_now: false, prorate: false },
+      );
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.tier).toBe("team");
+      expect(billing.stripeSubscriptionId).toBe(teamSubId);
+      expect(billing.lastProcessedInvoiceId).toBe(invId);
+    });
+
+    it("cleans up a lingering Pro subscription when a processed Team invoice is redelivered", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const proSubId = stripeId("sub");
+      const teamSubId = stripeId("sub");
+      const invId = stripeId("inv");
+      const periodEnd = 1_800_000_000;
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: teamSubId,
+        subscriptionStatus: "active",
+        tier: "team",
+        lastProcessedInvoiceId: invId,
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: teamSubId,
+        status: "active",
+        cancel_at_period_end: false,
+        items: { data: [{ price: { id: STRIPE_PRICE_TEAM } }] },
+      });
+      context.mocks.stripe.subscriptions.list.mockResolvedValue({
+        data: [
+          {
+            id: proSubId,
+            status: "active",
+            metadata: { orgId: fixture.orgId },
+            items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+          },
+        ],
+      });
+      context.mocks.stripe.subscriptions.cancel.mockResolvedValue({
+        id: proSubId,
+      });
+      const creditsBefore = (await selectStripeBilling(fixture)).credits;
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
+          parent: { subscription_details: { subscription: teamSubId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+        proSubId,
+        { invoice_now: false, prorate: false },
+      );
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.credits).toBe(creditsBefore);
+      expect(billing.lastProcessedInvoiceId).toBe(invId);
+      await expect(
+        selectStripeCreditExpiresRecords(fixture),
+      ).resolves.toHaveLength(0);
+    });
+
+    it("cancels the replaced Pro trial subscription after the Team invoice is paid", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const trialSubId = stripeId("sub");
+      const teamSubId = stripeId("sub");
+      const periodEnd = 1_800_000_000;
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: trialSubId,
+        subscriptionStatus: "trialing",
+        tier: "pro-suspend",
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: teamSubId,
+        status: "active",
+        cancel_at_period_end: false,
+        items: { data: [{ price: { id: STRIPE_PRICE_TEAM } }] },
+      });
+      context.mocks.stripe.subscriptions.cancel.mockResolvedValue({
+        id: trialSubId,
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: stripeId("inv"),
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
+          parent: { subscription_details: { subscription: teamSubId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+        trialSubId,
+        { invoice_now: false, prorate: false },
+      );
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.tier).toBe("team");
+      expect(billing.stripeSubscriptionId).toBe(teamSubId);
     });
 
     it("skips lower subscription invoices when a higher subscription is current", async () => {
@@ -3074,6 +3301,111 @@ describe("POST /api/webhooks/stripe", () => {
       expect(
         (await selectStripeBilling(fixture)).cancelAtPeriodEnd,
       ).toBeFalsy();
+    });
+
+    it("clears pending billing changes when subscription cancellation is restored in Stripe", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const changeAt = new Date("2026-07-04T00:00:00.000Z");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        cancelAtPeriodEnd: true,
+        pendingSubscriptionTargetTier: "pro-suspend",
+        pendingSubscriptionChangeAt: changeAt,
+        tier: "pro",
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.updated",
+        dataObject: {
+          id: subId,
+          status: "active",
+          cancel_at_period_end: false,
+          items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+        },
+        previousAttributes: { cancel_at_period_end: true },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.cancelAtPeriodEnd).toBeFalsy();
+      expect(billing.pendingSubscriptionScheduleId).toBeNull();
+      expect(billing.pendingSubscriptionTargetTier).toBeNull();
+      expect(billing.pendingSubscriptionChangeAt).toBeNull();
+    });
+
+    it("does not clear pending schedules on unrelated active subscription updates", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const scheduleId = stripeId("sched");
+      const changeAt = new Date("2026-07-04T00:00:00.000Z");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        cancelAtPeriodEnd: false,
+        pendingSubscriptionScheduleId: scheduleId,
+        pendingSubscriptionTargetTier: "pro",
+        pendingSubscriptionChangeAt: changeAt,
+        tier: "team",
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.updated",
+        dataObject: {
+          id: subId,
+          status: "active",
+          cancel_at_period_end: false,
+          items: { data: [{ price: { id: STRIPE_PRICE_TEAM } }] },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.pendingSubscriptionScheduleId).toBe(scheduleId);
+      expect(billing.pendingSubscriptionTargetTier).toBe("pro");
+      expect(billing.pendingSubscriptionChangeAt).toStrictEqual(changeAt);
+    });
+
+    it("clears pending billing changes when subscription schedule is released in Stripe", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const scheduleId = stripeId("sched");
+      const changeAt = new Date("2026-07-04T00:00:00.000Z");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        cancelAtPeriodEnd: true,
+        pendingSubscriptionScheduleId: scheduleId,
+        pendingSubscriptionTargetTier: "pro-suspend",
+        pendingSubscriptionChangeAt: changeAt,
+        tier: "team",
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "subscription_schedule.released",
+        dataObject: {
+          id: scheduleId,
+          status: "released",
+          released_subscription: subId,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.cancelAtPeriodEnd).toBeFalsy();
+      expect(billing.pendingSubscriptionScheduleId).toBeNull();
+      expect(billing.pendingSubscriptionTargetTier).toBeNull();
+      expect(billing.pendingSubscriptionChangeAt).toBeNull();
     });
 
     it("does not refresh current period end for active subscriptions before invoice payment", async () => {

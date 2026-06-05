@@ -1,22 +1,35 @@
-import { command } from "ccstate";
+import { command, type Command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 
+import { eventConsumerPayloadState$ } from "../../lib/event-consumer/route";
 import type {
   AgentEvent,
+  EventConsumerPayload,
   RunEventContext,
 } from "../../lib/event-consumer/verify";
-import { computeHmacSignature } from "../../lib/event-consumer/hmac";
-import { env } from "../../lib/env";
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { now } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { db$ } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
-import { bestEffort, settle } from "../utils";
+import { ingestAxiomEvents$ } from "../routes/internal-event-consumers-axiom";
+import { processChatAssistantEvents$ } from "../routes/internal-event-consumers-chat-assistant";
+import { settle } from "../utils";
 
 const L = logger("webhook:events");
+
+/**
+ * Shape every event-consumer command resolves to. Each route handler returns a
+ * richer `{ status, body }` union, but the dispatcher only needs the status to
+ * decide success — any non-200 (or a thrown error) is treated as a failure.
+ */
+interface ConsumerResult {
+  readonly status: number;
+}
+
+type ConsumerCommand = Command<Promise<ConsumerResult>, [AbortSignal]>;
 
 interface AgentEventsBody {
   readonly runId: string;
@@ -30,14 +43,14 @@ interface ReceiveAgentEventsParams {
 
 interface DispatchableConsumer {
   readonly name: string;
-  readonly path: string;
+  readonly command$: ConsumerCommand;
   readonly required?: boolean;
   readonly eventTypes?: readonly string[];
 }
 
 interface PreparedConsumer {
   readonly name: string;
-  readonly path: string;
+  readonly command$: ConsumerCommand;
   readonly required?: boolean;
   readonly events: readonly AgentEvent[];
 }
@@ -48,23 +61,15 @@ interface DispatchAgentEventConsumersParams {
   readonly context: RunEventContext;
 }
 
-interface DispatchRuntime {
-  readonly runId: string;
-  readonly context: RunEventContext;
-  readonly baseUrl: string;
-  readonly secretsEncryptionKey: string;
-  readonly signal: AbortSignal;
-}
-
 const EVENT_CONSUMERS: readonly DispatchableConsumer[] = [
   {
     name: "axiom",
-    path: "/api/internal/event-consumers/axiom",
+    command$: ingestAxiomEvents$,
     required: true,
   },
   {
     name: "chat-assistant",
-    path: "/api/internal/event-consumers/chat-assistant",
+    command$: processChatAssistantEvents$,
     eventTypes: ["assistant", "item.completed"],
   },
 ];
@@ -97,103 +102,53 @@ function internalServerError(message: string) {
   };
 }
 
-function resolveBaseUrl(baseUrl: string): string {
-  return env("ENV") === "development" && baseUrl.startsWith("https://tunnel-")
-    ? baseUrl.replace(/^https:\/\/tunnel-[^/]+/u, "http://localhost:3000")
-    : baseUrl;
-}
-
-async function readFailureBody(response: Response): Promise<string> {
-  const settled = await settle(response.text());
-  return settled.ok ? settled.value : "";
-}
-
-async function drainResponse(response: Response): Promise<void> {
-  await bestEffort(response.arrayBuffer());
-}
-
-async function dispatchToConsumer(
-  consumer: PreparedConsumer,
-  runtime: DispatchRuntime,
-): Promise<void> {
-  const body = JSON.stringify({
-    runId: runtime.runId,
-    events: consumer.events,
-    context: runtime.context,
-  });
-  const timestamp = Math.floor(now() / 1000);
-  const signature = computeHmacSignature(
-    body,
-    runtime.secretsEncryptionKey,
-    timestamp,
-  );
-
-  const response = await fetch(`${runtime.baseUrl}${consumer.path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-VM0-Signature": signature,
-      "X-VM0-Timestamp": timestamp.toString(),
+/**
+ * Invoke one consumer command in-process. The payload is published via
+ * `eventConsumerPayloadState$` (the same backing store the HTTP route uses)
+ * immediately before the command runs, so the command reads exactly the
+ * `{ runId, events, context }` it would have parsed from a signed request.
+ *
+ * Resolves to `true` on success and `false` on failure — a non-200 status or a
+ * thrown error. Failures are logged here; the caller decides whether a failure
+ * is fatal (required) or swallowed (optional).
+ */
+const runEventConsumer$ = command(
+  async (
+    { set },
+    params: {
+      readonly consumer: PreparedConsumer;
+      readonly payload: EventConsumerPayload;
     },
-    body,
-    signal: runtime.signal,
-  });
-  runtime.signal.throwIfAborted();
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    set(eventConsumerPayloadState$, params.payload);
+    const result = await settle(set(params.consumer.command$, signal), signal);
 
-  if (!response.ok) {
-    const responseBody = await readFailureBody(response);
-    runtime.signal.throwIfAborted();
-    throw new Error(
-      `HTTP ${response.status}${responseBody ? `: ${responseBody}` : ""}`,
-    );
-  }
-
-  await drainResponse(response);
-  runtime.signal.throwIfAborted();
-}
-
-async function dispatchConsumerGroup(
-  consumers: readonly PreparedConsumer[],
-  runtime: DispatchRuntime,
-): Promise<readonly string[]> {
-  const results = await Promise.allSettled(
-    consumers.map((consumer) => {
-      return dispatchToConsumer(consumer, runtime);
-    }),
-  );
-  runtime.signal.throwIfAborted();
-
-  const failures: string[] = [];
-  for (const [index, result] of results.entries()) {
-    if (result.status === "rejected") {
-      const consumer = consumers[index];
-      L.error(`Event consumer "${consumer?.name}" failed`, {
-        runId: runtime.runId,
-        error: result.reason,
+    if (!result.ok) {
+      L.error(`Event consumer "${params.consumer.name}" failed`, {
+        runId: params.payload.runId,
+        error: result.error,
       });
-      if (consumer?.required) {
-        failures.push(consumer.name);
-      }
+      return false;
     }
-  }
-
-  return failures;
-}
+    if (result.value.status !== 200) {
+      L.error(`Event consumer "${params.consumer.name}" failed`, {
+        runId: params.payload.runId,
+        status: result.value.status,
+      });
+      return false;
+    }
+    return true;
+  },
+);
 
 const dispatchAgentEventConsumers$ = command(
   async (
-    _store,
+    { set },
     params: DispatchAgentEventConsumersParams,
     signal: AbortSignal,
   ): Promise<void> => {
-    const runtime: DispatchRuntime = {
-      runId: params.runId,
-      context: params.context,
-      baseUrl: resolveBaseUrl(env("VM0_API_URL")),
-      secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
-      signal,
-    };
-
+    const context = params.context;
     const consumers = EVENT_CONSUMERS.map(
       (consumer): PreparedConsumer | null => {
         const matchingEvents = consumer.eventTypes
@@ -208,7 +163,7 @@ const dispatchAgentEventConsumers$ = command(
 
         return {
           name: consumer.name,
-          path: consumer.path,
+          command$: consumer.command$,
           required: consumer.required,
           events: matchingEvents,
         };
@@ -224,18 +179,35 @@ const dispatchAgentEventConsumers$ = command(
       return !consumer.required;
     });
 
-    const requiredFailures = await dispatchConsumerGroup(
-      requiredConsumers,
-      runtime,
-    );
-    signal.throwIfAborted();
+    const requiredFailures: string[] = [];
+    for (const consumer of requiredConsumers) {
+      const ok = await set(
+        runEventConsumer$,
+        {
+          consumer,
+          payload: { runId: params.runId, events: consumer.events, context },
+        },
+        signal,
+      );
+      if (!ok) {
+        requiredFailures.push(consumer.name);
+      }
+    }
 
     if (requiredFailures.length > 0) {
       throw new RequiredEventConsumerDispatchError(requiredFailures);
     }
 
-    await dispatchConsumerGroup(optionalConsumers, runtime);
-    signal.throwIfAborted();
+    for (const consumer of optionalConsumers) {
+      await set(
+        runEventConsumer$,
+        {
+          consumer,
+          payload: { runId: params.runId, events: consumer.events, context },
+        },
+        signal,
+      );
+    }
   },
 );
 

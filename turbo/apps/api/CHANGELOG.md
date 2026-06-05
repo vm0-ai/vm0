@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.107.1](https://github.com/vm0-ai/vm0/compare/api-v1.107.0...api-v1.107.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* handle scheduled billing plan changes ([#16261](https://github.com/vm0-ai/vm0/issues/16261)) ([3453471](https://github.com/vm0-ai/vm0/commit/345347139ca5151393bacd9ab15951572f37d084))
+* make memory summaries describe natural memory changes ([#16288](https://github.com/vm0-ai/vm0/issues/16288)) ([e46e829](https://github.com/vm0-ai/vm0/commit/e46e8294e1c70f3859152cb4768651c5c3e84fac))
+* remove auto memory generated provenance ([#16284](https://github.com/vm0-ai/vm0/issues/16284)) ([59bef75](https://github.com/vm0-ai/vm0/commit/59bef75742fda0653c0d4df413144c93c639ec2f))
+* remove lark connector feature switch ([#16289](https://github.com/vm0-ai/vm0/issues/16289)) ([844fb53](https://github.com/vm0-ai/vm0/commit/844fb53259a5eba2600e02a90ce0255f8383b3f9))
+
+
+### Performance Improvements
+
+* dispatch agent event consumers in-process ([#16286](https://github.com/vm0-ai/vm0/issues/16286)) ([28c9b42](https://github.com/vm0-ai/vm0/commit/28c9b42df2cb91cfc589f29c0dec692b1f966ad2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.2
+    * @vm0/connectors bumped to 1.48.1
+    * @vm0/core bumped to 8.313.0
+    * @vm0/db bumped to 1.32.4
+
 ## [1.107.0](https://github.com/vm0-ai/vm0/compare/api-v1.106.0...api-v1.107.0) (2026-06-05)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.412.0](https://github.com/vm0-ai/vm0/compare/web-v12.411.2...web-v12.412.0) (2026-06-05)
+
+
+### Features
+
+* add template ppt preview page ([#16285](https://github.com/vm0-ai/vm0/issues/16285)) ([5c82156](https://github.com/vm0-ai/vm0/commit/5c821560e9c4d4ceccc20c09508adfb4d4aa916b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.2
+    * @vm0/core bumped to 8.313.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.48.1
+
 ## [12.411.2](https://github.com/vm0-ai/vm0/compare/web-v12.411.1...web-v12.411.2) (2026-06-05)
 
 

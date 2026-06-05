@@ -61,6 +61,7 @@ function paidBillingStatus(credits: number): BillingStatusResponse {
     subscriptionStatus: "active",
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
+    scheduledChange: null,
     hasSubscription: true,
     autoRecharge: { enabled: false, threshold: null, amount: null },
     creditExpiry: {

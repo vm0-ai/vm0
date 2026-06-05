@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.313.0](https://github.com/vm0-ai/vm0/compare/core-v8.312.0...core-v8.313.0) (2026-06-05)
+
+
+### Features
+
+* add template ppt preview page ([#16285](https://github.com/vm0-ai/vm0/issues/16285)) ([5c82156](https://github.com/vm0-ai/vm0/commit/5c821560e9c4d4ceccc20c09508adfb4d4aa916b))
+
+
+### Bug Fixes
+
+* remove lark connector feature switch ([#16289](https://github.com/vm0-ai/vm0/issues/16289)) ([844fb53](https://github.com/vm0-ai/vm0/commit/844fb53259a5eba2600e02a90ce0255f8383b3f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.2
+    * @vm0/connectors bumped to 1.48.1
+
 ## [8.312.0](https://github.com/vm0-ai/vm0/compare/core-v8.311.1...core-v8.312.0) (2026-06-05)
 
 

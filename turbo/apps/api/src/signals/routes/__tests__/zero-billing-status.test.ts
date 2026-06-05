@@ -197,6 +197,7 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.subscriptionStatus).toBe("active");
     expect(response.body.currentPeriodEnd).toBe(periodEnd.toISOString());
     expect(response.body.cancelAtPeriodEnd).toBeFalsy();
+    expect(response.body.scheduledChange).toBeNull();
     expect(response.body.hasSubscription).toBeTruthy();
   });
 
@@ -228,6 +229,49 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.cancelAtPeriodEnd).toBeTruthy();
+    expect(response.body.scheduledChange).toStrictEqual({
+      type: "cancel",
+      targetTier: "pro-suspend",
+      effectiveDate: periodEnd.toISOString(),
+    });
+  });
+
+  it("returns scheduled downgrade details when set", async () => {
+    const periodEnd = new Date("2099-04-20T00:00:00Z");
+    const fixture = await track(
+      store.set(
+        seedBillingStatusOrg$,
+        {
+          subscription: {
+            tier: "team",
+            status: "active",
+            currentPeriodEnd: periodEnd,
+            cancelAtPeriodEnd: false,
+            stripeCustomerId: `cus_${randomUUID()}`,
+            stripeSubscriptionId: `sub_${randomUUID()}`,
+            pendingSubscriptionScheduleId: `sched_${randomUUID()}`,
+            pendingSubscriptionTargetTier: "pro",
+            pendingSubscriptionChangeAt: periodEnd,
+          },
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(response.body.cancelAtPeriodEnd).toBeFalsy();
+    expect(response.body.scheduledChange).toStrictEqual({
+      type: "downgrade",
+      targetTier: "pro",
+      effectiveDate: periodEnd.toISOString(),
+    });
   });
 
   it("returns 200 for non-admin member", async () => {

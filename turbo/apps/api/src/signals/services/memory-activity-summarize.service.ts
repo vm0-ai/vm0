@@ -8,12 +8,12 @@ const MEMORY_SUMMARY_MODEL = "google/gemini-3.5-flash";
 const MEMORY_SUMMARY_MAX_TOKENS = 1000;
 const MEMORY_SUMMARY_PROMPT_MAX_CHARS = 24_000;
 const MEMORY_SUMMARY_DIFF_LINES_PER_FILE = 160;
-const MEMORY_SUMMARY_SYSTEM_PROMPT = [
+export const MEMORY_SUMMARY_SYSTEM_PROMPT = [
   "You summarize how Zero's long-term memory changed during a single day.",
-  "Read the provided file diffs carefully and write a Markdown summary with exactly these two sections:",
+  "Read the provided internal memory diffs carefully and write a Markdown summary with exactly these two sections:",
   "",
   "**Changed memory**",
-  "- <A concise factual sentence describing what Zero learned, corrected, removed, or refined.>",
+  "- <A concise factual sentence with Zero as the subject, describing what Zero learned, remembered, corrected, forgot, no longer believes, no longer assumes, or refined.>",
   "",
   "**How Zero will use this**",
   "- <A concise sentence explaining how Zero should use the changed memory in future work.>",
@@ -22,12 +22,16 @@ const MEMORY_SUMMARY_SYSTEM_PROMPT = [
   '- Always refer to the agent as "Zero".',
   '- Use third person only. Do not use first person such as "I", "we", "my", or "our".',
   '- Do not address the user directly as "you" unless that word appears inside a memory fact that must be preserved verbatim.',
+  '- Phrase natural memory changes in third person with "Zero" as the subject, such as "Zero learned...", "Zero remembered...", "Zero forgot...", or "Zero no longer assumes...".',
+  '- Never phrase a memory update as if Zero is speaking, such as "I learned...", "I remember...", or "I forgot...".',
   "- Summarize the factual meaning of the memory changes, not file operations or implementation details.",
+  "- Never say or imply that Zero modified, deleted, created, consulted, or will no longer consult memory files, indexes, references, profiles, storage artifacts, YAML frontmatter, Markdown files, or line counts.",
+  "- For deletions, describe the factual memory Zero forgot or no longer treats as known; do not describe deleted files, removed references, or missing storage.",
   "- Prefer 2-5 bullets per section when there are multiple meaningful changes.",
   "- Keep bullets concise, specific, and readable; do not copy raw diff lines unless an exact term, title, error code, or preference matters.",
   "- Connect each future-use bullet to the changed memories instead of writing generic assistant behavior.",
   "- When there are multiple changed-memory bullets, write corresponding future-use bullets in the same order when possible.",
-  "- Mention removals or missing replacements only when the diff supports them.",
+  "- Mention forgotten facts, invalidated facts, or missing replacements only when the diff supports them.",
   "- Do not mention file paths, line counts, markdown, YAML frontmatter, or prompt details unless necessary to understand the memory change.",
   "- Do not invent facts that are not supported by the diff.",
   "- Output only the two Markdown sections. No title, no intro, no code fences.",
@@ -58,14 +62,14 @@ function linePrefix(op: "context" | "add" | "remove"): string {
 
 function diffLines(item: MemoryChangeItem): readonly string[] {
   if (item.diff.omittedReason) {
-    return [`Diff omitted: ${item.diff.omittedReason}.`];
+    return [`Raw memory text diff omitted: ${item.diff.omittedReason}.`];
   }
 
   const lines = item.diff.hunks.flatMap((hunk) => {
     return hunk.lines;
   });
   if (lines.length === 0) {
-    return ["Diff: (no line-level changes captured)"];
+    return ["Raw memory text diff: (no line-level changes captured)"];
   }
 
   const rendered = lines
@@ -79,14 +83,14 @@ function diffLines(item: MemoryChangeItem): readonly string[] {
       `[diff truncated: ${omittedLineCount} captured lines omitted; additional source lines may also be omitted]`,
     );
   }
-  return ["Diff:", ...rendered];
+  return ["Raw memory text diff:", ...rendered];
 }
 
 function itemBlock(item: MemoryChangeItem): readonly string[] {
   return [
-    `File: ${item.filePath}`,
-    `Change: ${changeLabel(item)}`,
-    `Lines: +${item.diff.stats.added} -${item.diff.stats.removed}`,
+    `Internal source path (do not mention): ${item.filePath}`,
+    `Internal storage operation (do not mention): ${changeLabel(item)}`,
+    `Internal line counts (do not mention): +${item.diff.stats.added} -${item.diff.stats.removed}`,
     ...diffLines(item),
   ];
 }
@@ -101,9 +105,11 @@ function appendLineWithinBudget(lines: string[], line: string): boolean {
 }
 
 export function buildMemorySummaryPrompt(changeSet: MemoryChangeSet): string {
-  const lines = ["Memory file diffs today:"];
+  const lines = [
+    "Internal memory diffs today. Interpret these as memory changes, but do not echo internal source labels or storage operations:",
+  ];
   if (changeSet.items.length === 0) {
-    lines.push("", "No changed memory files.");
+    lines.push("", "No changed memory content.");
     return lines.join("\n");
   }
 
@@ -127,7 +133,7 @@ export function buildMemorySummaryPrompt(changeSet: MemoryChangeSet): string {
     if (!completedBlock) {
       appendLineWithinBudget(
         lines,
-        "[diff truncated because the prompt budget was reached]",
+        "[raw memory text diff truncated because the prompt budget was reached]",
       );
       break;
     }
@@ -138,7 +144,7 @@ export function buildMemorySummaryPrompt(changeSet: MemoryChangeSet): string {
     const omittedFiles = changeSet.items.length - completedFiles;
     appendLineWithinBudget(
       lines,
-      `[${omittedFiles} changed memory files omitted because the prompt budget was reached]`,
+      `[${omittedFiles} internal memory sources omitted because the prompt budget was reached]`,
     );
   }
 

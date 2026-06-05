@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.108.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.7...runner-rs-v0.108.8) (2026-06-05)
+
+
+### Bug Fixes
+
+* move guest runtime files out of tmp ([#16263](https://github.com/vm0-ai/vm0/issues/16263)) ([dc87ac5](https://github.com/vm0-ai/vm0/commit/dc87ac5f4f11ada3306d4061a845de5f592d09b2))
+
 ## [0.108.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.6...runner-rs-v0.108.7) (2026-06-05)
 
 

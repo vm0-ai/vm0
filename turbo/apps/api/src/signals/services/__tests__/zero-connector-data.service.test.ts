@@ -303,12 +303,12 @@ describe("zeroConnectorList", () => {
     await writeDb.insert(connectors).values({
       orgId,
       userId,
-      type: "lark",
+      type: "bentoml",
       authMethod: "api-token",
     });
 
     const connector = await store.get(
-      zeroConnectorByType({ orgId, userId, type: "lark" }),
+      zeroConnectorByType({ orgId, userId, type: "bentoml" }),
     );
 
     expect(connector).toBeNull();

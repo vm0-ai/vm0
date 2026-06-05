@@ -1,12 +1,12 @@
-"""Tests for auth.base low-level HTTP forwarding."""
+"""Tests for auth.base HTTPS forwarding behavior."""
 
 import asyncio
 import contextlib
 import errno
+import io
 import ssl
 import threading
-from collections.abc import Iterator
-from typing import NamedTuple
+from collections.abc import Callable, Iterator
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -14,192 +14,408 @@ import pytest
 import auth_base_forwarder as forwarder
 
 
-class ForwarderConnectionPatch(NamedTuple):
-    conn: MagicMock
-    resp: MagicMock
-    connection_factory: MagicMock
-    resolver: MagicMock
+def _addrinfo(address: str, port: int):
+    if ":" in address:
+        return (
+            forwarder.socket.AF_INET6,
+            forwarder.socket.SOCK_STREAM,
+            6,
+            "",
+            (address, port, 0, 0),
+        )
+    return (
+        forwarder.socket.AF_INET,
+        forwarder.socket.SOCK_STREAM,
+        6,
+        "",
+        (address, port),
+    )
 
 
-@contextlib.contextmanager
-def _patched_forwarder_connection(
+def _http_response(
     *,
     status: int = 200,
     body: bytes = b"ok",
     headers: list[tuple[str, str]] | None = None,
-    read_side_effect: Exception | None = None,
-    putrequest_side_effect: Exception | None = None,
-    getresponse_side_effect: Exception | None = None,
-) -> Iterator[ForwarderConnectionPatch]:
-    resp = MagicMock()
-    resp.status = status
-    if read_side_effect is None:
-        resp.read.return_value = body
-    else:
-        resp.read.side_effect = read_side_effect
-    resp.getheaders.return_value = [] if headers is None else headers
+) -> bytes:
+    reason = {
+        200: "OK",
+        302: "Found",
+        429: "Too Many Requests",
+    }.get(status, "OK")
+    header_bytes = b"".join(f"{name}: {value}\r\n".encode() for name, value in (headers or []))
+    return f"HTTP/1.1 {status} {reason}\r\n".encode("ascii") + header_bytes + b"\r\n" + body
 
-    conn = MagicMock()
-    if putrequest_side_effect is not None:
-        conn.putrequest.side_effect = putrequest_side_effect
-    if getresponse_side_effect is None:
-        conn.getresponse.return_value = resp
-    else:
-        conn.getresponse.side_effect = getresponse_side_effect
 
-    def resolve_public_addresses(_host: str, port: int) -> tuple[forwarder._ValidatedAddress, ...]:
-        return (forwarder._ValidatedAddress("93.184.216.34", port),)
+class _FakeResponseFile(io.BytesIO):
+    def __init__(
+        self,
+        payload: bytes,
+        *,
+        read_side_effect: Exception | None = None,
+        on_action: Callable[[], None] | None = None,
+    ) -> None:
+        super().__init__(payload)
+        self._read_side_effect = read_side_effect
+        self._on_action = on_action
+        self.read_sizes: list[int] = []
+        self.close_count = 0
 
-    with (
-        patch.object(
-            forwarder, "_resolve_validated_addresses", side_effect=resolve_public_addresses
-        ) as resolver,
-        patch.object(forwarder, "_make_validated_https_connection", return_value=conn) as factory,
-    ):
-        yield ForwarderConnectionPatch(
-            conn=conn,
-            resp=resp,
-            connection_factory=factory,
-            resolver=resolver,
+    def read(self, size: int = -1) -> bytes:
+        if self._on_action is not None:
+            self._on_action()
+        self.read_sizes.append(size)
+        if self._read_side_effect is not None:
+            raise self._read_side_effect
+        return super().read(size)
+
+    def close(self) -> None:
+        self.close_count += 1
+        super().close()
+
+
+class _FakeSocket:
+    def __init__(
+        self,
+        response: bytes,
+        *,
+        read_side_effect: Exception | None = None,
+        send_side_effect: Exception | None = None,
+        makefile_side_effect: Exception | None = None,
+        setsockopt_side_effect: Exception | None = None,
+        on_action: Callable[[], None] | None = None,
+    ) -> None:
+        self._response = response
+        self._read_side_effect = read_side_effect
+        self._send_side_effect = send_side_effect
+        self._makefile_side_effect = makefile_side_effect
+        self._setsockopt_side_effect = setsockopt_side_effect
+        self._on_action = on_action
+        self.sent = bytearray()
+        self.response_file: _FakeResponseFile | None = None
+        self.closed = False
+        self.close_count = 0
+        self.setsockopt_calls: list[tuple[int, int, int]] = []
+
+    def _record_action(self) -> None:
+        if self._on_action is not None:
+            self._on_action()
+
+    def setsockopt(self, level: int, optname: int, value: int) -> None:
+        self._record_action()
+        self.setsockopt_calls.append((level, optname, value))
+        if self._setsockopt_side_effect is not None:
+            raise self._setsockopt_side_effect
+
+    def sendall(self, data: bytes) -> None:
+        self._record_action()
+        if self._send_side_effect is not None:
+            raise self._send_side_effect
+        self.sent.extend(data)
+
+    def makefile(self, *_args, **_kwargs) -> _FakeResponseFile:
+        self._record_action()
+        if self._makefile_side_effect is not None:
+            raise self._makefile_side_effect
+        self.response_file = _FakeResponseFile(
+            self._response,
+            read_side_effect=self._read_side_effect,
+            on_action=self._on_action,
         )
+        return self.response_file
+
+    def close(self) -> None:
+        self._record_action()
+        self.closed = True
+        self.close_count += 1
+
+    def request_text(self) -> str:
+        return bytes(self.sent).decode("latin1")
+
+    def request_lines(self) -> list[str]:
+        return self.request_text().split("\r\n")
+
+    def request_header_values(self, name: str) -> list[str]:
+        prefix = f"{name.lower()}:"
+        values: list[str] = []
+        for line in self.request_lines()[1:]:
+            if not line:
+                break
+            if line.lower().startswith(prefix):
+                values.append(line.split(":", 1)[1].strip())
+        return values
+
+
+class _FakeTLSContext:
+    def __init__(
+        self,
+        *,
+        wrap_side_effect: Exception | None = None,
+        on_action: Callable[[], None] | None = None,
+    ) -> None:
+        self._wrap_side_effect = wrap_side_effect
+        self._on_action = on_action
+        self.alpn_protocols: list[str] = []
+        self.post_handshake_auth = False
+        self.server_hostnames: list[str] = []
+
+    def set_alpn_protocols(self, protocols: list[str]) -> None:
+        self.alpn_protocols = protocols
+
+    def wrap_socket(self, raw_sock: _FakeSocket, *, server_hostname: str):
+        if self._on_action is not None:
+            self._on_action()
+        self.server_hostnames.append(server_hostname)
+        if self._wrap_side_effect is not None:
+            raise self._wrap_side_effect
+        return raw_sock
+
+
+class _FakeForwarderUpstream:
+    def __init__(
+        self,
+        *,
+        status: int = 200,
+        body: bytes = b"ok",
+        headers: list[tuple[str, str]] | None = None,
+        addresses: tuple[str, ...] = ("93.184.216.34",),
+        read_side_effect: Exception | None = None,
+        send_side_effect: Exception | None = None,
+        makefile_side_effect: Exception | None = None,
+        setsockopt_side_effect: Exception | None = None,
+        wrap_side_effect: Exception | None = None,
+        on_action: Callable[[], None] | None = None,
+        create_connection: Callable[[tuple[str, int], object, object], _FakeSocket] | None = None,
+    ) -> None:
+        self._addresses = addresses
+        self._response = _http_response(status=status, body=body, headers=headers)
+        self._read_side_effect = read_side_effect
+        self._send_side_effect = send_side_effect
+        self._makefile_side_effect = makefile_side_effect
+        self._setsockopt_side_effect = setsockopt_side_effect
+        self._wrap_side_effect = wrap_side_effect
+        self._on_action = on_action
+        self._create_connection = create_connection
+        self.sockets: list[_FakeSocket] = []
+        self.contexts: list[_FakeTLSContext] = []
+        self.getaddrinfo_calls: list[tuple[str, int]] = []
+        self.create_connection_calls: list[tuple[tuple[str, int], object, object]] = []
+
+    def getaddrinfo(self, host: str, port: int, *_args, **_kwargs):
+        self.getaddrinfo_calls.append((host, port))
+        return [_addrinfo(address, port) for address in self._addresses]
+
+    def create_connection(self, address: tuple[str, int], timeout, source_address):
+        self.create_connection_calls.append((address, timeout, source_address))
+        if self._create_connection is not None:
+            sock = self._create_connection(address, timeout, source_address)
+        else:
+            sock = self.make_socket()
+        self.sockets.append(sock)
+        return sock
+
+    def make_socket(self) -> _FakeSocket:
+        return _FakeSocket(
+            self._response,
+            read_side_effect=self._read_side_effect,
+            send_side_effect=self._send_side_effect,
+            makefile_side_effect=self._makefile_side_effect,
+            setsockopt_side_effect=self._setsockopt_side_effect,
+            on_action=self._on_action,
+        )
+
+    def create_default_context(self) -> _FakeTLSContext:
+        context = _FakeTLSContext(
+            wrap_side_effect=self._wrap_side_effect,
+            on_action=self._on_action,
+        )
+        self.contexts.append(context)
+        return context
+
+    @property
+    def socket(self) -> _FakeSocket:
+        assert self.sockets
+        return self.sockets[-1]
+
+
+@contextlib.contextmanager
+def _fake_forwarder_upstream(**kwargs) -> Iterator[_FakeForwarderUpstream]:
+    upstream = _FakeForwarderUpstream(**kwargs)
+    with (
+        patch.object(forwarder.socket, "getaddrinfo", side_effect=upstream.getaddrinfo),
+        patch.object(
+            forwarder.socket,
+            "create_connection",
+            side_effect=upstream.create_connection,
+        ),
+        patch.object(
+            forwarder.ssl,
+            "create_default_context",
+            side_effect=upstream.create_default_context,
+        ),
+    ):
+        yield upstream
 
 
 class TestAuthBaseForwarderSecurity:
     @pytest.mark.parametrize(
-        "url",
+        ("url", "resolved_address"),
         [
-            pytest.param("https://127.0.0.1/", id="ipv4-loopback"),
-            pytest.param("https://169.254.169.254/", id="ipv4-link-local-metadata"),
-            pytest.param("https://10.0.0.1/", id="ipv4-rfc1918-10"),
-            pytest.param("https://172.16.0.1/", id="ipv4-rfc1918-172"),
-            pytest.param("https://192.168.0.1/", id="ipv4-rfc1918-192"),
-            pytest.param("https://100.64.0.1/", id="ipv4-cgnat"),
-            pytest.param("https://224.0.0.1/", id="ipv4-multicast"),
-            pytest.param("https://240.0.0.1/", id="ipv4-reserved"),
-            pytest.param("https://[::1]/", id="ipv6-loopback"),
-            pytest.param("https://[fe80::1]/", id="ipv6-link-local"),
-            pytest.param("https://[fc00::1]/", id="ipv6-ula"),
-            pytest.param("https://[2001:db8::1]/", id="ipv6-documentation"),
-            pytest.param("https://[::ffff:100.64.0.1]/", id="ipv6-mapped-cgnat"),
-            pytest.param("https://[::ffff:8.8.8.8]/", id="ipv6-mapped-reserved"),
-            pytest.param("https://[2002:0808:0808::1]/", id="ipv6-6to4"),
+            pytest.param("https://127.0.0.1/", "127.0.0.1", id="ipv4-loopback"),
+            pytest.param(
+                "https://169.254.169.254/",
+                "169.254.169.254",
+                id="ipv4-link-local-metadata",
+            ),
+            pytest.param("https://10.0.0.1/", "10.0.0.1", id="ipv4-rfc1918-10"),
+            pytest.param("https://172.16.0.1/", "172.16.0.1", id="ipv4-rfc1918-172"),
+            pytest.param("https://192.168.0.1/", "192.168.0.1", id="ipv4-rfc1918-192"),
+            pytest.param("https://100.64.0.1/", "100.64.0.1", id="ipv4-cgnat"),
+            pytest.param("https://224.0.0.1/", "224.0.0.1", id="ipv4-multicast"),
+            pytest.param("https://240.0.0.1/", "240.0.0.1", id="ipv4-reserved"),
+            pytest.param("https://[::1]/", "::1", id="ipv6-loopback"),
+            pytest.param("https://[fe80::1]/", "fe80::1", id="ipv6-link-local"),
+            pytest.param("https://[fc00::1]/", "fc00::1", id="ipv6-ula"),
+            pytest.param("https://[2001:db8::1]/", "2001:db8::1", id="ipv6-documentation"),
+            pytest.param(
+                "https://[::ffff:100.64.0.1]/",
+                "::ffff:100.64.0.1",
+                id="ipv6-mapped-cgnat",
+            ),
+            pytest.param(
+                "https://[::ffff:8.8.8.8]/",
+                "::ffff:8.8.8.8",
+                id="ipv6-mapped-reserved",
+            ),
+            pytest.param("https://[2002:0808:0808::1]/", "2002:0808:0808::1", id="ipv6-6to4"),
             pytest.param(
                 "https://[2001:0000:4136:e378:8000:63bf:3fff:fdd2]/",
+                "2001:0000:4136:e378:8000:63bf:3fff:fdd2",
                 id="ipv6-teredo",
             ),
-            pytest.param("https://[64:ff9b::169.254.169.254]/", id="ipv6-nat64-metadata"),
-            pytest.param("https://[64:ff9b::8.8.8.8]/", id="ipv6-nat64-reserved"),
+            pytest.param(
+                "https://[64:ff9b::169.254.169.254]/",
+                "64:ff9b::169.254.169.254",
+                id="ipv6-nat64-metadata",
+            ),
+            pytest.param(
+                "https://[64:ff9b::8.8.8.8]/",
+                "64:ff9b::8.8.8.8",
+                id="ipv6-nat64-reserved",
+            ),
         ],
     )
-    def test_rejects_non_public_literal_destinations_without_opening_connection(self, url):
+    async def test_rejects_non_public_destinations_without_opening_connection(
+        self,
+        url: str,
+        resolved_address: str,
+    ):
         with (
-            patch.object(forwarder, "_make_validated_https_connection") as connection_factory,
+            _fake_forwarder_upstream(addresses=(resolved_address,)) as upstream,
             pytest.raises(
                 forwarder.UnsafeAuthBaseDestinationError,
                 match=r"Unsafe auth\.base upstream destination",
             ),
         ):
-            forwarder._forward_request_sync(url, "GET", [], None)
+            await forwarder.forward_request(url, "GET", [], None)
 
-        connection_factory.assert_not_called()
+        assert upstream.create_connection_calls == []
+        assert upstream.sockets == []
 
-    def test_rejects_dns_private_destination_without_opening_connection(self):
+    async def test_rejects_dns_private_destination_without_opening_connection(self):
         with (
-            patch.object(
-                forwarder.socket,
-                "getaddrinfo",
-                return_value=[
-                    (
-                        forwarder.socket.AF_INET,
-                        forwarder.socket.SOCK_STREAM,
-                        6,
-                        "",
-                        ("10.0.0.1", 443),
-                    )
-                ],
-            ),
-            patch.object(forwarder, "_make_validated_https_connection") as connection_factory,
+            _fake_forwarder_upstream(addresses=("10.0.0.1",)) as upstream,
             pytest.raises(forwarder.UnsafeAuthBaseDestinationError),
         ):
-            forwarder._forward_request_sync("https://hooks.example.com/path", "GET", [], None)
+            await forwarder.forward_request("https://hooks.example.com/path", "GET", [], None)
 
-        connection_factory.assert_not_called()
+        assert upstream.getaddrinfo_calls == [("hooks.example.com", 443)]
+        assert upstream.create_connection_calls == []
 
-    def test_rejects_mixed_dns_answers_without_opening_connection(self):
+    async def test_rejects_mixed_dns_answers_without_opening_connection(self):
         with (
-            patch.object(
-                forwarder.socket,
-                "getaddrinfo",
-                return_value=[
-                    (
-                        forwarder.socket.AF_INET,
-                        forwarder.socket.SOCK_STREAM,
-                        6,
-                        "",
-                        ("93.184.216.34", 443),
-                    ),
-                    (
-                        forwarder.socket.AF_INET,
-                        forwarder.socket.SOCK_STREAM,
-                        6,
-                        "",
-                        ("127.0.0.1", 443),
-                    ),
-                ],
-            ),
-            patch.object(forwarder, "_make_validated_https_connection") as connection_factory,
+            _fake_forwarder_upstream(addresses=("93.184.216.34", "127.0.0.1")) as upstream,
             pytest.raises(forwarder.UnsafeAuthBaseDestinationError),
         ):
-            forwarder._forward_request_sync("https://hooks.example.com/path", "GET", [], None)
+            await forwarder.forward_request("https://hooks.example.com/path", "GET", [], None)
 
-        connection_factory.assert_not_called()
+        assert upstream.getaddrinfo_calls == [("hooks.example.com", 443)]
+        assert upstream.create_connection_calls == []
 
-    def test_allows_public_dns_destination_with_validated_addresses(self):
-        resp = MagicMock()
-        resp.status = 200
-        resp.read.return_value = b"ok"
-        resp.getheaders.return_value = []
-        conn = MagicMock()
-        conn.getresponse.return_value = resp
+    async def test_allows_public_dns_destination_and_forwards_with_original_host(self):
+        with _fake_forwarder_upstream(
+            addresses=("93.184.216.34", "2001:4860:4860::8888")
+        ) as upstream:
+            status, body, headers = await forwarder.forward_request(
+                "https://hooks.example.com/path",
+                "GET",
+                [],
+                None,
+            )
 
+        assert status == 200
+        assert body == b"ok"
+        assert list(headers.items(multi=True)) == []
+        assert upstream.getaddrinfo_calls == [("hooks.example.com", 443)]
+        assert upstream.create_connection_calls == [(("93.184.216.34", 443), 30, None)]
+        assert upstream.contexts[-1].server_hostnames == ["hooks.example.com"]
+        assert upstream.socket.request_lines()[0] == "GET /path HTTP/1.1"
+        assert upstream.socket.request_header_values("Host") == ["hooks.example.com"]
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            pytest.param("file:///etc/passwd", id="file"),
+            pytest.param("ftp://evil.com/file", id="ftp"),
+            pytest.param("http://example.com/path", id="http"),
+            pytest.param("//no-scheme.com/path", id="empty-scheme"),
+        ],
+    )
+    async def test_rejects_unsupported_scheme_before_dns(self, url: str):
         with (
-            patch.object(
-                forwarder.socket,
-                "getaddrinfo",
-                return_value=[
-                    (
-                        forwarder.socket.AF_INET,
-                        forwarder.socket.SOCK_STREAM,
-                        6,
-                        "",
-                        ("93.184.216.34", 443),
-                    ),
-                    (
-                        forwarder.socket.AF_INET6,
-                        forwarder.socket.SOCK_STREAM,
-                        6,
-                        "",
-                        ("2001:4860:4860::8888", 443, 0, 0),
-                    ),
-                ],
-            ),
-            patch.object(
-                forwarder, "_make_validated_https_connection", return_value=conn
-            ) as connection_factory,
+            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            pytest.raises(ValueError, match="Unsupported URL scheme"),
         ):
-            forwarder._forward_request_sync("https://hooks.example.com/path", "GET", [], None)
+            await forwarder.forward_request(url, "GET", [], None)
 
-        connection_factory.assert_called_once_with(
-            "hooks.example.com",
-            port=None,
-            timeout=30,
-            validated_addresses=(
-                forwarder._ValidatedAddress("93.184.216.34", 443),
-                forwarder._ValidatedAddress("2001:4860:4860::8888", 443),
-            ),
-        )
-        assert call("Host", "hooks.example.com") in conn.putheader.call_args_list
+        getaddrinfo.assert_not_called()
 
+    async def test_rejects_missing_host_before_dns(self):
+        with (
+            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            pytest.raises(ValueError, match="Invalid upstream URL: missing host"),
+        ):
+            await forwarder.forward_request("https:///path", "GET", [], None)
+
+        getaddrinfo.assert_not_called()
+
+    async def test_rejects_invalid_port_before_dns(self):
+        with (
+            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            pytest.raises(ValueError, match="Invalid upstream URL: invalid port"),
+        ):
+            await forwarder.forward_request("https://example.com:bad/path", "GET", [], None)
+
+        getaddrinfo.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://user@example.com/path",
+            "https://user:pass@example.com/path",
+        ],
+    )
+    async def test_rejects_userinfo_authority_before_dns(self, url: str):
+        with (
+            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            pytest.raises(ValueError, match="Unsupported URL authority"),
+        ):
+            await forwarder.forward_request(url, "GET", [], None)
+
+        getaddrinfo.assert_not_called()
+
+
+class TestAuthBaseForwarderTransportSecurity:
     def test_validated_connection_uses_checked_ip_and_original_hostname_for_sni(self):
         raw_sock = MagicMock()
         wrapped_sock = MagicMock()
@@ -311,104 +527,15 @@ class TestAuthBaseForwarderSecurity:
 
         raw_sock.close.assert_called_once_with()
 
-    def test_rejects_file_scheme(self):
-        with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            forwarder._forward_request_sync("file:///etc/passwd", "GET", [], None)
 
-    def test_rejects_ftp_scheme(self):
-        with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            forwarder._forward_request_sync("ftp://evil.com/file", "GET", [], None)
-
-    def test_rejects_http_scheme_without_opening_connection(self):
-        with (
-            patch.object(forwarder.http_client, "HTTPConnection") as http_conn,
-            patch.object(forwarder, "_make_validated_https_connection") as https_conn,
-            pytest.raises(ValueError, match="Unsupported URL scheme"),
-        ):
-            forwarder._forward_request_sync("http://example.com/path", "GET", [], None)
-        http_conn.assert_not_called()
-        https_conn.assert_not_called()
-
-    def test_rejects_empty_scheme(self):
-        with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            forwarder._forward_request_sync("//no-scheme.com/path", "GET", [], None)
-
-    def test_rejects_missing_host(self):
-        with pytest.raises(ValueError, match="Invalid upstream URL: missing host"):
-            forwarder._forward_request_sync("https:///path", "GET", [], None)
-
-    def test_rejects_invalid_port(self):
-        with pytest.raises(ValueError, match="Invalid upstream URL: invalid port"):
-            forwarder._forward_request_sync("https://example.com:bad/path", "GET", [], None)
-
-    @pytest.mark.parametrize(
-        "url",
-        [
-            "https://user@example.com/path",
-            "https://user:pass@example.com/path",
-        ],
-    )
-    def test_rejects_userinfo_authority(self, url):
-        with (
-            patch.object(forwarder.http_client, "HTTPConnection") as http_conn,
-            patch.object(forwarder, "_make_validated_https_connection") as https_conn,
-            pytest.raises(ValueError, match="Unsupported URL authority"),
-        ):
-            forwarder._forward_request_sync(url, "GET", [], None)
-        http_conn.assert_not_called()
-        https_conn.assert_not_called()
-
-    def test_filters_hop_by_hop_from_response(self):
-        filtered = forwarder._filter_response_headers(
-            [
-                ("Content-Type", "application/json"),
-                ("Transfer-Encoding", "chunked"),
-                ("Connection", "keep-alive"),
-                ("Proxy-Authenticate", "Basic realm=proxy"),
-                ("X-Custom", "value"),
-            ]
-        )
-        assert "Content-Type" in filtered
-        assert "X-Custom" in filtered
-        assert "Transfer-Encoding" not in filtered
-        assert "Connection" not in filtered
-        assert "Proxy-Authenticate" not in filtered
-
-    def test_filters_connection_declared_hop_by_hop_from_response(self):
-        filtered = forwarder._filter_response_headers(
-            [
-                ("Connection", "X-Upstream-Only, x-another-hop"),
-                ("X-Upstream-Only", "drop"),
-                ("x-another-hop", "drop"),
-                ("Set-Cookie", "a=1"),
-                ("Set-Cookie", "b=2"),
-            ]
-        )
-
-        assert "X-Upstream-Only" not in filtered
-        assert "x-another-hop" not in filtered
-        assert filtered.get_all("Set-Cookie") == ["a=1", "b=2"]
-
-    def test_preserves_duplicate_response_headers(self):
-        filtered = forwarder._filter_response_headers(
-            [
-                ("Set-Cookie", "a=1"),
-                ("Set-Cookie", "b=2"),
-                ("Link", "<next>; rel=next"),
-                ("Link", "<prev>; rel=prev"),
-            ]
-        )
-
-        assert filtered.get_all("Set-Cookie") == ["a=1", "b=2"]
-        assert filtered.get_all("Link") == ["<next>; rel=next", "<prev>; rel=prev"]
-
-    def test_returns_redirect_response_without_following(self):
-        with _patched_forwarder_connection(
+class TestAuthBaseForwarderRequestBehavior:
+    async def test_returns_redirect_response_without_following(self):
+        with _fake_forwarder_upstream(
             status=302,
             body=b"",
             headers=[("Location", "https://evil.example.com")],
         ):
-            status, body, headers = forwarder._forward_request_sync(
+            status, body, headers = await forwarder.forward_request(
                 "https://example.com/redirect",
                 "GET",
                 [],
@@ -419,43 +546,32 @@ class TestAuthBaseForwarderSecurity:
         assert body == b""
         assert headers["Location"] == "https://evil.example.com"
 
-    def test_repeated_request_headers_are_written_individually(self):
-        with _patched_forwarder_connection() as upstream:
-            forwarder._forward_request_sync(
+    async def test_repeated_request_headers_are_written_individually(self):
+        with _fake_forwarder_upstream() as upstream:
+            await forwarder.forward_request(
                 "https://example.com/path?x=1",
                 "GET",
                 [("X-Repeat", "one"), ("X-Repeat", "two")],
                 None,
             )
 
-        upstream.conn.putrequest.assert_called_once_with(
-            "GET",
-            "/path?x=1",
-            skip_host=True,
-            skip_accept_encoding=True,
-        )
-        upstream.conn.putheader.assert_has_calls(
-            [
-                call("Host", "example.com"),
-                call("X-Repeat", "one"),
-                call("X-Repeat", "two"),
-            ]
-        )
-        assert call("Content-Length", "0") not in upstream.conn.putheader.call_args_list
+        assert upstream.socket.request_lines()[0] == "GET /path?x=1 HTTP/1.1"
+        assert upstream.socket.request_header_values("Host") == ["example.com"]
+        assert upstream.socket.request_header_values("X-Repeat") == ["one", "two"]
+        assert upstream.socket.request_header_values("Content-Length") == []
 
-    def test_absent_body_strips_stale_content_length(self):
-        with _patched_forwarder_connection() as upstream:
-            forwarder._forward_request_sync(
+    async def test_absent_body_strips_stale_content_length(self):
+        with _fake_forwarder_upstream() as upstream:
+            await forwarder.forward_request(
                 "https://example.com/path",
                 "POST",
                 [("Content-Length", "999"), ("X-Keep", "ok")],
                 None,
             )
 
-        header_names = [args[0].lower() for args, _ in upstream.conn.putheader.call_args_list]
-        assert "content-length" not in header_names
-        assert call("X-Keep", "ok") in upstream.conn.putheader.call_args_list
-        upstream.conn.endheaders.assert_called_once_with(None)
+        assert upstream.socket.request_header_values("Content-Length") == []
+        assert upstream.socket.request_header_values("X-Keep") == ["ok"]
+        assert upstream.socket.request_text().endswith("\r\n\r\n")
 
     @pytest.mark.parametrize(
         ("url", "expected_target"),
@@ -482,21 +598,16 @@ class TestAuthBaseForwarderSecurity:
             ),
         ],
     )
-    def test_request_target_preserves_url_parts(self, url, expected_target):
-        with _patched_forwarder_connection() as upstream:
-            forwarder._forward_request_sync(url, "GET", [], None)
+    async def test_request_target_preserves_url_parts(self, url: str, expected_target: str):
+        with _fake_forwarder_upstream() as upstream:
+            await forwarder.forward_request(url, "GET", [], None)
 
-        upstream.conn.putrequest.assert_called_once_with(
-            "GET",
-            expected_target,
-            skip_host=True,
-            skip_accept_encoding=True,
-        )
+        assert upstream.socket.request_lines()[0] == f"GET {expected_target} HTTP/1.1"
 
     @pytest.mark.parametrize(
         (
             "url",
-            "expected_connection_host",
+            "expected_dns_host",
             "expected_connection_port",
             "expected_host_header",
         ),
@@ -509,70 +620,59 @@ class TestAuthBaseForwarderSecurity:
                 id="https-default-port",
             ),
             pytest.param(
-                "https://[2001:db8::1]:444/path",
-                "2001:db8::1",
+                "https://[2001:4860:4860::8888]:444/path",
+                "2001:4860:4860::8888",
                 444,
-                "[2001:db8::1]:444",
+                "[2001:4860:4860::8888]:444",
                 id="ipv6-non-default-port",
             ),
             pytest.param(
-                "https://[2001:db8::1]/path",
-                "2001:db8::1",
-                None,
-                "[2001:db8::1]",
+                "https://[2001:4860:4860::8888]/path",
+                "2001:4860:4860::8888",
+                443,
+                "[2001:4860:4860::8888]",
                 id="ipv6-no-port",
             ),
             pytest.param(
-                "https://[2001:db8::1]:443/path",
-                "2001:db8::1",
+                "https://[2001:4860:4860::8888]:443/path",
+                "2001:4860:4860::8888",
                 443,
-                "[2001:db8::1]",
+                "[2001:4860:4860::8888]",
                 id="ipv6-https-default-port",
             ),
             pytest.param(
-                "https://[2001:db8::1]:80/path",
-                "2001:db8::1",
+                "https://[2001:4860:4860::8888]:80/path",
+                "2001:4860:4860::8888",
                 80,
-                "[2001:db8::1]:80",
+                "[2001:4860:4860::8888]:80",
                 id="ipv6-https-http-default-port",
             ),
         ],
     )
-    def test_url_authority_sets_connection_target_and_host_header(
+    async def test_url_authority_sets_connection_target_and_host_header(
         self,
         url: str,
-        expected_connection_host: str,
-        expected_connection_port: int | None,
+        expected_dns_host: str,
+        expected_connection_port: int,
         expected_host_header: str,
     ):
-        with _patched_forwarder_connection() as upstream:
-            forwarder._forward_request_sync(
+        with _fake_forwarder_upstream() as upstream:
+            await forwarder.forward_request(
                 url,
                 "GET",
                 [],
                 None,
             )
 
-        upstream.connection_factory.assert_called_once_with(
-            expected_connection_host,
-            port=expected_connection_port,
-            timeout=30,
-            validated_addresses=(
-                forwarder._ValidatedAddress(
-                    "93.184.216.34",
-                    expected_connection_port or forwarder.DEFAULT_HTTPS_PORT,
-                ),
-            ),
-        )
-        upstream.resolver.assert_called_once_with(
-            expected_connection_host,
-            expected_connection_port or forwarder.DEFAULT_HTTPS_PORT,
-        )
-        assert call("Host", expected_host_header) in upstream.conn.putheader.call_args_list
+        assert upstream.getaddrinfo_calls == [(expected_dns_host, expected_connection_port)]
+        assert upstream.create_connection_calls == [
+            (("93.184.216.34", expected_connection_port), 30, None)
+        ]
+        assert upstream.socket.request_header_values("Host") == [expected_host_header]
 
-    def test_filters_request_hop_by_hop_headers_and_recomputes_content_length(self):
-        with _patched_forwarder_connection() as upstream:
-            forwarder._forward_request_sync(
+    async def test_filters_request_hop_by_hop_headers_and_recomputes_content_length(self):
+        with _fake_forwarder_upstream() as upstream:
+            await forwarder.forward_request(
                 "https://example.com:444/path",
                 "PUT",
                 [
@@ -588,33 +688,30 @@ class TestAuthBaseForwarderSecurity:
                 b"abc",
             )
 
-        header_calls = upstream.conn.putheader.call_args_list
-        header_names = [args[0].lower() for args, _ in header_calls]
-        assert "connection" not in header_names
-        assert "x-remove" not in header_names
-        assert "keep-alive" not in header_names
-        assert "proxy-authorization" not in header_names
-        assert "transfer-encoding" not in header_names
-        assert call("Host", "example.com:444") in header_calls
-        assert call("X-Keep", "ok") in header_calls
-        assert call("Content-Length", "3") in header_calls
-        assert call("Content-Length", "999") not in header_calls
-        upstream.conn.endheaders.assert_called_once_with(b"abc")
+        assert upstream.socket.request_header_values("Connection") == []
+        assert upstream.socket.request_header_values("X-Remove") == []
+        assert upstream.socket.request_header_values("Keep-Alive") == []
+        assert upstream.socket.request_header_values("Proxy-Authorization") == []
+        assert upstream.socket.request_header_values("Transfer-Encoding") == []
+        assert upstream.socket.request_header_values("Host") == ["example.com:444"]
+        assert upstream.socket.request_header_values("X-Keep") == ["ok"]
+        assert upstream.socket.request_header_values("Content-Length") == ["3"]
+        assert upstream.socket.request_text().endswith("\r\n\r\nabc")
 
-    def test_explicit_empty_body_sets_zero_content_length(self):
-        with _patched_forwarder_connection() as upstream:
-            forwarder._forward_request_sync(
+    async def test_explicit_empty_body_sets_zero_content_length(self):
+        with _fake_forwarder_upstream() as upstream:
+            await forwarder.forward_request(
                 "https://example.com/path",
                 "POST",
                 [],
                 b"",
             )
 
-        assert call("Content-Length", "0") in upstream.conn.putheader.call_args_list
-        upstream.conn.endheaders.assert_called_once_with(b"")
+        assert upstream.socket.request_header_values("Content-Length") == ["0"]
+        assert upstream.socket.request_text().endswith("\r\n\r\n")
 
-    def test_preserves_duplicate_response_headers_and_filters_connection_names(self):
-        with _patched_forwarder_connection(
+    async def test_preserves_duplicate_response_headers_and_filters_connection_names(self):
+        with _fake_forwarder_upstream(
             headers=[
                 ("Set-Cookie", "a=1"),
                 ("Set-Cookie", "b=2"),
@@ -623,7 +720,7 @@ class TestAuthBaseForwarderSecurity:
                 ("X-Keep", "ok"),
             ]
         ):
-            _status, _body, headers = forwarder._forward_request_sync(
+            _status, _body, headers = await forwarder.forward_request(
                 "https://example.com",
                 "GET",
                 [],
@@ -637,30 +734,39 @@ class TestAuthBaseForwarderSecurity:
         assert ("X-Remove", "drop") not in pairs
         assert ("X-Keep", "ok") in pairs
 
-
-class TestAuthBaseForwarderResponseBodyLimit:
-    def test_reads_response_with_bounded_size(self):
-        with (
-            patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
-            _patched_forwarder_connection(body=b"ok") as upstream,
+    async def test_filters_hop_by_hop_response_headers(self):
+        with _fake_forwarder_upstream(
+            body=b"2\r\nok\r\n0\r\n\r\n",
+            headers=[
+                ("Content-Type", "application/json"),
+                ("Transfer-Encoding", "chunked"),
+                ("Connection", "keep-alive"),
+                ("Proxy-Authenticate", "Basic realm=proxy"),
+                ("X-Custom", "value"),
+            ],
         ):
-            status, body, _headers = forwarder._forward_request_sync(
+            _status, _body, headers = await forwarder.forward_request(
                 "https://example.com",
                 "GET",
                 [],
                 None,
             )
 
-        assert status == 200
-        assert body == b"ok"
-        upstream.resp.read.assert_called_once_with(5)
+        assert _body == b"ok"
+        assert "Content-Type" in headers
+        assert "X-Custom" in headers
+        assert "Transfer-Encoding" not in headers
+        assert "Connection" not in headers
+        assert "Proxy-Authenticate" not in headers
 
-    def test_accepts_body_at_limit(self):
+
+class TestAuthBaseForwarderResponseBodyLimit:
+    async def test_accepts_body_at_limit(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
-            _patched_forwarder_connection(body=b"1234") as upstream,
+            _fake_forwarder_upstream(body=b"1234") as upstream,
         ):
-            status, body, _headers = forwarder._forward_request_sync(
+            status, body, _headers = await forwarder.forward_request(
                 "https://example.com",
                 "GET",
                 [],
@@ -669,28 +775,30 @@ class TestAuthBaseForwarderResponseBodyLimit:
 
         assert status == 200
         assert body == b"1234"
-        upstream.resp.read.assert_called_once_with(5)
+        assert upstream.socket.response_file is not None
+        assert upstream.socket.response_file.read_sizes == [5]
 
-    def test_rejects_body_over_limit_and_closes_resources(self):
+    async def test_rejects_body_over_limit_and_closes_resources(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_RESPONSE_BODY_BYTES", 4),
-            _patched_forwarder_connection(body=b"12345") as upstream,
+            _fake_forwarder_upstream(body=b"12345") as upstream,
             pytest.raises(forwarder.ForwardedResponseTooLargeError),
         ):
-            forwarder._forward_request_sync("https://example.com", "GET", [], None)
+            await forwarder.forward_request("https://example.com", "GET", [], None)
 
-        upstream.resp.read.assert_called_once_with(5)
-        upstream.resp.close.assert_called_once()
-        upstream.conn.close.assert_called_once()
+        assert upstream.socket.response_file is not None
+        assert upstream.socket.response_file.read_sizes == [5]
+        assert upstream.socket.response_file.closed
+        assert upstream.socket.closed
 
 
 class TestAuthBaseForwarderRequestBodyLimit:
-    def test_accepts_body_at_limit(self):
+    async def test_accepts_body_at_limit(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
-            _patched_forwarder_connection() as upstream,
+            _fake_forwarder_upstream() as upstream,
         ):
-            status, body, _headers = forwarder._forward_request_sync(
+            status, body, _headers = await forwarder.forward_request(
                 "https://example.com",
                 "POST",
                 [],
@@ -699,96 +807,12 @@ class TestAuthBaseForwarderRequestBodyLimit:
 
         assert status == 200
         assert body == b"ok"
-        upstream.conn.endheaders.assert_called_once_with(b"1234")
+        assert upstream.socket.request_text().endswith("\r\n\r\n1234")
 
-    def test_rejects_body_over_limit_before_connection_setup(self):
+    async def test_rejects_body_over_limit_before_connection_setup(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
-            _patched_forwarder_connection() as upstream,
-            pytest.raises(forwarder.ForwardedRequestTooLargeError),
-        ):
-            forwarder._forward_request_sync(
-                "https://example.com",
-                "POST",
-                [],
-                b"12345",
-            )
-
-        upstream.resolver.assert_not_called()
-        upstream.connection_factory.assert_not_called()
-        upstream.conn.endheaders.assert_not_called()
-
-
-class TestAuthBaseForwarderResourceCleanup:
-    def test_closes_response_on_success(self):
-        with _patched_forwarder_connection(
-            headers=[("Content-Type", "application/json")]
-        ) as upstream:
-            status, body, _ = forwarder._forward_request_sync(
-                "https://example.com", "GET", [], None
-            )
-        assert status == 200
-        assert body == b"ok"
-        upstream.resp.close.assert_called_once()
-        upstream.conn.close.assert_called_once()
-
-    def test_preserves_duplicate_headers_on_error_status(self):
-        with _patched_forwarder_connection(
-            status=429,
-            body=b"rate limited",
-            headers=[
-                ("WWW-Authenticate", "Bearer realm=one"),
-                ("WWW-Authenticate", "Bearer realm=two"),
-                ("Content-Type", "text/plain"),
-            ],
-        ) as upstream:
-            status, body, headers = forwarder._forward_request_sync(
-                "https://example.com", "GET", [], None
-            )
-
-        assert status == 429
-        assert body == b"rate limited"
-        assert headers.get_all("WWW-Authenticate") == ["Bearer realm=one", "Bearer realm=two"]
-        assert headers["Content-Type"] == "text/plain"
-        upstream.resp.close.assert_called_once()
-        upstream.conn.close.assert_called_once()
-
-    def test_closes_response_when_read_raises(self):
-        with (
-            _patched_forwarder_connection(read_side_effect=OSError("socket closed")) as upstream,
-            pytest.raises(OSError, match="socket closed"),
-        ):
-            forwarder._forward_request_sync("https://example.com", "GET", [], None)
-        upstream.resp.close.assert_called_once()
-        upstream.conn.close.assert_called_once()
-
-    def test_closes_connection_when_request_raises(self):
-        with (
-            _patched_forwarder_connection(
-                putrequest_side_effect=ConnectionError("connect failed")
-            ) as upstream,
-            pytest.raises(ConnectionError, match="connect failed"),
-        ):
-            forwarder._forward_request_sync("https://example.com", "GET", [], None)
-        upstream.conn.close.assert_called_once()
-
-    def test_closes_connection_when_getresponse_raises(self):
-        with (
-            _patched_forwarder_connection(
-                getresponse_side_effect=ConnectionError("response failed")
-            ) as upstream,
-            pytest.raises(ConnectionError, match="response failed"),
-        ):
-            forwarder._forward_request_sync("https://example.com", "GET", [], None)
-        upstream.resp.close.assert_not_called()
-        upstream.conn.close.assert_called_once()
-
-
-class TestForwardRequestAsyncWrapper:
-    async def test_rejects_body_over_limit_before_sync_forward(self):
-        with (
-            patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
-            patch.object(forwarder, "_forward_request_sync") as sync_forward,
+            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
             pytest.raises(forwarder.ForwardedRequestTooLargeError),
         ):
             await forwarder.forward_request(
@@ -798,30 +822,125 @@ class TestForwardRequestAsyncWrapper:
                 b"12345",
             )
 
-        sync_forward.assert_not_called()
+        getaddrinfo.assert_not_called()
+
+
+class TestAuthBaseForwarderResourceCleanup:
+    async def test_closes_response_and_connection_on_success(self):
+        with _fake_forwarder_upstream(headers=[("Content-Type", "application/json")]) as upstream:
+            status, body, _ = await forwarder.forward_request(
+                "https://example.com", "GET", [], None
+            )
+
+        assert status == 200
+        assert body == b"ok"
+        assert upstream.socket.response_file is not None
+        assert upstream.socket.response_file.closed
+        assert upstream.socket.closed
+
+    async def test_preserves_duplicate_headers_on_error_status(self):
+        with _fake_forwarder_upstream(
+            status=429,
+            body=b"rate limited",
+            headers=[
+                ("WWW-Authenticate", "Bearer realm=one"),
+                ("WWW-Authenticate", "Bearer realm=two"),
+                ("Content-Type", "text/plain"),
+            ],
+        ) as upstream:
+            status, body, headers = await forwarder.forward_request(
+                "https://example.com", "GET", [], None
+            )
+
+        assert status == 429
+        assert body == b"rate limited"
+        assert headers.get_all("WWW-Authenticate") == ["Bearer realm=one", "Bearer realm=two"]
+        assert headers["Content-Type"] == "text/plain"
+        assert upstream.socket.response_file is not None
+        assert upstream.socket.response_file.closed
+        assert upstream.socket.closed
+
+    async def test_closes_response_when_read_raises(self):
+        with (
+            _fake_forwarder_upstream(read_side_effect=OSError("socket closed")) as upstream,
+            pytest.raises(OSError, match="socket closed"),
+        ):
+            await forwarder.forward_request("https://example.com", "GET", [], None)
+
+        assert upstream.socket.response_file is not None
+        assert upstream.socket.response_file.closed
+        assert upstream.socket.closed
+
+    async def test_closes_connection_when_request_raises(self):
+        with (
+            _fake_forwarder_upstream(
+                send_side_effect=ConnectionError("connect failed")
+            ) as upstream,
+            pytest.raises(ConnectionError, match="connect failed"),
+        ):
+            await forwarder.forward_request("https://example.com", "GET", [], None)
+
+        assert upstream.socket.response_file is None
+        assert upstream.socket.closed
+
+    async def test_closes_connection_when_getresponse_raises(self):
+        with (
+            _fake_forwarder_upstream(
+                makefile_side_effect=ConnectionError("response failed")
+            ) as upstream,
+            pytest.raises(ConnectionError, match="response failed"),
+        ):
+            await forwarder.forward_request("https://example.com", "GET", [], None)
+
+        assert upstream.socket.response_file is None
+        assert upstream.socket.closed
+
+
+class TestForwardRequestAsyncWrapper:
+    async def test_rejects_body_over_limit_before_forwarding(self):
+        with (
+            patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            pytest.raises(forwarder.ForwardedRequestTooLargeError),
+        ):
+            await forwarder.forward_request(
+                "https://example.com",
+                "POST",
+                [],
+                b"12345",
+            )
+
+        getaddrinfo.assert_not_called()
 
     async def test_releases_forward_slot_when_forwarding_raises(self):
+        first = True
+
+        def create_connection(_address, _timeout, _source_address):
+            nonlocal first
+
+            if first:
+                first = False
+                return _FakeSocket(
+                    _http_response(),
+                    send_side_effect=ConnectionError("upstream unavailable"),
+                )
+            return _FakeSocket(_http_response())
+
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
-            patch.object(forwarder, "_forward_request_semaphore_state", None),
-            patch.object(
-                forwarder,
-                "_forward_request_sync",
-                side_effect=[
-                    ConnectionError("upstream unavailable"),
-                    (200, b"ok", {}),
-                ],
-            ),
+            _fake_forwarder_upstream(create_connection=create_connection),
         ):
             with pytest.raises(ConnectionError, match="upstream unavailable"):
                 await forwarder.forward_request("https://example.com", "GET", [], None)
 
-            result = await asyncio.wait_for(
+            status, body, headers = await asyncio.wait_for(
                 forwarder.forward_request("https://example.com", "GET", [], None),
                 timeout=1,
             )
 
-        assert result == (200, b"ok", {})
+        assert status == 200
+        assert body == b"ok"
+        assert list(headers.items(multi=True)) == []
 
     async def test_limits_concurrent_forwarding_work(self):
         active = 0
@@ -830,8 +949,9 @@ class TestForwardRequestAsyncWrapper:
         lock = threading.Lock()
         cap_reached = threading.Event()
         release = threading.Event()
+        cap = 2
 
-        def blocking_forward(*_args):
+        def create_connection(_address, _timeout, _source_address):
             nonlocal active
             nonlocal max_active
             nonlocal started
@@ -840,18 +960,21 @@ class TestForwardRequestAsyncWrapper:
                 active += 1
                 started += 1
                 max_active = max(max_active, active)
-                if started == forwarder.MAX_CONCURRENT_AUTH_BASE_FORWARDS:
+                if started == cap:
                     cap_reached.set()
             try:
                 if not release.wait(timeout=5):
                     raise TimeoutError("test did not release blocked forwards")
-                return 200, b"ok", {}
+                return _FakeSocket(_http_response())
             finally:
                 with lock:
                     active -= 1
 
-        task_count = forwarder.MAX_CONCURRENT_AUTH_BASE_FORWARDS + 2
-        with patch.object(forwarder, "_forward_request_sync", side_effect=blocking_forward):
+        task_count = cap + 2
+        with (
+            patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", cap),
+            _fake_forwarder_upstream(create_connection=create_connection),
+        ):
             tasks = [
                 asyncio.create_task(
                     forwarder.forward_request("https://example.com", "GET", [], None)
@@ -861,70 +984,26 @@ class TestForwardRequestAsyncWrapper:
             try:
                 cap_was_reached = await asyncio.to_thread(cap_reached.wait, 2)
                 assert cap_was_reached
-                await asyncio.sleep(0)
-                with lock:
-                    assert started == forwarder.MAX_CONCURRENT_AUTH_BASE_FORWARDS
-                    assert max_active == forwarder.MAX_CONCURRENT_AUTH_BASE_FORWARDS
                 release.set()
                 results = await asyncio.gather(*tasks)
             finally:
                 release.set()
                 await asyncio.gather(*tasks, return_exceptions=True)
 
-        assert results == [(200, b"ok", {})] * task_count
+        response_summaries = [
+            (status, body, list(headers.items(multi=True))) for status, body, headers in results
+        ]
+        assert response_summaries == [(200, b"ok", [])] * task_count
+        assert max_active == cap
 
     async def test_offloads_request_work_from_event_loop_thread(self):
         event_loop_thread_id = threading.get_ident()
-        forwarding_thread_ids = []
+        forwarding_thread_ids: list[int] = []
 
         def record_forwarding_thread():
             forwarding_thread_ids.append(threading.get_ident())
 
-        class FakeResponse:
-            status = 200
-
-            def read(self, size):
-                record_forwarding_thread()
-                return b"ok"
-
-            def getheaders(self):
-                record_forwarding_thread()
-                return [("Content-Type", "text/plain")]
-
-            def close(self):
-                record_forwarding_thread()
-
-        class FakeConnection:
-            def __init__(self, host, *, port, timeout, validated_addresses):
-                self.host = host
-                self.port = port
-                self.timeout = timeout
-                self.validated_addresses = validated_addresses
-
-            def putrequest(self, method, target, *, skip_host, skip_accept_encoding):
-                record_forwarding_thread()
-
-            def putheader(self, name, value):
-                record_forwarding_thread()
-
-            def endheaders(self, body):
-                record_forwarding_thread()
-
-            def getresponse(self):
-                record_forwarding_thread()
-                return FakeResponse()
-
-            def close(self):
-                record_forwarding_thread()
-
-        with (
-            patch.object(forwarder, "_make_validated_https_connection", FakeConnection),
-            patch.object(
-                forwarder,
-                "_resolve_validated_addresses",
-                return_value=(forwarder._ValidatedAddress("93.184.216.34", 443),),
-            ),
-        ):
+        with _fake_forwarder_upstream(on_action=record_forwarding_thread):
             status, body, headers = await forwarder.forward_request(
                 "https://example.com",
                 "GET",
@@ -934,7 +1013,7 @@ class TestForwardRequestAsyncWrapper:
 
         assert status == 200
         assert body == b"ok"
-        assert headers["Content-Type"] == "text/plain"
+        assert list(headers.items(multi=True)) == []
         assert forwarding_thread_ids
         assert all(thread_id != event_loop_thread_id for thread_id in forwarding_thread_ids)
 
@@ -945,62 +1024,6 @@ class TestForwardRequestAsyncWrapper:
             "http://example.com",
         ],
     )
-    async def test_propagates_validation_errors(self, url):
+    async def test_propagates_validation_errors(self, url: str):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
             await forwarder.forward_request(url, "GET", [], None)
-
-    async def test_closes_connection_when_request_raises(self):
-        event_loop_thread_id = threading.get_ident()
-        close_thread_ids = []
-
-        def record_close_thread():
-            close_thread_ids.append(threading.get_ident())
-
-        conn = MagicMock()
-        conn.putrequest.side_effect = ConnectionError("connect failed")
-        conn.close.side_effect = record_close_thread
-        with (
-            patch.object(forwarder, "_make_validated_https_connection", return_value=conn),
-            patch.object(
-                forwarder,
-                "_resolve_validated_addresses",
-                return_value=(forwarder._ValidatedAddress("93.184.216.34", 443),),
-            ),
-            pytest.raises(ConnectionError, match="connect failed"),
-        ):
-            await forwarder.forward_request("https://example.com", "GET", [], None)
-        conn.close.assert_called_once()
-        assert close_thread_ids
-        assert all(thread_id != event_loop_thread_id for thread_id in close_thread_ids)
-
-    async def test_closes_response_when_read_raises(self):
-        event_loop_thread_id = threading.get_ident()
-        close_thread_ids = []
-
-        def record_close_thread():
-            close_thread_ids.append(threading.get_ident())
-
-        resp = MagicMock()
-        resp.status = 200
-        resp.read.side_effect = OSError("socket closed")
-        resp.getheaders.return_value = []
-        resp.close.side_effect = record_close_thread
-        conn = MagicMock()
-        conn.getresponse.return_value = resp
-        conn.close.side_effect = record_close_thread
-
-        with (
-            patch.object(forwarder, "_make_validated_https_connection", return_value=conn),
-            patch.object(
-                forwarder,
-                "_resolve_validated_addresses",
-                return_value=(forwarder._ValidatedAddress("93.184.216.34", 443),),
-            ),
-            pytest.raises(OSError, match="socket closed"),
-        ):
-            await forwarder.forward_request("https://example.com", "GET", [], None)
-
-        resp.close.assert_called_once()
-        conn.close.assert_called_once()
-        assert close_thread_ids
-        assert all(thread_id != event_loop_thread_id for thread_id in close_thread_ids)

@@ -53,7 +53,9 @@ export function activePriceId(
   return env("ZERO_PRICE")?.[tier]?.[0];
 }
 
-export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
+export function tierForKnownPriceId(
+  priceId: string,
+): SubscriptionCheckoutTier | null {
   const priceMap = env("ZERO_PRICE");
   if (priceMap) {
     for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
@@ -61,6 +63,14 @@ export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
         return tier;
       }
     }
+  }
+  return null;
+}
+
+export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
+  const tier = tierForKnownPriceId(priceId);
+  if (tier) {
+    return tier;
   }
   throw new Error(`Unknown Stripe price ID: ${priceId}`);
 }
