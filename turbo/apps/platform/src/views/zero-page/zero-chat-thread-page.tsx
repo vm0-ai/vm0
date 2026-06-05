@@ -163,6 +163,7 @@ import {
   ZeroChatComposer,
   type QueuedComposerItem,
 } from "./zero-chat-composer.tsx";
+import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
 import {
   setThreadGenerationTemplate$,
   threadGenerationTemplate$,
@@ -2291,6 +2292,14 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const loadingHistory = loadHistoryLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
+  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
+  const rootSignal = useGet(rootSignal$);
+  const onSubmitFeedback = (prompt: string) => {
+    detach(
+      sendMessage(prompt, null, { includeDraftAttachments: false }, rootSignal),
+      Reason.DomCallback,
+    );
+  };
   const onLoadHistory = onDomEventFn(() => {
     return loadHistory(pageSignal);
   });
@@ -2343,6 +2352,8 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
 
         {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
       </div>
+
+      <ChatFeedbackSelection onSubmit={onSubmitFeedback} />
     </>
   );
 }
