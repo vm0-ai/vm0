@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_WORKING_DIR,
   type ArtifactEntry,
 } from "@vm0/api-contracts/contracts/runners";
@@ -1930,6 +1931,132 @@ describe("POST /api/agent/runs", () => {
         );
       })?.missingRootPolicy,
     ).toBeUndefined();
+  });
+
+  it("restores historical canonical memory artifacts for the current framework", async () => {
+    const fx = await fixture();
+    await trackModelProviders(Promise.resolve({ orgId: fx.orgId }));
+    const db = store.set(writeDb$);
+    await db.insert(modelProviders).values({
+      orgId: fx.orgId,
+      userId: ORG_SENTINEL_USER_ID,
+      type: "codex-oauth-token",
+      authMethod: "auth_json",
+      isDefault: true,
+      selectedModel: "gpt-5.4",
+    });
+    await db.insert(secretsTable).values([
+      {
+        orgId: fx.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("provider-chatgpt-access"),
+        type: "model-provider",
+      },
+      {
+        orgId: fx.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_REFRESH_TOKEN",
+        encryptedValue: encryptSecretForTests("provider-chatgpt-refresh"),
+        type: "model-provider",
+      },
+      {
+        orgId: fx.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_ACCOUNT_ID",
+        encryptedValue: encryptSecretForTests("workspace-id"),
+        type: "model-provider",
+      },
+      {
+        orgId: fx.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_ID_TOKEN",
+        encryptedValue: encryptSecretForTests("provider-id-token"),
+        type: "model-provider",
+      },
+    ]);
+    const compose = await createCompose({ fixture: fx });
+
+    const first = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "first" },
+      }),
+      [201],
+    );
+    await db
+      .update(agentSessions)
+      .set({
+        artifacts: [
+          {
+            name: "memory",
+            mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+          },
+        ],
+      })
+      .where(eq(agentSessions.id, first.body.sessionId));
+    await store.set(
+      seedConversationForSession$,
+      { runId: first.body.runId, sessionId: first.body.sessionId },
+      context.signal,
+    );
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, first.body.runId));
+
+    const continued = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          sessionId: first.body.sessionId,
+          prompt: "continue in codex",
+          modelProviderType: "codex-oauth-token",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, continued.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+        }[];
+      };
+      readonly storageProvisioningManifest: {
+        readonly entries: readonly {
+          readonly intent: string;
+          readonly source: { readonly name: string };
+          readonly destination: {
+            readonly type: string;
+            readonly framework?: string;
+          };
+        }[];
+      };
+    };
+
+    expect(
+      executionContext.storageManifest.artifacts.find((artifact) => {
+        return artifact.vasStorageName === "memory";
+      })?.mountPath,
+    ).toBe(CANONICAL_CODEX_MEMORY_MOUNT_PATH);
+    expect(
+      executionContext.storageProvisioningManifest.entries.find((entry) => {
+        return entry.source.name === "memory";
+      }),
+    ).toMatchObject({
+      intent: "memory",
+      destination: {
+        type: "framework-memory",
+        framework: "codex",
+      },
+    });
   });
 
   it("includes compose artifacts and volumes in the runner storage manifest", async () => {

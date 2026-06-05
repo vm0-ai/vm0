@@ -675,6 +675,20 @@ function isCanonicalAutoMemoryArtifact(
   );
 }
 
+function isAnyCanonicalAutoMemoryMountPath(mountPath: string): boolean {
+  return (
+    mountPath === CANONICAL_CODEX_MEMORY_MOUNT_PATH ||
+    mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
+  );
+}
+
+function isHistoricalAutoMemoryArtifact(artifact: ContextArtifact): boolean {
+  return (
+    artifact.name === AUTO_MEMORY_ARTIFACT_NAME &&
+    isAnyCanonicalAutoMemoryMountPath(artifact.mountPath)
+  );
+}
+
 function withAutoMemoryMissingRootPolicy(
   artifact: ContextArtifact,
 ): ContextArtifact {
@@ -688,11 +702,12 @@ function restoreHistoricalAutoMemoryMetadata(
   artifact: ContextArtifact,
   framework: SupportedFramework,
 ): ContextArtifact {
-  if (!isCanonicalAutoMemoryArtifact(artifact, framework)) {
+  if (!isHistoricalAutoMemoryArtifact(artifact)) {
     return artifact;
   }
   return {
     ...artifact,
+    mountPath: autoMemoryMountPath(framework),
     provisioningDestination: frameworkMemoryDestination(framework),
   };
 }

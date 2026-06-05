@@ -2391,17 +2391,17 @@ fn push_cleanup_path_if_safe(paths: &mut Vec<String>, path: &str) {
 }
 
 fn is_safe_storage_cleanup_path(path: &str) -> bool {
-    if path.contains('\0') {
+    if !is_strict_absolute_storage_cleanup_path(path) {
         return false;
     }
     if path == CANONICAL_WORKING_DIR || path.starts_with(&format!("{CANONICAL_WORKING_DIR}/")) {
-        return !has_traversal_segment(path);
+        return true;
     }
     if let Some(rest) = path.strip_prefix("/mnt/") {
-        return first_segment_is_safe(rest) && !has_traversal_segment(path);
+        return first_segment_is_safe(rest);
     }
     if is_framework_skill_path(path) {
-        return !has_traversal_segment(path);
+        return true;
     }
     path == CANONICAL_CODEX_MEMORY_MOUNT_PATH || path == CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
 }
@@ -2419,9 +2419,13 @@ fn first_segment_is_safe(rest: &str) -> bool {
     !first.is_empty() && first != "." && first != ".."
 }
 
-fn has_traversal_segment(path: &str) -> bool {
+fn is_strict_absolute_storage_cleanup_path(path: &str) -> bool {
+    if !path.starts_with('/') || path.contains('\0') {
+        return false;
+    }
     path.split('/')
-        .any(|segment| segment == "." || segment == "..")
+        .skip(1)
+        .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }
 
 /// Download storage volumes into the guest.
@@ -8099,6 +8103,50 @@ mod tests {
     // -----------------------------------------------------------------------
     // filter_unchanged_storages tests
     // -----------------------------------------------------------------------
+
+    #[test]
+    fn cleanup_path_policy_accepts_guest_download_cleanup_targets() {
+        for path in [
+            CANONICAL_WORKING_DIR,
+            "/home/user/workspace/reports",
+            "/mnt/docs",
+            "/mnt/docs/reports",
+            "/home/user/.claude/skills/slack",
+            "/home/user/.codex/skills/research-kit",
+            CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+            CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+        ] {
+            assert!(
+                is_safe_storage_cleanup_path(path),
+                "{path} should be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn cleanup_path_policy_rejects_paths_guest_download_would_reject() {
+        for path in [
+            "",
+            "mnt/docs",
+            "/",
+            "/mnt",
+            "/mnt/docs/",
+            "/mnt/docs//reports",
+            "/mnt/docs/../other",
+            "/home/user/workspace/",
+            "/home/user/workspace//reports",
+            "/home/user/workspace/../.ssh",
+            "/home/user/.claude",
+            "/home/user/.claude/skills/slack/",
+            "/home/user/.claude/skills/slack//notes",
+            "/home/user/.codex/memories/extra",
+        ] {
+            assert!(
+                !is_safe_storage_cleanup_path(path),
+                "{path} should be rejected"
+            );
+        }
+    }
 
     fn guest_art(name: &str, ver: &str, url: Option<&str>) -> GuestDownloadArtifactEntry {
         guest_art_with_policy(name, ver, url, None)
