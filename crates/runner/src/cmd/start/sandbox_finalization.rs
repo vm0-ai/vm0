@@ -784,6 +784,7 @@ mod tests {
                     format!("{CANONICAL_WORKING_DIR}/artifact"),
                     ("artifact".to_owned(), "v1".to_owned()),
                 )]),
+                ..Default::default()
             };
             let promotion = test_promotion_context(
                 lease,

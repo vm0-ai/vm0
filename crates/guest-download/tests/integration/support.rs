@@ -162,11 +162,12 @@ pub(crate) fn write_manifest(
 pub(crate) fn run_guest_download(manifest_path: &str) -> bool {
     guest_common::log::clear_system_log_file();
     // Integration tests use tempdirs instead of real guest paths. Production
-    // path policy only honors this in debug test binaries.
-    // SAFETY: integration tests set the same process-wide test root before
-    // invoking guest-download. The value is stable (`std::env::temp_dir()`),
-    // so parallel tests do not race by changing policy.
+    // path policy only honors this when tests explicitly opt in.
+    // SAFETY: integration tests set the same process-wide values before
+    // invoking guest-download. The values are stable, so parallel tests do not
+    // race by changing policy.
     unsafe {
+        std::env::set_var("VM0_GUEST_DOWNLOAD_ALLOW_TEST_PATHS", "1");
         std::env::set_var("VM0_GUEST_DOWNLOAD_TEST_ROOT", std::env::temp_dir());
     }
     guest_download::run(manifest_path)

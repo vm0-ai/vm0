@@ -2379,19 +2379,34 @@ pub(crate) fn filter_storage_fingerprints_for_working_dir(
     fingerprints: &StorageFingerprints,
     working_dir: &str,
 ) -> StorageFingerprints {
-    let keep_path = |mount_path: &str| is_workspace_scoped_path(mount_path, working_dir);
+    let keep_storage_key =
+        |key: &str| is_workspace_scoped_path(fingerprints.storage_cleanup_path(key), working_dir);
+    let keep_artifact_key =
+        |key: &str| is_workspace_scoped_path(fingerprints.artifact_cleanup_path(key), working_dir);
     StorageFingerprints {
         storages: fingerprints
             .storages
             .iter()
-            .filter(|(path, _)| keep_path(path))
-            .map(|(path, value)| (path.clone(), value.clone()))
+            .filter(|(key, _)| keep_storage_key(key))
+            .map(|(key, value)| (key.clone(), value.clone()))
             .collect(),
         artifacts: fingerprints
             .artifacts
             .iter()
-            .filter(|(path, _)| keep_path(path))
-            .map(|(path, value)| (path.clone(), value.clone()))
+            .filter(|(key, _)| keep_artifact_key(key))
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        storage_cleanup_paths: fingerprints
+            .storage_cleanup_paths
+            .iter()
+            .filter(|(key, _)| keep_storage_key(key))
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        artifact_cleanup_paths: fingerprints
+            .artifact_cleanup_paths
+            .iter()
+            .filter(|(key, _)| keep_artifact_key(key))
+            .map(|(key, value)| (key.clone(), value.clone()))
             .collect(),
     }
 }
@@ -3185,6 +3200,7 @@ mod tests {
                             "/workspace/artifact".into(),
                             ("artifact".into(), "v1".into()),
                         )]),
+                        ..Default::default()
                     },
                     state: WorkspaceCacheState::Current,
                 },
@@ -3709,11 +3725,27 @@ mod tests {
                     ("escape".into(), "v1".into()),
                 ),
                 ("/tmp/cache".into(), ("tmp".into(), "v1".into())),
+                (
+                    "{\"type\":\"mnt\",\"name\":\"typed\"}".into(),
+                    ("typed".into(), "v1".into()),
+                ),
             ]),
             artifacts: HashMap::from([
                 ("/workspace/art".into(), ("art".into(), "v1".into())),
                 ("/home/user/.codex".into(), ("codex".into(), "v1".into())),
+                (
+                    "{\"type\":\"workspace\",\"subPath\":\"typed-art\"}".into(),
+                    ("typed-art".into(), "v1".into()),
+                ),
             ]),
+            storage_cleanup_paths: HashMap::from([(
+                "{\"type\":\"mnt\",\"name\":\"typed\"}".into(),
+                "/workspace/typed".into(),
+            )]),
+            artifact_cleanup_paths: HashMap::from([(
+                "{\"type\":\"workspace\",\"subPath\":\"typed-art\"}".into(),
+                "/workspace/typed-art".into(),
+            )]),
         };
 
         let filtered = filter_storage_fingerprints_for_working_dir(&fingerprints, "/workspace");
@@ -3724,8 +3756,18 @@ mod tests {
         assert!(!filtered.storages.contains_key("/workspace2"));
         assert!(!filtered.storages.contains_key("/workspace/../outside"));
         assert!(!filtered.storages.contains_key("/tmp/cache"));
+        assert!(
+            filtered
+                .storages
+                .contains_key("{\"type\":\"mnt\",\"name\":\"typed\"}")
+        );
         assert!(filtered.artifacts.contains_key("/workspace/art"));
         assert!(!filtered.artifacts.contains_key("/home/user/.codex"));
+        assert!(
+            filtered
+                .artifacts
+                .contains_key("{\"type\":\"workspace\",\"subPath\":\"typed-art\"}")
+        );
 
         let trailing_slash_filtered =
             filter_storage_fingerprints_for_working_dir(&fingerprints, "/workspace/");
@@ -3736,6 +3778,11 @@ mod tests {
                 .contains_key("/workspace/sub")
         );
         assert!(!trailing_slash_filtered.storages.contains_key("/workspace2"));
+        assert!(
+            trailing_slash_filtered
+                .storages
+                .contains_key("{\"type\":\"mnt\",\"name\":\"typed\"}")
+        );
     }
 
     #[test]

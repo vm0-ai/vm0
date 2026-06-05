@@ -7,7 +7,7 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 use api_contracts::generated::types::runners::storage::{
-    StorageManifest, StorageProvisioningManifest,
+    StorageManifest, StorageProvisioningEntryIntent, StorageProvisioningManifest,
 };
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
@@ -32,10 +32,22 @@ pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 1800;
 /// All comparisons use `(vas_storage_name, vas_version_id)` tuples.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StorageFingerprints {
-    /// mount_path → (vas_storage_name, vas_version_id) for regular storages.
+    /// fingerprint key → (vas_storage_name, vas_version_id) for regular storages.
     pub storages: HashMap<String, (String, String)>,
-    /// mount_path → (vas_storage_name, vas_version_id) for artifacts.
+    /// fingerprint key → (vas_storage_name, vas_version_id) for artifacts.
     pub artifacts: HashMap<String, (String, String)>,
+    /// fingerprint key → resolved guest cleanup path for regular storages.
+    #[serde(default)]
+    pub storage_cleanup_paths: HashMap<String, String>,
+    /// fingerprint key → resolved guest cleanup path for artifacts.
+    #[serde(default)]
+    pub artifact_cleanup_paths: HashMap<String, String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StorageFingerprintKeys {
+    pub storages: Vec<String>,
+    pub artifacts: Vec<String>,
 }
 
 const TAINTED_STORAGE_FINGERPRINT_NAME: &str = "\0vm0-tainted-storage\0";
@@ -44,51 +56,87 @@ const TAINTED_STORAGE_FINGERPRINT_VERSION: &str = "\0vm0-tainted-storage\0";
 impl StorageFingerprints {
     pub fn from_manifest(manifest: &StorageManifest) -> Self {
         let mut storages = HashMap::new();
+        let mut storage_cleanup_paths = HashMap::new();
         for s in &manifest.storages {
             storages.insert(
                 s.mount_path.clone(),
                 (s.vas_storage_name.clone(), s.vas_version_id.clone()),
             );
+            storage_cleanup_paths.insert(s.mount_path.clone(), s.mount_path.clone());
         }
         let mut artifacts = HashMap::new();
+        let mut artifact_cleanup_paths = HashMap::new();
         for a in &manifest.artifacts {
             artifacts.insert(
                 a.mount_path.clone(),
                 (a.vas_storage_name.clone(), a.vas_version_id.clone()),
             );
+            artifact_cleanup_paths.insert(a.mount_path.clone(), a.mount_path.clone());
         }
         Self {
             storages,
             artifacts,
+            storage_cleanup_paths,
+            artifact_cleanup_paths,
         }
     }
 
-    pub fn from_guest_download_manifest(manifest: &GuestDownloadManifest) -> Self {
+    fn from_guest_download_manifest_with_keys(
+        manifest: &GuestDownloadManifest,
+        keys: &StorageFingerprintKeys,
+    ) -> Result<Self, String> {
+        if manifest.storages.len() != keys.storages.len() {
+            return Err("storage fingerprint key count does not match manifest".to_string());
+        }
+        if manifest.artifacts.len() != keys.artifacts.len() {
+            return Err("artifact fingerprint key count does not match manifest".to_string());
+        }
         let mut storages = HashMap::new();
-        for s in &manifest.storages {
+        let mut storage_cleanup_paths = HashMap::new();
+        for (s, key) in manifest.storages.iter().zip(keys.storages.iter()) {
             storages.insert(
-                s.mount_path.clone(),
+                key.clone(),
                 (s.vas_storage_name.clone(), s.vas_version_id.clone()),
             );
+            storage_cleanup_paths.insert(key.clone(), s.mount_path.clone());
         }
         let mut artifacts = HashMap::new();
-        for a in &manifest.artifacts {
+        let mut artifact_cleanup_paths = HashMap::new();
+        for (a, key) in manifest.artifacts.iter().zip(keys.artifacts.iter()) {
             artifacts.insert(
-                a.mount_path.clone(),
+                key.clone(),
                 (a.vas_storage_name.clone(), a.vas_version_id.clone()),
             );
+            artifact_cleanup_paths.insert(key.clone(), a.mount_path.clone());
         }
-        Self {
+        Ok(Self {
             storages,
             artifacts,
-        }
+            storage_cleanup_paths,
+            artifact_cleanup_paths,
+        })
     }
 
     pub fn from_storage_provisioning_manifest(
         manifest: &StorageProvisioningManifest,
     ) -> Result<Self, String> {
         let guest_manifest = GuestDownloadManifest::try_from(manifest)?;
-        Ok(Self::from_guest_download_manifest(&guest_manifest))
+        let keys = StorageFingerprintKeys::from_storage_provisioning_manifest(manifest)?;
+        Self::from_guest_download_manifest_with_keys(&guest_manifest, &keys)
+    }
+
+    pub(crate) fn storage_cleanup_path<'a>(&'a self, key: &'a str) -> &'a str {
+        self.storage_cleanup_paths
+            .get(key)
+            .map(String::as_str)
+            .unwrap_or(key)
+    }
+
+    pub(crate) fn artifact_cleanup_path<'a>(&'a self, key: &'a str) -> &'a str {
+        self.artifact_cleanup_paths
+            .get(key)
+            .map(String::as_str)
+            .unwrap_or(key)
     }
 
     pub(crate) fn tainted_paths(&self) -> Self {
@@ -109,12 +157,58 @@ impl StorageFingerprints {
                 .keys()
                 .map(|path| (path.clone(), tainted()))
                 .collect(),
+            storage_cleanup_paths: self.storage_cleanup_paths.clone(),
+            artifact_cleanup_paths: self.artifact_cleanup_paths.clone(),
         }
     }
 
     pub(crate) fn fingerprint_is_tainted(fingerprint: &(String, String)) -> bool {
         fingerprint.0 == TAINTED_STORAGE_FINGERPRINT_NAME
             && fingerprint.1 == TAINTED_STORAGE_FINGERPRINT_VERSION
+    }
+}
+
+impl StorageFingerprintKeys {
+    pub fn from_guest_download_manifest(manifest: &GuestDownloadManifest) -> Self {
+        Self {
+            storages: manifest
+                .storages
+                .iter()
+                .map(|entry| entry.mount_path.clone())
+                .collect(),
+            artifacts: manifest
+                .artifacts
+                .iter()
+                .map(|entry| entry.mount_path.clone())
+                .collect(),
+        }
+    }
+
+    pub fn from_storage_provisioning_manifest(
+        manifest: &StorageProvisioningManifest,
+    ) -> Result<Self, String> {
+        let _ = GuestDownloadManifest::try_from(manifest)?;
+        let mut storages = Vec::new();
+        let mut artifacts = Vec::new();
+        for entry in &manifest.entries {
+            let key = serde_json::to_string(&entry.destination)
+                .map_err(|error| format!("storage destination fingerprint: {error}"))?;
+            match entry.intent {
+                StorageProvisioningEntryIntent::UserVolume
+                | StorageProvisioningEntryIntent::Instructions
+                | StorageProvisioningEntryIntent::Skill => {
+                    storages.push(key);
+                }
+                StorageProvisioningEntryIntent::UserArtifact
+                | StorageProvisioningEntryIntent::Memory => {
+                    artifacts.push(key);
+                }
+            }
+        }
+        Ok(Self {
+            storages,
+            artifacts,
+        })
     }
 }
 
@@ -1098,10 +1192,74 @@ mod tests {
 
     use sandbox::{ResourceLimits, SandboxConfig};
     use sandbox_mock::{MockSandbox, MockSandboxFactory, MockSandboxOverrides};
+    use serde_json::json;
 
     fn make_budget_lease(vcpu: u32, memory_mb: u32) -> BudgetLease {
         let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
         ResourceBudget::try_reserve_lease(&budget, vcpu, memory_mb).unwrap()
+    }
+
+    #[test]
+    fn storage_provisioning_fingerprints_use_destination_keys_and_cleanup_paths() {
+        let manifest: StorageProvisioningManifest = serde_json::from_value(json!({
+            "version": "2",
+            "entries": [
+                {
+                    "intent": "user-volume",
+                    "source": {
+                        "kind": "storage",
+                        "name": "docs",
+                        "vasStorageName": "docs",
+                        "vasVersionId": "v1",
+                        "archiveUrl": "https://example.com/docs.tar.gz"
+                    },
+                    "destination": {
+                        "type": "mnt",
+                        "name": "docs"
+                    }
+                },
+                {
+                    "intent": "user-artifact",
+                    "source": {
+                        "kind": "artifact",
+                        "name": "reports",
+                        "vasStorageName": "reports",
+                        "vasStorageId": "storage-id",
+                        "vasVersionId": "v2",
+                        "archiveUrl": "https://example.com/reports.tar.gz"
+                    },
+                    "destination": {
+                        "type": "workspace",
+                        "subPath": "reports"
+                    }
+                }
+            ]
+        }))
+        .unwrap();
+
+        let fingerprints = StorageFingerprints::from_storage_provisioning_manifest(&manifest)
+            .expect("storage provisioning fingerprints");
+
+        assert_eq!(fingerprints.storages.len(), 1);
+        assert!(!fingerprints.storages.contains_key("/mnt/docs"));
+        let storage_key = fingerprints.storages.keys().next().unwrap();
+        assert!(storage_key.contains("\"type\":\"mnt\""));
+        assert!(storage_key.contains("\"name\":\"docs\""));
+        assert_eq!(fingerprints.storage_cleanup_path(storage_key), "/mnt/docs");
+
+        assert_eq!(fingerprints.artifacts.len(), 1);
+        assert!(
+            !fingerprints
+                .artifacts
+                .contains_key("/home/user/workspace/reports")
+        );
+        let artifact_key = fingerprints.artifacts.keys().next().unwrap();
+        assert!(artifact_key.contains("\"type\":\"workspace\""));
+        assert!(artifact_key.contains("\"subPath\":\"reports\""));
+        assert_eq!(
+            fingerprints.artifact_cleanup_path(artifact_key),
+            "/home/user/workspace/reports"
+        );
     }
 
     fn make_candidate_for(session_id: &str, vcpu: u32, memory_mb: u32) -> ParkedIdleCandidate {
@@ -1281,6 +1439,7 @@ mod tests {
                 "/workspace".into(),
                 ("artifact-a".into(), "artifact-version-3".into()),
             )]),
+            ..Default::default()
         };
         let expected_storage_fingerprints = storage_fingerprints.clone();
         let request = IdleParkRequest::new(IdleParkRequestParts {

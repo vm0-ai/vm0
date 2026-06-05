@@ -93,6 +93,9 @@ fn is_strict_absolute_path(path: &str) -> bool {
 
 #[cfg(debug_assertions)]
 fn is_debug_allowed_test_path(path: &str) -> bool {
+    if std::env::var("VM0_GUEST_DOWNLOAD_ALLOW_TEST_PATHS").as_deref() != Ok("1") {
+        return false;
+    }
     let Ok(root) = std::env::var("VM0_GUEST_DOWNLOAD_TEST_ROOT") else {
         return false;
     };

@@ -272,12 +272,34 @@ export const storageProvisioningEntrySchema = z
       z.infer<typeof storageProvisioningIntentSchema>,
       z.infer<typeof storageProvisioningSourceKindSchema>
     >;
+    const destinationTypesByIntent = {
+      "user-volume": ["workspace", "mnt"],
+      "user-artifact": ["workspace", "mnt"],
+      instructions: ["framework-instructions"],
+      skill: ["framework-skill"],
+      memory: ["framework-memory"],
+    } as const satisfies Record<
+      z.infer<typeof storageProvisioningIntentSchema>,
+      readonly z.infer<typeof storageProvisioningDestinationTypeSchema>[]
+    >;
 
     if (entry.source.kind !== sourceKindByIntent[entry.intent]) {
       ctx.addIssue({
         code: "custom",
         message: `${entry.intent} entries require ${sourceKindByIntent[entry.intent]} sources`,
         path: ["source", "kind"],
+      });
+    }
+    const allowedDestinationTypes = destinationTypesByIntent[
+      entry.intent
+    ] as readonly z.infer<typeof storageProvisioningDestinationTypeSchema>[];
+    if (!allowedDestinationTypes.includes(entry.destination.type)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `${entry.intent} entries require ${allowedDestinationTypes.join(
+          " or ",
+        )} destinations`,
+        path: ["destination", "type"],
       });
     }
 
@@ -299,6 +321,27 @@ export const storageProvisioningEntrySchema = z
       ctx.addIssue({
         code: "custom",
         message: "instructionsTargetFilename is only valid for instructions",
+        path: ["instructionsTargetFilename"],
+      });
+    }
+    if (
+      entry.intent === "instructions" &&
+      entry.instructionsTargetFilename === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "instructions entries require instructionsTargetFilename",
+        path: ["instructionsTargetFilename"],
+      });
+    }
+    if (
+      entry.instructionsTargetFilename !== undefined &&
+      entry.instructionsTargetFilename !== "CLAUDE.md" &&
+      entry.instructionsTargetFilename !== "AGENTS.md"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "instructionsTargetFilename must be CLAUDE.md or AGENTS.md",
         path: ["instructionsTargetFilename"],
       });
     }

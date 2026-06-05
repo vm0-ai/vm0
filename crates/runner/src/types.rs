@@ -332,6 +332,14 @@ fn validate_storage_provisioning_entry(entry: &StorageProvisioningEntry) -> Resu
             entry.intent
         ));
     }
+    if entry.intent != StorageProvisioningEntryIntent::Instructions
+        && entry.instructions_target_filename.is_some()
+    {
+        return Err("instructionsTargetFilename is only valid for instructions".to_string());
+    }
+    if entry.missing_root_policy.is_some() {
+        return Err("missingRootPolicy is only valid for artifacts".to_string());
+    }
     match entry.intent {
         StorageProvisioningEntryIntent::UserVolume => match entry.destination.type_ {
             StorageProvisioningEntryDestinationType::Workspace
@@ -346,10 +354,13 @@ fn validate_storage_provisioning_entry(entry: &StorageProvisioningEntry) -> Resu
                     "instructions entries require framework-instructions destinations".to_string(),
                 );
             }
-            if entry.instructions_target_filename.is_none() {
-                return Err("instructions entries require instructionsTargetFilename".to_string());
+            match entry.instructions_target_filename.as_deref() {
+                Some("CLAUDE.md" | "AGENTS.md") => Ok(()),
+                Some(_) => {
+                    Err("instructionsTargetFilename must be CLAUDE.md or AGENTS.md".to_string())
+                }
+                None => Err("instructions entries require instructionsTargetFilename".to_string()),
             }
-            Ok(())
         }
         StorageProvisioningEntryIntent::Skill => {
             if entry.destination.type_ != StorageProvisioningEntryDestinationType::FrameworkSkill {
@@ -369,6 +380,9 @@ fn validate_artifact_provisioning_entry(entry: &StorageProvisioningEntry) -> Res
             "{:?} entries require artifact sources",
             entry.intent
         ));
+    }
+    if entry.instructions_target_filename.is_some() {
+        return Err("instructionsTargetFilename is only valid for instructions".to_string());
     }
     match entry.intent {
         StorageProvisioningEntryIntent::UserArtifact => match entry.destination.type_ {
@@ -1198,6 +1212,85 @@ mod tests {
         let error = GuestDownloadManifest::try_from(&manifest).unwrap_err();
 
         assert!(error.contains("skillName"));
+    }
+
+    #[test]
+    fn storage_provisioning_manifest_rejects_invalid_instruction_target_filename() {
+        let manifest: StorageProvisioningManifest = serde_json::from_value(json!({
+            "version": "2",
+            "entries": [{
+                "intent": "instructions",
+                "source": {
+                    "kind": "storage",
+                    "name": "instructions",
+                    "vasStorageName": "instructions",
+                    "vasVersionId": "v1",
+                    "archiveUrl": "https://example.com/instructions.tar.gz"
+                },
+                "destination": {
+                    "type": "framework-instructions",
+                    "framework": "codex"
+                },
+                "instructionsTargetFilename": "../AGENTS.md"
+            }]
+        }))
+        .unwrap();
+
+        let error = GuestDownloadManifest::try_from(&manifest).unwrap_err();
+
+        assert!(error.contains("instructionsTargetFilename must be CLAUDE.md or AGENTS.md"));
+    }
+
+    #[test]
+    fn storage_provisioning_manifest_rejects_api_only_field_misuse() {
+        let storage_with_artifact_policy: StorageProvisioningManifest =
+            serde_json::from_value(json!({
+                "version": "2",
+                "entries": [{
+                    "intent": "user-volume",
+                    "source": {
+                        "kind": "storage",
+                        "name": "docs",
+                        "vasStorageName": "docs",
+                        "vasVersionId": "v1",
+                        "archiveUrl": "https://example.com/docs.tar.gz"
+                    },
+                    "destination": {
+                        "type": "mnt",
+                        "name": "docs"
+                    },
+                    "missingRootPolicy": "preserveParentVersion"
+                }]
+            }))
+            .unwrap();
+
+        let error = GuestDownloadManifest::try_from(&storage_with_artifact_policy).unwrap_err();
+        assert!(error.contains("missingRootPolicy is only valid for artifacts"));
+
+        let artifact_with_instruction_filename: StorageProvisioningManifest =
+            serde_json::from_value(json!({
+                "version": "2",
+                "entries": [{
+                    "intent": "user-artifact",
+                    "source": {
+                        "kind": "artifact",
+                        "name": "workspace",
+                        "vasStorageName": "workspace",
+                        "vasStorageId": "storage-id",
+                        "vasVersionId": "v1",
+                        "archiveUrl": "https://example.com/workspace.tar.gz"
+                    },
+                    "destination": {
+                        "type": "workspace"
+                    },
+                    "instructionsTargetFilename": "AGENTS.md"
+                }]
+            }))
+            .unwrap();
+
+        let error =
+            GuestDownloadManifest::try_from(&artifact_with_instruction_filename).unwrap_err();
+        assert!(error.contains("instructionsTargetFilename is only valid for instructions"));
     }
 
     #[test]

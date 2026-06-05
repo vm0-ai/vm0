@@ -338,6 +338,78 @@ describe("runner storage manifest contract", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("rejects intent and destination mismatches", () => {
+    const result = storageProvisioningManifestSchema.safeParse({
+      version: "2",
+      entries: [
+        {
+          intent: "user-volume",
+          source: {
+            kind: "storage",
+            name: "docs",
+            vasStorageName: "docs",
+            vasVersionId: "version-1",
+            archiveUrl: "https://storage.example/docs.tar.gz",
+          },
+          destination: {
+            type: "framework-skill",
+            framework: "codex",
+            skillName: "docs",
+          },
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects instruction entries without canonical target filenames", () => {
+    expect(
+      storageProvisioningManifestSchema.safeParse({
+        version: "2",
+        entries: [
+          {
+            intent: "instructions",
+            source: {
+              kind: "storage",
+              name: "instructions",
+              vasStorageName: "instructions",
+              vasVersionId: "version-1",
+              archiveUrl: "https://storage.example/instructions.tar.gz",
+            },
+            destination: {
+              type: "framework-instructions",
+              framework: "codex",
+            },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      storageProvisioningManifestSchema.safeParse({
+        version: "2",
+        entries: [
+          {
+            intent: "instructions",
+            source: {
+              kind: "storage",
+              name: "instructions",
+              vasStorageName: "instructions",
+              vasVersionId: "version-1",
+              archiveUrl: "https://storage.example/instructions.tar.gz",
+            },
+            destination: {
+              type: "framework-instructions",
+              framework: "codex",
+            },
+            instructionsTargetFilename: "../CLAUDE.md",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("runner apiStartTime contract", () => {
