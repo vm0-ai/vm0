@@ -18,6 +18,15 @@ pub struct RemoteExecResult {
     pub stderr_truncated: bool,
 }
 
+/// Result of requesting host-side sandbox termination.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RemoteKillResult {
+    /// The owning sandbox runtime accepted the termination request.
+    Accepted,
+    /// The owning sandbox runtime is already stopping or stopped.
+    AlreadyStopped,
+}
+
 /// Errors from sandbox control operations.
 #[derive(Debug, thiserror::Error)]
 pub enum SandboxControlError {
@@ -51,6 +60,10 @@ pub trait SandboxControl: Send + Sync {
         timeout: Duration,
         sudo: bool,
     ) -> Result<RemoteExecResult, SandboxControlError>;
+
+    /// Request host-side termination of a running sandbox identified by
+    /// sandbox ID (full UUID or unique prefix).
+    async fn kill_remote(&self, sandbox_id: &str) -> Result<RemoteKillResult, SandboxControlError>;
 
     /// Return the runtime socket directory for a given sandbox ID.
     ///

@@ -68,6 +68,35 @@ pub enum ExecResponse {
     },
 }
 
+/// Host-side control action requested over the local control socket.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminateAction {
+    Terminate,
+}
+
+/// Request from a host-side termination client.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TerminateRequest {
+    pub action: TerminateAction,
+}
+
+/// Result status for a host-side termination request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminateStatus {
+    Accepted,
+    AlreadyStopped,
+}
+
+/// Response to a host-side termination client.
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum TerminateResponse {
+    Status { status: TerminateStatus },
+    Error { error: String },
+}
+
 /// Maximum frame size: 64 MiB (generous for large stdout/stderr).
 const MAX_FRAME_SIZE: u32 = 64 * 1024 * 1024;
 
@@ -244,5 +273,50 @@ mod tests {
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["error"], "sandbox not running");
         assert!(json.get("exit_code").is_none());
+    }
+
+    #[test]
+    fn terminate_protocol_round_trip() {
+        let request = TerminateRequest {
+            action: TerminateAction::Terminate,
+        };
+        let request_json = serde_json::to_vec(&request).unwrap();
+
+        let decoded: TerminateRequest = serde_json::from_slice(&request_json).unwrap();
+        assert!(matches!(decoded.action, TerminateAction::Terminate));
+
+        let response = TerminateResponse::Status {
+            status: TerminateStatus::Accepted,
+        };
+        let response_json = serde_json::to_vec(&response).unwrap();
+        let decoded: TerminateResponse = serde_json::from_slice(&response_json).unwrap();
+        assert_eq!(
+            decoded,
+            TerminateResponse::Status {
+                status: TerminateStatus::Accepted
+            }
+        );
+
+        let response = TerminateResponse::Error {
+            error: "sandbox not running".into(),
+        };
+        let response_json = serde_json::to_vec(&response).unwrap();
+        let decoded: TerminateResponse = serde_json::from_slice(&response_json).unwrap();
+        assert_eq!(
+            decoded,
+            TerminateResponse::Error {
+                error: "sandbox not running".into()
+            }
+        );
+    }
+
+    #[test]
+    fn terminate_request_does_not_decode_as_exec_request() {
+        let request = TerminateRequest {
+            action: TerminateAction::Terminate,
+        };
+        let request_json = serde_json::to_vec(&request).unwrap();
+
+        assert!(serde_json::from_slice::<ExecRequest>(&request_json).is_err());
     }
 }

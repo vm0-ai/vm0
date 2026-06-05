@@ -424,6 +424,10 @@ impl ProcessMonitorHandle {
         let _ = self.kill_tx.send(());
     }
 
+    fn termination_handle(&self) -> control::ProcessTerminationHandle {
+        control::ProcessTerminationHandle::new(self.kill_tx.clone())
+    }
+
     async fn wait(self) {
         let _ = self.task.await;
     }
@@ -447,6 +451,12 @@ impl SandboxRuntimeHandles {
 
     fn set_balloon(&mut self, balloon: balloon::ControllerHandle) {
         self.balloon = Some(balloon);
+    }
+
+    fn process_termination_handle(&self) -> Option<control::ProcessTerminationHandle> {
+        self.process
+            .as_ref()
+            .map(ProcessMonitorHandle::termination_handle)
     }
 
     fn balloon_mut(&mut self) -> &mut Option<balloon::ControllerHandle> {
@@ -1675,9 +1685,17 @@ impl Sandbox for FirecrackerSandbox {
         *self.guest.lock().await = Some(Arc::new(vsock_guest));
 
         let control_sock_path = self.sock_paths.control_sock();
+        let Some(termination_handle) = self.runtime.process_termination_handle() else {
+            self.guest.lock().await.take();
+            self.runtime.kill_process().await;
+            return Err(SandboxError::Start {
+                message: "process monitor missing before control socket bind".into(),
+            });
+        };
         let control_server = match control::bind_server(
             control_sock_path.clone(),
             self.guest_operation_start_gate(),
+            termination_handle,
         ) {
             Ok(server) => server,
             Err(e) => {
@@ -5538,7 +5556,7 @@ mod tests {
             Arc::clone(&state),
             Arc::clone(&state_publish_lock),
             state_tx,
-            guest,
+            Arc::clone(&guest),
             runtime_cancel.clone(),
         );
 
@@ -5567,12 +5585,6 @@ mod tests {
         let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
         let runtime_cancel = CancellationToken::new();
-        let mut control = crate::control::bind_server(
-            sock_path.clone(),
-            GuestOperationStartGate::new(Arc::clone(&guest), ParkCoordinator::new()),
-        )
-        .unwrap()
-        .spawn(runtime_cancel.clone());
         let mut child = monitored_cat_process();
         let stdin = child.stdin.take();
 
@@ -5582,9 +5594,16 @@ mod tests {
             Arc::clone(&state),
             Arc::clone(&state_publish_lock),
             state_tx,
-            guest,
-            runtime_cancel,
+            Arc::clone(&guest),
+            runtime_cancel.clone(),
         );
+        let mut control = crate::control::bind_server(
+            sock_path.clone(),
+            GuestOperationStartGate::new(Arc::clone(&guest), ParkCoordinator::new()),
+            handle.termination_handle(),
+        )
+        .unwrap()
+        .spawn(runtime_cancel.clone());
 
         drop(stdin);
         wait_for_path_removed(&sock_path).await;

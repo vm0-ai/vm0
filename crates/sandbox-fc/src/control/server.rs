@@ -6,24 +6,50 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use serde::Serialize;
 use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::mpsc;
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::CONTROL_SOCKET_OVERHEAD_MS;
-use super::protocol::{ExecRequest, ExecResponse, read_frame, write_frame};
+use super::protocol::{
+    ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
+    TerminateStatus, read_frame, write_frame,
+};
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 
 const RUNNER_EXEC_CAPTURE_LIMIT_BYTES: u32 = 7 * 1024 * 1024;
 const CONTROL_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 const CONTROL_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 
+/// Cloneable handle used by the control server to ask the process monitor to
+/// terminate the sandbox process group.
+#[derive(Clone)]
+pub(crate) struct ProcessTerminationHandle {
+    kill_tx: mpsc::UnboundedSender<()>,
+}
+
+impl ProcessTerminationHandle {
+    pub(crate) fn new(kill_tx: mpsc::UnboundedSender<()>) -> Self {
+        Self { kill_tx }
+    }
+
+    fn request_terminate(&self) -> TerminateStatus {
+        match self.kill_tx.send(()) {
+            Ok(()) => TerminateStatus::Accepted,
+            Err(_) => TerminateStatus::AlreadyStopped,
+        }
+    }
+}
+
 /// A control socket server whose listener has already been bound.
 pub(crate) struct BoundControlServer {
     sock_path: Option<SocketPathGuard>,
     listener: Option<UnixListener>,
     guest_operations: GuestOperationStartGate,
+    termination: ProcessTerminationHandle,
 }
 
 impl BoundControlServer {
@@ -41,6 +67,7 @@ impl BoundControlServer {
             listener,
             sock_path.clone(),
             self.guest_operations.clone(),
+            self.termination.clone(),
             shutdown.clone(),
         );
         ControlServerHandle {
@@ -167,6 +194,7 @@ impl SocketPathGuard {
 pub(crate) fn bind_server(
     sock_path: PathBuf,
     guest_operations: GuestOperationStartGate,
+    termination: ProcessTerminationHandle,
 ) -> io::Result<BoundControlServer> {
     let listener = bind_unix_listener(&sock_path)?;
     let sock_path = SocketPathGuard::new(sock_path);
@@ -174,6 +202,7 @@ pub(crate) fn bind_server(
         sock_path: Some(sock_path),
         listener: Some(listener),
         guest_operations,
+        termination,
     })
 }
 
@@ -198,6 +227,7 @@ fn spawn_bound_server(
     listener: UnixListener,
     sock_path: SocketPathGuard,
     guest_operations: GuestOperationStartGate,
+    termination: ProcessTerminationHandle,
     shutdown: CancellationToken,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -227,9 +257,10 @@ fn spawn_bound_server(
                     };
 
                     let guest_operations = guest_operations.clone();
+                    let termination = termination.clone();
                     let handler_shutdown = shutdown.clone();
                     handlers.spawn(async move {
-                        if let Err(e) = handle_connection(stream, guest_operations, handler_shutdown).await {
+                        if let Err(e) = handle_connection(stream, guest_operations, termination, handler_shutdown).await {
                             warn!(error = %e, "control connection handler error");
                         }
                     });
@@ -283,6 +314,7 @@ async fn shutdown_handlers(handlers: &mut JoinSet<()>) {
 async fn handle_connection(
     mut stream: UnixStream,
     guest_operations: GuestOperationStartGate,
+    termination: ProcessTerminationHandle,
     shutdown: CancellationToken,
 ) -> io::Result<()> {
     let frame = tokio::select! {
@@ -290,6 +322,11 @@ async fn handle_connection(
         () = shutdown.cancelled() => return Ok(()),
         result = read_frame(&mut stream) => result?,
     };
+
+    if let Ok(request) = serde_json::from_slice::<TerminateRequest>(&frame) {
+        let response = terminate(request, &termination);
+        return write_json_frame(&mut stream, &response).await;
+    }
 
     let response = match serde_json::from_slice::<ExecRequest>(&frame) {
         Ok(request) => tokio::select! {
@@ -302,8 +339,7 @@ async fn handle_connection(
         },
     };
 
-    let response_json = serde_json::to_vec(&response)
-        .map_err(|e| io::Error::other(format!("serialize response: {e}")))?;
+    let response_json = encode_json_frame(&response)?;
     tokio::select! {
         biased;
         () = shutdown.cancelled() => return Ok(()),
@@ -311,6 +347,29 @@ async fn handle_connection(
     }
 
     Ok(())
+}
+
+fn terminate(
+    request: TerminateRequest,
+    termination: &ProcessTerminationHandle,
+) -> TerminateResponse {
+    match request.action {
+        TerminateAction::Terminate => TerminateResponse::Status {
+            status: termination.request_terminate(),
+        },
+    }
+}
+
+async fn write_json_frame<Response: Serialize>(
+    stream: &mut UnixStream,
+    response: &Response,
+) -> io::Result<()> {
+    let response_json = encode_json_frame(response)?;
+    write_frame(stream, &response_json).await
+}
+
+fn encode_json_frame<Response: Serialize>(response: &Response) -> io::Result<Vec<u8>> {
+    serde_json::to_vec(response).map_err(|e| io::Error::other(format!("serialize response: {e}")))
 }
 
 /// Execute an [`ExecRequest`] through the sandbox operation start gate.
@@ -374,19 +433,34 @@ mod tests {
     use super::*;
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::sync::oneshot;
+    use tokio::sync::{mpsc, oneshot};
     use vsock_host::{NormalOperationFenceRejection, VsockHost};
     use vsock_proto::{
         Decoder, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
     };
 
-    use crate::control::{ExecRequest, ExecResponse, send_exec};
+    use crate::control::{
+        ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
+        TerminateStatus, send_exec, send_terminate,
+    };
     use crate::park_coordinator::{CoordinatorState, ParkCoordinator};
 
     fn test_gate(
         guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     ) -> GuestOperationStartGate {
         GuestOperationStartGate::new(guest, ParkCoordinator::new())
+    }
+
+    fn test_termination_handle() -> ProcessTerminationHandle {
+        let (kill_tx, _kill_rx) = mpsc::unbounded_channel();
+        ProcessTerminationHandle::new(kill_tx)
+    }
+
+    fn bind_test_server(
+        sock_path: PathBuf,
+        guest_operations: GuestOperationStartGate,
+    ) -> io::Result<BoundControlServer> {
+        bind_server(sock_path, guest_operations, test_termination_handle())
     }
 
     fn test_gate_with_coordinator(
@@ -406,7 +480,7 @@ mod tests {
 
         // Server with no guest connected.
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
+        let mut handle = bind_test_server(sock_path.clone(), test_gate(guest))
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -431,12 +505,79 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn client_server_terminate_accepted() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let (kill_tx, mut kill_rx) = mpsc::unbounded_channel();
+        let mut handle = bind_server(
+            sock_path.clone(),
+            test_gate(guest),
+            ProcessTerminationHandle::new(kill_tx),
+        )
+        .unwrap()
+        .spawn(CancellationToken::new());
+
+        let request = TerminateRequest {
+            action: TerminateAction::Terminate,
+        };
+        let response = send_terminate(&sock_path, &request, Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response,
+            TerminateResponse::Status {
+                status: TerminateStatus::Accepted
+            }
+        );
+        tokio::time::timeout(Duration::from_secs(1), kill_rx.recv())
+            .await
+            .unwrap()
+            .expect("terminate request should notify process monitor");
+
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn client_server_terminate_already_stopped() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let (kill_tx, kill_rx) = mpsc::unbounded_channel();
+        drop(kill_rx);
+        let mut handle = bind_server(
+            sock_path.clone(),
+            test_gate(guest),
+            ProcessTerminationHandle::new(kill_tx),
+        )
+        .unwrap()
+        .spawn(CancellationToken::new());
+
+        let request = TerminateRequest {
+            action: TerminateAction::Terminate,
+        };
+        let response = send_terminate(&sock_path, &request, Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response,
+            TerminateResponse::Status {
+                status: TerminateStatus::AlreadyStopped
+            }
+        );
+
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn bound_control_server_close_removes_socket() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
 
-        let server = bind_server(sock_path.clone(), test_gate(guest)).unwrap();
+        let server = bind_test_server(sock_path.clone(), test_gate(guest)).unwrap();
         assert!(sock_path.exists());
 
         server.close();
@@ -451,7 +592,7 @@ mod tests {
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
 
         {
-            let _server = bind_server(sock_path.clone(), test_gate(guest)).unwrap();
+            let _server = bind_test_server(sock_path.clone(), test_gate(guest)).unwrap();
             assert!(sock_path.exists());
         }
 
@@ -463,7 +604,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
+        let mut handle = bind_test_server(sock_path.clone(), test_gate(guest))
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -483,7 +624,7 @@ mod tests {
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
         let shutdown = CancellationToken::new();
-        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
+        let mut handle = bind_test_server(sock_path.clone(), test_gate(guest))
             .unwrap()
             .spawn(shutdown.clone());
 
@@ -500,7 +641,7 @@ mod tests {
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
         let shutdown = CancellationToken::new();
-        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
+        let mut handle = bind_test_server(sock_path.clone(), test_gate(guest))
             .unwrap()
             .spawn(shutdown.clone());
         let mut stream = UnixStream::connect(&sock_path).await.unwrap();
@@ -520,7 +661,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
+        let mut handle = bind_test_server(sock_path.clone(), test_gate(guest))
             .unwrap()
             .spawn(CancellationToken::new());
         let mut stream = UnixStream::connect(&sock_path).await.unwrap();
@@ -550,7 +691,7 @@ mod tests {
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&vsock))));
         let (gate, coordinator) = test_gate_with_coordinator(guest);
-        let mut handle = bind_server(sock_path.clone(), gate)
+        let mut handle = bind_test_server(sock_path.clone(), gate)
             .unwrap()
             .spawn(CancellationToken::new());
         let client = tokio::spawn({
@@ -612,7 +753,7 @@ mod tests {
         let attempt = coordinator
             .begin_prepare_park()
             .expect("gate should enter closing state");
-        let mut handle = bind_server(sock_path.clone(), gate)
+        let mut handle = bind_test_server(sock_path.clone(), gate)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -661,7 +802,7 @@ mod tests {
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&vsock))));
         let (gate, coordinator) = test_gate_with_coordinator(guest);
-        let mut handle = bind_server(sock_path.clone(), gate)
+        let mut handle = bind_test_server(sock_path.clone(), gate)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -711,7 +852,7 @@ mod tests {
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&vsock))));
         let (gate, coordinator) = test_gate_with_coordinator(guest);
-        let mut handle = bind_server(sock_path.clone(), gate)
+        let mut handle = bind_test_server(sock_path.clone(), gate)
             .unwrap()
             .spawn(CancellationToken::new());
 
@@ -755,7 +896,7 @@ mod tests {
         let _existing = UnixListener::bind(&sock_path).unwrap();
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
 
-        let result = bind_server(sock_path.clone(), test_gate(guest));
+        let result = bind_test_server(sock_path.clone(), test_gate(guest));
 
         let Err(err) = result else {
             panic!("binding an occupied control socket should fail");

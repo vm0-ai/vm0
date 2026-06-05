@@ -14,14 +14,17 @@
 //! directly against running FC processes — useful for orphan sandboxes
 //! whose parent runner has already died and whose `status.json` is gone.
 
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Args;
-use sandbox::SandboxControl;
+use sandbox::{RemoteKillResult, SandboxControl, SandboxControlError};
 use tracing::info;
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::process::{self, FirecrackerProcessInfo};
+use crate::process::{
+    self, DiscoveredProcesses, FirecrackerProcessIdentity, FirecrackerProcessInfo, ProcessStat,
+};
 use crate::run_resolution;
 
 // ---------------------------------------------------------------------------
@@ -51,67 +54,47 @@ pub struct KillArgs {
 // ---------------------------------------------------------------------------
 
 pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerResult<ExitCode> {
-    // Phase 1: Discover running processes
-    let discovered = process::discover_all().await;
-    let runner_pids: Vec<u32> = discovered.runners.iter().map(|r| r.pid).collect();
+    let initial = discover_and_resolve_target(&args).await?;
+    let is_initial_orphan = process::is_orphan(initial.target.pid, &initial.runner_pids).await;
 
-    // Phase 2: Resolve target — mode depends on which flag was passed.
-    let target = if let Some(ref run_id) = args.run {
-        let mappings = run_resolution::collect_active_run_mappings(&discovered.runners).await;
-        resolve_by_run_id(run_id, &mappings, &discovered.firecrackers)?
-    } else if let Some(ref sandbox_id) = args.sandbox {
-        resolve_by_sandbox_id(sandbox_id, &discovered.firecrackers)?
-    } else {
-        return Err(RunnerError::Config(
-            "one of --run or --sandbox is required".into(),
-        ));
-    };
-    let is_orphan = process::is_orphan(target.pid, &runner_pids).await;
-
-    // Phase 3: Confirm (unless --force)
     if !args.force {
-        print_target_info(target, is_orphan);
+        print_target_info(&initial.target, is_initial_orphan);
         if !confirm().await {
             println!("Aborted.");
             return Ok(ExitCode::SUCCESS);
         }
     }
 
-    // Phase 4: Kill process group
-    let killed = kill_process_group(target.pid).await;
-    if killed {
-        println!("Killed sandbox {} (PID {})", target.sandbox_id, target.pid);
-    } else {
-        println!(
-            "Failed to kill sandbox {} (PID {}) — process may have already exited",
-            target.sandbox_id, target.pid
-        );
-    }
-
-    // Phase 5: Cleanup based on orphan status
-    if is_orphan {
-        let results = cleanup_orphan(&target.sandbox_id, target.base_dir.as_deref(), control).await;
-        if !results.is_empty() {
-            println!("Orphan cleanup:");
-            for (step, success) in &results {
-                let icon = if *success { "ok" } else { "FAIL" };
-                println!("  [{icon}] {step}");
-            }
+    let current = match rediscover_same_target(&args, &initial.target).await {
+        Ok(current) => current,
+        Err(error) => {
+            println!(
+                "Refused to kill sandbox {} (PID {}) - {error}",
+                initial.target.sandbox_id, initial.target.pid
+            );
+            return Ok(ExitCode::FAILURE);
         }
-    } else {
-        let ppid_str = target.ppid.map_or("unknown".into(), |p| p.to_string());
-        println!("Parent runner (PID {ppid_str}) will handle cleanup.");
-    }
+    };
+    let is_orphan = process::is_orphan(current.target.pid, &current.runner_pids).await;
+    let outcome = kill_current_target(
+        &args,
+        &initial.target,
+        current.target.clone(),
+        is_orphan,
+        control,
+    )
+    .await;
+    report_kill_outcome(&initial.target, &current.target, &outcome, control).await;
 
     info!(
-        sandbox_id = %target.sandbox_id,
-        pid = target.pid,
+        sandbox_id = %current.target.sandbox_id,
+        pid = current.target.pid,
         orphan = is_orphan,
-        killed,
+        outcome = ?outcome,
         "kill command completed"
     );
 
-    if killed {
+    if outcome.is_success() {
         Ok(ExitCode::SUCCESS)
     } else {
         Ok(ExitCode::FAILURE)
@@ -121,6 +104,129 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
 // ---------------------------------------------------------------------------
 // Target resolution
 // ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct KillTarget {
+    pid: u32,
+    ppid: Option<u32>,
+    sandbox_id: String,
+    base_dir: Option<PathBuf>,
+    identity: Option<FirecrackerProcessIdentity>,
+}
+
+impl From<&FirecrackerProcessInfo> for KillTarget {
+    fn from(process: &FirecrackerProcessInfo) -> Self {
+        Self {
+            pid: process.pid,
+            ppid: process.ppid,
+            sandbox_id: process.sandbox_id.clone(),
+            base_dir: process.base_dir.clone(),
+            identity: process.identity.clone(),
+        }
+    }
+}
+
+struct ResolvedKillTarget {
+    target: KillTarget,
+    runner_pids: Vec<u32>,
+}
+
+#[derive(Debug)]
+enum KillOutcome {
+    OwnerAccepted(RemoteKillResult),
+    OrphanKilled,
+    AlreadyExitedOrChanged,
+    SignalFailed,
+    RefusedManagedControlFailed(String),
+    RefusedTargetChanged(String),
+}
+
+impl KillOutcome {
+    fn is_success(&self) -> bool {
+        matches!(
+            self,
+            KillOutcome::OwnerAccepted(_) | KillOutcome::OrphanKilled
+        )
+    }
+}
+
+async fn discover_and_resolve_target(args: &KillArgs) -> RunnerResult<ResolvedKillTarget> {
+    let discovered = process::discover_all().await;
+    let runner_pids: Vec<u32> = discovered.runners.iter().map(|r| r.pid).collect();
+    let target = resolve_target(args, &discovered).await?;
+
+    Ok(ResolvedKillTarget {
+        target: target.into(),
+        runner_pids,
+    })
+}
+
+async fn resolve_target<'a>(
+    args: &KillArgs,
+    discovered: &'a DiscoveredProcesses,
+) -> RunnerResult<&'a FirecrackerProcessInfo> {
+    if let Some(ref run_id) = args.run {
+        let mappings = run_resolution::collect_active_run_mappings(&discovered.runners).await;
+        return resolve_by_run_id(run_id, &mappings, &discovered.firecrackers);
+    }
+
+    if let Some(ref sandbox_id) = args.sandbox {
+        return resolve_by_sandbox_id(sandbox_id, &discovered.firecrackers);
+    }
+
+    Err(RunnerError::Config(
+        "one of --run or --sandbox is required".into(),
+    ))
+}
+
+async fn rediscover_same_target(
+    args: &KillArgs,
+    initial: &KillTarget,
+) -> Result<ResolvedKillTarget, String> {
+    let current = discover_and_resolve_target(args)
+        .await
+        .map_err(|error| error.to_string())?;
+    ensure_same_target_after_confirmation(args, initial, &current.target)?;
+    Ok(current)
+}
+
+fn ensure_same_target_after_confirmation(
+    args: &KillArgs,
+    initial: &KillTarget,
+    current: &KillTarget,
+) -> Result<(), String> {
+    if args.run.is_some() {
+        if current.sandbox_id != initial.sandbox_id {
+            return Err(format!(
+                "run target changed from sandbox '{}' to '{}'",
+                initial.sandbox_id, current.sandbox_id
+            ));
+        }
+        return Ok(());
+    }
+
+    if args.sandbox.is_some() {
+        if current.sandbox_id != initial.sandbox_id {
+            return Err(format!(
+                "sandbox target changed from '{}' to '{}'",
+                initial.sandbox_id, current.sandbox_id
+            ));
+        }
+        if !same_firecracker_identity(initial, current) {
+            return Err("sandbox process already exited or changed identity".into());
+        }
+        return Ok(());
+    }
+
+    Err("one of --run or --sandbox is required".into())
+}
+
+fn same_firecracker_identity(initial: &KillTarget, current: &KillTarget) -> bool {
+    match (&initial.identity, &current.identity) {
+        (Some(initial), Some(current)) => initial == current,
+        _ => false,
+    }
+}
 
 /// Resolve a `--run` prefix to a single Firecracker process.
 ///
@@ -177,18 +283,153 @@ fn resolve_by_sandbox_id<'a>(
 // Process kill
 // ---------------------------------------------------------------------------
 
-/// Kill the process group containing the given PID.
-///
-/// Reads the PGID from `/proc/{pid}/stat` and sends `SIGKILL` to the entire
-/// group via `killpg`. This ensures intermediate processes in the spawn chain
-/// (`sudo`, `ip netns exec`) are also terminated.
-async fn kill_process_group(pid: u32) -> bool {
-    // Read the actual PGID — the firecracker PID differs from the PGID
-    // because .process_group(0) is set on the outer sudo command.
-    let Some(pgid) = process::read_pgid(pid).await else {
-        tracing::warn!(pid, "failed to read PGID from /proc");
-        return false;
+async fn kill_current_target(
+    args: &KillArgs,
+    initial: &KillTarget,
+    current: KillTarget,
+    is_orphan: bool,
+    control: &dyn SandboxControl,
+) -> KillOutcome {
+    if is_orphan {
+        return kill_orphan_process_group(initial).await;
+    }
+
+    match control.kill_remote(&current.sandbox_id).await {
+        Ok(result) => KillOutcome::OwnerAccepted(result),
+        Err(error) => retry_as_orphan_if_owner_disappeared(args, initial, error).await,
+    }
+}
+
+async fn retry_as_orphan_if_owner_disappeared(
+    args: &KillArgs,
+    initial: &KillTarget,
+    owner_error: SandboxControlError,
+) -> KillOutcome {
+    let refreshed = match rediscover_same_target(args, initial).await {
+        Ok(refreshed) => refreshed,
+        Err(error) => return KillOutcome::RefusedTargetChanged(error),
     };
+    if !process::is_orphan(refreshed.target.pid, &refreshed.runner_pids).await {
+        return KillOutcome::RefusedManagedControlFailed(owner_error.to_string());
+    }
+
+    kill_orphan_process_group(initial).await
+}
+
+async fn kill_orphan_process_group(target: &KillTarget) -> KillOutcome {
+    let Some(pgid) = validated_orphan_pgid(target).await else {
+        return KillOutcome::AlreadyExitedOrChanged;
+    };
+
+    if signal_process_group(target.pid, pgid) {
+        KillOutcome::OrphanKilled
+    } else {
+        KillOutcome::SignalFailed
+    }
+}
+
+async fn validated_orphan_pgid(target: &KillTarget) -> Option<u32> {
+    let Some(identity) = &target.identity else {
+        tracing::warn!(
+            pid = target.pid,
+            sandbox_id = %target.sandbox_id,
+            "refusing orphan kill without process identity"
+        );
+        return None;
+    };
+
+    if identity.pid != target.pid {
+        tracing::warn!(
+            pid = target.pid,
+            identity_pid = identity.pid,
+            "refusing orphan kill with inconsistent process identity"
+        );
+        return None;
+    }
+
+    let Some(stat) = process::read_process_stat(target.pid).await else {
+        tracing::warn!(
+            pid = target.pid,
+            "failed to read process stat before orphan kill"
+        );
+        return None;
+    };
+    let stat_matches = stat.pgid == identity.pgid && stat.starttime == identity.starttime;
+    if !stat_matches {
+        tracing::warn!(
+            pid = target.pid,
+            expected_pgid = identity.pgid,
+            current_pgid = stat.pgid,
+            expected_starttime = identity.starttime,
+            current_starttime = stat.starttime,
+            "refusing orphan kill after process identity changed"
+        );
+        return None;
+    }
+
+    let Some(cmdline) = process::read_cmdline(target.pid).await else {
+        tracing::warn!(
+            pid = target.pid,
+            "failed to read cmdline before orphan kill"
+        );
+        return None;
+    };
+    if !process::is_firecracker_cmdline(&cmdline) {
+        tracing::warn!(
+            pid = target.pid,
+            "refusing orphan kill for non-firecracker cmdline"
+        );
+        return None;
+    }
+
+    let cwd_info = process::read_cwd(target.pid)
+        .await
+        .and_then(|cwd| process::parse_workspace_cwd(&cwd));
+    if !orphan_identity_matches_facts(identity, &stat, true, cwd_info.as_ref()) {
+        tracing::warn!(
+            pid = target.pid,
+            sandbox_id = %target.sandbox_id,
+            "refusing orphan kill after workspace identity changed"
+        );
+        return None;
+    }
+
+    Some(identity.pgid)
+}
+
+fn orphan_identity_matches_facts(
+    identity: &FirecrackerProcessIdentity,
+    stat: &ProcessStat,
+    is_firecracker_cmdline: bool,
+    cwd_info: Option<&(String, PathBuf)>,
+) -> bool {
+    stat.pgid == identity.pgid
+        && stat.starttime == identity.starttime
+        && is_firecracker_cmdline
+        && workspace_identity_matches(identity, cwd_info)
+}
+
+fn workspace_identity_matches(
+    identity: &FirecrackerProcessIdentity,
+    cwd_info: Option<&(String, PathBuf)>,
+) -> bool {
+    match (&identity.base_dir, cwd_info) {
+        (Some(expected_base_dir), Some((sandbox_id, base_dir))) => {
+            sandbox_id == &identity.sandbox_id && base_dir == expected_base_dir
+        }
+        (Some(_), None) => false,
+        (None, Some(_)) => false,
+        (None, None) => true,
+    }
+}
+
+/// Send `SIGKILL` to a validated process group.
+fn signal_process_group(pid: u32, pgid: u32) -> bool {
+    if pgid == 0 {
+        tracing::warn!(pid, "refusing to signal process group 0");
+        return false;
+    }
+
     let Ok(pgid_i32) = i32::try_from(pgid) else {
         return false;
     };
@@ -208,13 +449,88 @@ async fn kill_process_group(pid: u32) -> bool {
     }
 }
 
+async fn report_kill_outcome(
+    initial: &KillTarget,
+    current: &KillTarget,
+    outcome: &KillOutcome,
+    control: &dyn SandboxControl,
+) {
+    match outcome {
+        KillOutcome::OwnerAccepted(RemoteKillResult::Accepted) => {
+            println!(
+                "Owning runner accepted kill for sandbox {} (PID {}).",
+                current.sandbox_id, current.pid
+            );
+            println!("Owning runner will handle cleanup.");
+        }
+        KillOutcome::OwnerAccepted(RemoteKillResult::AlreadyStopped) => {
+            println!(
+                "Sandbox {} is already stopping or stopped.",
+                current.sandbox_id
+            );
+            println!("Owning runner will handle cleanup.");
+        }
+        KillOutcome::OrphanKilled => {
+            println!(
+                "Killed orphan sandbox {} (PID {})",
+                initial.sandbox_id, initial.pid
+            );
+            if initial.base_dir.is_some() {
+                let results =
+                    cleanup_orphan(&initial.sandbox_id, initial.base_dir.as_deref(), control).await;
+                print_cleanup_results(&results);
+            } else {
+                println!(
+                    "Skipped orphan cleanup because sandbox workspace identity is unavailable."
+                );
+            }
+        }
+        KillOutcome::AlreadyExitedOrChanged => {
+            println!(
+                "Refused to kill sandbox {} (PID {}) - process already exited or changed identity",
+                initial.sandbox_id, initial.pid
+            );
+        }
+        KillOutcome::SignalFailed => {
+            println!(
+                "Failed to kill sandbox {} (PID {})",
+                initial.sandbox_id, initial.pid
+            );
+        }
+        KillOutcome::RefusedManagedControlFailed(error) => {
+            println!(
+                "Refused direct kill for managed sandbox {} (PID {}) - owning runner control failed: {error}",
+                current.sandbox_id, current.pid
+            );
+        }
+        KillOutcome::RefusedTargetChanged(error) => {
+            println!(
+                "Refused to kill sandbox {} (PID {}) - {error}",
+                initial.sandbox_id, initial.pid
+            );
+        }
+    }
+}
+
+fn print_cleanup_results(results: &[(String, bool)]) {
+    if results.is_empty() {
+        return;
+    }
+
+    println!("Orphan cleanup:");
+    for (step, success) in results {
+        let icon = if *success { "ok" } else { "FAIL" };
+        println!("  [{icon}] {step}");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Orphan cleanup
 // ---------------------------------------------------------------------------
 
 async fn cleanup_orphan(
     sandbox_id: &str,
-    base_dir: Option<&std::path::Path>,
+    base_dir: Option<&Path>,
     control: &dyn SandboxControl,
 ) -> Vec<(String, bool)> {
     let mut results = Vec::new();
@@ -237,7 +553,7 @@ async fn cleanup_orphan(
 }
 
 /// Remove a directory, treating `NotFound` as success.
-async fn remove_dir_if_exists(path: &std::path::Path) -> bool {
+async fn remove_dir_if_exists(path: &Path) -> bool {
     match tokio::fs::remove_dir_all(path).await {
         Ok(()) => true,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
@@ -252,7 +568,7 @@ async fn remove_dir_if_exists(path: &std::path::Path) -> bool {
 // Confirmation prompt
 // ---------------------------------------------------------------------------
 
-fn print_target_info(fc: &FirecrackerProcessInfo, is_orphan: bool) {
+fn print_target_info(fc: &KillTarget, is_orphan: bool) {
     println!("Kill sandbox {}?", fc.sandbox_id);
     println!("  PID:    {}", fc.pid);
     if is_orphan {
@@ -291,6 +607,8 @@ async fn confirm() -> bool {
 mod tests {
     use std::path::PathBuf;
 
+    use sandbox_mock::MockSandboxControl;
+
     use super::*;
 
     fn make_fc(pid: u32, sandbox_id: &str) -> FirecrackerProcessInfo {
@@ -299,6 +617,23 @@ mod tests {
             ppid: None,
             sandbox_id: sandbox_id.into(),
             base_dir: Some(PathBuf::from("/data/r1")),
+            identity: None,
+        }
+    }
+
+    fn make_target(pid: u32, sandbox_id: &str) -> KillTarget {
+        KillTarget {
+            pid,
+            ppid: None,
+            sandbox_id: sandbox_id.into(),
+            base_dir: Some(PathBuf::from("/data/r1")),
+            identity: Some(FirecrackerProcessIdentity {
+                pid,
+                pgid: pid + 1000,
+                starttime: 123456,
+                sandbox_id: sandbox_id.into(),
+                base_dir: Some(PathBuf::from("/data/r1")),
+            }),
         }
     }
 
@@ -373,17 +708,180 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn sandbox_reresolution_requires_same_process_identity() {
+        let args = KillArgs {
+            run: None,
+            sandbox: Some("sbox".into()),
+            force: true,
+        };
+        let initial = make_target(200, "sbox-123");
+        let mut current = make_target(200, "sbox-123");
+        current.identity.as_mut().unwrap().starttime += 1;
+
+        let error = ensure_same_target_after_confirmation(&args, &initial, &current).unwrap_err();
+
+        assert!(error.contains("changed identity"), "{error}");
+    }
+
+    #[test]
+    fn run_reresolution_requires_same_sandbox() {
+        let args = KillArgs {
+            run: Some("run".into()),
+            sandbox: None,
+            force: true,
+        };
+        let initial = make_target(200, "sbox-old");
+        let current = make_target(201, "sbox-new");
+
+        let error = ensure_same_target_after_confirmation(&args, &initial, &current).unwrap_err();
+
+        assert!(error.contains("run target changed"), "{error}");
+        assert!(error.contains("sbox-old"), "{error}");
+        assert!(error.contains("sbox-new"), "{error}");
+    }
+
+    #[test]
+    fn orphan_identity_facts_match() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let stat = ProcessStat {
+            pgid: identity.pgid,
+            starttime: identity.starttime,
+        };
+        let cwd_info = ("sbox-123".to_string(), PathBuf::from("/data/r1"));
+
+        assert!(orphan_identity_matches_facts(
+            identity,
+            &stat,
+            true,
+            Some(&cwd_info)
+        ));
+    }
+
+    #[test]
+    fn orphan_identity_rejects_changed_starttime() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let stat = ProcessStat {
+            pgid: identity.pgid,
+            starttime: identity.starttime + 1,
+        };
+        let cwd_info = ("sbox-123".to_string(), PathBuf::from("/data/r1"));
+
+        assert!(!orphan_identity_matches_facts(
+            identity,
+            &stat,
+            true,
+            Some(&cwd_info)
+        ));
+    }
+
+    #[test]
+    fn orphan_identity_rejects_changed_pgid() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let stat = ProcessStat {
+            pgid: identity.pgid + 1,
+            starttime: identity.starttime,
+        };
+        let cwd_info = ("sbox-123".to_string(), PathBuf::from("/data/r1"));
+
+        assert!(!orphan_identity_matches_facts(
+            identity,
+            &stat,
+            true,
+            Some(&cwd_info)
+        ));
+    }
+
+    #[test]
+    fn orphan_identity_rejects_non_firecracker_cmdline() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let stat = ProcessStat {
+            pgid: identity.pgid,
+            starttime: identity.starttime,
+        };
+        let cwd_info = ("sbox-123".to_string(), PathBuf::from("/data/r1"));
+
+        assert!(!orphan_identity_matches_facts(
+            identity,
+            &stat,
+            false,
+            Some(&cwd_info)
+        ));
+    }
+
+    #[test]
+    fn orphan_identity_rejects_changed_workspace() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let stat = ProcessStat {
+            pgid: identity.pgid,
+            starttime: identity.starttime,
+        };
+        let cwd_info = ("sbox-other".to_string(), PathBuf::from("/data/r1"));
+
+        assert!(!orphan_identity_matches_facts(
+            identity,
+            &stat,
+            true,
+            Some(&cwd_info)
+        ));
+    }
+
     #[tokio::test]
-    async fn kill_process_group_nonexistent_pid() {
+    async fn managed_target_requests_owner_control() {
+        let control = MockSandboxControl::new("/tmp/test");
+        let initial = make_target(200, "sbox-123");
+        let current = initial.clone();
+        let args = KillArgs {
+            run: None,
+            sandbox: Some("sbox-123".into()),
+            force: true,
+        };
+
+        let outcome = kill_current_target(&args, &initial, current, false, &control).await;
+
+        assert!(matches!(
+            outcome,
+            KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
+        ));
+        assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
+    }
+
+    #[test]
+    fn signal_process_group_rejects_zero_pgid() {
+        assert!(!signal_process_group(1234, 0));
+    }
+
+    #[tokio::test]
+    async fn orphan_kill_nonexistent_pid_fails_closed() {
         // u32::MAX exceeds any valid PID — /proc/{pid}/stat won't exist
-        assert!(!kill_process_group(u32::MAX).await);
+        let target = KillTarget {
+            pid: u32::MAX,
+            ppid: None,
+            sandbox_id: "sbox-missing".into(),
+            base_dir: Some(PathBuf::from("/data/r1")),
+            identity: Some(FirecrackerProcessIdentity {
+                pid: u32::MAX,
+                pgid: 1234,
+                starttime: 123456,
+                sandbox_id: "sbox-missing".into(),
+                base_dir: Some(PathBuf::from("/data/r1")),
+            }),
+        };
+
+        assert!(matches!(
+            kill_orphan_process_group(&target).await,
+            KillOutcome::AlreadyExitedOrChanged
+        ));
     }
 
     // -----------------------------------------------------------------------
     // Orphan cleanup tests (using sandbox-mock)
     // -----------------------------------------------------------------------
-
-    use sandbox_mock::MockSandboxControl;
 
     #[tokio::test]
     async fn cleanup_orphan_removes_workspace_and_socket_dir() {

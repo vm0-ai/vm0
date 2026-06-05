@@ -2,7 +2,8 @@
 //!
 //! All mocks succeed by default with exit code 0 and empty output.
 //! Use [`MockSandbox::push_exec_result`], [`MockSandbox::push_write_file_result`],
-//! or [`MockSandboxControl::push_exec_remote_result`] to queue custom responses
+//! [`MockSandboxControl::push_exec_remote_result`], or
+//! [`MockSandboxControl::push_kill_remote_result`] to queue custom responses
 //! consumed in FIFO order.
 //!
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
@@ -1430,12 +1431,15 @@ impl SnapshotProvider for MockSnapshotProvider {
 
 /// A mock [`SandboxControl`] for testing exec/kill commands.
 ///
-/// Queue custom results with [`push_exec_remote_result`](Self::push_exec_remote_result).
-/// When the queue is empty, returns exit code 0 with empty output.
+/// Queue custom results with [`push_exec_remote_result`](Self::push_exec_remote_result)
+/// or [`push_kill_remote_result`](Self::push_kill_remote_result).
+/// When queues are empty, exec returns exit code 0 and kill returns accepted.
 pub struct MockSandboxControl {
     base_dir: PathBuf,
     exec_results: Mutex<VecDeque<std::result::Result<RemoteExecResult, SandboxControlError>>>,
+    kill_results: Mutex<VecDeque<std::result::Result<RemoteKillResult, SandboxControlError>>>,
     recorded_commands: Mutex<Vec<String>>,
+    recorded_kill_ids: Mutex<Vec<String>>,
 }
 
 impl MockSandboxControl {
@@ -1443,7 +1447,9 @@ impl MockSandboxControl {
         Self {
             base_dir: base_dir.into(),
             exec_results: Mutex::new(VecDeque::new()),
+            kill_results: Mutex::new(VecDeque::new()),
             recorded_commands: Mutex::new(Vec::new()),
+            recorded_kill_ids: Mutex::new(Vec::new()),
         }
     }
 
@@ -1458,6 +1464,19 @@ impl MockSandboxControl {
     /// Return every command string passed to `exec_remote`, in call order.
     pub fn recorded_commands(&self) -> Vec<String> {
         self.recorded_commands.lock_ignoring_poison().clone()
+    }
+
+    /// Queue a kill remote result. Results are consumed in FIFO order.
+    pub fn push_kill_remote_result(
+        &self,
+        result: std::result::Result<RemoteKillResult, SandboxControlError>,
+    ) {
+        self.kill_results.lock_ignoring_poison().push_back(result);
+    }
+
+    /// Return every sandbox id passed to `kill_remote`, in call order.
+    pub fn recorded_kill_ids(&self) -> Vec<String> {
+        self.recorded_kill_ids.lock_ignoring_poison().clone()
     }
 }
 
@@ -1485,6 +1504,19 @@ impl SandboxControl for MockSandboxControl {
                     stderr_truncated: false,
                 })
             })
+    }
+
+    async fn kill_remote(
+        &self,
+        sandbox_id: &str,
+    ) -> std::result::Result<RemoteKillResult, SandboxControlError> {
+        self.recorded_kill_ids
+            .lock_ignoring_poison()
+            .push(sandbox_id.to_string());
+        self.kill_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or(Ok(RemoteKillResult::Accepted))
     }
 
     fn runtime_dir(&self, sandbox_id: &str) -> PathBuf {
@@ -3023,6 +3055,10 @@ mod tests {
             .unwrap();
         assert_eq!(result.exit_code, 0);
         assert_eq!(
+            control.kill_remote("sandbox-1").await.unwrap(),
+            RemoteKillResult::Accepted
+        );
+        assert_eq!(
             control.runtime_dir("sandbox-1"),
             PathBuf::from("/tmp/test/sandbox-1")
         );
@@ -3084,6 +3120,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sandbox_control_records_kill_ids() {
+        let control = MockSandboxControl::new("/tmp/test");
+        control.kill_remote("sandbox-1").await.unwrap();
+        control.kill_remote("sandbox-2").await.unwrap();
+
+        assert_eq!(
+            control.recorded_kill_ids(),
+            vec!["sandbox-1".to_string(), "sandbox-2".to_string()],
+        );
+    }
+
+    #[tokio::test]
     async fn sandbox_control_queued_results() {
         let control = MockSandboxControl::new("/tmp/test");
         control.push_exec_remote_result(Err(SandboxControlError::NotFound("gone".into())));
@@ -3099,5 +3147,19 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn sandbox_control_queued_kill_results() {
+        let control = MockSandboxControl::new("/tmp/test");
+        control.push_kill_remote_result(Err(SandboxControlError::NotFound("gone".into())));
+
+        let result = control.kill_remote("sandbox-1").await;
+        assert!(result.is_err());
+
+        assert_eq!(
+            control.kill_remote("sandbox-1").await.unwrap(),
+            RemoteKillResult::Accepted
+        );
     }
 }

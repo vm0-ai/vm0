@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use super::procfs::{read_cwd, read_ppid, scan_proc_cmdlines};
+use super::procfs::{read_cwd, read_ppid, read_process_stat, scan_proc_cmdlines};
 use super::types::{
-    DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessInfo, MitmproxyProcessInfo,
-    RunnerProcessInfo,
+    DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessIdentity, FirecrackerProcessInfo,
+    MitmproxyProcessInfo, RunnerProcessInfo,
 };
 
 /// Parse a runner argv for `start`/`benchmark` subcommand and `--config` path.
@@ -26,7 +26,7 @@ fn parse_runner_cmdline(argv: &[String]) -> Option<(PathBuf, String)> {
 /// Looks at the binary name (`argv[0]`) — the run ID and base directory
 /// are resolved from `/proc/{pid}/cwd` instead of argument parsing,
 /// since our sandbox always sets `current_dir` to the workspace.
-fn is_firecracker_cmdline(argv: &[String]) -> bool {
+pub(crate) fn is_firecracker_cmdline(argv: &[String]) -> bool {
     let Some(binary) = argv.first() else {
         return false;
     };
@@ -65,7 +65,7 @@ fn parse_dnsmasq_cmdline(argv: &[String]) -> Option<u16> {
 /// CWD is `{base_dir}/workspaces/{sandbox_id}/`, so:
 /// - `sandbox_id` is the last component
 /// - `base_dir` is the grandparent of `workspaces`
-fn parse_workspace_cwd(cwd: &Path) -> Option<(String, PathBuf)> {
+pub(crate) fn parse_workspace_cwd(cwd: &Path) -> Option<(String, PathBuf)> {
     let sandbox_id = cwd.file_name()?.to_string_lossy().into_owned();
     let workspaces_dir = cwd.parent()?;
     if workspaces_dir.file_name().and_then(|n| n.to_str()) == Some("workspaces") {
@@ -111,15 +111,24 @@ pub async fn discover_all() -> DiscoveredProcesses {
             .await
             .and_then(|cwd| parse_workspace_cwd(&cwd));
         let ppid = read_ppid(pid).await;
+        let process_stat = read_process_stat(pid).await;
         let (sandbox_id, base_dir) = match cwd_info {
             Some((id, bd)) => (id, Some(bd)),
             None => (format!("pid-{pid}"), None),
         };
+        let identity = process_stat.map(|stat| FirecrackerProcessIdentity {
+            pid,
+            pgid: stat.pgid,
+            starttime: stat.starttime,
+            sandbox_id: sandbox_id.clone(),
+            base_dir: base_dir.clone(),
+        });
         fc_infos.push(FirecrackerProcessInfo {
             pid,
             ppid,
             sandbox_id,
             base_dir,
+            identity,
         });
     }
 
@@ -256,6 +265,7 @@ mod tests {
             ppid: Some(1),
             sandbox_id: "sandbox-a".to_string(),
             base_dir: None,
+            identity: None,
         }];
 
         assert!(firecracker_process_exists_for_sandbox_id(

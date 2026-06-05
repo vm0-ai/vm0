@@ -1,5 +1,22 @@
 use std::path::PathBuf;
 
+/// Stable facts read from `/proc/{pid}/stat`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProcessStat {
+    pub pgid: u32,
+    pub starttime: u64,
+}
+
+/// Firecracker process identity captured during discovery.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FirecrackerProcessIdentity {
+    pub pid: u32,
+    pub pgid: u32,
+    pub starttime: u64,
+    pub sandbox_id: String,
+    pub base_dir: Option<PathBuf>,
+}
+
 /// Info extracted from a runner process cmdline.
 pub struct RunnerProcessInfo {
     pub pid: u32,
@@ -8,6 +25,7 @@ pub struct RunnerProcessInfo {
 }
 
 /// Info extracted from a firecracker process cmdline.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FirecrackerProcessInfo {
     pub pid: u32,
     pub ppid: Option<u32>,
@@ -16,6 +34,7 @@ pub struct FirecrackerProcessInfo {
     /// sandbox reuse this is stable across successive run_ids.
     pub sandbox_id: String,
     pub base_dir: Option<PathBuf>,
+    pub identity: Option<FirecrackerProcessIdentity>,
 }
 
 /// Info extracted from a mitmdump process cmdline.

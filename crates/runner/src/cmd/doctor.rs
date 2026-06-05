@@ -1304,6 +1304,7 @@ mod tests {
             ppid: None,
             sandbox_id: sandbox_id.into(),
             base_dir: Some(PathBuf::from(base_dir)),
+            identity: None,
         }
     }
 
@@ -1411,6 +1412,7 @@ mod tests {
             ppid: None,
             sandbox_id: "sbox-abc".into(),
             base_dir: Some(PathBuf::from("/data/r2")),
+            identity: None,
         }];
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
