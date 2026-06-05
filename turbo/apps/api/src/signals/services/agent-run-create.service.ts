@@ -191,7 +191,6 @@ interface ContextArtifact {
   readonly version?: string;
   readonly mountPath: string;
   readonly missingRootPolicy?: ArtifactMissingRootPolicy;
-  readonly generatedBy?: "apiAutoMemory";
 }
 
 interface RunArtifacts {

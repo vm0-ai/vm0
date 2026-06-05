@@ -162,9 +162,6 @@ const artifactSnapshotsSchema = z.array(
     name: z.string(),
     version: z.string(),
     mountPath: z.string(),
-    // Legacy internal provenance accepted for older guest agents; checkpoint
-    // storage strips it while preserving the artifact policy below.
-    generatedBy: z.literal("apiAutoMemory").optional(),
     missingRootPolicy: artifactMissingRootPolicySchema.optional(),
   }),
 );
