@@ -45,10 +45,15 @@ fn parse_process_stat(content: &str) -> Option<ProcessStat> {
 
     // After the comm field, index 0 is stat field 3 (`state`), index 2 is
     // field 5 (`pgrp`), and index 19 is field 22 (`starttime`).
+    let state = fields.first()?.chars().next()?;
     let pgid = fields.get(2)?.parse().ok()?;
     let starttime = fields.get(19)?.parse().ok()?;
 
-    Some(ProcessStat { pgid, starttime })
+    Some(ProcessStat {
+        state,
+        pgid,
+        starttime,
+    })
 }
 
 /// Read `/proc/{pid}/stat` and extract stable process facts.
@@ -122,10 +127,10 @@ pub(super) async fn scan_proc_cmdlines() -> Vec<(u32, Vec<String>)> {
 mod tests {
     use super::*;
 
-    fn stat_with_comm(comm: &str, pgid: &str, starttime: &str) -> String {
+    fn stat_with_comm(comm: &str, state: &str, pgid: &str, starttime: &str) -> String {
         let fields = vec![
-            "S", "1200", pgid, "1100", "0", "-1", "4194560", "2100", "0", "0", "0", "12", "8", "0",
-            "0", "20", "0", "1", "0", starttime,
+            state, "1200", pgid, "1100", "0", "-1", "4194560", "2100", "0", "0", "0", "12", "8",
+            "0", "0", "20", "0", "1", "0", starttime,
         ];
         format!("1234 ({comm}) {}", fields.join(" "))
     }
@@ -133,10 +138,11 @@ mod tests {
     #[test]
     fn parse_process_stat_simple() {
         // Real /proc/pid/stat: "1234 (firecracker) S 1200 1100 1100 ..."
-        let stat = stat_with_comm("firecracker", "1100", "123456");
+        let stat = stat_with_comm("firecracker", "S", "1100", "123456");
         assert_eq!(
             parse_process_stat(&stat),
             Some(ProcessStat {
+                state: 'S',
                 pgid: 1100,
                 starttime: 123456
             })
@@ -146,10 +152,11 @@ mod tests {
     #[test]
     fn parse_process_stat_comm_with_spaces() {
         // comm can contain spaces
-        let stat = stat_with_comm("Web Content", "200", "999");
+        let stat = stat_with_comm("Web Content", "S", "200", "999");
         assert_eq!(
             parse_process_stat(&stat),
             Some(ProcessStat {
+                state: 'S',
                 pgid: 200,
                 starttime: 999
             })
@@ -159,12 +166,26 @@ mod tests {
     #[test]
     fn parse_process_stat_comm_with_parens() {
         // comm can contain parentheses — last ')' is the delimiter
-        let stat = stat_with_comm("foo (bar)", "600", "888");
+        let stat = stat_with_comm("foo (bar)", "S", "600", "888");
         assert_eq!(
             parse_process_stat(&stat),
             Some(ProcessStat {
+                state: 'S',
                 pgid: 600,
                 starttime: 888
+            })
+        );
+    }
+
+    #[test]
+    fn parse_process_stat_zombie_state() {
+        let stat = stat_with_comm("firecracker", "Z", "1100", "123456");
+        assert_eq!(
+            parse_process_stat(&stat),
+            Some(ProcessStat {
+                state: 'Z',
+                pgid: 1100,
+                starttime: 123456
             })
         );
     }
@@ -182,13 +203,13 @@ mod tests {
 
     #[test]
     fn parse_process_stat_rejects_invalid_pgid() {
-        let stat = stat_with_comm("firecracker", "not-a-number", "123456");
+        let stat = stat_with_comm("firecracker", "S", "not-a-number", "123456");
         assert!(parse_process_stat(&stat).is_none());
     }
 
     #[test]
     fn parse_process_stat_rejects_invalid_starttime() {
-        let stat = stat_with_comm("firecracker", "1100", "not-a-number");
+        let stat = stat_with_comm("firecracker", "S", "1100", "not-a-number");
         assert!(parse_process_stat(&stat).is_none());
     }
 }

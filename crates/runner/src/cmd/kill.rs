@@ -471,6 +471,13 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
         );
         return OrphanTargetValidation::Changed;
     }
+    if process_stat_is_zombie(&stat) {
+        tracing::warn!(
+            pid = target.pid,
+            "orphan target already exited and is waiting to be reaped"
+        );
+        return OrphanTargetValidation::AlreadyGone;
+    }
 
     let Some(cmdline) = process::read_cmdline(target.pid).await else {
         tracing::warn!(
@@ -517,6 +524,13 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
         );
         return OrphanTargetValidation::Changed;
     }
+    if process_stat_is_zombie(&final_stat) {
+        tracing::warn!(
+            pid = target.pid,
+            "orphan target exited during validation and is waiting to be reaped"
+        );
+        return OrphanTargetValidation::AlreadyGone;
+    }
 
     OrphanTargetValidation::Valid {
         pgid: identity.pgid,
@@ -528,6 +542,11 @@ async fn classify_orphan_validation_after_unreadable_pid_fact(
     identity: &FirecrackerProcessIdentity,
 ) -> OrphanTargetValidation {
     match process::read_process_stat(pid).await {
+        Some(stat)
+            if process_stat_matches_identity(identity, &stat) && process_stat_is_zombie(&stat) =>
+        {
+            OrphanTargetValidation::AlreadyGone
+        }
         Some(stat) if process_stat_matches_identity(identity, &stat) => {
             OrphanTargetValidation::Changed
         }
@@ -541,6 +560,10 @@ fn process_stat_matches_identity(
     stat: &ProcessStat,
 ) -> bool {
     stat.pgid == identity.pgid && stat.starttime == identity.starttime
+}
+
+fn process_stat_is_zombie(stat: &ProcessStat) -> bool {
+    stat.state == 'Z'
 }
 
 fn orphan_identity_matches_facts(
@@ -815,6 +838,14 @@ mod tests {
         }
     }
 
+    fn process_stat(identity: &FirecrackerProcessIdentity) -> ProcessStat {
+        ProcessStat {
+            state: 'S',
+            pgid: identity.pgid,
+            starttime: identity.starttime,
+        }
+    }
+
     /// Build an `ActiveRunMappings` from a vec of `(run_id, sandbox_id)` pairs
     /// with zero read failures — the common test case.
     fn mappings(entries: Vec<(String, String)>) -> run_resolution::ActiveRunMappings {
@@ -1016,10 +1047,7 @@ mod tests {
     fn orphan_identity_facts_match() {
         let target = make_target(200, "sbox-123");
         let identity = target.identity.as_ref().unwrap();
-        let stat = ProcessStat {
-            pgid: identity.pgid,
-            starttime: identity.starttime,
-        };
+        let stat = process_stat(identity);
         let cwd_info = ("sbox-123".to_string(), PathBuf::from("/data/r1"));
 
         assert!(orphan_identity_matches_facts(
@@ -1035,6 +1063,7 @@ mod tests {
         let target = make_target(200, "sbox-123");
         let identity = target.identity.as_ref().unwrap();
         let stat = ProcessStat {
+            state: 'S',
             pgid: identity.pgid,
             starttime: identity.starttime + 1,
         };
@@ -1053,6 +1082,7 @@ mod tests {
         let target = make_target(200, "sbox-123");
         let identity = target.identity.as_ref().unwrap();
         let stat = ProcessStat {
+            state: 'S',
             pgid: identity.pgid + 1,
             starttime: identity.starttime,
         };
@@ -1070,15 +1100,14 @@ mod tests {
     fn process_stat_identity_match_requires_stable_pgid_and_starttime() {
         let target = make_target(200, "sbox-123");
         let identity = target.identity.as_ref().unwrap();
-        let matching = ProcessStat {
-            pgid: identity.pgid,
-            starttime: identity.starttime,
-        };
+        let matching = process_stat(identity);
         let changed_starttime = ProcessStat {
+            state: 'S',
             pgid: identity.pgid,
             starttime: identity.starttime + 1,
         };
         let changed_pgid = ProcessStat {
+            state: 'S',
             pgid: identity.pgid + 1,
             starttime: identity.starttime,
         };
@@ -1092,10 +1121,7 @@ mod tests {
     fn orphan_identity_rejects_non_firecracker_cmdline() {
         let target = make_target(200, "sbox-123");
         let identity = target.identity.as_ref().unwrap();
-        let stat = ProcessStat {
-            pgid: identity.pgid,
-            starttime: identity.starttime,
-        };
+        let stat = process_stat(identity);
         let cwd_info = ("sbox-123".to_string(), PathBuf::from("/data/r1"));
 
         assert!(!orphan_identity_matches_facts(
@@ -1110,10 +1136,7 @@ mod tests {
     fn orphan_identity_rejects_changed_workspace() {
         let target = make_target(200, "sbox-123");
         let identity = target.identity.as_ref().unwrap();
-        let stat = ProcessStat {
-            pgid: identity.pgid,
-            starttime: identity.starttime,
-        };
+        let stat = process_stat(identity);
         let cwd_info = ("sbox-other".to_string(), PathBuf::from("/data/r1"));
 
         assert!(!orphan_identity_matches_facts(
@@ -1130,12 +1153,23 @@ mod tests {
         target.base_dir = None;
         target.identity.as_mut().unwrap().base_dir = None;
         let identity = target.identity.as_ref().unwrap();
-        let stat = ProcessStat {
+        let stat = process_stat(identity);
+
+        assert!(!orphan_identity_matches_facts(identity, &stat, true, None));
+    }
+
+    #[test]
+    fn zombie_process_stat_is_already_exited() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let zombie = ProcessStat {
+            state: 'Z',
             pgid: identity.pgid,
             starttime: identity.starttime,
         };
 
-        assert!(!orphan_identity_matches_facts(identity, &stat, true, None));
+        assert!(process_stat_matches_identity(identity, &zombie));
+        assert!(process_stat_is_zombie(&zombie));
     }
 
     #[tokio::test]

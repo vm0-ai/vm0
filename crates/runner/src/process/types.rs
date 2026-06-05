@@ -3,6 +3,7 @@ use std::path::PathBuf;
 /// Stable facts read from `/proc/{pid}/stat`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessStat {
+    pub state: char,
     pub pgid: u32,
     pub starttime: u64,
 }
