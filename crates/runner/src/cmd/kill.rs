@@ -1,8 +1,9 @@
 //! Kill a running sandbox and clean up resources.
 //!
-//! When the parent runner daemon is alive, killing the Firecracker process
-//! group is sufficient — the runner detects the exit via `monitor_process` →
-//! `crash_notify` and handles all cleanup (proxy, netns, workspace, status).
+//! When the parent runner daemon is alive, this command asks the owning runner
+//! to terminate the sandbox via the local control socket. The owner still holds
+//! the process monitor and `Child` handle, so it can kill the process group and
+//! handle normal cleanup without reconstructing ownership from `/proc`.
 //!
 //! Manual cleanup (workspace + socket dir) is only performed for orphan
 //! processes whose parent runner has already died.
