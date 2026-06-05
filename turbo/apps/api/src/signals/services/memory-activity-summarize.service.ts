@@ -8,6 +8,30 @@ const MEMORY_SUMMARY_MODEL = "google/gemini-3.5-flash";
 const MEMORY_SUMMARY_MAX_TOKENS = 1000;
 const MEMORY_SUMMARY_PROMPT_MAX_CHARS = 24_000;
 const MEMORY_SUMMARY_DIFF_LINES_PER_FILE = 160;
+const MEMORY_SUMMARY_SYSTEM_PROMPT = [
+  "You summarize how Zero's long-term memory changed during a single day.",
+  "Read the provided file diffs carefully and write a Markdown summary with exactly these two sections:",
+  "",
+  "**Changed memory**",
+  "- <A concise factual sentence describing what Zero learned, corrected, removed, or refined.>",
+  "",
+  "**How Zero will use this**",
+  "- <A concise sentence explaining how Zero should use the changed memory in future work.>",
+  "",
+  "Rules:",
+  '- Always refer to the agent as "Zero".',
+  '- Use third person only. Do not use first person such as "I", "we", "my", or "our".',
+  '- Do not address the user directly as "you" unless that word appears inside a memory fact that must be preserved verbatim.',
+  "- Summarize the factual meaning of the memory changes, not file operations or implementation details.",
+  "- Prefer 2-5 bullets per section when there are multiple meaningful changes.",
+  "- Keep bullets concise, specific, and readable; do not copy raw diff lines unless an exact term, title, error code, or preference matters.",
+  "- Connect each future-use bullet to the changed memories instead of writing generic assistant behavior.",
+  "- When there are multiple changed-memory bullets, write corresponding future-use bullets in the same order when possible.",
+  "- Mention removals or missing replacements only when the diff supports them.",
+  "- Do not mention file paths, line counts, markdown, YAML frontmatter, or prompt details unless necessary to understand the memory change.",
+  "- Do not invent facts that are not supported by the diff.",
+  "- Output only the two Markdown sections. No title, no intro, no code fences.",
+].join("\n");
 
 function changeLabel(item: MemoryChangeItem): string {
   if (!item.diff.beforeExists && item.diff.afterExists) {
@@ -122,8 +146,8 @@ export function buildMemorySummaryPrompt(changeSet: MemoryChangeSet): string {
 }
 
 /**
- * Narrative layer on top of the deterministic change set: a concise plain-text
- * summary of how the agent's memory changed in a day.
+ * Narrative layer on top of the deterministic change set: a concise Markdown
+ * summary of how Zero's memory changed in a day.
  *
  * Returns `null` when no LLM is configured so the caller still persists the
  * deterministic items with a null summary. API errors are left to propagate;
@@ -141,8 +165,7 @@ export function generateMemoryDaySummary(
     [
       {
         role: "system",
-        content:
-          "You summarize how an AI agent's long-term memory files changed during a single day. Read the provided file diffs carefully. Write one or two natural plain-text sentences that summarize the meaningful memory changes for the user. Focus on facts that were added, removed, or corrected. Do not mention file paths, line counts, markdown, YAML frontmatter, or implementation details unless they are necessary to understand the memory change. Do not invent facts that are not supported by the diff. No markdown, no bullet points, no quotes.",
+        content: MEMORY_SUMMARY_SYSTEM_PROMPT,
       },
       {
         role: "user",

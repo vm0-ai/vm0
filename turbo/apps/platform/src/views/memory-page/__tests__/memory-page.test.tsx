@@ -166,7 +166,8 @@ describe("memory page", () => {
       entries: [
         {
           date: "2024-03-02",
-          summary: "Zero learned how you prefer to deploy.",
+          summary:
+            "**Changed memory**\n- Zero learned the deployment preference for blue-green deploys.\n\n**How Zero will use this**\n- Zero should apply blue-green deployment context in future release work.",
           fromVersionId: "v1",
           toVersionId: "v2",
           items: [
@@ -192,7 +193,7 @@ describe("memory page", () => {
 
     const summary = await waitFor(() => {
       const element = screen.getByText(
-        "Zero learned how you prefer to deploy.",
+        "Zero learned the deployment preference for blue-green deploys.",
       );
       expect(element).toBeInTheDocument();
       return element;
@@ -202,11 +203,17 @@ describe("memory page", () => {
     if (updateCard === null) {
       throw new Error("Missing memory update card");
     }
+    const markdownRoot = updateCard.querySelector(".wmde-markdown");
+    if (!(markdownRoot instanceof HTMLElement)) {
+      throw new Error("Missing markdown summary root");
+    }
     expect(updateCard).toHaveClass("shrink-0");
+    expect(screen.getByText("Changed memory")).toBeInTheDocument();
+    expect(screen.getByText("How Zero will use this")).toBeInTheDocument();
+    expect(screen.queryByText("**Changed memory**")).not.toBeInTheDocument();
     expect(screen.getByText("deploy.md")).toBeInTheDocument();
     expect(screen.getByText("setup.md")).toBeInTheDocument();
     expect(screen.queryByText("Deploy preference")).not.toBeInTheDocument();
-    expect(screen.queryByText("Learned")).not.toBeInTheDocument();
     expect(screen.queryByText("Updated")).not.toBeInTheDocument();
     expect(updateCard).toHaveTextContent("+1");
     expect(updateCard).toHaveTextContent("-1");

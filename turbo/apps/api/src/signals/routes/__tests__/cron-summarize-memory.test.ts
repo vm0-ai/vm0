@@ -481,6 +481,13 @@ describe("GET /api/cron/summarize-memory", () => {
       model: "google/gemini-3.5-flash",
       max_tokens: 1000,
     });
+    const systemMessage = llm.requests[0]?.messages.find((message) => {
+      return message.role === "system";
+    })?.content;
+    expect(systemMessage).toContain("**Changed memory**");
+    expect(systemMessage).toContain("**How Zero will use this**");
+    expect(systemMessage).toContain('Always refer to the agent as "Zero"');
+    expect(systemMessage).toContain("Do not use first person");
     const userMessage = llm.requests[0]?.messages.find((message) => {
       return message.role === "user";
     })?.content;
