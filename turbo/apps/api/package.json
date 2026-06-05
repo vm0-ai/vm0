@@ -47,7 +47,6 @@
     "hono": "^4.12.18",
     "html-to-text": "^9.0.5",
     "pg": "^8.20.0",
-    "posthog-node": "^4.0.0",
     "resend": "^6.12.4",
     "signal-timers": "^1.0.4",
     "stripe": "^20.4.1",
