@@ -173,6 +173,7 @@ const CONNECTOR_ICON_COLORFUL = {
   pdfco: true,
   "people-data-labs": true,
   pinecone: true,
+  pipedrive: true,
   pipedream: true,
   plain: true,
   plausible: true,
