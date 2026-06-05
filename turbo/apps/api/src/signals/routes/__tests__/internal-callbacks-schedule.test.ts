@@ -2,17 +2,15 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
-import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
-import { mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { calculateNextRun } from "../../services/zero-schedules.service";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
@@ -31,7 +29,6 @@ const store = createStore();
 const CRON_PATH = "/api/internal/callbacks/schedule/cron";
 const LOOP_PATH = "/api/internal/callbacks/schedule/loop";
 const TEST_CALLBACK_SECRET = "test-callback-secret";
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 interface ScheduleCallbackFixture extends UsageInsightFixture {
   readonly composeId: string;
@@ -82,6 +79,13 @@ async function seedSchedule(
 ): Promise<string> {
   const writeDb = store.set(writeDb$);
   const isCron = options.kind === "cron";
+  const [thread] = await writeDb
+    .insert(chatThreads)
+    .values({ userId: fixture.userId, agentComposeId: fixture.composeId })
+    .returning({ id: chatThreads.id });
+  if (!thread) {
+    throw new Error("seedSchedule: chat thread insert returned no row");
+  }
   const [row] = await writeDb
     .insert(zeroAgentSchedules)
     .values({
@@ -96,6 +100,7 @@ async function seedSchedule(
       prompt: options.prompt ?? `${options.kind} task`,
       enabled: options.enabled ?? true,
       consecutiveFailures: options.consecutiveFailures ?? 0,
+      chatThreadId: thread.id,
     })
     .returning({ id: zeroAgentSchedules.id });
   if (!row) {
@@ -425,21 +430,6 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
       scheduleId,
       payload: { scheduleId },
     });
-    context.mocks.axiom.query.mockResolvedValueOnce([
-      {
-        eventType: "result",
-        eventData: { result: "Loop completed." },
-      },
-    ]);
-    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-    server.use(
-      http.post(OPENROUTER_URL, () => {
-        return HttpResponse.json({
-          choices: [{ message: { content: "Loop produced an update." } }],
-        });
-      }),
-    );
-
     const response = await postSignedCallback(LOOP_PATH, {
       callbackId,
       runId,
@@ -453,7 +443,9 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     expect(updated?.consecutiveFailures).toBe(0);
     expect(updated?.enabled).toBeTruthy();
     expect(updated?.nextRunAt?.toISOString()).toBe("2026-05-13T04:10:00.000Z");
-    await expect(runSummary(runId)).resolves.toBe("Loop produced an update.");
+    // The chat callback owns the run summary; the reschedule callback must not
+    // write one.
+    await expect(runSummary(runId)).resolves.toBeNull();
   });
 
   it("increments loop failure counters before the auto-disable threshold", async () => {
@@ -511,7 +503,7 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     expect(updated?.nextRunAt).toBeNull();
   });
 
-  it("advances cron callbacks and persists completed-run summaries", async () => {
+  it("advances cron callbacks without writing a run summary", async () => {
     const completedAt = new Date("2026-05-13T04:00:00.000Z");
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(completedAt);
@@ -527,20 +519,6 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
       scheduleId,
       payload: { scheduleId, cronExpression: "0 9 * * *", timezone: "UTC" },
     });
-    context.mocks.axiom.query.mockResolvedValueOnce([
-      {
-        eventType: "result",
-        eventData: { result: "Report completed." },
-      },
-    ]);
-    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-    server.use(
-      http.post(OPENROUTER_URL, () => {
-        return HttpResponse.json({
-          choices: [{ message: { content: "Schedule produced a report." } }],
-        });
-      }),
-    );
 
     const response = await postSignedCallback(CRON_PATH, {
       callbackId,
@@ -557,9 +535,9 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     expect(updated?.nextRunAt?.toISOString()).toBe(
       calculateNextRun("0 9 * * *", "UTC", completedAt)?.toISOString(),
     );
-    await expect(runSummary(runId)).resolves.toBe(
-      "Schedule produced a report.",
-    );
+    // The chat callback owns the run summary; the reschedule callback must not
+    // write one.
+    await expect(runSummary(runId)).resolves.toBeNull();
   });
 
   it("increments cron failure counters before the auto-disable threshold", async () => {

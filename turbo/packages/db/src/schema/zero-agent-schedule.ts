@@ -67,16 +67,18 @@ export const zeroAgentSchedules = pgTable(
 
     volumeVersions: jsonb("volume_versions").$type<Record<string, string>>(),
 
-    // Chat-mode switch: null = legacy path (run produces no chat_messages);
-    // set = chat path (the run posts into this thread and renders as a web-chat
-    // turn). ON DELETE CASCADE: deleting the thread deletes all schedules linked
-    // to it. The link is set at creation only and is immutable thereafter.
-    chatThreadId: uuid("chat_thread_id").references(
-      () => {
-        return chatThreads.id;
-      },
-      { onDelete: "cascade" },
-    ),
+    // Linked chat thread: every schedule posts its runs into this thread and
+    // renders as a web-chat turn. Set at creation (supplied owned thread or a
+    // server-created one) and immutable thereafter. ON DELETE CASCADE: deleting
+    // the thread deletes all schedules linked to it.
+    chatThreadId: uuid("chat_thread_id")
+      .notNull()
+      .references(
+        () => {
+          return chatThreads.id;
+        },
+        { onDelete: "cascade" },
+      ),
 
     // State
     enabled: boolean("enabled").default(true).notNull(),

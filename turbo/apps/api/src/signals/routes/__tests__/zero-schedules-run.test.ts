@@ -221,17 +221,18 @@ describe("POST /api/zero/schedules/run", () => {
       scheduleId,
     });
 
-    const [callback] = await db
+    const callbacks = await db
       .select({
         url: agentRunCallbacks.url,
         payload: agentRunCallbacks.payload,
       })
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, body.runId));
-    expect(callback?.url).toMatch(
-      /\/api\/internal\/callbacks\/schedule\/cron$/,
-    );
-    expect(callback?.payload).toMatchObject({ scheduleId });
+    const cronCallback = callbacks.find((callback) => {
+      return /\/api\/internal\/callbacks\/schedule\/cron$/.test(callback.url);
+    });
+    expect(cronCallback).toBeDefined();
+    expect(cronCallback?.payload).toMatchObject({ scheduleId });
   });
 
   it("runs in chat mode: posts a user message + adds the chat callback", async () => {

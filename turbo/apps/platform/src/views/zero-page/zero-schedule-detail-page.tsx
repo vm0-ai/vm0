@@ -114,11 +114,7 @@ function formatRunAt(iso: string | null): string {
   });
 }
 
-function ScheduleBreadcrumbLink({
-  chatThreadId,
-}: {
-  chatThreadId?: string | null;
-}) {
+function ScheduleBreadcrumbLink({ chatThreadId }: { chatThreadId?: string }) {
   if (chatThreadId) {
     return (
       <Link

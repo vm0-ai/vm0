@@ -18,7 +18,7 @@ function makeEntry(
     displayName: null,
     nextRunAt: null,
     lastRunAt: null,
-    chatThreadId: null,
+    chatThreadId: "d0000000-0000-4000-a000-000000000001",
     ...overrides,
   };
 }

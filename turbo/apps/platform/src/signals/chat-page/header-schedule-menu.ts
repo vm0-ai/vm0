@@ -9,7 +9,7 @@ interface HeaderScheduleEntry {
   readonly id: string;
   readonly name: string;
   readonly title: string;
-  readonly chatThreadId: string | null;
+  readonly chatThreadId: string;
 }
 
 const headerScheduleMenuReload$ = state(0);

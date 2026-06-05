@@ -8,6 +8,7 @@ import {
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -90,12 +91,20 @@ async function seedSchedule(
   },
 ): Promise<string> {
   const scheduleId = randomUUID();
+  const [thread] = await writeDb
+    .insert(chatThreads)
+    .values({ userId: args.userId, agentComposeId: args.composeId })
+    .returning({ id: chatThreads.id });
+  if (!thread) {
+    throw new Error("seedSchedule: chat thread insert returned no row");
+  }
   await writeDb.insert(zeroAgentSchedules).values({
     id: scheduleId,
     agentId: args.composeId,
     userId: args.userId,
     orgId: args.orgId,
     name: args.seed.name,
+    chatThreadId: thread.id,
     triggerType: resolveTriggerType(args.seed),
     cronExpression: args.seed.cronExpression ?? null,
     atTime: args.seed.atTime ?? null,
