@@ -272,7 +272,7 @@ function buildConnectorTypeStatus(params: {
     return !!method?.featureFlag && method.showExperimentalLabel !== false;
   });
   const connected = params.connector !== null;
-  const apiNeedsReconnect = params.connector?.needsReconnect ?? false;
+  const apiConnectionStatus = params.connector?.connectionStatus ?? null;
   const authMethodSupportsRefresh =
     params.connector !== null &&
     connectorAuthMethodSupportsRefresh(
@@ -289,7 +289,7 @@ function buildConnectorTypeStatus(params: {
   let connectionStatus: ConnectorConnectionStatus = "not-connected";
   if (params.connector !== null) {
     connectionStatus = "connected";
-    if (apiNeedsReconnect) {
+    if (apiConnectionStatus === "reconnect-required") {
       connectionStatus = "reconnect-required";
     } else if (scopeMismatch) {
       connectionStatus = "scope-mismatch";

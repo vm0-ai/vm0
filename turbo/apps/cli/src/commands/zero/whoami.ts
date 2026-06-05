@@ -33,7 +33,7 @@ function isInsideSandbox(): boolean {
 function formatConnectorIdentity(connector: {
   externalUsername: string | null;
   externalEmail: string | null;
-  needsReconnect: boolean;
+  connectionStatus: "connected" | "reconnect-required";
 }): string {
   let identity = "";
   if (connector.externalUsername && connector.externalEmail) {
@@ -43,7 +43,7 @@ function formatConnectorIdentity(connector: {
   } else if (connector.externalEmail) {
     identity = connector.externalEmail;
   }
-  if (connector.needsReconnect) {
+  if (connector.connectionStatus === "reconnect-required") {
     identity += ` ${chalk.yellow("(needs reconnect)")}`;
   }
   return identity;

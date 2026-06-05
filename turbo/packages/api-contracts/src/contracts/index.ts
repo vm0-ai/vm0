@@ -729,6 +729,7 @@ export {
   type ScopeDiff,
 } from "@vm0/connectors/connector-utils";
 export {
+  connectorResponseConnectionStatusSchema,
   connectorResponseSchema,
   connectorListResponseSchema,
   guaranteedConnectorProvidedBindingNames,
@@ -736,6 +737,7 @@ export {
   connectorProvidedBindingSchema,
   connectorProvidedBindingSourceSchema,
   scopeDiffResponseSchema,
+  type ConnectorResponseConnectionStatus,
   type ScopeDiffResponse,
   type ConnectorResponse,
   type ConnectorListResponse,

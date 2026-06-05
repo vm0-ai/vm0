@@ -165,7 +165,10 @@ function storedConnectorRowToResponse(
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
     oauthScopes: parseOauthScopes(row.oauthScopes),
-    needsReconnect: credentialStatus === "reconnect-required",
+    connectionStatus:
+      credentialStatus === "reconnect-required"
+        ? "reconnect-required"
+        : "connected",
     tokenExpiresAt: row.tokenExpiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -410,7 +413,7 @@ function connectorProvidedBindingsForStoredConnectors(
 ): ConnectorProvidedBinding[] {
   const provided: ConnectorProvidedBinding[] = [];
   for (const connector of connectorList) {
-    if (connector.needsReconnect) {
+    if (connector.connectionStatus !== "connected") {
       continue;
     }
     const metadata = getConnectorAuthMethodRuntimeMetadata(

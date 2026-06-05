@@ -49,7 +49,7 @@ const connectedResponse = {
   externalUsername: "user",
   externalEmail: "user@example.com",
   oauthScopes: ["repo"],
-  needsReconnect: false,
+  connectionStatus: "connected",
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
 };
@@ -327,7 +327,7 @@ describe("zero doctor check-connector command", () => {
         http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
           return HttpResponse.json({
             ...connectedResponse,
-            needsReconnect: true,
+            connectionStatus: "reconnect-required",
           });
         }),
         http.get(

@@ -2851,7 +2851,10 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
   const selectedKey = selectedItem ? artifactItemKey(selectedItem) : null;
   const googleDriveConnected =
     connectorList?.connectors.some((connector) => {
-      return connector.type === "google-drive" && !connector.needsReconnect;
+      return (
+        connector.type === "google-drive" &&
+        connector.connectionStatus === "connected"
+      );
     }) ?? false;
   const refreshArtifactSyncStatus = () => {
     reloadArtifacts(true);

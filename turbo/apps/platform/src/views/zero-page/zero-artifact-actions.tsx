@@ -247,7 +247,10 @@ function GoogleDriveMenuItem({
   const connectorList = useLastResolved(connectors$);
   const googleDriveConnected =
     connectorList?.connectors.some((connector) => {
-      return connector.type === "google-drive" && !connector.needsReconnect;
+      return (
+        connector.type === "google-drive" &&
+        connector.connectionStatus === "connected"
+      );
     }) ?? false;
   const createClient = useGet(zeroClient$);
   const pageSignal = useGet(pageSignal$);

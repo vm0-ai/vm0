@@ -232,7 +232,7 @@ function collectConnectors(
     readonly {
       readonly type: unknown;
       readonly authMethod: unknown;
-      readonly needsReconnect: unknown;
+      readonly connectionStatus: unknown;
       readonly externalUsername: unknown;
     }[]
   >
@@ -314,7 +314,7 @@ function safeConnectorSummaries(
   connectors: readonly {
     readonly type: unknown;
     readonly authMethod: unknown;
-    readonly needsReconnect: unknown;
+    readonly connectionStatus: unknown;
     readonly externalUsername: unknown;
   }[],
 ): Record<string, unknown>[] {
@@ -322,7 +322,7 @@ function safeConnectorSummaries(
     return {
       type: connector.type,
       authMethod: connector.authMethod,
-      needsReconnect: connector.needsReconnect,
+      connectionStatus: connector.connectionStatus,
       externalUsername: connector.externalUsername,
     };
   });

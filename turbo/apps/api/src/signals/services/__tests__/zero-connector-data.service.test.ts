@@ -360,15 +360,15 @@ describe("zeroConnectorList", () => {
     });
 
     expect(gitlab).toMatchObject({
-      needsReconnect: false,
+      connectionStatus: "connected",
       tokenExpiresAt: futureAt.toISOString(),
     });
     expect(stripe).toMatchObject({
-      needsReconnect: true,
+      connectionStatus: "reconnect-required",
       tokenExpiresAt: expiredAt.toISOString(),
     });
     expect(lark).toMatchObject({
-      needsReconnect: false,
+      connectionStatus: "connected",
       tokenExpiresAt: expiredAt.toISOString(),
     });
     expect(list.connectorProvidedBindings).not.toContainEqual(
@@ -390,7 +390,7 @@ describe("zeroConnectorList", () => {
       zeroConnectorByType({ orgId, userId, type: "stripe" }),
     );
     expect(stripeByType).toMatchObject({
-      needsReconnect: true,
+      connectionStatus: "reconnect-required",
       tokenExpiresAt: expiredAt.toISOString(),
     });
 

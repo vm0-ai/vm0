@@ -418,7 +418,7 @@ function toCandidate(params: {
   if (!availableTypes.has(type)) {
     status = "not-available";
     reason = "not available for this account";
-  } else if (connector?.needsReconnect) {
+  } else if (connector?.connectionStatus === "reconnect-required") {
     status = "needs-reconnect";
     reason = "connected, reconnect required";
   } else if (!connector) {

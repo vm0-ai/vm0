@@ -5,6 +5,15 @@ import { connectorTypeSchema } from "@vm0/connectors/connectors";
 /**
  * Connector response schema
  */
+export const connectorResponseConnectionStatusSchema = z.enum([
+  "connected",
+  "reconnect-required",
+]);
+
+export type ConnectorResponseConnectionStatus = z.infer<
+  typeof connectorResponseConnectionStatusSchema
+>;
+
 export const connectorResponseSchema = z.object({
   id: z.uuid(),
   type: connectorTypeSchema,
@@ -13,7 +22,7 @@ export const connectorResponseSchema = z.object({
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),
   oauthScopes: z.array(z.string()).nullable(),
-  needsReconnect: z.boolean(),
+  connectionStatus: connectorResponseConnectionStatusSchema,
   tokenExpiresAt: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),

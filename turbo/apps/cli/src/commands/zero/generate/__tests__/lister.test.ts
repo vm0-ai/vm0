@@ -18,7 +18,7 @@ function connector(
     externalUsername,
     externalEmail: null,
     oauthScopes: null,
-    needsReconnect: false,
+    connectionStatus: "connected",
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   };
@@ -146,7 +146,10 @@ describe("zero generate lister", () => {
       stubConnectors([
         connector("fal", "fal-user"),
         connector("replicate", "replicate-user"),
-        { ...connector("openai", "openai-user"), needsReconnect: true },
+        {
+          ...connector("openai", "openai-user"),
+          connectionStatus: "reconnect-required",
+        },
       ]),
       stubUserConnectors(["fal"]),
     );

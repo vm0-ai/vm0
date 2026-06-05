@@ -152,7 +152,7 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   ]);
 
   const isConnected = connector !== null;
-  const isExpired = connector?.needsReconnect === true;
+  const isExpired = connector?.connectionStatus === "reconnect-required";
   const hasPermission =
     enabledTypes !== null && enabledTypes.includes(ctx.connectorType);
 

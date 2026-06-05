@@ -23,7 +23,7 @@ function connectorResponse(type: string) {
     externalUsername: null,
     externalEmail: null,
     oauthScopes: null,
-    needsReconnect: false,
+    connectionStatus: "connected",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };

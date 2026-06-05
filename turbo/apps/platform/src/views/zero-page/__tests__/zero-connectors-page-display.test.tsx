@@ -159,7 +159,7 @@ describe("connectors page - connector status indicators", () => {
     mockConnectors([
       {
         type: "github",
-        needsReconnect: true,
+        connectionStatus: "reconnect-required",
         oauthScopes: ["repo", "project", "workflow"],
       },
     ]);
@@ -199,7 +199,9 @@ describe("connectors page - connector status indicators", () => {
   });
 
   it("connector shows reconnect needed state (CONN-D-004)", async () => {
-    mockConnectors([{ type: "github", needsReconnect: true }]);
+    mockConnectors([
+      { type: "github", connectionStatus: "reconnect-required" },
+    ]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -211,9 +213,7 @@ describe("connectors page - connector status indicators", () => {
 
   it("connector shows scope mismatch state (CONN-D-005)", async () => {
     // GitHub requires ["repo", "project", "workflow"] scopes; empty array triggers mismatch
-    mockConnectors([
-      { type: "github", oauthScopes: [], needsReconnect: false },
-    ]);
+    mockConnectors([{ type: "github", oauthScopes: [] }]);
 
     detachedSetupPage({ context, path: "/connectors" });
 

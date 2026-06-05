@@ -66,7 +66,7 @@ function makeConnector(overrides: Record<string, unknown> = {}) {
     externalUsername: "octocat",
     externalEmail: "octocat@github.com",
     oauthScopes: ["repo"],
-    needsReconnect: false,
+    connectionStatus: "connected",
     createdAt: "2025-01-01T00:00:00Z",
     updatedAt: "2025-01-01T00:00:00Z",
     ...overrides,
@@ -496,7 +496,7 @@ describe("zero agent view command", () => {
           },
         ),
         mockConnectorListHandler(
-          [makeConnector({ needsReconnect: true })],
+          [makeConnector({ connectionStatus: "reconnect-required" })],
           ["github"],
         ),
       );
