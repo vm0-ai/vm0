@@ -41,6 +41,8 @@ const DISALLOWED_TOOLS = [
   "CronDelete",
   "ScheduleWakeup",
   "AskUserQuestion",
+  "Skill(loop)",
+  "Skill(loop *)",
 ] as const;
 
 const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
