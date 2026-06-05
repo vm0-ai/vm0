@@ -16,6 +16,7 @@ import response_streaming
 import usage
 from tests.flow_helpers import header_map, response_stream
 from tests.pending_helpers import assert_pending
+from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
 _WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
 _ScheduledWebSocketTrim = tuple[_WebSocketTrimCallback, http.HTTPFlow]
@@ -41,6 +42,44 @@ def _openai_model_websocket_flow(
 
     mitm_addon.responseheaders(flow)
     return flow
+
+
+def _write_openai_model_websocket_registry(tmp_path: Path) -> Path:
+    firewall_name = "model-provider:openai-api-key"
+    return _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            run_id="run-abc-123",
+            sandbox_marker="tok-xyz",
+            firewall_name=firewall_name,
+            api_entry={
+                "base": "https://api.openai.com",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "responses", "rules": ["POST /v1/responses"]}],
+            },
+            network_policy={
+                "allow": ["responses"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            billable_firewalls=[firewall_name],
+            vm_fields={"cliAgentType": "codex"},
+        ),
+    )
+
+
+def _openai_model_websocket_request_flow(
+    real_flow: Callable[..., http.HTTPFlow],
+) -> http.HTTPFlow:
+    return real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.openai.com",
+        path="/v1/responses",
+        method="POST",
+    )
 
 
 def _model_provider_sse_flow(
@@ -523,26 +562,41 @@ class TestModelProviderStreamUsage:
             "tokens.cache_read": 10,
         }
 
-    def test_model_websocket_response_keeps_usage_flow_tracked_until_end(self, tmp_path, real_flow):
+    async def test_model_websocket_response_keeps_usage_flow_tracked_until_end(
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        fake_firewall_headers,
+        usage_webhook_server,
+    ):
         """The HTTP 101 response hook must not complete the WebSocket usage lifecycle."""
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
-        usage.increment_in_flight_flows()
+        reg_path = _write_openai_model_websocket_registry(tmp_path)
 
-        flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        flow.metadata["_usage_flow_tracked"] = True
-        usage.write_pending_snapshot(flush_request_id="before-response")
-        assert_pending(
-            pending_path,
-            flows=1,
-            buffered=0,
-            reports=0,
-            flush_request_id="before-response",
-        )
+        flow = _openai_model_websocket_request_flow(real_flow)
 
-        with self._usage_webhook_api() as webhook:
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
+            usage.write_pending_snapshot(flush_request_id="before-response")
+            assert_pending(
+                pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="before-response",
+            )
+
+            flow.response = tutils.tresp(
+                status_code=101,
+                headers=http.Headers(upgrade="websocket"),
+            )
+            mitm_addon.responseheaders(flow)
             mitm_addon.response(flow)
-            assert flow.metadata["_usage_flow_tracked"] is True
             usage.write_pending_snapshot(flush_request_id="after-response")
             assert_pending(
                 pending_path,
@@ -572,14 +626,18 @@ class TestModelProviderStreamUsage:
             mitm_addon.websocket_end(flow)
             usage.flush_usage_events(trigger="test")
 
-        events = webhook.usage_events()
+        events = usage_webhook_server.usage_events()
+        assert len(events) == 3
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {
             "tokens.input": 40,
             "tokens.output": 20,
             "tokens.cache_read": 10,
         }
-        assert "_usage_flow_tracked" not in flow.metadata
+        observation_events = usage_webhook_server.model_usage_observation_events()
+        assert len(observation_events) == len(events)
+        assert {event["category"]: event["quantity"] for event in observation_events} == by_category
+        assert {event["model"] for event in observation_events} == {"gpt-5.5"}
         usage.write_pending_snapshot(flush_request_id="after-websocket-end")
         assert_pending(
             pending_path,
@@ -587,6 +645,81 @@ class TestModelProviderStreamUsage:
             buffered=0,
             reports=0,
             flush_request_id="after-websocket-end",
+        )
+
+    async def test_model_websocket_error_releases_usage_flow_after_upgrade(
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        fake_firewall_headers,
+        usage_webhook_server,
+    ):
+        """A WebSocket connection error after HTTP 101 is terminal for usage tracking."""
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+        reg_path = _write_openai_model_websocket_registry(tmp_path)
+
+        flow = _openai_model_websocket_request_flow(real_flow)
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
+            flow.response = tutils.tresp(
+                status_code=101,
+                headers=http.Headers(upgrade="websocket"),
+            )
+            mitm_addon.responseheaders(flow)
+            mitm_addon.response(flow)
+            usage.write_pending_snapshot(flush_request_id="after-response")
+            assert_pending(
+                pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="after-response",
+            )
+
+            _feed_websocket_server_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.completed",
+                        "response": {
+                            "id": "resp_ws_error",
+                            "model": "gpt-5.5",
+                            "usage": {
+                                "input_tokens": 10,
+                                "output_tokens": 4,
+                            },
+                        },
+                    }
+                ).encode(),
+            )
+            flow.error = Error("connection reset by peer")
+            mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
+
+        events = usage_webhook_server.usage_events()
+        assert len(events) == 2
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == {
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+        observation_events = usage_webhook_server.model_usage_observation_events()
+        assert len(observation_events) == len(events)
+        assert {event["category"]: event["quantity"] for event in observation_events} == by_category
+        assert {event["model"] for event in observation_events} == {"gpt-5.5"}
+        usage.write_pending_snapshot(flush_request_id="after-error")
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="after-error",
         )
 
     def test_full_pipeline_model_websocket_zero_frame_preserves_billed_usage_and_id(
