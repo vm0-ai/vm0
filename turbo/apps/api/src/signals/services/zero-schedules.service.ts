@@ -8,7 +8,7 @@ import {
   ScheduleListResponse,
   ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
-import { type FeatureSwitchContext } from "@vm0/core/feature-switch";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import type {
   ScheduleCronCallbackPayload,
   ScheduleLoopCallbackPayload,
@@ -1041,10 +1041,7 @@ async function recordSchedulePreRunFailure(
 }
 
 export const executeDueSchedules$ = command(
-  async (
-    { get, set },
-    signal: AbortSignal,
-  ): Promise<ExecuteDueSchedulesResult> => {
+  async ({ set }, signal: AbortSignal): Promise<ExecuteDueSchedulesResult> => {
     const db = set(writeDb$);
     const currentTime = nowDate();
     log.debug("Checking for due schedules", {
