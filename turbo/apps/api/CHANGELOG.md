@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.107.0](https://github.com/vm0-ai/vm0/compare/api-v1.106.0...api-v1.107.0) (2026-06-05)
+
+
+### Features
+
+* roll out scheduled chat ([#16260](https://github.com/vm0-ai/vm0/issues/16260)) ([00bf130](https://github.com/vm0-ai/vm0/commit/00bf130980a3989ee7b48b6f13ad05fc681ec9ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.312.0
+
 ## [1.106.0](https://github.com/vm0-ai/vm0/compare/api-v1.105.0...api-v1.106.0) (2026-06-05)
 
 
