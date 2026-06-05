@@ -252,10 +252,11 @@ describe("POST /api/zero/schedules/run", () => {
       })
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, body.runId));
-    const scheduleCallback = callbacks.find((callback) => {
-      return callback.url.endsWith("/callbacks/schedule/cron");
+    const cronCallback = callbacks.find((callback) => {
+      return /\/api\/internal\/callbacks\/schedule\/cron$/.test(callback.url);
     });
-    expect(scheduleCallback?.payload).toMatchObject({ scheduleId });
+    expect(cronCallback).toBeDefined();
+    expect(cronCallback?.payload).toMatchObject({ scheduleId });
     expect(
       callbacks.some((callback) => {
         return callback.url.endsWith("/callbacks/chat");

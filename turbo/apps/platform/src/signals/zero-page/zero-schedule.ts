@@ -132,8 +132,8 @@ interface ZeroScheduleEntry {
   timezone: string;
   /** Raw interval in seconds for loop schedules */
   intervalSeconds: number | null;
-  /** Linked chat thread for chat-mode schedules. */
-  chatThreadId: string | null;
+  /** Linked chat thread. Every schedule is linked to a chat thread. */
+  chatThreadId: string;
 }
 
 export const zeroScheduleEntries$ = computed((get) => {
@@ -365,7 +365,7 @@ export interface OrgScheduleEntry {
   displayName: string | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
-  chatThreadId: string | null;
+  chatThreadId: string;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
