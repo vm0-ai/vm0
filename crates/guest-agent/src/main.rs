@@ -44,6 +44,12 @@ async fn run() -> i32 {
     // Record API-to-agent E2E time (as early as possible)
     guest_agent::timing::record_e2e_from_api("api_to_agent_start");
 
+    if let Err(e) = env::init_user_env() {
+        log_error!(LOG_TAG, "Fatal: {e}");
+        log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
+        return 1;
+    }
+
     let http = match HttpClient::for_current_env() {
         Ok(http) => http,
         Err(e) => {
@@ -153,7 +159,7 @@ async fn execute(
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
     // Codex setup: best-effort `codex login`. Failure is non-fatal —
-    // `codex exec` reads `OPENAI_API_KEY` directly from the env.
+    // `codex exec` also receives `OPENAI_API_KEY` through the curated CLI env.
     if matches!(env::Framework::from_env(), env::Framework::Codex)
         && let Err(e) = cli::setup_codex()
     {

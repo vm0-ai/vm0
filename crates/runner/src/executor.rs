@@ -77,6 +77,14 @@ const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "LD_AUDIT",
     "NODE_OPTIONS",
 ];
+const USER_ENV_FILE_ENV_KEY: &str = "VM0_USER_ENV_FILE";
+const GUEST_USER_ENV_DIR_PREFIX: &str = "/tmp/vm0-user-env-";
+const GUEST_USER_ENV_FILENAME: &str = "env.json";
+const GUEST_AGENT_TUNING_ENV_KEYS: &[&str] = &[
+    "VM0_STUCK_TOOL_TIMEOUT_SECS",
+    "VM0_POST_RESULT_SIGTERM_GRACE_SECS",
+    "VM0_POST_RESULT_SIGKILL_GRACE_SECS",
+];
 const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
     include_str!("../scripts/agent-abnormal-exit-diagnostics.sh");
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
@@ -302,11 +310,14 @@ fn agent_exit_failure_message(exit_code: i32) -> String {
     format!("Agent exited with code {exit_code}")
 }
 
-fn build_agent_env_diagnostics(env: &HashMap<String, String>) -> AgentEnvDiagnostics {
+fn build_agent_env_diagnostics(
+    env: &HashMap<String, String>,
+    user_env: &HashMap<String, String>,
+) -> AgentEnvDiagnostics {
     let mut suspicious_keys: Vec<String> = BOOTSTRAP_SENSITIVE_ENV_KEYS
         .iter()
         .copied()
-        .filter(|key| env.contains_key(*key))
+        .filter(|key| user_env.contains_key(*key))
         .map(sanitize_env_key_for_diagnostic)
         .collect();
     suspicious_keys.sort();
@@ -1455,9 +1466,16 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
         result?;
     }
 
-    // 5. Build env vars (passed directly via vsock protocol)
-    let env_map = build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result)?;
-    let env_diagnostics = build_agent_env_diagnostics(&env_map);
+    // 5. Build env vars. The guest-agent bootstrap env is runner-owned only;
+    // user-provided env is passed through a private guest file and injected
+    // into the CLI child after guest-agent has started.
+    let user_env_map = build_user_env_json(context);
+    let user_env_file = write_user_env_file(sandbox, context.run_id, &user_env_map).await?;
+    let mut env_map = build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result)?;
+    if let Some(path) = user_env_file {
+        env_map.insert(USER_ENV_FILE_ENV_KEY.into(), path);
+    }
+    let env_diagnostics = build_agent_env_diagnostics(&env_map, &user_env_map);
     let env_pairs: Vec<(String, String)> = env_map.into_iter().collect();
     let env_refs: Vec<(&str, &str)> = env_pairs
         .iter()
@@ -2606,13 +2624,81 @@ fn is_valid_session_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-/// Build the environment variables JSON.
+fn build_user_env_json(context: &ExecutionContext) -> HashMap<String, String> {
+    let mut env = HashMap::new();
+
+    if let Some(user_env) = &context.environment {
+        for (k, v) in user_env {
+            env.insert(k.clone(), v.clone());
+        }
+    }
+    scrub_runner_owned_env(&mut env);
+
+    if let Some(tz) = &context.user_timezone {
+        let has_tz = context
+            .environment
+            .as_ref()
+            .is_some_and(|e| e.contains_key("TZ"));
+        if !has_tz {
+            env.insert("TZ".into(), tz.clone());
+        }
+    }
+
+    env
+}
+
+fn guest_user_env_dir_path(run_id: RunId) -> String {
+    format!("{GUEST_USER_ENV_DIR_PREFIX}{run_id}")
+}
+
+fn guest_user_env_file_path(run_id: RunId) -> String {
+    format!(
+        "{}/{}",
+        guest_user_env_dir_path(run_id),
+        GUEST_USER_ENV_FILENAME
+    )
+}
+
+async fn write_user_env_file(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    user_env: &HashMap<String, String>,
+) -> RunnerResult<Option<String>> {
+    if user_env.is_empty() {
+        return Ok(None);
+    }
+
+    let dir_path = guest_user_env_dir_path(run_id);
+    let file_path = guest_user_env_file_path(run_id);
+    let mkdir_cmd = format!("rm -rf {dir_path} && mkdir -m 700 {dir_path}");
+    let mkdir_result = sandbox
+        .exec(&ExecRequest {
+            cmd: &mkdir_cmd,
+            timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
+            sudo: false,
+            stdin_bytes: None,
+            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+        })
+        .await?;
+    if mkdir_result.exit_code != 0 {
+        return Err(RunnerError::Internal(format_guest_exec_failure(
+            "user env directory creation",
+            &mkdir_result,
+        )));
+    }
+
+    let payload = serde_json::to_vec(user_env)
+        .map_err(|e| RunnerError::Internal(format!("serialize user env: {e}")))?;
+    sandbox.write_file(&file_path, &payload).await?;
+
+    Ok(Some(file_path))
+}
+
+/// Build the guest-agent bootstrap environment.
 ///
-/// Priority (lowest → highest):
-///   1. `environment` (user-provided env, includes expanded vars)
-///   2. scrub runner-owned keys from that copied user env
-///   3. `user_timezone` TZ (unless `environment` already sets TZ)
-///   4. System variables (VM0_*, secrets, etc.) — always win
+/// This intentionally excludes `context.environment`. User/model/connector
+/// environment is transferred separately and injected only into the CLI child.
 fn build_env_json(
     context: &ExecutionContext,
     api_url: &str,
@@ -2632,28 +2718,6 @@ fn build_env_json_with_host_env(
 ) -> RunnerResult<HashMap<String, String>> {
     let mut env = HashMap::new();
 
-    // --- User-provided environment ---
-    if let Some(user_env) = &context.environment {
-        for (k, v) in user_env {
-            env.insert(k.clone(), v.clone());
-        }
-    }
-    scrub_runner_owned_env(&mut env);
-
-    // --- User timezone ---
-    // Respects explicit TZ in user environment.
-    if let Some(tz) = &context.user_timezone {
-        let has_tz = context
-            .environment
-            .as_ref()
-            .is_some_and(|e| e.contains_key("TZ"));
-        if !has_tz {
-            env.insert("TZ".into(), tz.clone());
-        }
-    }
-
-    // --- System variables below (override user values) ---
-
     env.insert("VM0_API_URL".into(), api_url.into());
     env.insert("VM0_RUN_ID".into(), context.run_id.to_string());
     env.insert("VM0_API_TOKEN".into(), context.sandbox_token.clone());
@@ -2667,6 +2731,7 @@ fn build_env_json_with_host_env(
         reuse_result.as_wire().into(),
     );
     env.insert("VM0_PROMPT".into(), context.prompt.clone());
+    insert_guest_agent_tuning_env(&mut env, context);
     if let Some(asp) = &context.append_system_prompt
         && !asp.is_empty()
     {
@@ -2773,6 +2838,17 @@ fn build_env_json_with_host_env(
     Ok(env)
 }
 
+fn insert_guest_agent_tuning_env(env: &mut HashMap<String, String>, context: &ExecutionContext) {
+    let Some(user_env) = &context.environment else {
+        return;
+    };
+    for key in GUEST_AGENT_TUNING_ENV_KEYS {
+        if let Some(value) = user_env.get(*key) {
+            env.insert((*key).into(), value.clone());
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct HostEnv {
     vercel_automation_bypass_secret: Option<String>,
@@ -2823,7 +2899,11 @@ const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     "VM0_ARTIFACTS",
     "VM0_RESUME_SESSION_ID",
     "VM0_SECRET_VALUES",
+    USER_ENV_FILE_ENV_KEY,
     "VM0_FEATURE_FLAGS",
+    "VM0_STUCK_TOOL_TIMEOUT_SECS",
+    "VM0_POST_RESULT_SIGTERM_GRACE_SECS",
+    "VM0_POST_RESULT_SIGKILL_GRACE_SECS",
     RUNNER_CONCURRENCY_FACTOR_ENV,
     RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
     RUNNER_DISK_IOPS_ENV,
@@ -2840,6 +2920,7 @@ const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
 ];
 
 fn scrub_runner_owned_env(env: &mut HashMap<String, String>) {
+    env.retain(|key, _| !key.starts_with("VM0_"));
     for key in RUNNER_OWNED_ENV_KEYS {
         env.remove(*key);
     }
@@ -3146,7 +3227,7 @@ mod tests {
 
     #[test]
     fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
-        let mut env = HashMap::from([
+        let mut bootstrap_env = HashMap::from([
             ("BASH_ENV".to_string(), "super-secret-bash-env".to_string()),
             ("NORMAL_KEY".to_string(), "normal-secret-value".to_string()),
             ("VM0_RUN_ID".to_string(), "runner-secret-value".to_string()),
@@ -3156,14 +3237,16 @@ mod tests {
             ),
         ]);
         for index in 0..AGENT_ENV_KEY_DIAGNOSTIC_LIMIT {
-            env.insert(format!("ZZZ_{index:03}"), format!("value-{index}"));
+            bootstrap_env.insert(format!("ZZZ_{index:03}"), format!("value-{index}"));
         }
-        env.insert(
+        bootstrap_env.insert(
             format!("AAA_{}", "x".repeat(AGENT_ENV_KEY_MAX_CHARS * 4)),
             "long-secret-value".to_string(),
         );
+        let user_env =
+            HashMap::from([("BASH_ENV".to_string(), "user-secret-bash-env".to_string())]);
 
-        let diagnostics = build_agent_env_diagnostics(&env);
+        let diagnostics = build_agent_env_diagnostics(&bootstrap_env, &user_env);
 
         assert_eq!(diagnostics.env_count, AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 5);
         assert_eq!(diagnostics.runner_owned_count, 2);
@@ -3172,7 +3255,7 @@ mod tests {
             AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 3
         );
         assert_eq!(diagnostics.suspicious_keys, vec!["BASH_ENV".to_string()]);
-        let env_pairs: Vec<(String, String)> = env.into_iter().collect();
+        let env_pairs: Vec<(String, String)> = bootstrap_env.into_iter().collect();
         let key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);
         assert_eq!(
             key_diagnostics.logged_keys.len(),
@@ -3197,6 +3280,7 @@ mod tests {
         assert!(rendered.contains("BASH_ENV"));
         assert!(rendered.contains("VM0_RUN_ID"));
         assert!(!rendered.contains("super-secret-bash-env"));
+        assert!(!rendered.contains("user-secret-bash-env"));
         assert!(!rendered.contains("normal-secret-value"));
         assert!(!rendered.contains("runner-secret-value"));
         assert!(!rendered.contains("stored-secret-value"));
@@ -3508,6 +3592,7 @@ mod tests {
                 "/user/controlled/runtime".into(),
             ),
             ("VM0_FEATURE_FLAGS".into(), r#"{"bad":true}"#.into()),
+            ("VM0_FUTURE_RUNNER_KEY".into(), "future".into()),
             (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
             (RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(), "999".into()),
             (RUNNER_DISK_IOPS_ENV.into(), "999".into()),
@@ -3522,33 +3607,48 @@ mod tests {
             ("VM0_SETTINGS".into(), r#"{"hooks":{}}"#.into()),
             ("VM0_MOCK_CLAUDE_PATH".into(), "/tmp/mock-claude".into()),
             ("VM0_MOCK_CODEX_PATH".into(), "/tmp/mock-codex".into()),
+            (USER_ENV_FILE_ENV_KEY.into(), "/tmp/user-env".into()),
         ]));
 
-        let env = build_env_for_test(&ctx, "http://localhost");
+        let bootstrap_env = build_env_for_test(&ctx, "http://localhost");
+        let user_env = build_user_env_json(&ctx);
 
-        assert_eq!(env.get("CUSTOM_ENV").unwrap(), "kept");
-        assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
-        assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
+        assert!(!bootstrap_env.contains_key("CUSTOM_ENV"));
+        assert_eq!(bootstrap_env.get("VM0_PROMPT").unwrap(), "test prompt");
+        assert_eq!(bootstrap_env.get("VM0_API_TOKEN").unwrap(), "tok");
         assert_eq!(
-            env.get(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV).unwrap(),
+            bootstrap_env
+                .get(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV)
+                .unwrap(),
             &guest_runtime_dir(ctx.run_id).unwrap()
         );
-        assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
-        assert!(!env.contains_key("VM0_WORKING_DIR"));
-        assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
-        assert!(!env.contains_key(RUNNER_CONCURRENCY_FACTOR_ENV));
-        assert!(!env.contains_key(RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV));
-        assert!(!env.contains_key(RUNNER_DISK_IOPS_ENV));
-        assert!(!env.contains_key(RUNNER_NET_RX_MIB_PER_SEC_ENV));
-        assert!(!env.contains_key(RUNNER_NET_TX_MIB_PER_SEC_ENV));
-        assert!(!env.contains_key("USE_MOCK_CLAUDE"));
-        assert!(!env.contains_key("USE_MOCK_CODEX"));
-        assert!(!env.contains_key("VERCEL_PROTECTION_BYPASS"));
-        assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
-        assert!(!env.contains_key("VM0_TOOLS"));
-        assert!(!env.contains_key("VM0_SETTINGS"));
-        assert!(!env.contains_key("VM0_MOCK_CLAUDE_PATH"));
-        assert!(!env.contains_key("VM0_MOCK_CODEX_PATH"));
+        assert_eq!(bootstrap_env.get("CLI_AGENT_TYPE").unwrap(), "codex");
+        assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
+        for key in [
+            "VM0_PROMPT",
+            "VM0_API_TOKEN",
+            "VM0_WORKING_DIR",
+            guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            "VM0_FEATURE_FLAGS",
+            "VM0_FUTURE_RUNNER_KEY",
+            RUNNER_CONCURRENCY_FACTOR_ENV,
+            RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
+            RUNNER_DISK_IOPS_ENV,
+            RUNNER_NET_RX_MIB_PER_SEC_ENV,
+            RUNNER_NET_TX_MIB_PER_SEC_ENV,
+            "CLI_AGENT_TYPE",
+            "USE_MOCK_CLAUDE",
+            "USE_MOCK_CODEX",
+            "VERCEL_PROTECTION_BYPASS",
+            "VM0_DISALLOWED_TOOLS",
+            "VM0_TOOLS",
+            "VM0_SETTINGS",
+            "VM0_MOCK_CLAUDE_PATH",
+            "VM0_MOCK_CODEX_PATH",
+            USER_ENV_FILE_ENV_KEY,
+        ] {
+            assert!(!user_env.contains_key(key), "{key} should be scrubbed");
+        }
     }
 
     #[test]
@@ -3738,9 +3838,12 @@ mod tests {
         ]));
 
         let env = build_env_for_test(&ctx, "http://localhost");
+        let user_env = build_user_env_json(&ctx);
         // System variables take precedence over user environment
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
-        assert_eq!(env.get("CUSTOM").unwrap(), "value");
+        assert!(!env.contains_key("CUSTOM"));
+        assert_eq!(user_env.get("CUSTOM").unwrap(), "value");
+        assert!(!user_env.contains_key("VM0_PROMPT"));
     }
 
     #[test]
@@ -3752,8 +3855,11 @@ mod tests {
         ]));
 
         let env = build_env_for_test(&ctx, "http://localhost");
-        assert_eq!(env.get("MY_VAR").unwrap(), "123");
-        assert_eq!(env.get("OTHER").unwrap(), "abc");
+        let user_env = build_user_env_json(&ctx);
+        assert!(!env.contains_key("MY_VAR"));
+        assert!(!env.contains_key("OTHER"));
+        assert_eq!(user_env.get("MY_VAR").unwrap(), "123");
+        assert_eq!(user_env.get("OTHER").unwrap(), "abc");
     }
 
     #[test]
@@ -3833,7 +3939,9 @@ mod tests {
         ctx.user_timezone = Some("Asia/Shanghai".into());
 
         let env = build_env_for_test(&ctx, "http://localhost");
-        assert_eq!(env.get("TZ").unwrap(), "Asia/Shanghai");
+        let user_env = build_user_env_json(&ctx);
+        assert!(!env.contains_key("TZ"));
+        assert_eq!(user_env.get("TZ").unwrap(), "Asia/Shanghai");
     }
 
     #[test]
@@ -3843,8 +3951,10 @@ mod tests {
         ctx.environment = Some(HashMap::from([("TZ".into(), "America/New_York".into())]));
 
         let env = build_env_for_test(&ctx, "http://localhost");
+        let user_env = build_user_env_json(&ctx);
         // User environment TZ takes precedence
-        assert_eq!(env.get("TZ").unwrap(), "America/New_York");
+        assert!(!env.contains_key("TZ"));
+        assert_eq!(user_env.get("TZ").unwrap(), "America/New_York");
     }
 
     #[test]
@@ -3857,10 +3967,14 @@ mod tests {
         ]));
 
         let env = build_env_for_test(&ctx, "http://localhost");
+        let user_env = build_user_env_json(&ctx);
         // System variables take precedence over user environment
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
-        assert_eq!(env.get("CUSTOM_ENV").unwrap(), "kept");
+        assert!(!env.contains_key("CUSTOM_ENV"));
+        assert_eq!(user_env.get("CUSTOM_ENV").unwrap(), "kept");
+        assert!(!user_env.contains_key("VM0_PROMPT"));
+        assert!(!user_env.contains_key("VM0_API_TOKEN"));
     }
 
     #[test]
@@ -3872,8 +3986,10 @@ mod tests {
         ctx.environment = Some(HashMap::from([("ONLY_ENV".into(), "env-value".into())]));
 
         let env = build_env_for_test(&ctx, "http://localhost");
+        let user_env = build_user_env_json(&ctx);
         assert!(!env.contains_key("ONLY_VARS"));
-        assert_eq!(env.get("ONLY_ENV").unwrap(), "env-value");
+        assert!(!env.contains_key("ONLY_ENV"));
+        assert_eq!(user_env.get("ONLY_ENV").unwrap(), "env-value");
     }
 
     #[test]
@@ -6169,6 +6285,75 @@ mod tests {
         assert!(error_msg.is_none());
         let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
         assert_eq!(system_stream_log, STDOUT_STREAM_OVERFLOW_MARKER);
+    }
+
+    #[tokio::test]
+    async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut ctx = minimal_context();
+        ctx.user_timezone = Some("Asia/Shanghai".into());
+        ctx.environment = Some(HashMap::from([
+            ("CUSTOM_USER_ENV".into(), "visible-to-cli".into()),
+            ("BASH_ENV".into(), "/tmp/user-bash-env".into()),
+            ("NODE_OPTIONS".into(), "--require /tmp/user-node.js".into()),
+            ("VM0_API_TOKEN".into(), "stolen-token".into()),
+            (USER_ENV_FILE_ENV_KEY.into(), "/tmp/evil-env.json".into()),
+            ("VM0_STUCK_TOOL_TIMEOUT_SECS".into(), "3".into()),
+        ]));
+
+        let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
+            .await
+            .unwrap();
+
+        assert_eq!(exit_code, 0);
+        assert!(error_msg.is_none());
+
+        let start_calls = overrides.start_process_calls();
+        assert_eq!(start_calls.len(), 1);
+        let start_env: BTreeMap<String, String> = start_calls[0].env.iter().cloned().collect();
+        assert_eq!(start_env.get("VM0_API_TOKEN").unwrap(), "tok");
+        assert_eq!(start_env.get("VM0_STUCK_TOOL_TIMEOUT_SECS").unwrap(), "3");
+        assert_eq!(
+            start_env.get(USER_ENV_FILE_ENV_KEY).map(String::as_str),
+            Some(guest_user_env_file_path(ctx.run_id).as_str())
+        );
+        for key in ["CUSTOM_USER_ENV", "BASH_ENV", "NODE_OPTIONS", "TZ"] {
+            assert!(
+                !start_env.contains_key(key),
+                "{key} should not be passed to guest-agent bootstrap"
+            );
+        }
+
+        let mkdir_call = overrides
+            .exec_calls()
+            .into_iter()
+            .find(|call| call.cmd.contains(GUEST_USER_ENV_DIR_PREFIX))
+            .expect("user env directory should be created before agent start");
+        assert!(mkdir_call.cmd.starts_with("rm -rf "));
+        assert!(mkdir_call.cmd.contains(" && mkdir -m 700 "));
+        assert!(mkdir_call.env_keys.is_empty());
+        assert!(!mkdir_call.sudo);
+
+        let writes = overrides.write_file_calls();
+        let user_env_write = writes
+            .iter()
+            .find(|call| call.path == guest_user_env_file_path(ctx.run_id))
+            .expect("user env JSON should be written");
+        let user_env: HashMap<String, String> =
+            serde_json::from_slice(&user_env_write.content).unwrap();
+        assert_eq!(user_env.get("CUSTOM_USER_ENV").unwrap(), "visible-to-cli");
+        assert_eq!(user_env.get("BASH_ENV").unwrap(), "/tmp/user-bash-env");
+        assert_eq!(
+            user_env.get("NODE_OPTIONS").unwrap(),
+            "--require /tmp/user-node.js"
+        );
+        assert_eq!(user_env.get("TZ").unwrap(), "Asia/Shanghai");
+        assert!(!user_env.contains_key("VM0_API_TOKEN"));
+        assert!(!user_env.contains_key(USER_ENV_FILE_ENV_KEY));
+        assert!(!user_env.contains_key("VM0_STUCK_TOOL_TIMEOUT_SECS"));
     }
 
     #[tokio::test]

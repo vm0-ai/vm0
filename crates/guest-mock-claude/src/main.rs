@@ -29,10 +29,13 @@
 //!   @exit-after-result        - Emit result event, exit(0) immediately;
 //!                               tests that reap stays no-op on the
 //!                               happy path
+//!   @write-env-json:<path>    - Write current process env as JSON to path,
+//!                               emit result, and exit(0)
 //!   @ECHO@                    - First-line marker. Validate remaining non-empty
 //!                               lines as JSONL and emit them unchanged.
 
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -60,6 +63,7 @@ enum MockScenario<'a> {
     OrphanPipe,
     HangAfterResult { deaf: bool },
     ExitAfterResult,
+    WriteEnvJson(&'a str),
     Shell,
 }
 
@@ -106,6 +110,9 @@ impl<'a> MockScenario<'a> {
         }
         if prompt.starts_with("@exit-after-result") {
             return Self::ExitAfterResult;
+        }
+        if let Some(path) = prompt.strip_prefix("@write-env-json:") {
+            return Self::WriteEnvJson(path);
         }
         if prompt.starts_with("@hang-after-result") {
             return Self::HangAfterResult { deaf: false };
@@ -494,6 +501,35 @@ fn run_hang_after_result_scenario(output_format: &str, deaf: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn run_write_env_json_scenario(output_format: &str, path: &str) -> ExitCode {
+    if output_format != "stream-json" {
+        return ExitCode::from(1);
+    }
+
+    let env: BTreeMap<String, String> = std::env::vars().collect();
+    if let Some(parent) = Path::new(path).parent()
+        && !parent.as_os_str().is_empty()
+        && let Err(e) = std::fs::create_dir_all(parent)
+    {
+        eprintln!("create env json parent: {e}");
+        return ExitCode::from(1);
+    }
+    let payload = match serde_json::to_vec(&env) {
+        Ok(payload) => payload,
+        Err(e) => {
+            eprintln!("serialize env json: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    if let Err(e) = std::fs::write(path, payload) {
+        eprintln!("write env json: {e}");
+        return ExitCode::from(1);
+    }
+
+    emit_post_result_pair();
+    ExitCode::SUCCESS
+}
+
 /// Execute prompt in text mode: inherited stdio, propagate exit code.
 fn run_text_mode(prompt: &str) -> ExitCode {
     match Command::new("bash")
@@ -620,6 +656,9 @@ fn main() -> ExitCode {
                 // window elapses, so no signal is ever sent.
             }
             ExitCode::SUCCESS
+        }
+        MockScenario::WriteEnvJson(path) => {
+            run_write_env_json_scenario(&parsed.output_format, path)
         }
         MockScenario::Shell => {
             let session_id = generate_session_id();

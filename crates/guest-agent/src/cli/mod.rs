@@ -15,6 +15,7 @@
 //! child reaping. Branch ordering and deadline reset timing in that control
 //! flow are part of the runtime contract.
 
+mod child_env;
 mod codex_setup;
 mod command;
 mod diagnostics;
@@ -130,11 +131,11 @@ pub async fn execute_cli(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .env_remove(process_control_ipc::BOOTSTRAP_ENV)
         .process_group(0)
         // If a future setup step fails after spawn, dropping `Child` must not
         // leave a CLI process running in the VM.
         .kill_on_drop(true);
+    child_env::apply_to_tokio_command(&mut cmd);
     // Set the child cwd explicitly at spawn time so the CLI observes the
     // current canonical workspace mount instead of relying on inherited cwd.
     set_cli_current_dir(&mut cmd, paths::CANONICAL_WORKING_DIR)?;
@@ -160,6 +161,13 @@ pub async fn execute_cli(
             // it to $HOME/.codex so the login state from setup_codex
             // is visible to exec.
             cmd.env("CODEX_HOME", format!("{}/.codex", env::home_dir()));
+            // Test-only mock fixture selector; keep it explicit instead of
+            // reopening inherited env for Codex children.
+            if env::use_mock_codex()
+                && let Ok(fixture) = std::env::var("MOCK_CODEX_FIXTURE")
+            {
+                cmd.env("MOCK_CODEX_FIXTURE", fixture);
+            }
             if env::is_codex_oauth_mode() {
                 cmd.env(
                     "CODEX_REFRESH_TOKEN_URL_OVERRIDE",

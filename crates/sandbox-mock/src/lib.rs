@@ -63,6 +63,10 @@ pub struct ExecCall {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StartProcessCall {
+    pub cmd: String,
+    pub timeout: Duration,
+    pub env: Vec<(String, String)>,
+    pub sudo: bool,
     pub output: ProcessOutputMode,
     pub control: ProcessControlMode,
 }
@@ -324,6 +328,8 @@ pub struct MockSandboxOverrides {
     exec_matchers: Mutex<Vec<ExecMatcher>>,
     /// Recorded exec calls across all sandboxes built from this override set.
     exec_calls: Mutex<Vec<ExecCall>>,
+    /// Recorded write_file calls across all sandboxes built from this override set.
+    write_file_calls: Mutex<Vec<WriteFileCall>>,
     /// FIFO queue of read_file results consumed by factory-created sandboxes.
     read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     /// When `Some`, `wait_process` returns this exit code instead of 0.
@@ -399,6 +405,7 @@ impl MockSandboxOverrides {
         Self {
             exec_matchers: Mutex::new(Vec::new()),
             exec_calls: Mutex::new(Vec::new()),
+            write_file_calls: Mutex::new(Vec::new()),
             read_file_results: Mutex::new(VecDeque::new()),
             wait_process_code: None,
             wait_process_gate: None,
@@ -487,6 +494,12 @@ impl MockSandboxOverrides {
     /// in call order.
     pub fn exec_calls(&self) -> Vec<ExecCall> {
         self.exec_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Recorded write_file calls across all sandboxes built from this override
+    /// set, in call order.
+    pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
+        self.write_file_calls.lock_ignoring_poison().clone()
     }
 
     /// Queue a read_file result applied to the next read made through any
@@ -1074,12 +1087,16 @@ impl Sandbox for MockSandbox {
     }
 
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()> {
+        let call = WriteFileCall {
+            path: path.to_string(),
+            content: content.to_vec(),
+        };
         self.write_file_calls
             .lock_ignoring_poison()
-            .push(WriteFileCall {
-                path: path.to_string(),
-                content: content.to_vec(),
-            });
+            .push(call.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides.write_file_calls.lock_ignoring_poison().push(call);
+        }
         self.write_file_results
             .lock_ignoring_poison()
             .pop_front()
@@ -1093,6 +1110,14 @@ impl Sandbox for MockSandbox {
                 .start_process_calls
                 .lock_ignoring_poison()
                 .push(StartProcessCall {
+                    cmd: request.cmd.to_string(),
+                    timeout: request.timeout,
+                    env: request
+                        .env
+                        .iter()
+                        .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+                        .collect(),
+                    sudo: request.sudo,
                     output: request.output,
                     control: request.control,
                 });
@@ -2616,10 +2641,18 @@ mod tests {
             overrides.start_process_calls(),
             vec![
                 StartProcessCall {
+                    cmd: "agent".to_string(),
+                    timeout: Duration::from_secs(5),
+                    env: Vec::new(),
+                    sudo: false,
                     output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
                     control: ProcessControlMode::None,
                 },
                 StartProcessCall {
+                    cmd: "agent".to_string(),
+                    timeout: Duration::from_secs(5),
+                    env: Vec::new(),
+                    sudo: false,
                     output: ProcessOutputMode::stream(),
                     control: ProcessControlMode::None,
                 },

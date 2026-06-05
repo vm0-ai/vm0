@@ -1,13 +1,19 @@
 //! Environment variable accessors — each value is read once via `LazyLock`.
 
+use std::collections::HashMap;
+use std::path::Path;
 use std::sync::LazyLock;
 
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 
 use crate::constants;
+use crate::error::AgentError;
 use guest_common::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+const USER_ENV_FILE_ENV_KEY: &str = "VM0_USER_ENV_FILE";
+const USER_ENV_PRIVATE_DIR_PREFIX: &str = "vm0-user-env-";
+const ENV_KEY_DIAGNOSTIC_MAX_CHARS: usize = 128;
 
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
@@ -94,9 +100,9 @@ static MOCK_CLAUDE_PATH: LazyLock<String> = LazyLock::new(|| {
 // ---------------------------------------------------------------------------
 
 static CLI_AGENT_TYPE: LazyLock<String> = LazyLock::new(|| env_or_empty("CLI_AGENT_TYPE"));
-static OPENAI_API_KEY: LazyLock<String> = LazyLock::new(|| env_or_empty("OPENAI_API_KEY"));
-static OPENAI_MODEL: LazyLock<String> = LazyLock::new(|| env_or_empty("OPENAI_MODEL"));
-static CHATGPT_ACCOUNT_ID: LazyLock<String> = LazyLock::new(|| env_or_empty("CHATGPT_ACCOUNT_ID"));
+static USER_ENV: LazyLock<Result<HashMap<String, String>, String>> =
+    LazyLock::new(load_user_env_from_process);
+static EMPTY_USER_ENV: LazyLock<HashMap<String, String>> = LazyLock::new(HashMap::new);
 
 /// `USE_MOCK_CODEX` accepts both `"true"` and `"1"` (matches the Codex
 /// epic's documented invocation shape `USE_MOCK_CODEX=1`). The
@@ -228,6 +234,109 @@ fn load_artifacts() -> Vec<ArtifactEnv> {
 
 static ARTIFACTS: LazyLock<Vec<ArtifactEnv>> = LazyLock::new(load_artifacts);
 
+fn load_user_env_from_process() -> Result<HashMap<String, String>, String> {
+    let path = env_or_empty(USER_ENV_FILE_ENV_KEY);
+    if path.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    load_user_env_from_path(Path::new(&path))
+}
+
+fn load_user_env_from_path(path: &Path) -> Result<HashMap<String, String>, String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("read {USER_ENV_FILE_ENV_KEY} {}: {e}", path.display()))?;
+    let user_env: HashMap<String, String> = serde_json::from_str(&raw)
+        .map_err(|e| format!("parse {USER_ENV_FILE_ENV_KEY} JSON: {e}"))?;
+    validate_user_env(&user_env)?;
+
+    std::fs::remove_file(path)
+        .map_err(|e| format!("remove {USER_ENV_FILE_ENV_KEY} {}: {e}", path.display()))?;
+    if let Some(parent) = path.parent()
+        && is_user_env_private_dir(parent)
+    {
+        std::fs::remove_dir(parent).map_err(|e| {
+            format!(
+                "remove {USER_ENV_FILE_ENV_KEY} parent {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+
+    Ok(user_env)
+}
+
+fn is_user_env_private_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with(USER_ENV_PRIVATE_DIR_PREFIX))
+}
+
+fn validate_user_env(user_env: &HashMap<String, String>) -> Result<(), String> {
+    let mut entries: Vec<(&String, &String)> = user_env.iter().collect();
+    entries.sort_by_key(|(key, _)| *key);
+
+    for (key, value) in entries {
+        if !is_valid_env_key(key) {
+            return Err(format!(
+                "{USER_ENV_FILE_ENV_KEY} contains invalid env key {:?}",
+                sanitize_env_key_for_diagnostic(key)
+            ));
+        }
+        if value.contains('\0') {
+            return Err(format!(
+                "{USER_ENV_FILE_ENV_KEY} contains NUL byte for env key {:?}",
+                sanitize_env_key_for_diagnostic(key)
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn is_valid_env_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return false;
+    }
+    chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
+fn sanitize_env_key_for_diagnostic(key: &str) -> String {
+    let mut chars = key.escape_debug();
+    let mut truncated = String::new();
+    for _ in 0..ENV_KEY_DIAGNOSTIC_MAX_CHARS {
+        let Some(ch) = chars.next() else {
+            return truncated;
+        };
+        truncated.push(ch);
+    }
+    if chars.next().is_some() {
+        truncated.push_str("...");
+    }
+    truncated
+}
+
+fn user_env_map() -> &'static HashMap<String, String> {
+    match &*USER_ENV {
+        Ok(user_env) => user_env,
+        Err(message) => {
+            log_warn!(
+                LOG_TAG,
+                "{USER_ENV_FILE_ENV_KEY} failed to load before accessor use: {message}"
+            );
+            &EMPTY_USER_ENV
+        }
+    }
+}
+
+fn user_env_value(name: &str) -> &'static str {
+    user_env_map().get(name).map(String::as_str).unwrap_or("")
+}
+
 // ---------------------------------------------------------------------------
 // Public accessors
 // ---------------------------------------------------------------------------
@@ -294,6 +403,17 @@ pub fn tools() -> &'static str {
 pub fn settings() -> &'static str {
     &SETTINGS
 }
+/// Load and validate the runner-provided user env payload once at startup.
+pub fn init_user_env() -> Result<(), AgentError> {
+    match &*USER_ENV {
+        Ok(_) => Ok(()),
+        Err(message) => Err(AgentError::Execution(message.clone())),
+    }
+}
+/// User/model/connector environment loaded from `VM0_USER_ENV_FILE`.
+pub fn user_env() -> &'static HashMap<String, String> {
+    user_env_map()
+}
 /// Whether `USE_MOCK_CLAUDE` is exactly `"true"`; unset or any other value is
 /// false.
 pub fn use_mock_claude() -> bool {
@@ -308,26 +428,26 @@ pub fn mock_claude_path() -> String {
 pub fn cli_agent_type() -> &'static str {
     &CLI_AGENT_TYPE
 }
-/// OpenAI API key from `OPENAI_API_KEY`; empty string means unset.
+/// OpenAI API key from loaded user env; empty string means unset.
 pub fn openai_api_key() -> &'static str {
-    &OPENAI_API_KEY
+    user_env_value("OPENAI_API_KEY")
 }
-/// OpenAI model from `OPENAI_MODEL`; empty string means unset.
+/// OpenAI model from loaded user env; empty string means unset.
 pub fn openai_model() -> &'static str {
-    &OPENAI_MODEL
+    user_env_value("OPENAI_MODEL")
 }
-/// ChatGPT workspace account id from `CHATGPT_ACCOUNT_ID`; empty string
+/// ChatGPT workspace account id from loaded user env; empty string
 /// means unset. Presence is the signal that the sandbox is running in
 /// codex-oauth mode (see `is_codex_oauth_mode`); the value itself is
 /// not consumed by the guest-agent — the firewall replaces the
 /// placeholder bytes in `auth.json` on egress.
 pub fn chatgpt_account_id() -> &'static str {
-    &CHATGPT_ACCOUNT_ID
+    user_env_value("CHATGPT_ACCOUNT_ID")
 }
 /// Whether the sandbox should bootstrap codex into codex-oauth mode
 /// instead of the API-key path. True iff `CHATGPT_ACCOUNT_ID` is set.
 pub fn is_codex_oauth_mode() -> bool {
-    !CHATGPT_ACCOUNT_ID.is_empty()
+    !chatgpt_account_id().is_empty()
 }
 /// Whether `USE_MOCK_CODEX` is `"true"` or `"1"`; unset or any other value is
 /// false.
@@ -379,10 +499,79 @@ pub fn post_result_sigterm_grace_secs() -> u64 {
 pub fn post_result_sigkill_grace_secs() -> u64 {
     *POST_RESULT_SIGKILL_GRACE
 }
+
 /// Whether a backend API is available (token set).
 ///
 /// When false (e.g. local-provider test mode), heartbeat / events / checkpoint
 /// are skipped because there is no API server to call.
 pub fn has_api() -> bool {
     !API_TOKEN.is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_user_env_fixture(json: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("vm0-user-env-test");
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("env.json");
+        std::fs::write(&path, json).unwrap();
+        (tmp, path)
+    }
+
+    #[test]
+    fn load_user_env_from_path_loads_provider_values_and_removes_file() {
+        let (_tmp, path) = write_user_env_fixture(
+            r#"{"OPENAI_API_KEY":"sk-test","OPENAI_MODEL":"gpt-test","CHATGPT_ACCOUNT_ID":"acct"}"#,
+        );
+        let parent = path.parent().unwrap().to_path_buf();
+
+        let user_env = load_user_env_from_path(&path).unwrap();
+
+        assert_eq!(user_env.get("OPENAI_API_KEY").unwrap(), "sk-test");
+        assert_eq!(user_env.get("OPENAI_MODEL").unwrap(), "gpt-test");
+        assert_eq!(user_env.get("CHATGPT_ACCOUNT_ID").unwrap(), "acct");
+        assert!(!path.exists());
+        assert!(!parent.exists());
+    }
+
+    #[test]
+    fn load_user_env_from_path_rejects_invalid_key_without_value_leak() {
+        let (_tmp, path) =
+            write_user_env_fixture(r#"{"BAD-KEY":"secret-value","OPENAI_API_KEY":"sk-test"}"#);
+
+        let err = load_user_env_from_path(&path).unwrap_err();
+
+        assert!(err.contains("BAD-KEY"));
+        assert!(!err.contains("secret-value"));
+        assert!(!err.contains("sk-test"));
+    }
+
+    #[test]
+    fn load_user_env_from_path_keeps_unexpected_parent_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("unexpected-user-env-dir");
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("env.json");
+        std::fs::write(&path, r#"{"OPENAI_MODEL":"gpt-test"}"#).unwrap();
+
+        let user_env = load_user_env_from_path(&path).unwrap();
+
+        assert_eq!(user_env.get("OPENAI_MODEL").unwrap(), "gpt-test");
+        assert!(!path.exists());
+        assert!(dir.exists());
+    }
+
+    #[test]
+    fn load_user_env_from_path_rejects_nul_value_without_value_leak() {
+        let (_tmp, path) = write_user_env_fixture("{\"OPENAI_API_KEY\":\"sk-test\\u0000secret\"}");
+
+        let err = load_user_env_from_path(&path).unwrap_err();
+
+        assert!(err.contains("OPENAI_API_KEY"));
+        assert!(!err.contains("sk-test"));
+        assert!(!err.contains("secret"));
+    }
 }
