@@ -1,4 +1,6 @@
-use crate::support::{create_tar_gz, run_guest_download, write_manifest};
+use crate::support::{
+    TarEntry, create_tar_gz, create_tar_gz_entries, run_guest_download, write_manifest,
+};
 use httpmock::prelude::*;
 
 // ---------------------------------------------------------------------------
@@ -28,6 +30,51 @@ fn single_storage_download() {
         std::fs::read_to_string(mount.join("hello.txt")).unwrap(),
         "hello world"
     );
+}
+
+#[test]
+fn http_storage_malicious_entries_are_skipped_while_safe_entries_extract() {
+    let server = MockServer::start();
+    let tar_gz = create_tar_gz_entries(&[
+        TarEntry::File("safe.txt", b"safe"),
+        TarEntry::Symlink("evil_symlink", "../outside.txt"),
+        TarEntry::Hardlink("evil_hardlink", "../outside.txt"),
+        TarEntry::Raw {
+            path: b"../path_escape.txt",
+            entry_type: b'0',
+            mode: b"0000644\0",
+            content: b"escaped",
+        },
+    ])
+    .unwrap();
+
+    let mock = server.mock(|when, then| {
+        when.method(GET).path("/storage.tar.gz");
+        then.status(200)
+            .header("content-type", "application/gzip")
+            .body(&tar_gz);
+    });
+
+    let dir = tempfile::tempdir().unwrap();
+    let outside_file = dir.path().join("outside.txt");
+    std::fs::write(&outside_file, "outside").unwrap();
+
+    let mount = dir.path().join("mount");
+    let url = server.url("/storage.tar.gz");
+    let manifest = write_manifest(&dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
+
+    let result = run_guest_download(manifest.to_str().unwrap());
+
+    assert!(result);
+    mock.assert_calls(1);
+    assert_eq!(
+        std::fs::read_to_string(mount.join("safe.txt")).unwrap(),
+        "safe"
+    );
+    assert_eq!(std::fs::read_to_string(&outside_file).unwrap(), "outside");
+    assert!(!dir.path().join("path_escape.txt").exists());
+    assert!(mount.join("evil_symlink").symlink_metadata().is_err());
+    assert!(!mount.join("evil_hardlink").exists());
 }
 
 // ---------------------------------------------------------------------------
