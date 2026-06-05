@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.417.1](https://github.com/vm0-ai/vm0/compare/app-v0.417.0...app-v0.417.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* hide schedule button without linked schedules ([#16258](https://github.com/vm0-ai/vm0/issues/16258)) ([b7ab9d2](https://github.com/vm0-ai/vm0/commit/b7ab9d20975bbf038f6f1d2feb7b0a17e7a8a929))
+* remove schedule chat migration flow ([#16262](https://github.com/vm0-ai/vm0/issues/16262)) ([5df9c43](https://github.com/vm0-ai/vm0/commit/5df9c43dadd24b3b03ea5c68b7331052bd446613))
+* render memory summaries as markdown ([#16265](https://github.com/vm0-ai/vm0/issues/16265)) ([391e64f](https://github.com/vm0-ai/vm0/commit/391e64f33522f64d090b544d837e414a43172bcd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.1
+    * @vm0/core bumped to 8.311.1
+
 ## [0.417.0](https://github.com/vm0-ai/vm0/compare/app-v0.416.2...app-v0.417.0) (2026-06-05)
 
 
