@@ -1,3 +1,5 @@
+use std::ffi::OsStr;
+use std::os::fd::{AsFd, OwnedFd};
 use std::path::{Component, Path, PathBuf};
 
 use crate::error::{RunnerError, RunnerResult};
@@ -50,22 +52,8 @@ pub async fn ensure_private_dir(path: &Path) -> RunnerResult<()> {
     reject_reserved_private_dir_path(path)?;
     reject_parent_dir_components(path)?;
     reject_existing_symlink_components(path).await?;
-
-    let mut builder = tokio::fs::DirBuilder::new();
-    builder.recursive(true);
-    builder.mode(PRIVATE_DIR_MODE);
-    match builder.create(path).await {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(e) => {
-            return Err(RunnerError::Config(format!(
-                "create private dir {}: {e}",
-                path.display()
-            )));
-        }
-    }
-
-    ensure_private_dir_owned_by(path, nix::unistd::geteuid().as_raw()).await
+    let fd = ensure_private_dir_exists_without_symlinks(path)?;
+    ensure_private_dir_fd_owned_by(path, &fd, nix::unistd::geteuid().as_raw())
 }
 
 #[cfg(not(unix))]
@@ -97,6 +85,12 @@ async fn reject_existing_symlink_components(path: &Path) -> RunnerResult<()> {
         let metadata = match tokio::fs::symlink_metadata(&current).await {
             Ok(metadata) => metadata,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotADirectory => {
+                return Err(RunnerError::Config(format!(
+                    "{} is not a directory; refusing to use it as private runner state",
+                    path.display()
+                )));
+            }
             Err(e) => {
                 return Err(RunnerError::Config(format!(
                     "stat private dir component {}: {e}",
@@ -167,32 +161,119 @@ pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()>
 }
 
 #[cfg(unix)]
-async fn ensure_private_dir_owned_by(path: &Path, expected_uid: u32) -> RunnerResult<()> {
+fn ensure_private_dir_exists_without_symlinks(path: &Path) -> RunnerResult<OwnedFd> {
     use nix::fcntl::open;
-    use nix::sys::stat::{Mode, SFlag, fstat};
+    use nix::sys::stat::Mode;
 
-    let lstat_path = path_for_final_component_lstat(path);
-    let metadata = tokio::fs::symlink_metadata(&lstat_path)
-        .await
-        .map_err(|e| RunnerError::Config(format!("stat private dir {}: {e}", path.display())))?;
-    let file_type = metadata.file_type();
-    if file_type.is_symlink() {
+    if path.as_os_str().is_empty() {
         return Err(RunnerError::Config(format!(
-            "{} is a symlink; refusing to use it as private runner state",
+            "{} does not name a directory; refusing to use it as private runner state",
             path.display()
         )));
     }
-    if !file_type.is_dir() {
-        return Err(RunnerError::Config(format!(
+
+    let start = if path.is_absolute() {
+        Path::new("/")
+    } else {
+        Path::new(".")
+    };
+    let mut current = open(start, private_dir_open_flags(), Mode::empty()).map_err(|e| {
+        RunnerError::Config(format!("open private dir root for {}: {e}", path.display()))
+    })?;
+    for component in path.components() {
+        match component {
+            Component::RootDir | Component::CurDir => {}
+            Component::ParentDir => {
+                return Err(RunnerError::Config(format!(
+                    "{} contains a parent directory segment; refusing to use it as private runner state",
+                    path.display()
+                )));
+            }
+            Component::Normal(name) => {
+                current = open_or_create_private_dir_component(&current, name, path)?;
+            }
+            Component::Prefix(prefix) => {
+                return Err(RunnerError::Config(format!(
+                    "{} contains unsupported path prefix {}; refusing to use it as private runner state",
+                    path.display(),
+                    prefix.as_os_str().to_string_lossy()
+                )));
+            }
+        }
+    }
+
+    Ok(current)
+}
+
+#[cfg(unix)]
+fn open_or_create_private_dir_component(
+    parent: &impl AsFd,
+    name: &OsStr,
+    full_path: &Path,
+) -> RunnerResult<OwnedFd> {
+    use nix::errno::Errno;
+    use nix::fcntl::openat;
+    use nix::sys::stat::{Mode, mkdirat};
+
+    match openat(parent, name, private_dir_open_flags(), Mode::empty()) {
+        Ok(fd) => Ok(fd),
+        Err(Errno::ENOENT) => {
+            let created = match mkdirat(parent, name, Mode::from_bits_truncate(PRIVATE_DIR_MODE)) {
+                Ok(()) => true,
+                Err(Errno::EEXIST) => false,
+                Err(e) => {
+                    return Err(RunnerError::Config(format!(
+                        "create private dir component {} for {}: {e}",
+                        name.to_string_lossy(),
+                        full_path.display()
+                    )));
+                }
+            };
+            let fd = openat(parent, name, private_dir_open_flags(), Mode::empty())
+                .map_err(|e| private_dir_component_error("open", name, full_path, e))?;
+            if created {
+                chmod_open_private_dir(&fd, full_path)?;
+            }
+            Ok(fd)
+        }
+        Err(e) => Err(private_dir_component_error("open", name, full_path, e)),
+    }
+}
+
+#[cfg(unix)]
+fn private_dir_component_error(
+    operation: &str,
+    name: &OsStr,
+    full_path: &Path,
+    error: nix::errno::Errno,
+) -> RunnerError {
+    match error {
+        nix::errno::Errno::ELOOP => RunnerError::Config(format!(
+            "{} contains symlink component {}; refusing to use it as private runner state",
+            full_path.display(),
+            name.to_string_lossy()
+        )),
+        nix::errno::Errno::ENOTDIR => RunnerError::Config(format!(
             "{} is not a directory; refusing to use it as private runner state",
-            path.display()
-        )));
+            full_path.display()
+        )),
+        _ => RunnerError::Config(format!(
+            "{operation} private dir component {} for {}: {error}",
+            name.to_string_lossy(),
+            full_path.display()
+        )),
     }
+}
 
-    // Keep chmod tied to the opened directory, not a path that could be swapped.
-    let fd = open(&lstat_path, private_dir_open_flags(), Mode::empty())
-        .map_err(|e| RunnerError::Config(format!("open private dir {}: {e}", path.display())))?;
-    let stat = fstat(&fd)
+#[cfg(unix)]
+fn ensure_private_dir_fd_owned_by(
+    path: &Path,
+    fd: &OwnedFd,
+    expected_uid: u32,
+) -> RunnerResult<()> {
+    use nix::sys::stat::{SFlag, fstat};
+
+    let stat = fstat(fd)
         .map_err(|e| RunnerError::Config(format!("stat private dir fd {}: {e}", path.display())))?;
     let fd_file_type = SFlag::from_bits_truncate(stat.st_mode & SFlag::S_IFMT.bits());
     if fd_file_type != SFlag::S_IFDIR {
@@ -210,25 +291,21 @@ async fn ensure_private_dir_owned_by(path: &Path, expected_uid: u32) -> RunnerRe
         )));
     }
 
-    chmod_open_private_dir(&fd, path).await?;
+    chmod_open_private_dir(fd, path)?;
     Ok(())
 }
 
 #[cfg(all(unix, target_os = "linux"))]
-async fn chmod_open_private_dir<Fd: std::os::fd::AsRawFd>(
-    fd: &Fd,
-    path: &Path,
-) -> RunnerResult<()> {
+fn chmod_open_private_dir<Fd: std::os::fd::AsRawFd>(fd: &Fd, path: &Path) -> RunnerResult<()> {
     use std::os::unix::fs::PermissionsExt;
 
     let fd_path = PathBuf::from(format!("/proc/self/fd/{}", fd.as_raw_fd()));
-    tokio::fs::set_permissions(&fd_path, std::fs::Permissions::from_mode(PRIVATE_DIR_MODE))
-        .await
+    std::fs::set_permissions(&fd_path, std::fs::Permissions::from_mode(PRIVATE_DIR_MODE))
         .map_err(|e| RunnerError::Config(format!("chmod private dir {}: {e}", path.display())))
 }
 
 #[cfg(all(unix, not(target_os = "linux")))]
-async fn chmod_open_private_dir<Fd: std::os::fd::AsFd>(fd: &Fd, path: &Path) -> RunnerResult<()> {
+fn chmod_open_private_dir<Fd: std::os::fd::AsFd>(fd: &Fd, path: &Path) -> RunnerResult<()> {
     nix::sys::stat::fchmod(
         fd,
         nix::sys::stat::Mode::from_bits_truncate(PRIVATE_DIR_MODE),
@@ -250,17 +327,6 @@ fn private_dir_open_flags() -> nix::fcntl::OFlag {
         | nix::fcntl::OFlag::O_DIRECTORY
         | nix::fcntl::OFlag::O_NOFOLLOW
         | nix::fcntl::OFlag::O_CLOEXEC
-}
-
-#[cfg(unix)]
-fn path_for_final_component_lstat(path: &Path) -> PathBuf {
-    // Unix lstat follows a final symlink when the input has a trailing separator.
-    let lstat_path: PathBuf = path.components().collect();
-    if lstat_path.as_os_str().is_empty() {
-        path.to_path_buf()
-    } else {
-        lstat_path
-    }
 }
 
 #[cfg(unix)]
@@ -358,6 +424,16 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ensure_private_dir_creates_missing_nested_dir_with_private_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let private_dir = dir.path().join("nested").join("runner");
+
+        ensure_private_dir(&private_dir).await.unwrap();
+
+        assert_eq!(mode(&private_dir), PRIVATE_DIR_MODE);
+    }
+
+    #[tokio::test]
     async fn ensure_private_dir_rejects_filesystem_root() {
         let error = ensure_private_dir(Path::new("/")).await.unwrap_err();
 
@@ -397,6 +473,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let private_dir = dir.path().join("runner");
         std::fs::write(&private_dir, b"not a dir").unwrap();
+
+        let error = ensure_private_dir(&private_dir).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("not a directory"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_private_dir_rejects_intermediate_regular_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("file");
+        let private_dir = file.join("runner");
+        std::fs::write(&file, b"not a dir").unwrap();
 
         let error = ensure_private_dir(&private_dir).await.unwrap_err();
 
@@ -542,9 +633,8 @@ mod tests {
         let actual_uid = std::fs::metadata(&private_dir).unwrap().uid();
         let mismatched_uid = if actual_uid == 0 { 1 } else { 0 };
 
-        let error = ensure_private_dir_owned_by(&private_dir, mismatched_uid)
-            .await
-            .unwrap_err();
+        let fd = ensure_private_dir_exists_without_symlinks(&private_dir).unwrap();
+        let error = ensure_private_dir_fd_owned_by(&private_dir, &fd, mismatched_uid).unwrap_err();
 
         assert!(
             error.to_string().contains("owned by uid"),
