@@ -3,6 +3,7 @@
 import gzip
 import json
 import zlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,6 +31,14 @@ class ModelProviderJsonCase:
     input_tokens: int = 50
     output_tokens: int = 200
     cached_tokens: int | None = None
+
+
+@dataclass(frozen=True)
+class JsonCompressionFailureCase:
+    id: str
+    make_body: Callable[[bytes], bytes]
+    content_encoding: str
+    expected_error: str
 
 
 ANTHROPIC_JSON_CASE = ModelProviderJsonCase(
@@ -72,6 +81,109 @@ MODEL_PROVIDER_JSON_CASES = (ANTHROPIC_JSON_CASE, OPENAI_RESPONSES_CASE)
 
 def _model_provider_json_case_id(provider_case: ModelProviderJsonCase) -> str:
     return provider_case.id
+
+
+def _json_compression_failure_case_id(encoding_case: JsonCompressionFailureCase) -> str:
+    return encoding_case.id
+
+
+def _identity_body(payload: bytes) -> bytes:
+    return payload
+
+
+def _raw_deflate_body(payload: bytes) -> bytes:
+    compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+    return compressor.compress(payload) + compressor.flush()
+
+
+def _truncated_gzip_prefix(payload: bytes) -> bytes:
+    return gzip.compress(payload)[:10]
+
+
+def _empty_gzip_member_before_garbage(_payload: bytes) -> bytes:
+    return gzip.compress(b"") + b"garbage"
+
+
+def _empty_deflate_stream_before_garbage(_payload: bytes) -> bytes:
+    return zlib.compress(b"") + b"garbage"
+
+
+def _truncated_brotli_prefix(payload: bytes) -> bytes:
+    return body_utils.brotli.compress(payload)[:2]
+
+
+def _truncated_zstd_prefix(payload: bytes) -> bytes:
+    return zstandard.ZstdCompressor().compress(payload)[:5]
+
+
+JSON_COMPRESSION_FAILURE_CASES = (
+    JsonCompressionFailureCase(
+        id="chained-gzip",
+        make_body=gzip.compress,
+        content_encoding="gzip, identity",
+        expected_error="unsupported content encoding",
+    ),
+    JsonCompressionFailureCase(
+        id="raw-json-with-unknown-header",
+        make_body=_identity_body,
+        content_encoding="x-custom",
+        expected_error="unsupported content encoding",
+    ),
+    JsonCompressionFailureCase(
+        id="raw-deflate",
+        make_body=_raw_deflate_body,
+        content_encoding="deflate",
+        expected_error="invalid compressed body",
+    ),
+    JsonCompressionFailureCase(
+        id="raw-json-with-gzip-header",
+        make_body=_identity_body,
+        content_encoding="gzip",
+        expected_error="invalid compressed body",
+    ),
+    JsonCompressionFailureCase(
+        id="raw-json-with-br-header",
+        make_body=_identity_body,
+        content_encoding="br",
+        expected_error="invalid compressed body",
+    ),
+    JsonCompressionFailureCase(
+        id="raw-json-with-zstd-header",
+        make_body=_identity_body,
+        content_encoding="zstd",
+        expected_error="invalid compressed body",
+    ),
+    JsonCompressionFailureCase(
+        id="truncated-gzip-prefix",
+        make_body=_truncated_gzip_prefix,
+        content_encoding="gzip",
+        expected_error="incomplete compressed body",
+    ),
+    JsonCompressionFailureCase(
+        id="empty-gzip-member-before-garbage",
+        make_body=_empty_gzip_member_before_garbage,
+        content_encoding="gzip",
+        expected_error="invalid compressed body",
+    ),
+    JsonCompressionFailureCase(
+        id="empty-deflate-stream-before-garbage",
+        make_body=_empty_deflate_stream_before_garbage,
+        content_encoding="deflate",
+        expected_error="invalid compressed body",
+    ),
+    JsonCompressionFailureCase(
+        id="truncated-brotli-prefix",
+        make_body=_truncated_brotli_prefix,
+        content_encoding="br",
+        expected_error="incomplete compressed body",
+    ),
+    JsonCompressionFailureCase(
+        id="truncated-zstd-prefix",
+        make_body=_truncated_zstd_prefix,
+        content_encoding="zstd",
+        expected_error="incomplete compressed body",
+    ),
+)
 
 
 def _standard_success_payload(
@@ -349,19 +461,8 @@ class TestModelProviderResponseUsage:
 
     @pytest.mark.parametrize(
         "encoding_case",
-        [
-            "chained-gzip",
-            "raw-json-with-unknown-header",
-            "raw-deflate",
-            "raw-json-with-gzip-header",
-            "raw-json-with-br-header",
-            "raw-json-with-zstd-header",
-            "truncated-gzip-prefix",
-            "empty-gzip-member-before-garbage",
-            "empty-deflate-stream-before-garbage",
-            "truncated-brotli-prefix",
-            "truncated-zstd-prefix",
-        ],
+        JSON_COMPRESSION_FAILURE_CASES,
+        ids=_json_compression_failure_case_id,
     )
     @pytest.mark.parametrize(
         "provider_case",
@@ -384,51 +485,7 @@ class TestModelProviderResponseUsage:
             proxy_log_path=proxy_log_path,
         )
         payload = _standard_success_payload(provider_case)
-        if encoding_case == "chained-gzip":
-            body = gzip.compress(payload)
-            content_encoding = "gzip, identity"
-            expected_error = "unsupported content encoding"
-        elif encoding_case == "raw-json-with-unknown-header":
-            body = payload
-            content_encoding = "x-custom"
-            expected_error = "unsupported content encoding"
-        elif encoding_case == "raw-json-with-gzip-header":
-            body = payload
-            content_encoding = "gzip"
-            expected_error = "invalid compressed body"
-        elif encoding_case == "raw-json-with-br-header":
-            body = payload
-            content_encoding = "br"
-            expected_error = "invalid compressed body"
-        elif encoding_case == "raw-json-with-zstd-header":
-            body = payload
-            content_encoding = "zstd"
-            expected_error = "invalid compressed body"
-        elif encoding_case == "truncated-gzip-prefix":
-            body = gzip.compress(payload)[:10]
-            content_encoding = "gzip"
-            expected_error = "incomplete compressed body"
-        elif encoding_case == "empty-gzip-member-before-garbage":
-            body = gzip.compress(b"") + b"garbage"
-            content_encoding = "gzip"
-            expected_error = "invalid compressed body"
-        elif encoding_case == "empty-deflate-stream-before-garbage":
-            body = zlib.compress(b"") + b"garbage"
-            content_encoding = "deflate"
-            expected_error = "invalid compressed body"
-        elif encoding_case == "truncated-brotli-prefix":
-            body = body_utils.brotli.compress(payload)[:2]
-            content_encoding = "br"
-            expected_error = "incomplete compressed body"
-        elif encoding_case == "truncated-zstd-prefix":
-            body = zstandard.ZstdCompressor().compress(payload)[:5]
-            content_encoding = "zstd"
-            expected_error = "incomplete compressed body"
-        else:
-            compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
-            body = compressor.compress(payload) + compressor.flush()
-            content_encoding = "deflate"
-            expected_error = "invalid compressed body"
+        body = encoding_case.make_body(payload)
 
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
@@ -436,7 +493,7 @@ class TestModelProviderResponseUsage:
             headers=header_map(
                 {
                     "content-type": "application/json",
-                    "content-encoding": content_encoding,
+                    "content-encoding": encoding_case.content_encoding,
                 }
             ),
         )
@@ -450,7 +507,7 @@ class TestModelProviderResponseUsage:
         assert entries[0]["level"] == "warn"
         assert entries[0]["message"] == "Model provider JSON usage extraction failed"
         assert entries[0]["type"] == "usage_event"
-        assert entries[0]["error"] == expected_error
+        assert entries[0]["error"] == encoding_case.expected_error
 
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
     @pytest.mark.parametrize(
