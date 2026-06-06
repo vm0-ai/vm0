@@ -65,7 +65,9 @@ import {
   getAllFeatureStates,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
+import { isStaffOrg } from "@vm0/core/staff-org";
 import {
   getCustomSkillStorageName,
   getSkillStorageName,
@@ -3031,7 +3033,7 @@ async function buildStoredExecutionContext(args: {
       tools: args.body.tools,
       settings: args.body.settings,
       experimentalProfile: runnerProfile(args.resolved.content),
-      featureFlags: getAllFeatureStates(args.featureSwitchContext),
+      featureFlags: runnerFeatureFlags(args.featureSwitchContext),
       billableFirewalls: billableFirewallsForPermissions({
         modelProvider: args.modelProvider,
         permissions,
@@ -3041,6 +3043,16 @@ async function buildStoredExecutionContext(args: {
     secretNames,
     secretValues,
   };
+}
+
+function runnerFeatureFlags(
+  featureSwitchContext: FeatureSwitchContext,
+): ReturnType<typeof getAllFeatureStates> {
+  const featureFlags = getAllFeatureStates(featureSwitchContext);
+  featureFlags[FeatureSwitchKey.SessionWorkspaceImageCache] =
+    featureFlags[FeatureSwitchKey.SessionWorkspaceImageCache] &&
+    isStaffOrg(featureSwitchContext.orgId);
+  return featureFlags;
 }
 
 function sanitizeEnvironment(
