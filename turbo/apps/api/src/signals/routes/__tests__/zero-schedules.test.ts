@@ -167,7 +167,7 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
     });
   });
 
-  it("rejects changing the chat thread on an existing schedule", async () => {
+  it("ignores chatThreadId on update and keeps the original chat thread", async () => {
     const fixture = await seedFixture();
     const threadId = await seedThread(fixture);
     const otherThreadId = await seedThread(fixture);
@@ -190,8 +190,10 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
       description: "d",
       chatThreadId: otherThreadId,
     });
-    expect(redeploy.status).toBe(400);
-    expectErrorCode(redeploy, "BAD_REQUEST");
+    expect(redeploy.status).toBe(200);
+    const body = deployScheduleResponseSchema.parse(redeploy.body);
+    expect(body.created).toBe(false);
+    expect(body.schedule.chatThreadId).toBe(threadId);
   });
 
   it("rejects a chat thread owned by a different user", async () => {

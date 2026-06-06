@@ -459,7 +459,9 @@ type ChatThreadLinkResult =
 
 /**
  * Resolve the chat-thread link for a deploy: link a NEW schedule to either the
- * supplied owned chat thread or a server-created thread.
+ * supplied owned chat thread or a server-created thread. The chatThreadId is
+ * honored only on creation; on update of an existing schedule it is ignored and
+ * the schedule keeps its original link.
  */
 async function resolveScheduleChatThreadLink(args: {
   readonly db: Db;
@@ -469,17 +471,10 @@ async function resolveScheduleChatThreadLink(args: {
   readonly existing: boolean;
   readonly signal: AbortSignal;
 }): Promise<ChatThreadLinkResult> {
+  if (args.existing) {
+    return { ok: true, chatThreadId: null, createChatThread: false };
+  }
   if (args.chatThreadId !== undefined) {
-    if (args.existing) {
-      return {
-        ok: false,
-        error: {
-          kind: "bad_request",
-          message:
-            "chatThreadId is immutable: a schedule's chat thread can only be set when it is first created",
-        },
-      };
-    }
     const linkable = await isChatThreadLinkable(args.db, {
       chatThreadId: args.chatThreadId,
       userId: args.userId,
@@ -502,10 +497,7 @@ async function resolveScheduleChatThreadLink(args: {
       createChatThread: false,
     };
   }
-  if (!args.existing) {
-    return { ok: true, chatThreadId: null, createChatThread: true };
-  }
-  return { ok: true, chatThreadId: null, createChatThread: false };
+  return { ok: true, chatThreadId: null, createChatThread: true };
 }
 
 async function updateExistingSchedule(
