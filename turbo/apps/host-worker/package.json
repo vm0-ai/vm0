@@ -15,7 +15,7 @@
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "oxlint": "^1.57.0",
-    "typescript": "5.9.3",
+    "typescript": "6.0.3",
     "wrangler": "^4.90.1"
   }
 }
