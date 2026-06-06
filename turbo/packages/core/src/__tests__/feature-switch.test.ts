@@ -101,7 +101,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatHeaderNewButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       true,

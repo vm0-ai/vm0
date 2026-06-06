@@ -207,12 +207,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the test-oauth connector, a synthetic OAuth 2.0 provider used only for automated tests. Off in prod.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatHeaderNewButton]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the Invite people button in the agent chat page header with a New button that creates a new chat thread",
-    enabled: false,
-  },
   [FeatureSwitchKey.ChatThreadRename]: {
     maintainer: "ethan@vm0.ai",
     description:

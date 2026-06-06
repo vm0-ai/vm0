@@ -1,20 +1,9 @@
-import {
-  useGet,
-  useSet,
-  useLoadable,
-  useLastResolved,
-  useResolved,
-} from "ccstate-react";
+import { useGet, useSet, useLoadable, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import {
-  IconArrowUpRight,
-  IconPin,
-  IconPlus,
-  IconUserPlus,
-} from "@tabler/icons-react";
+import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
@@ -25,8 +14,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   currentChatAgentId$,
   currentChatAgentDisplayName$,
@@ -65,12 +52,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
-import {
-  createNewChatThreadOptimistically$,
-  optimisticChatThread$,
-  sendNewThreadOptimistically$,
-  type OptimisticChatPane,
-} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
+import { sendNewThreadOptimistically$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { startChatNavigationTiming$ } from "../../lib/posthog.ts";
 import {
   typewriterDisplayed$,
@@ -180,51 +162,6 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
       <IconUserPlus size={14} stroke={1.5} />
       Invite people
     </Button>
-  );
-}
-
-function NewChatButton() {
-  const currentChatAgentId = useResolved(currentChatAgentId$);
-  const createNewChat = useSet(createNewChatThreadOptimistically$);
-  const creating = useGet(optimisticChatThread$) !== null;
-  const rootSignal = useGet(rootSignal$);
-
-  const handleNewChat = (pane: OptimisticChatPane) => {
-    if (!currentChatAgentId) {
-      return;
-    }
-
-    detach(
-      createNewChat(currentChatAgentId, pane, rootSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={(event) => {
-        handleNewChat(event.altKey ? "sidebar" : "main");
-      }}
-      disabled={!currentChatAgentId || creating}
-      className="zero-btn-morandi gap-1.5"
-      data-testid="chat-header-new-button"
-    >
-      <IconPlus size={14} stroke={1.5} />
-      New
-    </Button>
-  );
-}
-
-function ChatHeaderAction({ pageSignal }: { pageSignal: AbortSignal }) {
-  const features = useLastResolved(featureSwitch$);
-  const newButtonEnabled =
-    features?.[FeatureSwitchKey.ChatHeaderNewButton] ?? false;
-  return newButtonEnabled ? (
-    <NewChatButton />
-  ) : (
-    <InviteButton pageSignal={pageSignal} />
   );
 }
 
@@ -542,7 +479,7 @@ export function AgentChatPage() {
     <div className="relative flex flex-1 flex-col min-h-0">
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
         <div className="flex justify-end items-center gap-2">
-          <ChatHeaderAction pageSignal={pageSignal} />
+          <InviteButton pageSignal={pageSignal} />
         </div>
       </header>
 

@@ -4,12 +4,10 @@ import {
   useSet,
   useLastLoadable,
   useLastResolved,
-  useResolved,
 } from "ccstate-react";
 import {
   IconMenu2,
   IconPackage,
-  IconPlus,
   IconUserPlus,
   IconVolume2,
 } from "@tabler/icons-react";
@@ -18,21 +16,12 @@ import type { RouteKey } from "../../signals/route-paths.ts";
 import { cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { ScheduleMenuButton } from "./zero-chat-thread-page.tsx";
-import {
-  currentChatAgent$,
-  currentChatAgentId$,
-  earliestUnreadEndedThread$,
-} from "../../signals/agent-chat.ts";
+import { currentChatAgent$ } from "../../signals/agent-chat.ts";
 import {
   currentLeftThread$,
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
-import {
-  createNewChatThreadOptimistically$,
-  optimisticChatThread$,
-  type OptimisticChatPane,
-} from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
@@ -41,7 +30,6 @@ import {
   sidebarExpanded$,
   setSidebarExpanded$,
   isChatRoute,
-  navigateToChat$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
@@ -62,7 +50,6 @@ import {
   setSettingsDialogOpen$,
 } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   autoReadEnabled$,
@@ -144,57 +131,6 @@ function InviteButtonLeaf() {
   );
 }
 
-function NewOrUnreadChatButtonLeaf() {
-  const currentChatAgentId = useResolved(currentChatAgentId$);
-  const createNewChat = useSet(createNewChatThreadOptimistically$);
-  const navigateToChatFn = useSet(navigateToChat$);
-  const rootSignal = useGet(rootSignal$);
-  const creating = useGet(optimisticChatThread$) !== null;
-  const unreadThread = useLastResolved(earliestUnreadEndedThread$);
-
-  if (unreadThread) {
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          navigateToChatFn(unreadThread.id);
-        }}
-        className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
-      >
-        <span
-          className="shrink-0 h-2 w-2 rounded-full bg-primary"
-          aria-label="Unread"
-        />
-        unread
-      </button>
-    );
-  }
-
-  const handleNewChat = (pane: OptimisticChatPane) => {
-    if (!currentChatAgentId) {
-      return;
-    }
-    detach(
-      createNewChat(currentChatAgentId, pane, rootSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        handleNewChat(event.altKey ? "sidebar" : "main");
-      }}
-      disabled={!currentChatAgentId || creating}
-      className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0 disabled:opacity-50"
-    >
-      <IconPlus size={14} stroke={1.5} />
-      New
-    </button>
-  );
-}
-
 function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
   const inboxThreadId = useGet(currentArtifactInboxThreadId$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
@@ -254,18 +190,13 @@ function MobileScheduleButtonLeaf() {
 function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const inChatRoute = isChatRoute(activeId);
   const features = useLastResolved(featureSwitch$);
-  const newButtonEnabled =
-    features?.[FeatureSwitchKey.ChatHeaderNewButton] ?? false;
-  const showNewButton = inChatRoute && newButtonEnabled;
-  const showInviteFallback =
-    inChatRoute && !newButtonEnabled && activeId !== "chat";
+  const showInviteFallback = inChatRoute && activeId !== "chat";
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   return (
     <>
       {inChatRoute && <MobileScheduleButtonLeaf />}
       {inChatRoute && <MobileArtifactsButtonLeaf />}
       {inChatRoute && audioOutputEnabled && <AutoReadToggleLeaf />}
-      {showNewButton && <NewOrUnreadChatButtonLeaf />}
       {showInviteFallback && <InviteButtonLeaf />}
     </>
   );
