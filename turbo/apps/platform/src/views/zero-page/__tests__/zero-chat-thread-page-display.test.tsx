@@ -181,6 +181,67 @@ describe("zero chat thread page display - schedule menu", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Other thread schedule")).not.toBeInTheDocument();
   });
+
+  it("shows linked schedule status sublines from schedule API data", async () => {
+    const user = userEvent.setup();
+    const threadId = "d0000000-0000-4000-a000-000000000001";
+    const nextRunAt = "2026-06-07T14:30:00.000Z";
+    mockChatLifecycle({ threadId });
+    setMockSchedules([
+      createMockScheduleResponse({
+        id: "e0000000-0000-4000-a000-000000000011",
+        name: "next-run-schedule",
+        description: "Daily morning briefing",
+        chatThreadId: threadId,
+        enabled: true,
+        nextRunAt,
+      }),
+      createMockScheduleResponse({
+        id: "e0000000-0000-4000-a000-000000000012",
+        name: "inactive-schedule",
+        description: "Paused sync",
+        chatThreadId: threadId,
+        enabled: false,
+        nextRunAt: "2026-06-08T09:00:00.000Z",
+      }),
+      createMockScheduleResponse({
+        id: "e0000000-0000-4000-a000-000000000013",
+        name: "no-upcoming-run-schedule",
+        description: "Manual follow-up",
+        chatThreadId: threadId,
+        enabled: true,
+        nextRunAt: null,
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        ...chatArtifactSidebarOff(),
+      },
+    });
+
+    await user.click(await screen.findByLabelText("Schedules"));
+
+    const menu = await screen.findByRole("menu");
+    const expectedNextRun = `Next run ${new Date(nextRunAt).toLocaleString(
+      "en-US",
+      {
+        dateStyle: "medium",
+        timeStyle: "short",
+      },
+    )}`;
+
+    expect(
+      within(menu).getByText("Daily morning briefing"),
+    ).toBeInTheDocument();
+    expect(within(menu).getByText(expectedNextRun)).toBeInTheDocument();
+    expect(within(menu).getByText("Paused sync")).toBeInTheDocument();
+    expect(within(menu).getByText("Schedule inactive")).toBeInTheDocument();
+    expect(within(menu).getByText("Manual follow-up")).toBeInTheDocument();
+    expect(within(menu).getByText("No upcoming run")).toBeInTheDocument();
+  });
 });
 
 describe("zero chat thread page display - permission action card", () => {
