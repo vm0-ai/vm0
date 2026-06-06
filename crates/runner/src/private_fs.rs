@@ -185,6 +185,7 @@ fn ensure_private_dir_exists_without_symlinks(
     let mut current = open(start, private_dir_open_flags(), Mode::empty()).map_err(|e| {
         RunnerError::Config(format!("open private dir root for {}: {e}", path.display()))
     })?;
+    let mut current_path = start.to_path_buf();
     for component in path.components() {
         match component {
             Component::RootDir | Component::CurDir => {}
@@ -195,7 +196,14 @@ fn ensure_private_dir_exists_without_symlinks(
                 )));
             }
             Component::Normal(name) => {
-                current = open_or_create_private_dir_component(&current, name, path, expected_uid)?;
+                current = open_or_create_private_dir_component(
+                    &current,
+                    name,
+                    &current_path,
+                    path,
+                    expected_uid,
+                )?;
+                current_path.push(Path::new(name));
             }
             Component::Prefix(prefix) => {
                 return Err(RunnerError::Config(format!(
@@ -214,6 +222,7 @@ fn ensure_private_dir_exists_without_symlinks(
 fn open_or_create_private_dir_component(
     parent: &(impl AsFd + AsRawFd),
     name: &OsStr,
+    parent_path: &Path,
     full_path: &Path,
     expected_uid: u32,
 ) -> RunnerResult<OwnedFd> {
@@ -224,7 +233,7 @@ fn open_or_create_private_dir_component(
     match openat(parent, name, private_dir_open_flags(), Mode::empty()) {
         Ok(fd) => Ok(fd),
         Err(Errno::EACCES) => {
-            repair_private_dir_parent_for_traversal(parent, full_path, expected_uid)?;
+            repair_private_dir_parent_for_traversal(parent, parent_path, full_path, expected_uid)?;
             open_or_create_accessible_private_dir_component(parent, name, full_path)
         }
         Err(Errno::ENOENT) => create_and_open_private_dir_component(parent, name, full_path),
@@ -281,10 +290,20 @@ fn create_and_open_private_dir_component(
 #[cfg(unix)]
 fn repair_private_dir_parent_for_traversal(
     parent: &(impl AsFd + AsRawFd),
+    parent_path: &Path,
     full_path: &Path,
     expected_uid: u32,
 ) -> RunnerResult<()> {
     use nix::sys::stat::fstat;
+
+    let normalized_parent = normalize_private_dir_policy_path(parent_path)?;
+    if is_reserved_normalized_private_dir_path(&normalized_parent) {
+        return Err(RunnerError::Config(format!(
+            "{} requires traversing reserved system path {}; fix parent permissions before starting the runner",
+            full_path.display(),
+            parent_path.display()
+        )));
+    }
 
     let stat = fstat(parent).map_err(|e| {
         RunnerError::Config(format!(
@@ -427,19 +446,23 @@ fn reject_reserved_normalized_private_dir_path(
     original: &Path,
     normalized: &Path,
 ) -> RunnerResult<()> {
-    if RESERVED_PRIVATE_DIR_PATHS
-        .iter()
-        .any(|reserved| normalized == Path::new(reserved))
-        || RESERVED_PRIVATE_DIR_SUBTREES
-            .iter()
-            .any(|reserved| normalized.starts_with(Path::new(reserved)))
-    {
+    if is_reserved_normalized_private_dir_path(normalized) {
         return Err(RunnerError::Config(format!(
             "{} is a reserved system path; refusing to use it as private runner state",
             original.display()
         )));
     }
     Ok(())
+}
+
+#[cfg(unix)]
+fn is_reserved_normalized_private_dir_path(normalized: &Path) -> bool {
+    RESERVED_PRIVATE_DIR_PATHS
+        .iter()
+        .any(|reserved| normalized == Path::new(reserved))
+        || RESERVED_PRIVATE_DIR_SUBTREES
+            .iter()
+            .any(|reserved| normalized.starts_with(Path::new(reserved)))
 }
 
 #[cfg(unix)]
@@ -543,6 +566,33 @@ mod tests {
 
         assert_eq!(mode(&intermediate), PRIVATE_DIR_MODE);
         assert_eq!(mode(&private_dir), PRIVATE_DIR_MODE);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn repair_private_dir_parent_rejects_reserved_parent() {
+        use nix::fcntl::open;
+        use nix::sys::stat::Mode;
+
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("parent");
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let fd = open(&parent, private_dir_open_flags(), Mode::empty()).unwrap();
+
+        let error = repair_private_dir_parent_for_traversal(
+            &fd,
+            Path::new("/var/lib/vm0-runner/runners"),
+            &parent.join("runner"),
+            nix::unistd::geteuid().as_raw(),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("reserved system path"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(mode(&parent), 0o000);
     }
 
     #[tokio::test]
