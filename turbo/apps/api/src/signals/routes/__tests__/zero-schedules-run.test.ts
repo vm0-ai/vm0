@@ -229,7 +229,7 @@ describe("POST /api/zero/schedules/run", () => {
       .from(agentRunCallbacks)
       .where(eq(agentRunCallbacks.runId, body.runId));
     const cronCallback = callbacks.find((callback) => {
-      return /\/api\/internal\/callbacks\/schedule\/cron$/.test(callback.url);
+      return callback.url.endsWith("/api/internal/callbacks/schedule/cron");
     });
     expect(cronCallback).toBeDefined();
     expect(cronCallback?.payload).toMatchObject({ scheduleId });
