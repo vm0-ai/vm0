@@ -972,9 +972,7 @@ async fn prepare_workspace_image(
     workspace_disk_mb: u32,
     telemetry: &mut JobTelemetry,
 ) -> Option<WorkspaceImageLease> {
-    let Some(cache) = config.workspace_cache.as_ref() else {
-        return None;
-    };
+    let cache = config.workspace_cache.as_ref()?;
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {

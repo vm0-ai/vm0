@@ -10,10 +10,6 @@ export type TextPreviewLoadState = {
   text: string;
 };
 
-type ImageLightboxImageState = {
-  imageStatus: ImageLoadStatus;
-};
-
 export const IMAGE_LIGHTBOX_MIN_ZOOM = 0.5;
 export const IMAGE_LIGHTBOX_MAX_ZOOM = 3;
 
@@ -24,11 +20,7 @@ const internalZoomableImageCanvasZoomByKey$ = state<Record<string, number>>({});
 const internalTextPreviewLoadStateByKey$ = state<
   Record<string, TextPreviewLoadState>
 >({});
-const internalTextPreviewCollapsedByKey$ = state<Record<string, boolean>>({});
 const internalTypewriterDisplayedByKey$ = state<Record<string, string>>({});
-const internalImageLightboxState$ = state<ImageLightboxImageState>({
-  imageStatus: "loading",
-});
 
 export const imageLoadStatusByKey$ = computed((get) => {
   return get(internalImageLoadStatusByKey$);
@@ -42,16 +34,8 @@ export const textPreviewLoadStateByKey$ = computed((get) => {
   return get(internalTextPreviewLoadStateByKey$);
 });
 
-export const textPreviewCollapsedByKey$ = computed((get) => {
-  return get(internalTextPreviewCollapsedByKey$);
-});
-
 export const typewriterDisplayed$ = computed((get) => {
   return get(internalTypewriterDisplayedByKey$);
-});
-
-export const imageLightboxState$ = computed((get) => {
-  return get(internalImageLightboxState$);
 });
 
 export const setImageLoadStatus$ = command(
@@ -106,12 +90,6 @@ const resetImageLoadStatusOnRef$ = command(
 );
 
 export const imageLoadStatusRef$ = onRef(resetImageLoadStatusOnRef$);
-
-export const toggleTextPreviewCollapsed$ = command(({ set }, key: string) => {
-  set(internalTextPreviewCollapsedByKey$, (current) => {
-    return { ...current, [key]: !(current[key] ?? false) };
-  });
-});
 
 export const textPreviewLoaderRef$ = onRef(
   command(async ({ set }, el: HTMLElement, signal: AbortSignal) => {
@@ -198,26 +176,6 @@ const startTypewriterOnRef$ = command(
 );
 
 export const typewriterRef$ = onRef(startTypewriterOnRef$);
-
-const resetImageLightboxState$ = command(({ set }) => {
-  set(internalImageLightboxState$, { imageStatus: "loading" });
-});
-
-export const setImageLightboxStatus$ = command(
-  ({ set }, status: ImageLoadStatus) => {
-    set(internalImageLightboxState$, (current) => {
-      return { ...current, imageStatus: status };
-    });
-  },
-);
-
-const resetImageLightboxOnRef$ = command(
-  ({ set }, _el: HTMLElement, _signal: AbortSignal) => {
-    set(resetImageLightboxState$);
-  },
-);
-
-export const imageLightboxImageRef$ = onRef(resetImageLightboxOnRef$);
 
 const openTelegramOnRef$ = command(
   (_ctx, el: HTMLElement, _signal: AbortSignal) => {

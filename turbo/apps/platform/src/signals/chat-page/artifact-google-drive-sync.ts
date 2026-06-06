@@ -60,7 +60,7 @@ function isArtifactGoogleDriveSyncFailure(
   return !result.ok;
 }
 
-export async function syncArtifactFilesToGoogleDrive(
+async function syncArtifactFilesToGoogleDrive(
   params: ArtifactGoogleDriveSyncFilesParams & {
     readonly createClient: ZeroClientFactory;
     readonly signal?: AbortSignal;

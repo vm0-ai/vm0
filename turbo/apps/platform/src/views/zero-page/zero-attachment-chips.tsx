@@ -78,7 +78,6 @@ import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 
 export {
   downloadAttachmentUrl,
-  getAttachmentRawUrl,
   publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
 

@@ -162,10 +162,6 @@ export function publicAttachmentUrl(url: string): string {
   return normalizedLegacyFileUrl(url) ?? normalizedArtifactFileUrl(url) ?? url;
 }
 
-export function getAttachmentRawUrl(url: string): string {
-  return url;
-}
-
 function triggerBlobDownload(blob: Blob, filename: string): void {
   const blobUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
