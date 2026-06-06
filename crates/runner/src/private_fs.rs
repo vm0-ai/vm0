@@ -35,6 +35,7 @@ const RESERVED_PRIVATE_DIR_PATHS: &[&str] = &[
 #[cfg(unix)]
 pub async fn ensure_private_dir(path: &Path) -> RunnerResult<()> {
     reject_reserved_private_dir_path(path)?;
+    reject_existing_symlink_components(path).await?;
 
     let mut builder = tokio::fs::DirBuilder::new();
     builder.recursive(true);
@@ -58,6 +59,32 @@ pub async fn ensure_private_dir(path: &Path) -> RunnerResult<()> {
     tokio::fs::create_dir_all(path)
         .await
         .map_err(|e| RunnerError::Config(format!("create private dir {}: {e}", path.display())))
+}
+
+#[cfg(unix)]
+async fn reject_existing_symlink_components(path: &Path) -> RunnerResult<()> {
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        current.push(component.as_os_str());
+        let metadata = match tokio::fs::symlink_metadata(&current).await {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => {
+                return Err(RunnerError::Config(format!(
+                    "stat private dir component {}: {e}",
+                    current.display()
+                )));
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(RunnerError::Config(format!(
+                "{} contains symlink component {}; refusing to use it as private runner state",
+                path.display(),
+                current.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -320,6 +347,27 @@ mod tests {
         assert!(
             error.to_string().contains("symlink"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_private_dir_rejects_intermediate_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let link = dir.path().join("link");
+        let private_dir = link.join("runner");
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &link).unwrap();
+
+        let error = ensure_private_dir(&private_dir).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("symlink component"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !target.join("runner").exists(),
+            "private dir should not be created through an intermediate symlink"
         );
     }
 
