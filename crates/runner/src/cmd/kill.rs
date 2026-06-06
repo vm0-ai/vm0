@@ -439,24 +439,26 @@ async fn kill_current_target(
     is_orphan: bool,
     control: &dyn SandboxControl,
 ) -> KillOutcome {
-    if is_orphan {
-        return kill_orphan_process_group(&current).await;
-    }
-
     match control.kill_remote(&current.sandbox_id).await {
         Ok(RemoteKillResult::RefusedIdle) => KillOutcome::RefusedManagedIdle,
         Ok(result) => KillOutcome::OwnerAccepted(result),
-        Err(error) => retry_as_orphan_if_owner_disappeared(&current, error).await,
+        Err(error) => retry_as_orphan_if_owner_disappeared(&current, error, is_orphan).await,
     }
 }
 
 async fn retry_as_orphan_if_owner_disappeared(
     expected: &KillTarget,
     owner_error: SandboxControlError,
+    was_orphan: bool,
 ) -> KillOutcome {
     let refreshed = match rediscover_same_sandbox_process(expected).await {
         Ok(refreshed) => refreshed,
-        Err(error) => return KillOutcome::RefusedTargetChanged(error.to_string()),
+        Err(error) => {
+            if was_orphan && error.allows_disappeared_orphan_cleanup() {
+                return already_gone_orphan_outcome(expected).await;
+            }
+            return KillOutcome::RefusedTargetChanged(error.to_string());
+        }
     };
     if !process::is_orphan(refreshed.target.pid, &refreshed.runner_pids).await {
         return KillOutcome::RefusedManagedControlFailed(owner_error.to_string());
@@ -1343,8 +1345,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn apparent_orphan_prefers_owner_control_when_available() {
+        let control = MockSandboxControl::new("/tmp/test");
+        let current = make_target(200, "sbox-123");
+
+        let outcome = kill_current_target(current, true, &control).await;
+
+        assert!(matches!(
+            outcome,
+            KillOutcome::OwnerAccepted(RemoteKillResult::Accepted)
+        ));
+        assert_eq!(control.recorded_kill_ids(), vec!["sbox-123"]);
+    }
+
+    #[tokio::test]
     async fn orphan_target_uses_current_reresolved_identity() {
         let control = MockSandboxControl::new("/tmp/test");
+        control.push_kill_remote_result(Err(SandboxControlError::NotFound("missing".into())));
         let current = make_target(u32::MAX - 2_000, "sbox-123");
 
         let outcome = kill_current_target(current.clone(), true, &control).await;
