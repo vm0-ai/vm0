@@ -1,7 +1,8 @@
 use super::super::*;
+use super::shared::{
+    ExecStartLayout, ExecStartLayoutRequest, set_byte_at, write_u16_at, write_u32_at,
+};
 use super::{NONCE, assert_invalid_payload};
-
-const ONE_SHOT_DURATION_START_HEADER_LEN: usize = 1 + 1 + 4 + 1;
 
 fn exec_start_payload(command: &str, env: &[(&str, &str)], label: &str) -> Vec<u8> {
     encode_exec_start(
@@ -22,50 +23,6 @@ fn default_exec_start_payload() -> Vec<u8> {
 
 fn env_label_exec_start_payload() -> Vec<u8> {
     exec_start_payload("cmd", &[("K", "V")], "ok")
-}
-
-fn command_byte_offset() -> usize {
-    ONE_SHOT_DURATION_START_HEADER_LEN + 4
-}
-
-fn flags_byte_offset() -> usize {
-    ONE_SHOT_DURATION_START_HEADER_LEN - 1
-}
-
-fn env_count_field_offset(command: &str) -> usize {
-    command_byte_offset() + command.len()
-}
-
-fn env_key_byte_offset(command: &str) -> usize {
-    env_count_field_offset(command) + 4 + 4
-}
-
-fn env_value_byte_offset(command: &str, key: &str) -> usize {
-    env_key_byte_offset(command) + key.len() + 4
-}
-
-fn label_len_field_offset(command: &str, env: &[(&str, &str)]) -> usize {
-    let env_bytes = env
-        .iter()
-        .map(|(key, value)| 4 + key.len() + 4 + value.len())
-        .sum::<usize>();
-    env_count_field_offset(command) + 4 + env_bytes
-}
-
-fn label_byte_offset(command: &str, env: &[(&str, &str)]) -> usize {
-    label_len_field_offset(command, env) + 2
-}
-
-fn stdout_policy_tag_offset(command: &str, env: &[(&str, &str)], label: &str) -> usize {
-    label_byte_offset(command, env) + label.len()
-}
-
-fn stream_chunk_limit_field_offset(command: &str, label: &str) -> usize {
-    stdout_policy_tag_offset(command, &[], label) + 1 + 4
-}
-
-fn capture_and_stream_chunk_limit_field_offset(command: &str, label: &str) -> usize {
-    stdout_policy_tag_offset(command, &[], label) + 1 + 4 + 4
 }
 
 fn supervised_control_exec_start_payload() -> Vec<u8> {
@@ -149,9 +106,19 @@ fn exec_start_wire_layout_places_label_before_output_policies() {
     )
     .unwrap();
 
-    let label_len_offset = label_len_field_offset("cmd", &[]);
+    let layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
+        command: "cmd",
+        env: &[],
+        label: "abc",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Capture { limit_bytes: 7 },
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: None,
+    });
     assert_eq!(
-        &payload[label_len_offset..payload.len() - 2],
+        &payload[layout.label_len_offset..layout.control.tag_offset],
         &[
             0,
             3,
@@ -365,7 +332,8 @@ fn exec_start_rejects_zero_duration_timeout() {
     assert_invalid_payload(err, "exec start timeout duration must be positive");
 
     let mut payload = default_exec_start_payload();
-    payload[2..6].copy_from_slice(&0u32.to_be_bytes());
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "");
+    write_u32_at(&mut payload, layout.timeout_value_offset.unwrap(), 0);
 
     let err = decode_exec_start(&payload).unwrap_err();
     assert_invalid_payload(err, "exec start timeout duration must be positive");
@@ -412,7 +380,8 @@ fn exec_start_roundtrip_capture_and_stream_policy() {
 #[test]
 fn exec_start_rejects_unknown_flags() {
     let mut payload = default_exec_start_payload();
-    payload[flags_byte_offset()] = 0x80;
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "");
+    set_byte_at(&mut payload, layout.flags_offset, 0x80);
 
     let err = decode_exec_start(&payload).unwrap_err();
     assert!(matches!(
@@ -422,31 +391,31 @@ fn exec_start_rejects_unknown_flags() {
 }
 #[test]
 fn exec_start_rejects_invalid_utf8_fields() {
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[("K", "V")], "ok");
+
     let mut payload = env_label_exec_start_payload();
-    payload[command_byte_offset()] = 0xFF;
+    set_byte_at(&mut payload, layout.command_offset, 0xFF);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload("invalid UTF-8 in command"))
     ));
 
     let mut payload = env_label_exec_start_payload();
-    let key_offset = env_key_byte_offset("cmd");
-    payload[key_offset] = 0xFF;
+    set_byte_at(&mut payload, layout.env[0].key_offset, 0xFF);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload("invalid UTF-8 in env key"))
     ));
 
     let mut payload = env_label_exec_start_payload();
-    let val_offset = env_value_byte_offset("cmd", "K");
-    payload[val_offset] = 0xFF;
+    set_byte_at(&mut payload, layout.env[0].value_offset, 0xFF);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload("invalid UTF-8 in env value"))
     ));
 
     let mut payload = env_label_exec_start_payload();
-    payload[label_byte_offset("cmd", &[("K", "V")])] = 0xFF;
+    set_byte_at(&mut payload, layout.label_offset, 0xFF);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload("invalid UTF-8 in label"))
@@ -466,8 +435,8 @@ fn exec_start_rejects_trailing_bytes() {
 #[test]
 fn exec_start_rejects_malformed_env_count_without_preallocating() {
     let mut payload = exec_start_payload("", &[], "");
-    let env_count_offset = env_count_field_offset("");
-    payload[env_count_offset..env_count_offset + 4].copy_from_slice(&u32::MAX.to_be_bytes());
+    let layout = ExecStartLayout::one_shot_duration_discard("", &[], "");
+    write_u32_at(&mut payload, layout.env_count_offset, u32::MAX);
 
     assert!(matches!(
         decode_exec_start(&payload),
@@ -493,9 +462,12 @@ fn exec_start_rejects_env_count_above_limit() {
     ));
 
     let mut payload = exec_start_payload("", &[], "");
-    let env_count_offset = env_count_field_offset("");
-    payload[env_count_offset..env_count_offset + 4]
-        .copy_from_slice(&((MAX_EXEC_ENV_VARS as u32) + 1).to_be_bytes());
+    let layout = ExecStartLayout::one_shot_duration_discard("", &[], "");
+    write_u32_at(
+        &mut payload,
+        layout.env_count_offset,
+        (MAX_EXEC_ENV_VARS as u32) + 1,
+    );
 
     assert!(matches!(
         decode_exec_start(&payload),
@@ -544,7 +516,8 @@ fn exec_start_rejects_truncated_fields() {
     ));
 
     let mut payload = env_label_exec_start_payload();
-    payload.truncate(command_byte_offset() + 2);
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[("K", "V")], "ok");
+    payload.truncate(layout.command_offset + 2);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -553,8 +526,8 @@ fn exec_start_rejects_truncated_fields() {
     ));
 
     let mut payload = env_label_exec_start_payload();
-    let env_count_offset = env_count_field_offset("cmd");
-    payload.truncate(env_count_offset + 3);
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[("K", "V")], "ok");
+    payload.truncate(layout.env_count_offset + 3);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -563,8 +536,8 @@ fn exec_start_rejects_truncated_fields() {
     ));
 
     let mut payload = exec_start_payload("cmd", &[], "ok");
-    let label_len_offset = label_len_field_offset("cmd", &[]);
-    payload.truncate(label_len_offset + 1);
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "ok");
+    payload.truncate(layout.label_len_offset + 1);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -573,15 +546,16 @@ fn exec_start_rejects_truncated_fields() {
     ));
 
     let mut payload = exec_start_payload("cmd", &[], "ok");
-    let label_start = label_byte_offset("cmd", &[]);
-    payload.truncate(label_start + 1);
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "ok");
+    payload.truncate(layout.label_offset + 1);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload("exec start label truncated"))
     ));
 
     let mut payload = exec_start_payload("cmd", &[], "ok");
-    payload.truncate(payload.len() - 2);
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "ok");
+    payload.truncate(layout.control.tag_offset);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -592,8 +566,8 @@ fn exec_start_rejects_truncated_fields() {
 #[test]
 fn exec_start_rejects_invalid_policy_tag() {
     let mut payload = default_exec_start_payload();
-    let stdout_policy_offset = stdout_policy_tag_offset("cmd", &[], "");
-    payload[stdout_policy_offset] = 0x99;
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "");
+    set_byte_at(&mut payload, layout.stdout_policy.tag_offset, 0x99);
 
     let err = decode_exec_start(&payload).unwrap_err();
     assert!(matches!(
@@ -634,8 +608,25 @@ fn exec_start_rejects_zero_stream_chunk_limit() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let chunk_limit_offset = stream_chunk_limit_field_offset("cmd", "");
-    payload[chunk_limit_offset..chunk_limit_offset + 4].copy_from_slice(&0u32.to_be_bytes());
+    let layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::Stream {
+            limit_bytes: 1,
+            chunk_limit_bytes: 1,
+        },
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: None,
+    });
+    write_u32_at(
+        &mut payload,
+        layout.stdout_policy.chunk_limit_offset.unwrap(),
+        0,
+    );
 
     let err = decode_exec_start(&payload).unwrap_err();
     assert!(matches!(
@@ -675,8 +666,26 @@ fn exec_start_rejects_zero_capture_and_stream_chunk_limit() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let chunk_limit_offset = capture_and_stream_chunk_limit_field_offset("cmd", "");
-    payload[chunk_limit_offset..chunk_limit_offset + 4].copy_from_slice(&0u32.to_be_bytes());
+    let layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::CaptureAndStream {
+            capture_limit_bytes: 1,
+            stream_limit_bytes: 1,
+            chunk_limit_bytes: 1,
+        },
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: None,
+    });
+    write_u32_at(
+        &mut payload,
+        layout.stdout_policy.chunk_limit_offset.unwrap(),
+        0,
+    );
 
     let err = decode_exec_start(&payload).unwrap_err();
     assert_invalid_payload(err, "exec output chunk limit must be non-zero");
@@ -704,9 +713,12 @@ fn exec_start_rejects_expected_exit_count_above_limit() {
     ));
 
     let mut payload = default_exec_start_payload();
-    let count_offset = payload.len() - 2 - 2;
-    payload[count_offset..count_offset + 2]
-        .copy_from_slice(&((MAX_EXEC_EXPECTED_EXIT_CODES as u16) + 1).to_be_bytes());
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "");
+    write_u16_at(
+        &mut payload,
+        layout.expected_exit_count_offset,
+        (MAX_EXEC_EXPECTED_EXIT_CODES as u16) + 1,
+    );
     let err = decode_exec_start(&payload).unwrap_err();
     assert!(matches!(
         err,
@@ -716,7 +728,8 @@ fn exec_start_rejects_expected_exit_count_above_limit() {
 #[test]
 fn exec_start_rejects_truncated_expected_exit_count() {
     let mut payload = default_exec_start_payload();
-    payload.truncate(payload.len() - 3);
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "");
+    payload.truncate(layout.expected_exit_count_offset + 1);
 
     let err = decode_exec_start(&payload).unwrap_err();
     assert_invalid_payload(err, "exec start expected_exit_count truncated");
@@ -737,7 +750,18 @@ fn exec_start_rejects_truncated_expected_exit_codes() {
         stdin_bytes: None,
     })
     .unwrap();
-    payload.truncate(payload.len() - 3);
+    let layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[66],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: None,
+    });
+    payload.truncate(layout.expected_exit_codes_offset + 3);
 
     let err = decode_exec_start(&payload).unwrap_err();
     assert!(matches!(
@@ -760,8 +784,21 @@ fn exec_start_rejects_truncated_policy_fields() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let stream_chunk_limit_offset = stream_chunk_limit_field_offset("cmd", "");
-    stream_payload.truncate(stream_chunk_limit_offset + 3);
+    let stream_layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::Stream {
+            limit_bytes: 1,
+            chunk_limit_bytes: 1,
+        },
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: None,
+    });
+    stream_payload.truncate(stream_layout.stdout_policy.chunk_limit_offset.unwrap() + 3);
     assert!(matches!(
         decode_exec_start(&stream_payload),
         Err(ProtocolError::InvalidPayload(
@@ -783,9 +820,28 @@ fn exec_start_rejects_truncated_policy_fields() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let capture_and_stream_chunk_limit_offset =
-        capture_and_stream_chunk_limit_field_offset("cmd", "");
-    capture_and_stream_payload.truncate(capture_and_stream_chunk_limit_offset + 3);
+    let capture_and_stream_layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::CaptureAndStream {
+            capture_limit_bytes: 1,
+            stream_limit_bytes: 1,
+            chunk_limit_bytes: 1,
+        },
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: None,
+    });
+    capture_and_stream_payload.truncate(
+        capture_and_stream_layout
+            .stdout_policy
+            .chunk_limit_offset
+            .unwrap()
+            + 3,
+    );
     assert!(matches!(
         decode_exec_start(&capture_and_stream_payload),
         Err(ProtocolError::InvalidPayload(
@@ -795,8 +851,10 @@ fn exec_start_rejects_truncated_policy_fields() {
 }
 #[test]
 fn exec_start_rejects_invalid_lifecycle_timeout_and_control() {
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "");
+
     let mut payload = default_exec_start_payload();
-    payload[0] = 0xFE;
+    set_byte_at(&mut payload, layout.lifecycle_offset, 0xFE);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -805,7 +863,7 @@ fn exec_start_rejects_invalid_lifecycle_timeout_and_control() {
     ));
 
     let mut payload = default_exec_start_payload();
-    payload[1] = 0xFE;
+    set_byte_at(&mut payload, layout.timeout_policy_offset, 0xFE);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -814,8 +872,21 @@ fn exec_start_rejects_invalid_lifecycle_timeout_and_control() {
     ));
 
     let mut payload = supervised_control_exec_start_payload();
-    let control_tag_offset = payload.len() - (1 + 1 + 1 + EXEC_CONTROL_NONCE_LEN);
-    payload[control_tag_offset] = 0xFE;
+    let layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::None,
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Enabled {
+            control_nonce: NONCE,
+            sink: false,
+        },
+        stdin_bytes: None,
+    });
+    set_byte_at(&mut payload, layout.control.tag_offset, 0xFE);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -825,9 +896,23 @@ fn exec_start_rejects_invalid_lifecycle_timeout_and_control() {
 }
 #[test]
 fn exec_start_rejects_control_unknown_flags_and_truncated_nonce() {
+    let layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::None,
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Enabled {
+            control_nonce: NONCE,
+            sink: false,
+        },
+        stdin_bytes: None,
+    });
+
     let mut payload = supervised_control_exec_start_payload();
-    let control_tag_offset = payload.len() - (1 + 1 + 1 + EXEC_CONTROL_NONCE_LEN);
-    payload.truncate(control_tag_offset + 1);
+    payload.truncate(layout.control.flags_offset.unwrap());
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -836,8 +921,7 @@ fn exec_start_rejects_control_unknown_flags_and_truncated_nonce() {
     ));
 
     let mut payload = supervised_control_exec_start_payload();
-    let control_flags_offset = payload.len() - (1 + 1 + EXEC_CONTROL_NONCE_LEN);
-    payload[control_flags_offset] = 0x80;
+    set_byte_at(&mut payload, layout.control.flags_offset.unwrap(), 0x80);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -846,7 +930,7 @@ fn exec_start_rejects_control_unknown_flags_and_truncated_nonce() {
     ));
 
     let mut payload = supervised_control_exec_start_payload();
-    payload.truncate(payload.len() - 2);
+    payload.truncate(layout.control.nonce_offset.unwrap() + EXEC_CONTROL_NONCE_LEN - 2);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -857,7 +941,8 @@ fn exec_start_rejects_control_unknown_flags_and_truncated_nonce() {
 #[test]
 fn exec_start_rejects_invalid_or_truncated_stdin_policy() {
     let mut payload = default_exec_start_payload();
-    *payload.last_mut().unwrap() = 0xFE;
+    let layout = ExecStartLayout::one_shot_duration_discard("cmd", &[], "");
+    set_byte_at(&mut payload, layout.stdin.tag_offset, 0xFE);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -866,8 +951,18 @@ fn exec_start_rejects_invalid_or_truncated_stdin_policy() {
     ));
 
     let mut payload = stdin_exec_start_payload(b"x");
-    let stdin_tag_offset = payload.len() - (1 + 4 + 1);
-    payload.truncate(stdin_tag_offset + 2);
+    let layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: Some(b"x"),
+    });
+    payload.truncate(layout.stdin.len_offset.unwrap() + 1);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -876,7 +971,7 @@ fn exec_start_rejects_invalid_or_truncated_stdin_policy() {
     ));
 
     let mut payload = stdin_exec_start_payload(b"x");
-    payload.pop();
+    payload.truncate(layout.stdin.bytes_end_offset.unwrap() - 1);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload("exec start stdin truncated"))
@@ -905,9 +1000,22 @@ fn exec_start_rejects_stdin_above_limit() {
     ));
 
     let mut payload = stdin_exec_start_payload(b"x");
-    let stdin_len_offset = payload.len() - (4 + 1);
-    payload[stdin_len_offset..stdin_len_offset + 4]
-        .copy_from_slice(&((MAX_EXEC_STDIN_BYTES as u32) + 1).to_be_bytes());
+    let layout = ExecStartLayout::new(ExecStartLayoutRequest {
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
+        command: "cmd",
+        env: &[],
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
+        stdin_bytes: Some(b"x"),
+    });
+    write_u32_at(
+        &mut payload,
+        layout.stdin.len_offset.unwrap(),
+        (MAX_EXEC_STDIN_BYTES as u32) + 1,
+    );
     let err = decode_exec_start(&payload).unwrap_err();
     assert_invalid_payload(err, "exec start stdin too large");
 }

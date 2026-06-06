@@ -1,4 +1,5 @@
 use super::super::*;
+use super::shared::{ExecControlLayout, set_byte_at, write_u16_at, write_u32_at};
 use super::{NONCE, assert_invalid_payload};
 use crate::payloads::exec_control::EXEC_CONTROL_MAX_PAYLOAD_BYTES;
 
@@ -9,33 +10,10 @@ fn exec_control_payload() -> Vec<u8> {
     encode_exec_control(7, NONCE, MESSAGE_ID, BODY, 5000).unwrap()
 }
 
-fn request_timeout_field_offset() -> usize {
-    4
-}
-
-fn nonce_byte_offset() -> usize {
-    request_timeout_field_offset() + 4
-}
-
-fn message_id_len_field_offset() -> usize {
-    nonce_byte_offset() + EXEC_CONTROL_NONCE_LEN
-}
-
-fn message_id_byte_offset() -> usize {
-    message_id_len_field_offset() + 2
-}
-
-fn payload_len_field_offset(message_id: &str) -> usize {
-    message_id_byte_offset() + message_id.len()
-}
-
-fn payload_byte_offset(message_id: &str) -> usize {
-    payload_len_field_offset(message_id) + 4
-}
-
 #[test]
 fn exec_control_roundtrip_and_rejects_malformed_payloads() {
     let payload = exec_control_payload();
+    let layout = ExecControlLayout::new(MESSAGE_ID, BODY);
     let decoded = decode_exec_control(&payload).unwrap();
     assert_eq!(decoded.target_seq, 7);
     assert_eq!(decoded.request_timeout_ms, 5000);
@@ -61,7 +39,7 @@ fn exec_control_roundtrip_and_rejects_malformed_payloads() {
     ));
 
     let mut zero_target_seq = payload.clone();
-    zero_target_seq[..4].copy_from_slice(&0u32.to_be_bytes());
+    write_u32_at(&mut zero_target_seq, layout.target_seq_offset, 0);
     assert!(matches!(
         decode_exec_control(&zero_target_seq),
         Err(ProtocolError::InvalidPayload(
@@ -80,26 +58,25 @@ fn exec_control_roundtrip_and_rejects_malformed_payloads() {
     ));
 
     let mut empty_message_id = exec_control_payload();
-    let message_id_len_offset = message_id_len_field_offset();
-    empty_message_id[message_id_len_offset..message_id_len_offset + 2]
-        .copy_from_slice(&0u16.to_be_bytes());
+    write_u16_at(&mut empty_message_id, layout.message_id_len_offset, 0);
     assert_invalid_payload(
         decode_exec_control(&empty_message_id).unwrap_err(),
         "exec_control message_id empty",
     );
 
     let mut invalid_message_id = exec_control_payload();
-    let message_id_offset = message_id_byte_offset();
-    invalid_message_id[message_id_offset] = 0xFF;
+    set_byte_at(&mut invalid_message_id, layout.message_id_offset, 0xFF);
     assert_invalid_payload(
         decode_exec_control(&invalid_message_id).unwrap_err(),
         "invalid UTF-8 in exec_control message_id",
     );
 
     let mut oversized_payload_len = exec_control_payload();
-    let payload_len_offset = payload_len_field_offset(MESSAGE_ID);
-    oversized_payload_len[payload_len_offset..payload_len_offset + 4]
-        .copy_from_slice(&((EXEC_CONTROL_MAX_PAYLOAD_BYTES as u32) + 1).to_be_bytes());
+    write_u32_at(
+        &mut oversized_payload_len,
+        layout.payload_len_offset,
+        (EXEC_CONTROL_MAX_PAYLOAD_BYTES as u32) + 1,
+    );
     assert_invalid_payload(
         decode_exec_control(&oversized_payload_len).unwrap_err(),
         "exec_control payload too large",
@@ -115,39 +92,35 @@ fn exec_control_roundtrip_and_rejects_malformed_payloads() {
 #[test]
 fn exec_control_rejects_truncated_fields() {
     let payload = exec_control_payload();
-    let request_timeout_offset = request_timeout_field_offset();
-    let nonce_offset = nonce_byte_offset();
-    let message_id_len_offset = message_id_len_field_offset();
-    let message_id_offset = message_id_byte_offset();
-    let payload_len_offset = payload_len_field_offset(MESSAGE_ID);
-    let payload_offset = payload_byte_offset(MESSAGE_ID);
+    let layout = ExecControlLayout::new(MESSAGE_ID, BODY);
 
     assert_invalid_payload(
         decode_exec_control(&payload[..3]).unwrap_err(),
         "exec_control target_seq truncated",
     );
     assert_invalid_payload(
-        decode_exec_control(&payload[..request_timeout_offset + 3]).unwrap_err(),
+        decode_exec_control(&payload[..layout.request_timeout_offset + 3]).unwrap_err(),
         "exec_control request_timeout_ms truncated",
     );
     assert_invalid_payload(
-        decode_exec_control(&payload[..nonce_offset + EXEC_CONTROL_NONCE_LEN - 1]).unwrap_err(),
+        decode_exec_control(&payload[..layout.nonce_offset + EXEC_CONTROL_NONCE_LEN - 1])
+            .unwrap_err(),
         "exec_control nonce truncated",
     );
     assert_invalid_payload(
-        decode_exec_control(&payload[..message_id_len_offset + 1]).unwrap_err(),
+        decode_exec_control(&payload[..layout.message_id_len_offset + 1]).unwrap_err(),
         "exec_control message_id_len truncated",
     );
     assert_invalid_payload(
-        decode_exec_control(&payload[..message_id_offset + 2]).unwrap_err(),
+        decode_exec_control(&payload[..layout.message_id_offset + 2]).unwrap_err(),
         "exec_control message_id truncated",
     );
     assert_invalid_payload(
-        decode_exec_control(&payload[..payload_len_offset + 3]).unwrap_err(),
+        decode_exec_control(&payload[..layout.payload_len_offset + 3]).unwrap_err(),
         "exec_control payload_len truncated",
     );
     assert_invalid_payload(
-        decode_exec_control(&payload[..payload_offset + 2]).unwrap_err(),
+        decode_exec_control(&payload[..layout.payload_end_offset - 2]).unwrap_err(),
         "exec_control payload truncated",
     );
 }
