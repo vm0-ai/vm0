@@ -10,7 +10,12 @@ import body_utils
 import mitm_addon
 import usage
 from tests.flow_helpers import response_stream
-from tests.x_flow_helpers import make_x_pipeline_flow, make_x_stream_pipeline_flow
+from tests.x_flow_helpers import (
+    json_body_that_exceeds_decoder_recursion,
+    json_body_that_exceeds_integer_digit_limit,
+    make_x_pipeline_flow,
+    make_x_stream_pipeline_flow,
+)
 
 
 class TestXConnectorResponsePipeline:
@@ -240,6 +245,39 @@ class TestXConnectorResponsePipeline:
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
         assert by_cat == {"posts.read": 1, "media.read": 1}
+
+    @pytest.mark.parametrize(
+        "failed_line",
+        [
+            pytest.param(json_body_that_exceeds_decoder_recursion(), id="decoder-recursion"),
+            pytest.param(json_body_that_exceeds_integer_digit_limit(), id="integer-digit-limit"),
+        ],
+    )
+    def test_full_streaming_pipeline_continues_after_json_parser_failure(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, failed_line
+    ):
+        """A hostile NDJSON row must not stop later valid rows from billing."""
+        flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+
+        callback(failed_line + b'\n{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
+
+        state = flow.metadata["x_ndjson_state"]
+        assert state["lines_failed"] == 1
+        assert state["lines_parsed"] == 1
+        assert state["data_count"] == 1
+        assert state["includes"] == {"users": 1}
+
+        with self._usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        payloads = webhook.usage_events()
+        by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
+        assert by_cat == {"posts.read": 1, "user.read": 1}
 
     def test_full_streaming_pipeline_bounds_unknown_include_categories(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
