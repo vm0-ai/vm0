@@ -79,7 +79,7 @@ pub(in super::super) fn context_with_session(
     ctx
 }
 
-pub(in super::super) fn context_with_workspace_image_cache(
+pub(in super::super) fn context_with_workspace_image_cache_enabled(
     run_id: RunId,
     session_id: &str,
 ) -> crate::types::ExecutionContext {

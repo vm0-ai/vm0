@@ -3247,10 +3247,9 @@ mod tests {
     }
 
     fn set_session_workspace_image_cache_flag(ctx: &mut ExecutionContext, enabled: bool) {
-        ctx.feature_flags = Some(HashMap::from([(
-            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
-            enabled,
-        )]));
+        ctx.feature_flags
+            .get_or_insert_with(HashMap::new)
+            .insert(SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(), enabled);
     }
 
     #[test]
