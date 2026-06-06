@@ -170,6 +170,7 @@ const CONNECTOR_ICON_COLORFUL = {
   moss: true,
   n8n: true,
   neon: true,
+  openweather: true,
   pandadoc: true,
   pdf4me: true,
   pdfco: true,
