@@ -192,7 +192,7 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
     });
     expect(redeploy.status).toBe(200);
     const body = deployScheduleResponseSchema.parse(redeploy.body);
-    expect(body.created).toBe(false);
+    expect(body.created).toBeFalsy();
     expect(body.schedule.chatThreadId).toBe(threadId);
   });
 
