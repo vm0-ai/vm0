@@ -1179,8 +1179,6 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     return;
   }
 
-  await touchChatThreadLastMessageAt(args.db, threadId);
-
   await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
   await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);
   await publishThreadListChanged(userId);

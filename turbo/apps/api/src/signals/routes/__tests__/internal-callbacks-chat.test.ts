@@ -657,6 +657,57 @@ describe("POST /api/internal/callbacks/chat", () => {
     await clearAllDetached();
   });
 
+  it("advances last_message_at to run-end time on completed callbacks", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedAssistantOutput("final answer");
+
+    // The sidebar orders threads by last_message_at, and it must advance only
+    // when a run reaches a terminal state — not when the user message was first
+    // inserted or while the assistant streams. Backdate the column and a raw
+    // streamed assistant event so the run-end bump is the only thing that can
+    // move it forward.
+    const stale = new Date("2020-01-01T00:00:00.000Z");
+    await store
+      .set(writeDb$)
+      .update(chatThreads)
+      .set({ lastMessageAt: stale })
+      .where(eq(chatThreads.id, fixture.threadId));
+    await insertAssistantEventMessages(fixture, fixture.runId, [
+      { sequenceNumber: 0, content: "streaming chunk" },
+    ]);
+
+    const [beforeThread] = await store
+      .set(writeDb$)
+      .select({ lastMessageAt: chatThreads.lastMessageAt })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, fixture.threadId));
+    if (!beforeThread) {
+      throw new Error("thread row missing before callback");
+    }
+    expect(beforeThread.lastMessageAt.getTime()).toBe(stale.getTime());
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+    expect(response.status).toBe(200);
+
+    const [afterThread] = await store
+      .set(writeDb$)
+      .select({ lastMessageAt: chatThreads.lastMessageAt })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, fixture.threadId));
+    if (!afterThread) {
+      throw new Error("thread row missing after callback");
+    }
+    expect(afterThread.lastMessageAt.getTime()).toBeGreaterThan(
+      stale.getTime(),
+    );
+    await clearAllDetached();
+  });
+
   it("persists recommended follow-ups as an immutable assistant message when enabled", async () => {
     const fixture = await track(seedChatCallbackFixture());
     await enableRecommendedFollowups(fixture);

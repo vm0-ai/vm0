@@ -159,8 +159,15 @@ function effectiveChatMessageRunId() {
 /**
  * Advances chat_threads.last_message_at to NOW(), but only forward — GREATEST
  * guards against an out-of-order write rewinding the column and silently
- * pulling a thread back down the sidebar. Call inside the same transaction as
- * the chat_messages insert so the recency index stays accurate.
+ * pulling a thread back down the sidebar.
+ *
+ * The sidebar orders threads by this column, and we deliberately bump it ONLY
+ * when a run reaches a terminal state (completed / failed / cancelled) — not on
+ * user sends or mid-stream assistant events. So a thread surfaces to the top
+ * when its run finishes, not the moment you hit send. Call inside the same
+ * transaction as the terminal run-lifecycle marker insert so the recency index
+ * stays accurate. Despite the historical column name, this now tracks
+ * last-run-finished time.
  */
 export async function touchChatThreadLastMessageAt(
   tx: Pick<Db, "update">,
@@ -1373,9 +1380,6 @@ export const insertIntegrationChatMessage$ = command(
       throw new Error("Failed to insert chat message");
     }
 
-    await touchChatThreadLastMessageAt(writeDb, args.chatThreadId);
-    signal.throwIfAborted();
-
     await publishUserSignal(
       [args.userId],
       `chatThreadMessageCreated:${args.chatThreadId}`,
@@ -1454,9 +1458,6 @@ export const insertAssistantEventMessages$ = command(
     signal.throwIfAborted();
 
     if (rows.length > 0) {
-      await touchChatThreadLastMessageAt(writeDb, args.threadId);
-      signal.throwIfAborted();
-
       await publishUserSignal(
         [args.userId],
         `chatThreadMessageCreated:${args.threadId}`,
