@@ -79,6 +79,7 @@ import { cronlytic } from "./connectors/cronlytic";
 import { crustdata } from "./connectors/crustdata";
 import { cursor } from "./connectors/cursor";
 import { customerIo } from "./connectors/customer-io";
+import { daytona } from "./connectors/daytona";
 import { db9 } from "./connectors/db9";
 import { deel } from "./connectors/deel";
 import { defillama } from "./connectors/defillama";
@@ -157,6 +158,7 @@ import { minio } from "./connectors/minio";
 import { miro } from "./connectors/miro";
 import { mixpanel } from "./connectors/mixpanel";
 import { monday } from "./connectors/monday";
+import { modal } from "./connectors/modal";
 import { moss } from "./connectors/moss";
 import { msg9 } from "./connectors/msg9";
 import { n8n } from "./connectors/n8n";
@@ -961,6 +963,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...crustdata,
   ...cursor,
   ...customerIo,
+  ...daytona,
   ...db9,
   ...deel,
   ...defillama,
@@ -1039,6 +1042,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...miro,
   ...mixpanel,
   ...monday,
+  ...modal,
   ...moss,
   ...msg9,
   ...n8n,
