@@ -82,6 +82,12 @@ pub(crate) struct ActiveRunMappings {
     pub runners_failed: usize,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ResolvedRunMapping {
+    pub run_id: String,
+    pub sandbox_id: String,
+}
+
 /// Collect all `(run_id, sandbox_id)` pairs from every reachable runner's
 /// `status.json`. Used by `kill --run` and `exec --run` to translate a
 /// user-supplied run_id into the sandbox_id that identifies the FC.
@@ -107,16 +113,17 @@ pub(crate) async fn collect_active_run_mappings(
     }
 }
 
-/// Given a `run_id` prefix, find the unique matching `sandbox_id` from
-/// collected status entries.
+/// Given a `run_id` prefix, find the unique matching active run from collected
+/// status entries.
 ///
-/// Returns the `sandbox_id` on unique match. Errors on empty or ambiguous.
+/// Returns the full `run_id` and `sandbox_id` on unique match. Errors on empty
+/// or ambiguous.
 /// When no match is found and some runners were unreadable, the error
 /// message includes a diagnostic hint so the operator knows why.
-pub(crate) fn resolve_run_to_sandbox(
+pub(crate) fn resolve_run_mapping(
     input: &str,
     mappings: &ActiveRunMappings,
-) -> RunnerResult<String> {
+) -> RunnerResult<ResolvedRunMapping> {
     if input.is_empty() {
         return Err(RunnerError::Config("run id must not be empty".into()));
     }
@@ -130,7 +137,10 @@ pub(crate) fn resolve_run_to_sandbox(
     matching.dedup();
 
     match matching.as_slice() {
-        [(_, sandbox_id)] => Ok(sandbox_id.clone()),
+        [(run_id, sandbox_id)] => Ok(ResolvedRunMapping {
+            run_id: (*run_id).clone(),
+            sandbox_id: (*sandbox_id).clone(),
+        }),
         [] => {
             let mut msg = format!("no active run matches '{input}'");
             if mappings.runners_failed > 0 {
@@ -155,6 +165,15 @@ pub(crate) fn resolve_run_to_sandbox(
             )))
         }
     }
+}
+
+/// Given a `run_id` prefix, find the unique matching `sandbox_id` from
+/// collected status entries.
+pub(crate) fn resolve_run_to_sandbox(
+    input: &str,
+    mappings: &ActiveRunMappings,
+) -> RunnerResult<String> {
+    Ok(resolve_run_mapping(input, mappings)?.sandbox_id)
 }
 
 #[cfg(test)]
@@ -249,6 +268,19 @@ mod tests {
         )]);
         let result = resolve_run_to_sandbox("550e8400", &status);
         assert_eq!(result.unwrap(), "sbox-9999");
+    }
+
+    #[test]
+    fn run_prefix_resolves_full_mapping() {
+        let status = mappings(vec![(
+            "550e8400-run-1111-2222-aaaaaaaaaaaa".into(),
+            "sbox-9999".into(),
+        )]);
+
+        let result = resolve_run_mapping("550e8400", &status).unwrap();
+
+        assert_eq!(result.run_id, "550e8400-run-1111-2222-aaaaaaaaaaaa");
+        assert_eq!(result.sandbox_id, "sbox-9999");
     }
 
     #[test]

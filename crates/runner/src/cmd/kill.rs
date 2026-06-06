@@ -171,6 +171,7 @@ impl std::fmt::Display for RediscoverTargetError {
 struct KillTarget {
     pid: u32,
     ppid: Option<u32>,
+    run_id: Option<String>,
     sandbox_id: String,
     base_dir: Option<PathBuf>,
     identity: Option<FirecrackerProcessIdentity>,
@@ -181,11 +182,17 @@ impl From<&FirecrackerProcessInfo> for KillTarget {
         Self {
             pid: process.pid,
             ppid: process.ppid,
+            run_id: None,
             sandbox_id: process.sandbox_id.clone(),
             base_dir: process.base_dir.clone(),
             identity: process.identity.clone(),
         }
     }
+}
+
+struct ResolvedProcessTarget<'a> {
+    process: &'a FirecrackerProcessInfo,
+    run_id: Option<String>,
 }
 
 struct ResolvedKillTarget {
@@ -220,10 +227,12 @@ impl KillOutcome {
 async fn discover_and_resolve_target(args: &KillArgs) -> RunnerResult<ResolvedKillTarget> {
     let discovered = process::discover_all().await;
     let runner_pids: Vec<u32> = discovered.runners.iter().map(|r| r.pid).collect();
-    let target = resolve_target(args, &discovered).await?;
+    let resolved = resolve_target(args, &discovered).await?;
+    let mut target = KillTarget::from(resolved.process);
+    target.run_id = resolved.run_id;
 
     Ok(ResolvedKillTarget {
-        target: target.into(),
+        target,
         runner_pids,
     })
 }
@@ -231,14 +240,21 @@ async fn discover_and_resolve_target(args: &KillArgs) -> RunnerResult<ResolvedKi
 async fn resolve_target<'a>(
     args: &KillArgs,
     discovered: &'a DiscoveredProcesses,
-) -> RunnerResult<&'a FirecrackerProcessInfo> {
+) -> RunnerResult<ResolvedProcessTarget<'a>> {
     if let Some(ref run_id) = args.run {
         let mappings = run_resolution::collect_active_run_mappings(&discovered.runners).await;
-        return resolve_by_run_id(run_id, &mappings, &discovered.firecrackers);
+        let resolved = resolve_by_run_id(run_id, &mappings, &discovered.firecrackers)?;
+        return Ok(ResolvedProcessTarget {
+            process: resolved.process,
+            run_id: Some(resolved.run_id),
+        });
     }
 
     if let Some(ref sandbox_id) = args.sandbox {
-        return resolve_by_sandbox_id(sandbox_id, &discovered.firecrackers);
+        return Ok(ResolvedProcessTarget {
+            process: resolve_by_sandbox_id(sandbox_id, &discovered.firecrackers)?,
+            run_id: None,
+        });
     }
 
     Err(RunnerError::Config(
@@ -301,6 +317,10 @@ fn resolve_same_sandbox_process(
         }
     };
     let target = KillTarget::from(process);
+    let target = KillTarget {
+        run_id: expected.run_id.clone(),
+        ..target
+    };
     if !same_firecracker_identity(expected, &target) {
         return Err(RediscoverTargetError::Changed(
             "sandbox process already exited or changed identity".into(),
@@ -315,6 +335,18 @@ fn ensure_same_target_after_confirmation(
     current: &KillTarget,
 ) -> Result<(), String> {
     if args.run.is_some() {
+        match (&initial.run_id, &current.run_id) {
+            (Some(initial_run), Some(current_run)) if initial_run == current_run => {}
+            (Some(initial_run), Some(current_run)) => {
+                return Err(format!(
+                    "run target changed from run '{}' to '{}'",
+                    initial_run, current_run
+                ));
+            }
+            _ => {
+                return Err("run target could not be verified by active run identity".into());
+            }
+        }
         if current.sandbox_id != initial.sandbox_id {
             return Err(format!(
                 "run target changed from sandbox '{}' to '{}'",
@@ -386,26 +418,36 @@ fn discovered_has_same_or_unidentified_firecracker(
 /// by sandbox_id. The caller is responsible for collecting `mappings` via
 /// [`run_resolution::collect_active_run_mappings`] so this function stays pure and
 /// testable.
+struct ResolvedRunProcess<'a> {
+    run_id: String,
+    process: &'a FirecrackerProcessInfo,
+}
+
 fn resolve_by_run_id<'a>(
     input: &str,
     mappings: &run_resolution::ActiveRunMappings,
     firecrackers: &'a [FirecrackerProcessInfo],
-) -> RunnerResult<&'a FirecrackerProcessInfo> {
-    let sandbox_id = run_resolution::resolve_run_to_sandbox(input, mappings)?;
+) -> RunnerResult<ResolvedRunProcess<'a>> {
+    let mapping = run_resolution::resolve_run_mapping(input, mappings)?;
     let fc_matches: Vec<&FirecrackerProcessInfo> = firecrackers
         .iter()
-        .filter(|fc| fc.sandbox_id == sandbox_id)
+        .filter(|fc| fc.sandbox_id == mapping.sandbox_id)
         .collect();
     match fc_matches.as_slice() {
         [] => Err(RunnerError::Config(format!(
-            "run '{input}' maps to sandbox '{sandbox_id}' but no firecracker process for it"
+            "run '{input}' maps to sandbox '{}' but no firecracker process for it",
+            mapping.sandbox_id
         ))),
-        [single] => Ok(single),
+        [single] => Ok(ResolvedRunProcess {
+            run_id: mapping.run_id,
+            process: single,
+        }),
         _ => {
             let pids: Vec<String> = fc_matches.iter().map(|fc| fc.pid.to_string()).collect();
+            let pid_list = pids.join(", ");
             Err(RunnerError::Config(format!(
-                "run '{input}' maps to sandbox '{sandbox_id}' but multiple firecracker processes match it: PID {}",
-                pids.join(", ")
+                "run '{input}' maps to sandbox '{sandbox_id}' but multiple firecracker processes match it: PID {pid_list}",
+                sandbox_id = mapping.sandbox_id,
             )))
         }
     }
@@ -915,6 +957,7 @@ mod tests {
         KillTarget {
             pid,
             ppid: None,
+            run_id: None,
             sandbox_id: sandbox_id.into(),
             base_dir: Some(PathBuf::from("/data/r1")),
             identity: Some(FirecrackerProcessIdentity {
@@ -924,6 +967,13 @@ mod tests {
                 sandbox_id: sandbox_id.into(),
                 base_dir: Some(PathBuf::from("/data/r1")),
             }),
+        }
+    }
+
+    fn make_run_target(pid: u32, run_id: &str, sandbox_id: &str) -> KillTarget {
+        KillTarget {
+            run_id: Some(run_id.into()),
+            ..make_target(pid, sandbox_id)
         }
     }
 
@@ -1054,14 +1104,46 @@ mod tests {
             sandbox: None,
             force: true,
         };
-        let initial = make_target(200, "sbox-old");
-        let current = make_target(201, "sbox-new");
+        let initial = make_run_target(200, "run-123", "sbox-old");
+        let current = make_run_target(201, "run-123", "sbox-new");
 
         let error = ensure_same_target_after_confirmation(&args, &initial, &current).unwrap_err();
 
         assert!(error.contains("run target changed"), "{error}");
         assert!(error.contains("sbox-old"), "{error}");
         assert!(error.contains("sbox-new"), "{error}");
+    }
+
+    #[test]
+    fn run_reresolution_requires_same_run_identity() {
+        let args = KillArgs {
+            run: Some("run".into()),
+            sandbox: None,
+            force: true,
+        };
+        let initial = make_run_target(200, "run-old", "sbox-reused");
+        let current = make_run_target(200, "run-new", "sbox-reused");
+
+        let error = ensure_same_target_after_confirmation(&args, &initial, &current).unwrap_err();
+
+        assert!(error.contains("run target changed from run"), "{error}");
+        assert!(error.contains("run-old"), "{error}");
+        assert!(error.contains("run-new"), "{error}");
+    }
+
+    #[test]
+    fn run_reresolution_rejects_missing_run_identity() {
+        let args = KillArgs {
+            run: Some("run".into()),
+            sandbox: None,
+            force: true,
+        };
+        let initial = make_run_target(200, "run-old", "sbox-reused");
+        let current = make_target(200, "sbox-reused");
+
+        let error = ensure_same_target_after_confirmation(&args, &initial, &current).unwrap_err();
+
+        assert!(error.contains("active run identity"), "{error}");
     }
 
     #[test]
@@ -1491,6 +1573,7 @@ mod tests {
         let target = KillTarget {
             pid: u32::MAX,
             ppid: None,
+            run_id: None,
             sandbox_id: "sbox-missing".into(),
             base_dir: Some(PathBuf::from("/data/r1")),
             identity: Some(FirecrackerProcessIdentity {
