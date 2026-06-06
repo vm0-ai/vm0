@@ -96,7 +96,6 @@ import { cronlyticFirewall } from "./cronlytic.generated";
 import { crustdataFirewall } from "./crustdata.generated";
 import { cursorFirewall } from "./cursor.generated";
 import { customerIoFirewall } from "./customer-io.generated";
-import { daytonaFirewall } from "./daytona.generated";
 import { deepseekFirewall } from "./deepseek.generated";
 import { doubaoFirewall } from "./doubao.generated";
 import { deelFirewall } from "./deel.generated";
@@ -184,7 +183,6 @@ import { minimaxFirewall } from "./minimax.generated";
 import { miroFirewall } from "./miro.generated";
 import { mixpanelFirewall } from "./mixpanel.generated";
 import { mondayFirewall } from "./monday.generated";
-import { modalFirewall } from "./modal.generated";
 import { msg9Firewall } from "./msg9.generated";
 import { n8nFirewall } from "./n8n.generated";
 import { neonFirewall } from "./neon.generated";
@@ -356,7 +354,6 @@ const CONNECTOR_FIREWALLS = {
   crustdata: crustdataFirewall,
   cursor: cursorFirewall,
   "customer-io": customerIoFirewall,
-  daytona: daytonaFirewall,
   deel: deelFirewall,
   defillama: defillamaFirewall,
   deepseek: deepseekFirewall,
@@ -442,7 +439,6 @@ const CONNECTOR_FIREWALLS = {
   miro: miroFirewall,
   mixpanel: mixpanelFirewall,
   monday: mondayFirewall,
-  modal: modalFirewall,
   msg9: msg9Firewall,
   n8n: n8nFirewall,
   neon: neonFirewall,
@@ -722,6 +718,8 @@ export type NonFirewallConnectorType =
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
   // Other
+  | "daytona"
+  | "modal"
   | "test-oauth-device"; // internal provider capability test connector
 
 /**
