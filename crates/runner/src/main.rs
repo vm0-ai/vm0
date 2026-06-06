@@ -22,6 +22,7 @@ mod network_log_manager;
 mod network_logs;
 mod paths;
 mod prefetch;
+mod private_fs;
 mod process;
 mod profile;
 mod provider;

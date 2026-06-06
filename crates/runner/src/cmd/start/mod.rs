@@ -224,14 +224,7 @@ pub async fn run_start(
         );
     }
 
-    tokio::fs::create_dir_all(&runner_config.base_dir)
-        .await
-        .map_err(|e| {
-            RunnerError::Config(format!(
-                "create base_dir {}: {e}",
-                runner_config.base_dir.display()
-            ))
-        })?;
+    crate::private_fs::ensure_private_dir(&runner_config.base_dir).await?;
 
     // Exclusive lock — prevents two runner processes from sharing the same base_dir.
     // Canonicalize so that equivalent paths (e.g. with `..`) produce the same lock.

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -914,12 +914,54 @@ async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> Runner
     let content = serde_json::to_string(value)
         .map_err(|e| RunnerError::Internal(format!("serialize registry: {e}")))?;
     let tmp = path.with_extension("json.tmp");
-    tokio::fs::write(&tmp, content)
+
+    match tokio::fs::remove_file(&tmp).await {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "remove stale registry tmp: {e}"
+            )));
+        }
+    }
+
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options
+        .open(&tmp)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("open registry tmp: {e}")))?;
+    set_private_registry_file_permissions(&tmp, "registry tmp").await?;
+    file.write_all(content.as_bytes())
         .await
         .map_err(|e| RunnerError::Internal(format!("write registry tmp: {e}")))?;
+    file.flush()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("flush registry tmp: {e}")))?;
+    drop(file);
+
     tokio::fs::rename(&tmp, path)
         .await
-        .map_err(|e| RunnerError::Internal(format!("rename registry: {e}")))
+        .map_err(|e| RunnerError::Internal(format!("rename registry: {e}")))?;
+    set_private_registry_file_permissions(path, "registry").await
+}
+
+async fn set_private_registry_file_permissions(
+    path: &std::path::Path,
+    label: &str,
+) -> RunnerResult<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+            .await
+            .map_err(|e| RunnerError::Internal(format!("chmod {label}: {e}")))?;
+    }
+    #[cfg(not(unix))]
+    let _ = (path, label);
+    Ok(())
 }
 
 /// Lightweight, cloneable handle for proxy registry operations.
@@ -1069,6 +1111,10 @@ PY
         let mut perms = std::fs::metadata(path).unwrap().permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    fn file_mode(path: &Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
 
     #[cfg(target_os = "linux")]
@@ -1275,6 +1321,77 @@ PY
             !loaded.vms.contains_key("10.200.0.2"),
             "VM should be removed from registry"
         );
+    }
+
+    #[tokio::test]
+    async fn write_registry_creates_private_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let registry = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+
+        write_registry(&registry_path, &registry).await.unwrap();
+
+        assert_eq!(file_mode(&registry_path), 0o600);
+    }
+
+    #[tokio::test]
+    async fn write_registry_tightens_existing_wide_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        std::fs::write(&registry_path, r#"{"vms":{},"updatedAt":0}"#).unwrap();
+        std::fs::set_permissions(&registry_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let registry = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 1,
+        };
+
+        write_registry(&registry_path, &registry).await.unwrap();
+
+        assert_eq!(file_mode(&registry_path), 0o600);
+        let loaded = read_registry(&registry_path).await.unwrap();
+        assert_eq!(loaded.updated_at, 1);
+    }
+
+    #[tokio::test]
+    async fn write_registry_removes_stale_wide_tmp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let tmp_path = registry_path.with_extension("json.tmp");
+        std::fs::write(&tmp_path, r#"{"vms":{},"updatedAt":999}"#).unwrap();
+        std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let registry = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 2,
+        };
+
+        write_registry(&registry_path, &registry).await.unwrap();
+
+        assert!(!tmp_path.exists(), "stale registry tmp should not remain");
+        assert_eq!(file_mode(&registry_path), 0o600);
+        let loaded = read_registry(&registry_path).await.unwrap();
+        assert_eq!(loaded.updated_at, 2);
+    }
+
+    #[tokio::test]
+    async fn mitm_proxy_new_creates_private_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+
+        let (_proxy, _crash_rx) = MitmProxy::new(ProxyConfig {
+            mitmdump_bin: dir.path().join("mitmdump"),
+            ca_dir: dir.path().join("ca"),
+            addon_dir: dir.path().join("addon"),
+            registry_path: registry_path.clone(),
+            registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            api_url: None,
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(file_mode(&registry_path), 0o600);
     }
 
     #[tokio::test]
