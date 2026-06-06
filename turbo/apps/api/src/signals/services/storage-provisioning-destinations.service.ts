@@ -8,6 +8,7 @@ import {
 import type { SupportedFramework } from "@vm0/core/frameworks";
 
 const MNT_ROOT = "/mnt";
+const LEGACY_WORKSPACE_DIR = "/workspace";
 const CODEX_HOME_DIR = `${CANONICAL_GUEST_HOME_DIR}/.codex`;
 const CLAUDE_HOME_DIR = `${CANONICAL_GUEST_HOME_DIR}/.claude`;
 function splitStrictAbsoluteGuestPath(
@@ -89,6 +90,16 @@ export function legacyUserMountPathToProvisioningDestination(
     };
   }
 
+  if (
+    normalizedPath === LEGACY_WORKSPACE_DIR ||
+    normalizedPath.startsWith(`${LEGACY_WORKSPACE_DIR}/`)
+  ) {
+    return {
+      type: "workspace",
+      subPath: subPath(segments, 1),
+    };
+  }
+
   if (segments[0] === "mnt") {
     const name = segments[1];
     if (!name) {
@@ -102,7 +113,7 @@ export function legacyUserMountPathToProvisioningDestination(
   }
 
   throw new Error(
-    `${label} must be under ${CANONICAL_WORKING_DIR} or /mnt/<name>`,
+    `${label} must be under ${CANONICAL_WORKING_DIR}, ${LEGACY_WORKSPACE_DIR}, or /mnt/<name>`,
   );
 }
 

@@ -721,6 +721,135 @@ describe("POST /api/agent/runs", () => {
     });
   });
 
+  it("converts legacy /workspace mount paths to canonical workspace destinations", async () => {
+    const fx = await fixture();
+    const docsVersion = await seedStorage({
+      fixture: fx,
+      type: "volume",
+      name: "docs",
+    });
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use legacy workspace mount path",
+          additionalVolumes: [
+            {
+              name: "docs",
+              version: docsVersion,
+              mountPath: "/workspace/docs",
+            },
+          ],
+          artifacts: [
+            {
+              name: "workspace-docs",
+              mountPath: "/workspace/reports",
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+
+    expect(response.body).toMatchObject({ status: "pending" });
+
+    const db = store.set(writeDb$);
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly storageManifest: {
+        readonly storages: readonly {
+          readonly name: string;
+          readonly mountPath: string;
+        }[];
+        readonly artifacts: readonly {
+          readonly vasStorageName: string;
+          readonly mountPath: string;
+        }[];
+      };
+      readonly storageProvisioningManifest: {
+        readonly entries: readonly {
+          readonly source: {
+            readonly name: string;
+          };
+          readonly destination: {
+            readonly type: string;
+            readonly subPath?: string;
+          };
+        }[];
+      };
+    };
+
+    expect(
+      executionContext.storageManifest.storages.find((storage) => {
+        return storage.name === "docs";
+      }),
+    ).toMatchObject({
+      mountPath: `${CANONICAL_WORKING_DIR}/docs`,
+    });
+    expect(
+      executionContext.storageManifest.artifacts.find((artifact) => {
+        return artifact.vasStorageName === "workspace-docs";
+      }),
+    ).toMatchObject({
+      mountPath: `${CANONICAL_WORKING_DIR}/reports`,
+    });
+    expect(
+      executionContext.storageProvisioningManifest.entries.find((entry) => {
+        return entry.source.name === "docs";
+      }),
+    ).toMatchObject({
+      destination: {
+        type: "workspace",
+        subPath: "docs",
+      },
+    });
+    expect(
+      executionContext.storageProvisioningManifest.entries.find((entry) => {
+        return entry.source.name === "workspace-docs";
+      }),
+    ).toMatchObject({
+      destination: {
+        type: "workspace",
+        subPath: "reports",
+      },
+    });
+  });
+
+  it("rejects legacy workspace prefix traps", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use workspace prefix trap",
+          artifacts: [
+            {
+              name: "workspace-docs",
+              mountPath: "/workspace2/reports",
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+
+    expect(response.body).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining(
+        'Artifact "workspace-docs" mountPath must be under /home/user/workspace, /workspace, or /mnt/<name>',
+      ),
+    });
+  });
+
   it("rejects user-controlled broad storage mount paths", async () => {
     const fx = await fixture();
     const docsVersion = await seedStorage({
@@ -747,7 +876,7 @@ describe("POST /api/agent/runs", () => {
     expect(response.body).toMatchObject({
       status: "failed",
       error: expect.stringContaining(
-        'Volume "docs" mountPath must be under /home/user/workspace or /mnt/<name>',
+        'Volume "docs" mountPath must be under /home/user/workspace, /workspace, or /mnt/<name>',
       ),
     });
 
@@ -1826,7 +1955,7 @@ describe("POST /api/agent/runs", () => {
     expect(response.body).toMatchObject({
       status: "failed",
       error: expect.stringContaining(
-        'Artifact "memory" mountPath must be under /home/user/workspace or /mnt/<name>',
+        'Artifact "memory" mountPath must be under /home/user/workspace, /workspace, or /mnt/<name>',
       ),
     });
 
@@ -1862,7 +1991,7 @@ describe("POST /api/agent/runs", () => {
     expect(response.body).toMatchObject({
       status: "failed",
       error: expect.stringContaining(
-        'Artifact "custom-memory" mountPath must be under /home/user/workspace or /mnt/<name>',
+        'Artifact "custom-memory" mountPath must be under /home/user/workspace, /workspace, or /mnt/<name>',
       ),
     });
 
@@ -2814,7 +2943,7 @@ describe("POST /api/agent/runs", () => {
     expect(continued.body).toMatchObject({
       status: "failed",
       error: expect.stringContaining(
-        'Artifact "custom-memory" mountPath must be under /home/user/workspace or /mnt/<name>',
+        'Artifact "custom-memory" mountPath must be under /home/user/workspace, /workspace, or /mnt/<name>',
       ),
     });
 
