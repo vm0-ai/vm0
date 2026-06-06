@@ -12,9 +12,10 @@ load '../../helpers/setup'
     assert_output --partial "org"
 }
 
-@test "zero --help does not show compose, volume, artifact commands" {
+@test "zero --help does not show hidden or vm0-only commands" {
     run $ZERO_CLI --help
     assert_success
+    refute_output --partial "  run"
     refute_output --partial "compose"
     refute_output --partial "volume"
     refute_output --partial "artifact"

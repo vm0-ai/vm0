@@ -23,7 +23,6 @@ describe("zero CLI program", () => {
       "logs",
       "search",
       "preference",
-      "run",
       "schedule",
       "secret",
       "skill",
@@ -52,6 +51,7 @@ describe("zero CLI program", () => {
       "compose",
       "volume",
       "artifact",
+      "run",
 
       "init",
       "upgrade",
@@ -62,7 +62,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 27 commands", () => {
-    expect(commandNames).toHaveLength(27);
+  it("should have exactly 26 commands", () => {
+    expect(commandNames).toHaveLength(26);
   });
 });
