@@ -52,7 +52,6 @@ export const ZERO_CAPABILITIES = [
   "phone:write",
   "telegram:read",
   "telegram:write",
-  "chat-message:write",
   "chat-message:read",
   "connector:read",
   "billing:read",
@@ -117,10 +116,6 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "telegram:write": {
       group: "Integrations",
       label: "Send Telegram messages and files",
-    },
-    "chat-message:write": {
-      group: "Integrations",
-      label: "Send chat messages",
     },
     "chat-message:read": {
       group: "Integrations",

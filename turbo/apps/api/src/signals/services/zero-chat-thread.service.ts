@@ -1347,48 +1347,6 @@ export const createChatThread$ = command(
   },
 );
 
-export const insertIntegrationChatMessage$ = command(
-  async (
-    { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly userId: string;
-      readonly content: string;
-    },
-    signal: AbortSignal,
-  ): Promise<{ readonly id: string; readonly createdAt: Date }> => {
-    const writeDb = set(writeDb$);
-    const [message] = await writeDb
-      .insert(chatMessages)
-      .values({
-        chatThreadId: args.chatThreadId,
-        role: "assistant",
-        content: args.content,
-        runId: null,
-      })
-      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
-    signal.throwIfAborted();
-
-    if (!message) {
-      throw new Error("Failed to insert chat message");
-    }
-
-    await touchChatThreadLastMessageAt(writeDb, args.chatThreadId);
-    signal.throwIfAborted();
-
-    await publishUserSignal(
-      [args.userId],
-      `chatThreadMessageCreated:${args.chatThreadId}`,
-    );
-    signal.throwIfAborted();
-
-    await publishThreadListChanged(args.userId);
-    signal.throwIfAborted();
-
-    return message;
-  },
-);
-
 export function chatThreadForRun(
   runId: string,
 ): Computed<

@@ -2603,11 +2603,6 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/integrations/phone/:path*",
         },
         {
-          source: "/api/zero/integrations/chat/message",
-          destination:
-            "https://api.example.test/api/zero/integrations/chat/message",
-        },
-        {
           source: "/api/zero/integrations/slack",
           destination: "https://api.example.test/api/zero/integrations/slack",
         },
@@ -8276,18 +8271,6 @@ describe("API backend rewrites", () => {
     for (const pathname of ZERO_CHAT_MESSAGES_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
-  });
-
-  it("should match the zero integrations chat message route for middleware pass-through", async () => {
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/chat/message"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/chat/message/extra"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/integrations/chat")).toBe(
-      false,
-    );
   });
 
   it("should match the zero integrations Slack message route for middleware pass-through", async () => {
