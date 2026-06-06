@@ -111,14 +111,47 @@ fn path_for_final_component_lstat(path: &Path) -> PathBuf {
 
 #[cfg(unix)]
 fn reject_reserved_private_dir_path(path: &Path) -> RunnerResult<()> {
-    let normalized = normalize_path_lexically(path);
+    let normalized = normalize_private_dir_policy_path(path)?;
+    reject_reserved_normalized_private_dir_path(path, &normalized)
+}
+
+#[cfg(unix)]
+fn normalize_private_dir_policy_path(path: &Path) -> RunnerResult<PathBuf> {
+    let path = if path.is_relative() {
+        std::env::current_dir()
+            .map_err(|e| {
+                RunnerError::Config(format!("resolve private dir {}: {e}", path.display()))
+            })?
+            .join(path)
+    } else {
+        path.to_path_buf()
+    };
+    Ok(normalize_path_lexically(&path))
+}
+
+#[cfg(test)]
+#[cfg(unix)]
+fn reject_reserved_private_dir_path_with_cwd(path: &Path, cwd: &Path) -> RunnerResult<()> {
+    let normalized = normalize_path_lexically(&if path.is_relative() {
+        cwd.join(path)
+    } else {
+        path.to_path_buf()
+    });
+    reject_reserved_normalized_private_dir_path(path, &normalized)
+}
+
+#[cfg(unix)]
+fn reject_reserved_normalized_private_dir_path(
+    original: &Path,
+    normalized: &Path,
+) -> RunnerResult<()> {
     if RESERVED_PRIVATE_DIR_PATHS
         .iter()
         .any(|reserved| normalized == Path::new(reserved))
     {
         return Err(RunnerError::Config(format!(
             "{} is a reserved system path; refusing to use it as private runner state",
-            path.display()
+            original.display()
         )));
     }
     Ok(())
@@ -242,6 +275,21 @@ mod tests {
     fn reserved_private_dir_path_rejects_lexical_parent_segments() {
         for path in ["/var/lib/../lib", "/..", "/var/../.."] {
             let error = reject_reserved_private_dir_path(Path::new(path))
+                .expect_err("reserved path should be rejected");
+
+            assert!(
+                error.to_string().contains("reserved system path"),
+                "unexpected error for {path}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn reserved_private_dir_path_rejects_relative_escape_from_cwd() {
+        let cwd = Path::new("/var/lib/vm0-runner/runners/runner-01");
+
+        for path in ["..", "../../.."] {
+            let error = reject_reserved_private_dir_path_with_cwd(Path::new(path), cwd)
                 .expect_err("reserved path should be rejected");
 
             assert!(
