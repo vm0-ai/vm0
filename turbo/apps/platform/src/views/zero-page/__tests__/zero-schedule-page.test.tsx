@@ -84,7 +84,7 @@ function mockScheduleAPI(schedules = createMockSchedules()) {
 }
 
 function renderSchedulePage() {
-  detachedSetupPage({ context, path: "/schedules" });
+  detachedSetupPage({ context, path: "/schedules?tab=list" });
 }
 
 /** Open the dropdown menu for a schedule row, then click a menu item. */
@@ -840,7 +840,9 @@ describe("zero schedule page - loading state", () => {
     detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
-      expect(screen.getByTestId("schedule-list-skeleton")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("schedule-calendar-skeleton"),
+      ).toBeInTheDocument();
     });
 
     hangDeferred.resolve();
@@ -860,7 +862,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules?tab=list" });
 
     // Wait for schedules to render (preferences will have loaded by then)
     await waitFor(() => {
@@ -898,7 +900,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules?tab=list" });
 
     await waitFor(() => {
       expect(

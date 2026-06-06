@@ -400,7 +400,10 @@ function ScheduleListSkeleton() {
 
 function ScheduleCalendarSkeleton() {
   return (
-    <section className="flex flex-col gap-2 p-5">
+    <section
+      className="flex flex-col gap-2 p-5"
+      data-testid="schedule-calendar-skeleton"
+    >
       <Skeleton className="h-4 w-20" />
       <div className="rounded-xl zero-border bg-muted/20 overflow-hidden">
         <div className="grid grid-cols-8">
@@ -635,18 +638,18 @@ export function ZeroSchedulePage() {
             >
               <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
                 <TabsTrigger
-                  value="list"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
-                  <IconList size={14} stroke={1.5} />
-                  List
-                </TabsTrigger>
-                <TabsTrigger
                   value="calendar"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
                   <IconLayoutGrid size={14} stroke={1.5} />
                   Calendar
+                </TabsTrigger>
+                <TabsTrigger
+                  value="list"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconList size={14} stroke={1.5} />
+                  List
                 </TabsTrigger>
               </TabsList>
             </Tabs>
