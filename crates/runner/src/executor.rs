@@ -596,19 +596,41 @@ pub async fn execute_job_reuse(
                 None => cache.lease_active(active_request).await,
             })
         }
-        (false, _) | (true, None) => {
-            let cache_status = if workspace_cache_enabled {
-                "unconfigured-cache"
-            } else {
-                "disabled-cache"
-            };
+        (false, maybe_cache) => {
+            if let Some(cache) = maybe_cache {
+                invalidate_disabled_workspace_cache_baselines(&context, cache).await;
+            }
             if let Some(promotion) = workspace_promotion
                 && let Err(error) = promotion
                     .invalidate_current("reused sandbox ran without workspace image cache")
                     .await
             {
                 let failure = ExecutionFailure::from_error(format!(
-                    "failed to invalidate workspace image cache before {cache_status} reuse: {error}"
+                    "failed to invalidate workspace image cache before disabled-cache reuse: {error}"
+                ));
+                return (
+                    ExecuteOutcome {
+                        failure: Some(failure),
+                        sandbox: Some(sandbox),
+                        source_ip,
+                        network_log_session: None,
+                        workspace_image: None,
+                        workspace_promotable: false,
+                        guest_session_id: None,
+                    },
+                    telemetry,
+                );
+            }
+            None
+        }
+        (true, None) => {
+            if let Some(promotion) = workspace_promotion
+                && let Err(error) = promotion
+                    .invalidate_current("reused sandbox ran without workspace image cache")
+                    .await
+            {
+                let failure = ExecutionFailure::from_error(format!(
+                    "failed to invalidate workspace image cache before unconfigured-cache reuse: {error}"
                 ));
                 return (
                     ExecuteOutcome {
@@ -981,13 +1003,7 @@ async fn prepare_workspace_image(
     let cache = config.workspace_cache.as_ref()?;
 
     if !context.session_workspace_image_cache_enabled() {
-        invalidate_disabled_workspace_cache_baseline(
-            context,
-            cache,
-            profile_name,
-            workspace_disk_mb,
-        )
-        .await;
+        invalidate_disabled_workspace_cache_baselines(context, cache).await;
         return None;
     }
 
@@ -1006,28 +1022,22 @@ async fn prepare_workspace_image(
     Some(lease)
 }
 
-async fn invalidate_disabled_workspace_cache_baseline(
+async fn invalidate_disabled_workspace_cache_baselines(
     context: &ExecutionContext,
     cache: &SessionWorkspaceCache,
-    profile_name: &str,
-    workspace_disk_mb: u32,
 ) {
     if let Err(e) = cache
-        .invalidate_current_for_session(
+        .invalidate_current_images_for_session(
             context.run_id,
-            profile_name,
             context.session_id(),
-            CANONICAL_WORKING_DIR,
-            u64::from(workspace_disk_mb) * 1024 * 1024,
             "workspace image cache disabled by feature flag",
         )
         .await
     {
         warn!(
             run_id = %context.run_id,
-            profile_name,
             error = %e,
-            "failed to invalidate disabled workspace image cache baseline"
+            "failed to invalidate disabled workspace image cache baselines"
         );
     }
 }
@@ -6787,6 +6797,8 @@ mod tests {
         };
         let seeded_cache =
             seed_workspace_image_cache(&cache, &runner_paths, "sess-cache-disabled", 16).await;
+        let other_size_seeded_cache =
+            seed_workspace_image_cache(&cache, &runner_paths, "sess-cache-disabled", 32).await;
         let mut telemetry = test_telemetry(&config, &ctx);
 
         let outcome = execute_new_sandbox(
@@ -6819,6 +6831,10 @@ mod tests {
         assert!(
             !seeded_cache.exists(),
             "disabled feature flag should invalidate stale workspace cache baseline"
+        );
+        assert!(
+            !other_size_seeded_cache.exists(),
+            "disabled feature flag should invalidate every stale baseline for the session"
         );
         assert!(
             cache.held_session_states().await.is_empty(),
@@ -7448,6 +7464,8 @@ mod tests {
                 session_id,
             )
             .await;
+        let other_size_seeded_cache =
+            seed_workspace_image_cache(&cache, &runner_paths, session_id, 32).await;
 
         let mut ctx = minimal_context();
         ctx.resume_session = Some(ResumeSession {
@@ -7475,6 +7493,14 @@ mod tests {
             })
             .await;
         assert_eq!(checkout.result(), WorkspaceCacheCheckoutResult::Miss);
+        assert!(
+            !other_size_seeded_cache.exists(),
+            "disabled reuse should invalidate every stale baseline for the session"
+        );
+        assert!(
+            cache.held_session_states().await.is_empty(),
+            "disabled reuse should stop advertising stale workspace cache affinity"
+        );
     }
 
     #[tokio::test]

@@ -857,37 +857,66 @@ impl SessionWorkspaceCache {
         }
     }
 
-    pub(crate) async fn invalidate_current_for_session(
+    pub(crate) async fn invalidate_current_images_for_session(
         &self,
         run_id: RunId,
-        profile_name: &str,
         session_id: Option<&str>,
-        working_dir: &str,
-        image_size_bytes: u64,
         reason: &str,
-    ) -> RunnerResult<bool> {
+    ) -> RunnerResult<usize> {
         let Some(session_id) = session_id else {
-            return Ok(false);
+            return Ok(0);
         };
-        let Some(working_dir) = normalize_safe_guest_working_dir(working_dir) else {
-            return Ok(false);
+
+        let root = self.workspace_image_cache_dir().to_path_buf();
+        let mut entries = match fs::read_dir(&root).await {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) => return Err(e.into()),
         };
-        let cache_key =
-            self.scoped_cache_key(profile_name, session_id, &working_dir, image_size_bytes);
-        let entry_dir = self.session_workspace_cache_entry_dir(&cache_key);
-        if !cache_entry_dir_is_dir(&entry_dir).await? {
-            return Ok(false);
+        let mut invalidated = 0;
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type().await else {
+                continue;
+            };
+            if !file_type.is_dir() {
+                continue;
+            }
+            let Some(cache_key) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if !is_cache_key_name(cache_key) {
+                continue;
+            }
+            let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(cache_key)).await else {
+                continue;
+            };
+            let metadata_path = self.session_workspace_cache_metadata(cache_key);
+            let metadata = match self.read_metadata_file(&metadata_path).await {
+                Ok(metadata) => metadata,
+                Err(_) => {
+                    drop(lock);
+                    continue;
+                }
+            };
+            if metadata.session_id == session_id
+                && self
+                    .metadata_is_publishable_held_session_state(cache_key, &metadata)
+                    .await
+                && self
+                    .invalidate_current_image(
+                        run_id,
+                        cache_key,
+                        &self.session_workspace_cache_current_image(cache_key),
+                        reason,
+                    )
+                    .await?
+            {
+                invalidated += 1;
+            }
+            drop(lock);
         }
-        let _entry_lock = crate::lock::try_acquire(self.entry_lock_path(&cache_key))
-            .await
-            .map_err(|e| {
-                RunnerError::Internal(format!(
-                    "workspace image cache baseline invalidation lock unavailable: {e}"
-                ))
-            })?;
-        let current = self.session_workspace_cache_current_image(&cache_key);
-        self.invalidate_current_image(run_id, &cache_key, &current, reason)
-            .await
+        Ok(invalidated)
     }
 
     pub(crate) async fn held_session_states(&self) -> Vec<HeldSessionState> {
@@ -926,17 +955,9 @@ impl SessionWorkspaceCache {
                     continue;
                 }
             };
-            if metadata.format_version == CACHE_FORMAT_VERSION
-                && metadata.key_version == CACHE_KEY_VERSION
-                && metadata.cache_scope == self.inner.cache_scope
-                && metadata.drive_layout == WORKSPACE_DRIVE_LAYOUT
-                && metadata.state == WorkspaceCacheState::Current
-                && metadata.workspace_trust == WorkspaceTrust::Clean
-                && is_safe_guest_working_dir(&metadata.working_dir)
-                && self.metadata_matches_cache_key(cache_key, &metadata)
-                && self
-                    .metadata_matches_current_image(cache_key, &metadata)
-                    .await
+            if self
+                .metadata_is_publishable_held_session_state(cache_key, &metadata)
+                .await
             {
                 states.push(HeldSessionState {
                     session_id: metadata.session_id,
@@ -946,6 +967,24 @@ impl SessionWorkspaceCache {
             drop(lock);
         }
         cap_workspace_held_session_states(states)
+    }
+
+    async fn metadata_is_publishable_held_session_state(
+        &self,
+        cache_key: &str,
+        metadata: &WorkspaceCacheMetadata,
+    ) -> bool {
+        metadata.format_version == CACHE_FORMAT_VERSION
+            && metadata.key_version == CACHE_KEY_VERSION
+            && metadata.cache_scope == self.inner.cache_scope
+            && metadata.drive_layout == WORKSPACE_DRIVE_LAYOUT
+            && metadata.state == WorkspaceCacheState::Current
+            && metadata.workspace_trust == WorkspaceTrust::Clean
+            && is_safe_guest_working_dir(&metadata.working_dir)
+            && self.metadata_matches_cache_key(cache_key, metadata)
+            && self
+                .metadata_matches_current_image(cache_key, metadata)
+                .await
     }
 
     pub(crate) async fn inspect(&self) -> RunnerResult<WorkspaceImageCacheInspection> {
