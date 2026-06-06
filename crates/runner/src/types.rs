@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
@@ -282,8 +282,14 @@ impl TryFrom<&StorageProvisioningManifest> for GuestDownloadManifest {
 
         let mut storages = Vec::new();
         let mut artifacts = Vec::new();
+        let mut mount_paths = HashSet::new();
         for entry in &manifest.entries {
             let mount_path = resolve_provisioning_mount_path(&entry.destination)?;
+            if !mount_paths.insert(mount_path.clone()) {
+                return Err(format!(
+                    "duplicate storage provisioning destination: {mount_path}"
+                ));
+            }
             match entry.intent {
                 StorageProvisioningEntryIntent::UserVolume
                 | StorageProvisioningEntryIntent::Instructions
@@ -1239,6 +1245,49 @@ mod tests {
         let error = GuestDownloadManifest::try_from(&manifest).unwrap_err();
 
         assert!(error.contains("instructionsTargetFilename must be CLAUDE.md or AGENTS.md"));
+    }
+
+    #[test]
+    fn storage_provisioning_manifest_rejects_duplicate_destinations() {
+        let manifest: StorageProvisioningManifest = serde_json::from_value(json!({
+            "version": "2",
+            "entries": [
+                {
+                    "intent": "user-volume",
+                    "source": {
+                        "kind": "storage",
+                        "name": "workspace",
+                        "vasStorageName": "workspace",
+                        "vasVersionId": "v1",
+                        "archiveUrl": "https://example.com/workspace.tar.gz"
+                    },
+                    "destination": {
+                        "type": "workspace",
+                        "subPath": "shared"
+                    }
+                },
+                {
+                    "intent": "user-artifact",
+                    "source": {
+                        "kind": "artifact",
+                        "name": "report",
+                        "vasStorageName": "report",
+                        "vasStorageId": "storage-id",
+                        "vasVersionId": "v2",
+                        "archiveUrl": "https://example.com/report.tar.gz"
+                    },
+                    "destination": {
+                        "type": "workspace",
+                        "subPath": "shared"
+                    }
+                }
+            ]
+        }))
+        .unwrap();
+
+        let error = GuestDownloadManifest::try_from(&manifest).unwrap_err();
+
+        assert!(error.contains("duplicate storage provisioning destination"));
     }
 
     #[test]

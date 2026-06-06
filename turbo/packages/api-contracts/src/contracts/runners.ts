@@ -304,6 +304,134 @@ function validateFrameworkProvisioningDestination(
   }
 }
 
+function optionalSubPathMountPath(
+  basePath: string,
+  subPath: string | undefined,
+): string | undefined {
+  if (guestRelativeSubPathIssue(subPath ?? "") !== undefined) {
+    return undefined;
+  }
+  return subPath ? `${basePath}/${subPath}` : basePath;
+}
+
+function frameworkHomeDir(
+  framework: StorageProvisioningDestinationCandidate["framework"],
+): string | undefined {
+  if (framework === "codex") {
+    return `${CANONICAL_GUEST_HOME_DIR}/.codex`;
+  }
+  if (framework === "claude-code") {
+    return `${CANONICAL_GUEST_HOME_DIR}/.claude`;
+  }
+  return undefined;
+}
+
+function workspaceProvisioningMountPath(
+  destination: StorageProvisioningDestinationCandidate,
+): string | undefined {
+  if (
+    destination.name !== undefined ||
+    destination.framework !== undefined ||
+    destination.skillName !== undefined
+  ) {
+    return undefined;
+  }
+  return optionalSubPathMountPath(CANONICAL_WORKING_DIR, destination.subPath);
+}
+
+function mntProvisioningMountPath(
+  destination: StorageProvisioningDestinationCandidate,
+): string | undefined {
+  if (
+    destination.name === undefined ||
+    destination.framework !== undefined ||
+    destination.skillName !== undefined ||
+    guestPathSegmentIssue(destination.name, "mnt destination name") !==
+      undefined
+  ) {
+    return undefined;
+  }
+  return optionalSubPathMountPath(
+    `/mnt/${destination.name}`,
+    destination.subPath,
+  );
+}
+
+function frameworkInstructionsMountPath(
+  destination: StorageProvisioningDestinationCandidate,
+): string | undefined {
+  if (
+    destination.name !== undefined ||
+    destination.subPath !== undefined ||
+    destination.skillName !== undefined
+  ) {
+    return undefined;
+  }
+  return frameworkHomeDir(destination.framework);
+}
+
+function frameworkSkillMountPath(
+  destination: StorageProvisioningDestinationCandidate,
+): string | undefined {
+  const frameworkHome = frameworkHomeDir(destination.framework);
+  if (
+    frameworkHome === undefined ||
+    destination.name !== undefined ||
+    destination.subPath !== undefined ||
+    destination.skillName === undefined ||
+    guestPathSegmentIssue(destination.skillName, "framework skill name") !==
+      undefined
+  ) {
+    return undefined;
+  }
+  return `${frameworkHome}/skills/${destination.skillName}`;
+}
+
+function frameworkMemoryMountPath(
+  destination: StorageProvisioningDestinationCandidate,
+): string | undefined {
+  if (
+    destination.name !== undefined ||
+    destination.subPath !== undefined ||
+    destination.skillName !== undefined
+  ) {
+    return undefined;
+  }
+  if (destination.framework === "codex") {
+    return CANONICAL_CODEX_MEMORY_MOUNT_PATH;
+  }
+  if (destination.framework === "claude-code") {
+    return CANONICAL_CLAUDE_MEMORY_MOUNT_PATH;
+  }
+  return undefined;
+}
+
+function provisioningDestinationMountPath(
+  destination: StorageProvisioningDestinationCandidate,
+): string | undefined {
+  switch (destination.type) {
+    case "workspace": {
+      return workspaceProvisioningMountPath(destination);
+    }
+    case "mnt": {
+      return mntProvisioningMountPath(destination);
+    }
+    case "framework-instructions": {
+      return frameworkInstructionsMountPath(destination);
+    }
+    case "framework-skill": {
+      return frameworkSkillMountPath(destination);
+    }
+    case "framework-memory": {
+      return frameworkMemoryMountPath(destination);
+    }
+    default: {
+      const exhaustive: never = destination.type;
+      return exhaustive;
+    }
+  }
+}
+
 export const storageProvisioningDestinationSchema = z
   .object({
     type: storageProvisioningDestinationTypeSchema,
@@ -439,10 +567,29 @@ export const storageProvisioningEntrySchema = z
     }
   });
 
-export const storageProvisioningManifestSchema = z.object({
-  version: z.literal("2"),
-  entries: z.array(storageProvisioningEntrySchema),
-});
+export const storageProvisioningManifestSchema = z
+  .object({
+    version: z.literal("2"),
+    entries: z.array(storageProvisioningEntrySchema),
+  })
+  .superRefine((manifest, ctx) => {
+    const seenMountPaths = new Set<string>();
+    manifest.entries.forEach((entry, index) => {
+      const mountPath = provisioningDestinationMountPath(entry.destination);
+      if (mountPath === undefined) {
+        return;
+      }
+      if (seenMountPaths.has(mountPath)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `storage provisioning destinations must be unique: ${mountPath}`,
+          path: ["entries", index, "destination"],
+        });
+        return;
+      }
+      seenMountPaths.add(mountPath);
+    });
+  });
 
 /**
  * Resume session information

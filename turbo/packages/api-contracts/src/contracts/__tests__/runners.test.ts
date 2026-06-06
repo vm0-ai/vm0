@@ -386,6 +386,45 @@ describe("runner storage manifest contract", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects duplicate storage provisioning destinations", () => {
+    const result = storageProvisioningManifestSchema.safeParse({
+      version: "2",
+      entries: [
+        {
+          intent: "user-volume",
+          source: {
+            kind: "storage",
+            name: "workspace",
+            vasStorageName: "workspace",
+            vasVersionId: "version-1",
+            archiveUrl: "https://storage.example/workspace.tar.gz",
+          },
+          destination: {
+            type: "workspace",
+            subPath: "shared",
+          },
+        },
+        {
+          intent: "user-artifact",
+          source: {
+            kind: "artifact",
+            name: "report",
+            vasStorageName: "report",
+            vasStorageId: "storage-id-1",
+            vasVersionId: "version-2",
+            archiveUrl: "https://storage.example/report.tar.gz",
+          },
+          destination: {
+            type: "workspace",
+            subPath: "shared",
+          },
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects intent and destination mismatches", () => {
     const result = storageProvisioningManifestSchema.safeParse({
       version: "2",
