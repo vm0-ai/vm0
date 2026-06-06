@@ -72,7 +72,7 @@ async function openCreateDialog(
   mockCreateModeAPIs();
   detachedSetupPage({
     context,
-    path: "/schedules",
+    path: "/schedules?tab=list",
     ...(options.featureSwitches && {
       featureSwitches: options.featureSwitches,
     }),
