@@ -111,12 +111,12 @@ CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.26.4"
-CLAUDE_CODE_VERSION="2.1.163"
+CLAUDE_CODE_VERSION="2.1.167"
 CODEX_CLI_VERSION="0.137.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.0.3"
 AGENT_BROWSER_VERSION="0.27.1"
-PNPM_VERSION="11.5.1"
+PNPM_VERSION="11.5.2"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
