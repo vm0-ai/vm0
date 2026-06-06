@@ -874,7 +874,12 @@ impl SessionWorkspaceCache {
             Err(e) => return Err(e.into()),
         };
         let mut invalidated = 0;
-        while let Ok(Some(entry)) = entries.next_entry().await {
+        loop {
+            let entry = match entries.next_entry().await {
+                Ok(Some(entry)) => entry,
+                Ok(None) => break,
+                Err(e) => return Err(e.into()),
+            };
             let path = entry.path();
             let Ok(file_type) = entry.file_type().await else {
                 continue;
@@ -903,16 +908,22 @@ impl SessionWorkspaceCache {
                 && self
                     .metadata_is_publishable_held_session_state(cache_key, &metadata)
                     .await
-                && self
-                    .invalidate_current_image(
-                        run_id,
-                        cache_key,
-                        &self.session_workspace_cache_current_image(cache_key),
-                        reason,
-                    )
-                    .await?
             {
-                invalidated += 1;
+                let current = self.session_workspace_cache_current_image(cache_key);
+                match self
+                    .invalidate_current_image(run_id, cache_key, &current, reason)
+                    .await
+                {
+                    Ok(true) => invalidated += 1,
+                    Ok(false) => {}
+                    Err(e) => warn!(
+                        run_id = %run_id,
+                        cache_key,
+                        reason,
+                        error = %e,
+                        "failed to invalidate workspace image cache baseline for disabled session"
+                    ),
+                }
             }
             drop(lock);
         }
