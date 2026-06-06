@@ -1,43 +1,11 @@
 import { initClient } from "@ts-rest/core";
 import {
-  zeroRunsMainContract,
-  zeroRunsByIdContract,
   zeroRunAgentEventsContract,
   zeroRunContextContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
-import type {
-  AgentEventsResponse,
-  CreateRunResponse,
-  GetRunResponse,
-} from "@vm0/api-contracts/contracts/runs";
+import type { AgentEventsResponse } from "@vm0/api-contracts/contracts/runs";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { getClientConfig, handleError } from "../core/client-factory";
-
-export async function createZeroRun(body: {
-  agentId?: string;
-  sessionId?: string;
-  checkpointId?: string;
-  prompt: string;
-  modelProvider?: string;
-  tools?: string[];
-  settings?: string;
-  debugNoMockClaude?: boolean;
-  debugNoMockCodex?: boolean;
-}): Promise<CreateRunResponse> {
-  const config = await getClientConfig();
-  const client = initClient(zeroRunsMainContract, config);
-  const result = await client.create({ body });
-  if (result.status === 201) return result.body;
-  handleError(result, "Failed to create zero run");
-}
-
-export async function getZeroRun(id: string): Promise<GetRunResponse> {
-  const config = await getClientConfig();
-  const client = initClient(zeroRunsByIdContract, config);
-  const result = await client.getById({ params: { id } });
-  if (result.status === 200) return result.body;
-  handleError(result, `Failed to get zero run "${id}"`);
-}
 
 export async function getZeroRunAgentEvents(
   id: string,

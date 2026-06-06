@@ -21,7 +21,6 @@ function buildCommands(): Command[] {
     new Command("credit"),
     new Command("logs"),
     new Command("preference"),
-    new Command("run"),
     new Command("schedule"),
     new Command("secret"),
     new Command("github"),
@@ -156,7 +155,6 @@ describe("registerZeroCommands", () => {
       "credit",
       "logs",
       "preference",
-      "run",
       "secret",
       "github",
       "slack",
@@ -589,19 +587,6 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("phone");
   });
 
-  it("should show run when agent-run:write capability is present", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["agent-run:write"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(visibleCommandNames(prog)).toContain("run");
-    expect(visibleCommandNames(prog)).toContain("whoami");
-  });
-
   it("should show logs when agent-run:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -625,18 +610,6 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("logs");
-  });
-
-  it("should hide run when agent-run:write capability is missing", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["agent:read"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(hiddenCommandNames(prog)).toContain("run");
   });
 
   it("should hide agent when agent:read capability is missing", () => {

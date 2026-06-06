@@ -14,7 +14,7 @@ Examples:
   zero agent list
 
 Notes:
-  - Use this to discover teammate agent IDs before delegating with "zero run"`,
+  - Use this to discover teammate agent IDs`,
   )
   .action(
     withErrorHandler(async () => {
