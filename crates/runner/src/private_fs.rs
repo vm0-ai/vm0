@@ -1,8 +1,31 @@
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::error::{RunnerError, RunnerResult};
 
 const PRIVATE_DIR_MODE: u32 = 0o700;
+const RESERVED_PRIVATE_DIR_PATHS: &[&str] = &[
+    "/",
+    "/bin",
+    "/boot",
+    "/dev",
+    "/etc",
+    "/home",
+    "/lib",
+    "/lib64",
+    "/opt",
+    "/proc",
+    "/root",
+    "/run",
+    "/sbin",
+    "/srv",
+    "/sys",
+    "/tmp",
+    "/usr",
+    "/var",
+    "/var/lib",
+    "/var/lib/vm0-runner",
+    "/var/lib/vm0-runner/runners",
+];
 
 /// Ensure `path` is private runtime state for the current runner process.
 ///
@@ -10,6 +33,8 @@ const PRIVATE_DIR_MODE: u32 = 0o700;
 /// owned by the effective uid instead of chowning it back to `SUDO_USER`.
 #[cfg(unix)]
 pub async fn ensure_private_dir(path: &Path) -> RunnerResult<()> {
+    reject_reserved_private_dir_path(path)?;
+
     let mut builder = tokio::fs::DirBuilder::new();
     builder.recursive(true);
     builder.mode(PRIVATE_DIR_MODE);
@@ -84,6 +109,44 @@ fn path_for_final_component_lstat(path: &Path) -> PathBuf {
     }
 }
 
+#[cfg(unix)]
+fn reject_reserved_private_dir_path(path: &Path) -> RunnerResult<()> {
+    let normalized = normalize_path_lexically(path);
+    if RESERVED_PRIVATE_DIR_PATHS
+        .iter()
+        .any(|reserved| normalized == Path::new(reserved))
+    {
+        return Err(RunnerError::Config(format!(
+            "{} is a reserved system path; refusing to use it as private runner state",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn normalize_path_lexically(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() && !normalized.has_root() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            Component::Normal(part) => normalized.push(part),
+        }
+    }
+    if normalized.as_os_str().is_empty() {
+        path.to_path_buf()
+    } else {
+        normalized
+    }
+}
+
 #[cfg(test)]
 #[cfg(unix)]
 mod tests {
@@ -102,6 +165,16 @@ mod tests {
         ensure_private_dir(&private_dir).await.unwrap();
 
         assert_eq!(mode(&private_dir), PRIVATE_DIR_MODE);
+    }
+
+    #[tokio::test]
+    async fn ensure_private_dir_rejects_filesystem_root() {
+        let error = ensure_private_dir(Path::new("/")).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("reserved system path"),
+            "unexpected error: {error}"
+        );
     }
 
     #[tokio::test]
@@ -163,6 +236,26 @@ mod tests {
             error.to_string().contains("symlink"),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn reserved_private_dir_path_rejects_lexical_parent_segments() {
+        for path in ["/var/lib/../lib", "/..", "/var/../.."] {
+            let error = reject_reserved_private_dir_path(Path::new(path))
+                .expect_err("reserved path should be rejected");
+
+            assert!(
+                error.to_string().contains("reserved system path"),
+                "unexpected error for {path}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn reserved_private_dir_path_allows_runner_child_dir() {
+        reject_reserved_private_dir_path(Path::new("/var/lib/vm0-runner/runners/runner-01"))
+            .unwrap();
+        reject_reserved_private_dir_path(Path::new("/data/runner-01")).unwrap();
     }
 
     #[tokio::test]
