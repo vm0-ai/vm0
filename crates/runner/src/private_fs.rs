@@ -35,6 +35,7 @@ const RESERVED_PRIVATE_DIR_PATHS: &[&str] = &[
 #[cfg(unix)]
 pub async fn ensure_private_dir(path: &Path) -> RunnerResult<()> {
     reject_reserved_private_dir_path(path)?;
+    reject_parent_dir_components(path)?;
     reject_existing_symlink_components(path).await?;
 
     let mut builder = tokio::fs::DirBuilder::new();
@@ -59,6 +60,20 @@ pub async fn ensure_private_dir(path: &Path) -> RunnerResult<()> {
     tokio::fs::create_dir_all(path)
         .await
         .map_err(|e| RunnerError::Config(format!("create private dir {}: {e}", path.display())))
+}
+
+#[cfg(unix)]
+fn reject_parent_dir_components(path: &Path) -> RunnerResult<()> {
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err(RunnerError::Config(format!(
+            "{} contains a parent directory segment; refusing to use it as private runner state",
+            path.display()
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -368,6 +383,24 @@ mod tests {
         assert!(
             !target.join("runner").exists(),
             "private dir should not be created through an intermediate symlink"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_private_dir_rejects_parent_segments_before_creating_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing-prefix");
+        let private_dir = missing.join("..").join("runner");
+
+        let error = ensure_private_dir(&private_dir).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("parent directory segment"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !missing.exists(),
+            "private dir validation should not create path prefixes before rejecting parent segments"
         );
     }
 
