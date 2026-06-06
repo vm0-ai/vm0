@@ -490,9 +490,16 @@ function mergeAdditionalVolumes(args: {
   readonly prepend: readonly AdditionalVolume[] | undefined;
   readonly base: readonly AdditionalVolume[] | undefined;
 }): readonly AdditionalVolume[] | undefined {
-  return args.prepend || args.base
-    ? [...(args.prepend ?? []), ...(args.base ?? [])]
-    : undefined;
+  if (!args.prepend && !args.base) {
+    return undefined;
+  }
+  const byVolumeTarget = new Map<string, AdditionalVolume>();
+  for (const volume of [...(args.prepend ?? []), ...(args.base ?? [])]) {
+    const key = JSON.stringify([volume.name, volume.mountPath]);
+    byVolumeTarget.delete(key);
+    byVolumeTarget.set(key, volume);
+  }
+  return [...byVolumeTarget.values()];
 }
 
 function frameworkSkillsMountPath(framework: SupportedFramework): string {

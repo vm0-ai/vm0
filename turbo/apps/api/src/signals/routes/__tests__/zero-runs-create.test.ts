@@ -25,6 +25,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { variables } from "@vm0/db/schema/variable";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
@@ -38,6 +39,10 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import {
+  getCustomSkillStorageName,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
 import { command, createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
@@ -286,6 +291,38 @@ async function seedSlackConnector(args: {
     encryptedValue: encryptSecretForTests("xoxb-test-token"),
     type: "connector",
   });
+}
+
+async function seedCustomSkillStorage(args: {
+  readonly fixture: UsageInsightFixture;
+  readonly skillName: string;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  const storageId = randomUUID();
+  const versionId = randomUUID().replaceAll("-", "");
+  const storageName = getCustomSkillStorageName(args.skillName);
+  await db.insert(storages).values({
+    id: storageId,
+    orgId: args.fixture.orgId,
+    userId: VOLUME_ORG_USER_ID,
+    name: storageName,
+    type: "volume",
+    s3Prefix: `${args.fixture.orgId}/volume/${storageName}`,
+    size: 100,
+    fileCount: 1,
+  });
+  await db.insert(storageVersions).values({
+    id: versionId,
+    storageId,
+    s3Key: `${args.fixture.orgId}/volume/${storageName}/${versionId}`,
+    size: 100,
+    fileCount: 1,
+    createdBy: args.fixture.userId,
+  });
+  await db
+    .update(storages)
+    .set({ headVersionId: versionId })
+    .where(eq(storages.id, storageId));
 }
 
 async function insertUserPermissionGrant(args: {
@@ -2732,6 +2769,86 @@ describe("POST /api/zero/runs", () => {
         }),
       ]),
     );
+  });
+
+  it("deduplicates repeated custom skill volumes by mount path", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      customSkills: ["research-kit", "research-kit"],
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "use duplicate skills", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ additionalVolumes: agentRuns.additionalVolumes })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId));
+    const volumes = run?.additionalVolumes ?? [];
+    const researchKitVolumes = volumes.filter((volume) => {
+      return volume.mountPath === "/home/user/.claude/skills/research-kit";
+    });
+
+    expect(researchKitVolumes).toHaveLength(1);
+    expect(researchKitVolumes[0]).toMatchObject({
+      name: "custom-skill@research-kit",
+    });
+  });
+
+  it("deduplicates resolved skill manifest entries by mount path", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      customSkills: ["slack"],
+    });
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await seedCustomSkillStorage({ fixture: fx, skillName: "slack" });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "use overridden skill", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly storageProvisioningManifest: {
+        readonly entries: readonly {
+          readonly intent: string;
+          readonly source: {
+            readonly name: string;
+          };
+          readonly destination: {
+            readonly type: string;
+            readonly skillName?: string;
+          };
+        }[];
+      };
+    };
+    const slackSkillEntries =
+      executionContext.storageProvisioningManifest.entries.filter((entry) => {
+        return (
+          entry.intent === "skill" &&
+          entry.destination.type === "framework-skill" &&
+          entry.destination.skillName === "slack"
+        );
+      });
+
+    expect(slackSkillEntries).toHaveLength(1);
+    expect(slackSkillEntries[0]?.source.name).toBe("custom-skill@slack");
   });
 
   it("mounts skills using the model provider framework, not the compose framework", async () => {

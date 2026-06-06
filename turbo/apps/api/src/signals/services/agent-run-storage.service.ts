@@ -870,8 +870,11 @@ function mergeStorageEntries(args: {
   readonly composeEntries: readonly PreparedStorageManifestEntry[];
   readonly additionalEntries: readonly PreparedStorageManifestEntry[];
 }): readonly PreparedStorageManifestEntry[] {
+  const additionalEntries = dedupStorageEntriesByMountPath(
+    args.additionalEntries,
+  );
   const additionalMountPaths = new Set(
-    args.additionalEntries.map((entry) => {
+    additionalEntries.map((entry) => {
       return entry.legacy.mountPath;
     }),
   );
@@ -879,8 +882,19 @@ function mergeStorageEntries(args: {
     ...args.composeEntries.filter((entry) => {
       return !additionalMountPaths.has(entry.legacy.mountPath);
     }),
-    ...args.additionalEntries,
+    ...additionalEntries,
   ];
+}
+
+function dedupStorageEntriesByMountPath(
+  entries: readonly PreparedStorageManifestEntry[],
+): readonly PreparedStorageManifestEntry[] {
+  const byMountPath = new Map<string, PreparedStorageManifestEntry>();
+  for (const entry of entries) {
+    byMountPath.delete(entry.legacy.mountPath);
+    byMountPath.set(entry.legacy.mountPath, entry);
+  }
+  return [...byMountPath.values()];
 }
 
 export function prepareAgentRunStorageManifests(args: {
