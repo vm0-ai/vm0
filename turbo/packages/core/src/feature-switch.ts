@@ -266,8 +266,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description:
       "Enable runner session workspace image cache reuse for canonical workspace drives.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatArtifactSidebar]: {
     maintainer: "ethan@vm0.ai",
