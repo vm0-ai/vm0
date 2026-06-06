@@ -511,7 +511,12 @@ export type ConnectorAuthMethodConfig =
  * These values are connector registry keys, not lifecycle categories. Behavior
  * must be derived from the selected auth method lifecycle config.
  */
-export const CONNECTOR_AUTH_METHOD_IDS = ["oauth", "api-token", "api"] as const;
+export const CONNECTOR_AUTH_METHOD_IDS = [
+  "oauth",
+  "api-token",
+  "cli",
+  "api",
+] as const;
 export const connectorAuthMethodIdSchema = z.enum(CONNECTOR_AUTH_METHOD_IDS);
 export type ConnectorAuthMethodId = z.infer<typeof connectorAuthMethodIdSchema>;
 

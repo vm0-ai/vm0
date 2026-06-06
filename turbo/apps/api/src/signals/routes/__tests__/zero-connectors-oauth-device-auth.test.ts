@@ -54,6 +54,11 @@ const SLOCK_DEVICE_CODE_URL = "https://api.slock.ai/api/auth/device/authorize";
 const SLOCK_TOKEN_URL = "https://api.slock.ai/api/auth/device/token";
 const SLOCK_USERINFO_URL = "https://api.slock.ai/api/auth/me";
 const SLOCK_SERVERS_URL = "https://api.slock.ai/api/servers";
+const STRIPE_CLI_AUTH_URL = "https://dashboard.stripe.com/stripecli/auth";
+const STRIPE_CLI_BROWSER_URL =
+  "https://dashboard.stripe.com/stripecli/confirm_auth?code=STRIPE-CLI";
+const STRIPE_CLI_TEST_SECRET = "rk_test_api123";
+const STRIPE_CLI_LIVE_SECRET = "rk_live_api456";
 const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
@@ -120,7 +125,7 @@ async function cleanupUser(userId: string, orgId: string) {
 }
 
 async function encryptedProviderState(args: {
-  readonly connectorType?: "test-oauth-device" | "slock";
+  readonly connectorType?: "test-oauth-device" | "slock" | "stripe";
   readonly deviceCode: string;
   readonly pollState?: string;
 }): Promise<string> {
@@ -329,10 +334,71 @@ function mockSlockOAuthProvider(): { readonly accessToken: string } {
   return { accessToken };
 }
 
+function mockStripeCliDashboardProvider(args?: {
+  readonly pollToken?: string;
+}): { readonly startBodies: URLSearchParams[] } {
+  const startBodies: URLSearchParams[] = [];
+  server.use(
+    http.post(STRIPE_CLI_AUTH_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      startBodies.push(body);
+      return HttpResponse.json({
+        browser_url: STRIPE_CLI_BROWSER_URL,
+        poll_url: `${STRIPE_CLI_AUTH_URL}?poll_token=${args?.pollToken ?? "test-complete"}`,
+        verification_code: "STRIPE-CLI",
+      });
+    }),
+    http.get(STRIPE_CLI_AUTH_URL, ({ request }) => {
+      const pollToken = new URL(request.url).searchParams.get("poll_token");
+      if (pollToken === "pending") {
+        return HttpResponse.json({
+          redeemed: false,
+          account_id: null,
+          account_display_name: null,
+          testmode_key_secret: null,
+          testmode_key_publishable: null,
+          livemode_key_secret: null,
+          livemode_key_publishable: null,
+        });
+      }
+      if (pollToken === "live-complete") {
+        return HttpResponse.json({
+          redeemed: true,
+          account_id: "acct_live",
+          account_display_name: "Live Stripe Account",
+          testmode_key_secret: STRIPE_CLI_TEST_SECRET,
+          livemode_key_secret: STRIPE_CLI_LIVE_SECRET,
+        });
+      }
+      if (pollToken === "missing-test-key") {
+        return HttpResponse.json({
+          redeemed: true,
+          account_id: "acct_missing",
+          livemode_key_secret: STRIPE_CLI_LIVE_SECRET,
+        });
+      }
+      if (pollToken === "malformed") {
+        return HttpResponse.text(
+          `not json ${STRIPE_CLI_AUTH_URL}?poll_token=secret-poll ${STRIPE_CLI_TEST_SECRET}`,
+        );
+      }
+      expect(pollToken).toBe("test-complete");
+      return HttpResponse.json({
+        redeemed: true,
+        account_id: "acct_test",
+        account_display_name: "Test Stripe Account",
+        testmode_key_secret: STRIPE_CLI_TEST_SECRET,
+        livemode_key_secret: STRIPE_CLI_LIVE_SECRET,
+      });
+    }),
+  );
+  return { startBodies };
+}
+
 async function createSession(args: {
   readonly userId: string;
   readonly orgId: string;
-  readonly connectorType?: "test-oauth-device" | "slock";
+  readonly connectorType?: "test-oauth-device" | "slock" | "stripe";
   readonly authMethod?: string;
   readonly deviceCode: string;
   readonly status?: "awaiting_user_authorization" | "polling";
@@ -448,6 +514,14 @@ describe("OAuth device authorization connector routes", () => {
     users.push({ userId, orgId });
     mocks.clerk.session(userId, orgId);
     await enableTestOauthDevice(userId, orgId);
+    return { userId, orgId };
+  }
+
+  function setupStripeUser() {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    users.push({ userId, orgId });
+    mocks.clerk.session(userId, orgId);
     return { userId, orgId };
   }
 
@@ -864,6 +938,290 @@ describe("OAuth device authorization connector routes", () => {
       "test-oauth-device api device-auth start option toString is not supported",
     );
     expect(startCalled).toBeFalsy();
+  });
+
+  it("starts a Stripe CLI session without exposing the Dashboard poll URL", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    const stripeMock = mockStripeCliDashboardProvider();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "test" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(stripeMock.startBodies).toHaveLength(1);
+    expect(stripeMock.startBodies[0]?.get("client_version")).toBeTruthy();
+    expect(stripeMock.startBodies[0]?.get("device_name")).toBe(
+      "vm0-stripe-connector",
+    );
+    expect(response.body).toMatchObject({
+      type: "stripe",
+      status: "pending",
+      userCode: "STRIPE-CLI",
+      verificationUri: STRIPE_CLI_BROWSER_URL,
+      verificationUriComplete: STRIPE_CLI_BROWSER_URL,
+      expiresIn: 600,
+      interval: 1,
+    });
+    expect(JSON.stringify(response.body)).not.toContain("poll_token");
+
+    const session = await onlySession(response.body.sessionId);
+    expect(session.orgId).toBe(orgId);
+    expect(session.userId).toBe(userId);
+    expect(session.authMethod).toBe("cli");
+    expect(session.encryptedProviderState).not.toContain("poll_token");
+    const decryptedProviderState = await decryptPersistentSecretValue(
+      session.encryptedProviderState,
+      { orgId, userId },
+    );
+    const providerState = z
+      .object({
+        connectorType: z.literal("stripe"),
+        deviceCode: z.literal("stripe-cli-dashboard-auth"),
+        pollState: z.string(),
+      })
+      .parse(JSON.parse(decryptedProviderState) as unknown);
+    expect(providerState.pollState).toContain("test-complete");
+    expect(providerState.pollState).toContain('"mode":"test"');
+  });
+
+  it("rejects invalid Stripe CLI mode before provider start", async () => {
+    await setupStripeUser();
+    const stripeMock = mockStripeCliDashboardProvider();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "production" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "stripe cli device-auth start option mode must be one of: test, live",
+    );
+    expect(stripeMock.startBodies).toStrictEqual([]);
+  });
+
+  it("polls a pending Stripe CLI session without persisting a connector", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    mockStripeCliDashboardProvider({ pollToken: "pending" });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "test" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await makeSessionPollable(start.body.sessionId);
+
+    const response = await accept(
+      client.poll({
+        params: { type: "stripe", sessionId: start.body.sessionId },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ status: "pending", interval: 1 });
+    await expect(
+      connectorSecretValue(userId, orgId, "STRIPE_TOKEN"),
+    ).resolves.toBeNull();
+    await expect(onlySession(start.body.sessionId)).resolves.toMatchObject({
+      status: "awaiting_user_authorization",
+      intervalSeconds: 1,
+    });
+  });
+
+  it("completes a Stripe CLI test session and stores STRIPE_TOKEN plus expiry", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    mockStripeCliDashboardProvider({ pollToken: "test-complete" });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "test" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await makeSessionPollable(start.body.sessionId);
+
+    const response = await accept(
+      client.poll({
+        params: { type: "stripe", sessionId: start.body.sessionId },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("complete");
+    expect(JSON.stringify(response.body)).not.toContain(STRIPE_CLI_TEST_SECRET);
+    await expect(
+      connectorSecretValue(userId, orgId, "STRIPE_TOKEN"),
+    ).resolves.toBe(STRIPE_CLI_TEST_SECRET);
+
+    const stored = await store
+      .set(writeDb$)
+      .select({
+        authMethod: connectors.authMethod,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+        tokenExpiresAt: connectors.tokenExpiresAt,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.userId, userId),
+          eq(connectors.orgId, orgId),
+          eq(connectors.type, "stripe"),
+        ),
+      );
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      authMethod: "cli",
+      externalId: "acct_test",
+      externalUsername: "Test Stripe Account",
+      externalEmail: null,
+      oauthScopes: JSON.stringify([]),
+    });
+    const tokenExpiresAt = stored[0]?.tokenExpiresAt;
+    if (!tokenExpiresAt) {
+      throw new Error("Expected Stripe CLI token expiry to be stored");
+    }
+    expect(tokenExpiresAt.getTime()).toBeGreaterThan(
+      nowDate().getTime() + 89 * 24 * 60 * 60 * 1000,
+    );
+    expect(tokenExpiresAt.getTime()).toBeLessThanOrEqual(
+      nowDate().getTime() + 90 * 24 * 60 * 60 * 1000,
+    );
+  });
+
+  it("completes a Stripe CLI live session with the live key", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    mockStripeCliDashboardProvider({ pollToken: "live-complete" });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "live" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await makeSessionPollable(start.body.sessionId);
+
+    const response = await accept(
+      client.poll({
+        params: { type: "stripe", sessionId: start.body.sessionId },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("complete");
+    await expect(
+      connectorSecretValue(userId, orgId, "STRIPE_TOKEN"),
+    ).resolves.toBe(STRIPE_CLI_LIVE_SECRET);
+  });
+
+  it("returns a terminal Stripe CLI error when the selected key is missing", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    mockStripeCliDashboardProvider({ pollToken: "missing-test-key" });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "test" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await makeSessionPollable(start.body.sessionId);
+
+    const response = await accept(
+      client.poll({
+        params: { type: "stripe", sessionId: start.body.sessionId },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      status: "error",
+      errorCode: "stripe_cli_auth_error",
+      errorMessage: "Stripe CLI auth did not return a test mode key",
+    });
+    await expect(
+      connectorSecretValue(userId, orgId, "STRIPE_TOKEN"),
+    ).resolves.toBeNull();
+    await expect(onlySession(start.body.sessionId)).resolves.toMatchObject({
+      status: "error",
+      errorCode: "stripe_cli_auth_error",
+    });
+  });
+
+  it("redacts malformed Stripe CLI poll responses", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    mockStripeCliDashboardProvider({ pollToken: "malformed" });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "test" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await makeSessionPollable(start.body.sessionId);
+
+    const response = await accept(
+      client.poll({
+        params: { type: "stripe", sessionId: start.body.sessionId },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("error");
+    if (response.body.status !== "error") {
+      throw new Error("Expected Stripe CLI malformed poll to return an error");
+    }
+    expect(response.body.errorMessage).not.toContain("secret-poll");
+    expect(response.body.errorMessage).not.toContain(STRIPE_CLI_TEST_SECRET);
+    await expect(
+      connectorSecretValue(userId, orgId, "STRIPE_TOKEN"),
+    ).resolves.toBeNull();
   });
 
   it("does not persist a superseded session that completes after a new session starts", async () => {

@@ -646,9 +646,10 @@ function useLarkTenantAccessTokenEndpoint(
   return calls;
 }
 
-async function seedStripeApiTokenConnector(
+async function seedStripeStaticConnector(
   fixture: FirewallFixture,
   args: {
+    readonly authMethod?: "api-token" | "cli";
     readonly token?: string;
     readonly tokenExpiresAt?: Date | null;
     readonly needsReconnect?: boolean;
@@ -659,7 +660,7 @@ async function seedStripeApiTokenConnector(
     orgId: fixture.orgId,
     userId: fixture.userId,
     type: "stripe",
-    authMethod: "api-token",
+    authMethod: args.authMethod ?? "api-token",
     externalId: "stripe-account",
     externalUsername: "stripe-account",
     externalEmail: "stripe@example.com",
@@ -3215,7 +3216,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("keeps missing static connector access secrets as missing configuration", async () => {
     const fixture = await track(seedFixture());
-    await seedStripeApiTokenConnector(fixture);
+    await seedStripeStaticConnector(fixture);
 
     const response = await accept(
       firewallClient().resolve({
@@ -3243,7 +3244,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("loads current static connector access instead of stale encrypted access", async () => {
     const fixture = await track(seedFixture());
-    await seedStripeApiTokenConnector(fixture, {
+    await seedStripeStaticConnector(fixture, {
       token: "current-stripe-token",
     });
 
@@ -3274,7 +3275,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("loads current future-expiring static connector access", async () => {
     const fixture = await track(seedFixture());
-    await seedStripeApiTokenConnector(fixture, {
+    await seedStripeStaticConnector(fixture, {
       token: "current-stripe-token",
       tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
     });
@@ -3304,9 +3305,43 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body.refreshedSecrets).toStrictEqual([]);
   });
 
-  it("rejects expired static connector access as reconnect required", async () => {
+  it("loads current Stripe CLI static connector access", async () => {
     const fixture = await track(seedFixture());
-    await seedStripeApiTokenConnector(fixture, {
+    await seedStripeStaticConnector(fixture, {
+      authMethod: "cli",
+      token: "current-stripe-cli-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-stripe-cli-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("rejects expired Stripe CLI static connector access as reconnect required", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeStaticConnector(fixture, {
+      authMethod: "cli",
       token: "expired-stripe-token",
       tokenExpiresAt: new Date(now() - 60_000),
     });
@@ -3338,7 +3373,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("rejects reconnect-required static connector access", async () => {
     const fixture = await track(seedFixture());
-    await seedStripeApiTokenConnector(fixture, {
+    await seedStripeStaticConnector(fixture, {
       token: "current-stripe-token",
       needsReconnect: true,
     });
@@ -3433,7 +3468,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("rejects stale encrypted static connector access when current storage is missing", async () => {
     const fixture = await track(seedFixture());
-    await seedStripeApiTokenConnector(fixture);
+    await seedStripeStaticConnector(fixture);
 
     const response = await accept(
       firewallClient().resolve({
@@ -3492,7 +3527,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("rejects encrypted connector secrets outside the selected access method", async () => {
     const fixture = await track(seedFixture());
-    await seedStripeApiTokenConnector(fixture);
+    await seedStripeStaticConnector(fixture);
 
     const response = await accept(
       firewallClient().resolve({

@@ -84,7 +84,10 @@ import { sentryProvider } from "./connectors/sentry/provider";
 import { slackProvider } from "./connectors/slack/provider";
 import { slockProvider } from "./connectors/slock/provider";
 import { stravaProvider } from "./connectors/strava/provider";
-import { stripeProvider } from "./connectors/stripe/provider";
+import {
+  stripeCliProvider,
+  stripeProvider,
+} from "./connectors/stripe/provider";
 import { todoistProvider } from "./connectors/todoist/provider";
 import { vercelProvider } from "./connectors/vercel/provider";
 import { webflowProvider } from "./connectors/webflow/provider";
@@ -428,7 +431,10 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   slock: { oauth: deviceAuthRefreshProviderEntry(slockProvider) },
   spotify: { oauth: authCodeRefreshProviderEntry(spotifyProvider) },
   strava: { oauth: authCodeRefreshProviderEntry(stravaProvider) },
-  stripe: { oauth: authCodeRefreshProviderEntry(stripeProvider) },
+  stripe: {
+    oauth: authCodeRefreshProviderEntry(stripeProvider),
+    cli: deviceAuthProviderEntry(stripeCliProvider),
+  },
   supabase: { oauth: authCodeRefreshProviderEntry(supabaseProvider) },
   "test-oauth": {
     oauth: authCodeRefreshProviderEntry(testOauthProvider),

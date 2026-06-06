@@ -1,10 +1,15 @@
-import type { AuthCodeConnectorAuthProvider } from "../../types";
+import type {
+  AuthCodeConnectorAuthProvider,
+  DeviceAuthConnectorAuthProvider,
+} from "../../types";
 import {
   buildStripeAuthorizationUrl,
   exchangeStripeCode,
   refreshStripeToken,
 } from "./oauth";
+import { pollStripeCliDashboardAuth, startStripeCliDashboardAuth } from "./cli";
 import { oauthRefreshResultToProviderResult } from "../../oauth/types";
+
 export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
   grant: {
     kind: "auth-code",
@@ -53,6 +58,29 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
         ),
       );
     },
+  },
+  revoke: { kind: "none" },
+};
+
+export const stripeCliProvider: DeviceAuthConnectorAuthProvider<
+  "stripe",
+  "cli"
+> = {
+  grant: {
+    kind: "device-auth",
+    startDeviceAuth: async (args) => {
+      return await startStripeCliDashboardAuth({
+        options: args.options,
+      });
+    },
+    pollDeviceAuth: async (args) => {
+      return await pollStripeCliDashboardAuth({
+        pollState: args.pollState,
+      });
+    },
+  },
+  access: {
+    kind: "none",
   },
   revoke: { kind: "none" },
 };

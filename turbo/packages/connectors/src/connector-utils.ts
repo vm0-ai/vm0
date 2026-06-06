@@ -50,8 +50,9 @@ import type { FeatureSwitchKey } from "./feature-switch-key";
 
 const CONNECTOR_AUTH_METHOD_PRIORITY = {
   oauth: 0,
-  "api-token": 1,
-  api: 2,
+  cli: 1,
+  "api-token": 2,
+  api: 3,
 } as const satisfies Record<ConnectorAuthMethodId, number>;
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VARIABLE_REF_PREFIX = "$vars.";

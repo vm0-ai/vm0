@@ -5,7 +5,11 @@ import {
   detachedSetupPage,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import { allConnectorTypes$ } from "../settings/connectors.ts";
+import {
+  allConnectorTypes$,
+  connectorCurrentConnectionStatus,
+  connectorExpiryCountdownText,
+} from "../settings/connectors.ts";
 import { zeroAuthorizedConnectors$ } from "../zero-connectors.ts";
 import { authorizeConnector$ as directedAuthorizeConnector$ } from "../../connectors-page/directed-authorize-type.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -281,9 +285,63 @@ describe("connectors — Stripe auth availability", () => {
     return stripe?.availableAuthMethods ?? [];
   }
 
-  it("returns Stripe API-token auth without CLI auth", async () => {
+  it("returns Stripe API-token and CLI auth without the Stripe switch", async () => {
     const authMethods = await stripeAuthMethods({});
 
-    expect(authMethods).toStrictEqual(["api-token"]);
+    expect(authMethods).toStrictEqual(["cli", "api-token"]);
+  });
+
+  it("returns Stripe OAuth auth when the Stripe switch is enabled", async () => {
+    const authMethods = await stripeAuthMethods({
+      [FeatureSwitchKey.StripeConnector]: true,
+    });
+
+    expect(authMethods).toStrictEqual(["oauth", "cli", "api-token"]);
+  });
+
+  it("shows expiry text only while a non-refreshable Stripe CLI connector is connected", async () => {
+    setMockConnectors([
+      {
+        id: "d0000001-0000-4000-a000-000000000097",
+        type: "stripe",
+        authMethod: "cli",
+        externalId: "acct_test",
+        externalUsername: "Test Stripe Account",
+        externalEmail: null,
+        oauthScopes: [],
+        connectionStatus: "connected",
+        tokenExpiresAt: "2026-01-01T02:00:00.000Z",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.StripeConnector]: true },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const stripe = connectorTypes.find((c) => {
+      return c.type === "stripe";
+    });
+    expect(stripe).toBeDefined();
+    if (!stripe) {
+      throw new Error("Expected Stripe connector type");
+    }
+    expect(stripe.authMethodSupportsRefresh).toBeFalsy();
+    expect(
+      connectorExpiryCountdownText(stripe, Date.parse("2026-01-01T00:00:00Z")),
+    ).toBe("Expires in 2 hours");
+    expect(
+      connectorCurrentConnectionStatus(
+        stripe,
+        Date.parse("2026-01-01T03:00:00Z"),
+      ),
+    ).toBe("reconnect-required");
+    expect(
+      connectorExpiryCountdownText(stripe, Date.parse("2026-01-01T03:00:00Z")),
+    ).toBeNull();
   });
 });
