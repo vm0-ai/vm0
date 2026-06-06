@@ -175,7 +175,11 @@ export {
 } from "./domains/zero-schedules";
 
 // Domain modules - Zero Runs
-export { getZeroRunAgentEvents } from "./domains/zero-runs";
+export {
+  createZeroRun,
+  getZeroRun,
+  getZeroRunAgentEvents,
+} from "./domains/zero-runs";
 
 // Domain modules - Zero Logs
 export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";

@@ -294,7 +294,7 @@ export function renderRunCreated(response: {
   }
 }
 
-interface PollResult {
+export interface PollResult {
   succeeded: boolean;
   runId: string;
   sessionId?: string;
@@ -324,7 +324,7 @@ const TERMINAL_DRAIN_MAX_MS = 3000;
 /**
  * Options for polling/streaming events
  */
-interface EventRenderingOptions {
+export interface EventRenderingOptions {
   verbose?: boolean;
 }
 
