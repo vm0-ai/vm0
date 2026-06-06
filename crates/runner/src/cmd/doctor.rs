@@ -78,7 +78,7 @@ enum Warning {
     NoDnsmasq { port: u16, base_dir: PathBuf },
     /// A network namespace whose pool lock is not held by any process.
     OrphanNamespace { ns_name: String, pool_idx: u32 },
-    /// An NBD device whose owning process has exited without disconnecting.
+    /// An NBD device whose recorded owner task has exited and whose lock is free.
     OrphanNbdDevice { device_index: u32, pid: u32 },
     /// The NBD orphan scan task panicked (bug in find_nbd_orphans).
     NbdScanFailed,
@@ -251,17 +251,10 @@ impl Warning {
                 is_lock_free(&lock_path).await
             }
             Self::OrphanNbdDevice { device_index, pid } => {
-                // Re-read sysfs to check if the device is still connected with a dead owner.
                 let idx = *device_index;
                 let original_pid = *pid;
                 tokio::task::spawn_blocking(move || {
-                    match super::nbd::read_nbd_pid(idx) {
-                        Some(current_pid) => {
-                            // Still orphaned if same dead PID
-                            current_pid == original_pid && !pid_exists(current_pid)
-                        }
-                        None => false, // device freed or pid cleared
-                    }
+                    super::nbd::nbd_orphan_is_reportable(idx, original_pid)
                 })
                 .await
                 .unwrap_or(false)
@@ -1010,7 +1003,7 @@ fn parse_netns_list_line(line: &str) -> Option<(&str, u32)> {
     Some((ns_name, parsed.pool_index))
 }
 
-/// Scan for NBD devices whose owning process has exited without disconnecting.
+/// Scan for lock-free NBD devices whose recorded owner task has exited.
 async fn detect_nbd_orphans() -> Vec<Warning> {
     let (_, orphans) = match tokio::task::spawn_blocking(super::nbd::find_nbd_orphans).await {
         Ok(result) => result,
