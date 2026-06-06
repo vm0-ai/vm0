@@ -579,8 +579,9 @@ pub async fn execute_job_reuse(
     let workspace_promotion = idle_parts.workspace_promotion;
     let sandbox = idle_parts.sandbox;
 
-    let workspace_image = match config.workspace_cache.as_ref() {
-        Some(cache) => {
+    let workspace_cache_enabled = context.session_workspace_image_cache_enabled();
+    let workspace_image = match (workspace_cache_enabled, config.workspace_cache.as_ref()) {
+        (true, Some(cache)) => {
             let active_request = WorkspaceImageActiveLeaseRequest {
                 run_id,
                 sandbox_id,
@@ -595,14 +596,19 @@ pub async fn execute_job_reuse(
                 None => cache.lease_active(active_request).await,
             })
         }
-        None => {
+        (false, _) | (true, None) => {
+            let cache_status = if workspace_cache_enabled {
+                "unconfigured-cache"
+            } else {
+                "disabled-cache"
+            };
             if let Some(promotion) = workspace_promotion
                 && let Err(error) = promotion
                     .invalidate_current("reused sandbox ran without workspace image cache")
                     .await
             {
                 let failure = ExecutionFailure::from_error(format!(
-                    "failed to invalidate workspace image cache before unconfigured-cache reuse: {error}"
+                    "failed to invalidate workspace image cache before {cache_status} reuse: {error}"
                 ));
                 return (
                     ExecuteOutcome {
@@ -972,7 +978,12 @@ async fn prepare_workspace_image(
     workspace_disk_mb: u32,
     telemetry: &mut JobTelemetry,
 ) -> Option<WorkspaceImageLease> {
-    let cache = config.workspace_cache.as_ref()?;
+    let (true, Some(cache)) = (
+        context.session_workspace_image_cache_enabled(),
+        config.workspace_cache.as_ref(),
+    ) else {
+        return None;
+    };
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
@@ -3032,7 +3043,8 @@ mod tests {
     use crate::ids::RunId;
     use crate::paths::RunnerPaths;
     use crate::types::{
-        GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry, ResumeSession,
+        GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
+        ResumeSession, SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG,
     };
     use crate::workspace_image_cache::WorkspaceCacheTerminalStatus;
     use api_contracts::generated::types::runners::storage::{
@@ -3040,7 +3052,7 @@ mod tests {
     };
     use async_trait::async_trait;
     use sandbox_mock::MockSandboxFactory;
-    use std::collections::{BTreeMap, VecDeque};
+    use std::collections::{BTreeMap, HashMap, VecDeque};
     use std::fmt;
     use std::sync::{Arc, Mutex};
     use tracing::field::{Field, Visit};
@@ -3232,6 +3244,13 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.environment = Some(environment);
         ctx
+    }
+
+    fn set_session_workspace_image_cache_flag(ctx: &mut ExecutionContext, enabled: bool) {
+        ctx.feature_flags = Some(HashMap::from([(
+            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
+            enabled,
+        )]));
     }
 
     #[test]
@@ -6667,6 +6686,7 @@ mod tests {
             session_id: "sess-cache-hit".into(),
             session_history: r#"{"type":"init"}"#.into(),
         });
+        set_session_workspace_image_cache_flag(&mut ctx, true);
         let params = JobParams {
             workspace_disk_mb: 16,
             ..default_params()
@@ -6716,6 +6736,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_inner_ignores_workspace_cache_when_feature_flag_disabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: "sess-cache-disabled".into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        set_session_workspace_image_cache_flag(&mut ctx, false);
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let seeded_cache =
+            seed_workspace_image_cache(&cache, &runner_paths, "sess-cache-disabled", 16).await;
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let outcome = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.exit_code(), 0);
+        assert!(outcome.workspace_image.is_none());
+        assert!(!outcome.workspace_promotable);
+        let configs = overrides.create_configs();
+        assert_eq!(configs.len(), 1);
+        assert_eq!(
+            configs[0].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 16,
+                seed_image: None,
+            })
+        );
+        assert!(
+            seeded_cache.exists(),
+            "disabled feature flag must not consume or invalidate the workspace cache baseline"
+        );
+    }
+
+    #[tokio::test]
     async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_failure() {
         let dir = tempfile::tempdir().unwrap();
         let runner_paths = RunnerPaths::new(dir.path().join("runner"));
@@ -6732,6 +6808,7 @@ mod tests {
             session_id: "sess-register-fail".into(),
             session_history: r#"{"type":"init"}"#.into(),
         });
+        set_session_workspace_image_cache_flag(&mut ctx, true);
         let params = JobParams {
             workspace_disk_mb: 16,
             ..default_params()
@@ -7295,11 +7372,61 @@ mod tests {
             session_id: session_id.into(),
             session_history: r#"{"type":"init"}"#.into(),
         });
+        set_session_workspace_image_cache_flag(&mut ctx, true);
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
         assert_eq!(reuse_outcome.exit_code(), 0);
+
+        let checkout = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: &params.profile_name,
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_required: true,
+            })
+            .await;
+        assert_eq!(checkout.result(), WorkspaceCacheCheckoutResult::Miss);
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_with_workspace_cache_flag_disabled_invalidates_held_cache_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let session_id = "sess-cache-disabled-reuse";
+        let (idle_sandbox, _current_image, _overrides) =
+            reusable_idle_sandbox_with_workspace_promotion(
+                &cache,
+                &runner_paths,
+                &params,
+                session_id,
+            )
+            .await;
+
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: session_id.into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        set_session_workspace_image_cache_flag(&mut ctx, false);
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
+        assert_eq!(reuse_outcome.exit_code(), 0);
+        assert!(reuse_outcome.workspace_image.is_none());
+        assert!(!reuse_outcome.workspace_promotable);
 
         let checkout = cache
             .prepare(WorkspaceImagePrepareRequest {
@@ -7342,6 +7469,7 @@ mod tests {
             session_id: session_id.into(),
             session_history: r#"{"type":"init"}"#.into(),
         });
+        set_session_workspace_image_cache_flag(&mut ctx, true);
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
@@ -7398,6 +7526,7 @@ mod tests {
             session_id: session_id.into(),
             session_history: r#"{"type":"init"}"#.into(),
         });
+        set_session_workspace_image_cache_flag(&mut ctx, true);
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
@@ -7452,6 +7581,7 @@ mod tests {
             session_id: session_id.into(),
             session_history: r#"{"type":"init"}"#.into(),
         });
+        set_session_workspace_image_cache_flag(&mut ctx, true);
         ctx.environment = Some(HashMap::from([(
             "OPENAI_API_KEY".into(),
             "sk-proj-real-openai-secret".into(),

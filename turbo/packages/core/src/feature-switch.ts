@@ -256,6 +256,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.SessionWorkspaceImageCache]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable runner session workspace image cache reuse for canonical workspace drives.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatGithubPrTracking]: {
     maintainer: "linghan@vm0.ai",
     description:
