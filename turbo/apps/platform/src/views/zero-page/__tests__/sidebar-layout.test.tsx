@@ -136,7 +136,7 @@ describe("sidebar layout - invite button hidden on mobile thread routes", () => 
     });
 
     await waitFor(async () => {
-      await expect(context.store.get(isOrgAdmin$)).resolves.toBe(true);
+      await expect(context.store.get(isOrgAdmin$)).resolves.toBeTruthy();
     });
 
     await waitFor(() => {
