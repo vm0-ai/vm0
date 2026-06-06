@@ -2148,6 +2148,236 @@ describe("POST /api/agent/runs", () => {
     ]);
   });
 
+  it("deduplicates artifacts by mount path after request overrides", async () => {
+    const fx = await fixture();
+    const sharedMountPath = `${CANONICAL_WORKING_DIR}/shared`;
+    const compose = await createCompose({
+      fixture: fx,
+      artifacts: [{ name: "compose-artifact", mount_path: sharedMountPath }],
+    });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use overridden artifact",
+          artifacts: [
+            {
+              name: "body-artifact",
+              mountPath: sharedMountPath,
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageProvisioningManifest: {
+        readonly entries: readonly {
+          readonly intent: string;
+          readonly source: {
+            readonly name: string;
+          };
+          readonly destination: {
+            readonly type: string;
+            readonly subPath?: string;
+          };
+        }[];
+      };
+    };
+    const sharedArtifactEntries =
+      executionContext.storageProvisioningManifest.entries.filter((entry) => {
+        return (
+          entry.intent === "user-artifact" &&
+          entry.destination.type === "workspace" &&
+          entry.destination.subPath === "shared"
+        );
+      });
+
+    expect(sharedArtifactEntries).toHaveLength(1);
+    expect(sharedArtifactEntries[0]?.source.name).toBe("body-artifact");
+  });
+
+  it("keeps artifact override order when name and mount path both change", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({
+      fixture: fx,
+      artifacts: [
+        {
+          name: "renamed-artifact",
+          mount_path: `${CANONICAL_WORKING_DIR}/old`,
+        },
+        {
+          name: "target-artifact",
+          mount_path: `${CANONICAL_WORKING_DIR}/target`,
+        },
+      ],
+    });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use renamed artifact",
+          artifacts: [
+            {
+              name: "renamed-artifact",
+              mountPath: `${CANONICAL_WORKING_DIR}/target`,
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageProvisioningManifest: {
+        readonly entries: readonly {
+          readonly intent: string;
+          readonly source: {
+            readonly name: string;
+          };
+          readonly destination: {
+            readonly type: string;
+            readonly subPath?: string;
+          };
+        }[];
+      };
+    };
+    const targetArtifactEntries =
+      executionContext.storageProvisioningManifest.entries.filter((entry) => {
+        return (
+          entry.intent === "user-artifact" &&
+          entry.destination.type === "workspace" &&
+          entry.destination.subPath === "target"
+        );
+      });
+
+    expect(targetArtifactEntries).toHaveLength(1);
+    expect(targetArtifactEntries[0]?.source.name).toBe("renamed-artifact");
+  });
+
+  it("deduplicates compose volumes by mount path", async () => {
+    const fx = await fixture();
+    await seedStorage({
+      fixture: fx,
+      type: "volume",
+      name: "first-volume",
+    });
+    const secondVersion = await seedStorage({
+      fixture: fx,
+      type: "volume",
+      name: "second-volume",
+    });
+    const compose = await createCompose({
+      fixture: fx,
+      overrides: { volumes: ["first:/mnt/shared", "second:/mnt/shared"] },
+      volumes: {
+        first: { name: "first-volume", version: "latest" },
+        second: { name: "second-volume", version: "latest" },
+      },
+    });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use duplicate volumes",
+        },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly storages: readonly {
+          readonly name: string;
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+          readonly vasVersionId: string;
+        }[];
+      };
+    };
+    const sharedStorages = executionContext.storageManifest.storages.filter(
+      (storage) => {
+        return storage.mountPath === "/mnt/shared";
+      },
+    );
+
+    expect(sharedStorages).toMatchObject([
+      {
+        name: "second",
+        mountPath: "/mnt/shared",
+        vasStorageName: "second-volume",
+        vasVersionId: secondVersion,
+      },
+    ]);
+  });
+
+  it("rejects storage and artifact mount path conflicts", async () => {
+    const fx = await fixture();
+    await seedStorage({
+      fixture: fx,
+      type: "volume",
+      name: "shared-volume",
+    });
+    const compose = await createCompose({
+      fixture: fx,
+      overrides: { volumes: ["shared:/mnt/shared"] },
+      volumes: {
+        shared: { name: "shared-volume", version: "latest" },
+      },
+    });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use conflicting storage",
+          artifacts: [{ name: "shared-artifact", mountPath: "/mnt/shared" }],
+        },
+      }),
+      [201],
+    );
+
+    expect(response.body).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining(
+        "Storage and artifact entries cannot share mountPath: /mnt/shared",
+      ),
+    });
+
+    const db = store.set(writeDb$);
+    const [job] = await db
+      .select({ runId: runnerJobQueue.runId })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeUndefined();
+  });
+
   it("returns 404 for cross-org compose access", async () => {
     const owner = await fixture();
     const compose = await createCompose({ fixture: owner });

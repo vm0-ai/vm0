@@ -239,9 +239,15 @@ function dedupArtifacts(
 ): readonly ContextArtifact[] {
   const byName = new Map<string, ContextArtifact>();
   for (const artifact of artifacts) {
+    byName.delete(artifact.name);
     byName.set(artifact.name, artifact);
   }
-  return [...byName.values()];
+  const byMountPath = new Map<string, ContextArtifact>();
+  for (const artifact of byName.values()) {
+    byMountPath.delete(artifact.mountPath);
+    byMountPath.set(artifact.mountPath, artifact);
+  }
+  return [...byMountPath.values()];
 }
 
 function createEmptyStorageManifest(): string {
@@ -870,6 +876,7 @@ function mergeStorageEntries(args: {
   readonly composeEntries: readonly PreparedStorageManifestEntry[];
   readonly additionalEntries: readonly PreparedStorageManifestEntry[];
 }): readonly PreparedStorageManifestEntry[] {
+  const composeEntries = dedupStorageEntriesByMountPath(args.composeEntries);
   const additionalEntries = dedupStorageEntriesByMountPath(
     args.additionalEntries,
   );
@@ -879,7 +886,7 @@ function mergeStorageEntries(args: {
     }),
   );
   return [
-    ...args.composeEntries.filter((entry) => {
+    ...composeEntries.filter((entry) => {
       return !additionalMountPaths.has(entry.legacy.mountPath);
     }),
     ...additionalEntries,
@@ -895,6 +902,25 @@ function dedupStorageEntriesByMountPath(
     byMountPath.set(entry.legacy.mountPath, entry);
   }
   return [...byMountPath.values()];
+}
+
+function assertDistinctStorageAndArtifactMountPaths(args: {
+  readonly storageEntries: readonly PreparedStorageManifestEntry[];
+  readonly artifactEntries: readonly PreparedArtifactManifestEntry[];
+}): void {
+  const storageMountPaths = new Set(
+    args.storageEntries.map((entry) => {
+      return entry.legacy.mountPath;
+    }),
+  );
+  const duplicate = args.artifactEntries.find((entry) => {
+    return storageMountPaths.has(entry.legacy.mountPath);
+  });
+  if (duplicate) {
+    throw new Error(
+      `Storage and artifact entries cannot share mountPath: ${duplicate.legacy.mountPath}`,
+    );
+  }
 }
 
 export function prepareAgentRunStorageManifests(args: {
@@ -997,6 +1023,10 @@ export function prepareAgentRunStorageManifests(args: {
           return entry !== null;
         },
       ),
+    });
+    assertDistinctStorageAndArtifactMountPaths({
+      storageEntries,
+      artifactEntries,
     });
 
     return {
