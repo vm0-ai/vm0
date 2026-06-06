@@ -110,6 +110,7 @@ const CONNECTOR_ICON_COLORFUL = {
   dify: true,
   discord: true,
   "discord-webhook": true,
+  doppler: true,
   docusign: true,
   dropbox: true,
   "dropbox-sign": true,
