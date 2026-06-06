@@ -21,7 +21,6 @@ function buildCommands(): Command[] {
     new Command("credit"),
     new Command("logs"),
     new Command("preference"),
-    new Command("run"),
     new Command("schedule"),
     new Command("secret"),
     new Command("github"),
@@ -125,11 +124,11 @@ describe("registerZeroCommands", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should only hide legacy commands when ZERO_TOKEN is absent", () => {
+  it("should not hide any commands when ZERO_TOKEN is absent", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual(["run"]);
+    expect(hiddenCommandNames(prog)).toEqual([]);
   });
 
   it("should hide unmapped commands and show capable ones with valid token", () => {
@@ -156,7 +155,6 @@ describe("registerZeroCommands", () => {
       "credit",
       "logs",
       "preference",
-      "run",
       "secret",
       "github",
       "slack",
@@ -169,15 +167,15 @@ describe("registerZeroCommands", () => {
     ]);
   });
 
-  it("should only hide legacy commands with malformed token", () => {
+  it("should not hide any commands with malformed token (graceful fallback)", () => {
     vi.stubEnv("ZERO_TOKEN", "not-a-valid-token");
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["run"]);
+    expect(hiddenCommandNames(prog)).toEqual([]);
   });
 
-  it("should only hide legacy commands when scope is not zero", () => {
+  it("should not hide any commands when scope is not zero", () => {
     const token = buildZeroToken({
       scope: "sandbox",
       capabilities: ["agent:read"],
@@ -186,7 +184,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["run"]);
+    expect(hiddenCommandNames(prog)).toEqual([]);
   });
 
   it("should only show whoami when capabilities array is empty", () => {
@@ -587,25 +585,6 @@ describe("registerZeroCommands", () => {
 
     expect(hiddenCommandNames(prog)).toContain("telegram");
     expect(hiddenCommandNames(prog)).toContain("phone");
-  });
-
-  it("should register but hide run when agent-run:write capability is present", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["agent-run:write"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(
-      prog.commands.map((cmd) => {
-        return cmd.name();
-      }),
-    ).toContain("run");
-    expect(visibleCommandNames(prog)).not.toContain("run");
-    expect(hiddenCommandNames(prog)).toContain("run");
-    expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
   it("should show logs when agent-run:read capability is present", () => {

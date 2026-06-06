@@ -9,7 +9,6 @@ import { zeroConnectorCommand } from "./commands/zero/connector";
 import { zeroCreditCommand } from "./commands/zero/credit";
 import { zeroDoctorCommand } from "./commands/zero/doctor";
 import { zeroPreferenceCommand } from "./commands/zero/preference";
-import { zeroRunCommand } from "./commands/zero/run";
 import { zeroScheduleCommand } from "./commands/zero/schedule";
 import { zeroSecretCommand } from "./commands/zero/secret";
 import { zeroGithubCommand } from "./commands/zero/github";
@@ -49,7 +48,6 @@ const COMMAND_CAPABILITY_MAP: Record<
   agent: "agent:read",
   skill: "agent:read",
   connector: "connector:read",
-  run: "agent-run:write",
   schedule: "schedule:read",
   doctor: null,
   credit: "billing:write",
@@ -71,8 +69,6 @@ const COMMAND_CAPABILITY_MAP: Record<
   banking: "banking:read",
 };
 
-const HELP_HIDDEN_COMMAND_NAMES = new Set(["run"]);
-
 const DEFAULT_COMMANDS: Command[] = [
   zeroOrgCommand,
   zeroModelCommand,
@@ -82,7 +78,6 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroCreditCommand,
   zeroDoctorCommand,
   zeroPreferenceCommand,
-  zeroRunCommand,
   zeroScheduleCommand,
   zeroSecretCommand,
   zeroGithubCommand,
@@ -182,9 +177,7 @@ export function registerZeroCommands(
   const payload = token ? decodeZeroTokenPayload(token) : undefined;
 
   for (const cmd of commands ?? DEFAULT_COMMANDS) {
-    const hidden =
-      HELP_HIDDEN_COMMAND_NAMES.has(cmd.name()) ||
-      shouldHideCommand(cmd.name(), payload);
+    const hidden = shouldHideCommand(cmd.name(), payload);
     prog.addCommand(cmd, hidden ? { hidden: true } : {});
   }
 }
