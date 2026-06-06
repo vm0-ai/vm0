@@ -1,7 +1,7 @@
 """Tests for mitm addon configuration hooks."""
 
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +12,7 @@ import mitm_addon
 import usage
 import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
+from tests.usage_helpers import install_recording_usage_timer
 
 
 @dataclass(frozen=True)
@@ -58,21 +59,6 @@ class _Options:
     ) -> None:
         self.vm0_usage_state_id = usage_state_id
         self.vm0_usage_flush_interval_seconds = flush_interval_seconds
-
-
-class _FakeTimer:
-    def __init__(self, delay: float, callback: Callable[[], None]) -> None:
-        self.delay = delay
-        self.callback = callback
-        self.daemon = False
-        self.cancelled = False
-        self.started = False
-
-    def start(self) -> None:
-        self.started = True
-
-    def cancel(self) -> None:
-        self.cancelled = True
 
 
 def _addon_file_path(tmp_path: Path) -> str:
@@ -155,16 +141,9 @@ class TestAddonConfiguration:
         assert not pending_path.exists()
 
     def test_configure_updates_usage_flush_interval(self, tmp_path):
-        timers: list[_FakeTimer] = []
+        timers = install_recording_usage_timer()
         flush_interval_seconds = 15.0
         jitter_seconds = flush_interval_seconds * usage_buffer.DEFAULT_FLUSH_JITTER_RATIO
-
-        def timer_factory(delay: float, callback: Callable[[], None]) -> _FakeTimer:
-            timer = _FakeTimer(delay, callback)
-            timers.append(timer)
-            return timer
-
-        usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
 
         with patch.object(
             mitm_addon.ctx,

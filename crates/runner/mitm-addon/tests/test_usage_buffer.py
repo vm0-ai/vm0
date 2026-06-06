@@ -9,6 +9,7 @@ import pytest
 
 import usage
 import usage.buffer as usage_buffer
+from tests.usage_helpers import install_recording_usage_timer
 
 
 def _event(
@@ -38,21 +39,6 @@ def _flush_log_entries(proxy_log_path):
         for line in proxy_log_path.read_text().splitlines()
         if '"usage_event_buffer_flush"' in line
     ]
-
-
-class _FakeTimer:
-    def __init__(self, delay: float, callback):
-        self.delay = delay
-        self.callback = callback
-        self.daemon = False
-        self.cancelled = False
-        self.started = False
-
-    def start(self) -> None:
-        self.started = True
-
-    def cancel(self) -> None:
-        self.cancelled = True
 
 
 class _InstrumentedFlushOwnerLock:
@@ -647,14 +633,7 @@ def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
 
 
 def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_path):
-    timers = []
-
-    def timer_factory(delay: float, callback):
-        timer = _FakeTimer(delay, callback)
-        timers.append(timer)
-        return timer
-
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    timers = install_recording_usage_timer()
     flush_owner_lock = _InstrumentedFlushOwnerLock()
     usage_buffer._usage_event_buffer._flush_owner_lock = flush_owner_lock
 
@@ -723,14 +702,7 @@ def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_p
 
 
 def test_shutdown_flush_retries_active_timer_failure_without_rescheduling_timer(tmp_path):
-    timers = []
-
-    def timer_factory(delay: float, callback):
-        timer = _FakeTimer(delay, callback)
-        timers.append(timer)
-        return timer
-
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    timers = install_recording_usage_timer()
     flush_owner_lock = _InstrumentedFlushOwnerLock()
     usage_buffer._usage_event_buffer._flush_owner_lock = flush_owner_lock
 
@@ -798,14 +770,7 @@ def test_shutdown_flush_retries_active_timer_failure_without_rescheduling_timer(
 
 
 def test_shutdown_flush_drains_usage_deferred_by_threshold_flush_while_waiting(tmp_path):
-    timers = []
-
-    def timer_factory(delay: float, callback):
-        timer = _FakeTimer(delay, callback)
-        timers.append(timer)
-        return timer
-
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    timers = install_recording_usage_timer()
     flush_owner_lock = _InstrumentedFlushOwnerLock()
     usage_buffer._usage_event_buffer._flush_owner_lock = flush_owner_lock
 
@@ -874,14 +839,7 @@ def test_shutdown_flush_drains_usage_deferred_by_threshold_flush_while_waiting(t
 
 
 def test_shutdown_flush_drains_live_usage_buffered_during_own_enqueue(tmp_path):
-    timers = []
-
-    def timer_factory(delay: float, callback):
-        timer = _FakeTimer(delay, callback)
-        timers.append(timer)
-        return timer
-
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    timers = install_recording_usage_timer()
 
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_usage_events(
@@ -919,14 +877,7 @@ def test_shutdown_flush_drains_live_usage_buffered_during_own_enqueue(tmp_path):
 
 
 def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_path):
-    timers = []
-
-    def timer_factory(delay: float, callback):
-        timer = _FakeTimer(delay, callback)
-        timers.append(timer)
-        return timer
-
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    timers = install_recording_usage_timer()
 
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -999,14 +950,7 @@ def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
 
 
 def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
-    timers = []
-
-    def timer_factory(delay: float, callback):
-        timer = _FakeTimer(delay, callback)
-        timers.append(timer)
-        return timer
-
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    timers = install_recording_usage_timer()
 
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
         usage.buffer_usage_events(
@@ -1030,14 +974,7 @@ def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
 
 
 def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
-    timers = []
-
-    def timer_factory(delay: float, callback):
-        timer = _FakeTimer(delay, callback)
-        timers.append(timer)
-        return timer
-
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    timers = install_recording_usage_timer()
 
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -1064,14 +1001,7 @@ def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
 
 
 def test_threshold_flush_cancels_scheduled_timer_and_allows_reschedule(tmp_path):
-    timers = []
-
-    def timer_factory(delay: float, callback):
-        timer = _FakeTimer(delay, callback)
-        timers.append(timer)
-        return timer
-
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    timers = install_recording_usage_timer()
 
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
         for index in range(usage_buffer.MAX_BUFFERED_WEBHOOK_BATCHES - 1):
