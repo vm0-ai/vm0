@@ -1193,8 +1193,7 @@ function buildScheduleAppendSystemPrompt(
   const integrationContext = [
     buildSchedulePrompt(schedule.triggerType),
     "",
-    "This scheduled run is linked to a web chat thread. Everything you output is automatically shown to the user as a chat message in that thread, so you do not normally need to send a message explicitly.",
-    'If you must send an extra message to the user\'s web chat, target this thread: `zero chat message send -t $ZERO_CHAT_THREAD_ID --text "<message>"`.',
+    "This scheduled run is linked to a web chat thread. Everything you output is automatically shown to the user as a chat message in that thread.",
   ].join("\n");
   const baseAppendPrompt = schedule.appendSystemPrompt ?? undefined;
   return baseAppendPrompt

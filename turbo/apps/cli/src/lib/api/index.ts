@@ -164,9 +164,6 @@ export {
   completePhoneFileUpload,
 } from "./domains/integrations-phone";
 
-// Domain modules - Integrations Chat
-export { sendChatMessage } from "./domains/integrations-chat";
-
 // Domain modules - Zero Schedules
 export {
   deployZeroSchedule,

@@ -218,7 +218,6 @@ function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `zero agent edit --help`.",
     "- Manage custom skills: `zero skill --help`.",
-    "- Send a direct message to the user via web chat: `zero chat message send --help`.",
     "- Report issues to the dev team: `zero developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
   ].join("\n");
 }
@@ -768,7 +767,8 @@ export const createZeroRun$ = command(
         extraEnvironment: {
           ZERO_AGENT_ID: agent.id,
           // Chat-mode scheduled (and web) runs carry their thread id so the
-          // in-sandbox CLI can target it: zero chat message send -t $ZERO_CHAT_THREAD_ID.
+          // in-sandbox CLI can default a newly created schedule's binding to it:
+          // zero schedule setup ... (reads $ZERO_CHAT_THREAD_ID when --thread is omitted).
           ...(args.chatThreadId
             ? { ZERO_CHAT_THREAD_ID: args.chatThreadId }
             : {}),

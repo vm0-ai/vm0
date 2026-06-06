@@ -67,10 +67,7 @@ import {
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
 } from "../services/zero-model-selection.service";
-import {
-  touchChatThreadLastMessageAt,
-  visibleChatMessageCondition,
-} from "../services/zero-chat-thread.service";
+import { visibleChatMessageCondition } from "../services/zero-chat-thread.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import { bestEffort } from "../utils";
 import type { RouteEntry } from "../route";
@@ -1443,7 +1440,6 @@ function appendUnassociatedUserMessage(params: {
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
-      await touchChatThreadLastMessageAt(tx, params.threadId);
       return { kind: "queued", createdAt: inserted.createdAt, inserted: true };
     }
     if (!explicitId) {
@@ -1538,7 +1534,6 @@ async function appendAssociatedUserMessage(params: {
         createdAfter: inserted?.createdAt ?? nowDate(),
       });
     }
-    await touchChatThreadLastMessageAt(tx, params.threadId);
   });
 }
 
@@ -1607,7 +1602,6 @@ function appendRecallUserMessage(params: {
       .onConflictDoNothing()
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
-      await touchChatThreadLastMessageAt(tx, params.threadId);
       return { ok: true, createdAt: inserted.createdAt };
     }
     const [resolved] = await tx
@@ -1739,7 +1733,6 @@ function appendInterruptUserMessage(params: {
       .onConflictDoNothing()
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
-      await touchChatThreadLastMessageAt(tx, params.threadId);
       return { ok: true, createdAt: inserted.createdAt };
     }
     const [resolved] = await tx

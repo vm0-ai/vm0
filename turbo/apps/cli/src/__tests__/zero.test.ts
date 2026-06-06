@@ -17,7 +17,6 @@ describe("zero CLI program", () => {
       "model",
       "model-provider",
       "agent",
-      "chat",
       "connector",
       "credit",
       "doctor",

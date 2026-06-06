@@ -618,59 +618,6 @@ export type SlackUploadCompleteResponse = z.infer<
   typeof slackUploadCompleteResponseSchema
 >;
 
-/**
- * Integration Chat message contract
- * POST /api/zero/integrations/chat/message
- *
- * Sends a message to a web chat thread.
- * Requires `chat-message:write` capability (via ZERO_TOKEN).
- */
-const sendChatMessageBodySchema = z
-  .object({
-    thread: z.string().uuid("Invalid thread ID").optional(),
-    agent: z.string().uuid("Invalid agent ID").optional(),
-    text: z.string().min(1, "Message text is required"),
-    title: z.string().min(1, "Title must not be empty").optional(),
-  })
-  .refine(
-    (data) => {
-      return Boolean(data.thread) !== Boolean(data.agent);
-    },
-    { message: "Exactly one of 'thread' or 'agent' must be provided" },
-  );
-
-export type SendChatMessageBody = z.infer<typeof sendChatMessageBodySchema>;
-
-const sendChatMessageResponseSchema = z.object({
-  messageId: z.string(),
-  threadId: z.string(),
-  createdAt: z.string(),
-});
-
-export type SendChatMessageResponse = z.infer<
-  typeof sendChatMessageResponseSchema
->;
-
-export const integrationsChatMessageContract = c.router({
-  sendMessage: {
-    method: "POST",
-    path: "/api/zero/integrations/chat/message",
-    headers: authHeadersSchema,
-    body: sendChatMessageBodySchema,
-    responses: {
-      201: sendChatMessageResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Send a message to a web chat thread",
-  },
-});
-
-export type IntegrationsChatMessageContract =
-  typeof integrationsChatMessageContract;
-
 export const integrationsSlackUploadCompleteContract = c.router({
   complete: {
     method: "POST",

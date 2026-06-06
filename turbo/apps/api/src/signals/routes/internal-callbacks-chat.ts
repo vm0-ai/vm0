@@ -397,23 +397,33 @@ async function insertAssistantErrorMessage(args: {
   readonly userId: string;
   readonly lifecycleEvent: "failed" | "cancelled";
   readonly getFormattedError: () => Promise<string>;
-}): Promise<void> {
+}): Promise<boolean> {
   const displayErrorMessage = await args.getFormattedError();
-  await args.db
-    .insert(chatMessages)
-    .values({
-      chatThreadId: args.threadId,
-      role: "assistant",
-      content: displayErrorMessage,
-      runId: args.runId,
-      error: displayErrorMessage,
-      runLifecycleEvent: args.lifecycleEvent,
-    })
-    .onConflictDoNothing({
-      target: chatMessages.runId,
-      where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
-    });
-  await touchChatThreadLastMessageAt(args.db, args.threadId);
+  const inserted = await args.db.transaction(async (tx) => {
+    const message = await tx
+      .insert(chatMessages)
+      .values({
+        chatThreadId: args.threadId,
+        role: "assistant",
+        content: displayErrorMessage,
+        runId: args.runId,
+        error: displayErrorMessage,
+        runLifecycleEvent: args.lifecycleEvent,
+      })
+      .onConflictDoNothing({
+        target: chatMessages.runId,
+        where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
+      })
+      .returning({ id: chatMessages.id });
+    if (message.length === 0) {
+      return false;
+    }
+    await touchChatThreadLastMessageAt(tx, args.threadId);
+    return true;
+  });
+  if (!inserted) {
+    return false;
+  }
 
   await publishUserSignal(
     [args.userId],
@@ -429,6 +439,7 @@ async function insertAssistantErrorMessage(args: {
       url: `/chats/${args.threadId}`,
     },
   });
+  return true;
 }
 
 async function insertRunLifecycleMarker(args: {
@@ -1178,8 +1189,6 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     });
     return;
   }
-
-  await touchChatThreadLastMessageAt(args.db, threadId);
 
   await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
   await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);
