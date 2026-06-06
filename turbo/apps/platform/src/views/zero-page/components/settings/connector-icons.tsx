@@ -188,6 +188,7 @@ const CONNECTOR_ICON_COLORFUL = {
   reap: true,
   recraft: true,
   reddit: true,
+  reducto: true,
   rentcast: true,
   reportei: true,
   salesforce: true,
