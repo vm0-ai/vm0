@@ -50,10 +50,12 @@ interface OAuthDeviceAuthStartFlowArgs {
 
 interface OAuthDeviceAuthPollFlowArgs {
   readonly deviceCode: string;
+  readonly pollState?: string;
 }
 
 export interface OAuthDeviceAuthStartResult {
   readonly deviceCode: string;
+  readonly pollState?: string;
   readonly userCode: string;
   readonly verificationUri: string;
   readonly verificationUriComplete?: string;

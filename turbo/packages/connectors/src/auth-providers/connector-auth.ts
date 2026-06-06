@@ -480,6 +480,7 @@ type ConnectorDeviceAuthorizationStartCallArgs =
 type ConnectorDeviceAuthorizationPollCallArgs =
   ConnectorDeviceAuthResolvedMethodClient & {
     readonly deviceCode: string;
+    readonly pollState?: string;
   };
 
 type ConnectorRefreshTokenAccessCallArgs<
@@ -655,6 +656,7 @@ export function pollConnectorDeviceAuthorization<
   readonly authMethod: Method;
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
   readonly deviceCode: string;
+  readonly pollState?: string;
 }): Promise<OAuthDeviceAuthPollResult<T, Method>>;
 export function pollConnectorDeviceAuthorization(
   args: ConnectorDeviceAuthorizationPollCallArgs,
@@ -667,6 +669,7 @@ export async function pollConnectorDeviceAuthorization<
   readonly authMethod: Method;
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
   readonly deviceCode: string;
+  readonly pollState?: string;
 }): Promise<OAuthDeviceAuthPollResult<T, Method>> {
   const provider = connectorDeviceAuthGrantProviderFor(
     args.type,
@@ -675,6 +678,7 @@ export async function pollConnectorDeviceAuthorization<
   return await provider.pollDeviceAuth({
     authClient: args.authClient,
     deviceCode: args.deviceCode,
+    ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
   });
 }
 

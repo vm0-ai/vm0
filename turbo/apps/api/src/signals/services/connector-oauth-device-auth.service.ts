@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 
 import type {
@@ -78,12 +79,29 @@ type PollSuccess = {
   readonly body: ConnectorOauthDeviceAuthSessionPollResponse;
 };
 
+const DEVICE_AUTH_POLL_STATE_MAX_BYTES = 4096;
+
 const encryptedProviderStateSchema = z.object({
   connectorType: z.string(),
   deviceCode: z.string(),
+  pollState: z.string().optional(),
 });
 
 type EncryptedProviderState = z.infer<typeof encryptedProviderStateSchema>;
+
+function validatedDeviceAuthPollState(
+  pollState: string | undefined,
+): string | undefined {
+  if (pollState === undefined) {
+    return undefined;
+  }
+  if (Buffer.byteLength(pollState, "utf8") > DEVICE_AUTH_POLL_STATE_MAX_BYTES) {
+    throw new Error(
+      `Connector OAuth device authorization provider poll state exceeds ${DEVICE_AUTH_POLL_STATE_MAX_BYTES} bytes`,
+    );
+  }
+  return pollState;
+}
 
 type DeviceAuthMethodRef = ConnectorAuthMethodRefByGrantKind<"device-auth">;
 type DeviceAuthResolvedMethodClient =
@@ -645,6 +663,9 @@ async function runClaimedSession(
   const pollResult = await pollConnectorDeviceAuthorization({
     ...args,
     deviceCode: providerState.deviceCode,
+    ...(providerState.pollState === undefined
+      ? {}
+      : { pollState: providerState.pollState }),
   });
   args.signal.throwIfAborted();
 
@@ -770,10 +791,12 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       startResult.interval ?? DEFAULT_POLL_INTERVAL_SECONDS;
     const now = nowDate();
     const expiresAt = new Date(now.getTime() + startResult.expiresIn * 1000);
+    const pollState = validatedDeviceAuthPollState(startResult.pollState);
     const encryptedProviderState = await encryptPersistentSecretValue(
       JSON.stringify({
         connectorType: resolvedMethod.type,
         deviceCode: startResult.deviceCode,
+        ...(pollState === undefined ? {} : { pollState }),
       }),
       {
         orgId: args.orgId,

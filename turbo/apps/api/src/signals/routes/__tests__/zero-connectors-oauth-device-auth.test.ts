@@ -122,11 +122,13 @@ async function cleanupUser(userId: string, orgId: string) {
 async function encryptedProviderState(args: {
   readonly connectorType?: "test-oauth-device" | "slock";
   readonly deviceCode: string;
+  readonly pollState?: string;
 }): Promise<string> {
   return await encryptPersistentSecretValue(
     JSON.stringify({
       connectorType: args.connectorType ?? "test-oauth-device",
       deviceCode: args.deviceCode,
+      ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
     }),
     {},
   );
@@ -335,6 +337,7 @@ async function createSession(args: {
   readonly deviceCode: string;
   readonly status?: "awaiting_user_authorization" | "polling";
   readonly intervalSeconds?: number;
+  readonly pollState?: string;
   readonly updatedAt?: Date;
   readonly expiresAt?: Date;
 }): Promise<{ readonly id: string; readonly sessionToken: string }> {
@@ -354,6 +357,7 @@ async function createSession(args: {
       encryptedProviderState: await encryptedProviderState({
         connectorType: args.connectorType ?? "test-oauth-device",
         deviceCode: args.deviceCode,
+        ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
       }),
       userCode: "TEST-DEVICE",
       verificationUri: "https://oauth-device.test/device",
@@ -499,6 +503,73 @@ describe("OAuth device authorization connector routes", () => {
     );
     expect(decryptedProviderState).not.toContain("scopes");
     expect(kms.calls).toHaveLength(2);
+  });
+
+  it("stores provider poll state encrypted without exposing it in the start response", async () => {
+    const { userId, orgId } = await setupUser();
+    const pollState = "secret-provider-poll-state";
+    testOauthDeviceProvider.grant.startDeviceAuth = async (args) => {
+      return { ...(await originalStartDeviceAuth(args)), pollState };
+    };
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "oauth" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(JSON.stringify(response.body)).not.toContain(pollState);
+    const session = await onlySession(response.body.sessionId);
+    expect(session.encryptedProviderState).not.toContain(pollState);
+    const decryptedProviderState = await decryptPersistentSecretValue(
+      session.encryptedProviderState,
+      { orgId, userId },
+    );
+    const parsedProviderState = z
+      .object({ pollState: z.string() })
+      .parse(JSON.parse(decryptedProviderState) as unknown);
+    expect(parsedProviderState.pollState).toBe(pollState);
+  });
+
+  it("rejects oversized provider poll state before creating a session", async () => {
+    const { userId, orgId } = await setupUser();
+    testOauthDeviceProvider.grant.startDeviceAuth = async (args) => {
+      return {
+        ...(await originalStartDeviceAuth(args)),
+        pollState: "x".repeat(4097),
+      };
+    };
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "oauth" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    const sessions = await store
+      .set(writeDb$)
+      .select({ id: connectorOauthDeviceAuthorizationSessions.id })
+      .from(connectorOauthDeviceAuthorizationSessions)
+      .where(
+        and(
+          eq(connectorOauthDeviceAuthorizationSessions.orgId, orgId),
+          eq(connectorOauthDeviceAuthorizationSessions.userId, userId),
+        ),
+      );
+    expect(sessions).toStrictEqual([]);
   });
 
   it("marks the previous active session as superseded when a new session starts", async () => {
@@ -956,6 +1027,109 @@ describe("OAuth device authorization connector routes", () => {
     expect(response.body.error.message).toBe(
       "OAuth device authorization is not enabled for this connector",
     );
+  });
+
+  it("passes encrypted provider poll state back to the provider during poll", async () => {
+    const { userId, orgId } = await setupUser();
+    const pollState = "secret-provider-poll-state";
+    const session = await createSession({
+      userId,
+      orgId,
+      deviceCode: "pending",
+      pollState,
+    });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let observedPollState: string | undefined;
+    testOauthDeviceProvider.grant.pollDeviceAuth = (args) => {
+      observedPollState = args.pollState;
+      return Promise.resolve({ status: "pending" });
+    };
+
+    const response = await accept(
+      client.poll({
+        params: { type: "test-oauth-device", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ status: "pending", interval: 5 });
+    expect(JSON.stringify(response.body)).not.toContain(pollState);
+    expect(observedPollState).toBe(pollState);
+  });
+
+  it("polls existing provider state that omits poll state", async () => {
+    const { userId, orgId } = await setupUser();
+    const session = await createSession({
+      userId,
+      orgId,
+      deviceCode: "pending",
+    });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let pollCalled = false;
+    let observedPollState: string | undefined;
+    testOauthDeviceProvider.grant.pollDeviceAuth = (args) => {
+      pollCalled = true;
+      observedPollState = args.pollState;
+      return Promise.resolve({ status: "pending" });
+    };
+
+    const response = await accept(
+      client.poll({
+        params: { type: "test-oauth-device", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ status: "pending", interval: 5 });
+    expect(pollCalled).toBeTruthy();
+    expect(observedPollState).toBeUndefined();
+  });
+
+  it("fails safely for malformed encrypted provider state", async () => {
+    const { userId, orgId } = await setupUser();
+    const session = await createSession({
+      userId,
+      orgId,
+      deviceCode: "pending",
+    });
+    await store
+      .set(writeDb$)
+      .update(connectorOauthDeviceAuthorizationSessions)
+      .set({
+        encryptedProviderState: await encryptPersistentSecretValue(
+          JSON.stringify({ connectorType: "test-oauth-device" }),
+          {},
+        ),
+      })
+      .where(eq(connectorOauthDeviceAuthorizationSessions.id, session.id));
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let pollCalled = false;
+    testOauthDeviceProvider.grant.pollDeviceAuth = () => {
+      pollCalled = true;
+      return Promise.resolve({ status: "pending" });
+    };
+
+    const response = await accept(
+      client.poll({
+        params: { type: "test-oauth-device", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(pollCalled).toBeFalsy();
   });
 
   it("polls pending and restores the session to awaiting authorization", async () => {
