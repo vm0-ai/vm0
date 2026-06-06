@@ -27,6 +27,19 @@ const RESERVED_PRIVATE_DIR_PATHS: &[&str] = &[
     "/var/lib/vm0-runner",
     "/var/lib/vm0-runner/runners",
 ];
+const RESERVED_PRIVATE_DIR_SUBTREES: &[&str] = &[
+    "/var/lib/vm0-runner/bin",
+    "/var/lib/vm0-runner/ca",
+    "/var/lib/vm0-runner/debootstrap",
+    "/var/lib/vm0-runner/firecracker",
+    "/var/lib/vm0-runner/groups",
+    "/var/lib/vm0-runner/images",
+    "/var/lib/vm0-runner/locks",
+    "/var/lib/vm0-runner/logs",
+    "/var/lib/vm0-runner/mitmproxy",
+    "/var/lib/vm0-runner/storages",
+    "/var/lib/vm0-runner/workspace-image-cache",
+];
 
 /// Ensure `path` is private runtime state for the current runner process.
 ///
@@ -242,6 +255,9 @@ fn reject_reserved_normalized_private_dir_path(
     if RESERVED_PRIVATE_DIR_PATHS
         .iter()
         .any(|reserved| normalized == Path::new(reserved))
+        || RESERVED_PRIVATE_DIR_SUBTREES
+            .iter()
+            .any(|reserved| normalized.starts_with(Path::new(reserved)))
     {
         return Err(RunnerError::Config(format!(
             "{} is a reserved system path; refusing to use it as private runner state",
@@ -424,6 +440,25 @@ mod tests {
         for path in ["..", "../../.."] {
             let error = reject_reserved_private_dir_path_with_cwd(Path::new(path), cwd)
                 .expect_err("reserved path should be rejected");
+
+            assert!(
+                error.to_string().contains("reserved system path"),
+                "unexpected error for {path}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn reserved_private_dir_path_rejects_shared_home_subtrees() {
+        for path in [
+            "/var/lib/vm0-runner/images",
+            "/var/lib/vm0-runner/images/rootfs-hash",
+            "/var/lib/vm0-runner/locks/base-dir.lock",
+            "/var/lib/vm0-runner/ca",
+            "/var/lib/vm0-runner/storages/cache-entry",
+        ] {
+            let error = reject_reserved_private_dir_path(Path::new(path))
+                .expect_err("shared home subtree should be rejected");
 
             assert!(
                 error.to_string().contains("reserved system path"),
