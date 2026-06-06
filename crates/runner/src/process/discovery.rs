@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use super::procfs::{read_cmdline, read_cwd, read_ppid, read_process_stat, scan_proc_cmdlines};
 use super::types::{
     DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessIdentity, FirecrackerProcessInfo,
-    MitmproxyProcessInfo, ProcessStat, RunnerProcessInfo,
+    MitmproxyProcessInfo, ProcessStat, RunnerProcessInfo, process_stat_is_live,
 };
 
 /// Parse a runner argv for `start`/`benchmark` subcommand and `--config` path.
@@ -85,10 +85,6 @@ async fn read_stable_firecracker_stat(pid: u32) -> Option<ProcessStat> {
 
 fn process_stat_identity_matches(left: &ProcessStat, right: &ProcessStat) -> bool {
     left.pgid == right.pgid && left.starttime == right.starttime
-}
-
-fn process_stat_is_live(stat: &ProcessStat) -> bool {
-    stat.state != 'Z'
 }
 
 fn stable_live_firecracker_stat(
@@ -510,6 +506,25 @@ mod tests {
     }
 
     #[test]
+    fn stable_live_firecracker_stat_rejects_dead_firecracker() {
+        let before = ProcessStat {
+            state: 'X',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let after = ProcessStat {
+            state: 'x',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert_eq!(
+            stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after),
+            None
+        );
+    }
+
+    #[test]
     fn stable_live_firecracker_stat_rejects_exit_during_read() {
         let before = ProcessStat {
             state: 'S',
@@ -561,6 +576,21 @@ mod tests {
     fn unidentified_firecracker_candidate_rejects_zombie_processes() {
         let stat = ProcessStat {
             state: 'Z',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert!(!should_keep_unidentified_firecracker_candidate(&stat, None));
+        assert!(!should_keep_unidentified_firecracker_candidate(
+            &stat,
+            Some(&argv(&["firecracker"]))
+        ));
+    }
+
+    #[test]
+    fn unidentified_firecracker_candidate_rejects_dead_processes() {
+        let stat = ProcessStat {
+            state: 'X',
             pgid: 1100,
             starttime: 123456,
         };

@@ -549,9 +549,10 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
         );
         return OrphanTargetValidation::Changed;
     }
-    if process_stat_is_zombie(&stat) {
+    if !process::process_stat_is_live(&stat) {
         tracing::warn!(
             pid = target.pid,
+            state = %stat.state,
             "orphan target already exited and is waiting to be reaped"
         );
         return OrphanTargetValidation::AlreadyGone;
@@ -602,9 +603,10 @@ async fn validate_orphan_target(target: &KillTarget) -> OrphanTargetValidation {
         );
         return OrphanTargetValidation::Changed;
     }
-    if process_stat_is_zombie(&final_stat) {
+    if !process::process_stat_is_live(&final_stat) {
         tracing::warn!(
             pid = target.pid,
+            state = %final_stat.state,
             "orphan target exited during validation and is waiting to be reaped"
         );
         return OrphanTargetValidation::AlreadyGone;
@@ -621,7 +623,8 @@ async fn classify_orphan_validation_after_unreadable_pid_fact(
 ) -> OrphanTargetValidation {
     match process::read_process_stat(pid).await {
         Some(stat)
-            if process_stat_matches_identity(identity, &stat) && process_stat_is_zombie(&stat) =>
+            if process_stat_matches_identity(identity, &stat)
+                && !process::process_stat_is_live(&stat) =>
         {
             OrphanTargetValidation::AlreadyGone
         }
@@ -642,7 +645,7 @@ fn same_initial_process_still_live(target: &KillTarget, stat: Option<&ProcessSta
     let (Some(identity), Some(stat)) = (&target.identity, stat) else {
         return false;
     };
-    process_stat_matches_identity(identity, stat) && !process_stat_is_zombie(stat)
+    process_stat_matches_identity(identity, stat) && process::process_stat_is_live(stat)
 }
 
 fn process_stat_matches_identity(
@@ -650,10 +653,6 @@ fn process_stat_matches_identity(
     stat: &ProcessStat,
 ) -> bool {
     stat.pgid == identity.pgid && stat.starttime == identity.starttime
-}
-
-fn process_stat_is_zombie(stat: &ProcessStat) -> bool {
-    stat.state == 'Z'
 }
 
 fn orphan_identity_matches_facts(
@@ -1324,7 +1323,21 @@ mod tests {
         };
 
         assert!(process_stat_matches_identity(identity, &zombie));
-        assert!(process_stat_is_zombie(&zombie));
+        assert!(!process::process_stat_is_live(&zombie));
+    }
+
+    #[test]
+    fn dead_process_stat_is_already_exited() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let dead = ProcessStat {
+            state: 'X',
+            pgid: identity.pgid,
+            starttime: identity.starttime,
+        };
+
+        assert!(process_stat_matches_identity(identity, &dead));
+        assert!(!process::process_stat_is_live(&dead));
     }
 
     #[test]
@@ -1341,6 +1354,19 @@ mod tests {
         let identity = target.identity.as_ref().unwrap();
         let stat = ProcessStat {
             state: 'Z',
+            pgid: identity.pgid,
+            starttime: identity.starttime,
+        };
+
+        assert!(!same_initial_process_still_live(&target, Some(&stat)));
+    }
+
+    #[test]
+    fn same_initial_process_still_live_rejects_dead_state() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let stat = ProcessStat {
+            state: 'x',
             pgid: identity.pgid,
             starttime: identity.starttime,
         };

@@ -8,6 +8,15 @@ pub struct ProcessStat {
     pub starttime: u64,
 }
 
+/// Return true when the process stat state still represents a live process.
+///
+/// `/proc/<pid>/stat` can briefly expose terminal states before the proc entry
+/// disappears. Treat those as already exited so callers do not resolve or
+/// signal a stale process identity.
+pub(crate) fn process_stat_is_live(stat: &ProcessStat) -> bool {
+    !matches!(stat.state, 'Z' | 'X' | 'x')
+}
+
 /// Firecracker process identity captured during discovery.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FirecrackerProcessIdentity {
