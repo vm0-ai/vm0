@@ -64,7 +64,6 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 function modelProviderSecretPlaceholder(
   type: ModelProviderType,
@@ -276,23 +275,6 @@ async function fixture(): Promise<UsageInsightFixture> {
   context.mocks.s3.send.mockResolvedValue({});
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   return created;
-}
-
-async function staffFixture(): Promise<UsageInsightFixture> {
-  const created = await fixture();
-  const staff = await track(
-    Promise.resolve({ orgId: STAFF_ORG_ID, userId: created.userId }),
-  );
-  const db = store.set(writeDb$);
-  await db
-    .insert(orgMetadata)
-    .values({ orgId: staff.orgId, tier: "free", credits: 10_000 })
-    .onConflictDoUpdate({
-      target: orgMetadata.orgId,
-      set: { tier: "free", credits: 10_000 },
-    });
-  mocks.clerk.session(staff.userId, staff.orgId);
-  return staff;
 }
 
 async function createCompose(
@@ -508,7 +490,6 @@ describe("POST /api/agent/runs", () => {
       switches: {
         [FeatureSwitchKey.ComputerUse]: true,
         [FeatureSwitchKey.SandboxIoLimiters]: true,
-        [FeatureSwitchKey.SessionWorkspaceImageCache]: true,
       },
     });
     const compose = await createCompose({ fixture: fx });
@@ -535,36 +516,6 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.featureFlags).toMatchObject({
       [FeatureSwitchKey.ComputerUse]: true,
       [FeatureSwitchKey.SandboxIoLimiters]: true,
-      [FeatureSwitchKey.SessionWorkspaceImageCache]: false,
-    });
-  });
-
-  it("passes the workspace image cache flag to staff runner job contexts", async () => {
-    const fx = await staffFixture();
-    const compose = await createCompose({ fixture: fx });
-
-    const response = await accept(
-      runsClient().create({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          agentComposeId: compose.composeId,
-          prompt: "Create a staff run",
-        },
-      }),
-      [201],
-    );
-
-    const [job] = await store
-      .set(writeDb$)
-      .select({ executionContext: runnerJobQueue.executionContext })
-      .from(runnerJobQueue)
-      .where(eq(runnerJobQueue.runId, response.body.runId));
-    const executionContext = job?.executionContext as {
-      readonly featureFlags?: Record<string, boolean>;
-    };
-
-    expect(executionContext.featureFlags).toMatchObject({
-      [FeatureSwitchKey.SessionWorkspaceImageCache]: true,
     });
   });
 
