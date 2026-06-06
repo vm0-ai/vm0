@@ -168,8 +168,8 @@ pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()>
 
 #[cfg(unix)]
 async fn ensure_private_dir_owned_by(path: &Path, expected_uid: u32) -> RunnerResult<()> {
-    use nix::fcntl::{OFlag, open};
-    use nix::sys::stat::{Mode, SFlag, fchmod, fstat};
+    use nix::fcntl::open;
+    use nix::sys::stat::{Mode, SFlag, fstat};
 
     let lstat_path = path_for_final_component_lstat(path);
     let metadata = tokio::fs::symlink_metadata(&lstat_path)
@@ -190,16 +190,12 @@ async fn ensure_private_dir_owned_by(path: &Path, expected_uid: u32) -> RunnerRe
     }
 
     // Keep chmod tied to the opened directory, not a path that could be swapped.
-    let fd = open(
-        &lstat_path,
-        OFlag::O_RDONLY | OFlag::O_DIRECTORY | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC,
-        Mode::empty(),
-    )
-    .map_err(|e| RunnerError::Config(format!("open private dir {}: {e}", path.display())))?;
+    let fd = open(&lstat_path, private_dir_open_flags(), Mode::empty())
+        .map_err(|e| RunnerError::Config(format!("open private dir {}: {e}", path.display())))?;
     let stat = fstat(&fd)
         .map_err(|e| RunnerError::Config(format!("stat private dir fd {}: {e}", path.display())))?;
-    let fd_file_type = SFlag::from_bits_truncate(stat.st_mode);
-    if !fd_file_type.contains(SFlag::S_IFDIR) {
+    let fd_file_type = SFlag::from_bits_truncate(stat.st_mode & SFlag::S_IFMT.bits());
+    if fd_file_type != SFlag::S_IFDIR {
         return Err(RunnerError::Config(format!(
             "{} is not a directory; refusing to use it as private runner state",
             path.display()
@@ -214,9 +210,46 @@ async fn ensure_private_dir_owned_by(path: &Path, expected_uid: u32) -> RunnerRe
         )));
     }
 
-    fchmod(&fd, Mode::from_bits_truncate(PRIVATE_DIR_MODE))
-        .map_err(|e| RunnerError::Config(format!("chmod private dir {}: {e}", path.display())))?;
+    chmod_open_private_dir(&fd, path).await?;
     Ok(())
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+async fn chmod_open_private_dir<Fd: std::os::fd::AsRawFd>(
+    fd: &Fd,
+    path: &Path,
+) -> RunnerResult<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fd_path = PathBuf::from(format!("/proc/self/fd/{}", fd.as_raw_fd()));
+    tokio::fs::set_permissions(&fd_path, std::fs::Permissions::from_mode(PRIVATE_DIR_MODE))
+        .await
+        .map_err(|e| RunnerError::Config(format!("chmod private dir {}: {e}", path.display())))
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+async fn chmod_open_private_dir<Fd: std::os::fd::AsFd>(fd: &Fd, path: &Path) -> RunnerResult<()> {
+    nix::sys::stat::fchmod(
+        fd,
+        nix::sys::stat::Mode::from_bits_truncate(PRIVATE_DIR_MODE),
+    )
+    .map_err(|e| RunnerError::Config(format!("chmod private dir {}: {e}", path.display())))
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn private_dir_open_flags() -> nix::fcntl::OFlag {
+    nix::fcntl::OFlag::O_PATH
+        | nix::fcntl::OFlag::O_DIRECTORY
+        | nix::fcntl::OFlag::O_NOFOLLOW
+        | nix::fcntl::OFlag::O_CLOEXEC
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn private_dir_open_flags() -> nix::fcntl::OFlag {
+    nix::fcntl::OFlag::O_RDONLY
+        | nix::fcntl::OFlag::O_DIRECTORY
+        | nix::fcntl::OFlag::O_NOFOLLOW
+        | nix::fcntl::OFlag::O_CLOEXEC
 }
 
 #[cfg(unix)]
@@ -340,6 +373,19 @@ mod tests {
         let private_dir = dir.path().join("runner");
         std::fs::create_dir(&private_dir).unwrap();
         std::fs::set_permissions(&private_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        ensure_private_dir(&private_dir).await.unwrap();
+
+        assert_eq!(mode(&private_dir), PRIVATE_DIR_MODE);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn ensure_private_dir_repairs_unreadable_existing_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let private_dir = dir.path().join("runner");
+        std::fs::create_dir(&private_dir).unwrap();
+        std::fs::set_permissions(&private_dir, std::fs::Permissions::from_mode(0o000)).unwrap();
 
         ensure_private_dir(&private_dir).await.unwrap();
 
