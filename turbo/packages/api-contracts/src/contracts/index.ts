@@ -1105,10 +1105,6 @@ export {
   integrationsPhoneUploadCompleteContract,
   type PhoneUploadCompleteBody,
   type PhoneUploadCompleteResponse,
-  integrationsChatMessageContract,
-  type IntegrationsChatMessageContract,
-  type SendChatMessageBody,
-  type SendChatMessageResponse,
 } from "./integrations";
 export {
   deleteGithubInstallationResponseSchema,

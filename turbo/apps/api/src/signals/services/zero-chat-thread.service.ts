@@ -984,26 +984,6 @@ export function zeroChatThreadList(args: {
   });
 }
 
-export function ownedChatThreadById(args: {
-  readonly threadId: string;
-  readonly userId: string;
-}): Computed<Promise<{ readonly id: string } | null>> {
-  return computed(async (get): Promise<{ readonly id: string } | null> => {
-    const [thread] = await get(db$)
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(
-        and(
-          eq(chatThreads.id, args.threadId),
-          eq(chatThreads.userId, args.userId),
-        ),
-      )
-      .limit(1);
-
-    return thread ?? null;
-  });
-}
-
 export function zeroChatThreadArtifacts(args: {
   readonly threadId: string;
   readonly userId: string;
@@ -1351,45 +1331,6 @@ export const createChatThread$ = command(
     }
 
     return thread;
-  },
-);
-
-export const insertIntegrationChatMessage$ = command(
-  async (
-    { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly userId: string;
-      readonly content: string;
-    },
-    signal: AbortSignal,
-  ): Promise<{ readonly id: string; readonly createdAt: Date }> => {
-    const writeDb = set(writeDb$);
-    const [message] = await writeDb
-      .insert(chatMessages)
-      .values({
-        chatThreadId: args.chatThreadId,
-        role: "assistant",
-        content: args.content,
-        runId: null,
-      })
-      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
-    signal.throwIfAborted();
-
-    if (!message) {
-      throw new Error("Failed to insert chat message");
-    }
-
-    await publishUserSignal(
-      [args.userId],
-      `chatThreadMessageCreated:${args.chatThreadId}`,
-    );
-    signal.throwIfAborted();
-
-    await publishThreadListChanged(args.userId);
-    signal.throwIfAborted();
-
-    return message;
   },
 );
 

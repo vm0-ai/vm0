@@ -124,7 +124,6 @@ import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-provide
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroSkillsRoutes } from "./routes/zero-skills";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
-import { zeroIntegrationsChatMessageRoutes } from "./routes/zero-integrations-chat-message";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
 import { zeroIntegrationsPhoneMessageRoutes } from "./routes/zero-integrations-phone-message";
@@ -331,7 +330,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsGithubDownloadFileRoutes,
   ...zeroIntegrationsGithubUploadCompleteRoutes,
   ...zeroIntegrationsGithubUploadInitRoutes,
-  ...zeroIntegrationsChatMessageRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...zeroIntegrationsSlackMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,
