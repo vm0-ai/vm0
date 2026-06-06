@@ -130,7 +130,6 @@ import { prepareAgentRunStorageManifests } from "./agent-run-storage.service";
 import {
   frameworkMemoryDestination,
   frameworkSkillDestination,
-  legacyFrameworkSkillMountPathToProvisioningDestination,
 } from "./storage-provisioning-destinations.service";
 import {
   encryptQueuedRunnerJobPayload,
@@ -172,7 +171,21 @@ const CUSTOM_CONNECTOR_SECRET_PLACEHOLDER = "{{secret}}";
 const L = logger("AgentRunCreate");
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VAR_REF_PREFIX = "$vars.";
-const SYSTEM_SKILL_STORAGE_NAME_PREFIX = "agent-skills@";
+const SYSTEM_SKILL_STORAGE_NAME_PREFIX =
+  "agent-skills@vm0-ai/vm0-skills/tree/main/";
+const CHECKPOINT_FRAMEWORK_SKILL_ROOTS = [
+  {
+    framework: "codex",
+    prefix: "/home/user/.codex/skills/",
+  },
+  {
+    framework: "claude-code",
+    prefix: "/home/user/.claude/skills/",
+  },
+] as const satisfies readonly {
+  readonly framework: SupportedFramework;
+  readonly prefix: string;
+}[];
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -2314,10 +2327,7 @@ function parseAdditionalVolumeSnapshot(
     return null;
   }
   const provisioningDestination =
-    legacyFrameworkSkillMountPathToProvisioningDestination(
-      candidate.mountPath,
-      `Checkpoint volume "${candidate.name}" mountPath`,
-    );
+    checkpointFrameworkSkillProvisioningDestination(candidate.mountPath);
   const isSystemSkill =
     candidate.system === true ||
     (provisioningDestination?.type === "framework-skill" &&
@@ -2329,6 +2339,31 @@ function parseAdditionalVolumeSnapshot(
     ...(isSystemSkill ? { system: true } : {}),
     ...(provisioningDestination ? { provisioningDestination } : {}),
   };
+}
+
+function checkpointFrameworkSkillProvisioningDestination(
+  mountPath: string,
+): StorageProvisioningDestination | null {
+  for (const root of CHECKPOINT_FRAMEWORK_SKILL_ROOTS) {
+    if (!mountPath.startsWith(root.prefix)) {
+      continue;
+    }
+    const skillName = mountPath.slice(root.prefix.length);
+    if (isSingleGuestPathSegment(skillName)) {
+      return frameworkSkillDestination(root.framework, skillName);
+    }
+  }
+  return null;
+}
+
+function isSingleGuestPathSegment(value: string): boolean {
+  return (
+    value !== "" &&
+    value !== "." &&
+    value !== ".." &&
+    !value.includes("/") &&
+    !value.includes("\0")
+  );
 }
 
 function parseAdditionalVolumesSnapshot(

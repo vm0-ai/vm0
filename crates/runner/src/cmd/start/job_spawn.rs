@@ -435,21 +435,7 @@ pub(super) fn spawn_job(
     };
     let job_device_rate_limits = params.device_rate_limits.clone();
 
-    let storage_fingerprints = if let Some(manifest) = &context.storage_provisioning_manifest {
-        match StorageFingerprints::from_storage_provisioning_manifest(manifest) {
-            Ok(fingerprints) => fingerprints,
-            Err(error) => {
-                warn!(run_id = %run_id, error = %error, "failed to build v2 storage fingerprints");
-                StorageFingerprints::default()
-            }
-        }
-    } else {
-        context
-            .storage_manifest
-            .as_ref()
-            .map(StorageFingerprints::from_manifest)
-            .unwrap_or_default()
-    };
+    let storage_fingerprints = storage_fingerprints_for_context(run_id, &context);
 
     let provider = Arc::clone(&ctx.provider);
     let exec_config = Arc::clone(&ctx.exec_config);
@@ -578,6 +564,29 @@ pub(super) fn spawn_job(
             }
         }
     });
+}
+
+fn storage_fingerprints_for_context(
+    run_id: RunId,
+    context: &ExecutionContext,
+) -> StorageFingerprints {
+    if let Some(manifest) = &context.storage_provisioning_manifest {
+        match StorageFingerprints::from_storage_provisioning_manifest(manifest) {
+            Ok(fingerprints) => return fingerprints,
+            Err(error) => {
+                warn!(run_id = %run_id, error = %error, "failed to build v2 storage fingerprints");
+            }
+        }
+    }
+    legacy_storage_fingerprints_for_context(context)
+}
+
+fn legacy_storage_fingerprints_for_context(context: &ExecutionContext) -> StorageFingerprints {
+    context
+        .storage_manifest
+        .as_ref()
+        .map(StorageFingerprints::from_manifest)
+        .unwrap_or_default()
 }
 
 fn log_terminal_job_outcome(
@@ -743,6 +752,58 @@ mod tests {
     use crate::ids::RunId;
     use crate::resource_budget::ResourceBudget;
     use crate::status::StatusTracker;
+
+    #[test]
+    fn storage_fingerprints_fall_back_to_legacy_manifest_when_v2_invalid() {
+        let run_id = RunId::new_v4();
+        let context: ExecutionContext = serde_json::from_value(serde_json::json!({
+            "runId": run_id,
+            "prompt": "test",
+            "sandboxToken": "sandbox-token",
+            "cliAgentType": "claude-code",
+            "storageManifest": {
+                "storages": [
+                    {
+                        "name": "docs",
+                        "mountPath": "/mnt/docs",
+                        "vasStorageName": "docs",
+                        "vasVersionId": "v1",
+                        "archiveUrl": "https://example.com/docs.tar.gz"
+                    }
+                ],
+                "artifacts": []
+            },
+            "storageProvisioningManifest": {
+                "version": "2",
+                "entries": [
+                    {
+                        "intent": "user-volume",
+                        "source": {
+                            "kind": "storage",
+                            "name": "docs",
+                            "vasStorageName": "docs",
+                            "vasVersionId": "v1",
+                            "archiveUrl": "https://example.com/docs.tar.gz"
+                        },
+                        "destination": {
+                            "type": "framework-skill",
+                            "framework": "claude-code",
+                            "skillName": "docs"
+                        }
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        let fingerprints = storage_fingerprints_for_context(run_id, &context);
+
+        assert_eq!(
+            fingerprints.storages.get("/mnt/docs"),
+            Some(&("docs".to_string(), "v1".to_string()))
+        );
+        assert_eq!(fingerprints.storage_cleanup_path("/mnt/docs"), "/mnt/docs");
+    }
 
     #[derive(Clone, Debug)]
     struct CapturedEvent {

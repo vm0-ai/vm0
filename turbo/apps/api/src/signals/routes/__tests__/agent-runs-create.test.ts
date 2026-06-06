@@ -2857,6 +2857,78 @@ describe("POST /api/agent/runs", () => {
     });
   });
 
+  it("skips missing checkpoint volumes when skill mount inference fails", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    const first = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "first" },
+      }),
+      [201],
+    );
+    const conversationId = await store.set(
+      seedConversationForSession$,
+      { runId: first.body.runId, sessionId: first.body.sessionId },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, first.body.runId));
+    const missingVolumeName = `missing-${randomUUID().slice(0, 8)}`;
+    const [checkpoint] = await db
+      .insert(checkpoints)
+      .values({
+        runId: first.body.runId,
+        conversationId,
+        agentComposeSnapshot: { agentComposeVersionId: compose.versionId },
+        volumeVersionsSnapshot: {
+          versions: {},
+          additionalVolumes: [
+            {
+              name: missingVolumeName,
+              versionId: "missing-version",
+              mountPath: "/home/user/.claude/skills/legacy-skill/nested",
+            },
+          ],
+        },
+      })
+      .returning({ id: checkpoints.id });
+    if (!checkpoint) {
+      throw new Error("checkpoint insert returned no row");
+    }
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { checkpointId: checkpoint.id, prompt: "resume" },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageProvisioningManifest: {
+        readonly entries: readonly {
+          readonly source: {
+            readonly name: string;
+          };
+        }[];
+      };
+    };
+    expect(
+      executionContext.storageProvisioningManifest.entries.some((entry) => {
+        return entry.source.name === missingVolumeName;
+      }),
+    ).toBeFalsy();
+  });
+
   it("does not add missing root policy when resuming legacy checkpoint artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });

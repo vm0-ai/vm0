@@ -10,20 +10,6 @@ import type { SupportedFramework } from "@vm0/core/frameworks";
 const MNT_ROOT = "/mnt";
 const CODEX_HOME_DIR = `${CANONICAL_GUEST_HOME_DIR}/.codex`;
 const CLAUDE_HOME_DIR = `${CANONICAL_GUEST_HOME_DIR}/.claude`;
-const FRAMEWORK_SKILL_ROOTS = [
-  {
-    framework: "codex",
-    segments: ["home", "user", ".codex", "skills"],
-  },
-  {
-    framework: "claude-code",
-    segments: ["home", "user", ".claude", "skills"],
-  },
-] as const satisfies readonly {
-  readonly framework: SupportedFramework;
-  readonly segments: readonly string[];
-}[];
-
 function splitStrictAbsoluteGuestPath(
   mountPath: string,
   label: string,
@@ -84,41 +70,6 @@ function subPath(
 ): string | undefined {
   const value = segments.slice(start).join("/");
   return value.length > 0 ? value : undefined;
-}
-
-function startsWithSegments(
-  segments: readonly string[],
-  prefix: readonly string[],
-): boolean {
-  if (segments.length < prefix.length) {
-    return false;
-  }
-  return prefix.every((segment, index) => {
-    return segments[index] === segment;
-  });
-}
-
-export function legacyFrameworkSkillMountPathToProvisioningDestination(
-  mountPath: string,
-  label = "Storage mount path",
-): StorageProvisioningDestination | null {
-  const segments = splitStrictAbsoluteGuestPath(mountPath, label);
-  for (const root of FRAMEWORK_SKILL_ROOTS) {
-    if (!startsWithSegments(segments, root.segments)) {
-      continue;
-    }
-    if (segments.length !== root.segments.length + 1) {
-      throw new Error(
-        `${label} must target ${root.segments.join("/")}/<skillName>`,
-      );
-    }
-    const skillName = segments[root.segments.length];
-    if (!skillName) {
-      throw new Error(`${label} must include a framework skill name`);
-    }
-    return frameworkSkillDestination(root.framework, skillName);
-  }
-  return null;
 }
 
 export function legacyUserMountPathToProvisioningDestination(
