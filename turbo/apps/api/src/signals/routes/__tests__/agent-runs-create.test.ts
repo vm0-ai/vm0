@@ -3087,6 +3087,136 @@ describe("POST /api/agent/runs", () => {
     });
   });
 
+  it("retargets checkpoint framework skill volumes to the current provider framework", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    const skillName = "research-kit";
+    const skillStorageName = getCustomSkillStorageName(skillName);
+    const skillVersion = await seedStorage({
+      fixture: fx,
+      type: "volume",
+      name: skillStorageName,
+    });
+    const first = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "first" },
+      }),
+      [201],
+    );
+    const conversationId = await store.set(
+      seedConversationForSession$,
+      { runId: first.body.runId, sessionId: first.body.sessionId },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, first.body.runId));
+    const [checkpoint] = await db
+      .insert(checkpoints)
+      .values({
+        runId: first.body.runId,
+        conversationId,
+        agentComposeSnapshot: { agentComposeVersionId: compose.versionId },
+        volumeVersionsSnapshot: {
+          versions: {},
+          additionalVolumes: [
+            {
+              name: skillStorageName,
+              versionId: skillVersion,
+              mountPath: `/home/user/.claude/skills/${skillName}`,
+            },
+          ],
+        },
+      })
+      .returning({ id: checkpoints.id });
+    if (!checkpoint) {
+      throw new Error("checkpoint insert returned no row");
+    }
+    await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: fx.orgId,
+        type: "openai-api-key",
+        isDefault: true,
+        selectedModel: "gpt-5.5",
+        secretName: "OPENAI_API_KEY",
+      },
+      context.signal,
+    );
+    await trackModelProviders(Promise.resolve({ orgId: fx.orgId }));
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          checkpointId: checkpoint.id,
+          modelProviderType: "openai-api-key",
+          prompt: "resume with codex",
+        },
+      }),
+      [201],
+    );
+
+    const [run] = await db
+      .select({ additionalVolumes: agentRuns.additionalVolumes })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId));
+    const volumes = run?.additionalVolumes ?? [];
+    expect(
+      volumes.some((volume) => {
+        return volume.mountPath === `/home/user/.codex/skills/${skillName}`;
+      }),
+    ).toBeTruthy();
+    expect(
+      volumes.some((volume) => {
+        return volume.mountPath === `/home/user/.claude/skills/${skillName}`;
+      }),
+    ).toBeFalsy();
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly cliAgentType: string;
+      readonly storageProvisioningManifest: {
+        readonly entries: readonly {
+          readonly intent: string;
+          readonly source: {
+            readonly name: string;
+            readonly vasVersionId: string;
+          };
+          readonly destination: {
+            readonly type: string;
+            readonly framework?: string;
+            readonly skillName?: string;
+          };
+        }[];
+      };
+    };
+    expect(executionContext.cliAgentType).toBe("codex");
+    expect(
+      executionContext.storageProvisioningManifest.entries.find((entry) => {
+        return entry.source.name === skillStorageName;
+      }),
+    ).toMatchObject({
+      intent: "skill",
+      source: {
+        name: skillStorageName,
+        vasVersionId: skillVersion,
+      },
+      destination: {
+        type: "framework-skill",
+        framework: "codex",
+        skillName,
+      },
+    });
+  });
+
   it("skips missing checkpoint volumes when skill mount inference fails", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });

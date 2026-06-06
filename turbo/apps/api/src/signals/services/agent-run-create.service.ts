@@ -571,6 +571,32 @@ function buildInjectedSkillVolumes(
   ];
 }
 
+function retargetFrameworkSkillVolumes(
+  volumes: readonly AdditionalVolume[] | undefined,
+  framework: SupportedFramework,
+): readonly AdditionalVolume[] | undefined {
+  if (!volumes) {
+    return undefined;
+  }
+  return volumes.map((volume) => {
+    const destination = volume.provisioningDestination;
+    if (
+      destination?.type !== "framework-skill" ||
+      destination.skillName === undefined
+    ) {
+      return volume;
+    }
+    return {
+      ...volume,
+      mountPath: skillMountPath(framework, destination.skillName),
+      provisioningDestination: frameworkSkillDestination(
+        framework,
+        destination.skillName,
+      ),
+    };
+  });
+}
+
 function isRouteError(value: unknown): value is CreateRunErrorResult {
   return (
     typeof value === "object" &&
@@ -3957,9 +3983,13 @@ function prepareRunContext(
         framework,
         bodyArtifacts: body.artifacts,
       });
+      const baseAdditionalVolumes = retargetFrameworkSkillVolumes(
+        body.additionalVolumes ?? resolved.additionalVolumes,
+        framework,
+      );
       const additionalVolumes = mergeAdditionalVolumes({
         prepend: buildInjectedSkillVolumes(args, framework),
-        base: body.additionalVolumes ?? resolved.additionalVolumes,
+        base: baseAdditionalVolumes,
       });
 
       return {
