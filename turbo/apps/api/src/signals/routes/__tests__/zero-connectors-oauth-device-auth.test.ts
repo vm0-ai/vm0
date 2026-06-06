@@ -537,13 +537,11 @@ describe("OAuth device authorization connector routes", () => {
     expect(parsedProviderState.pollState).toBe(pollState);
   });
 
-  it("rejects oversized provider poll state before creating a session", async () => {
-    const { userId, orgId } = await setupUser();
+  it("accepts provider poll state at the byte limit", async () => {
+    const { orgId, userId } = await setupUser();
+    const pollState = "x".repeat(4096);
     testOauthDeviceProvider.grant.startDeviceAuth = async (args) => {
-      return {
-        ...(await originalStartDeviceAuth(args)),
-        pollState: "x".repeat(4097),
-      };
+      return { ...(await originalStartDeviceAuth(args)), pollState };
     };
     const client = setupApp({ context })(
       zeroConnectorOauthDeviceAuthSessionContract,
@@ -555,22 +553,66 @@ describe("OAuth device authorization connector routes", () => {
         body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
-      [500],
+      [200],
     );
 
-    expect(response.body).toStrictEqual({ error: "Internal server error" });
-    const sessions = await store
-      .set(writeDb$)
-      .select({ id: connectorOauthDeviceAuthorizationSessions.id })
-      .from(connectorOauthDeviceAuthorizationSessions)
-      .where(
-        and(
-          eq(connectorOauthDeviceAuthorizationSessions.orgId, orgId),
-          eq(connectorOauthDeviceAuthorizationSessions.userId, userId),
-        ),
-      );
-    expect(sessions).toStrictEqual([]);
+    const session = await onlySession(response.body.sessionId);
+    const decryptedProviderState = await decryptPersistentSecretValue(
+      session.encryptedProviderState,
+      { orgId, userId },
+    );
+    const parsedProviderState = z
+      .object({ pollState: z.string() })
+      .parse(JSON.parse(decryptedProviderState) as unknown);
+    expect(parsedProviderState.pollState).toBe(pollState);
   });
+
+  it.each([
+    {
+      caseName: "ascii",
+      pollState: "x".repeat(4097),
+    },
+    {
+      caseName: "multibyte",
+      pollState: `${"x".repeat(4095)}\u00e9`,
+    },
+  ])(
+    "rejects oversized $caseName provider poll state before creating a session",
+    async ({ pollState }) => {
+      const { userId, orgId } = await setupUser();
+      testOauthDeviceProvider.grant.startDeviceAuth = async (args) => {
+        return {
+          ...(await originalStartDeviceAuth(args)),
+          pollState,
+        };
+      };
+      const client = setupApp({ context })(
+        zeroConnectorOauthDeviceAuthSessionContract,
+      );
+
+      const response = await accept(
+        client.create({
+          params: { type: "test-oauth-device" },
+          body: { authMethod: "oauth" },
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [500],
+      );
+
+      expect(response.body).toStrictEqual({ error: "Internal server error" });
+      const sessions = await store
+        .set(writeDb$)
+        .select({ id: connectorOauthDeviceAuthorizationSessions.id })
+        .from(connectorOauthDeviceAuthorizationSessions)
+        .where(
+          and(
+            eq(connectorOauthDeviceAuthorizationSessions.orgId, orgId),
+            eq(connectorOauthDeviceAuthorizationSessions.userId, userId),
+          ),
+        );
+      expect(sessions).toStrictEqual([]);
+    },
+  );
 
   it("marks the previous active session as superseded when a new session starts", async () => {
     const { userId, orgId } = await setupUser();
