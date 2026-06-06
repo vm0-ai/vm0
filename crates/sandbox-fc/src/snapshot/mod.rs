@@ -31,6 +31,12 @@ use self::runtime::run_snapshot_workflow;
 
 /// Create a snapshot by booting a fresh VM, configuring it, and capturing state.
 ///
+/// This helper creates an uncommitted snapshot, commits the pending publish,
+/// and returns only after the provider-specific completion marker and stable
+/// output artifacts have been published. If publishing fails, it best-effort
+/// discards the uncommitted artifacts and returns the original publish error;
+/// any discard error is intentionally suppressed.
+///
 /// This is the Rust equivalent of the TS `commands/snapshot.ts` workflow:
 ///  1. Create work directory
 ///  2. Create NBD COW device backed by the rootfs image
