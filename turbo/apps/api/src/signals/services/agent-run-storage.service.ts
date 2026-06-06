@@ -244,8 +244,11 @@ function dedupArtifacts(
   }
   const byMountPath = new Map<string, ContextArtifact>();
   for (const artifact of byName.values()) {
-    byMountPath.delete(artifact.mountPath);
-    byMountPath.set(artifact.mountPath, artifact);
+    const mountPath = resolveProvisioningDestinationMountPath(
+      artifactProvisioningDestination(artifact),
+    );
+    byMountPath.delete(mountPath);
+    byMountPath.set(mountPath, artifact);
   }
   return [...byMountPath.values()];
 }
@@ -904,6 +907,17 @@ function dedupStorageEntriesByMountPath(
   return [...byMountPath.values()];
 }
 
+function dedupArtifactEntriesByMountPath(
+  entries: readonly PreparedArtifactManifestEntry[],
+): readonly PreparedArtifactManifestEntry[] {
+  const byMountPath = new Map<string, PreparedArtifactManifestEntry>();
+  for (const entry of entries) {
+    byMountPath.delete(entry.legacy.mountPath);
+    byMountPath.set(entry.legacy.mountPath, entry);
+  }
+  return [...byMountPath.values()];
+}
+
 function assertDistinctStorageAndArtifactMountPaths(args: {
   readonly storageEntries: readonly PreparedStorageManifestEntry[];
   readonly artifactEntries: readonly PreparedArtifactManifestEntry[];
@@ -968,7 +982,7 @@ export function prepareAgentRunStorageManifests(args: {
       SYSTEM_ORG_ID,
     ]);
 
-    const [composeEntries, additionalEntries, artifactEntries] =
+    const [composeEntries, additionalEntries, resolvedArtifactEntries] =
       await Promise.all([
         Promise.all(
           composeVolumes.map((volume) => {
@@ -1012,6 +1026,9 @@ export function prepareAgentRunStorageManifests(args: {
         ),
       ]);
 
+    const artifactEntries = dedupArtifactEntriesByMountPath(
+      resolvedArtifactEntries,
+    );
     const storageEntries = mergeStorageEntries({
       composeEntries: composeEntries.filter(
         (entry): entry is PreparedStorageManifestEntry => {

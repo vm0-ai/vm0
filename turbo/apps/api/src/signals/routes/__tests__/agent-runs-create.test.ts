@@ -2335,6 +2335,82 @@ describe("POST /api/agent/runs", () => {
     expect(sharedArtifactEntries[0]?.source.name).toBe("body-artifact");
   });
 
+  it("deduplicates artifacts after legacy workspace mount paths are canonicalized", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use duplicate workspace aliases",
+          artifacts: [
+            {
+              name: "legacy-artifact",
+              mountPath: "/workspace/shared",
+            },
+            {
+              name: "canonical-artifact",
+              mountPath: `${CANONICAL_WORKING_DIR}/shared`,
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+        }[];
+      };
+      readonly storageProvisioningManifest: {
+        readonly entries: readonly {
+          readonly intent: string;
+          readonly source: {
+            readonly name: string;
+          };
+          readonly destination: {
+            readonly type: string;
+            readonly subPath?: string;
+          };
+        }[];
+      };
+    };
+    const sharedManifestArtifacts =
+      executionContext.storageManifest.artifacts.filter((artifact) => {
+        return artifact.mountPath === `${CANONICAL_WORKING_DIR}/shared`;
+      });
+    const sharedProvisioningEntries =
+      executionContext.storageProvisioningManifest.entries.filter((entry) => {
+        return (
+          entry.intent === "user-artifact" &&
+          entry.destination.type === "workspace" &&
+          entry.destination.subPath === "shared"
+        );
+      });
+
+    expect(sharedManifestArtifacts).toMatchObject([
+      {
+        mountPath: `${CANONICAL_WORKING_DIR}/shared`,
+        vasStorageName: "canonical-artifact",
+      },
+    ]);
+    expect(sharedProvisioningEntries).toHaveLength(1);
+    expect(sharedProvisioningEntries[0]?.source.name).toBe(
+      "canonical-artifact",
+    );
+  });
+
   it("keeps artifact override order when name and mount path both change", async () => {
     const fx = await fixture();
     const compose = await createCompose({
