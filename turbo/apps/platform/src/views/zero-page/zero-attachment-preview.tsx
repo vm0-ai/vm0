@@ -1,33 +1,22 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import {
-  IconChevronDown,
-  IconChevronUp,
   IconDownload,
   IconEye,
   IconFileMusic,
-  IconLoader2,
   IconPlayerPlay,
   IconVideo,
 } from "@tabler/icons-react";
-import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import type { Computed } from "ccstate";
 import { IN_VITEST } from "../../env.ts";
-import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
-import {
-  textPreviewCollapsedByKey$,
-  toggleTextPreviewCollapsed$,
-} from "../../signals/view-component-state.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   openAudioLightboxOrArtifact$,
-  chatArtifactSidebarEnabled$,
   openDocumentLightboxOrArtifact$,
   openVideoLightboxOrArtifact$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
-import {
-  classifyChatAttachment,
-  EMPTY_TEXT$,
-} from "../../signals/chat-page/parse-body-blocks.ts";
+import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
 import {
   FilePreviewIcon,
   getFilePreviewAccentClass,
@@ -74,14 +63,6 @@ function normalizePlatformFileUrl(url: string): string {
   return url;
 }
 
-function formatPreviewText(kind: "text" | "json", text: string): string {
-  if (kind === "json") {
-    const parsed = jsonParseOr<unknown>(text, null);
-    return parsed === null ? text : JSON.stringify(parsed, null, 2);
-  }
-  return text;
-}
-
 function shouldUseNativeAnchorNavigation(
   event: ReactMouseEvent<HTMLAnchorElement>,
 ): boolean {
@@ -107,18 +88,8 @@ const MEDIA_PREVIEW_CARD_CLASS =
 const MEDIA_PREVIEW_CARD_HOVER_CLASS =
   "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
 
-function TextPreview(props: TextPreviewProps) {
-  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
-  if (sidebarEnabled) {
-    return (
-      <AttachmentAnchorChip
-        filename={props.filename}
-        url={props.url}
-        kind={props.kind}
-      />
-    );
-  }
-  return <TextPreviewInline {...props} />;
+function TextPreview({ filename, kind, url }: TextPreviewProps) {
+  return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
 }
 
 type AttachmentAnchorChipKind =
@@ -303,87 +274,6 @@ function HtmlSitePreviewCard({
   );
 }
 
-function TextPreviewInline({ filename, url, kind, text$ }: TextPreviewProps) {
-  const textPreviewCollapsedByKey = useGet(textPreviewCollapsedByKey$);
-  const toggleTextPreviewCollapsed = useSet(toggleTextPreviewCollapsed$);
-  const collapsedKey = `attachment-preview:${kind}:${filename}:${url}`;
-  const text = useLastResolved(text$ ?? EMPTY_TEXT$);
-  const collapsed = textPreviewCollapsedByKey[collapsedKey] ?? false;
-
-  let content: ReactNode = (
-    <div className="mt-3 flex items-center justify-center rounded-lg bg-muted/30 p-3 text-muted-foreground">
-      <IconLoader2 size={16} className="animate-spin" />
-    </div>
-  );
-
-  if (text !== undefined) {
-    const formatted = formatPreviewText(kind, text);
-    const trimmed =
-      formatted.length > 8000 ? `${formatted.slice(0, 8000)}\n\n…` : formatted;
-    content = collapsed ? null : (
-      <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/50 p-3 text-xs text-foreground">
-        {trimmed}
-      </pre>
-    );
-  }
-
-  return (
-    <div
-      className="relative rounded-xl border border-foreground/10 bg-background/60 p-3"
-      data-testid={`attachment-preview-${kind}`}
-    >
-      <button
-        type="button"
-        onClick={() => {
-          detach(
-            downloadAttachmentUrl(
-              normalizePlatformFileUrl(url),
-              undefined,
-              filename,
-            ),
-            Reason.DomCallback,
-            "attachment download",
-          );
-        }}
-        title={filename}
-        aria-label={`Download ${filename}`}
-        className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/90 text-muted-foreground hover:text-foreground"
-      >
-        <IconDownload size={12} />
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          toggleTextPreviewCollapsed(collapsedKey);
-        }}
-        className="flex w-full items-center gap-3 text-left"
-        aria-label={`${collapsed ? "Expand" : "Collapse"} ${kind} preview for ${filename}`}
-      >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/60">
-          <FilePreviewIcon
-            filename={filename}
-            contentType={contentTypeForDocumentPreviewKind(kind)}
-            testId={`attachment-preview-${kind}-icon`}
-          />
-        </div>
-        <div className="min-w-0 flex-1 pr-16">
-          <div className="truncate text-sm font-medium text-foreground">
-            {filename}
-          </div>
-        </div>
-        <div className="shrink-0 text-muted-foreground">
-          {collapsed ? (
-            <IconChevronDown size={16} />
-          ) : (
-            <IconChevronUp size={16} />
-          )}
-        </div>
-      </button>
-      {content}
-    </div>
-  );
-}
-
 function DocumentThumbnailPreview({
   filename,
   url,
@@ -393,41 +283,11 @@ function DocumentThumbnailPreview({
   url: string;
   kind: "markdown" | "csv" | "pdf" | "html";
 }) {
-  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
-  const openDocumentLightbox = useSet(openDocumentLightboxOrArtifact$);
-  const lightboxOpen = useGet(lightboxUrl$) !== null;
-
   if (kind === "html") {
     return <HtmlSitePreviewCard filename={filename} url={url} />;
   }
 
-  // markdown/csv/pdf use the chip when the artifact sidebar is on, and keep the
-  // full thumbnail card otherwise so legacy lightbox layouts still look right.
-  if (sidebarEnabled) {
-    return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
-  }
-
-  return (
-    <button
-      type="button"
-      data-testid={`attachment-preview-${kind}`}
-      onClick={(event) => {
-        event.currentTarget.blur();
-        openDocumentLightbox({ kind, url, filename });
-      }}
-      disabled={lightboxOpen}
-      className={`${lightboxOpen ? "" : "group/doc-preview"} inline-flex w-fit self-start align-top text-left disabled:pointer-events-none`}
-      aria-label={`Open ${kind} preview for ${filename}`}
-      title={filename}
-    >
-      <AttachmentDocumentThumbnailArtwork
-        actionIcon={<IconEye size={10} />}
-        actionLabel="Preview"
-        filename={filename}
-        kind={kind}
-      />
-    </button>
-  );
+  return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
 }
 
 function FileThumbnailPreview({

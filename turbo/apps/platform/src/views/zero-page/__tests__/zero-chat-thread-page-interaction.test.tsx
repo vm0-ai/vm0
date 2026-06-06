@@ -12,7 +12,6 @@ import {
   chatMessagesContract,
   chatThreadMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
@@ -34,12 +33,6 @@ import {
 const context = testContext();
 
 const THREAD_ID = "thread-test-1";
-
-function chatArtifactSidebarOff() {
-  return {
-    [FeatureSwitchKey.ChatArtifactSidebar]: false,
-  };
-}
 
 function queryButtonByText(text: string): HTMLElement | undefined {
   return queryAllByRoleFast("button").find((button) => {
@@ -446,7 +439,6 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     await waitFor(() => {
@@ -498,7 +490,6 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const imageLink = await waitFor(() => {
@@ -507,10 +498,8 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
     expect(imageLink).toHaveAttribute("href", imageUrl);
     click(imageLink);
 
-    const downloadButton = await waitFor(() => {
-      return screen.getByLabelText("Download");
-    });
-    click(downloadButton);
+    await userEvent.click(await screen.findByLabelText("Download options"));
+    click(screen.getByText("Download"));
 
     await waitFor(() => {
       expect(createObjectURLSpy).toHaveBeenCalledOnce();
@@ -546,7 +535,6 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const previewButton = await waitFor(() => {
@@ -561,23 +549,7 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
       const iframe = screen.getByTitle("report preview");
       expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
       expect(iframe).toHaveAttribute("scrolling", "yes");
-      expect(iframe).toHaveClass(
-        "relative",
-        "z-10",
-        "h-[min(78vh,900px)]",
-        "max-w-full",
-        "overflow-x-hidden",
-        "overscroll-contain",
-      );
-      expect(iframe.parentElement).toHaveClass(
-        "max-w-full",
-        "overflow-hidden",
-        "overscroll-contain",
-      );
-      expect(iframe.parentElement).not.toHaveClass(
-        "h-[min(78vh,900px)]",
-        "overflow-y-auto",
-      );
+      expect(iframe).toHaveClass("block", "h-full", "w-full");
     });
 
     await userEvent.click(screen.getByLabelText("Share"));

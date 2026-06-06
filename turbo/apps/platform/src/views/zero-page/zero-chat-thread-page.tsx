@@ -2,7 +2,6 @@ import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
-  ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -27,14 +26,10 @@ import {
   IconVideo,
   IconCopy,
   IconCheck,
-  IconDots,
   IconVolume2,
   IconArrowDown,
   IconArrowUpRight,
-  IconBrandGoogleDrive,
   IconChevronRight,
-  IconDownload,
-  IconFile,
   IconGitBranch,
   IconLink,
   IconLoader2,
@@ -50,11 +45,6 @@ import {
   cn,
   isEditableTarget,
   matchShortcut,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
   Skeleton,
   DropdownMenu,
   DropdownMenuContent,
@@ -77,10 +67,7 @@ import { IN_VITEST } from "../../env.ts";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorAuthMethodIdsByGrantKind,
-} from "@vm0/connectors/connectors";
+import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
@@ -89,31 +76,17 @@ import {
   toggleAutoRead$,
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
-import {
-  detach,
-  jsonParseOr,
-  Reason,
-  onDomEventFn,
-} from "../../signals/utils.ts";
-import {
-  type ZeroClientFactory,
-  zeroClient$,
-} from "../../signals/api-client.ts";
-import { accept } from "../../lib/accept.ts";
+import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
 import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
 } from "../../lib/posthog.ts";
 import {
   AttachmentLightbox,
-  CsvPreviewTable,
   FileAttachmentChip,
-  getAttachmentRawUrl,
-  parseCsvRows,
   PreviewableAudioAttachmentChip,
   PreviewableFileAttachmentChip,
   publicAttachmentUrl,
-  TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 import {
@@ -132,17 +105,9 @@ import {
 import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
-import {
-  ArtifactDownloadMenu,
-  ArtifactShareButton,
-  type ArtifactDownloadSyncTarget,
-} from "./zero-artifact-actions.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
-import {
-  lightboxUrl$ as attachmentLightboxUrl$,
-  type AttachmentArtifactMetadata,
-} from "../../signals/zero-page/zero-attachment-chips.ts";
+import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -151,23 +116,19 @@ import {
   backToArtifactInbox$,
   type ArtifactInboxSection,
   type ArtifactRef,
-  chatArtifactSidebarEnabled$,
   closeArtifact$,
   currentArtifactInboxThreadId$,
   currentArtifactRef$,
   openArtifactFromInbox$,
   openArtifactInbox$,
-  openAudioLightboxOrArtifact$ as openAttachmentAudioLightbox$,
   setArtifactInboxQuery$,
   setArtifactInboxSection$,
-  openDocumentLightboxOrArtifact$ as openAttachmentDocumentLightbox$,
   openImageLightboxOrArtifact$ as openAttachmentImageLightbox$,
   openVideoLightboxOrArtifact$ as openAttachmentVideoLightbox$,
   toggleArtifactFullscreen$,
   toggleArtifactInboxSearch$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
-import { connectors$ } from "../../signals/external/connectors.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   chatShortcutHelpOpen$,
@@ -248,13 +209,6 @@ import {
   setChatKeyboardScrollRoot$,
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import {
-  type ArtifactGoogleDriveSyncFile,
-  syncArtifactFilesToGoogleDrive,
-  waitForGoogleDriveAndSyncArtifacts$,
-} from "../../signals/chat-page/artifact-google-drive-sync.ts";
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { createZipBlob } from "../../lib/zip.ts";
 import { PersonalProviderDialog } from "./components/settings/personal-provider-dialog.tsx";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
@@ -262,14 +216,6 @@ import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-devic
 type RecommendedFollowup = NonNullable<
   Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
 >[number];
-
-const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
-  "Connect Google Drive to upload artifacts";
-const GOOGLE_DRIVE_ARTIFACT_SYNC_AUTH_METHOD =
-  "oauth" satisfies ConnectorAuthMethodIdsByGrantKind<
-    "google-drive",
-    "auth-code"
-  >;
 
 const CHAT_SHORTCUT_SECTIONS = [
   {
@@ -303,12 +249,10 @@ function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
-  const drawerOpen = useGet(thread.artifactsDrawerOpen$);
-  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
   const inboxThreadId = useGet(currentArtifactInboxThreadId$);
-  const setOpen = useSet(thread.setArtifactsDrawerOpen$);
+  const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const openInbox = useSet(openArtifactInbox$);
-  const open = sidebarEnabled ? inboxThreadId === thread.threadId : drawerOpen;
+  const open = inboxThreadId === thread.threadId;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -317,11 +261,8 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
           <button
             type="button"
             onClick={() => {
-              if (sidebarEnabled) {
-                openInbox(thread.threadId);
-                return;
-              }
-              setOpen(true);
+              reloadArtifacts();
+              openInbox(thread.threadId);
             }}
             className={cn(
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
@@ -1436,17 +1377,6 @@ function getArtifactTextPreviewKind(
   return null;
 }
 
-function formatArtifactTextPreview(
-  kind: Exclude<ArtifactTextPreviewKind, "markdown">,
-  text: string,
-): string {
-  if (kind === "json") {
-    const parsed = jsonParseOr<unknown>(text, null);
-    return parsed === null ? text : JSON.stringify(parsed, null, 2);
-  }
-  return text;
-}
-
 function getArtifactDocumentPreviewKind(
   file: ChatThreadArtifactFile,
 ): ArtifactDocumentPreviewKind | null {
@@ -1469,493 +1399,6 @@ function getArtifactDocumentPreviewKind(
   }
 
   return null;
-}
-
-function ArtifactTextDocumentPreviewFrame({
-  file,
-  kind,
-}: {
-  file: ChatThreadArtifactFile;
-  kind: ArtifactTextPreviewKind;
-}) {
-  const pageSignal = useGet(pageSignal$);
-
-  return (
-    <TextPreviewLoader url={file.url} signal={pageSignal}>
-      {({ status, text }) => {
-        if (status === "loading") {
-          return (
-            <div className="flex h-full w-full items-center justify-center bg-muted/40 text-muted-foreground">
-              <IconLoader2 size={18} className="animate-spin" />
-            </div>
-          );
-        }
-
-        if (status === "error") {
-          return (
-            <div className="flex h-full w-full items-center justify-center bg-muted/40 px-6 text-center text-sm text-muted-foreground">
-              {kind === "markdown"
-                ? "Markdown"
-                : kind === "json"
-                  ? "JSON"
-                  : kind === "csv"
-                    ? "CSV"
-                    : "Text"}{" "}
-              preview unavailable.
-            </div>
-          );
-        }
-
-        if (kind === "csv") {
-          const rows = parseCsvRows(text);
-          if (rows.length === 0) {
-            return (
-              <div className="flex h-full w-full items-center justify-center bg-muted/40 px-6 text-center text-sm text-muted-foreground">
-                CSV preview unavailable.
-              </div>
-            );
-          }
-
-          return (
-            <div className="h-full w-full overflow-auto bg-background p-4">
-              <CsvPreviewTable rows={rows} />
-            </div>
-          );
-        }
-
-        if (kind !== "markdown") {
-          const display = formatArtifactTextPreview(kind, text);
-          return (
-            <div className="h-full w-full overflow-auto bg-background p-4">
-              <pre className="whitespace-pre-wrap break-words text-xs text-foreground">
-                {display.length > 16_000
-                  ? `${display.slice(0, 16_000)}\n\n…`
-                  : display}
-              </pre>
-            </div>
-          );
-        }
-
-        return (
-          <div className="h-full w-full overflow-auto bg-background p-4 text-sm">
-            <Markdown source={text} />
-          </div>
-        );
-      }}
-    </TextPreviewLoader>
-  );
-}
-
-function ArtifactPreviewOpenOverlay({
-  children,
-  filename,
-  onOpen,
-}: {
-  children: ReactNode;
-  filename: string;
-  onOpen: () => void;
-}) {
-  const lightboxOpen = useGet(attachmentLightboxUrl$) !== null;
-
-  return (
-    <div className="group/artifact-preview relative h-full w-full">
-      {children}
-      <button
-        type="button"
-        onClick={(event) => {
-          event.currentTarget.blur();
-          onOpen();
-        }}
-        disabled={lightboxOpen}
-        aria-label={`Open preview for ${filename}`}
-        className={cn(
-          "absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/80",
-          lightboxOpen
-            ? "pointer-events-none"
-            : "group-hover/artifact-preview:bg-black/30 group-hover/artifact-preview:opacity-100 group-focus-within/artifact-preview:bg-black/30 group-focus-within/artifact-preview:opacity-100",
-        )}
-      >
-        <span className="flex h-16 w-16 items-center justify-center rounded-lg text-white">
-          <IconFile
-            size={24}
-            stroke={1.8}
-            className="drop-shadow transition-opacity"
-          />
-        </span>
-      </button>
-    </div>
-  );
-}
-
-async function downloadArtifactItemsAsZip(params: {
-  readonly items: readonly ChatArtifactItem[];
-  readonly signal: AbortSignal;
-  readonly threadId: string;
-}): Promise<void> {
-  const toastId = toast.loading(`Preparing ${params.items.length} files...`);
-  // eslint-disable-next-line no-restricted-syntax -- zip download must replace the loading toast on success or failure
-  try {
-    const entries = await Promise.all(
-      params.items.map((item) => {
-        return fetchArtifactZipEntry(item, params.signal);
-      }),
-    );
-    const zip = createZipBlob(entries);
-    triggerArtifactZipDownload(zip, `vm0-artifact-${params.threadId}.zip`);
-    toast.success("Downloaded artifacts", { id: toastId });
-  } catch (error) {
-    params.signal.throwIfAborted();
-    toast.error(
-      error instanceof Error
-        ? error.message
-        : "Failed to prepare artifact download",
-      { id: toastId },
-    );
-  }
-}
-
-async function fetchArtifactZipEntry(
-  item: ChatArtifactItem,
-  signal: AbortSignal,
-): Promise<{
-  readonly filename: string;
-  readonly data: ArrayBuffer;
-  readonly modifiedAt: Date;
-}> {
-  const response = await fetch(getAttachmentRawUrl(item.file.url), {
-    mode: "cors",
-    signal,
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to download ${item.file.filename}`);
-  }
-  const data = await response.arrayBuffer();
-  return {
-    filename: item.file.filename,
-    data,
-    modifiedAt: new Date(item.file.createdAt),
-  };
-}
-
-function triggerArtifactZipDownload(blob: Blob, filename: string): void {
-  const blobUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = blobUrl;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(blobUrl);
-}
-
-function artifactItemsToGoogleDriveFiles(
-  items: readonly ChatArtifactItem[],
-): ArtifactGoogleDriveSyncFile[] {
-  return items.map((item) => {
-    return {
-      runId: item.runId,
-      fileId: item.file.id,
-      filename: item.file.filename,
-    };
-  });
-}
-
-function isArtifactSyncedToGoogleDrive(item: ChatArtifactItem): boolean {
-  return item.file.googleDriveSync?.status === "synced";
-}
-
-function artifactDownloadSyncTargetFromItem(params: {
-  agentId: string | null | undefined;
-  item: ChatArtifactItem;
-  onSyncSuccess: () => void;
-  threadId: string;
-}): ArtifactDownloadSyncTarget {
-  return {
-    agentId: params.agentId,
-    fileId: params.item.file.id,
-    filename: params.item.file.filename,
-    onSyncSuccess: params.onSyncSuccess,
-    runId: params.item.runId,
-    synced: isArtifactSyncedToGoogleDrive(params.item),
-    threadId: params.threadId,
-  };
-}
-
-function artifactLightboxMetadataFromItem(params: {
-  agentId: string | null | undefined;
-  item: ChatArtifactItem;
-  onSyncSuccess: () => void;
-  threadId: string;
-}): AttachmentArtifactMetadata {
-  return {
-    agentId: params.agentId,
-    contentType: params.item.file.contentType,
-    createdAt: params.item.file.createdAt,
-    fileId: params.item.file.id,
-    filename: params.item.file.filename,
-    googleDriveSynced: isArtifactSyncedToGoogleDrive(params.item),
-    onSyncSuccess: params.onSyncSuccess,
-    runId: params.item.runId,
-    size: params.item.file.size,
-    threadId: params.threadId,
-  };
-}
-
-type WaitForGoogleDriveAndSyncArtifactsFn = (
-  params: {
-    readonly agentId: string;
-    readonly threadId: string;
-    readonly files: readonly ArtifactGoogleDriveSyncFile[];
-  },
-  signal: AbortSignal,
-) => Promise<unknown>;
-
-function startGoogleDriveConnectAndSync(params: {
-  agentId: string | null | undefined;
-  createClient: ZeroClientFactory;
-  files: readonly ArtifactGoogleDriveSyncFile[];
-  pageSignal: AbortSignal;
-  threadId: string;
-  waitForGoogleDriveAndSyncArtifacts: WaitForGoogleDriveAndSyncArtifactsFn;
-  onSyncComplete: () => void;
-}): void {
-  if (params.files.length === 0) {
-    return;
-  }
-  if (!params.agentId) {
-    toast.error("Agent is still loading");
-    return;
-  }
-  const authWindow = window.open(
-    "about:blank",
-    "_blank",
-    "width=600,height=700",
-  );
-  if (!authWindow) {
-    toast.error("Failed to open Google Drive connection page");
-    return;
-  }
-  const agentId = params.agentId;
-  detach(
-    (async () => {
-      const client = params.createClient(zeroConnectorOauthStartContract, {
-        apiBase: "www",
-      });
-      const result = await accept(
-        client.start({
-          params: { type: "google-drive" },
-          body: { authMethod: GOOGLE_DRIVE_ARTIFACT_SYNC_AUTH_METHOD },
-          fetchOptions: { signal: params.pageSignal },
-        }),
-        [200],
-      );
-      params.pageSignal.throwIfAborted();
-      authWindow.location.href = result.body.authorizationUrl;
-    })(),
-    Reason.DomCallback,
-    "artifact google drive oauth start",
-  );
-  detach(
-    (async () => {
-      await params.waitForGoogleDriveAndSyncArtifacts(
-        {
-          agentId,
-          threadId: params.threadId,
-          files: params.files,
-        },
-        params.pageSignal,
-      );
-      params.onSyncComplete();
-    })(),
-    Reason.DomCallback,
-    "artifact google drive connect sync",
-  );
-}
-
-function syncArtifactFilesAndRefresh(params: {
-  sync: Promise<boolean>;
-  onSyncSuccess: () => void;
-  reason: string;
-}): void {
-  detach(
-    (async () => {
-      const success = await params.sync;
-      if (success) {
-        params.onSyncSuccess();
-      }
-    })(),
-    Reason.DomCallback,
-    params.reason,
-  );
-}
-
-function ArtifactGoogleDriveConnectMenuItem({
-  agentId,
-  files,
-  label,
-  onSyncComplete,
-  threadId,
-}: {
-  agentId: string | null | undefined;
-  files: readonly ArtifactGoogleDriveSyncFile[];
-  label: string;
-  onSyncComplete: () => void;
-  threadId: string;
-}) {
-  const waitForGoogleDriveAndSyncArtifacts = useSet(
-    waitForGoogleDriveAndSyncArtifacts$,
-  );
-  const createClient = useGet(zeroClient$);
-  const pageSignal = useGet(pageSignal$);
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuItem
-            className="text-muted-foreground"
-            title={CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP}
-            onClick={() => {
-              startGoogleDriveConnectAndSync({
-                agentId,
-                createClient,
-                files,
-                pageSignal,
-                threadId,
-                waitForGoogleDriveAndSyncArtifacts,
-                onSyncComplete,
-              });
-            }}
-          >
-            <IconBrandGoogleDrive size={14} stroke={1.5} />
-            {label}
-          </DropdownMenuItem>
-        </TooltipTrigger>
-        <TooltipContent side="left">
-          {CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function ArtifactPreviewActions({
-  item,
-  agentId,
-  threadId,
-  onSyncSuccess,
-}: {
-  item: ChatArtifactItem;
-  agentId: string | null | undefined;
-  threadId: string;
-  onSyncSuccess: () => void;
-}) {
-  const { file } = item;
-  const syncTarget = artifactDownloadSyncTargetFromItem({
-    agentId,
-    item,
-    onSyncSuccess,
-    threadId,
-  });
-
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      <ArtifactShareButton
-        ariaLabel={`Share ${file.filename}`}
-        url={file.url}
-      />
-      <ArtifactDownloadMenu
-        ariaLabel={`Download ${file.filename}`}
-        filename={file.filename}
-        syncTarget={syncTarget}
-        url={file.url}
-      />
-    </div>
-  );
-}
-
-function ArtifactBulkActionsMenu({
-  items,
-  googleDriveConnected,
-  agentId,
-  onSyncSuccess,
-  threadId,
-}: {
-  items: readonly ChatArtifactItem[];
-  googleDriveConnected: boolean;
-  agentId: string | null | undefined;
-  onSyncSuccess: () => void;
-  threadId: string;
-}) {
-  const createClient = useGet(zeroClient$);
-  const pageSignal = useGet(pageSignal$);
-  const syncableItems = items.filter((item) => {
-    return !isArtifactSyncedToGoogleDrive(item);
-  });
-  const files = artifactItemsToGoogleDriveFiles(syncableItems);
-  const allSynced = items.length > 0 && files.length === 0;
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          aria-label="More artifact actions"
-        >
-          <IconDots size={15} stroke={1.5} />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuItem
-          onClick={() => {
-            detach(
-              downloadArtifactItemsAsZip({
-                items,
-                signal: pageSignal,
-                threadId,
-              }),
-              Reason.DomCallback,
-              "artifact download all",
-            );
-          }}
-        >
-          <IconDownload size={14} stroke={1.5} />
-          Download all
-        </DropdownMenuItem>
-        {googleDriveConnected ? (
-          <DropdownMenuItem
-            disabled={allSynced}
-            onClick={() => {
-              syncArtifactFilesAndRefresh({
-                sync: syncArtifactFilesToGoogleDrive({
-                  createClient,
-                  threadId,
-                  files,
-                  signal: pageSignal,
-                }),
-                onSyncSuccess,
-                reason: "artifact google drive sync all",
-              });
-            }}
-          >
-            <IconBrandGoogleDrive size={14} stroke={1.5} />
-            {allSynced
-              ? "Synced all to Google Drive"
-              : "Sync all to Google Drive"}
-          </DropdownMenuItem>
-        ) : (
-          <ArtifactGoogleDriveConnectMenuItem
-            agentId={agentId}
-            files={files}
-            label="Sync all to Google Drive"
-            onSyncComplete={onSyncSuccess}
-            threadId={threadId}
-          />
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 }
 
 type ChatImagePreviewLinkProps = {
@@ -2118,343 +1561,6 @@ function ChatVideoPreviewButton({
         </span>
       </span>
     </button>
-  );
-}
-
-function ArtifactAudioPreviewButton({
-  file,
-  onOpen,
-}: {
-  file: ChatThreadArtifactFile;
-  onOpen: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.currentTarget.blur();
-        onOpen();
-      }}
-      className="group/audio-preview flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-br from-slate-900 via-stone-900 to-cyan-950 px-8 text-white"
-      aria-label={`Preview ${file.filename}`}
-      title={file.filename}
-      data-testid="artifact-audio-preview-button"
-    >
-      <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-sm transition-transform group-hover/audio-preview:scale-105">
-        <ArtifactFileIcon file={file} size="md" />
-      </span>
-      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/audio-preview:scale-105">
-        <IconPlayerPlay size={20} stroke={1.8} />
-      </span>
-      <span className="max-w-[260px] truncate text-sm font-medium">
-        {file.filename}
-      </span>
-    </button>
-  );
-}
-
-function ArtifactPreviewFrame({
-  agentId,
-  item,
-  onSyncSuccess,
-  threadId,
-}: {
-  agentId: string | null | undefined;
-  item: ChatArtifactItem;
-  onSyncSuccess: () => void;
-  threadId: string;
-}) {
-  const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openDocumentLightbox = useSet(openAttachmentDocumentLightbox$);
-  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
-  const openAudioLightbox = useSet(openAttachmentAudioLightbox$);
-  const { file } = item;
-  const previewKind = getArtifactPreviewKind(file);
-  const artifact = artifactLightboxMetadataFromItem({
-    agentId,
-    item,
-    onSyncSuccess,
-    threadId,
-  });
-
-  if (previewKind === "image") {
-    return (
-      <ChatImagePreviewLink
-        alt={`Preview ${file.filename}`}
-        ariaLabel={`Preview ${file.filename}`}
-        imageClassName="h-full w-full object-contain"
-        linkClassName="flex h-full w-full items-center justify-center bg-muted"
-        onPreview={() => {
-          openImageLightbox({
-            url: file.url,
-            filename: file.filename,
-            artifact,
-          });
-        }}
-        placeholderClassName="h-full w-full"
-        url={file.url}
-      />
-    );
-  }
-
-  if (previewKind === "video") {
-    return (
-      <ChatVideoPreviewButton
-        ariaLabel={`Preview ${file.filename}`}
-        buttonClassName="flex h-full w-full items-center justify-center"
-        filename={file.filename}
-        onPreview={() => {
-          openVideoLightbox({
-            url: file.url,
-            filename: file.filename,
-            artifact,
-          });
-        }}
-        posterClassName="h-full w-full"
-        url={file.url}
-        videoClassName="h-full w-full object-contain"
-      />
-    );
-  }
-
-  if (previewKind === "audio") {
-    return (
-      <ArtifactAudioPreviewButton
-        file={file}
-        onOpen={() => {
-          openAudioLightbox({
-            url: file.url,
-            filename: file.filename,
-            artifact,
-          });
-        }}
-      />
-    );
-  }
-
-  if (previewKind === "document") {
-    const documentPreviewKind = getArtifactDocumentPreviewKind(file);
-    if (!documentPreviewKind) {
-      return (
-        <div className="flex h-full w-full items-center justify-center bg-muted/40">
-          <ArtifactFileIcon file={file} size="md" />
-        </div>
-      );
-    }
-
-    const openPreview = () => {
-      openDocumentLightbox({
-        kind: documentPreviewKind,
-        url: file.url,
-        filename: file.filename,
-        artifact,
-      });
-    };
-
-    if (documentPreviewKind !== "pdf" && documentPreviewKind !== "html") {
-      return (
-        <ArtifactPreviewOpenOverlay
-          filename={file.filename}
-          onOpen={openPreview}
-        >
-          <ArtifactTextDocumentPreviewFrame
-            file={file}
-            kind={documentPreviewKind}
-          />
-        </ArtifactPreviewOpenOverlay>
-      );
-    }
-
-    return (
-      <ArtifactPreviewOpenOverlay filename={file.filename} onOpen={openPreview}>
-        <iframe
-          src={file.url}
-          title={`Preview ${file.filename}`}
-          className="h-full w-full bg-background"
-        />
-      </ArtifactPreviewOpenOverlay>
-    );
-  }
-
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-muted/40 p-8 text-center">
-      <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground shadow-sm">
-        <ArtifactFileIcon file={file} size="md" />
-      </span>
-      <div className="min-w-0">
-        <p className="max-w-[260px] truncate text-sm text-foreground">
-          {file.filename}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function ArtifactPreviewPanel({
-  item,
-  agentId,
-  onSyncSuccess,
-  threadId,
-}: {
-  item: ChatArtifactItem;
-  agentId: string | null | undefined;
-  onSyncSuccess: () => void;
-  threadId: string;
-}) {
-  const { file } = item;
-
-  return (
-    <div className="min-w-0 overflow-hidden rounded-lg border border-border/70 bg-background shadow-sm">
-      <div className="h-[260px] border-b border-border/60 bg-muted/30">
-        <ArtifactPreviewFrame
-          agentId={agentId}
-          item={item}
-          onSyncSuccess={onSyncSuccess}
-          threadId={threadId}
-        />
-      </div>
-      <div className="flex items-start gap-3 px-3 py-3">
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground">
-          <ArtifactPreviewBadge file={file} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">
-            {file.filename}
-          </p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span>{artifactFileKindLabel(file)}</span>
-            <span aria-hidden>·</span>
-            <span>{formatBytes(file.size)}</span>
-            <span aria-hidden>·</span>
-            <span>{formatArtifactTime(file.createdAt)}</span>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <ArtifactPreviewActions
-            item={item}
-            agentId={agentId}
-            threadId={threadId}
-            onSyncSuccess={onSyncSuccess}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ArtifactThumbnail({
-  file,
-  selected,
-}: {
-  file: ChatThreadArtifactFile;
-  selected: boolean;
-}) {
-  const previewKind = getArtifactPreviewKind(file);
-
-  return (
-    <div
-      className={cn(
-        "relative flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/60 transition-colors",
-        selected
-          ? "border-primary/60 ring-2 ring-primary/15"
-          : "border-border/70 hover:border-foreground/25",
-      )}
-      aria-hidden="true"
-    >
-      {previewKind === "image" ? (
-        <ArtifactThumbnailImage url={file.url} />
-      ) : (
-        <ArtifactFileIcon file={file} />
-      )}
-    </div>
-  );
-}
-
-function ArtifactThumbnailImage({ url }: { url: string }) {
-  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
-  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
-  const setImageLoadStatus = useSet(setImageLoadStatus$);
-  const imageLoadKey = `artifact-thumbnail:${url}`;
-  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
-
-  const showPlaceholder = imageStatus !== "loaded";
-
-  return (
-    <>
-      {showPlaceholder && (
-        <span className="flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground">
-          {imageStatus === "loading" ? (
-            <IconLoader2 size={14} stroke={1.8} className="animate-spin" />
-          ) : (
-            <IconPhoto size={14} stroke={1.5} />
-          )}
-        </span>
-      )}
-      <img
-        key={imageLoadKey}
-        ref={imageLoadStatusRef}
-        src={url}
-        alt=""
-        data-image-load-key={imageLoadKey}
-        loading="lazy"
-        onLoad={() => {
-          setImageLoadStatus(imageLoadKey, "loaded");
-        }}
-        onError={() => {
-          setImageLoadStatus(imageLoadKey, "error");
-        }}
-        className={cn(
-          "h-full w-full object-cover",
-          showPlaceholder && "absolute inset-0 opacity-0",
-        )}
-        aria-hidden="true"
-      />
-    </>
-  );
-}
-
-function ArtifactFileRow({
-  item,
-  selected,
-  onPreview,
-}: {
-  item: ChatArtifactItem;
-  selected: boolean;
-  onPreview: () => void;
-}) {
-  const { file } = item;
-
-  return (
-    <div
-      className={cn(
-        "flex rounded-lg border transition-colors",
-        selected
-          ? "border-primary/40 bg-primary/5"
-          : "border-border/60 bg-background/70 hover:bg-muted/25",
-      )}
-    >
-      <button
-        type="button"
-        onClick={onPreview}
-        className="flex min-w-0 flex-1 items-start gap-3 rounded-lg px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        aria-label={`Select ${file.filename}`}
-      >
-        <ArtifactThumbnail file={file} selected={selected} />
-        <div className="min-w-0 flex-1">
-          <span
-            className="block max-w-full truncate text-sm font-medium text-foreground"
-            title={file.filename}
-          >
-            {file.filename}
-          </span>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span>{formatBytes(file.size)}</span>
-            <span aria-hidden>·</span>
-            <span>{formatArtifactTime(file.createdAt)}</span>
-          </div>
-        </div>
-      </button>
-    </div>
   );
 }
 
@@ -2812,164 +1918,6 @@ function ChatArtifactInboxSlot({
   return <ChatArtifactInboxList thread={thread} />;
 }
 
-function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
-  const loadable = useLastLoadable(thread.artifacts$);
-  const connectorList = useLastResolved(connectors$);
-  const agentId = useLastResolved(thread.agentId$);
-  const selectedArtifactKey = useGet(thread.artifactPreviewKey$);
-  const setSelectedArtifactKey = useSet(thread.setArtifactPreviewKey$);
-  const reloadArtifacts = useSet(thread.setArtifactsDrawerOpen$);
-
-  if (loadable.state === "loading") {
-    return (
-      <div className="flex flex-col gap-3">
-        {Array.from({ length: 4 }, (_, i) => {
-          return <Skeleton key={i} className="h-16 rounded-lg" />;
-        })}
-      </div>
-    );
-  }
-
-  if (loadable.state === "hasError") {
-    return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-        Failed to load artifacts
-      </div>
-    );
-  }
-
-  if (loadable.state !== "hasData") {
-    return null;
-  }
-
-  const runs = loadable.data;
-  const items = flattenArtifactRuns(runs);
-  const selectedItem =
-    items.find((item) => {
-      return artifactItemKey(item) === selectedArtifactKey;
-    }) ?? items[0];
-  const totalFiles = runs.reduce((sum, run) => {
-    return sum + run.files.length;
-  }, 0);
-
-  if (totalFiles === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/70 p-8 text-center">
-        <img
-          src={emptyArtifactImg}
-          alt=""
-          role="presentation"
-          loading="lazy"
-          className="h-24 w-24 object-contain opacity-80"
-        />
-        <p className="text-sm text-muted-foreground">
-          No uploaded files in this chat yet.
-        </p>
-      </div>
-    );
-  }
-
-  const selectedKey = selectedItem ? artifactItemKey(selectedItem) : null;
-  const googleDriveConnected =
-    connectorList?.connectors.some((connector) => {
-      return (
-        connector.type === "google-drive" &&
-        connector.connectionStatus === "connected"
-      );
-    }) ?? false;
-  const refreshArtifactSyncStatus = () => {
-    reloadArtifacts(true);
-  };
-
-  return (
-    <div className="flex min-w-0 flex-col gap-5">
-      {selectedItem && (
-        <ArtifactPreviewPanel
-          item={selectedItem}
-          agentId={agentId}
-          onSyncSuccess={refreshArtifactSyncStatus}
-          threadId={thread.threadId}
-        />
-      )}
-      <div className="flex items-center justify-between border-b border-border/60 pb-3 text-xs text-muted-foreground">
-        <span>
-          {totalFiles} file{totalFiles === 1 ? "" : "s"}
-        </span>
-        <ArtifactBulkActionsMenu
-          items={items}
-          googleDriveConnected={googleDriveConnected}
-          agentId={agentId}
-          onSyncSuccess={refreshArtifactSyncStatus}
-          threadId={thread.threadId}
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        {items.map((item) => {
-          const itemKey = artifactItemKey(item);
-          return (
-            <ArtifactFileRow
-              key={itemKey}
-              item={item}
-              selected={selectedKey === itemKey}
-              onPreview={() => {
-                setSelectedArtifactKey(itemKey);
-              }}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
-  const open = useGet(thread.artifactsDrawerOpen$);
-  const setOpen = useSet(thread.setArtifactsDrawerOpen$);
-  const setArtifactsRealtimeRef = useSet(thread.setArtifactsRealtimeRef$);
-  const lightboxUrl = useGet(attachmentLightboxUrl$);
-
-  return (
-    <Sheet
-      open={open}
-      onOpenChange={(value) => {
-        setOpen(value);
-      }}
-    >
-      <SheetContent
-        side="right"
-        className="flex w-[420px] max-w-[100vw] flex-col"
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-        }}
-        onEscapeKeyDown={(event) => {
-          if (lightboxUrl) {
-            event.preventDefault();
-          }
-        }}
-        onInteractOutside={(event) => {
-          if (lightboxUrl) {
-            event.preventDefault();
-          }
-        }}
-      >
-        <SheetHeader className="shrink-0">
-          <SheetTitle>Artifacts</SheetTitle>
-          <SheetDescription>
-            Uploaded files from runs in this chat thread.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6 -mb-6 pb-6">
-          {open && (
-            <div ref={setArtifactsRealtimeRef}>
-              <ChatArtifactsDrawerContent thread={thread} />
-            </div>
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
@@ -3001,11 +1949,10 @@ export function ZeroChatThreadPage() {
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
-  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
   const artifactRef = useGet(currentArtifactRef$);
   const artifactInboxThreadId = useGet(currentArtifactInboxThreadId$);
   const artifactPanelOpen =
-    sidebarEnabled && (artifactRef !== null || artifactInboxThreadId !== null);
+    artifactRef !== null || artifactInboxThreadId !== null;
   // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
   // snapshot survives keyed ChatThread remounts during thread navigation.
   // Otherwise a second mod+shift+arrow press lands on a freshly mounted
@@ -3075,12 +2022,6 @@ export function ZeroChatThreadPage() {
           )}
         </div>
       </div>
-      {!sidebarEnabled && leftThread && (
-        <ChatArtifactsDrawer thread={leftThread} />
-      )}
-      {!sidebarEnabled && rightThread && (
-        <ChatArtifactsDrawer key={rightThread.threadId} thread={rightThread} />
-      )}
       {lightboxUrl && <AttachmentLightbox />}
       <ShortcutHelpDialog
         open={shortcutHelpOpen}

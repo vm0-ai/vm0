@@ -11,13 +11,9 @@ import {
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
   IconColumns2,
-  IconDownload,
   IconFileMusic,
   IconPhoto,
   IconLoader2,
-  IconShare,
-  IconZoomIn,
-  IconZoomOut,
   IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
@@ -34,14 +30,9 @@ import {
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IMAGE_LIGHTBOX_MAX_ZOOM,
-  IMAGE_LIGHTBOX_MIN_ZOOM,
-  imageLightboxImageRef$,
-  imageLightboxState$,
   imageLoadStatusByKey$,
   imageLoadStatusRef$,
   resetZoomableImageCanvasZoom$,
-  setImageLightboxStatus$,
   setImageLoadStatus$,
   textPreviewLoaderRef$,
   textPreviewLoadStateByKey$,
@@ -50,26 +41,21 @@ import {
 import { Markdown } from "../components/markdown.tsx";
 import {
   lightboxUrl$,
-  closeLightbox$,
   closeLightboxWithDialogExit$,
   lightboxDialogFullscreen$,
   lightboxDialogVisible$,
+  lightboxDialogRef$,
   openAudioLightbox$,
   openDocumentLightbox$,
   openImageLightbox$,
-  lightboxDialogRef$,
   toggleLightboxDialogFullscreen$,
   type AttachmentArtifactMetadata,
   type AttachmentLightboxState,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import {
-  chatArtifactSidebarEnabled$,
-  openArtifactSidebarPreview$,
-} from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import { openArtifactSidebarPreview$ } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
   attachmentFilenameFromUrl,
-  copyAttachmentLinkToClipboard,
   downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
@@ -124,11 +110,6 @@ function contentTypeForDocumentAttachmentPreviewKind(
   }
   return "application/pdf";
 }
-
-const ATTACHMENT_LIGHTBOX_OVERLAY_CLASS =
-  "zero-dialog-enter-overlay pointer-events-auto fixed inset-0 z-[9999] isolate flex items-center justify-center bg-black/80 backdrop-blur-sm outline-none";
-
-const ATTACHMENT_LIGHTBOX_PANEL_CLASS = "zero-dialog-enter-content";
 
 // ---------------------------------------------------------------------------
 // AttachmentLightbox — full-screen attachment viewer
@@ -272,10 +253,6 @@ function LightboxBodyScrollLock() {
   );
 }
 
-function isImageLightboxZoomAtReset(zoom: number): boolean {
-  return Math.abs(zoom - 1) < 0.001;
-}
-
 function DialogIconButton({
   ariaLabel,
   children,
@@ -324,377 +301,6 @@ function ArtifactDialogFullscreenButton({
         <IconArrowsDiagonal size={18} stroke={1.8} />
       )}
     </DialogIconButton>
-  );
-}
-
-function ImageLightboxControls({
-  closeLightbox,
-  copyLink,
-  download,
-  resetZoom,
-  zoom,
-  zoomIn,
-  zoomOut,
-}: {
-  closeLightbox: () => void;
-  copyLink: () => void;
-  download: () => void;
-  resetZoom: () => void;
-  zoom: number;
-  zoomIn: () => void;
-  zoomOut: () => void;
-}) {
-  return (
-    <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-      <div className="flex items-center gap-1 rounded-full bg-black/50 p-1 text-white">
-        <button
-          type="button"
-          onClick={zoomOut}
-          disabled={zoom <= IMAGE_LIGHTBOX_MIN_ZOOM}
-          className="rounded-full p-1.5 transition-colors hover:bg-white/15 disabled:pointer-events-none disabled:opacity-40"
-          aria-label="Zoom out"
-          title="Zoom out"
-        >
-          <IconZoomOut size={18} stroke={2} />
-        </button>
-        <span className="min-w-10 text-center text-xs font-medium tabular-nums">
-          {Math.round(zoom * 100)}%
-        </span>
-        <button
-          type="button"
-          onClick={zoomIn}
-          disabled={zoom >= IMAGE_LIGHTBOX_MAX_ZOOM}
-          className="rounded-full p-1.5 transition-colors hover:bg-white/15 disabled:pointer-events-none disabled:opacity-40"
-          aria-label="Zoom in"
-          title="Zoom in"
-        >
-          <IconZoomIn size={18} stroke={2} />
-        </button>
-        <button
-          type="button"
-          onClick={resetZoom}
-          disabled={isImageLightboxZoomAtReset(zoom)}
-          className="rounded-full p-1.5 transition-colors hover:bg-white/15 disabled:pointer-events-none disabled:opacity-40"
-          aria-label="Reset zoom"
-          title="Reset zoom"
-        >
-          <IconZoomReset size={18} stroke={2} />
-        </button>
-      </div>
-      <button
-        type="button"
-        onClick={copyLink}
-        className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-        aria-label="Share"
-      >
-        <IconShare size={20} stroke={2} />
-      </button>
-      <button
-        type="button"
-        onClick={download}
-        className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-        aria-label="Download"
-      >
-        <IconDownload size={20} stroke={2} />
-      </button>
-      <button
-        type="button"
-        onClick={closeLightbox}
-        className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-        aria-label="Close"
-      >
-        <IconX size={20} stroke={2} />
-      </button>
-    </div>
-  );
-}
-
-function ImageLightboxContent({
-  closeLightbox,
-  pageSignal,
-  url,
-}: {
-  closeLightbox: () => void;
-  pageSignal: AbortSignal;
-  url: string;
-}) {
-  const imageLightboxImageRef = useSet(imageLightboxImageRef$);
-  const setImageLightboxStatus = useSet(setImageLightboxStatus$);
-
-  const download = () => {
-    detach(
-      downloadAttachmentUrl(url, pageSignal),
-      Reason.DomCallback,
-      "attachment download",
-    );
-  };
-  const copyLink = () => {
-    detach(
-      copyAttachmentLinkToClipboard(url),
-      Reason.DomCallback,
-      "attachment copy link",
-    );
-  };
-
-  const { imageStatus } = useGet(imageLightboxState$);
-
-  return (
-    <ZoomableArtifactImageCanvas
-      src={url}
-      alt=""
-      zoomKey={zoomableArtifactImageKey("attachment-lightbox", url)}
-      keyboardShortcuts
-      imageRef={imageLightboxImageRef}
-      imageTestId="attachment-lightbox-image"
-      canvasTestId="attachment-lightbox-panel"
-      onLoad={() => {
-        setImageLightboxStatus("loaded");
-      }}
-      onError={() => {
-        setImageLightboxStatus("error");
-      }}
-      className={`relative z-10 h-[min(85vh,720px)] w-[min(90vw,1100px)] bg-transparent ${ATTACHMENT_LIGHTBOX_PANEL_CLASS}`}
-      imageClassName={`rounded-lg shadow-2xl ${
-        imageStatus === "loaded" ? "" : "opacity-0"
-      }`}
-    >
-      {({ resetZoom, zoom, zoomIn, zoomOut }) => {
-        return (
-          <>
-            <ImageLightboxControls
-              closeLightbox={closeLightbox}
-              copyLink={copyLink}
-              download={download}
-              resetZoom={resetZoom}
-              zoom={zoom}
-              zoomIn={zoomIn}
-              zoomOut={zoomOut}
-            />
-            {imageStatus !== "loaded" && (
-              <div
-                data-testid="attachment-lightbox-image-loading"
-                className="absolute left-1/2 top-1/2 z-10 flex h-[min(85vh,480px)] w-[min(90vw,720px)] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-lg bg-black/30 text-white shadow-2xl"
-              >
-                {imageStatus === "loading" ? (
-                  <IconLoader2
-                    size={24}
-                    stroke={1.8}
-                    className="animate-spin"
-                  />
-                ) : (
-                  <IconPhoto size={24} stroke={1.5} />
-                )}
-              </div>
-            )}
-          </>
-        );
-      }}
-    </ZoomableArtifactImageCanvas>
-  );
-}
-
-function ImageLightbox({ url }: { url: string }) {
-  const dialogRef = useSet(lightboxDialogRef$);
-  const closeLightbox = useSet(closeLightbox$);
-  const pageSignal = useGet(pageSignal$);
-
-  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      closeLightbox();
-    }
-  };
-
-  return createPortal(
-    <div
-      ref={dialogRef}
-      tabIndex={-1}
-      className={ATTACHMENT_LIGHTBOX_OVERLAY_CLASS}
-      style={{ pointerEvents: "auto" }}
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      data-testid="attachment-lightbox"
-    >
-      <LightboxBodyScrollLock />
-      <ImageLightboxContent
-        closeLightbox={closeLightbox}
-        pageSignal={pageSignal}
-        url={url}
-      />
-    </div>,
-    document.body,
-  );
-}
-
-function VideoLightbox({ filename, url }: { filename: string; url: string }) {
-  const dialogRef = useSet(lightboxDialogRef$);
-  const closeLightbox = useSet(closeLightbox$);
-  const pageSignal = useGet(pageSignal$);
-  const videoUrl = publicAttachmentUrl(url);
-
-  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      closeLightbox();
-    }
-  };
-
-  return createPortal(
-    <div
-      ref={dialogRef}
-      tabIndex={-1}
-      className={ATTACHMENT_LIGHTBOX_OVERLAY_CLASS}
-      style={{ pointerEvents: "auto" }}
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      data-testid="attachment-lightbox"
-    >
-      <LightboxBodyScrollLock />
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            detach(
-              copyAttachmentLinkToClipboard(url),
-              Reason.DomCallback,
-              "attachment copy link",
-            );
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-          aria-label="Share"
-        >
-          <IconShare size={20} stroke={2} />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            detach(
-              downloadAttachmentUrl(url, pageSignal, filename),
-              Reason.DomCallback,
-              "attachment download",
-            );
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-          aria-label="Download"
-        >
-          <IconDownload size={20} stroke={2} />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            closeLightbox();
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-          aria-label="Close"
-        >
-          <IconX size={20} stroke={2} />
-        </button>
-      </div>
-      <div
-        className={`relative z-10 flex w-[min(92vw,1100px)] min-w-0 overflow-hidden bg-black shadow-2xl ${ATTACHMENT_LIGHTBOX_PANEL_CLASS}`}
-        data-testid="attachment-lightbox-panel"
-      >
-        <video
-          src={videoUrl}
-          controls
-          autoPlay
-          playsInline
-          preload="metadata"
-          className="block max-h-[78vh] w-full bg-black object-contain"
-          aria-label={`Video preview for ${filename}`}
-        />
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-function AudioLightbox({ filename, url }: { filename: string; url: string }) {
-  const dialogRef = useSet(lightboxDialogRef$);
-  const closeLightbox = useSet(closeLightbox$);
-  const pageSignal = useGet(pageSignal$);
-  const audioUrl = publicAttachmentUrl(url);
-
-  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      closeLightbox();
-    }
-  };
-
-  return createPortal(
-    <div
-      ref={dialogRef}
-      tabIndex={-1}
-      className={ATTACHMENT_LIGHTBOX_OVERLAY_CLASS}
-      style={{ pointerEvents: "auto" }}
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      data-testid="attachment-lightbox"
-    >
-      <LightboxBodyScrollLock />
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            detach(
-              copyAttachmentLinkToClipboard(url),
-              Reason.DomCallback,
-              "attachment copy link",
-            );
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-          aria-label="Share"
-        >
-          <IconShare size={20} stroke={2} />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            detach(
-              downloadAttachmentUrl(url, pageSignal, filename),
-              Reason.DomCallback,
-              "attachment download",
-            );
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-          aria-label="Download"
-        >
-          <IconDownload size={20} stroke={2} />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            closeLightbox();
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-          aria-label="Close"
-        >
-          <IconX size={20} stroke={2} />
-        </button>
-      </div>
-      <div
-        className={`relative z-10 flex w-[min(92vw,560px)] min-w-0 flex-col items-center gap-4 overflow-hidden rounded-2xl bg-background p-6 shadow-2xl ${ATTACHMENT_LIGHTBOX_PANEL_CLASS}`}
-        data-testid="attachment-lightbox-panel"
-      >
-        <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/50 text-muted-foreground">
-          <IconFileMusic size={28} stroke={1.6} />
-        </span>
-        <div className="max-w-full truncate text-sm font-medium text-foreground">
-          {filename}
-        </div>
-        <audio
-          src={audioUrl}
-          controls
-          autoPlay
-          preload="metadata"
-          className="w-full"
-          aria-label={`Audio preview for ${filename}`}
-          data-testid="attachment-lightbox-audio"
-        />
-      </div>
-    </div>,
-    document.body,
   );
 }
 
@@ -1168,7 +774,7 @@ function ArtifactPreviewDialogThreadResolver({
 }) {
   const loadable = useLastLoadable(thread.artifacts$);
   const agentId = useLastResolved(thread.agentId$);
-  const reloadArtifacts = useSet(thread.setArtifactsDrawerOpen$);
+  const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const item =
     loadable.state === "hasData"
       ? findArtifactDialogItemForUrl(loadable.data, preview.url)
@@ -1181,7 +787,7 @@ function ArtifactPreviewDialogThreadResolver({
           agentId,
           item,
           onSyncSuccess: () => {
-            reloadArtifacts(true);
+            reloadArtifacts();
           },
           threadId: thread.threadId,
         })}
@@ -1360,265 +966,12 @@ function ArtifactPreviewDialogContent({
 
 export function AttachmentLightbox() {
   const preview = useGet(lightboxUrl$);
-  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
-  const dialogRef = useSet(lightboxDialogRef$);
-  const closeLightbox = useSet(closeLightbox$);
-  const pageSignal = useGet(pageSignal$);
 
   if (!preview) {
     return null;
   }
 
-  if (sidebarEnabled) {
-    return <ArtifactPreviewDialog preview={preview} />;
-  }
-
-  if (preview.kind === "image") {
-    return <ImageLightbox url={preview.url} />;
-  }
-
-  if (preview.kind === "video") {
-    return <VideoLightbox filename={preview.filename} url={preview.url} />;
-  }
-
-  if (preview.kind === "audio") {
-    return <AudioLightbox filename={preview.filename} url={preview.url} />;
-  }
-
-  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
-      closeLightbox();
-    }
-  };
-
-  return createPortal(
-    <div
-      ref={dialogRef}
-      tabIndex={-1}
-      className={ATTACHMENT_LIGHTBOX_OVERLAY_CLASS}
-      style={{ pointerEvents: "auto" }}
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      data-testid="attachment-lightbox"
-    >
-      <LightboxBodyScrollLock />
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            detach(
-              copyAttachmentLinkToClipboard(preview.url),
-              Reason.DomCallback,
-              "attachment copy link",
-            );
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-          aria-label="Share"
-        >
-          <IconShare size={20} stroke={2} />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            detach(
-              downloadAttachmentUrl(preview.url, pageSignal),
-              Reason.DomCallback,
-              "attachment download",
-            );
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-          aria-label="Download"
-        >
-          <IconDownload size={20} stroke={2} />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            closeLightbox();
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-          aria-label="Close"
-        >
-          <IconX size={20} stroke={2} />
-        </button>
-      </div>
-      <div
-        className={`relative z-10 w-[min(92vw,1100px)] min-w-0 overflow-hidden rounded-2xl bg-background shadow-2xl ${ATTACHMENT_LIGHTBOX_PANEL_CLASS}`}
-        data-testid="attachment-lightbox-panel"
-      >
-        <div className="flex items-center gap-3 border-b border-foreground/10 px-4 py-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-            <FilePreviewIcon
-              filename={preview.filename}
-              contentType={contentTypeForDocumentAttachmentPreviewKind(
-                preview.kind,
-              )}
-              testId="attachment-lightbox-file-icon"
-            />
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium text-foreground">
-              {preview.filename}
-            </div>
-            <div className="text-xs text-muted-foreground uppercase tracking-wide">
-              {preview.kind} preview
-            </div>
-          </div>
-        </div>
-        {preview.kind === "markdown" ? (
-          <MarkdownLightboxBody url={preview.url} signal={pageSignal} />
-        ) : preview.kind === "text" || preview.kind === "json" ? (
-          <PlainTextLightboxBody
-            url={preview.url}
-            kind={preview.kind}
-            signal={pageSignal}
-          />
-        ) : preview.kind === "csv" ? (
-          <CsvLightboxBody url={preview.url} signal={pageSignal} />
-        ) : (
-          <div className="max-w-full overflow-hidden overscroll-contain bg-background">
-            <iframe
-              src={preview.url}
-              title={`${preview.filename} preview`}
-              sandbox={preview.kind === "html" ? "allow-scripts" : undefined}
-              scrolling="yes"
-              className="relative z-10 block h-[min(78vh,900px)] w-full max-w-full overflow-x-hidden overscroll-contain bg-background"
-            />
-          </div>
-        )}
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-function MarkdownLightboxBody({
-  url,
-  signal,
-}: {
-  url: string;
-  signal: AbortSignal;
-}) {
-  return (
-    <TextPreviewLoader url={url} signal={signal}>
-      {({ status, text }) => {
-        if (status === "loading") {
-          return (
-            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
-              <IconLoader2 size={20} className="animate-spin" />
-            </div>
-          );
-        }
-
-        if (status === "error") {
-          return (
-            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-              Markdown preview unavailable.
-            </div>
-          );
-        }
-
-        return (
-          <div className="h-[min(78vh,900px)] overflow-auto p-6">
-            <Markdown source={text} />
-          </div>
-        );
-      }}
-    </TextPreviewLoader>
-  );
-}
-
-function PlainTextLightboxBody({
-  kind,
-  signal,
-  url,
-}: {
-  kind: "text" | "json" | "csv";
-  signal: AbortSignal;
-  url: string;
-}) {
-  return (
-    <TextPreviewLoader url={url} signal={signal}>
-      {({ status, text }) => {
-        if (status === "loading") {
-          return (
-            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
-              <IconLoader2 size={20} className="animate-spin" />
-            </div>
-          );
-        }
-
-        if (status === "error") {
-          return (
-            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-              {kind === "json" ? "JSON" : kind === "csv" ? "CSV" : "Text"}{" "}
-              preview unavailable.
-            </div>
-          );
-        }
-
-        const trimmed = formatPlainPreviewText(kind, text);
-        const display =
-          trimmed.length > 16_000
-            ? `${trimmed.slice(0, 16_000)}\n\n…`
-            : trimmed;
-
-        return (
-          <div className="h-[min(78vh,900px)] overflow-auto p-6">
-            <pre className="whitespace-pre-wrap break-words rounded-lg bg-muted/50 p-4 text-sm text-foreground">
-              {display}
-            </pre>
-          </div>
-        );
-      }}
-    </TextPreviewLoader>
-  );
-}
-
-function CsvLightboxBody({
-  url,
-  signal,
-}: {
-  url: string;
-  signal: AbortSignal;
-}) {
-  return (
-    <TextPreviewLoader url={url} signal={signal}>
-      {({ status, text }) => {
-        if (status === "loading") {
-          return (
-            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-muted-foreground">
-              <IconLoader2 size={20} className="animate-spin" />
-            </div>
-          );
-        }
-
-        if (status === "error") {
-          return (
-            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-              CSV preview unavailable.
-            </div>
-          );
-        }
-
-        const rows = parseCsvRows(text);
-        if (rows.length === 0) {
-          return (
-            <div className="flex h-[min(78vh,900px)] items-center justify-center p-6 text-sm text-muted-foreground">
-              CSV preview unavailable.
-            </div>
-          );
-        }
-
-        return (
-          <div className="h-[min(78vh,900px)] overflow-auto p-6">
-            <CsvPreviewTable rows={rows} />
-          </div>
-        );
-      }}
-    </TextPreviewLoader>
-  );
+  return <ArtifactPreviewDialog preview={preview} />;
 }
 
 // ---------------------------------------------------------------------------

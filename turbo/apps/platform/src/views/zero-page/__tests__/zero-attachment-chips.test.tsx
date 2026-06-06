@@ -1,11 +1,10 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -30,12 +29,6 @@ const context = testContext();
 const mockApi = createMockApi(context);
 const attachmentLogger = getLoggers()["zero-attachment-chips"];
 const attachmentLoggerLevel = attachmentLogger?.level;
-
-function chatArtifactSidebarOff() {
-  return {
-    [FeatureSwitchKey.ChatArtifactSidebar]: false,
-  };
-}
 
 beforeEach(() => {
   if (attachmentLogger) {
@@ -264,7 +257,6 @@ describe("chat-i-059: image preview button opens lightbox", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     await waitFor(() => {
@@ -309,7 +301,6 @@ describe("chat-i-059: image preview button opens lightbox", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     await waitFor(() => {
@@ -331,18 +322,11 @@ describe("chat-i-059: image preview button opens lightbox", () => {
 
     await user.click(screen.getByLabelText("Open image preview for photo.png"));
 
-    const image = await screen.findByTestId("attachment-lightbox-image");
-    expect(
-      screen.getByTestId("attachment-lightbox-image-loading"),
-    ).toBeInTheDocument();
-
-    fireEvent.load(image);
     await waitFor(() => {
       expect(
-        screen.queryByTestId("attachment-lightbox-image-loading"),
-      ).not.toBeInTheDocument();
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
     });
-
     expect(screen.getByText("100%")).toBeInTheDocument();
     await user.click(screen.getByLabelText("Zoom in"));
     await waitFor(() => {
@@ -359,16 +343,6 @@ describe("chat-i-059: image preview button opens lightbox", () => {
       expect(screen.getByText("115%")).toBeInTheDocument();
     });
     await user.click(screen.getByLabelText("Reset zoom"));
-    await waitFor(() => {
-      expect(screen.getByText("100%")).toBeInTheDocument();
-    });
-
-    fireEvent.keyDown(document, { key: "=", metaKey: true });
-    await waitFor(() => {
-      expect(screen.getByText("115%")).toBeInTheDocument();
-    });
-
-    fireEvent.keyDown(document, { key: "-", metaKey: true });
     await waitFor(() => {
       expect(screen.getByText("100%")).toBeInTheDocument();
     });
@@ -567,7 +541,6 @@ describe("chat-i-066: lightbox download fetches blobs", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     await waitFor(() => {
@@ -589,10 +562,8 @@ describe("chat-i-066: lightbox download fetches blobs", () => {
 
     await user.click(screen.getByLabelText("Open image preview for photo.png"));
 
-    const downloadButton = await waitFor(() => {
-      return screen.getByLabelText("Download");
-    });
-    click(downloadButton);
+    await user.click(await screen.findByLabelText("Download options"));
+    click(screen.getByText("Download"));
 
     await waitFor(() => {
       expect(toastErrorSpy).toHaveBeenCalledWith("Download failed");

@@ -488,16 +488,13 @@ export interface ChatThreadSignals {
   rotatingPhrase$: Computed<string>;
   donePhrase$: Computed<string>;
   runPhraseLoop$: Command<Promise<void>, [AbortSignal]>;
-  // ── Artifacts drawer ─────────────────────────────────────────────────────
+  // ── Artifacts ────────────────────────────────────────────────────────────
   artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
-  artifactsDrawerOpen$: Computed<boolean>;
-  setArtifactsDrawerOpen$: Command<void, [boolean]>;
+  reloadArtifacts$: Command<void, []>;
   setArtifactsRealtimeRef$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  artifactPreviewKey$: Computed<string | null>;
-  setArtifactPreviewKey$: Command<void, [string | null]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1352,23 +1349,14 @@ function createArtifacts(
     return result.body.runs;
   });
 
-  const internalDrawerOpen$ = state(false);
-  const artifactsDrawerOpen$ = computed((get) => {
-    return get(internalDrawerOpen$);
-  });
-  const setArtifactsDrawerOpen$ = command(({ set }, open: boolean) => {
-    if (open) {
-      set(internalArtifactsReload$, (version) => {
-        return version + 1;
-      });
-    }
-    set(internalDrawerOpen$, open);
-  });
-
-  const reloadArtifactsFromRealtime$ = command(({ set }) => {
+  const reloadArtifacts$ = command(({ set }) => {
     set(internalArtifactsReload$, (version) => {
       return version + 1;
     });
+  });
+
+  const reloadArtifactsFromRealtime$ = command(({ set }) => {
+    set(reloadArtifacts$);
     return false;
   });
   const setArtifactsRealtimeRef$ = onRef(
@@ -1382,21 +1370,10 @@ function createArtifacts(
     }),
   );
 
-  const internalPreviewKey$ = state<string | null>(null);
-  const artifactPreviewKey$ = computed((get) => {
-    return get(internalPreviewKey$);
-  });
-  const setArtifactPreviewKey$ = command(({ set }, key: string | null) => {
-    set(internalPreviewKey$, key);
-  });
-
   return {
     artifacts$,
-    artifactsDrawerOpen$,
-    setArtifactsDrawerOpen$,
+    reloadArtifacts$,
     setArtifactsRealtimeRef$,
-    artifactPreviewKey$,
-    setArtifactPreviewKey$,
   };
 }
 
@@ -2299,14 +2276,8 @@ export function createChatThreadSignals(
   const { setInputRef$, focusInput$ } = createInputRef();
   const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
     createPhraseLoop(groupedChatMessages$, runTracking.allFinished$);
-  const {
-    artifacts$,
-    artifactsDrawerOpen$,
-    setArtifactsDrawerOpen$,
-    setArtifactsRealtimeRef$,
-    artifactPreviewKey$,
-    setArtifactPreviewKey$,
-  } = createArtifacts(threadId, groupedChatMessages$);
+  const { artifacts$, reloadArtifacts$, setArtifactsRealtimeRef$ } =
+    createArtifacts(threadId, groupedChatMessages$);
 
   return {
     threadId,
@@ -2344,10 +2315,7 @@ export function createChatThreadSignals(
     donePhrase$,
     runPhraseLoop$,
     artifacts$,
-    artifactsDrawerOpen$,
-    setArtifactsDrawerOpen$,
+    reloadArtifacts$,
     setArtifactsRealtimeRef$,
-    artifactPreviewKey$,
-    setArtifactPreviewKey$,
   };
 }

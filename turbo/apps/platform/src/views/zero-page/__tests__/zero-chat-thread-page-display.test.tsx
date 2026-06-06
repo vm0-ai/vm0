@@ -41,12 +41,6 @@ import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
-function chatArtifactSidebarOff() {
-  return {
-    [FeatureSwitchKey.ChatArtifactSidebar]: false,
-  };
-}
-
 function queryRoleByText(
   role: Parameters<typeof queryAllByRoleFast>[0],
   text: string,
@@ -133,9 +127,6 @@ describe("zero chat thread page display - schedule menu", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        ...chatArtifactSidebarOff(),
-      },
     });
 
     await waitFor(() => {
@@ -166,9 +157,6 @@ describe("zero chat thread page display - schedule menu", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        ...chatArtifactSidebarOff(),
-      },
     });
 
     await user.click(await screen.findByLabelText("Schedules"));
@@ -217,9 +205,6 @@ describe("zero chat thread page display - schedule menu", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        ...chatArtifactSidebarOff(),
-      },
     });
 
     await user.click(await screen.findByLabelText("Schedules"));
@@ -301,7 +286,6 @@ describe("zero chat thread page display - permission action card", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const card = await waitFor(() => {
@@ -337,7 +321,6 @@ describe("zero chat thread page display - permission action card", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const card = await waitFor(() => {
@@ -366,7 +349,6 @@ describe("zero chat thread page display - permission action card", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const card = await waitFor(() => {
@@ -400,7 +382,6 @@ describe("zero chat thread page display - attachment image preview", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const previewLink = await waitFor(() => {
@@ -451,7 +432,6 @@ describe("zero chat thread page display - attachment audio chip", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const preview = await waitFor(() => {
@@ -499,7 +479,6 @@ describe("zero chat thread page display - attachment document preview", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     await waitFor(() => {
@@ -551,7 +530,6 @@ describe("zero chat thread page display - body link document preview", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     await waitFor(() => {
@@ -589,7 +567,6 @@ describe("zero chat thread page display - body link document preview", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     await waitFor(() => {
@@ -647,7 +624,6 @@ describe("zero chat thread page display - body link document preview", () => {
       detachedSetupPage({
         context,
         path: "/chats/thread-test-1",
-        featureSwitches: chatArtifactSidebarOff(),
       });
 
       const preview = await screen.findByTestId("attachment-preview-file");
@@ -895,15 +871,9 @@ describe("zero chat thread page display - body link document preview", () => {
     expect(lightbox).toBeInTheDocument();
   });
 
-  it("renders json body links inline and supports collapse for platform file urls", async () => {
+  it("renders json body links as preview cards for platform file urls", async () => {
     const jsonUrl =
       "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/data.json";
-    server.use(
-      http.get(jsonUrl, () => {
-        return HttpResponse.text('{"status":"ok","count":2}');
-      }),
-    );
-
     mockChatLifecycle({
       chatMessages: [
         {
@@ -917,21 +887,13 @@ describe("zero chat thread page display - body link document preview", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("attachment-preview-json")).toBeInTheDocument();
-      expect(screen.getByText(/"status": "ok"/)).toBeInTheDocument();
-      expect(screen.getByText(/"count": 2/)).toBeInTheDocument();
-    });
-
-    await userEvent.click(
-      screen.getByLabelText("Collapse json preview for data.json"),
-    );
-
-    await waitFor(() => {
-      expect(screen.queryByText(/"status": "ok"/)).not.toBeInTheDocument();
+      const preview = screen.getByTestId("attachment-preview-json");
+      expect(preview).toBeInTheDocument();
+      expect(preview).toHaveAttribute("href");
+      expect(within(preview).getByText("data.json")).toBeInTheDocument();
     });
   });
 
@@ -958,7 +920,6 @@ describe("zero chat thread page display - body link document preview", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     await waitFor(() => {
@@ -1018,22 +979,9 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
-  it("renders text body links inline and supports collapse for platform file urls", async () => {
+  it("renders text body links as preview cards for platform file urls", async () => {
     const txtUrl =
       "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/readme.txt#summary";
-    let requestedUrl = "";
-    let requestedRange = "";
-    server.use(
-      http.get(
-        "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/readme.txt",
-        ({ request }) => {
-          requestedUrl = request.url;
-          requestedRange = request.headers.get("Range") ?? "";
-          return HttpResponse.text("hello from text preview");
-        },
-      ),
-    );
-
     mockChatLifecycle({
       chatMessages: [
         {
@@ -1047,56 +995,30 @@ describe("zero chat thread page display - body link document preview", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
-      expect(screen.getByText("hello from text preview")).toBeInTheDocument();
-    });
-    expect(new URL(requestedUrl).searchParams.get("raw")).toBeNull();
-    expect(requestedRange).toBe("bytes=0-65535");
-    const download = screen.getByLabelText("Download readme.txt");
-    expect(download).toHaveAttribute("type", "button");
-    expect(download).not.toHaveAttribute("href");
-
-    await userEvent.click(
-      screen.getByLabelText("Collapse text preview for readme.txt"),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.queryByText("hello from text preview"),
-      ).not.toBeInTheDocument();
+      const preview = screen.getByTestId("attachment-preview-text");
+      expect(preview).toBeInTheDocument();
+      expect(preview).toHaveAttribute("href");
+      expect(within(preview).getByText("readme.txt")).toBeInTheDocument();
     });
   });
 
   it.each([
     {
       filename: "config.xml",
-      content: "<settings><enabled>true</enabled></settings>",
-      expectedText: "settings",
     },
     {
       filename: "deploy.yaml",
-      content: "enabled: true\nregion: us-east-1",
-      expectedText: "region: us-east-1",
     },
     {
       filename: "table.tsv",
-      content: "name\tvalue\nalpha\t1",
-      expectedText: "alpha",
     },
   ])(
-    "renders $filename body links as text previews for platform file urls",
-    async ({ filename, content, expectedText }) => {
+    "renders $filename body links as text preview cards for platform file urls",
+    async ({ filename }) => {
       const fileUrl = `https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/${filename}`;
-      server.use(
-        http.get(fileUrl, () => {
-          return HttpResponse.text(content);
-        }),
-      );
-
       mockChatLifecycle({
         chatMessages: [
           {
@@ -1110,17 +1032,13 @@ describe("zero chat thread page display - body link document preview", () => {
       detachedSetupPage({
         context,
         path: "/chats/thread-test-1",
-        featureSwitches: chatArtifactSidebarOff(),
       });
 
       await waitFor(() => {
         const textPreview = screen.getByTestId("attachment-preview-text");
         expect(textPreview).toBeInTheDocument();
-        expect(
-          within(textPreview).getByText((content) => {
-            return content.includes(expectedText);
-          }),
-        ).toBeInTheDocument();
+        expect(textPreview).toHaveAttribute("href");
+        expect(within(textPreview).getByText(filename)).toBeInTheDocument();
       });
     },
   );
@@ -1141,7 +1059,6 @@ describe("zero chat thread page display - body link document preview", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     await waitFor(() => {
@@ -1333,7 +1250,6 @@ describe("zero chat thread page display - attachment video preview", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const previewButton = await waitFor(() => {
@@ -1369,10 +1285,12 @@ describe("zero chat thread page display - attachment video preview", () => {
     expect(video).toHaveAttribute("controls");
     expect((video as HTMLVideoElement).autoplay).toBeTruthy();
     expect(within(lightbox).getByLabelText("Share")).toBeInTheDocument();
-    expect(within(lightbox).getByLabelText("Download")).toBeInTheDocument();
+    expect(
+      within(lightbox).getByLabelText("Download options"),
+    ).toBeInTheDocument();
   });
 
-  it("uses the padded artifact dialog stage for video previews when enabled", async () => {
+  it("uses the padded artifact dialog stage for video previews", async () => {
     const videoUrl = "https://example.com/clip.mp4";
     mockChatLifecycle({
       chatMessages: [
@@ -1387,9 +1305,6 @@ describe("zero chat thread page display - attachment video preview", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: {
-        [FeatureSwitchKey.ChatArtifactSidebar]: true,
-      },
     });
 
     await userEvent.click(await screen.findByLabelText("Preview clip.mp4"));
@@ -1521,163 +1436,8 @@ describe("zero chat thread page display - attachment pdf preview", () => {
   });
 });
 
-describe("zero chat thread page display - artifacts drawer", () => {
-  it("opens a drawer with uploaded files grouped by run when enabled", async () => {
-    const user = userEvent.setup();
-    let artifactsRequests = 0;
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "user",
-          content: "See attached",
-          runId: "run-artifacts-1",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-    server.use(
-      http.get("https://example.com/chart.png", () => {
-        return new HttpResponse(new Blob(["img"], { type: "image/png" }), {
-          headers: { "Content-Type": "image/png" },
-        });
-      }),
-      http.get("https://example.com/data.csv", () => {
-        return new HttpResponse("label,value\nalpha,1\n", {
-          headers: { "Content-Type": "text/csv" },
-        });
-      }),
-      http.get("https://example.com/deck.pptx", () => {
-        return new HttpResponse(
-          new Blob(["ppt"], {
-            type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-          }),
-          {
-            headers: {
-              "Content-Type":
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            },
-          },
-        );
-      }),
-      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
-        artifactsRequests += 1;
-        return respond(200, {
-          runs: [
-            {
-              runId: "run-artifacts-1",
-              files: [
-                {
-                  id: "file-1",
-                  filename: "chart.png",
-                  contentType: "image/png",
-                  size: 4096,
-                  url: "https://example.com/chart.png",
-                  createdAt: "2026-03-10T00:00:00Z",
-                },
-                {
-                  id: "file-2",
-                  filename: "data.csv",
-                  contentType: "text/csv",
-                  size: 2048,
-                  url: "https://example.com/data.csv",
-                  createdAt: "2026-03-10T00:00:00Z",
-                },
-                {
-                  id: "file-3",
-                  filename: "deck.pptx",
-                  contentType:
-                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                  size: 3072,
-                  url: "https://example.com/deck.pptx",
-                  createdAt: "2026-03-10T00:00:00Z",
-                },
-              ],
-            },
-          ],
-        });
-      }),
-    );
-    const createObjectURLSpy = vi
-      .spyOn(URL, "createObjectURL")
-      .mockReturnValue("blob:artifact-download");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    let downloadedFilename = "";
-    const anchorClickSpy = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(function (this: HTMLAnchorElement) {
-        downloadedFilename = this.download;
-      });
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
-    });
-
-    const button = await waitFor(() => {
-      return screen.getByLabelText("Open artifacts");
-    });
-    expect(artifactsRequests).toBe(0);
-    click(button);
-
-    await waitFor(() => {
-      expect(screen.getByText("Artifacts")).toBeInTheDocument();
-    });
-    expect(artifactsRequests).toBeGreaterThan(0);
-    const previewLink = screen.getByLabelText("Preview chart.png");
-    expect(previewLink).toHaveAttribute(
-      "href",
-      "https://example.com/chart.png",
-    );
-    expect(
-      document.querySelectorAll('img[src="https://example.com/chart.png"]')
-        .length,
-    ).toBeGreaterThanOrEqual(3);
-    expect(screen.getAllByLabelText("Download chart.png")).toHaveLength(1);
-    await user.click(screen.getByLabelText("More artifact actions"));
-    await user.click(screen.getByText("Download all"));
-    await waitFor(() => {
-      expect(createObjectURLSpy).toHaveBeenCalledOnce();
-      expect(anchorClickSpy).toHaveBeenCalledOnce();
-    });
-    expect(downloadedFilename).toBe("vm0-artifact-thread-test-1.zip");
-    const zipBlob = createObjectURLSpy.mock.calls[0]?.[0];
-    expect(zipBlob).toBeInstanceOf(Blob);
-    expect((zipBlob as Blob).type).toBe("application/zip");
-    const zipText = new TextDecoder().decode(
-      await (zipBlob as Blob).arrayBuffer(),
-    );
-    expect(zipText).toContain("chart.png");
-    expect(zipText).toContain("data.csv");
-    expect(screen.getAllByText("chart.png").length).toBeGreaterThan(0);
-    expect(screen.getByText("data.csv")).toBeInTheDocument();
-    const deckButton = screen.getByLabelText("Select deck.pptx");
-    expect(deckButton).toBeInTheDocument();
-    expect(within(deckButton).getByText("PPTX")).toBeInTheDocument();
-
-    await user.click(previewLink);
-
-    const lightbox = await screen.findByTestId("attachment-lightbox");
-    await user.click(within(lightbox).getByLabelText("Close"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("attachment-lightbox"),
-      ).not.toBeInTheDocument();
-    });
-    expect(screen.getByText("Artifacts")).toBeInTheDocument();
-
-    await user.click(screen.getByLabelText("Select data.csv"));
-    await waitFor(() => {
-      const table = screen.getByRole("table");
-      expect(within(table).getByText("label")).toBeInTheDocument();
-      expect(within(table).getByText("value")).toBeInTheDocument();
-      expect(within(table).getByText("alpha")).toBeInTheDocument();
-      expect(within(table).getByText("1")).toBeInTheDocument();
-    });
-  });
-
-  it("opens the artifact inbox sidebar when the sidebar feature is enabled", async () => {
+describe("zero chat thread page display - artifact sidebar", () => {
+  it("opens the artifact inbox sidebar", async () => {
     const user = userEvent.setup();
     let artifactsRequests = 0;
     mockChatLifecycle({
@@ -1740,9 +1500,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: {
-        [FeatureSwitchKey.ChatArtifactSidebar]: true,
-      },
     });
 
     const button = await waitFor(() => {
@@ -1874,9 +1631,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: {
-        [FeatureSwitchKey.ChatArtifactSidebar]: true,
-      },
     });
 
     await user.click(await screen.findByLabelText("Preview chart.png"));
@@ -1985,9 +1739,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: {
-        [FeatureSwitchKey.ChatArtifactSidebar]: true,
-      },
     });
 
     await user.click(await screen.findByLabelText("Open artifacts"));
@@ -2037,7 +1788,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     click(
@@ -2047,12 +1797,10 @@ describe("zero chat thread page display - artifacts drawer", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Artifacts")).toBeInTheDocument();
+      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
       expect(screen.getAllByText("mobile.zip").length).toBeGreaterThan(0);
     });
-    expect(screen.getByRole("dialog", { name: "Artifacts" })).toHaveClass(
-      "max-w-[100vw]",
-    );
+    expect(screen.queryByRole("dialog", { name: "Artifacts" })).toBeNull();
   });
 
   it("renders markdown artifacts through the text loader instead of an iframe", async () => {
@@ -2099,7 +1847,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     click(
@@ -2107,6 +1854,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
         return screen.getByLabelText("Open artifacts");
       }),
     );
+    await user.click(await screen.findByLabelText("Open artifact readme.md"));
 
     await waitFor(() => {
       expect(screen.getByText("发布说明")).toBeInTheDocument();
@@ -2117,10 +1865,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(
       document.querySelector('iframe[title="Preview readme.md"]'),
     ).not.toBeInTheDocument();
-
-    await user.click(screen.getByLabelText("Open preview for readme.md"));
-    const lightbox = await screen.findByTestId("attachment-lightbox");
-    expect(within(lightbox).getByText("发布说明")).toBeInTheDocument();
   });
 
   it("renders xml artifacts through the text loader instead of an iframe", async () => {
@@ -2163,7 +1907,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     click(
@@ -2171,6 +1914,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
         return screen.getByLabelText("Open artifacts");
       }),
     );
+    await user.click(await screen.findByLabelText("Open artifact config.xml"));
 
     await waitFor(() => {
       expect(screen.getByText(/<config>/)).toBeInTheDocument();
@@ -2178,10 +1922,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(
       document.querySelector('iframe[title="Preview config.xml"]'),
     ).not.toBeInTheDocument();
-
-    await user.click(screen.getByLabelText("Open preview for config.xml"));
-    const lightbox = await screen.findByTestId("attachment-lightbox");
-    expect(within(lightbox).getByText(/<config>/)).toBeInTheDocument();
   });
 
   it("renders html artifacts as document iframe previews", async () => {
@@ -2224,7 +1964,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     click(
@@ -2232,22 +1971,17 @@ describe("zero chat thread page display - artifacts drawer", () => {
         return screen.getByLabelText("Open artifacts");
       }),
     );
+    await user.click(await screen.findByLabelText("Open artifact report.html"));
 
     await waitFor(() => {
-      expect(
-        document.querySelector('iframe[title="Preview report.html"]'),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "title",
+        "report.html preview",
+      );
     });
-
-    await user.click(screen.getByLabelText("Open preview for report.html"));
-    const lightbox = await screen.findByTestId("attachment-lightbox");
-    expect(within(lightbox).getByTitle("report.html preview")).toHaveAttribute(
-      "src",
-      "https://example.com/report.html",
-    );
   });
 
-  it("refreshes uploaded files from the artifacts Ably signal while the drawer is open", async () => {
+  it("refreshes uploaded files from the artifacts Ably signal while the inbox is open", async () => {
     const threadId = "thread-test-1";
     let artifactsRequests = 0;
     mockChatLifecycle({
@@ -2412,21 +2146,21 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const button = await waitFor(() => {
       return screen.getByLabelText("Open artifacts");
     });
     click(button);
+    await user.click(await screen.findByLabelText("Open artifact chart.png"));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Share chart.png")).toBeInTheDocument();
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
     });
-    await user.click(screen.getByLabelText("Share chart.png"));
+    await user.click(screen.getByLabelText("Share artifact"));
     expect(writeTextSpy).toHaveBeenCalledWith(publicFileUrl);
 
-    const downloadButton = screen.getByLabelText("Download chart.png");
+    const downloadButton = screen.getByLabelText("Download artifact");
     await user.hover(downloadButton);
     await waitFor(() => {
       expect(
@@ -2458,169 +2192,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
       ).toHaveAttribute("aria-disabled", "true");
     });
     await user.keyboard("{Escape}");
-
-    await user.click(screen.getByLabelText("More artifact actions"));
-    await user.click(screen.getByText("Sync all to Google Drive"));
-
-    await waitFor(() => {
-      expect(syncBodies).toStrictEqual([
-        {
-          runId: "run-artifacts-actions",
-          fileId: "file-1",
-        },
-        {
-          runId: "run-artifacts-actions",
-          fileId: "file-2",
-        },
-      ]);
-    });
-  });
-
-  it("syncs bulk Google Drive artifacts sequentially", async () => {
-    const user = userEvent.setup();
-    const syncBodies: unknown[] = [];
-    let firstSyncFinished = false;
-    let secondSyncStartedAfterFirst = false;
-    let releaseFirstSync: () => void = () => {
-      throw new Error("First sync has not started");
-    };
-
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "user",
-          content: "See attached",
-          runId: "run-artifacts-sequential-sync",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-    setMockConnectors([
-      {
-        id: "00000000-0000-4000-8000-000000000000",
-        type: "google-drive",
-        authMethod: "oauth",
-        externalId: "drive-user",
-        externalUsername: "Drive User",
-        externalEmail: "drive@example.com",
-        oauthScopes: ["https://www.googleapis.com/auth/drive"],
-        connectionStatus: "connected",
-        tokenExpiresAt: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-      },
-    ]);
-    server.use(
-      http.get("https://example.com/first.csv", () => {
-        return new HttpResponse("label,value\nfirst,1\n", {
-          headers: { "Content-Type": "text/csv" },
-        });
-      }),
-      http.get("https://example.com/second.csv", () => {
-        return new HttpResponse("label,value\nsecond,2\n", {
-          headers: { "Content-Type": "text/csv" },
-        });
-      }),
-      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
-        return respond(200, {
-          runs: [
-            {
-              runId: "run-artifacts-sequential-sync",
-              files: [
-                {
-                  id: "file-1",
-                  filename: "first.csv",
-                  contentType: "text/csv",
-                  size: 1024,
-                  url: "https://example.com/first.csv",
-                  createdAt: "2026-03-10T00:00:00Z",
-                  googleDriveSync: { status: "not_synced" },
-                },
-                {
-                  id: "file-2",
-                  filename: "second.csv",
-                  contentType: "text/csv",
-                  size: 2048,
-                  url: "https://example.com/second.csv",
-                  createdAt: "2026-03-10T00:00:00Z",
-                  googleDriveSync: { status: "not_synced" },
-                },
-              ],
-            },
-          ],
-        });
-      }),
-      mockApi(
-        chatThreadArtifactsContract.syncGoogleDrive,
-        ({ body, respond, deferred }) => {
-          syncBodies.push(body);
-          if (body.fileId === "file-1") {
-            const gate = deferred<void>();
-            releaseFirstSync = () => {
-              firstSyncFinished = true;
-              gate.resolve();
-            };
-            return gate.promise.then(() => {
-              return respond(200, {
-                id: `drive-${body.fileId}`,
-                name: `${body.fileId}.csv`,
-                webViewLink: `https://drive.google.com/file/d/${body.fileId}/view`,
-              });
-            });
-          }
-          if (body.fileId === "file-2") {
-            secondSyncStartedAfterFirst = firstSyncFinished;
-          }
-          return respond(200, {
-            id: `drive-${body.fileId}`,
-            name: `${body.fileId}.csv`,
-            webViewLink: `https://drive.google.com/file/d/${body.fileId}/view`,
-          });
-        },
-      ),
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
-    });
-
-    const button = await waitFor(() => {
-      return screen.getByLabelText("Open artifacts");
-    });
-    click(button);
-
-    await waitFor(() => {
-      expect(screen.getAllByText("first.csv").length).toBeGreaterThan(0);
-    });
-    await user.click(screen.getByLabelText("More artifact actions"));
-    await user.click(screen.getByText("Sync all to Google Drive"));
-
-    await waitFor(() => {
-      expect(syncBodies).toStrictEqual([
-        {
-          runId: "run-artifacts-sequential-sync",
-          fileId: "file-1",
-        },
-      ]);
-    });
-
-    releaseFirstSync();
-
-    await waitFor(() => {
-      expect(syncBodies).toStrictEqual([
-        {
-          runId: "run-artifacts-sequential-sync",
-          fileId: "file-1",
-        },
-        {
-          runId: "run-artifacts-sequential-sync",
-          fileId: "file-2",
-        },
-      ]);
-    });
-    expect(secondSyncStartedAfterFirst).toBeTruthy();
   });
 
   it("opens Google Drive OAuth in a new tab and syncs after the connector event", async () => {
@@ -2695,16 +2266,18 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: chatArtifactSidebarOff(),
     });
 
     const button = await waitFor(() => {
       return screen.getByLabelText("Open artifacts");
     });
     click(button);
+    await user.click(
+      await screen.findByLabelText("Open artifact disconnected-chart.png"),
+    );
 
     const downloadButton = await waitFor(() => {
-      return screen.getByLabelText("Download disconnected-chart.png");
+      return screen.getByLabelText("Download artifact");
     });
 
     await user.click(downloadButton);

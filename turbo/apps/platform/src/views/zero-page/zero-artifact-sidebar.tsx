@@ -26,7 +26,6 @@ import {
 import {
   artifactFullscreen$,
   type ArtifactRef,
-  chatArtifactSidebarEnabled$,
   closeArtifact$,
   currentArtifactRef$,
   toggleArtifactFullscreen$,
@@ -63,15 +62,13 @@ import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — page-level pane for previewing the artifact pointed to
 // by ?artifact=. Renders kind-specific bodies inline (no modal), with a
-// fullscreen toggle that swaps to a full-viewport layout. Mounted by the
-// chat thread page and gated by FeatureSwitchKey.ChatArtifactSidebar.
+// fullscreen toggle that swaps to a full-viewport layout.
 // ---------------------------------------------------------------------------
 
 export function ArtifactSidebarSlot() {
-  const enabled = useGet(chatArtifactSidebarEnabled$);
   const ref = useGet(currentArtifactRef$);
 
-  if (!enabled || !ref) {
+  if (!ref) {
     return null;
   }
 
@@ -124,7 +121,7 @@ function ArtifactSidebarWithThreadData({
 }: ArtifactSidebarProps & { thread: ChatThreadSignals }) {
   const loadable = useLastLoadable(thread.artifacts$);
   const agentId = useLastResolved(thread.agentId$);
-  const reloadArtifacts = useSet(thread.setArtifactsDrawerOpen$);
+  const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const item =
     artifactRef.source === "url" && loadable.state === "hasData"
       ? findArtifactItemForUrl(loadable.data, artifactRef.url)
@@ -138,7 +135,7 @@ function ArtifactSidebarWithThreadData({
       onBack={onBack}
       onClose={onClose}
       onSyncSuccess={() => {
-        reloadArtifacts(true);
+        reloadArtifacts();
       }}
       threadId={thread.threadId}
     />

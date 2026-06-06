@@ -8,7 +8,6 @@ use super::support::assert_no_completion_for_run;
 
 use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
-use crate::types::SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG;
 use crate::workspace_image_cache::SessionWorkspaceCache;
 use sandbox_mock::MockLifecycleGate;
 
@@ -112,11 +111,7 @@ async fn assert_workspace_cache_after_failed_park(
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    let mut context = context_with_session(run_id, session_id);
-    context.feature_flags = Some(std::collections::HashMap::from([(
-        SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.to_string(),
-        true,
-    )]));
+    let context = context_with_session(run_id, session_id);
     push_job(&env, run_id, "vm0/default", Some(context));
 
     wait_gate
@@ -216,11 +211,7 @@ async fn assert_workspace_cache_after_late_cancellation(
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    let mut context = context_with_session(run_id, session_id);
-    context.feature_flags = Some(std::collections::HashMap::from([(
-        SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.to_string(),
-        true,
-    )]));
+    let context = context_with_session(run_id, session_id);
     push_job(&env, run_id, "vm0/default", Some(context));
     let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
 

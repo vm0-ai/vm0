@@ -262,18 +262,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.SessionWorkspaceImageCache]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable runner session workspace image cache reuse for canonical workspace drives.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ChatArtifactSidebar]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the inline attachment text editor and modal lightbox with a single page-level artifact sidebar (50/50 with the chat thread area, URL-routed via ?artifact=, fullscreen-capable). When on, inline text/markdown attachments render as thumbnail anchors, all preview chips route to the sidebar, and the artifacts drawer is hidden.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ChatGithubPrTracking]: {
     maintainer: "linghan@vm0.ai",
     description:

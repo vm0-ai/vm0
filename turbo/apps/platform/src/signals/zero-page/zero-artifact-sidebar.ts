@@ -1,6 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   replaceSearchParams$,
   searchParams$,
@@ -20,9 +18,7 @@ import {
 
 // ---------------------------------------------------------------------------
 // Artifact sidebar — URL-routed page-level slot for previewing a single
-// attachment next to the chat thread area. Gated behind
-// FeatureSwitchKey.ChatArtifactSidebar; the OFF path keeps the old modal
-// lightbox in place.
+// attachment next to the chat thread area.
 //
 // Sidebar state lives in search params: `?artifacts=<threadId>` opens the
 // artifact inbox, `?artifact=<url>` opens a detail preview, and
@@ -76,11 +72,6 @@ function decodeArtifactParam(value: string): ArtifactRef | null {
   }
   return null;
 }
-
-export const chatArtifactSidebarEnabled$ = computed((get) => {
-  const features = get(featureSwitch$);
-  return features[FeatureSwitchKey.ChatArtifactSidebar] ?? false;
-});
 
 export const currentArtifactInboxThreadId$ = computed((get) => {
   return get(searchParams$).get(ARTIFACT_INBOX_QUERY_PARAM);

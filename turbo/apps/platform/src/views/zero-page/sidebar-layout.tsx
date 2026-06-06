@@ -75,7 +75,6 @@ import {
   IosInstallModal,
 } from "../pwa-install/install-banner.tsx";
 import {
-  chatArtifactSidebarEnabled$,
   currentArtifactInboxThreadId$,
   openArtifactInbox$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
@@ -197,22 +196,17 @@ function NewOrUnreadChatButtonLeaf() {
 }
 
 function MobileArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
-  const drawerOpen = useGet(thread.artifactsDrawerOpen$);
-  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
   const inboxThreadId = useGet(currentArtifactInboxThreadId$);
-  const setOpen = useSet(thread.setArtifactsDrawerOpen$);
+  const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const openInbox = useSet(openArtifactInbox$);
-  const open = sidebarEnabled ? inboxThreadId === thread.threadId : drawerOpen;
+  const open = inboxThreadId === thread.threadId;
 
   return (
     <button
       type="button"
       onClick={() => {
-        if (sidebarEnabled) {
-          openInbox(thread.threadId);
-          return;
-        }
-        setOpen(true);
+        reloadArtifacts();
+        openInbox(thread.threadId);
       }}
       className={cn(
         "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",

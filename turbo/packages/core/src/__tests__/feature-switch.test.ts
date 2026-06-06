@@ -9,9 +9,6 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.ChatArtifactSidebar, {})).toBe(
-      true,
-    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -77,7 +74,6 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
-    expect(states[FeatureSwitchKey.ChatArtifactSidebar]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -107,9 +103,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatHeaderNewButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       true,
     );
@@ -119,10 +112,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
-    // Fully rolled out: enabled for all orgs, including non-staff orgs.
-    expect(otherOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
-      true,
-    );
     expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       false,
     );

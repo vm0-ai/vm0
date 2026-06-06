@@ -1,11 +1,9 @@
 /**
- * Integration tests for the ChatArtifactSidebar feature switch behavior.
+ * Integration tests for the artifact sidebar behavior.
  *
- * Covers the ON path that issue #15027 introduces: inline .txt/.md
+ * Covers the GA path: inline .txt/.md
  * attachments render as thumbnail anchors, plain clicks still open the modal
  * lightbox, and explicit sidebar opens write the ?artifact= URL parameter.
- * The OFF path is covered by the existing
- * zero-attachment-preview.test.tsx file.
  */
 
 import { describe, expect, it } from "vitest";
@@ -17,7 +15,6 @@ import {
   within,
 } from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { search } from "../../../signals/location.ts";
@@ -46,9 +43,6 @@ function setup(path = "/chats/thread-1") {
   detachedSetupPage({
     context,
     path,
-    featureSwitches: {
-      [FeatureSwitchKey.ChatArtifactSidebar]: true,
-    },
     withoutRender: true,
   });
   // ArtifactSidebar reads pageSignal$ for fetch cancellation; tests render
@@ -61,8 +55,8 @@ function renderWithStore(node: React.ReactNode) {
   return render(<StoreProvider value={context.store}>{node}</StoreProvider>);
 }
 
-describe("chatArtifactSidebar: inline thumbnail anchor behavior", () => {
-  it("renders a .txt attachment as a thumbnail anchor when the switch is on", () => {
+describe("artifact sidebar: inline thumbnail anchor behavior", () => {
+  it("renders a .txt attachment as a thumbnail anchor", () => {
     setup();
     renderWithStore(
       <AttachmentPreview
@@ -89,7 +83,7 @@ describe("chatArtifactSidebar: inline thumbnail anchor behavior", () => {
     expect(screen.queryByText(/notes\.txt/)).toBeInTheDocument();
   });
 
-  it("renders a .md attachment as a thumbnail anchor when the switch is on", () => {
+  it("renders a .md attachment as a thumbnail anchor", () => {
     setup();
     renderWithStore(
       <AttachmentPreview
@@ -161,7 +155,7 @@ describe("chatArtifactSidebar: inline thumbnail anchor behavior", () => {
   });
 });
 
-describe("chatArtifactSidebar: hosted-site URL classification", () => {
+describe("artifact sidebar: hosted-site URL classification", () => {
   it("classifies hosted-site URLs without a path as html", () => {
     // Regression: previously the sidebar built its own
     // filenameFromUrl + classifyChatAttachment pair without contentType,
@@ -181,28 +175,14 @@ describe("chatArtifactSidebar: hosted-site URL classification", () => {
   });
 });
 
-describe("chatArtifactSidebar: sidebar slot rendering", () => {
-  it("does not render the sidebar when the switch is off", () => {
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fnotes.txt",
-      featureSwitches: {
-        [FeatureSwitchKey.ChatArtifactSidebar]: false,
-      },
-      withoutRender: true,
-    });
-    context.store.set(setPageSignal$, context.signal);
-    renderWithStore(<ArtifactSidebarSlot />);
-    expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
-  });
-
+describe("artifact sidebar: sidebar slot rendering", () => {
   it("does not render the sidebar when no artifact param is present", () => {
     setup();
     renderWithStore(<ArtifactSidebarSlot />);
     expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
   });
 
-  it("renders the sidebar when switch is on and artifact param is set", () => {
+  it("renders the sidebar when artifact param is set", () => {
     setup("/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fnotes.txt");
     renderWithStore(<ArtifactSidebarSlot />);
     expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
@@ -228,7 +208,7 @@ describe("chatArtifactSidebar: sidebar slot rendering", () => {
   });
 });
 
-describe("chatArtifactSidebar: fullscreen toggle", () => {
+describe("artifact sidebar: fullscreen toggle", () => {
   it("renders video artifacts inside a padded stage card", () => {
     setup("/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fclip.mp4");
     renderWithStore(
@@ -339,7 +319,7 @@ describe("chatArtifactSidebar: fullscreen toggle", () => {
   });
 });
 
-describe("chatArtifactSidebar: image preview zoom controls", () => {
+describe("artifact sidebar: image preview zoom controls", () => {
   function renderImageSidebar() {
     setup("/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fphoto.png");
     renderWithStore(

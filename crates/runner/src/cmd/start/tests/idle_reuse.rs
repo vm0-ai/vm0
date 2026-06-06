@@ -10,7 +10,7 @@ use super::support::{
 };
 
 use crate::idle_pool::ParkingState;
-use crate::types::{SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG, SandboxReuseResult};
+use crate::types::SandboxReuseResult;
 
 // -----------------------------------------------------------------------
 // Test 9: idle pool park/take is gated on session ID availability
@@ -255,11 +255,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
 
     let run_id = RunId::new_v4();
     let session_id = "sess-cache-heartbeat";
-    let mut ctx = context_with_session(run_id, session_id);
-    ctx.feature_flags = Some(std::collections::HashMap::from([(
-        SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.to_string(),
-        true,
-    )]));
+    let ctx = context_with_session(run_id, session_id);
     push_job(&env, run_id, "vm0/default", Some(ctx));
 
     wait_gate
