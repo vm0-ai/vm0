@@ -79,7 +79,6 @@ const CONNECTOR_ICON_COLORFUL = {
   azure: true,
   base44: true,
   bedrock: true,
-  bentoml: true,
   bitrefill: true,
   bitrix: true,
   bland: true,
