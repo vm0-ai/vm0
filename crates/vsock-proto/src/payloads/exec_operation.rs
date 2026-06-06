@@ -788,7 +788,7 @@ pub fn decode_exec_start(payload: &[u8]) -> Result<DecodedExecStart<'_>, Protoco
     if min_env_bytes > remaining_for_env {
         return Err(ProtocolError::InvalidPayload("exec start env truncated"));
     }
-    let mut env = Vec::new();
+    let mut env = Vec::with_capacity(env_count as usize);
     for _ in 0..env_count {
         let key_len = read_u32(payload, &mut offset, "exec start env key_len truncated")? as usize;
         let key = read_str(
