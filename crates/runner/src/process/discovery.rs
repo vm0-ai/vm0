@@ -80,22 +80,38 @@ async fn read_stable_firecracker_stat(pid: u32) -> Option<ProcessStat> {
     let before = read_process_stat(pid).await?;
     let argv = read_cmdline(pid).await?;
     let after = read_process_stat(pid).await?;
-    if process_stat_identity_matches(&before, &after) && is_firecracker_cmdline(&argv) {
-        Some(after)
-    } else {
-        None
-    }
+    stable_live_firecracker_stat(&before, &argv, after)
 }
 
 fn process_stat_identity_matches(left: &ProcessStat, right: &ProcessStat) -> bool {
     left.pgid == right.pgid && left.starttime == right.starttime
 }
 
+fn process_stat_is_live(stat: &ProcessStat) -> bool {
+    stat.state != 'Z'
+}
+
+fn stable_live_firecracker_stat(
+    before: &ProcessStat,
+    argv: &[String],
+    after: ProcessStat,
+) -> Option<ProcessStat> {
+    if process_stat_is_live(before)
+        && process_stat_is_live(&after)
+        && process_stat_identity_matches(before, &after)
+        && is_firecracker_cmdline(argv)
+    {
+        Some(after)
+    } else {
+        None
+    }
+}
+
 fn should_keep_unidentified_firecracker_candidate(
     stat: &ProcessStat,
     argv: Option<&[String]>,
 ) -> bool {
-    if stat.state == 'Z' {
+    if !process_stat_is_live(stat) {
         return false;
     }
     match argv {
@@ -453,6 +469,63 @@ mod tests {
         assert!(process_stat_identity_matches(&sleeping, &running));
         assert!(!process_stat_identity_matches(&sleeping, &different_group));
         assert!(!process_stat_identity_matches(&sleeping, &different_start));
+    }
+
+    #[test]
+    fn stable_live_firecracker_stat_accepts_live_stable_firecracker() {
+        let before = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let after = ProcessStat {
+            state: 'R',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert_eq!(
+            stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after.clone()),
+            Some(after)
+        );
+    }
+
+    #[test]
+    fn stable_live_firecracker_stat_rejects_zombie_firecracker() {
+        let before = ProcessStat {
+            state: 'Z',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let after = ProcessStat {
+            state: 'Z',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert_eq!(
+            stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after),
+            None
+        );
+    }
+
+    #[test]
+    fn stable_live_firecracker_stat_rejects_exit_during_read() {
+        let before = ProcessStat {
+            state: 'S',
+            pgid: 1100,
+            starttime: 123456,
+        };
+        let after = ProcessStat {
+            state: 'Z',
+            pgid: 1100,
+            starttime: 123456,
+        };
+
+        assert_eq!(
+            stable_live_firecracker_stat(&before, &argv(&["firecracker"]), after),
+            None
+        );
     }
 
     #[test]
