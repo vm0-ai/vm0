@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.182.2](https://github.com/vm0-ai/vm0/compare/cli-v9.182.1...cli-v9.182.2) (2026-06-06)
+
+
+### Refactoring
+
+* remove zero chat message send CLI command and backend ([#16359](https://github.com/vm0-ai/vm0/issues/16359)) ([14e189c](https://github.com/vm0-ai/vm0/commit/14e189c1c49d8092c9a466b643904bb4972e1cd5))
+* stop accepting chatThreadId on schedule update and CLI ([#16357](https://github.com/vm0-ai/vm0/issues/16357)) ([1236779](https://github.com/vm0-ai/vm0/commit/1236779de0365a4b1be1ff00c364a9116f8e4a0f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.66.2
+    * @vm0/core bumped to 8.314.0
+
 ## [9.182.1](https://github.com/vm0-ai/vm0/compare/cli-v9.182.0...cli-v9.182.1) (2026-06-05)
 
 

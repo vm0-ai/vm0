@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.314.0](https://github.com/vm0-ai/vm0/compare/core-v8.313.2...core-v8.314.0) (2026-06-06)
+
+
+### Features
+
+* roll out sessionWorkspaceImageCache to all orgs ([#16355](https://github.com/vm0-ai/vm0/issues/16355)) ([63cac7e](https://github.com/vm0-ai/vm0/commit/63cac7e11f3b1a38cbc83b399cf7aa822b93376a))
+
+
+### Refactoring
+
+* remove zero chat message send CLI command and backend ([#16359](https://github.com/vm0-ai/vm0/issues/16359)) ([14e189c](https://github.com/vm0-ai/vm0/commit/14e189c1c49d8092c9a466b643904bb4972e1cd5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.2
+
 ## [8.313.2](https://github.com/vm0-ai/vm0/compare/core-v8.313.1...core-v8.313.2) (2026-06-05)
 
 

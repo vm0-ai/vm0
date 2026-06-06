@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.412.3](https://github.com/vm0-ai/vm0/compare/web-v12.412.2...web-v12.412.3) (2026-06-06)
+
+
+### Refactoring
+
+* remove zero chat message send CLI command and backend ([#16359](https://github.com/vm0-ai/vm0/issues/16359)) ([14e189c](https://github.com/vm0-ai/vm0/commit/14e189c1c49d8092c9a466b643904bb4972e1cd5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.2
+    * @vm0/core bumped to 8.314.0
+
 ## [12.412.2](https://github.com/vm0-ai/vm0/compare/web-v12.412.1...web-v12.412.2) (2026-06-05)
 
 

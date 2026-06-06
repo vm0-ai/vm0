@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.420.0](https://github.com/vm0-ai/vm0/compare/app-v0.419.4...app-v0.420.0) (2026-06-06)
+
+
+### Features
+
+* show next run time in chat thread schedule menu ([#16358](https://github.com/vm0-ai/vm0/issues/16358)) ([b4032d7](https://github.com/vm0-ai/vm0/commit/b4032d7a49a823889a89f9fef4bc2cce287206fa))
+
+
+### Bug Fixes
+
+* label BYOK model routes in composer picker ([#16362](https://github.com/vm0-ai/vm0/issues/16362)) ([a94bc9b](https://github.com/vm0-ai/vm0/commit/a94bc9b90272816a02ac7dc1bebd9947dc471509))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.2
+    * @vm0/core bumped to 8.314.0
+
 ## [0.419.4](https://github.com/vm0-ai/vm0/compare/app-v0.419.3...app-v0.419.4) (2026-06-05)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.109.0](https://github.com/vm0-ai/vm0/compare/api-v1.108.1...api-v1.109.0) (2026-06-06)
+
+
+### Features
+
+* **chat-threads:** sort sidebar by last run-end time ([#16360](https://github.com/vm0-ai/vm0/issues/16360)) ([98f8edb](https://github.com/vm0-ai/vm0/commit/98f8edb2eeaff196ce67784df33ba4ae869c0b9e))
+
+
+### Refactoring
+
+* remove zero chat message send CLI command and backend ([#16359](https://github.com/vm0-ai/vm0/issues/16359)) ([14e189c](https://github.com/vm0-ai/vm0/commit/14e189c1c49d8092c9a466b643904bb4972e1cd5))
+* stop accepting chatThreadId on schedule update and CLI ([#16357](https://github.com/vm0-ai/vm0/issues/16357)) ([1236779](https://github.com/vm0-ai/vm0/commit/1236779de0365a4b1be1ff00c364a9116f8e4a0f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.2
+    * @vm0/core bumped to 8.314.0
+    * @vm0/db bumped to 1.33.2
+
 ## [1.108.1](https://github.com/vm0-ai/vm0/compare/api-v1.108.0...api-v1.108.1) (2026-06-05)
 
 
