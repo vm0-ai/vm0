@@ -76,6 +76,7 @@ pub async fn run_benchmark(
     // 1. Load config, force concurrency=1
     let mut runner_config = config::load(&args.config).await?;
     runner_config.sandbox.max_concurrent = 1;
+    crate::private_fs::ensure_private_dir(&runner_config.base_dir).await?;
 
     let home = HomePaths::new()?;
 
