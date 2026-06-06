@@ -256,18 +256,17 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const features = useLastResolved(featureSwitch$);
   const newButtonEnabled =
     features?.[FeatureSwitchKey.ChatHeaderNewButton] ?? false;
+  const showNewButton = inChatRoute && newButtonEnabled;
+  const showInviteFallback =
+    inChatRoute && !newButtonEnabled && activeId !== "chat";
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   return (
     <>
       {inChatRoute && <MobileScheduleButtonLeaf />}
       {inChatRoute && <MobileArtifactsButtonLeaf />}
       {inChatRoute && audioOutputEnabled && <AutoReadToggleLeaf />}
-      {inChatRoute &&
-        (newButtonEnabled ? (
-          <NewOrUnreadChatButtonLeaf />
-        ) : (
-          <InviteButtonLeaf />
-        ))}
+      {showNewButton && <NewOrUnreadChatButtonLeaf />}
+      {showInviteFallback && <InviteButtonLeaf />}
     </>
   );
 }
