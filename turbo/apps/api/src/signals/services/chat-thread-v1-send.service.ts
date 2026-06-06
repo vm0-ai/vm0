@@ -16,7 +16,6 @@ import {
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
-import { touchChatThreadLastMessageAt } from "./zero-chat-thread.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
 interface OwnedThreadForSend {
@@ -173,9 +172,6 @@ export const sendChatThreadMessageV1$ = command(
     if (!message) {
       throw new Error("Failed to insert chat message");
     }
-
-    await touchChatThreadLastMessageAt(db, thread.id);
-    signal.throwIfAborted();
 
     await publishUserSignal(
       [args.auth.userId],

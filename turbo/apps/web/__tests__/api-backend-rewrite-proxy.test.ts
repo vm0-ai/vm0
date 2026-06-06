@@ -795,21 +795,6 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches the zero integrations chat message rewrite path exactly", () => {
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/chat/message"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/chat/message/extra"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/integrations/chat")).toBe(
-      false,
-    );
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/telegram"),
-    ).toBe(false);
-  });
-
   it("matches the zero integrations Slack message rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/integrations/slack/message"),

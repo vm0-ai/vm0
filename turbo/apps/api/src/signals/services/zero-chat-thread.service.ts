@@ -159,8 +159,15 @@ function effectiveChatMessageRunId() {
 /**
  * Advances chat_threads.last_message_at to NOW(), but only forward — GREATEST
  * guards against an out-of-order write rewinding the column and silently
- * pulling a thread back down the sidebar. Call inside the same transaction as
- * the chat_messages insert so the recency index stays accurate.
+ * pulling a thread back down the sidebar.
+ *
+ * The sidebar orders threads by this column, and we deliberately bump it ONLY
+ * when a run reaches a terminal state (completed / failed / cancelled) — not on
+ * user sends or mid-stream assistant events. So a thread surfaces to the top
+ * when its run finishes, not the moment you hit send. Call inside the same
+ * transaction as the terminal run-lifecycle marker insert so the recency index
+ * stays accurate. Despite the historical column name, this now tracks
+ * last-run-finished time.
  */
 export async function touchChatThreadLastMessageAt(
   tx: Pick<Db, "update">,
@@ -977,26 +984,6 @@ export function zeroChatThreadList(args: {
   });
 }
 
-export function ownedChatThreadById(args: {
-  readonly threadId: string;
-  readonly userId: string;
-}): Computed<Promise<{ readonly id: string } | null>> {
-  return computed(async (get): Promise<{ readonly id: string } | null> => {
-    const [thread] = await get(db$)
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(
-        and(
-          eq(chatThreads.id, args.threadId),
-          eq(chatThreads.userId, args.userId),
-        ),
-      )
-      .limit(1);
-
-    return thread ?? null;
-  });
-}
-
 export function zeroChatThreadArtifacts(args: {
   readonly threadId: string;
   readonly userId: string;
@@ -1347,48 +1334,6 @@ export const createChatThread$ = command(
   },
 );
 
-export const insertIntegrationChatMessage$ = command(
-  async (
-    { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly userId: string;
-      readonly content: string;
-    },
-    signal: AbortSignal,
-  ): Promise<{ readonly id: string; readonly createdAt: Date }> => {
-    const writeDb = set(writeDb$);
-    const [message] = await writeDb
-      .insert(chatMessages)
-      .values({
-        chatThreadId: args.chatThreadId,
-        role: "assistant",
-        content: args.content,
-        runId: null,
-      })
-      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
-    signal.throwIfAborted();
-
-    if (!message) {
-      throw new Error("Failed to insert chat message");
-    }
-
-    await touchChatThreadLastMessageAt(writeDb, args.chatThreadId);
-    signal.throwIfAborted();
-
-    await publishUserSignal(
-      [args.userId],
-      `chatThreadMessageCreated:${args.chatThreadId}`,
-    );
-    signal.throwIfAborted();
-
-    await publishThreadListChanged(args.userId);
-    signal.throwIfAborted();
-
-    return message;
-  },
-);
-
 export function chatThreadForRun(
   runId: string,
 ): Computed<
@@ -1454,9 +1399,6 @@ export const insertAssistantEventMessages$ = command(
     signal.throwIfAborted();
 
     if (rows.length > 0) {
-      await touchChatThreadLastMessageAt(writeDb, args.threadId);
-      signal.throwIfAborted();
-
       await publishUserSignal(
         [args.userId],
         `chatThreadMessageCreated:${args.threadId}`,

@@ -119,8 +119,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
+    // Fully rolled out: enabled for all orgs, including non-staff orgs.
     expect(otherOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
-      false,
+      true,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       false,

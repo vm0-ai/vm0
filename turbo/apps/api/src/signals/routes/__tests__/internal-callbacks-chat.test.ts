@@ -299,6 +299,18 @@ async function listMessages(threadId: string) {
     .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
 }
 
+async function readThreadLastMessageAt(threadId: string): Promise<Date> {
+  const [thread] = await store
+    .set(writeDb$)
+    .select({ lastMessageAt: chatThreads.lastMessageAt })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId));
+  if (!thread) {
+    throw new Error("thread row missing");
+  }
+  return thread.lastMessageAt;
+}
+
 async function seedAdditionalRun(
   fixture: ChatCallbackFixture,
   args: {
@@ -653,6 +665,57 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${fixture.threadId}`,
       null,
+    );
+    await clearAllDetached();
+  });
+
+  it("advances last_message_at to run-end time on completed callbacks", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedAssistantOutput("final answer");
+
+    // The sidebar orders threads by last_message_at, and it must advance only
+    // when a run reaches a terminal state — not when the user message was first
+    // inserted or while the assistant streams. Backdate the column and a raw
+    // streamed assistant event so the run-end bump is the only thing that can
+    // move it forward.
+    const stale = new Date("2020-01-01T00:00:00.000Z");
+    await store
+      .set(writeDb$)
+      .update(chatThreads)
+      .set({ lastMessageAt: stale })
+      .where(eq(chatThreads.id, fixture.threadId));
+    await insertAssistantEventMessages(fixture, fixture.runId, [
+      { sequenceNumber: 0, content: "streaming chunk" },
+    ]);
+
+    const [beforeThread] = await store
+      .set(writeDb$)
+      .select({ lastMessageAt: chatThreads.lastMessageAt })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, fixture.threadId));
+    if (!beforeThread) {
+      throw new Error("thread row missing before callback");
+    }
+    expect(beforeThread.lastMessageAt.getTime()).toBe(stale.getTime());
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+    expect(response.status).toBe(200);
+
+    const [afterThread] = await store
+      .set(writeDb$)
+      .select({ lastMessageAt: chatThreads.lastMessageAt })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, fixture.threadId));
+    if (!afterThread) {
+      throw new Error("thread row missing after callback");
+    }
+    expect(afterThread.lastMessageAt.getTime()).toBeGreaterThan(
+      stale.getTime(),
     );
     await clearAllDetached();
   });
@@ -1259,6 +1322,68 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(errorMessage?.error).toBe("Run cancelled");
     expect(errorMessage?.content).toBe("Run cancelled");
   });
+
+  it.each([
+    {
+      scenario: "failed",
+      error: "Cannot continue session from checkpoint",
+      lifecycleEvent: "failed",
+    },
+    {
+      scenario: "cancelled",
+      error: "Run cancelled",
+      lifecycleEvent: "cancelled",
+    },
+  ] as const)(
+    "does not advance last_message_at when $scenario callbacks are replayed",
+    async ({ error, lifecycleEvent }) => {
+      const fixture = await track(seedChatCallbackFixture());
+
+      const first = await postSignedCallback({
+        callbackId: fixture.callbackId,
+        runId: fixture.runId,
+        status: "failed",
+        error,
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      });
+      expect(first.status).toBe(200);
+
+      const stale = new Date("2020-01-01T00:00:00.000Z");
+      await store
+        .set(writeDb$)
+        .update(chatThreads)
+        .set({ lastMessageAt: stale })
+        .where(eq(chatThreads.id, fixture.threadId));
+      context.mocks.ably.publish.mockClear();
+
+      const replay = await postSignedCallback({
+        callbackId: fixture.callbackId,
+        runId: fixture.runId,
+        status: "failed",
+        error,
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      });
+
+      expect(replay.status).toBe(200);
+      await expect(
+        readThreadLastMessageAt(fixture.threadId),
+      ).resolves.toStrictEqual(stale);
+      const lifecycleMessages = (await listMessages(fixture.threadId)).filter(
+        (message) => {
+          return (
+            message.role === "assistant" &&
+            message.runId === fixture.runId &&
+            message.runLifecycleEvent === lifecycleEvent
+          );
+        },
+      );
+      expect(lifecycleMessages).toHaveLength(1);
+      expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+        `chatThreadMessageCreated:${fixture.threadId}`,
+        null,
+      );
+    },
+  );
 
   it("publishes message-created signals only for terminal callbacks with a mapped thread", async () => {
     const fixture = await track(seedChatCallbackFixture());

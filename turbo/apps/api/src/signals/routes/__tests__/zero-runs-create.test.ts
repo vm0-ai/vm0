@@ -641,7 +641,6 @@ describe("POST /api/zero/runs", () => {
       "zero doctor permission-deny --help",
       "zero doctor permission-change --help",
       "zero skill --help",
-      "zero chat message send --help",
       "zero developer-support --help",
       "zero maps --help",
     ]) {

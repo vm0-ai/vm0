@@ -101,6 +101,23 @@ function MultiplierBadge({ multiplier }: { multiplier: number }) {
   );
 }
 
+function ByokBadge() {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="shrink-0 cursor-help text-xs font-medium text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-muted-foreground">
+            BYOK
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          Uses your configured provider
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function ResponsiveTriggerContent({
   mobileIcon,
   iconType,
@@ -285,7 +302,10 @@ function modelFirstSelectionFromRaw(
 
 function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
   const iconType = getModelFirstIconType(policy.model);
-  const multiplier = getVm0ModelMultiplier(policy.model);
+  const builtInMultiplier =
+    policy.defaultProviderType === "vm0"
+      ? getVm0ModelMultiplier(policy.model)
+      : undefined;
   return (
     <SelectItem
       key={policy.id}
@@ -297,8 +317,10 @@ function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
         <span className="truncate">
           {policy.modelLabel || getCanonicalModelDisplayName(policy.model)}
         </span>
-        {multiplier !== undefined && (
-          <MultiplierBadge multiplier={multiplier} />
+        {builtInMultiplier !== undefined ? (
+          <MultiplierBadge multiplier={builtInMultiplier} />
+        ) : (
+          <ByokBadge />
         )}
       </span>
     </SelectItem>
