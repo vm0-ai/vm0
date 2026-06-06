@@ -168,7 +168,8 @@ pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()>
 
 #[cfg(unix)]
 async fn ensure_private_dir_owned_by(path: &Path, expected_uid: u32) -> RunnerResult<()> {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    use nix::fcntl::{OFlag, open};
+    use nix::sys::stat::{Mode, SFlag, fchmod, fstat};
 
     let lstat_path = path_for_final_component_lstat(path);
     let metadata = tokio::fs::symlink_metadata(&lstat_path)
@@ -188,7 +189,24 @@ async fn ensure_private_dir_owned_by(path: &Path, expected_uid: u32) -> RunnerRe
         )));
     }
 
-    let actual_uid = metadata.uid();
+    // Keep chmod tied to the opened directory, not a path that could be swapped.
+    let fd = open(
+        &lstat_path,
+        OFlag::O_RDONLY | OFlag::O_DIRECTORY | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(|e| RunnerError::Config(format!("open private dir {}: {e}", path.display())))?;
+    let stat = fstat(&fd)
+        .map_err(|e| RunnerError::Config(format!("stat private dir fd {}: {e}", path.display())))?;
+    let fd_file_type = SFlag::from_bits_truncate(stat.st_mode);
+    if !fd_file_type.contains(SFlag::S_IFDIR) {
+        return Err(RunnerError::Config(format!(
+            "{} is not a directory; refusing to use it as private runner state",
+            path.display()
+        )));
+    }
+
+    let actual_uid = stat.st_uid;
     if actual_uid != expected_uid {
         return Err(RunnerError::Config(format!(
             "{} is owned by uid {actual_uid}, but runner euid is {expected_uid}; fix ownership before starting the runner",
@@ -196,12 +214,8 @@ async fn ensure_private_dir_owned_by(path: &Path, expected_uid: u32) -> RunnerRe
         )));
     }
 
-    tokio::fs::set_permissions(
-        &lstat_path,
-        std::fs::Permissions::from_mode(PRIVATE_DIR_MODE),
-    )
-    .await
-    .map_err(|e| RunnerError::Config(format!("chmod private dir {}: {e}", path.display())))?;
+    fchmod(&fd, Mode::from_bits_truncate(PRIVATE_DIR_MODE))
+        .map_err(|e| RunnerError::Config(format!("chmod private dir {}: {e}", path.display())))?;
     Ok(())
 }
 
