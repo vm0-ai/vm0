@@ -73,7 +73,13 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
                 if let Ok(refreshed) = rediscover_same_sandbox_process(&initial.target).await
                     && process::is_orphan(refreshed.target.pid, &refreshed.runner_pids).await
                 {
-                    let outcome = kill_orphan_process_group(&refreshed.target).await;
+                    let outcome = if should_refuse_run_orphan_fallback(&args, is_initial_orphan) {
+                        KillOutcome::RefusedTargetChanged(
+                            "run target is no longer active; refusing orphan fallback for an initially managed sandbox".into(),
+                        )
+                    } else {
+                        kill_current_target(refreshed.target.clone(), true, control).await
+                    };
                     report_kill_outcome(&initial.target, &refreshed.target, &outcome, control)
                         .await;
                     info!(
@@ -82,7 +88,7 @@ pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerRes
                         orphan = true,
                         rediscover_error = %error,
                         outcome = ?outcome,
-                        "kill command fell back to orphan kill after target rediscovery failed"
+                        "kill command fell back to owner-aware orphan handling after target rediscovery failed"
                     );
                     return if outcome.is_success() {
                         Ok(ExitCode::SUCCESS)
@@ -349,6 +355,10 @@ fn should_cleanup_disappeared_initial_orphan(
     was_orphan
         && target_has_workspace_identity(initial)
         && !discovered_has_same_or_unidentified_firecracker(initial, discovered_after_error)
+}
+
+fn should_refuse_run_orphan_fallback(args: &KillArgs, is_initial_orphan: bool) -> bool {
+    args.run.is_some() && !is_initial_orphan
 }
 
 fn target_has_workspace_identity(target: &KillTarget) -> bool {
@@ -1153,6 +1163,39 @@ mod tests {
             true,
             &discovered
         ));
+    }
+
+    #[test]
+    fn run_fallback_refuses_initially_managed_target() {
+        let args = KillArgs {
+            run: Some("run".into()),
+            sandbox: None,
+            force: true,
+        };
+
+        assert!(should_refuse_run_orphan_fallback(&args, false));
+    }
+
+    #[test]
+    fn run_fallback_allows_initial_orphan_target() {
+        let args = KillArgs {
+            run: Some("run".into()),
+            sandbox: None,
+            force: true,
+        };
+
+        assert!(!should_refuse_run_orphan_fallback(&args, true));
+    }
+
+    #[test]
+    fn sandbox_fallback_allows_initially_managed_target() {
+        let args = KillArgs {
+            run: None,
+            sandbox: Some("sbox".into()),
+            force: true,
+        };
+
+        assert!(!should_refuse_run_orphan_fallback(&args, false));
     }
 
     #[test]
