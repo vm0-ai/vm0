@@ -305,7 +305,7 @@ class _NdjsonExtractor:
             return  # keep-alive blank line
         try:
             obj = json.loads(line)
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except (ValueError, RecursionError):
             self.state["lines_failed"] += 1
             return
         self.state["lines_parsed"] += 1

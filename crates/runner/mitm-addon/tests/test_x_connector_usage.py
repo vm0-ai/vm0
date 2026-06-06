@@ -9,7 +9,11 @@ import pytest
 
 import body_utils
 import usage
-from tests.x_flow_helpers import make_x_usage_flow
+from tests.x_flow_helpers import (
+    json_body_that_exceeds_decoder_recursion,
+    json_body_that_exceeds_integer_digit_limit,
+    make_x_usage_flow,
+)
 
 
 class TestXConnectorUsage:
@@ -857,6 +861,34 @@ class TestXConnectorUsage:
         flow.request.content = b"not valid json at all"
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "content.create_with_url"
+
+    @pytest.mark.parametrize(
+        "request_body",
+        [
+            pytest.param(json_body_that_exceeds_decoder_recursion(), id="decoder-recursion"),
+            pytest.param(json_body_that_exceeds_integer_digit_limit(), id="integer-digit-limit"),
+        ],
+    )
+    def test_tweet_create_json_parser_failure_stays_conservative(
+        self, tmp_path, real_flow, request_body
+    ):
+        """Stdlib JSON parser failures must not interrupt tweet-create billing."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+        )
+        flow.request.method = "POST"
+        flow.request.content = request_body
+
+        p = self._call_and_get_single_billing(flow)
+
+        assert p["category"] == "content.create_with_url"
+        assert p["quantity"] == 1
 
     def test_query_string_does_not_break_literal_suffix_override(self, tmp_path, real_flow):
         """``flow.request.path`` from mitmproxy includes the query string;
