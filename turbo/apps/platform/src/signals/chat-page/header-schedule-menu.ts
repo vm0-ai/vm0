@@ -5,11 +5,13 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { scheduleTitle } from "../zero-page/schedule-title.ts";
 
-interface HeaderScheduleEntry {
+export interface HeaderScheduleEntry {
   readonly id: string;
   readonly name: string;
   readonly title: string;
   readonly chatThreadId: string;
+  readonly enabled: boolean;
+  readonly nextRunAt: string | null;
 }
 
 const headerScheduleMenuReload$ = state(0);
@@ -40,6 +42,8 @@ export const headerScheduleMenu$ = computed(
         name: schedule.name,
         title: scheduleTitle(schedule),
         chatThreadId: schedule.chatThreadId,
+        enabled: schedule.enabled,
+        nextRunAt: schedule.nextRunAt,
       };
     });
   },

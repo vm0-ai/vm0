@@ -184,6 +184,7 @@ import {
   headerScheduleMenu$,
   reloadHeaderScheduleMenu$,
   schedulesForThread,
+  type HeaderScheduleEntry,
 } from "../../signals/chat-page/header-schedule-menu.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
@@ -955,6 +956,22 @@ function GithubPrTrackingButton({
   );
 }
 
+// Second line shown under each schedule in the header menu: the next scheduled
+// run time, or a note that the schedule is inactive when it has been disabled.
+function scheduleMenuSubline(schedule: HeaderScheduleEntry): string {
+  if (!schedule.enabled) {
+    return "Schedule inactive";
+  }
+  if (!schedule.nextRunAt) {
+    return "No upcoming run";
+  }
+  const nextRun = new Date(schedule.nextRunAt).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  return `Next run ${nextRun}`;
+}
+
 // Loads schedules and only renders once this thread has at least one linked
 // schedule.
 export function ScheduleMenuButton({
@@ -1005,12 +1022,18 @@ export function ScheduleMenuButton({
                   pathParams: { scheduleId: schedule.id },
                 });
               }}
+              className="items-start gap-2"
             >
               <IconClock
                 size={15}
-                className="mr-2 shrink-0 text-muted-foreground"
+                className="mt-0.5 shrink-0 text-muted-foreground"
               />
-              <span className="truncate">{schedule.title}</span>
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate">{schedule.title}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {scheduleMenuSubline(schedule)}
+                </span>
+              </div>
             </DropdownMenuItem>
           );
         })}
