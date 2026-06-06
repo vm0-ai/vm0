@@ -857,6 +857,39 @@ impl SessionWorkspaceCache {
         }
     }
 
+    pub(crate) async fn invalidate_current_for_session(
+        &self,
+        run_id: RunId,
+        profile_name: &str,
+        session_id: Option<&str>,
+        working_dir: &str,
+        image_size_bytes: u64,
+        reason: &str,
+    ) -> RunnerResult<bool> {
+        let Some(session_id) = session_id else {
+            return Ok(false);
+        };
+        let Some(working_dir) = normalize_safe_guest_working_dir(working_dir) else {
+            return Ok(false);
+        };
+        let cache_key =
+            self.scoped_cache_key(profile_name, session_id, &working_dir, image_size_bytes);
+        let entry_dir = self.session_workspace_cache_entry_dir(&cache_key);
+        if !cache_entry_dir_is_dir(&entry_dir).await? {
+            return Ok(false);
+        }
+        let _entry_lock = crate::lock::try_acquire(self.entry_lock_path(&cache_key))
+            .await
+            .map_err(|e| {
+                RunnerError::Internal(format!(
+                    "workspace image cache baseline invalidation lock unavailable: {e}"
+                ))
+            })?;
+        let current = self.session_workspace_cache_current_image(&cache_key);
+        self.invalidate_current_image(run_id, &cache_key, &current, reason)
+            .await
+    }
+
     pub(crate) async fn held_session_states(&self) -> Vec<HeldSessionState> {
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {

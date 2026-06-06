@@ -978,12 +978,18 @@ async fn prepare_workspace_image(
     workspace_disk_mb: u32,
     telemetry: &mut JobTelemetry,
 ) -> Option<WorkspaceImageLease> {
-    let (true, Some(cache)) = (
-        context.session_workspace_image_cache_enabled(),
-        config.workspace_cache.as_ref(),
-    ) else {
+    let cache = config.workspace_cache.as_ref()?;
+
+    if !context.session_workspace_image_cache_enabled() {
+        invalidate_disabled_workspace_cache_baseline(
+            context,
+            cache,
+            profile_name,
+            workspace_disk_mb,
+        )
+        .await;
         return None;
-    };
+    }
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
@@ -998,6 +1004,32 @@ async fn prepare_workspace_image(
         .await;
     record_workspace_cache_result(telemetry, lease.result());
     Some(lease)
+}
+
+async fn invalidate_disabled_workspace_cache_baseline(
+    context: &ExecutionContext,
+    cache: &SessionWorkspaceCache,
+    profile_name: &str,
+    workspace_disk_mb: u32,
+) {
+    if let Err(e) = cache
+        .invalidate_current_for_session(
+            context.run_id,
+            profile_name,
+            context.session_id(),
+            CANONICAL_WORKING_DIR,
+            u64::from(workspace_disk_mb) * 1024 * 1024,
+            "workspace image cache disabled by feature flag",
+        )
+        .await
+    {
+        warn!(
+            run_id = %context.run_id,
+            profile_name,
+            error = %e,
+            "failed to invalidate disabled workspace image cache baseline"
+        );
+    }
 }
 
 fn workspace_image_promotable(
@@ -6785,8 +6817,12 @@ mod tests {
             })
         );
         assert!(
-            seeded_cache.exists(),
-            "disabled feature flag must not consume or invalidate the workspace cache baseline"
+            !seeded_cache.exists(),
+            "disabled feature flag should invalidate stale workspace cache baseline"
+        );
+        assert!(
+            cache.held_session_states().await.is_empty(),
+            "disabled feature flag should stop advertising stale workspace cache affinity"
         );
     }
 
