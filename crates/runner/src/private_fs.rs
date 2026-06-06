@@ -3,6 +3,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::error::{RunnerError, RunnerResult};
 
 const PRIVATE_DIR_MODE: u32 = 0o700;
+const PRIVATE_FILE_MODE: u32 = 0o600;
 const RESERVED_PRIVATE_DIR_PATHS: &[&str] = &[
     "/",
     "/bin",
@@ -57,6 +58,57 @@ pub async fn ensure_private_dir(path: &Path) -> RunnerResult<()> {
     tokio::fs::create_dir_all(path)
         .await
         .map_err(|e| RunnerError::Config(format!("create private dir {}: {e}", path.display())))
+}
+
+#[cfg(unix)]
+pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()> {
+    use std::ffi::OsString;
+    use std::os::unix::fs::PermissionsExt;
+    use tokio::io::AsyncWriteExt;
+
+    let file_name = path.file_name().ok_or_else(|| {
+        RunnerError::Config(format!(
+            "{} does not have a file name; refusing to write private file",
+            path.display()
+        ))
+    })?;
+    let mut tmp_name = OsString::from(".");
+    tmp_name.push(file_name);
+    tmp_name.push(format!(".{}.tmp", uuid::Uuid::new_v4()));
+    let tmp = path.with_file_name(tmp_name);
+
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create_new(true).mode(PRIVATE_FILE_MODE);
+    let mut file = options.open(&tmp).await.map_err(|e| {
+        RunnerError::Config(format!("open private file tmp {}: {e}", tmp.display()))
+    })?;
+    tokio::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))
+        .await
+        .map_err(|e| {
+            RunnerError::Config(format!("chmod private file tmp {}: {e}", tmp.display()))
+        })?;
+    file.write_all(content).await.map_err(|e| {
+        RunnerError::Config(format!("write private file tmp {}: {e}", tmp.display()))
+    })?;
+    file.flush().await.map_err(|e| {
+        RunnerError::Config(format!("flush private file tmp {}: {e}", tmp.display()))
+    })?;
+    drop(file);
+
+    tokio::fs::rename(&tmp, path)
+        .await
+        .map_err(|e| RunnerError::Config(format!("rename private file {}: {e}", path.display())))?;
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))
+        .await
+        .map_err(|e| RunnerError::Config(format!("chmod private file {}: {e}", path.display())))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()> {
+    tokio::fs::write(path, content)
+        .await
+        .map_err(|e| RunnerError::Config(format!("write private file {}: {e}", path.display())))
 }
 
 #[cfg(unix)]
