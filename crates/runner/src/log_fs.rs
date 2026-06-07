@@ -38,20 +38,40 @@ pub(crate) async fn ensure_log_dir(dir: &Path) -> RunnerResult<()> {
 
 #[cfg(unix)]
 pub(crate) fn secure_open_log_file_sync(file: &std::fs::File, path: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    secure_open_log_fd_sync(file, path)
+}
 
-    let metadata = file.metadata()?;
-    if !metadata.file_type().is_file() {
+#[cfg(unix)]
+pub(crate) fn secure_open_log_fd_sync<Fd: std::os::fd::AsRawFd>(
+    file: &Fd,
+    path: &Path,
+) -> std::io::Result<()> {
+    let mut stat = std::mem::MaybeUninit::<nix::libc::stat>::uninit();
+    // SAFETY: `stat` points to valid writable memory and `file` owns a live fd.
+    let result = unsafe { nix::libc::fstat(file.as_raw_fd(), stat.as_mut_ptr()) };
+    if result != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: successful `fstat` initialized the full `stat` struct.
+    let stat = unsafe { stat.assume_init() };
+    let file_type = stat.st_mode & nix::libc::S_IFMT;
+    if file_type != nix::libc::S_IFREG {
         return Err(std::io::Error::other(format!(
             "{} is not a regular log file",
             path.display()
         )));
     }
-    ensure_trusted_log_owner_io(path, metadata.uid(), nix::unistd::geteuid().as_raw())?;
-    if metadata.permissions().mode() & 0o777 == LOG_FILE_MODE {
+    ensure_trusted_log_owner_io(path, stat.st_uid, nix::unistd::geteuid().as_raw())?;
+    if stat.st_mode & 0o777 == LOG_FILE_MODE {
         return Ok(());
     }
-    file.set_permissions(std::fs::Permissions::from_mode(LOG_FILE_MODE))
+    // SAFETY: `fchmod` operates on the live fd and does not affect Rust aliasing.
+    let result = unsafe { nix::libc::fchmod(file.as_raw_fd(), LOG_FILE_MODE as nix::libc::mode_t) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
 }
 
 #[cfg(not(unix))]
@@ -59,6 +79,11 @@ pub(crate) fn secure_open_log_file_sync(
     _file: &std::fs::File,
     _path: &Path,
 ) -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub(crate) fn secure_open_log_fd_sync<Fd>(_file: &Fd, _path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
@@ -459,6 +484,36 @@ mod tests {
         secure_log_file(&log_file).await.unwrap();
 
         assert_eq!(mode(&log_file), LOG_FILE_MODE);
+    }
+
+    #[test]
+    fn secure_open_log_file_checks_open_fd_after_path_replacement() {
+        use nix::unistd::{Uid, chown};
+
+        if !nix::unistd::geteuid().is_root() {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let log_file = dir.path().join("network.jsonl");
+        std::fs::write(&log_file, "{}\n").unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&log_file)
+            .unwrap();
+        chown(&log_file, Some(Uid::from_raw(1)), None).unwrap();
+        std::fs::remove_file(&log_file).unwrap();
+        std::fs::write(&log_file, "{}\n").unwrap();
+        std::fs::set_permissions(&log_file, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let error = secure_open_log_file_sync(&file, &log_file).unwrap_err();
+
+        assert!(
+            error.to_string().contains("untrusted uid"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(mode(&log_file), 0o644);
     }
 
     #[tokio::test]

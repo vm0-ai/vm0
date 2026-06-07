@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::io::{self, SeekFrom};
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
