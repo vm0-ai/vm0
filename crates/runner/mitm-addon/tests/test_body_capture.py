@@ -14,7 +14,6 @@ from body_utils import (
     STREAM_BUFFER_LIMIT,
     STREAM_DECODE_CHUNK_LIMIT,
     _encode_body,
-    _is_sensitive_header,
     _is_text_content,
     _sanitize_headers_for_capture,
     _truncate_bytes_utf8_safe,
@@ -154,48 +153,41 @@ class TestTruncateBytesUtf8Safe:
         assert _truncate_bytes_utf8_safe(data, 5) == b"hello"
 
 
-class TestIsSensitiveHeader:
-    def test_authorization(self):
-        assert _is_sensitive_header("Authorization") is True
-
-    def test_cookie(self):
-        assert _is_sensitive_header("Cookie") is True
-
-    def test_set_cookie(self):
-        assert _is_sensitive_header("Set-Cookie") is True
-
-    def test_x_api_key(self):
-        assert _is_sensitive_header("X-Api-Key") is True
-
-    def test_x_auth_token(self):
-        assert _is_sensitive_header("X-Auth-Token") is True
-
-    def test_proxy_authorization(self):
-        assert _is_sensitive_header("Proxy-Authorization") is True
-
-    def test_content_type_not_sensitive(self):
-        assert _is_sensitive_header("Content-Type") is False
-
-    def test_host_not_sensitive(self):
-        assert _is_sensitive_header("Host") is False
-
-    def test_idempotency_key_not_sensitive(self):
-        assert _is_sensitive_header("X-Idempotency-Key") is False
-
-    def test_request_key_not_sensitive(self):
-        assert _is_sensitive_header("X-Request-Key") is False
-
-    def test_x_secret_custom(self):
-        assert _is_sensitive_header("X-Secret-Foo") is True
-
-    def test_x_credential(self):
-        assert _is_sensitive_header("X-Credential") is True
-
-    def test_password_header(self):
-        assert _is_sensitive_header("X-Password") is True
-
-
 class TestSanitizeHeadersForCapture:
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Authorization",
+            "Cookie",
+            "Set-Cookie",
+            "X-Api-Key",
+            "X_API_KEY",
+            "X.Api.Key",
+            "X+Api+Key",
+            "X-Auth-Token",
+            "Proxy-Authorization",
+            "X-Secret-Foo",
+            "X-Credential",
+            "X-Password",
+        ],
+    )
+    def test_sensitive_header_names_are_redacted(self, headers, name):
+        result = _sanitize_headers_for_capture(headers((name, "secret-value")))
+        assert result[name] == "***"
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Content-Type",
+            "Host",
+            "X-Idempotency-Key",
+            "X-Request-Key",
+        ],
+    )
+    def test_non_sensitive_header_names_are_preserved(self, headers, name):
+        result = _sanitize_headers_for_capture(headers((name, "public-value")))
+        assert result[name] == "public-value"
+
     def test_redacts_sensitive_keeps_others(self, headers):
         headers = headers(
             ("Content-Type", "application/json"),
@@ -220,29 +212,109 @@ class TestSanitizeHeadersForCapture:
         assert result["Host"] == "example.com"
         assert len(result) == 2
 
-    def test_url_bearing_headers_strip_query_and_fragment(self, headers):
+    def test_duplicate_headers_keeps_first_case_insensitive(self, headers):
         headers = headers(
-            ("Location", "https://user:pass@client.example/callback?code=secret#fragment"),
-            ("Referer", "https://app.example/page?token=secret#fragment"),
-            ("content-location", "/objects/123?signature=secret#fragment"),
-            ("referrer", "/previous?pii=secret#fragment"),
+            ("X-Request-Id", "req-first"),
+            ("x-request-id", "req-second"),
+            ("Host", "example.com"),
         )
         result = _sanitize_headers_for_capture(headers)
-        assert result["Location"] == "https://client.example/callback"
-        assert result["Referer"] == "https://app.example/page"
-        assert result["content-location"] == "/objects/123"
-        assert result["referrer"] == "/previous"
+        assert result["X-Request-Id"] == "req-first"
+        assert "x-request-id" not in result
+        assert result["Host"] == "example.com"
+        assert len(result) == 2
 
-    def test_link_header_sanitizes_uri_references(self, headers):
+    @pytest.mark.parametrize(
+        ("name", "value"),
+        [
+            (
+                "Location",
+                "https://hooks.slack.com/services/T000/B000/secret-token?code=secret",
+            ),
+            ("Content-Base", "https://app.example/base/secret-token"),
+            (
+                "Content-Security-Policy",
+                "default-src 'self'; report-uri https://reports.example/secret-token",
+            ),
+            (
+                "Content-Security-Policy-Report-Only",
+                "default-src 'self'; report-uri https://reports.example/secret-token",
+            ),
+            ("Origin", "https://tenant-secret.example"),
+            ("Path", "/path/secret-token"),
+            ("Permissions-Policy", 'geolocation=("https://tenant-secret.example")'),
+            ("Referer", "https://app.example/invite/secret-token?utm=secret"),
+            ("content-location", "/objects/secret-token?signature=secret#fragment"),
+            ("referrer", "/previous/secret-token?pii=secret#fragment"),
+            ("Refresh", "0; url=https://app.example/reset/secret-token"),
+            ("Expect-CT", 'max-age=86400, report-uri="https://reports.example/secret"'),
+            ("Feature-Policy", 'geolocation "https://tenant-secret.example"'),
+            ("Forwarded", "for=192.0.2.43;host=tenant-secret.example;proto=https"),
+            (
+                "Public-Key-Pins",
+                'pin-sha256="abc"; report-uri="https://reports.example/secret"',
+            ),
+            (
+                "Public-Key-Pins-Report-Only",
+                'pin-sha256="abc"; report-uri="https://reports.example/secret"',
+            ),
+            ("Report-To", '{"url":"https://reports.example/private/secret-token"}'),
+            (
+                "Reporting-Endpoints",
+                'default="https://reports.example/private/secret-token"',
+            ),
+            ("Destination", "https://storage.example/private/secret-token"),
+            ("SourceMap", "https://cdn.example/app.js.map?token=secret"),
+            ("URI", "/generic-uri/secret-token"),
+            ("URL", "https://generic.example/secret-token"),
+            ("X-SourceMap", "https://cdn.example/legacy.js.map?token=secret"),
+            ("Access-Control-Allow-Origin", "https://tenant-secret.example"),
+            ("X-Accel-Redirect", "/internal/secret-token"),
+            ("X-Callback-URL", "https://callback.example/private/secret-token"),
+            ("X-Callback-Path", "/callback/secret-token"),
+            ("X_Callback_Path", "/underscore-callback/secret-token"),
+            ("X-Envoy-Original-Path", "/envoy/secret-token"),
+            ("X-Forwarded-Host", "tenant-secret.example"),
+            ("X-Forwarded-Prefix", "/prefix/secret-token"),
+            ("X-Lighttpd-Send-File", "/srv/private/secret-token"),
+            ("X-Redirect", "/redirect/secret-token"),
+            ("X-Redirect-Location", "/redirect-location/secret-token"),
+            ("X-Sendfile", "/srv/private/secret-token"),
+            ("X-Request-URI", "/request/secret-token"),
+            ("X_Original_URI", "/underscore-uri/secret-token"),
+            ("X-Original-URI", "/internal/secret-token"),
+            ("X-Original-URL", "/internal/secret-token"),
+            ("X.Original.URL", "/dotted-url/secret-token"),
+            ("X+Original+URL", "/separator-url/secret-token"),
+            ("X-Rewrite-URI", "/rewritten/secret-token"),
+            ("X-Rewrite-URL", "https://app.example/rewritten/secret-token"),
+            ("X-Forwarded-URL", "https://app.example/forwarded/secret-token"),
+            ("X-Forwarded-URI", "/forwarded/secret-token"),
+        ],
+    )
+    def test_location_bearing_headers_are_redacted(self, headers, name, value):
+        result = _sanitize_headers_for_capture(headers((name, value)))
+        assert result[name] == "***"
+
+    def test_non_location_bearing_policy_headers_are_preserved(self, headers):
+        headers = headers(
+            ("Cross-Origin-Resource-Policy", "same-origin"),
+            ("Referrer-Policy", "strict-origin-when-cross-origin"),
+        )
+        result = _sanitize_headers_for_capture(headers)
+        assert result["Cross-Origin-Resource-Policy"] == "same-origin"
+        assert result["Referrer-Policy"] == "strict-origin-when-cross-origin"
+
+    def test_link_header_redacts_url_references(self, headers):
         headers = headers(
             (
                 "Link",
-                '<https://api.example/items?cursor=secret#fragment>; rel="next", '
-                '</local?token=secret#fragment>; rel="prev"',
+                '<https://download.example/reset/secret-token?expires=secret>; rel="next", '
+                '</local/secret-token?token=secret#fragment>; rel="prev"',
             ),
         )
         result = _sanitize_headers_for_capture(headers)
-        assert result["Link"] == '<https://api.example/items>; rel="next", </local>; rel="prev"'
+        assert result["Link"] == "***"
 
     def test_malformed_link_header_redacts(self, headers):
         headers = headers(("Link", '<https://api.example/items?cursor=secret; rel="next"'))
@@ -313,7 +385,7 @@ class TestAddCaptureFields:
         assert entry["response_headers"]["Content-Type"] == "application/json"
         assert entry["response_headers"]["X-Request-Id"] == "req-123"
 
-    def test_captured_url_bearing_headers_are_sanitized(self, real_flow, headers):
+    def test_captured_location_bearing_headers_are_sanitized(self, real_flow, headers):
         flow = real_flow(
             method="GET",
             host="api.example.com",
@@ -327,8 +399,8 @@ class TestAddCaptureFields:
         )
         entry = {}
         add_capture_fields(flow, entry)
-        assert entry["request_headers"]["Referer"] == "https://app.example/page"
-        assert entry["response_headers"]["Location"] == "https://client.example/callback"
+        assert entry["request_headers"]["Referer"] == "***"
+        assert entry["response_headers"]["Location"] == "***"
 
     def test_response_headers_redacts_sensitive(self, real_flow, headers):
         flow = real_flow(

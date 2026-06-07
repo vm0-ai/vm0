@@ -8,7 +8,7 @@ Exports:
   decompression for gzip, deflate, br, zstd.
 - Conservative request-body decoding for billing inspection.
 - UTF-8-safe truncation, text/binary content detection and encoding.
-- Header sanitization for sensitive names and URL-bearing values.
+- Header sanitization for sensitive names and location-bearing values.
 - ``add_capture_fields`` — composes capture-mode log entry fields.
 """
 
@@ -23,7 +23,6 @@ import zstandard
 from mitmproxy import ctx, http
 
 import flow_metadata_keys as metadata_keys
-import network_log_sanitization
 
 # Cap for non-model-provider response body buffering and decompression output.
 STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
@@ -90,13 +89,49 @@ _SENSITIVE_HEADER_KEYWORDS = (
     "password",
     "cookie",
 )
-_URL_BEARING_CAPTURE_HEADER_NAMES = frozenset(
+# Captured location-bearing headers are redacted entirely because paths,
+# query parameters, origins, and forwarded hosts can carry persistent-log secrets.
+_LOCATION_BEARING_CAPTURE_HEADER_NAMES = frozenset(
     {
-        "location",
+        "content-base",
         "content-location",
+        "content-security-policy",
+        "content-security-policy-report-only",
+        "destination",
+        "expect-ct",
+        "feature-policy",
+        "forwarded",
+        "link",
+        "location",
+        "origin",
+        "path",
+        "permissions-policy",
+        "public-key-pins",
+        "public-key-pins-report-only",
+        "redirect",
+        "report-to",
+        "reporting-endpoints",
+        "refresh",
         "referer",
         "referrer",
+        "sourcemap",
+        "uri",
+        "url",
+        "x-accel-redirect",
+        "x-forwarded-prefix",
+        "x-lighttpd-send-file",
+        "x-sendfile",
+        "x-sourcemap",
     }
+)
+_LOCATION_BEARING_CAPTURE_HEADER_SUFFIXES = (
+    "-host",
+    "-location",
+    "-origin",
+    "-path",
+    "-redirect",
+    "-uri",
+    "-url",
 )
 
 
@@ -556,30 +591,47 @@ def _encode_body(content: bytes, content_type: str) -> tuple:
         return base64.b64encode(content).decode("ascii"), "base64"
 
 
-def _is_sensitive_header(name: str) -> bool:
-    """Check if a header name likely carries sensitive data."""
-    lower = name.lower()
-    return any(kw in lower for kw in _SENSITIVE_HEADER_KEYWORDS)
+def _normalize_capture_header_name(name: str) -> str:
+    normalized: list[str] = []
+    previous_separator = False
+    for char in name.strip().lower():
+        if char.isascii() and char.isalnum():
+            normalized.append(char)
+            previous_separator = False
+        elif not previous_separator:
+            normalized.append("-")
+            previous_separator = True
+    return "".join(normalized).strip("-")
+
+
+def _is_sensitive_capture_header_name(normalized_name: str) -> bool:
+    return any(kw in normalized_name for kw in _SENSITIVE_HEADER_KEYWORDS)
+
+
+def _is_location_bearing_capture_header(normalized_name: str) -> bool:
+    return normalized_name in _LOCATION_BEARING_CAPTURE_HEADER_NAMES or normalized_name.endswith(
+        _LOCATION_BEARING_CAPTURE_HEADER_SUFFIXES
+    )
 
 
 def _sanitize_header_value_for_capture(name: str, value: str) -> str:
-    lower_name = name.lower()
-    if _is_sensitive_header(name):
+    normalized_name = _normalize_capture_header_name(name)
+    if _is_sensitive_capture_header_name(normalized_name):
         return _REDACTED_HEADER_VALUE
-    if lower_name in _URL_BEARING_CAPTURE_HEADER_NAMES:
-        return network_log_sanitization.sanitize_url_for_network_log(value)
-    if lower_name == "link":
-        sanitized_link = network_log_sanitization.sanitize_link_header_for_network_log(value)
-        return _REDACTED_HEADER_VALUE if sanitized_link is None else sanitized_link
+    if _is_location_bearing_capture_header(normalized_name):
+        return _REDACTED_HEADER_VALUE
     return value
 
 
 def _sanitize_headers_for_capture(headers) -> dict:
     """Build a dict of captured headers safe for persistent network logs."""
     result = {}
+    seen_names: set[str] = set()
     for name, value in headers.items(multi=True):
-        if name in result:
+        case_insensitive_name = name.lower()
+        if case_insensitive_name in seen_names:
             continue  # keep first occurrence only (headers.items gives all)
+        seen_names.add(case_insensitive_name)
         result[name] = _sanitize_header_value_for_capture(name, value)
     return result
 
