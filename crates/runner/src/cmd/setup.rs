@@ -6,7 +6,7 @@
 
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
@@ -20,6 +20,9 @@ use crate::deps::{
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
+const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
+const SHARED_DIRECTORY_CREATE_MODE: u32 = 0o755;
+
 /// Run the host setup workflow for sandbox execution.
 ///
 /// Returns `RunnerError::Config` when the host configuration is unsupported or
@@ -31,7 +34,7 @@ pub async fn run_setup() -> RunnerResult<()> {
     let missing_required = check_system_dependencies();
 
     let paths = HomePaths::new()?;
-    create_directories(&paths).await?;
+    create_directories(&paths)?;
     download_firecracker(&paths, arch).await?;
     download_kernel(&paths, arch).await?;
     download_mitmdump(&paths, arch).await?;
@@ -107,20 +110,146 @@ fn check_system_dependencies() -> Vec<&'static str> {
     missing_required
 }
 
-async fn create_directories(paths: &HomePaths) -> RunnerResult<()> {
+fn create_directories(paths: &HomePaths) -> RunnerResult<()> {
+    let firecracker_version_dir = paths.firecracker_dir(FIRECRACKER_VERSION);
+    let mitmproxy_version_dir = paths.mitmproxy_dir(MITMPROXY_VERSION);
     let dirs = [
+        paths.root_dir().to_path_buf(),
         paths.bin_dir(),
-        paths.firecracker_dir(FIRECRACKER_VERSION),
-        paths.mitmproxy_dir(MITMPROXY_VERSION),
+        parent_dir(&firecracker_version_dir)?,
+        firecracker_version_dir,
+        parent_dir(&mitmproxy_version_dir)?,
+        mitmproxy_version_dir,
+        paths.images_dir(),
+        paths.logs_dir(),
         paths.runners_dir(),
+        paths.workspace_image_cache_dir(),
+        paths.groups_dir(),
+        paths.debootstrap_dir(),
+        paths.locks_dir(),
+        paths.storages_dir(),
     ];
     for dir in &dirs {
-        tokio::fs::create_dir_all(dir)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("create {}: {e}", dir.display())))?;
+        ensure_shared_directory(dir)?;
     }
     tracing::info!("[OK] directory structure created");
     Ok(())
+}
+
+fn parent_dir(path: &Path) -> RunnerResult<PathBuf> {
+    path.parent().map(Path::to_path_buf).ok_or_else(|| {
+        RunnerError::Internal(format!(
+            "{} does not have a parent directory",
+            path.display()
+        ))
+    })
+}
+
+fn ensure_shared_directory(dir: &Path) -> RunnerResult<()> {
+    create_shared_directory_all(dir)?;
+    secure_shared_directory_permissions(dir)
+}
+
+#[cfg(unix)]
+fn create_shared_directory_all(dir: &Path) -> RunnerResult<()> {
+    use std::os::unix::fs::DirBuilderExt;
+
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(SHARED_DIRECTORY_CREATE_MODE)
+        .create(dir)
+        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", dir.display())))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn create_shared_directory_all(dir: &Path) -> RunnerResult<()> {
+    std::fs::create_dir_all(dir)
+        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", dir.display())))?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn secure_shared_directory_permissions(dir: &Path) -> RunnerResult<()> {
+    use nix::fcntl::open;
+    use nix::sys::stat::{Mode, SFlag, fstat};
+
+    let fd = open(dir, shared_directory_open_flags(), Mode::empty()).map_err(|e| {
+        RunnerError::Internal(format!(
+            "open shared directory {} without following symlinks: {e}",
+            dir.display()
+        ))
+    })?;
+    let stat = fstat(&fd).map_err(|e| {
+        RunnerError::Internal(format!("stat shared directory {}: {e}", dir.display()))
+    })?;
+    let file_type = SFlag::from_bits_truncate(stat.st_mode & SFlag::S_IFMT.bits());
+    if file_type != SFlag::S_IFDIR {
+        return Err(RunnerError::Internal(format!(
+            "{} is not a directory",
+            dir.display()
+        )));
+    }
+
+    let current_mode = (stat.st_mode as u32) & 0o7777;
+    let secure_mode = current_mode & !GROUP_OR_OTHER_WRITE_BITS;
+    if secure_mode != current_mode {
+        chmod_open_shared_directory(&fd, dir, secure_mode)?;
+    }
+    Ok(())
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn shared_directory_open_flags() -> nix::fcntl::OFlag {
+    nix::fcntl::OFlag::O_PATH
+        | nix::fcntl::OFlag::O_DIRECTORY
+        | nix::fcntl::OFlag::O_NOFOLLOW
+        | nix::fcntl::OFlag::O_CLOEXEC
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn shared_directory_open_flags() -> nix::fcntl::OFlag {
+    nix::fcntl::OFlag::O_RDONLY
+        | nix::fcntl::OFlag::O_DIRECTORY
+        | nix::fcntl::OFlag::O_NOFOLLOW
+        | nix::fcntl::OFlag::O_CLOEXEC
+}
+
+#[cfg(not(unix))]
+fn secure_shared_directory_permissions(dir: &Path) -> RunnerResult<()> {
+    let metadata = std::fs::metadata(dir).map_err(|e| {
+        RunnerError::Internal(format!("stat shared directory {}: {e}", dir.display()))
+    })?;
+    if !metadata.is_dir() {
+        return Err(RunnerError::Internal(format!(
+            "{} is not a directory",
+            dir.display()
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn chmod_open_shared_directory<Fd: std::os::fd::AsRawFd>(
+    fd: &Fd,
+    dir: &Path,
+    mode: u32,
+) -> RunnerResult<()> {
+    let fd_path = PathBuf::from(format!("/proc/self/fd/{}", fd.as_raw_fd()));
+    std::fs::set_permissions(&fd_path, std::fs::Permissions::from_mode(mode)).map_err(|e| {
+        RunnerError::Internal(format!("chmod shared directory {}: {e}", dir.display()))
+    })
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn chmod_open_shared_directory<Fd: std::os::fd::AsFd>(
+    fd: &Fd,
+    dir: &Path,
+    mode: u32,
+) -> RunnerResult<()> {
+    nix::sys::stat::fchmod(fd, nix::sys::stat::Mode::from_bits_truncate(mode)).map_err(|e| {
+        RunnerError::Internal(format!("chmod shared directory {}: {e}", dir.display()))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -613,6 +742,54 @@ mod tests {
             sha,
             "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_directories_removes_shared_write_bits_without_widening_modes() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let runners_dir = paths.runners_dir();
+        let logs_dir = paths.logs_dir();
+
+        std::fs::create_dir_all(&runners_dir).unwrap();
+        std::fs::create_dir_all(&logs_dir).unwrap();
+        std::fs::set_permissions(paths.root_dir(), std::fs::Permissions::from_mode(0o777)).unwrap();
+        std::fs::set_permissions(&runners_dir, std::fs::Permissions::from_mode(0o777)).unwrap();
+        std::fs::set_permissions(&logs_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        create_directories(&paths).unwrap();
+
+        let firecracker_version_dir = paths.firecracker_dir(FIRECRACKER_VERSION);
+        let mitmproxy_version_dir = paths.mitmproxy_dir(MITMPROXY_VERSION);
+        let checked_dirs = [
+            paths.root_dir().to_path_buf(),
+            paths.bin_dir(),
+            parent_dir(&firecracker_version_dir).unwrap(),
+            firecracker_version_dir,
+            parent_dir(&mitmproxy_version_dir).unwrap(),
+            mitmproxy_version_dir,
+            paths.images_dir(),
+            paths.runners_dir(),
+            paths.workspace_image_cache_dir(),
+            paths.groups_dir(),
+            paths.debootstrap_dir(),
+            paths.locks_dir(),
+            paths.storages_dir(),
+        ];
+
+        for path in checked_dirs {
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(
+                mode & GROUP_OR_OTHER_WRITE_BITS,
+                0,
+                "{} mode should not be group/other writable: {mode:o}",
+                path.display()
+            );
+        }
+
+        let logs_mode = std::fs::metadata(&logs_dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(logs_mode, 0o700);
     }
 
     #[tokio::test]

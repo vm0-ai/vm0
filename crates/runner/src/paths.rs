@@ -190,6 +190,10 @@ impl HomePaths {
         Self { root }
     }
 
+    pub fn root_dir(&self) -> &Path {
+        &self.root
+    }
+
     pub fn bin_dir(&self) -> PathBuf {
         self.root.join("bin")
     }
