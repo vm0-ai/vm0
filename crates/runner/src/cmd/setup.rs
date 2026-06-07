@@ -5,7 +5,7 @@
 //! used by sandbox startup.
 
 use std::io::Read;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
@@ -22,6 +22,7 @@ use crate::paths::HomePaths;
 
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const OWNER_DIRECTORY_BITS: u32 = 0o700;
+const ROOT_UID: u32 = 0;
 const SHARED_DIRECTORY_CREATE_MODE: u32 = 0o755;
 
 /// Run the host setup workflow for sandbox execution.
@@ -191,6 +192,8 @@ fn secure_shared_directory_permissions(dir: &Path) -> RunnerResult<()> {
             dir.display()
         )));
     }
+    let expected_uid = nix::unistd::geteuid().as_raw();
+    ensure_trusted_shared_directory_owner(dir, stat.st_uid, expected_uid)?;
 
     let current_mode = (stat.st_mode as u32) & 0o7777;
     let secure_mode = (current_mode | OWNER_DIRECTORY_BITS) & !GROUP_OR_OTHER_WRITE_BITS;
@@ -198,6 +201,26 @@ fn secure_shared_directory_permissions(dir: &Path) -> RunnerResult<()> {
         chmod_open_shared_directory(&fd, dir, secure_mode)?;
     }
     Ok(())
+}
+
+#[cfg(unix)]
+fn ensure_trusted_shared_directory_owner(
+    dir: &Path,
+    owner_uid: u32,
+    expected_uid: u32,
+) -> RunnerResult<()> {
+    if !is_trusted_setup_owner(owner_uid, expected_uid) {
+        return Err(RunnerError::Internal(format!(
+            "shared directory {} is owned by untrusted uid {owner_uid}; fix ownership before running setup",
+            dir.display()
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn is_trusted_setup_owner(owner_uid: u32, expected_uid: u32) -> bool {
+    owner_uid == ROOT_UID || owner_uid == expected_uid
 }
 
 #[cfg(all(unix, target_os = "linux"))]
@@ -517,6 +540,10 @@ async fn ensure_artifact_installed(
     if file_sha256(path).await? != expected_sha {
         return Ok(false);
     }
+    #[cfg(unix)]
+    if !is_trusted_setup_owner(metadata.uid(), nix::unistd::geteuid().as_raw()) {
+        return Ok(false);
+    }
 
     let Some(mode) = mode else {
         return Ok(true);
@@ -535,6 +562,10 @@ async fn ensure_artifact_installed(
         .map_err(|e| RunnerError::Internal(format!("stat {}: {e}", path.display())))?;
 
     if !metadata.is_file() || (metadata.permissions().mode() & 0o7777) != mode {
+        return Ok(false);
+    }
+    #[cfg(unix)]
+    if !is_trusted_setup_owner(metadata.uid(), nix::unistd::geteuid().as_raw()) {
         return Ok(false);
     }
 
@@ -802,6 +833,25 @@ mod tests {
         assert_eq!(bin_mode, 0o700);
         let logs_mode = std::fs::metadata(&logs_dir).unwrap().permissions().mode() & 0o777;
         assert_eq!(logs_mode, 0o700);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shared_directory_owner_must_be_current_user_or_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shared");
+
+        assert!(is_trusted_setup_owner(0, 1000));
+        assert!(is_trusted_setup_owner(1000, 1000));
+        assert!(!is_trusted_setup_owner(1001, 1000));
+        ensure_trusted_shared_directory_owner(&path, 0, 1000).unwrap();
+        ensure_trusted_shared_directory_owner(&path, 1000, 1000).unwrap();
+        let error = ensure_trusted_shared_directory_owner(&path, 1001, 1000).unwrap_err();
+
+        assert!(
+            error.to_string().contains("untrusted uid"),
+            "unexpected error: {error}"
+        );
     }
 
     #[tokio::test]

@@ -7,14 +7,16 @@ use nix::fcntl::{Flock, FlockArg};
 use crate::error::{RunnerError, RunnerResult};
 
 const LOCK_BUSY_ERROR: &str = "lock is already held by another process";
+const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
+const LOCK_DIR_MODE: u32 = 0o755;
 const LOCK_FILE_MODE: u32 = 0o600;
+const OWNER_DIRECTORY_BITS: u32 = 0o700;
+const ROOT_UID: u32 = 0;
 
 /// Open (or create) the lock file, creating parent directories as needed.
 pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            RunnerError::Internal(format!("create lock dir {}: {e}", parent.display()))
-        })?;
+        ensure_lock_parent_dir(parent)?;
     }
     let mut options = File::options();
     options.create(true).truncate(false).read(true).write(true);
@@ -32,12 +34,153 @@ pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
     Ok(file)
 }
 
+fn ensure_lock_parent_dir(parent: &Path) -> RunnerResult<()> {
+    create_lock_parent_dir_all(parent)?;
+    secure_lock_parent_dir_permissions(parent)
+}
+
+#[cfg(unix)]
+fn create_lock_parent_dir_all(parent: &Path) -> RunnerResult<()> {
+    use std::os::unix::fs::DirBuilderExt;
+
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(LOCK_DIR_MODE)
+        .create(parent)
+        .map_err(|e| RunnerError::Internal(format!("create lock dir {}: {e}", parent.display())))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn create_lock_parent_dir_all(parent: &Path) -> RunnerResult<()> {
+    std::fs::create_dir_all(parent)
+        .map_err(|e| RunnerError::Internal(format!("create lock dir {}: {e}", parent.display())))?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn secure_lock_parent_dir_permissions(parent: &Path) -> RunnerResult<()> {
+    use nix::fcntl::open;
+    use nix::sys::stat::{Mode, SFlag, fstat};
+
+    let fd = open(parent, lock_parent_dir_open_flags(), Mode::empty()).map_err(|e| {
+        RunnerError::Internal(format!(
+            "open lock dir {} without following symlinks: {e}",
+            parent.display()
+        ))
+    })?;
+    let stat = fstat(&fd)
+        .map_err(|e| RunnerError::Internal(format!("stat lock dir {}: {e}", parent.display())))?;
+    let file_type = SFlag::from_bits_truncate(stat.st_mode & SFlag::S_IFMT.bits());
+    if file_type != SFlag::S_IFDIR {
+        return Err(RunnerError::Internal(format!(
+            "{} is not a lock directory",
+            parent.display()
+        )));
+    }
+    let expected_uid = nix::unistd::geteuid().as_raw();
+    ensure_trusted_lock_parent_dir_owner(parent, stat.st_uid, expected_uid)?;
+
+    let current_mode = (stat.st_mode as u32) & 0o7777;
+    let secure_mode = (current_mode | OWNER_DIRECTORY_BITS) & !GROUP_OR_OTHER_WRITE_BITS;
+    if secure_mode != current_mode {
+        chmod_open_lock_parent_dir(&fd, parent, secure_mode)?;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn ensure_trusted_lock_parent_dir_owner(
+    parent: &Path,
+    owner_uid: u32,
+    expected_uid: u32,
+) -> RunnerResult<()> {
+    if owner_uid != ROOT_UID && owner_uid != expected_uid {
+        return Err(RunnerError::Internal(format!(
+            "lock dir {} is owned by untrusted uid {owner_uid}; fix ownership before acquiring locks",
+            parent.display()
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn secure_lock_parent_dir_permissions(parent: &Path) -> RunnerResult<()> {
+    let metadata = std::fs::metadata(parent)
+        .map_err(|e| RunnerError::Internal(format!("stat lock dir {}: {e}", parent.display())))?;
+    if !metadata.is_dir() {
+        return Err(RunnerError::Internal(format!(
+            "{} is not a lock directory",
+            parent.display()
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn lock_parent_dir_open_flags() -> nix::fcntl::OFlag {
+    nix::fcntl::OFlag::O_PATH
+        | nix::fcntl::OFlag::O_DIRECTORY
+        | nix::fcntl::OFlag::O_NOFOLLOW
+        | nix::fcntl::OFlag::O_CLOEXEC
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn lock_parent_dir_open_flags() -> nix::fcntl::OFlag {
+    nix::fcntl::OFlag::O_RDONLY
+        | nix::fcntl::OFlag::O_DIRECTORY
+        | nix::fcntl::OFlag::O_NOFOLLOW
+        | nix::fcntl::OFlag::O_CLOEXEC
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn chmod_open_lock_parent_dir<Fd: std::os::fd::AsRawFd>(
+    fd: &Fd,
+    parent: &Path,
+    mode: u32,
+) -> RunnerResult<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fd_path = PathBuf::from(format!("/proc/self/fd/{}", fd.as_raw_fd()));
+    std::fs::set_permissions(&fd_path, std::fs::Permissions::from_mode(mode))
+        .map_err(|e| RunnerError::Internal(format!("chmod lock dir {}: {e}", parent.display())))
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn chmod_open_lock_parent_dir<Fd: std::os::fd::AsFd>(
+    fd: &Fd,
+    parent: &Path,
+    mode: u32,
+) -> RunnerResult<()> {
+    nix::sys::stat::fchmod(fd, nix::sys::stat::Mode::from_bits_truncate(mode))
+        .map_err(|e| RunnerError::Internal(format!("chmod lock dir {}: {e}", parent.display())))
+}
+
 #[cfg(unix)]
 fn secure_lock_file_permissions(file: &File, path: &Path) -> RunnerResult<()> {
     use std::os::unix::fs::PermissionsExt;
 
+    let metadata = file
+        .metadata()
+        .map_err(|e| RunnerError::Internal(format!("stat lock {}: {e}", path.display())))?;
+    ensure_trusted_lock_file_owner(path, metadata.uid(), nix::unistd::geteuid().as_raw())?;
     file.set_permissions(std::fs::Permissions::from_mode(LOCK_FILE_MODE))
         .map_err(|e| RunnerError::Internal(format!("chmod lock {}: {e}", path.display())))
+}
+
+#[cfg(unix)]
+fn ensure_trusted_lock_file_owner(
+    path: &Path,
+    owner_uid: u32,
+    expected_uid: u32,
+) -> RunnerResult<()> {
+    if owner_uid != ROOT_UID && owner_uid != expected_uid {
+        return Err(RunnerError::Internal(format!(
+            "lock {} is owned by untrusted uid {owner_uid}; fix ownership before acquiring locks",
+            path.display()
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(not(unix))]
@@ -158,6 +301,22 @@ mod tests {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
 
+    fn assert_secure_lock_dir(path: &Path) {
+        let mode = file_mode(path);
+        assert_eq!(
+            mode & GROUP_OR_OTHER_WRITE_BITS,
+            0,
+            "{} should not be group/other writable: {mode:o}",
+            path.display()
+        );
+        assert_eq!(
+            mode & OWNER_DIRECTORY_BITS,
+            OWNER_DIRECTORY_BITS,
+            "{} should preserve owner rwx access: {mode:o}",
+            path.display()
+        );
+    }
+
     #[tokio::test]
     async fn acquire_creates_lock_file() {
         let dir = tempfile::tempdir().unwrap();
@@ -251,8 +410,73 @@ mod tests {
         let path = dir.path().join("a").join("b").join("test.lock");
 
         let guard = acquire(path.clone()).await.unwrap();
+
         assert!(path.exists());
+        assert_secure_lock_dir(&dir.path().join("a"));
+        assert_secure_lock_dir(&dir.path().join("a").join("b"));
         drop(guard);
+    }
+
+    #[tokio::test]
+    async fn acquire_tightens_existing_wide_parent_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("locks");
+        let path = parent.join("test.lock");
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o777)).unwrap();
+
+        let guard = acquire(path).await.unwrap();
+
+        assert_secure_lock_dir(&parent);
+        drop(guard);
+    }
+
+    #[tokio::test]
+    async fn acquire_rejects_lock_parent_symlink_without_chmodding_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let parent = dir.path().join("locks");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o777)).unwrap();
+        symlink(&target, &parent).unwrap();
+
+        let error = acquire(parent.join("test.lock")).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("open lock dir"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(file_mode(&target), 0o777);
+    }
+
+    #[test]
+    fn lock_parent_dir_owner_must_be_current_user_or_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("locks");
+
+        ensure_trusted_lock_parent_dir_owner(&path, 0, 1000).unwrap();
+        ensure_trusted_lock_parent_dir_owner(&path, 1000, 1000).unwrap();
+        let error = ensure_trusted_lock_parent_dir_owner(&path, 1001, 1000).unwrap_err();
+
+        assert!(
+            error.to_string().contains("untrusted uid"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn lock_file_owner_must_be_current_user_or_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+
+        ensure_trusted_lock_file_owner(&path, 0, 1000).unwrap();
+        ensure_trusted_lock_file_owner(&path, 1000, 1000).unwrap();
+        let error = ensure_trusted_lock_file_owner(&path, 1001, 1000).unwrap_err();
+
+        assert!(
+            error.to_string().contains("untrusted uid"),
+            "unexpected error: {error}"
+        );
     }
 
     #[tokio::test]

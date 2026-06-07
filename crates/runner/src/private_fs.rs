@@ -7,6 +7,7 @@ use crate::error::{RunnerError, RunnerResult};
 const PRIVATE_DIR_MODE: u32 = 0o700;
 const PRIVATE_FILE_MODE: u32 = 0o600;
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
+const ROOT_UID: u32 = 0;
 const STICKY_BIT: u32 = 0o1000;
 const RESERVED_PRIVATE_DIR_PATHS: &[&str] = &[
     "/",
@@ -232,7 +233,7 @@ fn open_or_create_private_dir_component(
     use nix::fcntl::openat;
     use nix::sys::stat::Mode;
 
-    ensure_private_dir_parent_not_replaceable(parent, parent_path, full_path)?;
+    ensure_private_dir_parent_not_replaceable(parent, parent_path, full_path, expected_uid)?;
     match openat(parent, name, private_dir_open_flags(), Mode::empty()) {
         Ok(fd) => Ok(fd),
         Err(Errno::EACCES) => {
@@ -251,6 +252,7 @@ fn ensure_private_dir_parent_not_replaceable(
     parent: &(impl AsFd + AsRawFd),
     parent_path: &Path,
     full_path: &Path,
+    expected_uid: u32,
 ) -> RunnerResult<()> {
     use nix::sys::stat::fstat;
 
@@ -262,6 +264,13 @@ fn ensure_private_dir_parent_not_replaceable(
         ))
     })?;
     let mode = (stat.st_mode as u32) & 0o7777;
+    if stat.st_uid != ROOT_UID && stat.st_uid != expected_uid {
+        return Err(RunnerError::Config(format!(
+            "private dir parent {} is owned by untrusted uid {}; fix parent ownership before starting the runner",
+            parent_path.display(),
+            stat.st_uid
+        )));
+    }
     if mode & GROUP_OR_OTHER_WRITE_BITS != 0 && mode & STICKY_BIT == 0 {
         return Err(RunnerError::Config(format!(
             "private dir parent {} is group/other writable without the sticky bit; fix parent permissions before starting the runner",
@@ -832,6 +841,52 @@ mod tests {
         ensure_private_dir(&private_dir).await.unwrap();
 
         assert_eq!(mode(&private_dir), PRIVATE_DIR_MODE);
+    }
+
+    #[test]
+    fn private_dir_parent_rejects_untrusted_owner() {
+        use nix::fcntl::open;
+        use nix::sys::stat::Mode;
+        use nix::unistd::{Uid, chown};
+
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("owned-by-other-user");
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o555)).unwrap();
+        if nix::unistd::geteuid().is_root() {
+            chown(&parent, Some(Uid::from_raw(1)), None).unwrap();
+        }
+        let fd = open(&parent, private_dir_open_flags(), Mode::empty()).unwrap();
+
+        let error =
+            ensure_private_dir_parent_not_replaceable(&fd, &parent, &parent.join("runner"), 0)
+                .unwrap_err();
+
+        assert!(
+            error.to_string().contains("untrusted uid"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn private_dir_parent_allows_root_owned_parent_for_non_root_expected_uid() {
+        use nix::fcntl::open;
+        use nix::sys::stat::Mode;
+        use nix::unistd::{Uid, chown};
+
+        if !nix::unistd::geteuid().is_root() {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("root-owned");
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755)).unwrap();
+        chown(&parent, Some(Uid::from_raw(0)), None).unwrap();
+        let fd = open(&parent, private_dir_open_flags(), Mode::empty()).unwrap();
+
+        ensure_private_dir_parent_not_replaceable(&fd, &parent, &parent.join("runner"), 1000)
+            .unwrap();
     }
 
     #[test]
