@@ -88,6 +88,7 @@ const CONNECTOR_ICON_COLORFUL = {
   brevo: true,
   browserbase: true,
   browserstack: true,
+  "cal-com": true,
   calendly: true,
   canva: true,
   chatglm: true,
