@@ -373,11 +373,14 @@ impl NetworkLogManager {
 }
 
 fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
+    crate::log_fs::secure_existing_log_file_sync(path)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    options
         .mode(crate::log_fs::LOG_FILE_MODE)
-        .open(path)?;
+        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC);
+    let mut file = options.open(path)?;
     crate::log_fs::secure_open_log_file_sync(&file, path)?;
     file.write_all(line.as_bytes())
 }
@@ -486,6 +489,27 @@ mod tests {
         let content = std::fs::read_to_string(path).unwrap();
         assert!(content.contains("\"old\""));
         assert!(content.contains("\"dns\""));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn append_line_rejects_symlink_without_chmodding_target() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.jsonl");
+        let link = dir.path().join("network.jsonl");
+        std::fs::write(&target, "{\"type\":\"old\"}\n").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(append_line(&link, "{\"type\":\"dns\"}\n").is_err());
+
+        assert_eq!(file_mode(&target), 0o644);
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "{\"type\":\"old\"}\n"
+        );
     }
 
     #[tokio::test]
