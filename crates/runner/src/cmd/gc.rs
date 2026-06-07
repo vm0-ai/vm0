@@ -748,9 +748,13 @@ fn debootstrap_cache_file_kind(path: &Path) -> Option<DeBootstrapCacheFileKind> 
     }
 }
 
-/// Remove unused lock files. Any lock file that can be exclusively locked is
-/// not held by any process and can be safely deleted — `open_lock_file` will
-/// recreate it on next use, and the inode recheck in `lock.rs` prevents races.
+/// Remove unused lock files.
+///
+/// Most lock files that can be exclusively locked are safe to delete:
+/// `open_lock_file` will recreate them on next use, and the inode recheck in
+/// `lock.rs` prevents stale-fd races. Service locks are intentionally retained
+/// because this GC pass runs before version GC, which relies on those lock paths
+/// to coordinate with concurrent service install/uninstall commands.
 async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
     let locks_dir = home.locks_dir();
     let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
@@ -763,6 +767,11 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         if !name.ends_with(".lock") {
+            continue;
+        }
+        // Version GC later in this same command uses service locks to avoid
+        // deleting a version that another process is installing or uninstalling.
+        if name.starts_with("service-") {
             continue;
         }
 
@@ -991,6 +1000,18 @@ async fn gc_versions(
             Ok(u) => u,
             Err(_) => continue,
         };
+        let _service_lock = match lock::try_acquire_or_busy(home.service_lock(&unit)).await {
+            Ok(lock::TryLock::Acquired(lock)) => lock,
+            Ok(lock::TryLock::Busy) => {
+                info!("version {name}: service lock held, skipping");
+                continue;
+            }
+            Err(e) => {
+                warn!("version {name}: cannot acquire service lock ({e}), skipping");
+                continue;
+            }
+        };
+
         match service::is_unit_active(&unit).await {
             Ok(true) => {
                 info!("version {name}: active, skipping");
@@ -1010,7 +1031,7 @@ async fn gc_versions(
             info!("[dry-run] would remove version {name}");
         } else {
             // Best-effort uninstall the systemd service (may not exist).
-            let _ = service::uninstall_service(name).await;
+            let _ = service::uninstall_service_unit(&unit).await;
 
             // Remove bin directory.
             let version_bin = bin_dir.join(name);
@@ -1914,6 +1935,30 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn gc_orphaned_locks_preserves_service_locks() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+        let service_lock = locks_dir.join("service-vm0-runner-v1.0.0.lock");
+        let stale_lock = locks_dir.join("workspace-image-cache-test.lock");
+        std::fs::write(&service_lock, "").unwrap();
+        std::fs::write(&stale_lock, "").unwrap();
+
+        let removed = gc_orphaned_locks(&home, false).await.unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(
+            service_lock.exists(),
+            "service locks must survive orphaned lock cleanup"
+        );
+        assert!(
+            !stale_lock.exists(),
+            "ordinary free locks should still be cleaned"
+        );
+    }
+
     fn test_home(root: &Path) -> HomePaths {
         HomePaths::with_root(root.to_path_buf())
     }
@@ -2243,6 +2288,25 @@ mod tests {
             "non-semver should be untouched"
         );
         assert!(!runners_dir.join("v1.0.0").exists());
+    }
+
+    #[tokio::test]
+    async fn gc_versions_skips_version_when_service_lock_is_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+        let version = "v1.0.0";
+        let unit = service::unit_name(version).unwrap();
+        std::fs::create_dir_all(bin_dir.join(version)).unwrap();
+        std::fs::create_dir_all(runners_dir.join(version)).unwrap();
+        let _service_lock = lock::acquire(home.service_lock(&unit)).await.unwrap();
+
+        let removed = gc_versions(&home, false, None, None).await.unwrap();
+
+        assert!(removed.is_empty());
+        assert!(bin_dir.join(version).exists());
+        assert!(runners_dir.join(version).exists());
     }
 
     #[tokio::test]

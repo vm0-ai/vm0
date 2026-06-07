@@ -276,6 +276,11 @@ impl HomePaths {
         self.locks_dir().join(format!("snapshot-{hash}.lock"))
     }
 
+    /// Per-systemd-unit flock path. Pass a full name produced by `service::unit_name`.
+    pub fn service_lock(&self, unit: &str) -> PathBuf {
+        self.locks_dir().join(format!("service-{unit}.lock"))
+    }
+
     /// Root directory for the runner-side storage archive cache.
     ///
     /// Layout: `<storages_dir>/<hash(vasStorageName)>/<hash(vasVersionId)>/archive.tar.gz`.
@@ -662,6 +667,16 @@ mod tests {
         let home = HomePaths::with_root(PathBuf::from("/test"));
         let lock = home.snapshot_lock("bbb");
         assert_eq!(lock, PathBuf::from("/test/locks/snapshot-bbb.lock"));
+    }
+
+    #[test]
+    fn service_lock_path() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        let lock = home.service_lock("vm0-runner-v0.2.0");
+        assert_eq!(
+            lock,
+            PathBuf::from("/test/locks/service-vm0-runner-v0.2.0.lock")
+        );
     }
 
     #[test]
