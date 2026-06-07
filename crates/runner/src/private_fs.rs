@@ -131,31 +131,41 @@ pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()>
     tmp_name.push(format!(".{}.tmp", uuid::Uuid::new_v4()));
     let tmp = path.with_file_name(tmp_name);
 
-    let mut options = tokio::fs::OpenOptions::new();
-    options.write(true).create_new(true).mode(PRIVATE_FILE_MODE);
-    let mut file = options.open(&tmp).await.map_err(|e| {
-        RunnerError::Config(format!("open private file tmp {}: {e}", tmp.display()))
-    })?;
-    tokio::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))
-        .await
-        .map_err(|e| {
-            RunnerError::Config(format!("chmod private file tmp {}: {e}", tmp.display()))
+    let result = async {
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create_new(true).mode(PRIVATE_FILE_MODE);
+        let mut file = options.open(&tmp).await.map_err(|e| {
+            RunnerError::Config(format!("open private file tmp {}: {e}", tmp.display()))
         })?;
-    file.write_all(content).await.map_err(|e| {
-        RunnerError::Config(format!("write private file tmp {}: {e}", tmp.display()))
-    })?;
-    file.flush().await.map_err(|e| {
-        RunnerError::Config(format!("flush private file tmp {}: {e}", tmp.display()))
-    })?;
-    drop(file);
+        tokio::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))
+            .await
+            .map_err(|e| {
+                RunnerError::Config(format!("chmod private file tmp {}: {e}", tmp.display()))
+            })?;
+        file.write_all(content).await.map_err(|e| {
+            RunnerError::Config(format!("write private file tmp {}: {e}", tmp.display()))
+        })?;
+        file.flush().await.map_err(|e| {
+            RunnerError::Config(format!("flush private file tmp {}: {e}", tmp.display()))
+        })?;
+        drop(file);
 
-    tokio::fs::rename(&tmp, path)
-        .await
-        .map_err(|e| RunnerError::Config(format!("rename private file {}: {e}", path.display())))?;
-    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))
-        .await
-        .map_err(|e| RunnerError::Config(format!("chmod private file {}: {e}", path.display())))?;
-    Ok(())
+        tokio::fs::rename(&tmp, path).await.map_err(|e| {
+            RunnerError::Config(format!("rename private file {}: {e}", path.display()))
+        })?;
+        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))
+            .await
+            .map_err(|e| {
+                RunnerError::Config(format!("chmod private file {}: {e}", path.display()))
+            })?;
+        Ok(())
+    }
+    .await;
+
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&tmp).await;
+    }
+    result
 }
 
 #[cfg(not(unix))]
@@ -962,5 +972,33 @@ mod tests {
             error.to_string().contains("owned by uid"),
             "unexpected error: {error}"
         );
+    }
+
+    #[tokio::test]
+    async fn write_private_file_removes_tmp_after_rename_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("runner.yaml");
+        std::fs::create_dir(&path).unwrap();
+
+        let error = write_private_file(&path, b"secret").await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("rename private file"),
+            "unexpected error: {error}"
+        );
+        let leftover_tmp_files: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                name.starts_with(".runner.yaml.") && name.ends_with(".tmp")
+            })
+            .collect();
+        assert!(
+            leftover_tmp_files.is_empty(),
+            "private file tmp should be removed after rename failure"
+        );
+        assert!(path.is_dir());
     }
 }

@@ -600,11 +600,12 @@ async fn ensure_artifact_installed(
         return Ok(false);
     }
 
-    if file_sha256(path).await? != expected_sha {
-        return Ok(false);
-    }
     #[cfg(unix)]
     if !is_trusted_setup_owner(metadata.uid(), nix::unistd::geteuid().as_raw()) {
+        return Ok(false);
+    }
+
+    if file_sha256(path).await? != expected_sha {
         return Ok(false);
     }
 
@@ -624,11 +625,14 @@ async fn ensure_artifact_installed(
         .await
         .map_err(|e| RunnerError::Internal(format!("stat {}: {e}", path.display())))?;
 
-    if !metadata.is_file() || (metadata.permissions().mode() & 0o7777) != mode {
+    if !metadata.is_file() {
         return Ok(false);
     }
     #[cfg(unix)]
     if !is_trusted_setup_owner(metadata.uid(), nix::unistd::geteuid().as_raw()) {
+        return Ok(false);
+    }
+    if (metadata.permissions().mode() & 0o7777) != mode {
         return Ok(false);
     }
 
@@ -1024,6 +1028,28 @@ mod tests {
         );
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o755);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn ensure_artifact_installed_returns_false_for_untrusted_owner() {
+        use nix::unistd::{Uid, chown};
+
+        if !nix::unistd::geteuid().is_root() {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.bin");
+        std::fs::write(&path, b"content").unwrap();
+        let sha = file_sha256(&path).await.unwrap();
+        chown(&path, Some(Uid::from_raw(1)), None).unwrap();
+
+        assert!(
+            !ensure_artifact_installed(&path, &sha, Some(0o755))
+                .await
+                .unwrap()
+        );
     }
 
     #[cfg(unix)]

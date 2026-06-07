@@ -925,27 +925,35 @@ async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> Runner
         }
     }
 
-    let mut options = tokio::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    options.mode(0o600);
-    let mut file = options
-        .open(&tmp)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("open registry tmp: {e}")))?;
-    set_private_registry_file_permissions(&tmp, "registry tmp").await?;
-    file.write_all(content.as_bytes())
-        .await
-        .map_err(|e| RunnerError::Internal(format!("write registry tmp: {e}")))?;
-    file.flush()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("flush registry tmp: {e}")))?;
-    drop(file);
+    let result = async {
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let mut file = options
+            .open(&tmp)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("open registry tmp: {e}")))?;
+        set_private_registry_file_permissions(&tmp, "registry tmp").await?;
+        file.write_all(content.as_bytes())
+            .await
+            .map_err(|e| RunnerError::Internal(format!("write registry tmp: {e}")))?;
+        file.flush()
+            .await
+            .map_err(|e| RunnerError::Internal(format!("flush registry tmp: {e}")))?;
+        drop(file);
 
-    tokio::fs::rename(&tmp, path)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("rename registry: {e}")))?;
-    set_private_registry_file_permissions(path, "registry").await
+        tokio::fs::rename(&tmp, path)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("rename registry: {e}")))?;
+        set_private_registry_file_permissions(path, "registry").await
+    }
+    .await;
+
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&tmp).await;
+    }
+    result
 }
 
 async fn set_private_registry_file_permissions(
@@ -1373,6 +1381,27 @@ PY
         assert_eq!(file_mode(&registry_path), 0o600);
         let loaded = read_registry(&registry_path).await.unwrap();
         assert_eq!(loaded.updated_at, 2);
+    }
+
+    #[tokio::test]
+    async fn write_registry_removes_tmp_after_rename_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let tmp_path = registry_path.with_extension("json.tmp");
+        std::fs::create_dir(&registry_path).unwrap();
+        let registry = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 3,
+        };
+
+        let error = write_registry(&registry_path, &registry).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("rename registry"),
+            "unexpected error: {error}"
+        );
+        assert!(!tmp_path.exists(), "registry tmp should be cleaned up");
+        assert!(registry_path.is_dir());
     }
 
     #[tokio::test]
