@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.108.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.12...runner-rs-v0.108.13) (2026-06-07)
+
+
+### Bug Fixes
+
+* surface service logs journalctl failures ([#16499](https://github.com/vm0-ai/vm0/issues/16499)) ([e564257](https://github.com/vm0-ai/vm0/commit/e56425769e08dd6fc91d385e4db49bf299d0eaed))
+
 ## [0.108.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.11...runner-rs-v0.108.12) (2026-06-07)
 
 

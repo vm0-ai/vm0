@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.111.0](https://github.com/vm0-ai/vm0/compare/api-v1.110.0...api-v1.111.0) (2026-06-07)
+
+
+### Features
+
+* expose chat artifact kind ([#16326](https://github.com/vm0-ai/vm0/issues/16326)) ([b5df16b](https://github.com/vm0-ai/vm0/commit/b5df16b892924d7209cb6101c1125c2d6e773fa9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.68.0
+    * @vm0/core bumped to 8.314.3
+    * @vm0/db bumped to 1.33.5
+
 ## [1.110.0](https://github.com/vm0-ai/vm0/compare/api-v1.109.1...api-v1.110.0) (2026-06-07)
 
 
