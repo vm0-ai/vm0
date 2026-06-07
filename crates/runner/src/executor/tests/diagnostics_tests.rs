@@ -1,5 +1,12 @@
 use super::*;
 
+#[cfg(unix)]
+fn file_mode(path: &std::path::Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
 #[test]
 fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
     let mut bootstrap_env = HashMap::from([
@@ -341,24 +348,34 @@ async fn copy_guest_logs_writes_files_to_host() {
 
     copy_guest_logs(&sandbox, &ctx, &log_paths, false).await;
 
-    let system_log = tokio::fs::read_to_string(log_paths.system_log(ctx.run_id))
-        .await
-        .unwrap();
+    let system_log_path = log_paths.system_log(ctx.run_id);
+    let metrics_log_path = log_paths.metrics_log(ctx.run_id);
+    let sandbox_ops_log_path = log_paths.sandbox_ops_log(ctx.run_id);
+
+    let system_log = tokio::fs::read_to_string(&system_log_path).await.unwrap();
     assert_eq!(system_log, "system log line 1\nsystem log line 2\n");
     let system_stream_log = tokio::fs::read_to_string(system_stream_log_path)
         .await
         .unwrap();
     assert_eq!(system_stream_log, "transient host-streamed stdout\n");
 
-    let metrics_log = tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
-        .await
-        .unwrap();
+    let metrics_log = tokio::fs::read_to_string(&metrics_log_path).await.unwrap();
     assert_eq!(metrics_log, "{\"cpu\":0.5}\n");
 
-    let sandbox_ops_log = tokio::fs::read_to_string(log_paths.sandbox_ops_log(ctx.run_id))
+    let sandbox_ops_log = tokio::fs::read_to_string(&sandbox_ops_log_path)
         .await
         .unwrap();
     assert!(sandbox_ops_log.contains("final_telemetry_upload"));
+
+    #[cfg(unix)]
+    {
+        assert_eq!(file_mode(&system_log_path), crate::log_fs::LOG_FILE_MODE);
+        assert_eq!(file_mode(&metrics_log_path), crate::log_fs::LOG_FILE_MODE);
+        assert_eq!(
+            file_mode(&sandbox_ops_log_path),
+            crate::log_fs::LOG_FILE_MODE
+        );
+    }
 
     let calls = sandbox.copy_file_calls();
     assert_eq!(calls.len(), 3);
@@ -384,16 +401,21 @@ async fn copy_guest_logs_keeps_existing_logs_when_sandbox_ops_missing() {
 
     copy_guest_logs(&sandbox, &ctx, &log_paths, false).await;
 
-    let system_log = tokio::fs::read_to_string(log_paths.system_log(ctx.run_id))
-        .await
-        .unwrap();
+    let system_log_path = log_paths.system_log(ctx.run_id);
+    let metrics_log_path = log_paths.metrics_log(ctx.run_id);
+
+    let system_log = tokio::fs::read_to_string(&system_log_path).await.unwrap();
     assert_eq!(system_log, "system log\n");
 
-    let metrics_log = tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
-        .await
-        .unwrap();
+    let metrics_log = tokio::fs::read_to_string(&metrics_log_path).await.unwrap();
     assert_eq!(metrics_log, "{\"cpu\":0.5}\n");
     assert!(!log_paths.sandbox_ops_log(ctx.run_id).exists());
+
+    #[cfg(unix)]
+    {
+        assert_eq!(file_mode(&system_log_path), crate::log_fs::LOG_FILE_MODE);
+        assert_eq!(file_mode(&metrics_log_path), crate::log_fs::LOG_FILE_MODE);
+    }
 
     let calls = sandbox.copy_file_calls();
     assert_eq!(calls.len(), 3);
@@ -476,6 +498,15 @@ async fn post_job_cleanup_appends_stream_markers_after_guest_log_copy() {
     expected_stream_log.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
     expected_stream_log.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
     assert_eq!(system_stream_log, expected_stream_log);
+
+    #[cfg(unix)]
+    {
+        assert_eq!(file_mode(&system_log_path), crate::log_fs::LOG_FILE_MODE);
+        assert_eq!(
+            file_mode(&system_stream_log_path),
+            crate::log_fs::LOG_FILE_MODE
+        );
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -507,6 +538,8 @@ async fn drain_stdout_writes_chunks_to_file() {
     let content = tokio::fs::read_to_string(&path).await.unwrap();
     assert_eq!(content, "chunk 1\nchunk 2\n");
     assert!(!report.chunk_truncated);
+    #[cfg(unix)]
+    assert_eq!(file_mode(&path), crate::log_fs::LOG_FILE_MODE);
 }
 
 #[tokio::test]
@@ -528,6 +561,8 @@ async fn drain_stdout_reports_truncated_chunk_without_changing_bytes() {
     let content = tokio::fs::read(&path).await.unwrap();
     assert_eq!(content, b"partial chunk");
     assert!(report.chunk_truncated);
+    #[cfg(unix)]
+    assert_eq!(file_mode(&path), crate::log_fs::LOG_FILE_MODE);
 }
 
 #[tokio::test]
@@ -543,6 +578,8 @@ async fn drain_stdout_empty_channel() {
     let content = tokio::fs::read_to_string(&path).await.unwrap();
     assert!(content.is_empty());
     assert!(!report.chunk_truncated);
+    #[cfg(unix)]
+    assert_eq!(file_mode(&path), crate::log_fs::LOG_FILE_MODE);
 }
 
 #[tokio::test]
@@ -553,6 +590,54 @@ async fn drain_stdout_invalid_path_returns_error() {
         .await
         .unwrap_err();
     assert!(matches!(error, StdoutDrainError::Open { .. }));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn drain_stdout_rejects_symlink_log_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.log");
+    let link = dir.path().join("stdout.log");
+    tokio::fs::write(&target, b"existing\n").await.unwrap();
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let (_tx, rx) = tokio::sync::mpsc::channel::<ProcessOutputChunk>(1);
+    drop(_tx);
+
+    let error = drain_stdout_to_file(rx, link).await.unwrap_err();
+
+    assert!(matches!(error, StdoutDrainError::Open { .. }));
+    assert_eq!(file_mode(&target), 0o644);
+    assert_eq!(tokio::fs::read(&target).await.unwrap(), b"existing\n");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn drain_stdout_rejects_fifo_without_blocking() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("stdout.log");
+    let c_path = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
+    let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+    assert_eq!(
+        result,
+        0,
+        "mkfifo failed: {}",
+        std::io::Error::last_os_error()
+    );
+    let (_tx, rx) = tokio::sync::mpsc::channel::<ProcessOutputChunk>(1);
+    drop(_tx);
+
+    let error = tokio::time::timeout(Duration::from_secs(1), drain_stdout_to_file(rx, path))
+        .await
+        .expect("drain_stdout_to_file should not block on FIFO")
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        StdoutDrainError::Open { .. } | StdoutDrainError::Permissions { .. }
+    ));
 }
 
 #[tokio::test]
@@ -590,4 +675,61 @@ async fn append_stdout_stream_diagnostics_writes_markers() {
     expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
     expected.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
     assert_eq!(content, expected);
+    #[cfg(unix)]
+    assert_eq!(file_mode(&path), crate::log_fs::LOG_FILE_MODE);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn append_stdout_stream_diagnostics_rejects_symlink_log_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.log");
+    let link = dir.path().join("stdout.log");
+    tokio::fs::write(&target, b"existing\n").await.unwrap();
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+
+    append_stdout_stream_diagnostics(
+        &link,
+        AgentStdoutStreamDiagnostics {
+            chunk_truncated: true,
+            stream_overflowed: false,
+        },
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(file_mode(&target), 0o644);
+    assert_eq!(tokio::fs::read(&target).await.unwrap(), b"existing\n");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn append_stdout_stream_diagnostics_rejects_fifo_without_blocking() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("stdout.log");
+    let c_path = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
+    let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+    assert_eq!(
+        result,
+        0,
+        "mkfifo failed: {}",
+        std::io::Error::last_os_error()
+    );
+
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        append_stdout_stream_diagnostics(
+            &path,
+            AgentStdoutStreamDiagnostics {
+                chunk_truncated: true,
+                stream_overflowed: false,
+            },
+        ),
+    )
+    .await
+    .expect("append_stdout_stream_diagnostics should not block on FIFO")
+    .unwrap_err();
 }

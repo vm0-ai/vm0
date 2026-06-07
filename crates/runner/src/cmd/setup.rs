@@ -126,7 +126,6 @@ fn create_directories(paths: &HomePaths) -> RunnerResult<()> {
         parent_dir(&mitmproxy_version_dir)?,
         mitmproxy_version_dir,
         paths.images_dir(),
-        paths.logs_dir(),
         paths.runners_dir(),
         paths.workspace_image_cache_dir(),
         paths.groups_dir(),
@@ -137,6 +136,7 @@ fn create_directories(paths: &HomePaths) -> RunnerResult<()> {
     for dir in &dirs {
         ensure_shared_directory(dir)?;
     }
+    crate::log_fs::ensure_log_dir_sync(&paths.logs_dir())?;
     tracing::info!("[OK] directory structure created");
     Ok(())
 }
@@ -899,6 +899,22 @@ mod tests {
         let bin_mode = std::fs::metadata(&bin_dir).unwrap().permissions().mode() & 0o777;
         assert_eq!(bin_mode, 0o700);
         let logs_mode = std::fs::metadata(&logs_dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(logs_mode, 0o700);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_directories_creates_logs_dir_private() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = HomePaths::with_root(dir.path().join("vm0-runner"));
+
+        create_directories(&paths).unwrap();
+
+        let logs_mode = std::fs::metadata(paths.logs_dir())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
         assert_eq!(logs_mode, 0o700);
     }
 

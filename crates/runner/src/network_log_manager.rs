@@ -373,12 +373,13 @@ impl NetworkLogManager {
 }
 
 fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
-    std::fs::OpenOptions::new()
+    let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .mode(0o644)
-        .open(path)
-        .and_then(|mut f| f.write_all(line.as_bytes()))
+        .mode(crate::log_fs::LOG_FILE_MODE)
+        .open(path)?;
+    crate::log_fs::secure_open_log_file_sync(&file, path)?;
+    file.write_all(line.as_bytes())
 }
 
 #[cfg(test)]
@@ -400,6 +401,13 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect()
+    }
+
+    #[cfg(unix)]
+    fn file_mode(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
 
     async fn source_ip_registered(manager: &NetworkLogManager, source_ip: &str) -> bool {
@@ -449,6 +457,35 @@ mod tests {
         assert_eq!(lines[0]["type"], "dns");
         assert_eq!(lines[0]["host"], "example.com");
         assert_eq!(lines[0]["port"], 53);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn append_line_creates_private_log_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+
+        append_line(&path, "{\"type\":\"dns\"}\n").unwrap();
+
+        assert_eq!(file_mode(&path), crate::log_fs::LOG_FILE_MODE);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn append_line_tightens_existing_log_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        std::fs::write(&path, "{\"type\":\"old\"}\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        append_line(&path, "{\"type\":\"dns\"}\n").unwrap();
+
+        assert_eq!(file_mode(&path), crate::log_fs::LOG_FILE_MODE);
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(content.contains("\"old\""));
+        assert!(content.contains("\"dns\""));
     }
 
     #[tokio::test]

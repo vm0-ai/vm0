@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::io::{self, SeekFrom};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -381,6 +383,8 @@ pub(super) fn host_dmesg_indicates_oom(dmesg: &str, pid: u32) -> bool {
 pub(super) enum StdoutDrainError {
     #[error("failed to open host log file {path}: {source}")]
     Open { path: PathBuf, source: io::Error },
+    #[error("failed to secure host log file {path}: {source}")]
+    Permissions { path: PathBuf, source: io::Error },
     #[error("failed to write stdout chunk to host log {path}: {source}")]
     Write { path: PathBuf, source: io::Error },
     #[error("failed to flush stdout log {path}: {source}")]
@@ -397,17 +401,24 @@ pub(super) async fn drain_stdout_to_file(
     mut rx: ProcessOutputReceiver,
     path: PathBuf,
 ) -> Result<StdoutDrainReport, StdoutDrainError> {
-    let file = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .await;
+    let mut options = tokio::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        options
+            .mode(crate::log_fs::LOG_FILE_MODE)
+            .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK);
+    }
+    let file = options.open(&path).await;
     let mut file = match file {
         Ok(f) => f,
         Err(e) => {
             return Err(StdoutDrainError::Open { path, source: e });
         }
     };
+    if let Err(e) = crate::log_fs::secure_open_log_fd_sync(&file, &path) {
+        return Err(StdoutDrainError::Permissions { path, source: e });
+    }
     let mut report = StdoutDrainReport::default();
     while let Some(chunk) = rx.recv().await {
         if chunk.truncated {
@@ -454,12 +465,16 @@ pub(super) async fn append_stdout_stream_diagnostics(
         return Ok(());
     }
 
-    let mut file = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .read(true)
-        .open(path)
-        .await?;
+    let mut options = tokio::fs::OpenOptions::new();
+    options.create(true).append(true).read(true);
+    #[cfg(unix)]
+    {
+        options
+            .mode(crate::log_fs::LOG_FILE_MODE)
+            .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK);
+    }
+    let mut file = options.open(path).await?;
+    crate::log_fs::secure_open_log_fd_sync(&file, path)?;
 
     if file.metadata().await?.len() > 0 {
         file.seek(SeekFrom::End(-1)).await?;
@@ -523,7 +538,7 @@ pub(super) async fn copy_guest_logs(
     };
 
     for (guest_path, host_path) in &files {
-        if let Err(e) = sandbox
+        let copy_result = sandbox
             .copy_file(
                 guest_path,
                 host_path,
@@ -533,16 +548,33 @@ pub(super) async fn copy_guest_logs(
                     missing_ok: true,
                 },
             )
-            .await
-        {
-            match guest_log_copy_failure_kind(cancelled) {
+            .await;
+        match copy_result {
+            Err(e) => match guest_log_copy_failure_kind(cancelled) {
                 GuestLogCopyFailureKind::SkippedAfterCancellation => {
                     info!(run_id = %run_id, error = %e, guest_path = %guest_path, host_path = %host_path.display(), "guest log copy skipped after cancellation");
                 }
                 GuestLogCopyFailureKind::Failed => {
                     warn!(run_id = %run_id, error = %e, guest_path = %guest_path, host_path = %host_path.display(), "failed to copy guest log");
                 }
-            }
+            },
+            Ok(_) => secure_copied_guest_log(run_id, host_path).await,
         }
+    }
+}
+
+async fn secure_copied_guest_log(run_id: RunId, host_path: &Path) {
+    let exists = match tokio::fs::try_exists(host_path).await {
+        Ok(exists) => exists,
+        Err(e) => {
+            warn!(run_id = %run_id, path = %host_path.display(), error = %e, "failed to check copied guest log");
+            return;
+        }
+    };
+    if !exists {
+        return;
+    }
+    if let Err(e) = crate::log_fs::secure_log_file(host_path).await {
+        warn!(run_id = %run_id, path = %host_path.display(), error = %e, "failed to secure copied guest log");
     }
 }

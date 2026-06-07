@@ -17,6 +17,7 @@ mod io_limits;
 mod kmsg_log;
 mod local_queue;
 mod lock;
+mod log_fs;
 mod network_log_drain;
 mod network_log_manager;
 mod network_logs;
@@ -152,7 +153,7 @@ fn init_tracing_with_file(
 ) -> Result<tracing_appender::non_blocking::WorkerGuard, Box<dyn std::error::Error>> {
     let home = paths::HomePaths::new()?;
     let log_dir = home.logs_dir();
-    std::fs::create_dir_all(&log_dir).map_err(|e| format!("create {}: {e}", log_dir.display()))?;
+    log_fs::ensure_log_dir_sync(&log_dir)?;
 
     let name = runner_name_from_config(config_path);
     let prefix = format!("runner-{name}");

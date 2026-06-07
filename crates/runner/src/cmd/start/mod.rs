@@ -284,14 +284,7 @@ pub async fn run_start(
     }
 
     let log_paths = LogPaths::new(home.logs_dir());
-    tokio::fs::create_dir_all(log_paths.dir())
-        .await
-        .map_err(|e| {
-            RunnerError::Config(format!(
-                "create logs_dir {}: {e}",
-                log_paths.dir().display()
-            ))
-        })?;
+    crate::log_fs::ensure_log_dir(log_paths.dir()).await?;
 
     // Start background prefetch of snapshot memory for all profiles.
     let memory_prefetch =
