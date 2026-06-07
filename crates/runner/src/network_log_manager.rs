@@ -373,13 +373,12 @@ impl NetworkLogManager {
 }
 
 fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
-    crate::log_fs::secure_existing_log_file_sync(path)?;
     let mut options = std::fs::OpenOptions::new();
     options.create(true).append(true);
     #[cfg(unix)]
     options
         .mode(crate::log_fs::LOG_FILE_MODE)
-        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC);
+        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK);
     let mut file = options.open(path)?;
     crate::log_fs::secure_open_log_file_sync(&file, path)?;
     file.write_all(line.as_bytes())
@@ -509,6 +508,34 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(&target).unwrap(),
             "{\"type\":\"old\"}\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn append_line_rejects_fifo_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let c_path = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
+        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(
+            result,
+            0,
+            "mkfifo failed: {}",
+            std::io::Error::last_os_error()
+        );
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let path_for_thread = path.clone();
+        std::thread::spawn(move || {
+            let result = append_line(&path_for_thread, "{\"type\":\"dns\"}\n").is_err();
+            let _ = tx.send(result);
+        });
+
+        assert!(
+            rx.recv_timeout(std::time::Duration::from_secs(1))
+                .expect("append_line should not block on FIFO"),
+            "append_line should reject FIFO paths"
         );
     }
 

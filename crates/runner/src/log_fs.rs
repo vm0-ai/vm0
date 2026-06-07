@@ -54,21 +54,6 @@ pub(crate) fn secure_open_log_file_sync(file: &std::fs::File, path: &Path) -> st
     file.set_permissions(std::fs::Permissions::from_mode(LOG_FILE_MODE))
 }
 
-#[cfg(unix)]
-pub(crate) fn secure_existing_log_file_sync(path: &Path) -> std::io::Result<()> {
-    match std::fs::symlink_metadata(path) {
-        Ok(_) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(e),
-    }
-    secure_log_file_sync(path).map_err(|e| std::io::Error::other(e.to_string()))
-}
-
-#[cfg(not(unix))]
-pub(crate) fn secure_existing_log_file_sync(_path: &Path) -> std::io::Result<()> {
-    Ok(())
-}
-
 #[cfg(not(unix))]
 pub(crate) fn secure_open_log_file_sync(
     _file: &std::fs::File,
@@ -80,18 +65,6 @@ pub(crate) fn secure_open_log_file_sync(
 #[cfg(unix)]
 pub(crate) async fn secure_log_file(path: &Path) -> RunnerResult<()> {
     secure_log_file_sync(path)
-}
-
-#[cfg(unix)]
-pub(crate) async fn secure_existing_log_file(path: &Path) -> RunnerResult<()> {
-    secure_existing_log_file_sync(path).map_err(|e| {
-        RunnerError::Internal(format!("secure existing log file {}: {e}", path.display()))
-    })
-}
-
-#[cfg(not(unix))]
-pub(crate) async fn secure_existing_log_file(_path: &Path) -> RunnerResult<()> {
-    Ok(())
 }
 
 #[cfg(not(unix))]
@@ -508,17 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn secure_existing_log_file_allows_missing_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let log_file = dir.path().join("missing.log");
-
-        secure_existing_log_file_sync(&log_file).unwrap();
-
-        assert!(!log_file.exists());
-    }
-
-    #[test]
-    fn secure_existing_log_file_rejects_fifo_without_blocking() {
+    fn secure_log_file_rejects_fifo_without_blocking() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("stdout.log");
         let c_path = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
@@ -530,10 +493,19 @@ mod tests {
             std::io::Error::last_os_error()
         );
 
-        let error = secure_existing_log_file_sync(&path).unwrap_err();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let path_for_thread = path.clone();
+        std::thread::spawn(move || {
+            let result = secure_log_file_sync(&path_for_thread).map_err(|e| e.to_string());
+            let _ = tx.send(result);
+        });
+        let error = rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("secure_log_file_sync should not block on FIFO")
+            .unwrap_err();
 
         assert!(
-            error.to_string().contains("regular log file"),
+            error.contains("regular log file"),
             "unexpected error: {error}"
         );
     }
