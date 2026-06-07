@@ -253,7 +253,7 @@ fn read_file_delta_with_behavior(
         let Some((boundary_buf, boundary_unread_len)) =
             read_bounded_at(&mut file, file_len, boundary_pos)
         else {
-            return TextDelta::progressed(String::new(), boundary_pos);
+            return TextDelta::empty(last_pos);
         };
         let delta = read_from_line_boundary(
             &boundary_buf,
