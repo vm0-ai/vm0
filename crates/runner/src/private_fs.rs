@@ -6,6 +6,8 @@ use crate::error::{RunnerError, RunnerResult};
 
 const PRIVATE_DIR_MODE: u32 = 0o700;
 const PRIVATE_FILE_MODE: u32 = 0o600;
+const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
+const STICKY_BIT: u32 = 0o1000;
 const RESERVED_PRIVATE_DIR_PATHS: &[&str] = &[
     "/",
     "/bin",
@@ -230,6 +232,7 @@ fn open_or_create_private_dir_component(
     use nix::fcntl::openat;
     use nix::sys::stat::Mode;
 
+    ensure_private_dir_parent_not_replaceable(parent, parent_path, full_path)?;
     match openat(parent, name, private_dir_open_flags(), Mode::empty()) {
         Ok(fd) => Ok(fd),
         Err(Errno::EACCES) => {
@@ -241,6 +244,31 @@ fn open_or_create_private_dir_component(
         }
         Err(e) => Err(private_dir_component_error("open", name, full_path, e)),
     }
+}
+
+#[cfg(unix)]
+fn ensure_private_dir_parent_not_replaceable(
+    parent: &(impl AsFd + AsRawFd),
+    parent_path: &Path,
+    full_path: &Path,
+) -> RunnerResult<()> {
+    use nix::sys::stat::fstat;
+
+    let stat = fstat(parent).map_err(|e| {
+        RunnerError::Config(format!(
+            "stat private dir parent {} for {}: {e}",
+            parent_path.display(),
+            full_path.display()
+        ))
+    })?;
+    let mode = (stat.st_mode as u32) & 0o7777;
+    if mode & GROUP_OR_OTHER_WRITE_BITS != 0 && mode & STICKY_BIT == 0 {
+        return Err(RunnerError::Config(format!(
+            "private dir parent {} is group/other writable without the sticky bit; fix parent permissions before starting the runner",
+            parent_path.display()
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -771,6 +799,39 @@ mod tests {
             !missing.exists(),
             "private dir validation should not create path prefixes before rejecting parent segments"
         );
+    }
+
+    #[tokio::test]
+    async fn ensure_private_dir_rejects_group_writable_parent_without_sticky_bit() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("shared");
+        let private_dir = parent.join("runner");
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o777)).unwrap();
+
+        let error = ensure_private_dir(&private_dir).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("group/other writable"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !private_dir.exists(),
+            "private dir should not be created under a replaceable parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_private_dir_allows_sticky_group_writable_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("sticky");
+        let private_dir = parent.join("runner");
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o1777)).unwrap();
+
+        ensure_private_dir(&private_dir).await.unwrap();
+
+        assert_eq!(mode(&private_dir), PRIVATE_DIR_MODE);
     }
 
     #[test]

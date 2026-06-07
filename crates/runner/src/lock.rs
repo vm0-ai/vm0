@@ -7,6 +7,7 @@ use nix::fcntl::{Flock, FlockArg};
 use crate::error::{RunnerError, RunnerResult};
 
 const LOCK_BUSY_ERROR: &str = "lock is already held by another process";
+const LOCK_FILE_MODE: u32 = 0o600;
 
 /// Open (or create) the lock file, creating parent directories as needed.
 pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
@@ -15,13 +16,33 @@ pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
             RunnerError::Internal(format!("create lock dir {}: {e}", parent.display()))
         })?;
     }
-    File::options()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
+    let mut options = File::options();
+    options.create(true).truncate(false).read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options
+            .mode(LOCK_FILE_MODE)
+            .custom_flags(nix::libc::O_NOFOLLOW);
+    }
+    let file = options
         .open(path)
-        .map_err(|e| RunnerError::Internal(format!("open lock {}: {e}", path.display())))
+        .map_err(|e| RunnerError::Internal(format!("open lock {}: {e}", path.display())))?;
+    secure_lock_file_permissions(&file, path)?;
+    Ok(file)
+}
+
+#[cfg(unix)]
+fn secure_lock_file_permissions(file: &File, path: &Path) -> RunnerResult<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    file.set_permissions(std::fs::Permissions::from_mode(LOCK_FILE_MODE))
+        .map_err(|e| RunnerError::Internal(format!("chmod lock {}: {e}", path.display())))
+}
+
+#[cfg(not(unix))]
+fn secure_lock_file_permissions(_file: &File, _path: &Path) -> RunnerResult<()> {
+    Ok(())
 }
 
 /// Check whether the locked fd still refers to the file currently at `path`.
@@ -131,6 +152,11 @@ pub async fn try_acquire_or_busy(path: PathBuf) -> RunnerResult<TryLock> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+
+    fn file_mode(path: &Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
 
     #[tokio::test]
     async fn acquire_creates_lock_file() {
@@ -140,6 +166,48 @@ mod tests {
         let guard = acquire(path.clone()).await.unwrap();
         assert!(path.exists());
         drop(guard);
+    }
+
+    #[tokio::test]
+    async fn acquire_creates_private_lock_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+
+        let guard = acquire(path.clone()).await.unwrap();
+
+        assert_eq!(file_mode(&path), LOCK_FILE_MODE);
+        drop(guard);
+    }
+
+    #[tokio::test]
+    async fn acquire_tightens_existing_wide_lock_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        std::fs::write(&path, b"lock").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
+
+        let guard = acquire(path.clone()).await.unwrap();
+
+        assert_eq!(file_mode(&path), LOCK_FILE_MODE);
+        drop(guard);
+    }
+
+    #[tokio::test]
+    async fn acquire_rejects_lock_symlink_without_chmodding_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let path = dir.path().join("test.lock");
+        std::fs::write(&target, b"target").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
+        symlink(&target, &path).unwrap();
+
+        let error = acquire(path).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("open lock"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(file_mode(&target), 0o644);
     }
 
     #[tokio::test]

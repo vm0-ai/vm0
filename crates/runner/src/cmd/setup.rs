@@ -21,6 +21,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
+const OWNER_DIRECTORY_BITS: u32 = 0o700;
 const SHARED_DIRECTORY_CREATE_MODE: u32 = 0o755;
 
 /// Run the host setup workflow for sandbox execution.
@@ -192,7 +193,7 @@ fn secure_shared_directory_permissions(dir: &Path) -> RunnerResult<()> {
     }
 
     let current_mode = (stat.st_mode as u32) & 0o7777;
-    let secure_mode = current_mode & !GROUP_OR_OTHER_WRITE_BITS;
+    let secure_mode = (current_mode | OWNER_DIRECTORY_BITS) & !GROUP_OR_OTHER_WRITE_BITS;
     if secure_mode != current_mode {
         chmod_open_shared_directory(&fd, dir, secure_mode)?;
     }
@@ -746,15 +747,18 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn create_directories_removes_shared_write_bits_without_widening_modes() {
+    fn create_directories_secures_shared_directory_modes() {
         let dir = tempfile::tempdir().unwrap();
         let paths = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let bin_dir = paths.bin_dir();
         let runners_dir = paths.runners_dir();
         let logs_dir = paths.logs_dir();
 
+        std::fs::create_dir_all(&bin_dir).unwrap();
         std::fs::create_dir_all(&runners_dir).unwrap();
         std::fs::create_dir_all(&logs_dir).unwrap();
         std::fs::set_permissions(paths.root_dir(), std::fs::Permissions::from_mode(0o777)).unwrap();
+        std::fs::set_permissions(&bin_dir, std::fs::Permissions::from_mode(0o000)).unwrap();
         std::fs::set_permissions(&runners_dir, std::fs::Permissions::from_mode(0o777)).unwrap();
         std::fs::set_permissions(&logs_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
 
@@ -786,8 +790,16 @@ mod tests {
                 "{} mode should not be group/other writable: {mode:o}",
                 path.display()
             );
+            assert_eq!(
+                mode & OWNER_DIRECTORY_BITS,
+                OWNER_DIRECTORY_BITS,
+                "{} mode should preserve owner rwx access: {mode:o}",
+                path.display()
+            );
         }
 
+        let bin_mode = std::fs::metadata(&bin_dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(bin_mode, 0o700);
         let logs_mode = std::fs::metadata(&logs_dir).unwrap().permissions().mode() & 0o777;
         assert_eq!(logs_mode, 0o700);
     }
