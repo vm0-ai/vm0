@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.108.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.11...runner-rs-v0.108.12) (2026-06-07)
+
+
+### Bug Fixes
+
+* make nbd orphan detection lock-aware ([#16388](https://github.com/vm0-ai/vm0/issues/16388)) ([6def1ff](https://github.com/vm0-ai/vm0/commit/6def1ff8df4f45c7154e428d52ae97fbf9a7bf29))
+* **mitm-addon:** harden x billing json parser failures ([#16426](https://github.com/vm0-ai/vm0/issues/16426)) ([80c7315](https://github.com/vm0-ai/vm0/commit/80c73157dbbf5fa32922e1241e9f23ab2be5e745))
+* prevent runner kill from signaling reused pids ([#16296](https://github.com/vm0-ai/vm0/issues/16296)) ([5b6c483](https://github.com/vm0-ai/vm0/commit/5b6c48301845c9267a7437b63014fcd6d75bc331))
+* restore workspace image cache staff switch ([#16410](https://github.com/vm0-ai/vm0/issues/16410)) ([e78f7ad](https://github.com/vm0-ai/vm0/commit/e78f7ad24b2469854f1fdd43cf2422d915715f58))
+
+
+### Documentation
+
+* **mitm-addon:** document flow metadata contract ([#16423](https://github.com/vm0-ai/vm0/issues/16423)) ([ad9ed9e](https://github.com/vm0-ai/vm0/commit/ad9ed9e1d95748babc06045d7fe78405d5c30701))
+
+
+### Refactoring
+
+* **runner:** split executor into focused modules ([#16458](https://github.com/vm0-ai/vm0/issues/16458)) ([8ac3405](https://github.com/vm0-ai/vm0/commit/8ac3405705b7bef8a02c59b3b1125715bcbbbd3e))
+
 ## [0.108.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.10...runner-rs-v0.108.11) (2026-06-05)
 
 

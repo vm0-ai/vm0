@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.421.0](https://github.com/vm0-ai/vm0/compare/app-v0.420.1...app-v0.421.0) (2026-06-07)
+
+
+### Features
+
+* add connector device auth start options ([#16353](https://github.com/vm0-ai/vm0/issues/16353)) ([3a846f5](https://github.com/vm0-ai/vm0/commit/3a846f5e9fdd2884c874b96824de5701f85e8f3f))
+* add stripe cli dashboard connector ([#16418](https://github.com/vm0-ai/vm0/issues/16418)) ([852128d](https://github.com/vm0-ai/vm0/commit/852128d179c9fc89d3ec9b3d84d5daea36bd6a28))
+
+
+### Bug Fixes
+
+* default schedules page to calendar view ([#16427](https://github.com/vm0-ai/vm0/issues/16427)) ([9139983](https://github.com/vm0-ai/vm0/commit/913998366edd68223be7fb0b1e3b275de0c227d2))
+* **platform:** update adzuna connector icon ([#16389](https://github.com/vm0-ai/vm0/issues/16389)) ([bfa6dc2](https://github.com/vm0-ai/vm0/commit/bfa6dc23c0ebe6e2af124ced3a7b36481bee928d))
+* **platform:** update diffbot connector logo ([#16390](https://github.com/vm0-ai/vm0/issues/16390)) ([fa01428](https://github.com/vm0-ai/vm0/commit/fa01428d59ad23bee96a4f8f0c47a32652c1285b))
+* **platform:** update doppler connector icon ([#16402](https://github.com/vm0-ai/vm0/issues/16402)) ([9917def](https://github.com/vm0-ai/vm0/commit/9917defcaf5d6cce850b7e5892056503ae64c8e2))
+* **platform:** update etsy connector icon ([#16392](https://github.com/vm0-ai/vm0/issues/16392)) ([eebe676](https://github.com/vm0-ai/vm0/commit/eebe676b788c6ab433e55f8c8609b3c380cb5da2))
+* **platform:** update flightaware connector logo ([#16393](https://github.com/vm0-ai/vm0/issues/16393)) ([d18039e](https://github.com/vm0-ai/vm0/commit/d18039e77bb65a1aea7b6c15e58fcec783ff2f95))
+* **platform:** update mapbox connector icon ([#16394](https://github.com/vm0-ai/vm0/issues/16394)) ([027bcfb](https://github.com/vm0-ai/vm0/commit/027bcfb3be83855ca269ce45fbcfdf6836090441))
+* **platform:** update n8n connector icon ([#16395](https://github.com/vm0-ai/vm0/issues/16395)) ([0ac1053](https://github.com/vm0-ai/vm0/commit/0ac1053cc8266d802a7afd5f7dbaf305a4380087))
+* **platform:** update openweather connector logo ([#16396](https://github.com/vm0-ai/vm0/issues/16396)) ([883f796](https://github.com/vm0-ai/vm0/commit/883f796a6be9b9c57c609e371a931d94938bcfbc))
+* **platform:** update reducto connector icon ([#16397](https://github.com/vm0-ai/vm0/issues/16397)) ([a7ff693](https://github.com/vm0-ai/vm0/commit/a7ff693fa7861fdc130f48f5b7909623082a49ce))
+* **platform:** update serpapi connector icon ([#16387](https://github.com/vm0-ai/vm0/issues/16387)) ([d66a1d2](https://github.com/vm0-ai/vm0/commit/d66a1d20c0792b50da11e0e10bb8e4c3963bfb2b))
+* **platform:** update ticketmaster connector logo ([#16398](https://github.com/vm0-ai/vm0/issues/16398)) ([11f7af8](https://github.com/vm0-ai/vm0/commit/11f7af8a0e39b81040663377b7afa803ddbe09af))
+* **platform:** update typeform connector icon ([#16399](https://github.com/vm0-ai/vm0/issues/16399)) ([a9bdc53](https://github.com/vm0-ai/vm0/commit/a9bdc536bb2b4097ca587af28a2bc36f43ed77e1))
+* remove amplitude png connector icon ([#16417](https://github.com/vm0-ai/vm0/issues/16417)) ([373aba5](https://github.com/vm0-ai/vm0/commit/373aba50dbc5377f467db82a73c1ea5b8dff09fa))
+* remove attio raster icon duplicate ([#16425](https://github.com/vm0-ai/vm0/issues/16425)) ([f56db43](https://github.com/vm0-ai/vm0/commit/f56db43d520234a416561dd03d79871aa624b3bf))
+* remove chat header new button feature ([#16385](https://github.com/vm0-ai/vm0/issues/16385)) ([2b2afb0](https://github.com/vm0-ai/vm0/commit/2b2afb06e455f9fc600e6384f217cd084ebaa46a))
+* replace amadeus raster icon ([#16416](https://github.com/vm0-ai/vm0/issues/16416)) ([246be20](https://github.com/vm0-ai/vm0/commit/246be200ec8a30ba8ee6e377081994d142240226))
+* replace aviationstack connector icon svg ([#16457](https://github.com/vm0-ai/vm0/issues/16457)) ([0e7efbb](https://github.com/vm0-ai/vm0/commit/0e7efbb26d76fff6d80017ae76f49f3b84616d95))
+* replace bitrefill connector icon svg ([#16437](https://github.com/vm0-ai/vm0/issues/16437)) ([2236e81](https://github.com/vm0-ai/vm0/commit/2236e814dbcbdb1b1696d53585d88313abd09414))
+* replace bland connector icon svg ([#16439](https://github.com/vm0-ai/vm0/issues/16439)) ([64bc352](https://github.com/vm0-ai/vm0/commit/64bc352d73c57cc521d7271da71f304ffb0712d4))
+* update altium 365 connector icon ([#16415](https://github.com/vm0-ai/vm0/issues/16415)) ([2271856](https://github.com/vm0-ai/vm0/commit/22718564b7306adf01a42405861f16b9812c2745))
+* update bentoml connector icon ([#16436](https://github.com/vm0-ai/vm0/issues/16436)) ([16f9cdd](https://github.com/vm0-ai/vm0/commit/16f9cdd16172798d76fe463488452488b66474c0))
+* update bitrix connector icon ([#16438](https://github.com/vm0-ai/vm0/issues/16438)) ([0067196](https://github.com/vm0-ai/vm0/commit/0067196fb751937356a954462dfd31372e86ca09))
+* update brave search connector icon ([#16440](https://github.com/vm0-ai/vm0/issues/16440)) ([5d75c59](https://github.com/vm0-ai/vm0/commit/5d75c59008315fc219ad8c0324881002df8274bc))
+* update brevo connector icon ([#16459](https://github.com/vm0-ai/vm0/issues/16459)) ([8bcfae4](https://github.com/vm0-ai/vm0/commit/8bcfae454472c467e47b3cde58778d5b5aea1d46))
+* update bright data connector icon ([#16460](https://github.com/vm0-ai/vm0/issues/16460)) ([2cb719a](https://github.com/vm0-ai/vm0/commit/2cb719ad72727466fcfdd434ee52b0fe9c203c42))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.67.0
+    * @vm0/connectors bumped to 1.50.0
+    * @vm0/core bumped to 8.314.2
+
 ## [0.420.1](https://github.com/vm0-ai/vm0/compare/app-v0.420.0...app-v0.420.1) (2026-06-06)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.8](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.7...guest-mock-claude-v0.18.8) (2026-06-07)
+
+
+### Refactoring
+
+* **guest-mock-claude:** split mock cli modules ([#16408](https://github.com/vm0-ai/vm0/issues/16408)) ([cf6d87e](https://github.com/vm0-ai/vm0/commit/cf6d87eceedab5bff7f959d2c04a54a2d31a38d6))
+
 ## [0.18.7](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.6...guest-mock-claude-v0.18.7) (2026-06-05)
 
 

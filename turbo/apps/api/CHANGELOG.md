@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.110.0](https://github.com/vm0-ai/vm0/compare/api-v1.109.1...api-v1.110.0) (2026-06-07)
+
+
+### Features
+
+* add connector device auth start options ([#16353](https://github.com/vm0-ai/vm0/issues/16353)) ([3a846f5](https://github.com/vm0-ai/vm0/commit/3a846f5e9fdd2884c874b96824de5701f85e8f3f))
+* add device auth provider poll state ([#16405](https://github.com/vm0-ai/vm0/issues/16405)) ([84c8c72](https://github.com/vm0-ai/vm0/commit/84c8c72a572da4f830d6d54e1220e44e4597f625))
+* add stripe cli dashboard connector ([#16418](https://github.com/vm0-ai/vm0/issues/16418)) ([852128d](https://github.com/vm0-ai/vm0/commit/852128d179c9fc89d3ec9b3d84d5daea36bd6a28))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.67.0
+    * @vm0/connectors bumped to 1.50.0
+    * @vm0/core bumped to 8.314.2
+    * @vm0/db bumped to 1.33.4
+
 ## [1.109.1](https://github.com/vm0-ai/vm0/compare/api-v1.109.0...api-v1.109.1) (2026-06-06)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.19.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.1...sandbox-v0.19.2) (2026-06-07)
+
+
+### Bug Fixes
+
+* prevent runner kill from signaling reused pids ([#16296](https://github.com/vm0-ai/vm0/issues/16296)) ([5b6c483](https://github.com/vm0-ai/vm0/commit/5b6c48301845c9267a7437b63014fcd6d75bc331))
+
+
+### Documentation
+
+* document snapshot publish cleanup semantics ([#16419](https://github.com/vm0-ai/vm0/issues/16419)) ([a0e1cf3](https://github.com/vm0-ai/vm0/commit/a0e1cf3e4f95ac6b6221728ce2c6f6fe52e9ddcd))
+
 ## [0.19.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.0...sandbox-v0.19.1) (2026-06-03)
 
 

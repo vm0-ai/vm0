@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.37.13](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.12...sandbox-fc-v0.37.13) (2026-06-07)
+
+
+### Bug Fixes
+
+* prevent runner kill from signaling reused pids ([#16296](https://github.com/vm0-ai/vm0/issues/16296)) ([5b6c483](https://github.com/vm0-ai/vm0/commit/5b6c48301845c9267a7437b63014fcd6d75bc331))
+
+
+### Documentation
+
+* document snapshot publish cleanup semantics ([#16419](https://github.com/vm0-ai/vm0/issues/16419)) ([a0e1cf3](https://github.com/vm0-ai/vm0/commit/a0e1cf3e4f95ac6b6221728ce2c6f6fe52e9ddcd))
+
+
+### Refactoring
+
+* **sandbox-fc:** split netns pool modules ([#16454](https://github.com/vm0-ai/vm0/issues/16454)) ([4b75eb3](https://github.com/vm0-ai/vm0/commit/4b75eb39a134466fd9fea22000b94fe96718b3b9))
+
 ## [0.37.12](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.11...sandbox-fc-v0.37.12) (2026-06-05)
 
 

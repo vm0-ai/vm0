@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.22](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.21...vsock-host-v0.17.22) (2026-06-07)
+
+
+### Refactoring
+
+* split vsock-host file operations ([#16404](https://github.com/vm0-ai/vm0/issues/16404)) ([91fd804](https://github.com/vm0-ai/vm0/commit/91fd804ed41145edac21f8d08549eae18eb01a15))
+
 ## [0.17.21](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.20...vsock-host-v0.17.21) (2026-06-04)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.314.2](https://github.com/vm0-ai/vm0/compare/core-v8.314.1...core-v8.314.2) (2026-06-07)
+
+
+### Bug Fixes
+
+* remove chat header new button feature ([#16385](https://github.com/vm0-ai/vm0/issues/16385)) ([2b2afb0](https://github.com/vm0-ai/vm0/commit/2b2afb06e455f9fc600e6384f217cd084ebaa46a))
+* restore workspace image cache staff switch ([#16410](https://github.com/vm0-ai/vm0/issues/16410)) ([e78f7ad](https://github.com/vm0-ai/vm0/commit/e78f7ad24b2469854f1fdd43cf2422d915715f58))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.67.0
+    * @vm0/connectors bumped to 1.50.0
+
 ## [8.314.1](https://github.com/vm0-ai/vm0/compare/core-v8.314.0...core-v8.314.1) (2026-06-06)
 
 

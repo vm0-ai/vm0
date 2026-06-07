@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.35](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.34...nbd-cow-v0.4.35) (2026-06-07)
+
+
+### Performance Improvements
+
+* **nbd-cow:** avoid blocking fio benchmark wait ([#16453](https://github.com/vm0-ai/vm0/issues/16453)) ([1f1b3eb](https://github.com/vm0-ai/vm0/commit/1f1b3eb8424215c8e16c5ec8cedc852e48c9dcb6))
+
 ## [0.4.34](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.33...nbd-cow-v0.4.34) (2026-06-05)
 
 

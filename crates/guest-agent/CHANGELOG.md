@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.19](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.18...guest-agent-v0.34.19) (2026-06-07)
+
+
+### Bug Fixes
+
+* bound guest telemetry delta reads ([#16455](https://github.com/vm0-ai/vm0/issues/16455)) ([122b447](https://github.com/vm0-ai/vm0/commit/122b447bcfc0d0c907596da44631549cbb3eec0e))
+
 ## [0.34.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.17...guest-agent-v0.34.18) (2026-06-05)
 
 
