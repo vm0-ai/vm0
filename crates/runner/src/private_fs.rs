@@ -203,7 +203,7 @@ fn ensure_private_dir_exists_without_symlinks(
                     path,
                     expected_uid,
                 )?;
-                current_path.push(Path::new(name));
+                current_path = private_dir_component_path(&current_path, name);
             }
             Component::Prefix(prefix) => {
                 return Err(RunnerError::Config(format!(
@@ -234,9 +234,11 @@ fn open_or_create_private_dir_component(
         Ok(fd) => Ok(fd),
         Err(Errno::EACCES) => {
             repair_private_dir_parent_for_traversal(parent, parent_path, full_path, expected_uid)?;
-            open_or_create_accessible_private_dir_component(parent, name, full_path)
+            open_or_create_accessible_private_dir_component(parent, name, parent_path, full_path)
         }
-        Err(Errno::ENOENT) => create_and_open_private_dir_component(parent, name, full_path),
+        Err(Errno::ENOENT) => {
+            create_and_open_private_dir_component(parent, name, parent_path, full_path)
+        }
         Err(e) => Err(private_dir_component_error("open", name, full_path, e)),
     }
 }
@@ -245,6 +247,7 @@ fn open_or_create_private_dir_component(
 fn open_or_create_accessible_private_dir_component(
     parent: &(impl AsFd + AsRawFd),
     name: &OsStr,
+    parent_path: &Path,
     full_path: &Path,
 ) -> RunnerResult<OwnedFd> {
     use nix::errno::Errno;
@@ -253,7 +256,9 @@ fn open_or_create_accessible_private_dir_component(
 
     match openat(parent, name, private_dir_open_flags(), Mode::empty()) {
         Ok(fd) => Ok(fd),
-        Err(Errno::ENOENT) => create_and_open_private_dir_component(parent, name, full_path),
+        Err(Errno::ENOENT) => {
+            create_and_open_private_dir_component(parent, name, parent_path, full_path)
+        }
         Err(e) => Err(private_dir_component_error("open", name, full_path, e)),
     }
 }
@@ -262,11 +267,22 @@ fn open_or_create_accessible_private_dir_component(
 fn create_and_open_private_dir_component(
     parent: &(impl AsFd + AsRawFd),
     name: &OsStr,
+    parent_path: &Path,
     full_path: &Path,
 ) -> RunnerResult<OwnedFd> {
     use nix::errno::Errno;
     use nix::fcntl::openat;
     use nix::sys::stat::{Mode, mkdirat};
+
+    let component_path = private_dir_component_path(parent_path, name);
+    let normalized_component = normalize_private_dir_policy_path(&component_path)?;
+    if is_reserved_normalized_private_dir_path(&normalized_component) {
+        return Err(RunnerError::Config(format!(
+            "{} requires creating reserved system path {}; create runner home directories before starting the runner",
+            full_path.display(),
+            component_path.display()
+        )));
+    }
 
     let created = match mkdirat(parent, name, Mode::from_bits_truncate(PRIVATE_DIR_MODE)) {
         Ok(()) => true,
@@ -285,6 +301,13 @@ fn create_and_open_private_dir_component(
         chmod_open_private_dir(&fd, full_path)?;
     }
     Ok(fd)
+}
+
+#[cfg(unix)]
+fn private_dir_component_path(parent_path: &Path, name: &OsStr) -> PathBuf {
+    let mut path = parent_path.to_path_buf();
+    path.push(Path::new(name));
+    path
 }
 
 #[cfg(unix)]
@@ -593,6 +616,32 @@ mod tests {
             "unexpected error: {error}"
         );
         assert_eq!(mode(&parent), 0o000);
+    }
+
+    #[test]
+    fn create_private_dir_component_rejects_reserved_component() {
+        use nix::fcntl::open;
+        use nix::sys::stat::Mode;
+
+        let dir = tempfile::tempdir().unwrap();
+        let fd = open(dir.path(), private_dir_open_flags(), Mode::empty()).unwrap();
+
+        let error = create_and_open_private_dir_component(
+            &fd,
+            OsStr::new("runners"),
+            Path::new("/var/lib/vm0-runner"),
+            Path::new("/var/lib/vm0-runner/runners/runner-01"),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("reserved system path"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !dir.path().join("runners").exists(),
+            "reserved component should not be created"
+        );
     }
 
     #[tokio::test]
