@@ -1,4 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="connector logo">
-  <!-- Official brand asset source: https://framerusercontent.com/images/Yf9jVvUkBaFa9rwvzfMcbnx5z0.png -->
-  <image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAAAGFBMVEUUEjxXUsobGUxQS7olImEuK3RCPp43M4Z8dHLTAAAACXBIWXMAAAsTAAALEwEAmpwYAAACKElEQVR42u1Y25bDIAhMQOH//3i3uRhRSBSbs/vgPLY9FmYGEJdlYmJiYmJi4iuASLiqQIowfjwbpx+gwb8I98d/0ggj5/PaAPafH1OYHAvkmUU3/+fp8MCclyU0ZAxUKj1CENe+yiVmP0mA6vmnbfEgZ/sHBK+D2CD/V/WTG3Y6CZTIgFJ57flByrQ/Baq4TeR/aiuLO7h03hhA8cnJTizzI49Vy7yTNfeiEPkFh84s077ID9mR937oUDh11NTYUJKy6dyVgmQAy5YRS1ljp845A4Gqzq8YE/t0vn6erEnhtgRDZbpHi1JlzbsSVMrmqQlB1pRlv1bP6tGZdgaA9LFrsNFu1YOByppWCYq8Q2sClKxpC9T6hT4nzUuJHWhjCtm8onBfIj4VrnnLoICPcaCgkSNch/BcbOsg/v4PXqeIMhMpIPObwG0iZzbF2GVTarNpEAlDR0dovb7sgaBVy2Y5NU+1444QjW5k9uX2+9cZI+tSGJFy+1hOMRoTQb1nQc/d6IpRnWlhdGSKxqtN5eGhL36eeLpGm2LVzmuLTLiWYvjiVXox7ZSsM+5YEUqaWUpR6Ez9S05Fc8GTCAD6FF6MtQXy7iECQNeiqZRTbtksgOhbldUlMNvSks7eJVBvm9mqcxrNu8Zai3iyLO7M+Bdx6ylhES8tNPLeQsb1Eah70t9PTzIGZwK88CBF33iQev9J7f1HQUXQ4niG//4wOzExMTExMbHhB40GDs+WLjr9AAAAAElFTkSuQmCC" x="0" y="0" width="256" height="256" preserveAspectRatio="xMidYMid meet"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" fill="#14123c" />
+  <g transform="translate(2.34 9.03)" fill="#5752ca">
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M95.08 16.219a16 16 0 0 0-13.856-8H45.718a16 16 0 0 0-13.856 8L14.109 46.967a16 16 0 0 0 0 16l17.753 30.749a16 16 0 0 0 13.856 8h35.505a16 16 0 0 0 13.857-8l17.753-30.749a16 16 0 0 0 0-16L95.08 16.22Zm27.243 46.748a16 16 0 0 0 0-16L99.825 8a16 16 0 0 0-13.856-8H40.973a16 16 0 0 0-13.856 8L4.619 46.967a16 16 0 0 0 0 16l22.498 38.968a16 16 0 0 0 13.856 8h44.996a16 16 0 0 0 13.856-8l22.498-38.968Z"
+    />
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M5.021 55.075a4.11 4.11 0 0 1 4.11-4.11h108.898a4.11 4.11 0 1 1 0 8.22H9.131a4.11 4.11 0 0 1-4.11-4.11Z"
+    />
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M92.859 4.222a4.11 4.11 0 0 1-1.454 5.626L12.188 56.53a4.11 4.11 0 1 1-4.172-7.08L87.232 2.767a4.11 4.11 0 0 1 5.627 1.455Z"
+    />
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M92.859 105.415a4.109 4.109 0 0 0-1.454-5.626L12.188 53.108a4.11 4.11 0 1 0-4.172 7.08l79.216 46.681a4.108 4.108 0 0 0 5.627-1.454Z"
+    />
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M72.61 63.511a16 16 0 0 1-.213-16.095l21.506-38.11a4.11 4.11 0 1 0-7.157-4.039L62.888 47.542a16 16 0 0 0 .214 16.096l23.604 39.341a4.109 4.109 0 1 0 7.048-4.229L72.61 63.511Z"
+    />
+  </g>
 </svg>
