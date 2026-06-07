@@ -1,6 +1,7 @@
 use std::fs::File;
+use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::os::unix::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use nix::fcntl::{Flock, FlockArg};
 
@@ -15,7 +16,10 @@ const ROOT_UID: u32 = 0;
 
 /// Open (or create) the lock file, creating parent directories as needed.
 pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         ensure_lock_parent_dir(parent)?;
     }
     let mut options = File::options();
@@ -34,42 +38,166 @@ pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
     Ok(file)
 }
 
+#[cfg(unix)]
 fn ensure_lock_parent_dir(parent: &Path) -> RunnerResult<()> {
-    create_lock_parent_dir_all(parent)?;
+    let expected_uid = nix::unistd::geteuid().as_raw();
+    let fd = ensure_lock_parent_dir_exists_without_symlinks(parent, expected_uid)?;
+    secure_open_lock_parent_dir(&fd, parent, expected_uid)
+}
+
+#[cfg(not(unix))]
+fn ensure_lock_parent_dir(parent: &Path) -> RunnerResult<()> {
+    std::fs::create_dir_all(parent)
+        .map_err(|e| RunnerError::Internal(format!("create lock dir {}: {e}", parent.display())))?;
     secure_lock_parent_dir_permissions(parent)
 }
 
 #[cfg(unix)]
-fn create_lock_parent_dir_all(parent: &Path) -> RunnerResult<()> {
-    use std::os::unix::fs::DirBuilderExt;
+fn ensure_lock_parent_dir_exists_without_symlinks(
+    parent: &Path,
+    expected_uid: u32,
+) -> RunnerResult<OwnedFd> {
+    use nix::fcntl::open;
+    use nix::sys::stat::Mode;
 
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(LOCK_DIR_MODE)
-        .create(parent)
-        .map_err(|e| RunnerError::Internal(format!("create lock dir {}: {e}", parent.display())))?;
-    Ok(())
+    let start = if parent.is_absolute() {
+        Path::new("/")
+    } else {
+        Path::new(".")
+    };
+    let mut current = open(start, lock_parent_dir_open_flags(), Mode::empty()).map_err(|e| {
+        RunnerError::Internal(format!("open lock dir root for {}: {e}", parent.display()))
+    })?;
+    let mut current_path = start.to_path_buf();
+    let components: Vec<_> = parent
+        .components()
+        .filter_map(|component| match component {
+            Component::RootDir | Component::CurDir => None,
+            Component::Normal(name) => Some(Ok(name.to_owned())),
+            Component::ParentDir => Some(Err(RunnerError::Internal(format!(
+                "lock dir {} contains a parent directory segment",
+                parent.display()
+            )))),
+            Component::Prefix(prefix) => Some(Err(RunnerError::Internal(format!(
+                "lock dir {} contains unsupported path prefix {}",
+                parent.display(),
+                prefix.as_os_str().to_string_lossy()
+            )))),
+        })
+        .collect::<RunnerResult<Vec<_>>>()?;
+
+    for name in &components {
+        ensure_lock_dir_parent_not_replaceable(&current, &current_path, parent, expected_uid)?;
+        current = open_or_create_lock_dir_component(&current, name, &current_path, parent)?;
+        current_path = lock_dir_component_path(&current_path, name);
+    }
+
+    Ok(current)
 }
 
-#[cfg(not(unix))]
-fn create_lock_parent_dir_all(parent: &Path) -> RunnerResult<()> {
-    std::fs::create_dir_all(parent)
-        .map_err(|e| RunnerError::Internal(format!("create lock dir {}: {e}", parent.display())))?;
+#[cfg(unix)]
+fn ensure_lock_dir_parent_not_replaceable(
+    fd: &(impl AsFd + AsRawFd),
+    current_path: &Path,
+    full_parent: &Path,
+    expected_uid: u32,
+) -> RunnerResult<()> {
+    use nix::sys::stat::fstat;
+
+    let stat = fstat(fd).map_err(|e| {
+        RunnerError::Internal(format!(
+            "stat lock dir parent {} for {}: {e}",
+            current_path.display(),
+            full_parent.display()
+        ))
+    })?;
+    ensure_trusted_lock_parent_dir_owner(current_path, stat.st_uid, expected_uid)?;
+    let mode = (stat.st_mode as u32) & 0o7777;
+    if mode & GROUP_OR_OTHER_WRITE_BITS != 0 && mode & 0o1000 == 0 {
+        return Err(RunnerError::Internal(format!(
+            "lock dir parent {} is group/other writable without the sticky bit; fix parent permissions before acquiring locks",
+            current_path.display()
+        )));
+    }
     Ok(())
 }
 
 #[cfg(unix)]
-fn secure_lock_parent_dir_permissions(parent: &Path) -> RunnerResult<()> {
-    use nix::fcntl::open;
-    use nix::sys::stat::{Mode, SFlag, fstat};
+fn open_or_create_lock_dir_component(
+    parent_fd: &(impl AsFd + AsRawFd),
+    name: &std::ffi::OsStr,
+    current_path: &Path,
+    full_parent: &Path,
+) -> RunnerResult<OwnedFd> {
+    use nix::errno::Errno;
+    use nix::fcntl::openat;
+    use nix::sys::stat::{Mode, mkdirat};
 
-    let fd = open(parent, lock_parent_dir_open_flags(), Mode::empty()).map_err(|e| {
-        RunnerError::Internal(format!(
-            "open lock dir {} without following symlinks: {e}",
-            parent.display()
-        ))
-    })?;
-    let stat = fstat(&fd)
+    match openat(parent_fd, name, lock_parent_dir_open_flags(), Mode::empty()) {
+        Ok(fd) => Ok(fd),
+        Err(Errno::ENOENT) => {
+            let created = match mkdirat(parent_fd, name, Mode::from_bits_truncate(LOCK_DIR_MODE)) {
+                Ok(()) => true,
+                Err(Errno::EEXIST) => false,
+                Err(e) => {
+                    return Err(RunnerError::Internal(format!(
+                        "create lock dir component {} for {}: {e}",
+                        name.to_string_lossy(),
+                        full_parent.display()
+                    )));
+                }
+            };
+            let fd = openat(parent_fd, name, lock_parent_dir_open_flags(), Mode::empty())
+                .map_err(|e| lock_dir_component_error("open", name, full_parent, e))?;
+            if created {
+                chmod_open_lock_parent_dir(
+                    &fd,
+                    &lock_dir_component_path(current_path, name),
+                    LOCK_DIR_MODE,
+                )?;
+            }
+            Ok(fd)
+        }
+        Err(e) => Err(lock_dir_component_error("open", name, full_parent, e)),
+    }
+}
+
+#[cfg(unix)]
+fn lock_dir_component_path(parent: &Path, name: &std::ffi::OsStr) -> PathBuf {
+    let mut path = parent.to_path_buf();
+    path.push(Path::new(name));
+    path
+}
+
+#[cfg(unix)]
+fn lock_dir_component_error(
+    operation: &str,
+    name: &std::ffi::OsStr,
+    full_parent: &Path,
+    error: nix::errno::Errno,
+) -> RunnerError {
+    match error {
+        nix::errno::Errno::ELOOP => RunnerError::Internal(format!(
+            "{} contains symlink component {}; refusing to use it as a lock directory",
+            full_parent.display(),
+            name.to_string_lossy()
+        )),
+        nix::errno::Errno::ENOTDIR => {
+            RunnerError::Internal(format!("{} is not a lock directory", full_parent.display()))
+        }
+        _ => RunnerError::Internal(format!(
+            "{operation} lock dir component {} for {}: {error}",
+            name.to_string_lossy(),
+            full_parent.display()
+        )),
+    }
+}
+
+#[cfg(unix)]
+fn secure_open_lock_parent_dir(fd: &OwnedFd, parent: &Path, expected_uid: u32) -> RunnerResult<()> {
+    use nix::sys::stat::{SFlag, fstat};
+
+    let stat = fstat(fd)
         .map_err(|e| RunnerError::Internal(format!("stat lock dir {}: {e}", parent.display())))?;
     let file_type = SFlag::from_bits_truncate(stat.st_mode & SFlag::S_IFMT.bits());
     if file_type != SFlag::S_IFDIR {
@@ -78,13 +206,16 @@ fn secure_lock_parent_dir_permissions(parent: &Path) -> RunnerResult<()> {
             parent.display()
         )));
     }
-    let expected_uid = nix::unistd::geteuid().as_raw();
     ensure_trusted_lock_parent_dir_owner(parent, stat.st_uid, expected_uid)?;
 
     let current_mode = (stat.st_mode as u32) & 0o7777;
-    let secure_mode = (current_mode | OWNER_DIRECTORY_BITS) & !GROUP_OR_OTHER_WRITE_BITS;
+    let secure_mode = if current_mode & 0o1000 == 0 {
+        (current_mode | OWNER_DIRECTORY_BITS) & !GROUP_OR_OTHER_WRITE_BITS
+    } else {
+        current_mode | OWNER_DIRECTORY_BITS
+    };
     if secure_mode != current_mode {
-        chmod_open_lock_parent_dir(&fd, parent, secure_mode)?;
+        chmod_open_lock_parent_dir(fd, parent, secure_mode)?;
     }
     Ok(())
 }
@@ -432,6 +563,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn acquire_preserves_sticky_lock_parent_directory_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("sticky-locks");
+        let path = parent.join("test.lock");
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o1777)).unwrap();
+
+        let guard = acquire(path).await.unwrap();
+
+        let mode = std::fs::metadata(&parent).unwrap().permissions().mode() & 0o7777;
+        assert_eq!(mode, 0o1777);
+        drop(guard);
+    }
+
+    #[tokio::test]
     async fn acquire_rejects_lock_parent_symlink_without_chmodding_target() {
         let dir = tempfile::tempdir().unwrap();
         let target = dir.path().join("target");
@@ -442,11 +588,54 @@ mod tests {
 
         let error = acquire(parent.join("test.lock")).await.unwrap_err();
 
+        let message = error.to_string();
         assert!(
-            error.to_string().contains("open lock dir"),
+            message.contains("symlink component") || message.contains("not a lock directory"),
             "unexpected error: {error}"
         );
         assert_eq!(file_mode(&target), 0o777);
+    }
+
+    #[tokio::test]
+    async fn acquire_rejects_intermediate_lock_parent_symlink_without_creating_target_child() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let link = dir.path().join("link");
+        std::fs::create_dir(&target).unwrap();
+        symlink(&target, &link).unwrap();
+        let path = link.join("locks").join("test.lock");
+
+        let error = acquire(path).await.unwrap_err();
+
+        let message = error.to_string();
+        assert!(
+            message.contains("symlink component") || message.contains("not a lock directory"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !target.join("locks").exists(),
+            "lock parent should not be created through an intermediate symlink"
+        );
+    }
+
+    #[tokio::test]
+    async fn acquire_rejects_replaceable_lock_parent_ancestor() {
+        let dir = tempfile::tempdir().unwrap();
+        let ancestor = dir.path().join("shared");
+        std::fs::create_dir(&ancestor).unwrap();
+        std::fs::set_permissions(&ancestor, std::fs::Permissions::from_mode(0o777)).unwrap();
+        let path = ancestor.join("locks").join("test.lock");
+
+        let error = acquire(path).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("group/other writable"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !ancestor.join("locks").exists(),
+            "lock parent should not be created under a replaceable ancestor"
+        );
     }
 
     #[test]

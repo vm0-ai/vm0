@@ -3587,8 +3587,9 @@ mod tests {
 
         let err = cache.inspect().await.unwrap_err();
 
+        let message = err.to_string();
         assert!(
-            err.to_string().contains("create lock dir"),
+            message.contains("create lock dir") || message.contains("not a lock directory"),
             "unexpected error: {err}"
         );
     }
