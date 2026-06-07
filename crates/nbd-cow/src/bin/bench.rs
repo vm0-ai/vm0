@@ -7,9 +7,11 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::process::Stdio;
 
 use nbd_cow::{DestroyRetryPolicy, pool::DevicePoolHandle};
 use serde_json::Value;
+use tokio::process::Command as TokioCommand;
 
 const DEFAULT_BASE_SIZE_MB: u64 = 1024;
 // The largest fio workload writes 512 MiB. dm-snapshot COW needs extra space
@@ -113,14 +115,16 @@ async fn main() {
         .and_then(|name| name.to_str())
         .map(|name| format!("bench-cow-{}-{name}", std::process::id()))
         .unwrap_or_else(|| format!("bench-cow-{}", std::process::id()));
-    let dm_results = match run_dm_snapshot_bench(
+    let dm_result = run_dm_snapshot_bench(
         work_dir_path,
         &base_path,
         base_size,
         &workloads,
         &host_disk,
         &dm_name,
-    ) {
+    )
+    .await;
+    let dm_results = match dm_result {
         Ok(r) => r,
         Err(e) => {
             eprintln!("dm-snapshot bench failed: {e}");
@@ -335,7 +339,7 @@ impl DiskStats {
     }
 }
 
-fn run_dm_snapshot_bench(
+async fn run_dm_snapshot_bench(
     work_dir: &Path,
     base_path: &Path,
     base_size: u64,
@@ -365,7 +369,7 @@ fn run_dm_snapshot_bench(
         let device = dm_mapping.device_path();
         eprintln!("  Running fio ({}) on {device}...", wl.name);
 
-        let result = run_fio_with_iostat(&device, wl, host_disk);
+        let result = run_fio_with_iostat(&device, wl, host_disk).await;
         let mut cleanup_errors = Vec::new();
         if let Err(e) = dm_mapping.remove() {
             cleanup_errors.push(format!("failed to remove dm mapping {dm_name}: {e}"));
@@ -416,7 +420,7 @@ async fn run_nbd_cow_bench(
             let dev_path = device.device_path().to_string_lossy().to_string();
             eprintln!("  Running fio ({}) on {dev_path}...", wl.name);
 
-            let fio_result = run_fio_with_iostat(&dev_path, wl, host_disk);
+            let fio_result = run_fio_with_iostat(&dev_path, wl, host_disk).await;
             let destroy_result = device
                 .destroy_with_retries(DestroyRetryPolicy {
                     attempts: 1,
@@ -456,7 +460,7 @@ fn result_after_cleanup<T>(
 }
 
 /// Run fio while sampling /proc/diskstats before and after to measure actual host disk IOPS.
-fn run_fio_with_iostat(
+async fn run_fio_with_iostat(
     device: &str,
     workload: &FioWorkload,
     host_disk: &str,
@@ -466,7 +470,8 @@ fn run_fio_with_iostat(
 
     let start = std::time::Instant::now();
 
-    let output = Command::new("fio")
+    let mut cmd = TokioCommand::new("fio");
+    cmd.stdin(Stdio::null())
         .arg(format!("--name={}", workload.name))
         .arg(format!("--filename={device}"))
         .args(workload.args.split_whitespace())
@@ -475,7 +480,10 @@ fn run_fio_with_iostat(
         .arg("--output-format=json")
         .arg("--group_reporting=1")
         .arg("--unified_rw_reporting=1")
+        .kill_on_drop(true);
+    let output = cmd
         .output()
+        .await
         .map_err(|e| format!("fio failed to start: {e}"))?;
 
     let elapsed_secs = start.elapsed().as_secs_f64();
