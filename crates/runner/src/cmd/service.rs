@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 
 use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
 use crate::ids::RunId;
@@ -254,6 +255,27 @@ fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
         }
     }
     Ok(())
+}
+
+fn journalctl_logs_status(svc: &str, status: ExitStatus) -> RunnerResult<()> {
+    if status.success() {
+        return Ok(());
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+
+        // Preserve normal Unix pipeline behavior: `runner service logs | head`
+        // can close stdout early, causing journalctl to terminate with SIGPIPE.
+        if status.signal() == Some(libc::SIGPIPE) {
+            return Ok(());
+        }
+    }
+
+    Err(RunnerError::Internal(format!(
+        "journalctl for {svc} exited with {status}"
+    )))
 }
 
 /// Run `systemctl <args>` and check exit status.
@@ -911,10 +933,11 @@ async fn logs(args: ServiceLogsArgs) -> RunnerResult<()> {
     if args.follow {
         cmd.arg("--follow");
     }
-    cmd.status()
+    let status = cmd
+        .status()
         .await
         .map_err(|e| RunnerError::Internal(format!("spawn journalctl: {e}")))?;
-    Ok(())
+    journalctl_logs_status(&svc, status)
 }
 
 // ---------------------------------------------------------------------------
@@ -954,6 +977,36 @@ mod tests {
     fn test_unit_name_error_mentions_service() {
         let msg = unit_name("UPPER").unwrap_err().to_string();
         assert!(msg.contains("service name suffix"), "got: {msg}");
+    }
+
+    #[test]
+    fn journalctl_logs_status_allows_successful_exit() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let status = ExitStatus::from_raw(0);
+
+        assert!(journalctl_logs_status("vm0-runner-test.service", status).is_ok());
+    }
+
+    #[test]
+    fn journalctl_logs_status_rejects_failed_exit() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let status = ExitStatus::from_raw(0x100);
+        let err = journalctl_logs_status("vm0-runner-test.service", status).unwrap_err();
+
+        assert!(
+            matches!(err, RunnerError::Internal(message) if message.contains("journalctl for vm0-runner-test.service exited with"))
+        );
+    }
+
+    #[test]
+    fn journalctl_logs_status_allows_sigpipe() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let status = ExitStatus::from_raw(libc::SIGPIPE);
+
+        assert!(journalctl_logs_status("vm0-runner-test.service", status).is_ok());
     }
 
     #[test]
