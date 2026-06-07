@@ -84,6 +84,7 @@ const CONNECTOR_ICON_COLORFUL = {
   bitrix: true,
   bland: true,
   "brave-search": true,
+  "bright-data": true,
   brevo: true,
   browserbase: true,
   browserstack: true,
