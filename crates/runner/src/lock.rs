@@ -294,6 +294,12 @@ fn secure_lock_file_permissions(file: &File, path: &Path) -> RunnerResult<()> {
     let metadata = file
         .metadata()
         .map_err(|e| RunnerError::Internal(format!("stat lock {}: {e}", path.display())))?;
+    if !metadata.file_type().is_file() {
+        return Err(RunnerError::Internal(format!(
+            "{} is not a regular lock file",
+            path.display()
+        )));
+    }
     ensure_trusted_lock_file_owner(path, metadata.uid(), nix::unistd::geteuid().as_raw())?;
     file.set_permissions(std::fs::Permissions::from_mode(LOCK_FILE_MODE))
         .map_err(|e| RunnerError::Internal(format!("chmod lock {}: {e}", path.display())))
@@ -498,6 +504,30 @@ mod tests {
             "unexpected error: {error}"
         );
         assert_eq!(file_mode(&target), 0o644);
+    }
+
+    #[tokio::test]
+    async fn acquire_rejects_non_regular_lock_file() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let c_path = CString::new(path.as_os_str().as_bytes()).unwrap();
+        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(
+            result,
+            0,
+            "mkfifo failed: {}",
+            std::io::Error::last_os_error()
+        );
+
+        let error = acquire(path).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("not a regular lock file"),
+            "unexpected error: {error}"
+        );
     }
 
     #[tokio::test]
