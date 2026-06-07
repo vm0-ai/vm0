@@ -24,6 +24,9 @@ const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const OWNER_DIRECTORY_BITS: u32 = 0o700;
 const ROOT_UID: u32 = 0;
 const SHARED_DIRECTORY_CREATE_MODE: u32 = 0o755;
+const SETUP_TEMP_FILE_MODE: u32 = 0o600;
+const EXECUTABLE_ARTIFACT_MODE: u32 = 0o755;
+const KERNEL_ARTIFACT_MODE: u32 = 0o644;
 
 /// Run the host setup workflow for sandbox execution.
 ///
@@ -283,9 +286,7 @@ fn chmod_open_shared_directory<Fd: std::os::fd::AsFd>(
 /// Stream an HTTP response to a file, computing SHA256 incrementally.
 /// Returns the hex-encoded digest.
 async fn stream_to_file(mut response: reqwest::Response, path: &Path) -> RunnerResult<String> {
-    let mut file = tokio::fs::File::create(path)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", path.display())))?;
+    let mut file = create_setup_temp_file(path, "download temp").await?;
     let mut hasher = Sha256::new();
 
     while let Some(chunk) = response
@@ -304,6 +305,69 @@ async fn stream_to_file(mut response: reqwest::Response, path: &Path) -> RunnerR
         .map_err(|e| RunnerError::Internal(format!("flush {}: {e}", path.display())))?;
 
     Ok(hex::encode(hasher.finalize()))
+}
+
+async fn create_setup_temp_file(path: &Path, label: &'static str) -> RunnerResult<tokio::fs::File> {
+    match tokio::fs::remove_file(path).await {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "remove stale {label} {}: {e}",
+                path.display()
+            )));
+        }
+    }
+
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        options.mode(SETUP_TEMP_FILE_MODE);
+    }
+
+    let file = options
+        .open(path)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("create {label} {}: {e}", path.display())))?;
+
+    #[cfg(unix)]
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(SETUP_TEMP_FILE_MODE))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("chmod {label} {}: {e}", path.display())))?;
+
+    Ok(file)
+}
+
+fn create_setup_temp_file_sync(path: &Path, label: &'static str) -> RunnerResult<std::fs::File> {
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "remove stale {label} {}: {e}",
+                path.display()
+            )));
+        }
+    }
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(SETUP_TEMP_FILE_MODE);
+    }
+
+    let file = options
+        .open(path)
+        .map_err(|e| RunnerError::Internal(format!("create {label} {}: {e}", path.display())))?;
+
+    #[cfg(unix)]
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(SETUP_TEMP_FILE_MODE))
+        .map_err(|e| RunnerError::Internal(format!("chmod {label} {}: {e}", path.display())))?;
+
+    Ok(file)
 }
 
 /// Download a URL to a temp file. Cleans up on failure. Returns hex SHA256.
@@ -386,8 +450,7 @@ async fn extract_tar_entry(
                 .unwrap_or_default();
 
             if file_name == entry_name {
-                let mut out = std::fs::File::create(&tmp)
-                    .map_err(|e| RunnerError::Internal(format!("create temp binary: {e}")))?;
+                let mut out = create_setup_temp_file_sync(&tmp, "extracted temp binary")?;
                 let mut hasher = Sha256::new();
                 let mut buf = [0u8; 64 * 1024];
                 loop {
@@ -576,7 +639,7 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
     let bin_path = paths.firecracker_bin(FIRECRACKER_VERSION);
     let expected_sha = select_sha(arch, FIRECRACKER_SHA256_X86_64, FIRECRACKER_SHA256_AARCH64);
 
-    if ensure_artifact_installed(&bin_path, expected_sha, Some(0o755)).await? {
+    if ensure_artifact_installed(&bin_path, expected_sha, Some(EXECUTABLE_ARTIFACT_MODE)).await? {
         tracing::info!(
             "[OK] firecracker {FIRECRACKER_VERSION} already installed, skipping download"
         );
@@ -598,7 +661,7 @@ async fn download_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()>
         "firecracker",
         &tmp_path,
         &bin_path,
-        Some(0o755),
+        Some(EXECUTABLE_ARTIFACT_MODE),
     )
     .await?;
     tracing::info!("[OK] firecracker {FIRECRACKER_VERSION} installed");
@@ -609,7 +672,7 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let kernel_path = paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION);
     let expected_sha = select_sha(arch, KERNEL_SHA256_X86_64, KERNEL_SHA256_AARCH64);
 
-    if ensure_artifact_installed(&kernel_path, expected_sha, None).await? {
+    if ensure_artifact_installed(&kernel_path, expected_sha, Some(KERNEL_ARTIFACT_MODE)).await? {
         tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} already installed, skipping download");
         return Ok(());
     }
@@ -626,7 +689,7 @@ async fn download_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
         "kernel",
         &tmp_path,
         &kernel_path,
-        None,
+        Some(KERNEL_ARTIFACT_MODE),
     )
     .await?;
     tracing::info!("[OK] kernel vmlinux-{KERNEL_VERSION} installed");
@@ -637,7 +700,7 @@ async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
     let bin_path = paths.mitmdump_bin(MITMPROXY_VERSION);
     let expected_sha = select_sha(arch, MITMDUMP_SHA256_X86_64, MITMDUMP_SHA256_AARCH64);
 
-    if ensure_artifact_installed(&bin_path, expected_sha, Some(0o755)).await? {
+    if ensure_artifact_installed(&bin_path, expected_sha, Some(EXECUTABLE_ARTIFACT_MODE)).await? {
         tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} already installed, skipping download");
         return Ok(());
     }
@@ -662,7 +725,7 @@ async fn download_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
         "mitmdump",
         &tmp_path,
         &bin_path,
-        Some(0o755),
+        Some(EXECUTABLE_ARTIFACT_MODE),
     )
     .await?;
     tracing::info!("[OK] mitmdump {MITMPROXY_VERSION} installed");
@@ -867,6 +930,38 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn create_setup_temp_file_replaces_stale_wide_file_privately() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("download.tmp");
+        std::fs::write(&path, b"stale").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
+
+        let file = create_setup_temp_file(&path, "test temp").await.unwrap();
+        drop(file);
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, SETUP_TEMP_FILE_MODE);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_setup_temp_file_sync_replaces_stale_wide_file_privately() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("extract.tmp");
+        std::fs::write(&path, b"stale").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
+
+        let file = create_setup_temp_file_sync(&path, "test temp").unwrap();
+        drop(file);
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, SETUP_TEMP_FILE_MODE);
+    }
+
     #[tokio::test]
     async fn ensure_artifact_installed_returns_false_for_missing() {
         let dir = tempfile::tempdir().unwrap();
@@ -929,6 +1024,32 @@ mod tests {
         );
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o755);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn verify_and_install_sets_kernel_artifact_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp_path = dir.path().join("kernel.tmp");
+        let target = dir.path().join("vmlinux");
+        std::fs::write(&tmp_path, b"kernel").unwrap();
+        std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o666)).unwrap();
+        let sha = file_sha256(&tmp_path).await.unwrap();
+
+        verify_and_install(
+            &sha,
+            &sha,
+            "kernel",
+            &tmp_path,
+            &target,
+            Some(KERNEL_ARTIFACT_MODE),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(std::fs::read(&target).unwrap(), b"kernel");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, KERNEL_ARTIFACT_MODE);
     }
 
     #[tokio::test]
