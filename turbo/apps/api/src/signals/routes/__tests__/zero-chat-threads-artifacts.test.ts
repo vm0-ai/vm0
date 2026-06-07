@@ -57,7 +57,7 @@ async function seedRunUploadedFile(args: RunUploadedFileSeed): Promise<void> {
     contentType: args.contentType,
     sizeBytes: args.sizeBytes,
     url: args.url,
-    metadata: args.metadata ?? {},
+    ...(args.metadata !== undefined ? { metadata: args.metadata } : {}),
     ...(args.createdAt ? { createdAt: args.createdAt } : {}),
   });
 }
@@ -379,6 +379,7 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
       contentType: "application/zip",
       sizeBytes: 4096,
       url: `http://localhost:3000/f/${fixture.userId}/presentation-bundle/presentation.zip`,
+      metadata: { artifactKind: ["presentation-html"] },
       createdAt: new Date("2026-01-01T00:00:00Z"),
     });
     const presentationUrl = "https://demo-deck.sites.example.com";

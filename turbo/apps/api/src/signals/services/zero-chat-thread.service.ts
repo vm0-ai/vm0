@@ -250,6 +250,15 @@ function parseHostedArtifactKind(
   return parsed.success ? parsed.data : undefined;
 }
 
+function parseHostedArtifactKindFromMetadata(
+  metadata: unknown,
+): HostedArtifactKind | undefined {
+  if (!isRecord(metadata)) {
+    return undefined;
+  }
+  return parseHostedArtifactKind(metadata.artifactKind);
+}
+
 function hasAgentSessionId(
   value: unknown,
 ): value is { readonly agentSessionId: string } {
@@ -1053,7 +1062,7 @@ export function zeroChatThreadArtifacts(args: {
         rows
           .filter((row) => {
             return (
-              parseHostedArtifactKind(row.metadata.artifactKind) !== undefined
+              parseHostedArtifactKindFromMetadata(row.metadata) !== undefined
             );
           })
           .map((row) => {
@@ -1061,7 +1070,7 @@ export function zeroChatThreadArtifacts(args: {
           }),
       );
       const visibleRows = rows.filter((row) => {
-        const artifactKind = parseHostedArtifactKind(row.metadata.artifactKind);
+        const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
         return (
           !hostedArtifactRunIds.has(row.runId) || artifactKind !== undefined
         );
@@ -1086,7 +1095,7 @@ export function zeroChatThreadArtifacts(args: {
           runId: row.runId,
           files: [],
         };
-        const artifactKind = parseHostedArtifactKind(row.metadata.artifactKind);
+        const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
         existing.files.push({
           id: row.externalId,
           filename,
