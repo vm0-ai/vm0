@@ -93,6 +93,7 @@ const CONNECTOR_ICON_COLORFUL = {
   canva: true,
   chatglm: true,
   chatwoot: true,
+  checkr: true,
   "claude-code": true,
   clearbit: true,
   clickup: true,
