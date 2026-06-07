@@ -31,7 +31,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 /// time during cleanup, so a small bounded queue is plenty.
 const COMMAND_CHANNEL_CAPACITY: usize = 8;
 
-/// Maximum bytes read from a single telemetry source in one upload pass.
+/// Maximum bytes held for a single line-aligned telemetry read.
 const TELEMETRY_DELTA_READ_LIMIT: usize = 256 * 1024;
 
 /// Marker uploaded when a single system-log line is too large to send safely.
@@ -150,6 +150,21 @@ fn read_from_line_boundary(
     }
 }
 
+fn read_bounded_at(file: &mut std::fs::File, file_len: u64, pos: u64) -> Option<(Vec<u8>, u64)> {
+    let unread_len = file_len.checked_sub(pos)?;
+    let to_read = unread_len.min(TELEMETRY_DELTA_READ_LIMIT as u64) as usize;
+    let mut buf = vec![0u8; to_read];
+
+    if file.seek(SeekFrom::Start(pos)).is_err() {
+        return None;
+    }
+    if file.read_exact(&mut buf).is_err() {
+        return None;
+    }
+
+    Some((buf, unread_len))
+}
+
 /// Read new bytes from `file_path` starting at the position stored in `pos_path`.
 /// Returns the new content, updated position, and whether the position advanced.
 ///
@@ -197,37 +212,53 @@ fn read_file_delta_with_behavior(
         return TextDelta::empty(last_pos);
     };
 
-    if file.seek(SeekFrom::Start(last_pos)).is_err() {
+    let Some((buf, unread_len)) = read_bounded_at(&mut file, file_len, last_pos) else {
         return TextDelta::empty(last_pos);
-    }
-
-    let unread_len = file_len - last_pos;
-    let to_read = unread_len.min(TELEMETRY_DELTA_READ_LIMIT as u64) as usize;
-    let mut buf = vec![0u8; to_read];
-    if file.read_exact(&mut buf).is_err() {
-        return TextDelta::empty(last_pos);
-    }
+    };
 
     if !at_line_boundary {
         let Some(idx) = buf.iter().position(|&b| b == b'\n') else {
-            return TextDelta::progressed(String::new(), last_pos + to_read as u64);
+            return TextDelta::progressed(String::new(), last_pos + buf.len() as u64);
         };
 
         let consumed = idx + 1;
         let boundary_pos = last_pos + consumed as u64;
-        let Some(remaining) = buf.get(consumed..) else {
-            return TextDelta::progressed(String::new(), boundary_pos);
-        };
+        let remaining_unread_len = file_len - boundary_pos;
+        let remaining_len = buf.len().saturating_sub(consumed);
 
-        if remaining.is_empty() {
+        if remaining_unread_len == 0 {
             return TextDelta::progressed(String::new(), boundary_pos);
         }
 
-        let remaining_unread_len = unread_len.saturating_sub(consumed as u64);
+        if remaining_unread_len <= remaining_len as u64 {
+            let Some(remaining) = buf.get(consumed..) else {
+                return TextDelta::progressed(String::new(), boundary_pos);
+            };
+
+            let delta = read_from_line_boundary(
+                remaining,
+                boundary_pos,
+                remaining_unread_len,
+                mode,
+                oversized_line_behavior,
+            );
+            return if delta.made_progress {
+                delta
+            } else {
+                TextDelta::progressed(String::new(), boundary_pos)
+            };
+        }
+
+        drop(buf);
+        let Some((boundary_buf, boundary_unread_len)) =
+            read_bounded_at(&mut file, file_len, boundary_pos)
+        else {
+            return TextDelta::progressed(String::new(), boundary_pos);
+        };
         let delta = read_from_line_boundary(
-            remaining,
+            &boundary_buf,
             boundary_pos,
-            remaining_unread_len,
+            boundary_unread_len,
             mode,
             oversized_line_behavior,
         );
@@ -907,6 +938,27 @@ mod tests {
             UploadMode::Final,
         );
         assert_eq!(delta.content, "next\ntail");
+        assert_eq!(delta.new_pos, content.len() as u64);
+        assert!(delta.made_progress);
+    }
+
+    #[test]
+    fn read_file_delta_final_resync_reads_full_bounded_tail_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        let skipped_suffix = "x".repeat(TELEMETRY_DELTA_READ_LIMIT / 2);
+        let tail = "t".repeat(TELEMETRY_DELTA_READ_LIMIT - 8);
+        let content = format!("{skipped_suffix}\n{tail}");
+        fs::write(&file, &content).unwrap();
+        fs::write(&pos, "1").unwrap();
+
+        let delta = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Final,
+        );
+        assert_eq!(delta.content, tail);
         assert_eq!(delta.new_pos, content.len() as u64);
         assert!(delta.made_progress);
     }
