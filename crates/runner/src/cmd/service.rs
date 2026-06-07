@@ -345,19 +345,21 @@ pub(crate) async fn is_unit_active(name: &str) -> RunnerResult<bool> {
 /// Get the main PID of a systemd unit.
 async fn get_service_pid(unit: &str) -> RunnerResult<Option<u32>> {
     let svc = format!("{unit}.service");
-    let properties = ["MainPID"];
+    let properties = ["LoadState", "MainPID"];
     let output = run_systemctl_show(&svc, &properties).await?;
-    if !output.status.success() {
-        return Err(systemctl_show_status_error(
-            &svc,
-            &properties,
-            &output.status,
-            &output.stderr,
-        ));
-    }
-    let values = parse_systemctl_show_properties(&svc, &properties, &output.stdout)?;
-    let pid_str = required_systemctl_property(&svc, &values, "MainPID")?;
-    parse_main_pid(&svc, pid_str)
+    let values = match parse_systemctl_show_properties(&svc, &properties, &output.stdout) {
+        Ok(values) => values,
+        Err(_) if !output.status.success() => {
+            return Err(systemctl_show_status_error(
+                &svc,
+                &properties,
+                &output.status,
+                &output.stderr,
+            ));
+        }
+        Err(e) => return Err(e),
+    };
+    service_pid_from_systemctl_show(&svc, &properties, &output.status, &values, &output.stderr)
 }
 
 async fn run_systemctl_show(svc: &str, properties: &[&str]) -> RunnerResult<Output> {
@@ -459,6 +461,29 @@ fn unit_active_from_systemctl_show(
     Ok(active)
 }
 
+fn service_pid_from_systemctl_show(
+    svc: &str,
+    properties: &[&str],
+    status: &ExitStatus,
+    values: &BTreeMap<String, String>,
+    stderr: &[u8],
+) -> RunnerResult<Option<u32>> {
+    let load_state = required_systemctl_property(svc, values, "LoadState")?;
+    let pid_str = required_systemctl_property(svc, values, "MainPID")?;
+    let pid = match parse_main_pid(svc, pid_str) {
+        Ok(pid) => pid,
+        Err(_) if !status.success() => {
+            return Err(systemctl_show_status_error(svc, properties, status, stderr));
+        }
+        Err(e) => return Err(e),
+    };
+    let missing_unit = load_state == "not-found" && pid.is_none();
+    if !status.success() && !missing_unit {
+        return Err(systemctl_show_status_error(svc, properties, status, stderr));
+    }
+    Ok(pid)
+}
+
 fn parse_main_pid(svc: &str, value: &str) -> RunnerResult<Option<u32>> {
     let value = value.trim();
     if value.is_empty() {
@@ -499,8 +524,9 @@ fn systemctl_show_status_error(
 /// The `AlreadyGone` variant collapses two distinct races into a single
 /// state so callers can encode one policy instead of two:
 ///
-/// 1. `systemctl show --property=MainPID` read `0` — the runner either
-///    exited, or systemd is mid-transition and has cleared MainPID.
+/// 1. `systemctl show` read `MainPID=0` — the runner either exited, systemd
+///    is mid-transition and has cleared MainPID, or the unit was explicitly
+///    reported as not found after a prior active-state check.
 /// 2. MainPID resolved to a live value but `kill(2)` returned `ESRCH`
 ///    because the process exited in the ~µs window before signal delivery.
 ///
@@ -1330,6 +1356,108 @@ mod tests {
         let message = err.to_string();
 
         assert!(message.contains("Failed to connect to bus"));
+    }
+
+    #[test]
+    fn service_pid_from_systemctl_show_returns_pid_on_success() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "MainPID"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"LoadState=loaded\nMainPID=123\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0);
+
+        assert_eq!(
+            service_pid_from_systemctl_show(
+                "vm0-runner-test.service",
+                &properties,
+                &status,
+                &values,
+                b"",
+            )
+            .unwrap(),
+            Some(123)
+        );
+    }
+
+    #[test]
+    fn service_pid_from_systemctl_show_allows_not_found_zero_on_failed_status() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "MainPID"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"LoadState=not-found\nMainPID=0\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0x100);
+
+        assert_eq!(
+            service_pid_from_systemctl_show(
+                "vm0-runner-test.service",
+                &properties,
+                &status,
+                &values,
+                b"Unit not found\n",
+            )
+            .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn service_pid_from_systemctl_show_rejects_nonzero_loaded_zero() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "MainPID"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"LoadState=loaded\nMainPID=0\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0x100);
+        let err = service_pid_from_systemctl_show(
+            "vm0-runner-test.service",
+            &properties,
+            &status,
+            &values,
+            b"Failed to connect to bus\n",
+        )
+        .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("Failed to connect to bus"));
+    }
+
+    #[test]
+    fn service_pid_from_systemctl_show_rejects_malformed_pid_on_failed_status() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "MainPID"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"LoadState=not-found\nMainPID=abc\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0x100);
+        let err = service_pid_from_systemctl_show(
+            "vm0-runner-test.service",
+            &properties,
+            &status,
+            &values,
+            b"Unit not found\n",
+        )
+        .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("Unit not found"));
     }
 
     #[test]
