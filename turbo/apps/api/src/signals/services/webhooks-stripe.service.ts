@@ -17,7 +17,6 @@ import {
   tierForKnownPriceId,
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
-import { isCurrentStripePreviewMetadata } from "./stripe-preview-metadata.service";
 import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
 
 const L = logger("WebhookStripe");
@@ -48,7 +47,6 @@ interface InvoiceInput {
   };
   readonly parent: {
     readonly subscription_details: {
-      readonly metadata?: Record<string, string> | null;
       readonly subscription: string | { readonly id: string };
     } | null;
   } | null;
@@ -58,7 +56,6 @@ interface SubscriptionInput {
   readonly id: string;
   readonly customer?: string | { readonly id: string } | null;
   readonly status: string;
-  readonly metadata?: Record<string, string> | null;
   readonly trial_end?: number | null;
   readonly cancel_at?: number | null;
   readonly cancel_at_period_end: boolean;
@@ -73,7 +70,6 @@ interface SubscriptionInput {
 
 interface SubscriptionDeletedInput {
   readonly id: string;
-  readonly metadata?: Record<string, string> | null;
 }
 
 interface SubscriptionPreviousAttributes {
@@ -248,41 +244,6 @@ function creditPurchaseAmount(session: CheckoutSessionInput): number {
 
 function autoRechargeNeverExpiresAt(): Date {
   return new Date("2999-12-31T00:00:00Z");
-}
-
-function stripePreviewMetadataForEvent(
-  event: Stripe.Event,
-): readonly (Readonly<Record<string, string>> | null | undefined)[] | null {
-  switch (event.type) {
-    case "checkout.session.completed":
-    case "checkout.session.async_payment_succeeded": {
-      return [event.data.object.metadata];
-    }
-    case "invoice.paid": {
-      return [
-        event.data.object.metadata,
-        event.data.object.parent?.subscription_details?.metadata,
-      ];
-    }
-    case "customer.subscription.created":
-    case "customer.subscription.updated":
-    case "customer.subscription.deleted": {
-      return [event.data.object.metadata];
-    }
-    default: {
-      return null;
-    }
-  }
-}
-
-function shouldHandleStripePreviewEvent(event: Stripe.Event): boolean {
-  const metadataCandidates = stripePreviewMetadataForEvent(event);
-  if (metadataCandidates === null) {
-    return true;
-  }
-  return metadataCandidates.some((metadata) => {
-    return isCurrentStripePreviewMetadata(metadata);
-  });
 }
 
 async function grantOrgCredits(
@@ -1470,14 +1431,6 @@ export const handleStripeWebhookEvent$ = command(
     const db = set(writeDb$);
     let drainOrgId: string | null = null;
     L.debug("stripe webhook received", { type: event.type, id: event.id });
-
-    if (!shouldHandleStripePreviewEvent(event)) {
-      L.debug("ignoring Stripe preview event for a different job", {
-        type: event.type,
-        id: event.id,
-      });
-      return;
-    }
 
     switch (event.type) {
       case "checkout.session.completed": {

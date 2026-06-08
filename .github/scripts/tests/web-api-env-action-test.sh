@@ -155,7 +155,6 @@ assert_env_value "$success_env_file" GOOGLE_ADS_DEVELOPER_TOKEN "github-google-a
 assert_env_value "$success_env_file" FINICITY_APP_KEY "github-finicity-app-key"
 assert_env_value "$success_env_file" FINICITY_APP_SECRET "github-finicity-app-secret"
 assert_env_value "$success_env_file" FINICITY_PARTNER_ID "github-finicity-partner-id"
-assert_env_value "$success_env_file" VM0_PREVIEW_JOB_REF "pr-123"
 assert_env_absent_value "$success_env_file" "github-gh-client-id"
 assert_env_absent_value "$success_env_file" "github-gh-client-secret"
 assert_env_absent_value "$success_env_file" "github-slack-client-id"

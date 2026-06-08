@@ -883,7 +883,7 @@ jobs:
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
           DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
-      - name: Configure Stripe webhook endpoint for API preview
+      - name: Use Stripe CLI webhook secret for API preview
         if: |
           needs.prepare.outputs.web-changed == 'true' ||
           needs.prepare.outputs.api-changed == 'true' ||
@@ -895,11 +895,25 @@ jobs:
           needs.prepare.outputs.api-backend-needed == 'true'
         run: |
           set -euo pipefail
-          bash .github/scripts/stripe-preview-webhook.sh upsert
+          export PATH="$HOME/.local/bin:$PATH"
+          bash e2e/scripts/ensure-stripe-cli.sh
+
+          stripe_webhook_secret="$(stripe listen --api-key "$STRIPE_SECRET_KEY" --print-secret 2>/dev/null)"
+          echo "::add-mask::$stripe_webhook_secret"
+          if [[ "$stripe_webhook_secret" != whsec_* ]]; then
+            echo "Stripe CLI did not return a webhook signing secret" >&2
+            exit 1
+          fi
+
+          if grep -q '^STRIPE_WEBHOOK_SECRET=' "$API_ENV_FILE"; then
+            sed -i "s|^STRIPE_WEBHOOK_SECRET=.*|STRIPE_WEBHOOK_SECRET=${stripe_webhook_secret}|" "$API_ENV_FILE"
+          else
+            printf 'STRIPE_WEBHOOK_SECRET=%s\n' "$stripe_webhook_secret" >> "$API_ENV_FILE"
+          fi
+
+          echo "Configured API preview to trust Stripe CLI webhooks"
         env:
           API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
-          API_PREVIEW_URL: ${{ needs.prepare.outputs.api-preview-url }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
 
       - name: Deploy API to Vercel
@@ -1346,6 +1360,42 @@ jobs:
         run: cd e2e && npm ci
       - name: Install Playwright browsers
         run: cd e2e && npx playwright install --with-deps chromium
+      - name: Start Stripe webhook forwarding
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          bash e2e/scripts/ensure-stripe-cli.sh
+
+          stripe_webhook_secret="$(stripe listen --api-key "$STRIPE_SECRET_KEY" --print-secret 2>/dev/null)"
+          echo "::add-mask::$stripe_webhook_secret"
+
+          forward_url="${API_PREVIEW_URL%/}/api/webhooks/stripe"
+          stripe listen \
+            --api-key "$STRIPE_SECRET_KEY" \
+            --events checkout.session.completed,invoice.paid,customer.subscription.updated,customer.subscription.deleted \
+            --forward-to "$forward_url" \
+            > /tmp/stripe-listen.log 2>&1 &
+          stripe_pid="$!"
+          echo "$stripe_pid" > /tmp/stripe-listen.pid
+
+          for _ in {1..10}; do
+            if grep -qi 'ready' /tmp/stripe-listen.log; then
+              echo "Stripe webhook forwarding started for $forward_url"
+              exit 0
+            fi
+            if ! kill -0 "$stripe_pid" 2>/dev/null; then
+              sed -E 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g' /tmp/stripe-listen.log >&2
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "Stripe CLI did not become ready" >&2
+          sed -E 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g' /tmp/stripe-listen.log >&2
+          exit 1
+        env:
+          API_PREVIEW_URL: ${{ needs.prepare.outputs.api-preview-url }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       - name: Run Playwright E2E tests
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
@@ -1353,6 +1403,18 @@ jobs:
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+      - name: Print Stripe webhook forwarding log
+        if: always()
+        run: |
+          if [[ -f /tmp/stripe-listen.log ]]; then
+            tail -200 /tmp/stripe-listen.log | sed -E 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g'
+          fi
+      - name: Stop Stripe webhook forwarding
+        if: always()
+        run: |
+          if [[ -f /tmp/stripe-listen.pid ]]; then
+            kill "$(cat /tmp/stripe-listen.pid)" 2>/dev/null || true
+          fi
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v7

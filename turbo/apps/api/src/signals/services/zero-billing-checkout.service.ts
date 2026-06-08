@@ -8,7 +8,6 @@ import { nowDate } from "../external/time";
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
-import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
@@ -148,7 +147,6 @@ function checkoutSessionMetadata(args: {
       metadata[key] = value;
     }
   }
-  Object.assign(metadata, stripePreviewMetadata());
   return metadata;
 }
 
@@ -349,7 +347,6 @@ export const createCreditCheckoutSession$ = command(
     const baseMetadata = {
       purpose: "credit_purchase",
       orgId: args.orgId,
-      ...stripePreviewMetadata(),
     };
     const customCreditPriceId = activeCustomCreditPriceId();
     if (!customCreditPriceId) {
