@@ -1667,7 +1667,7 @@ describe("POST /api/zero/chat/messages", () => {
     expect(prompt).not.toContain("retry after two failures");
   });
 
-  it("forceNewSession rewrites the model pin while retaining web chat context", async () => {
+  it("starts a server-detected new session for model switches while retaining web chat context", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
     await seedVm0Credits(fixture, 1000);
@@ -1703,7 +1703,14 @@ describe("POST /api/zero/chat/messages", () => {
       prompt: "first on opus",
     });
     await clearAllDetached();
-    await setRunStatus(first.body.runId!, "completed");
+    const [firstRun] = await writeDb
+      .select({ sessionId: agentRuns.sessionId })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, first.body.runId!))
+      .limit(1);
+    await setRunStatus(first.body.runId!, "completed", {
+      agentSessionId: firstRun!.sessionId,
+    });
 
     const second = await send({
       agentId: fixture.agentId,
@@ -1713,7 +1720,6 @@ describe("POST /api/zero/chat/messages", () => {
         modelProviderId: "00000000-0000-4000-8000-000000000000",
         selectedModel: "claude-sonnet-4-6",
       },
-      forceNewSession: true,
     });
     await clearAllDetached();
 
@@ -1727,6 +1733,7 @@ describe("POST /api/zero/chat/messages", () => {
     const [run] = await writeDb
       .select({
         selectedModel: zeroRuns.selectedModel,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
         appendSystemPrompt: agentRuns.appendSystemPrompt,
       })
       .from(zeroRuns)
@@ -1734,6 +1741,7 @@ describe("POST /api/zero/chat/messages", () => {
       .where(eq(zeroRuns.id, second.body.runId!))
       .limit(1);
     expect(run?.selectedModel).toBe("claude-sonnet-4-6");
+    expect(run?.continuedFromSessionId).toBeNull();
     expect(run?.appendSystemPrompt).toContain("# Web Chat Run Context");
     expect(run?.appendSystemPrompt).toContain(`RUN_ID: ${first.body.runId}`);
     expect(run?.appendSystemPrompt).toContain(
@@ -2559,8 +2567,9 @@ describe("POST /api/zero/chat/messages", () => {
     expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
-  it("locks an existing thread to its first model selection", async () => {
+  it("allows an explicit model selection to replace an existing thread pin", async () => {
     const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
     const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6");
 
     const first = await send({
@@ -2574,26 +2583,37 @@ describe("POST /api/zero/chat/messages", () => {
     await clearAllDetached();
     await setRunStatus(first.body.runId!, "completed");
 
-    const response = await accept(
-      client().send({
-        headers: authHeaders(),
-        body: {
-          agentId: fixture.agentId,
-          prompt: "switch model",
-          threadId: first.body.threadId,
-          modelSelection: {
-            modelProviderId: providerId,
-            selectedModel: "claude-opus-4-7",
-          },
-        },
-      }),
-      [400],
-    );
+    const second = await send({
+      agentId: fixture.agentId,
+      prompt: "switch model",
+      threadId: first.body.threadId,
+      modelSelection: {
+        modelProviderId: providerId,
+        selectedModel: "claude-opus-4-7",
+      },
+    });
+    await clearAllDetached();
 
-    expect(response.body.error.code).toBe("BAD_REQUEST");
-    expect(response.body.error.message).toContain(
-      "Cannot change model on an existing thread",
-    );
+    expect(second.body.runId).toStrictEqual(expect.any(String));
+    const [thread] = await writeDb
+      .select({ selectedModel: chatThreads.selectedModel })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, first.body.threadId))
+      .limit(1);
+    expect(thread?.selectedModel).toBe("claude-opus-4-7");
+
+    const [run] = await writeDb
+      .select({
+        modelProviderId: zeroRuns.modelProviderId,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, second.body.runId!))
+      .limit(1);
+    expect(run).toMatchObject({
+      modelProviderId: providerId,
+      selectedModel: "claude-opus-4-7",
+    });
   });
 
   it("normalizes legacy built-in first-run pins that still carry provider IDs", async () => {
