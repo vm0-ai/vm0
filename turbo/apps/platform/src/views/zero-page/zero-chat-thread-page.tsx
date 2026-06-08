@@ -3493,11 +3493,15 @@ function isPermissionActionAlreadyApplied(params: {
   hasAgent: boolean;
   userGrantPolicy: FirewallPolicyValue | undefined;
   action: "allow" | "deny";
+  requestedExpirationChange: boolean;
 }): boolean {
   if (!params.hasAgent) {
     return false;
   }
-  return params.userGrantPolicy === params.action;
+  return (
+    params.userGrantPolicy === params.action &&
+    !params.requestedExpirationChange
+  );
 }
 
 function findPermissionActionPermission(block: PermissionActionBlock) {
@@ -3584,6 +3588,7 @@ function createPermissionActionCardViewState(params: {
   agentLoadableState: string;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
+  requestedExpirationChange: boolean;
 }) {
   const focusedPermission = findPermissionActionPermission(params.block);
   const actionLabel = permissionActionVerb(params.block.action);
@@ -3606,6 +3611,7 @@ function createPermissionActionCardViewState(params: {
     hasAgent: params.hasAgent,
     userGrantPolicy,
     action: params.block.action,
+    requestedExpirationChange: params.requestedExpirationChange,
   });
   const saveDone = params.grantLoadableState === "hasData";
   const buttonState = createPermissionActionCardButtonState({
@@ -3764,6 +3770,8 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const expirationEnabled =
     features?.[FeatureSwitchKey.ExpiringPermissionGrants] ?? false;
   const expirationAvailable = expirationEnabled && block.action === "allow";
+  const requestedExpirationChange =
+    expirationAvailable && block.expiresIn !== null;
   const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
   const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
@@ -3788,6 +3796,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     agentLoadableState: agentLoadable.state,
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
+    requestedExpirationChange,
   });
   const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
   const grantExpiresAt =

@@ -79,8 +79,18 @@ function permissionActionBaseUrl(): string | null {
   return browserOrigin() ?? configuredApiUrl ?? null;
 }
 
+function stripUrlParserIgnoredPrefix(value: string): string {
+  let index = 0;
+  while (index < value.length && value.charCodeAt(index) <= 0x20) {
+    index += 1;
+  }
+  return value.slice(index);
+}
+
 function hasExplicitUrlOrigin(value: string): boolean {
-  return /^(?:[a-z][a-z\d+\-.]*:)?\/\//i.test(value);
+  return (
+    URL.canParse(value) || stripUrlParserIgnoredPrefix(value).startsWith("//")
+  );
 }
 
 function isPlatformPermissionHostname(hostname: string): boolean {
