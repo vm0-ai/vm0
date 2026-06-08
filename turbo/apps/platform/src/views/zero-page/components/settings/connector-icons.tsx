@@ -155,6 +155,7 @@ const CONNECTOR_ICON_COLORFUL = {
   instagram: true,
   instantly: true,
   "intervals-icu": true,
+  ironclad: true,
   jam: true,
   jira: true,
   jotform: true,
