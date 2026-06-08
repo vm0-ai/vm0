@@ -8,6 +8,7 @@ import {
   zeroBillingInvoicesContract,
   zeroBillingDowngradeContract,
   zeroBillingRestoreContract,
+  type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
@@ -26,6 +27,10 @@ type CompletedBillingCheckoutTier = "pro" | "team";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
+
+const RESTORE_PAYMENT_PENDING_KEY = "vm0:billing:restore-payment-pending";
+const RESTORE_SUCCESS_TOAST =
+  "Plan restored. Your subscription will renew normally.";
 
 function formatEffectiveDate(effectiveDate: string | null): string | null {
   if (!effectiveDate) {
@@ -54,6 +59,42 @@ export function apiTierToBillingTier(tier: string | undefined): BillingTier {
     return tier;
   }
   return "pro-suspend";
+}
+
+function pendingRestoreStorage(): Storage | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.sessionStorage;
+}
+
+function rememberPendingRestorePayment(): void {
+  pendingRestoreStorage()?.setItem(RESTORE_PAYMENT_PENDING_KEY, "1");
+}
+
+function clearPendingRestorePayment(): void {
+  pendingRestoreStorage()?.removeItem(RESTORE_PAYMENT_PENDING_KEY);
+}
+
+function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
+  const storage = pendingRestoreStorage();
+  if (storage?.getItem(RESTORE_PAYMENT_PENDING_KEY) !== "1") {
+    return;
+  }
+
+  const tier = apiTierToBillingTier(status.tier);
+  const restored =
+    status.hasSubscription &&
+    (tier === "pro" || tier === "team") &&
+    !status.cancelAtPeriodEnd &&
+    status.scheduledChange === null;
+  if (!restored) {
+    return;
+  }
+
+  storage.removeItem(RESTORE_PAYMENT_PENDING_KEY);
+  toast.success(RESTORE_SUCCESS_TOAST);
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +161,7 @@ export const billingStatusAsync$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroBillingStatusContract);
   const result = await accept(client.get(), [200]);
+  maybeShowPendingRestoreToast(result.body);
   return result.body;
 });
 
@@ -328,19 +370,27 @@ export const restorePlan$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingRestoreContract);
-    await accept(
+    const result = await accept(
       client.create({
-        body: {},
+        body: { returnUrl: window.location.href },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
+    if (result.body.status === "payment_method_required") {
+      rememberPendingRestorePayment();
+      set(internalRestoreDialogOpen$, false);
+      window.location.assign(result.body.checkoutUrl);
+      return;
+    }
+
+    clearPendingRestorePayment();
     set(internalRestoreDialogOpen$, false);
     set(billingReload$, (x) => {
       return x + 1;
     });
-    toast.success("Plan restored. Your subscription will renew normally.");
+    toast.success(RESTORE_SUCCESS_TOAST);
   },
 );
 

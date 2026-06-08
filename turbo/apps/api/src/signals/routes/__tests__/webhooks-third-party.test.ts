@@ -2697,6 +2697,61 @@ describe("POST /api/webhooks/stripe", () => {
         creditsBefore + 100_000,
       );
     });
+
+    it("restores a scheduled cancellation after setup checkout collects a payment method", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        tier: "pro",
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: new Date("2026-09-08T08:22:49Z"),
+      });
+      context.mocks.stripe.customers.update.mockResolvedValue({
+        id: fixture.stripeCustomerId,
+      });
+      context.mocks.stripe.subscriptions.update.mockResolvedValue({
+        id: subId,
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "checkout.session.completed",
+        dataObject: {
+          id: stripeId("cs"),
+          mode: "setup",
+          subscription: null,
+          customer: fixture.stripeCustomerId,
+          setup_intent: {
+            id: stripeId("seti"),
+            payment_method: "pm_restore",
+          },
+          metadata: {
+            purpose: "billing_restore",
+            orgId: fixture.orgId,
+            subscriptionId: subId,
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.stripe.customers.update).toHaveBeenCalledWith(
+        fixture.stripeCustomerId,
+        { invoice_settings: { default_payment_method: "pm_restore" } },
+      );
+      expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+        subId,
+        { cancel_at_period_end: false },
+      );
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.cancelAtPeriodEnd).toBeFalsy();
+      expect(billing.pendingSubscriptionScheduleId).toBeNull();
+      expect(billing.pendingSubscriptionTargetTier).toBeNull();
+      expect(billing.pendingSubscriptionChangeAt).toBeNull();
+    });
   });
 
   describe("customer.subscription.created", () => {

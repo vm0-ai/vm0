@@ -101,7 +101,7 @@ export const apiBillingHandlers = [
   mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
     mockBillingStatus.cancelAtPeriodEnd = false;
     mockBillingStatus.scheduledChange = null;
-    return respond(200, { success: true });
+    return respond(200, { status: "restored" });
   }),
 
   mockApi(zeroBillingAutoRechargeContract.get, ({ respond }) => {

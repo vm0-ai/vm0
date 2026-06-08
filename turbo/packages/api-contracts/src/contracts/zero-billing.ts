@@ -365,9 +365,19 @@ const downgradeResponseSchema = z.object({
   effectiveDate: z.string().nullable(),
 });
 
-const restoreResponseSchema = z.object({
-  success: z.boolean(),
+const restoreRequestSchema = z.object({
+  returnUrl: z.string().url().optional(),
 });
+
+const restoreResponseSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("restored"),
+  }),
+  z.object({
+    status: z.literal("payment_method_required"),
+    checkoutUrl: z.string().url(),
+  }),
+]);
 
 /**
  * Zero contract for POST /api/zero/billing/downgrade
@@ -401,7 +411,7 @@ export const zeroBillingRestoreContract = c.router({
     method: "POST",
     path: "/api/zero/billing/restore",
     headers: authHeadersSchema,
-    body: z.object({}),
+    body: restoreRequestSchema,
     responses: {
       200: restoreResponseSchema,
       401: apiErrorSchema,

@@ -37,10 +37,12 @@ vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
 
 const context = testContext();
 const mockApi = createMockApi(context);
+const restorePaymentPendingKey = "vm0:billing:restore-payment-pending";
 
 beforeEach(() => {
   vi.mocked(toast.error).mockClear();
   vi.mocked(toast.success).mockClear();
+  window.sessionStorage.removeItem(restorePaymentPendingKey);
 });
 
 async function openBillingTab() {
@@ -930,7 +932,7 @@ describe("org billing tab - cancellation pending", () => {
       mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
         restoreCalled = true;
         setMockBillingStatus({ cancelAtPeriodEnd: false });
-        return respond(200, { success: true });
+        return respond(200, { status: "restored" });
       }),
     );
     setMockBillingStatus({
@@ -979,12 +981,93 @@ describe("org billing tab - cancellation pending", () => {
     expect(screen.queryByText(/has been cancelled/)).not.toBeInTheDocument();
   });
 
+  it("should redirect to setup checkout when restore requires a payment method", async () => {
+    const checkoutUrl = "https://checkout.stripe.com/setup/restore";
+    const assignSpy = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => {});
+    let restoreCalled = false;
+    let restoreReturnUrl: string | undefined;
+    server.use(
+      mockApi(zeroBillingRestoreContract.create, ({ body, respond }) => {
+        restoreCalled = true;
+        restoreReturnUrl = body.returnUrl;
+        return respond(200, {
+          status: "payment_method_required",
+          checkoutUrl,
+        });
+      }),
+    );
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: true,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    const restoreButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Restore plan";
+    });
+    expect(restoreButton).toBeDefined();
+    click(restoreButton!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Restore Pro plan?" });
+    });
+    const confirmRestoreButton = findButtonByText(
+      confirmDialog,
+      "Restore plan",
+    );
+    expect(confirmRestoreButton).toBeDefined();
+    click(confirmRestoreButton!);
+
+    await waitFor(() => {
+      expect(restoreCalled).toBeTruthy();
+      expect(restoreReturnUrl).toBeDefined();
+      expect(assignSpy).toHaveBeenCalledWith(checkoutUrl);
+    });
+    expect(window.sessionStorage.getItem(restorePaymentPendingKey)).toBe("1");
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    assignSpy.mockRestore();
+  });
+
+  it("should toast when setup checkout restore completes through billing refresh", async () => {
+    window.sessionStorage.setItem(restorePaymentPendingKey, "1");
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: false,
+      scheduledChange: null,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        "Plan restored. Your subscription will renew normally.",
+      );
+    });
+    expect(window.sessionStorage.getItem(restorePaymentPendingKey)).toBeNull();
+  });
+
   it("should close restore confirmation without calling API", async () => {
     let restoreCalled = false;
     server.use(
       mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
         restoreCalled = true;
-        return respond(200, { success: true });
+        return respond(200, { status: "restored" });
       }),
     );
     setMockBillingStatus({
@@ -1078,7 +1161,7 @@ describe("org billing tab - cancellation pending", () => {
       mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
         restoreCalled = true;
         setMockBillingStatus({ scheduledChange: null });
-        return respond(200, { success: true });
+        return respond(200, { status: "restored" });
       }),
     );
     setMockBillingStatus({
@@ -1219,7 +1302,7 @@ describe("org billing tab - plan card details", () => {
       mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
         restoreCalled = true;
         setMockBillingStatus({ cancelAtPeriodEnd: false });
-        return respond(200, { success: true });
+        return respond(200, { status: "restored" });
       }),
     );
     setMockBillingStatus({
@@ -1280,7 +1363,7 @@ describe("org billing tab - plan card details", () => {
       mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
         restoreCalled = true;
         setMockBillingStatus({ scheduledChange: null });
-        return respond(200, { success: true });
+        return respond(200, { status: "restored" });
       }),
     );
     setMockBillingStatus({

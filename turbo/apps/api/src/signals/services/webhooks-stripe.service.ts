@@ -22,10 +22,12 @@ import {
   subscriptionScheduleCancellationEnd,
   subscriptionScheduleId,
 } from "./stripe-subscription-schedules.service";
+import { restoreSubscriptionForOrg } from "./zero-billing-restore.service";
 import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
 import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
 
 const L = logger("WebhookStripe");
+const BILLING_RESTORE_PURPOSE = "billing_restore";
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -34,6 +36,14 @@ interface CheckoutSessionInput {
   readonly subscription: string | { readonly id: string } | null;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
+  readonly mode?: string | null;
+  readonly setup_intent?:
+    | string
+    | {
+        readonly id: string;
+        readonly payment_method?: string | { readonly id: string } | null;
+      }
+    | null;
   readonly amount_subtotal?: number | null;
   readonly amount_total?: number | null;
   readonly payment_status?: string | null;
@@ -95,6 +105,11 @@ interface SubscriptionScheduleInput {
 interface CheckoutSubscriptionContext {
   readonly customerId: string;
   readonly subscriptionId: string;
+}
+
+interface BillingRestoreCheckoutOutcome {
+  readonly handled: boolean;
+  readonly orgId: string | null;
 }
 
 interface InvoicePaidOrg {
@@ -629,6 +644,145 @@ function checkoutSubscriptionContext(
   }
 
   return { customerId, subscriptionId };
+}
+
+function checkoutCustomerId(session: CheckoutSessionInput): string | null {
+  return typeof session.customer === "string"
+    ? session.customer
+    : (session.customer?.id ?? null);
+}
+
+function setupIntentPaymentMethodId(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const setupIntent = value as {
+    readonly payment_method?: string | { readonly id: string } | null;
+  };
+  const paymentMethod = setupIntent.payment_method;
+  if (typeof paymentMethod === "string") {
+    return paymentMethod;
+  }
+  return paymentMethod?.id ?? null;
+}
+
+async function checkoutSetupPaymentMethodId(
+  stripe: ReturnType<typeof getStripeClient>,
+  session: CheckoutSessionInput,
+): Promise<string | null> {
+  const directPaymentMethodId = setupIntentPaymentMethodId(
+    session.setup_intent,
+  );
+  if (directPaymentMethodId) {
+    return directPaymentMethodId;
+  }
+
+  const refreshed = await stripe.checkout.sessions.retrieve(session.id, {
+    expand: ["setup_intent"],
+  });
+  return setupIntentPaymentMethodId(
+    (refreshed as { readonly setup_intent?: unknown }).setup_intent,
+  );
+}
+
+function billingRestoreCheckoutMetadata(
+  session: CheckoutSessionInput,
+): { readonly orgId: string; readonly subscriptionId: string } | null {
+  if (session.metadata?.purpose !== BILLING_RESTORE_PURPOSE) {
+    return null;
+  }
+
+  const orgId = session.metadata.orgId;
+  const subscriptionId = session.metadata.subscriptionId;
+  if (!orgId || !subscriptionId) {
+    L.warn("billing restore checkout missing metadata", {
+      sessionId: session.id,
+      orgId: orgId ?? null,
+      subscriptionId: subscriptionId ?? null,
+    });
+    return null;
+  }
+  return { orgId, subscriptionId };
+}
+
+async function handleBillingRestoreCheckoutCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<BillingRestoreCheckoutOutcome> {
+  const metadata = billingRestoreCheckoutMetadata(session);
+  if (!metadata) {
+    return { handled: false, orgId: null };
+  }
+  if (session.mode !== "setup") {
+    L.warn("billing restore checkout completed with unexpected mode", {
+      sessionId: session.id,
+      mode: session.mode ?? null,
+    });
+    return { handled: true, orgId: null };
+  }
+
+  const customerId = checkoutCustomerId(session);
+  if (!customerId) {
+    L.warn("billing restore checkout completed without customer", {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+    });
+    return { handled: true, orgId: null };
+  }
+
+  const [org] = await db
+    .select({
+      stripeCustomerId: orgMetadata.stripeCustomerId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, metadata.orgId))
+    .limit(1);
+
+  if (
+    !org ||
+    org.stripeSubscriptionId !== metadata.subscriptionId ||
+    (org.stripeCustomerId !== null && org.stripeCustomerId !== customerId)
+  ) {
+    L.warn("billing restore checkout no longer matches org billing state", {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+      customerId,
+      metadataSubscriptionId: metadata.subscriptionId,
+      orgStripeCustomerId: org?.stripeCustomerId ?? null,
+      orgStripeSubscriptionId: org?.stripeSubscriptionId ?? null,
+    });
+    return { handled: true, orgId: null };
+  }
+
+  const stripe = getStripeClient();
+  const paymentMethodId = await checkoutSetupPaymentMethodId(stripe, session);
+  if (!paymentMethodId) {
+    L.warn("billing restore checkout has no setup payment method", {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+    });
+    return { handled: true, orgId: null };
+  }
+
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  });
+
+  const restoreResult = await restoreSubscriptionForOrg(db, {
+    orgId: metadata.orgId,
+    requirePaymentMethod: false,
+  });
+  if (!restoreResult.ok) {
+    L.warn("billing restore checkout could not restore subscription", {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+      reason: restoreResult.reason,
+    });
+    return { handled: true, orgId: null };
+  }
+
+  return { handled: true, orgId: metadata.orgId };
 }
 
 async function shouldSkipSubscriptionBinding(
@@ -1214,6 +1368,18 @@ async function handleCheckoutCompleted(
   readonly drainOrgId: string | null;
   readonly orgIds: readonly string[];
 }> {
+  const billingRestoreResult = await handleBillingRestoreCheckoutCompleted(
+    db,
+    session,
+  );
+  if (billingRestoreResult.handled) {
+    return {
+      drainOrgId: null,
+      orgIds:
+        billingRestoreResult.orgId === null ? [] : [billingRestoreResult.orgId],
+    };
+  }
+
   const creditPurchaseResult = await handlePaidCheckoutPurpose(
     db,
     session,
