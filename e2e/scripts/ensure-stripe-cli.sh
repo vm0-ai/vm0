@@ -34,7 +34,11 @@ esac
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-curl -fsSL \
+curl --fail --show-error --silent --location \
+  --retry 5 \
+  --retry-delay 2 \
+  --retry-max-time 60 \
+  --retry-all-errors \
   "https://github.com/stripe/stripe-cli/releases/download/v${version}/stripe_${version}_${os}_${arch}.tar.gz" \
   -o "$tmp_dir/stripe.tar.gz"
 tar -xzf "$tmp_dir/stripe.tar.gz" -C "$tmp_dir"
