@@ -27,7 +27,7 @@ import {
 } from "../../signals/api-client.ts";
 import { connectors$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { tapError } from "../../signals/utils.ts";
+import { detach, Reason, tapError } from "../../signals/utils.ts";
 import {
   artifactDownloadMenuOpenKey$,
   closeArtifactDownloadMenu$,
@@ -39,7 +39,6 @@ import {
   syncArtifactFileToGoogleDrive,
   waitForGoogleDriveAndSyncArtifacts$,
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
-import { detach, Reason } from "../../signals/utils.ts";
 import {
   copyAttachmentLinkToClipboard,
   downloadAttachmentUrl,

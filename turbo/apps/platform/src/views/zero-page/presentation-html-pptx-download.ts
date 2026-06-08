@@ -7,8 +7,8 @@ import {
 
 const DOM_TO_PPTX_SCRIPT_URL =
   "https://cdn.jsdelivr.net/npm/dom-to-pptx@1.1.10/dist/dom-to-pptx.bundle.js";
-const EXPORT_SETTLE_DELAY_MS = 1200;
-const EXPORT_ANIMATION_TIMEOUT_MS = 10000;
+const EXPORT_SETTLE_DELAY_MS = 1_200;
+const EXPORT_ANIMATION_TIMEOUT_MS = 10_000;
 const SLIDE_SELECTORS = [
   "[data-vm0-slide]",
   "[data-slide]",
@@ -139,9 +139,9 @@ async function ensureFrameDomToPptx(
 
 function htmlWithBaseUrl(html: string, baseUrl: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
-  doc.querySelectorAll("script").forEach((script) => {
+  for (const script of doc.querySelectorAll("script")) {
     script.remove();
-  });
+  }
   const base = doc.createElement("base");
   base.href = baseUrl;
   doc.head.prepend(base);
@@ -256,22 +256,22 @@ function forceRevealAnimatedContent(nodes: readonly Element[]): void {
       return node.ownerDocument;
     }),
   );
-  documents.forEach((doc) => {
+  for (const doc of documents) {
     doc.body.classList.remove("motion-ready");
     doc.body.classList.add("low-power", "export-ready");
-  });
+  }
 
-  nodes.forEach((node) => {
+  for (const node of nodes) {
     const animatedNodes = [
       ...(node.matches("[data-anim]") ? [node] : []),
       ...Array.from(node.querySelectorAll("[data-anim]")),
     ];
-    animatedNodes.forEach((animatedNode) => {
+    for (const animatedNode of animatedNodes) {
       const element = animatedNode as HTMLElement;
       element.style.setProperty("opacity", "1", "important");
       element.style.setProperty("transform", "none", "important");
-    });
-  });
+    }
+  }
 }
 
 async function waitForExportReadiness(
@@ -304,7 +304,11 @@ export async function downloadPresentationHtmlPptx(params: {
   readonly url: string;
 }): Promise<void> {
   const htmlUrl = publicAttachmentUrl(params.url);
-  const response = await fetch(htmlUrl, { signal: params.signal });
+  const response = await fetch(htmlUrl, {
+    cache: "reload",
+    mode: "cors",
+    signal: params.signal,
+  });
   if (!response.ok) {
     throw new Error(`Failed to fetch presentation HTML (${response.status})`);
   }

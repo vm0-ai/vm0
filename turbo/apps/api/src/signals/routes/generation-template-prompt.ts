@@ -63,7 +63,6 @@ export function buildGenerationTemplatePrompt(
       "- Resolve the design system and template from the resource registry.",
       "- Apply them as generation constraints for the artifact.",
       "- Keep the user's prompt as the source of the requested content.",
-      "- Publish presentation HTML with `zero host <dir> --site <slug> --artifact-kind presentation-html`; do not omit the artifact kind flag.",
     ].join("\n"),
   };
 }
