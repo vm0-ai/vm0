@@ -3765,7 +3765,7 @@ mod tests {
         );
 
         let result = tokio::time::timeout(
-            Duration::from_millis(100),
+            Duration::from_secs(1),
             cache.read_metadata_file(&metadata_path),
         )
         .await

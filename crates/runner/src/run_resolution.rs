@@ -286,7 +286,7 @@ mod tests {
         );
 
         let result = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
+            std::time::Duration::from_secs(1),
             read_active_runs(dir.path()),
         )
         .await

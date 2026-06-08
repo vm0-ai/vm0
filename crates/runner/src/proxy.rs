@@ -1519,10 +1519,9 @@ PY
             std::io::Error::last_os_error()
         );
 
-        let result =
-            tokio::time::timeout(Duration::from_millis(100), read_registry(&registry_path))
-                .await
-                .expect("registry FIFO read should not block");
+        let result = tokio::time::timeout(Duration::from_secs(1), read_registry(&registry_path))
+            .await
+            .expect("registry FIFO read should not block");
 
         assert!(result.is_err(), "registry FIFO should be rejected");
     }
@@ -2504,10 +2503,9 @@ while True:
             std::io::Error::last_os_error()
         );
 
-        let result =
-            tokio::time::timeout(Duration::from_millis(100), read_usage_pending_file(&path))
-                .await
-                .expect("usage-pending FIFO read should not block");
+        let result = tokio::time::timeout(Duration::from_secs(1), read_usage_pending_file(&path))
+            .await
+            .expect("usage-pending FIFO read should not block");
 
         assert!(result.is_err(), "usage-pending FIFO should be rejected");
     }

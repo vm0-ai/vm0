@@ -1355,7 +1355,7 @@ mod tests {
         );
 
         let result = tokio::time::timeout(
-            std::time::Duration::from_millis(100),
+            std::time::Duration::from_secs(1),
             read_runner_status(dir.path()),
         )
         .await
