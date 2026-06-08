@@ -122,7 +122,6 @@ const CONNECTOR_ICON_COLORFUL = {
   etsy: true,
   exa: true,
   explorium: true,
-  fal: true,
   figma: true,
   firecrawl: true,
   fireflies: true,
