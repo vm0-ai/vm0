@@ -17,6 +17,11 @@ const AWS_OPENID_SCOPE = "openid";
 const AWS_AUTHORIZATION_RESPONSE_TYPE = "code";
 const AWS_ERROR_BODY_MAX_LENGTH = 500;
 const AWS_REGION_RE = /^[a-z]{2}(?:-gov)?-[a-z]+-\d$/;
+const AWS_SIGNIN_SENSITIVE_REQUEST_KEYS = [
+  "code",
+  "codeVerifier",
+  "refreshToken",
+] as const;
 
 const awsSigninTokenResponseSchema = z.object({
   accessToken: z.object({
@@ -171,6 +176,7 @@ async function fetchAwsSigninToken(args: {
       response,
       operation: args.operation,
       reconnectOnClientError: args.reconnectOnClientError,
+      body: args.body,
     });
   }
 
@@ -210,8 +216,12 @@ async function throwAwsSigninHttpError(args: {
   readonly response: Response;
   readonly operation: "exchange" | "refresh";
   readonly reconnectOnClientError: boolean;
+  readonly body: Readonly<Record<string, string>>;
 }): Promise<never> {
-  const details = await readAwsSigninErrorDetails(args.response);
+  const details = await readAwsSigninErrorDetails(
+    args.response,
+    awsSigninSensitiveRequestValues(args.body),
+  );
   const oauthError =
     args.reconnectOnClientError &&
     args.response.status >= 400 &&
@@ -229,22 +239,22 @@ async function throwAwsSigninHttpError(args: {
 
 async function readAwsSigninErrorDetails(
   response: Response,
+  sensitiveValues: readonly string[],
 ): Promise<AwsSigninErrorDetails> {
   const raw = await response.text();
   if (!raw) {
     return { message: "", oauthError: undefined };
   }
 
-  const truncated =
-    raw.length > AWS_ERROR_BODY_MAX_LENGTH
-      ? `${raw.slice(0, AWS_ERROR_BODY_MAX_LENGTH)}...`
-      : raw;
+  const truncated = truncateAwsSigninErrorText(
+    redactAwsSigninErrorText(raw, sensitiveValues),
+  );
 
   try {
     const parsed = awsSigninErrorResponseSchema.safeParse(JSON.parse(raw));
     if (!parsed.success) {
       return {
-        message: redactAwsSigninErrorText(truncated),
+        message: redactAwsSigninErrorText(truncated, sensitiveValues),
         oauthError: undefined,
       };
     }
@@ -261,14 +271,16 @@ async function readAwsSigninErrorDetails(
       ? description
         ? `${errorCode} (${description})`
         : errorCode
-      : (description ?? redactAwsSigninErrorText(truncated));
+      : (description ?? redactAwsSigninErrorText(truncated, sensitiveValues));
     return {
-      message: redactAwsSigninErrorText(message),
+      message: truncateAwsSigninErrorText(
+        redactAwsSigninErrorText(message, sensitiveValues),
+      ),
       oauthError: parsed.data.error,
     };
   } catch {
     return {
-      message: redactAwsSigninErrorText(truncated),
+      message: redactAwsSigninErrorText(truncated, sensitiveValues),
       oauthError: undefined,
     };
   }
@@ -297,16 +309,40 @@ function validatedAwsRegion(region: string): string {
   return region;
 }
 
-function redactAwsSigninErrorText(value: string): string {
-  return value
+function awsSigninSensitiveRequestValues(
+  body: Readonly<Record<string, string>>,
+): readonly string[] {
+  return AWS_SIGNIN_SENSITIVE_REQUEST_KEYS.flatMap((key) => {
+    const value = body[key];
+    return value ? [value] : [];
+  });
+}
+
+function redactAwsSigninErrorText(
+  value: string,
+  sensitiveValues: readonly string[] = [],
+): string {
+  let redacted = value
     .replace(/AKIA[0-9A-Z]{16}/g, "[REDACTED_AWS_ACCESS_KEY_ID]")
     .replace(/ASIA[0-9A-Z]{16}/g, "[REDACTED_AWS_ACCESS_KEY_ID]")
     .replace(
-      /("(?:secretAccessKey|sessionToken|refreshToken|code)"\s*:\s*")[^"]+/g,
+      /("(?:accessKeyId|secretAccessKey|sessionToken|refreshToken|code|codeVerifier)"\s*:\s*")[^"]+/g,
       "$1[REDACTED]",
     )
     .replace(
-      /((?:secretAccessKey|sessionToken|refreshToken|code)=)[^&\s]+/g,
+      /((?:accessKeyId|secretAccessKey|sessionToken|refreshToken|code|codeVerifier)=)[^&\s]+/g,
       "$1[REDACTED]",
     );
+  for (const sensitiveValue of [...sensitiveValues].sort((left, right) => {
+    return right.length - left.length;
+  })) {
+    redacted = redacted.split(sensitiveValue).join("[REDACTED]");
+  }
+  return redacted;
+}
+
+function truncateAwsSigninErrorText(value: string): string {
+  return value.length > AWS_ERROR_BODY_MAX_LENGTH
+    ? `${value.slice(0, AWS_ERROR_BODY_MAX_LENGTH)}...`
+    : value;
 }

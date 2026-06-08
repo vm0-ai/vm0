@@ -351,6 +351,90 @@ describe("AWS external-code provider", () => {
     });
   });
 
+  it("redacts AWS token exchange sensitive values from provider errors", async () => {
+    const start = await startConnectorExternalCodeAuthorization({
+      type: "aws",
+      authMethod: "cli",
+      authClient: awsAuthClient(),
+    });
+    const providerState = awsProviderStateSchema.parse(
+      JSON.parse(start.providerState) as unknown,
+    );
+    const errorAccessKeyId = ["aws", "error", "access", "key"].join("-");
+    const errorSecretAccessKey = ["aws", "error", "secret"].join("-");
+    const errorSessionToken = ["aws", "error", "session"].join("-");
+    server.use(
+      http.post(AWS_TOKEN_URL, () => {
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            error_description: [
+              "Rejected",
+              "AWS-CODE",
+              providerState.codeVerifier,
+              `accessKeyId=${errorAccessKeyId}`,
+              `secretAccessKey=${errorSecretAccessKey}`,
+              `sessionToken=${errorSessionToken}`,
+            ].join(" "),
+          },
+          { status: 400 },
+        );
+      }),
+    );
+
+    await expect(
+      completeConnectorExternalCodeAuthorization({
+        type: "aws",
+        authMethod: "cli",
+        authClient: awsAuthClient(),
+        code: "AWS-CODE",
+        providerState: start.providerState,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toSatisfy((error: unknown) => {
+      return (
+        isOAuthProviderHttpError(error) &&
+        !error.message.includes("AWS-CODE") &&
+        !error.message.includes(providerState.codeVerifier) &&
+        !error.message.includes(errorAccessKeyId) &&
+        !error.message.includes(errorSecretAccessKey) &&
+        !error.message.includes(errorSessionToken)
+      );
+    });
+  });
+
+  it("redacts AWS refresh tokens echoed by provider errors", async () => {
+    server.use(
+      http.post(AWS_TOKEN_URL, () => {
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            error_description: "Refresh token aws-refresh-token expired",
+          },
+          { status: 400 },
+        );
+      }),
+    );
+
+    await expect(
+      refreshConnectorAuthProviderAccessToken({
+        type: "aws",
+        authMethod: "cli",
+        authClient: awsAuthClient(),
+        inputs: {
+          refreshToken: "aws-refresh-token",
+          signinRegion: "us-east-1",
+        },
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toSatisfy((error: unknown) => {
+      return (
+        isOAuthProviderHttpError(error) &&
+        !error.message.includes("aws-refresh-token")
+      );
+    });
+  });
+
   it("keeps AWS token throttling as an upstream OAuth HTTP error", async () => {
     server.use(
       http.post(AWS_TOKEN_URL, () => {
