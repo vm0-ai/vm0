@@ -17,12 +17,32 @@ const defaultResponse: UsageRecordResponse = {
 
 let mockUsageRecordResponse: UsageRecordResponse = { ...defaultResponse };
 
+export function setMockUsageRecord(response: UsageRecordResponse): void {
+  mockUsageRecordResponse = {
+    rows: [...response.rows],
+    pagination: { ...response.pagination },
+  };
+}
+
 export function resetMockUsageRecord(): void {
   mockUsageRecordResponse = { ...defaultResponse };
 }
 
 export const apiUsageRecordHandlers = [
-  mockApi(zeroUsageRecordContract.get, ({ respond }) => {
-    return respond(200, mockUsageRecordResponse);
+  mockApi(zeroUsageRecordContract.get, ({ query, respond }) => {
+    const page = query.page;
+    const pageSize = query.pageSize;
+    const source = query.source;
+    const rows = source
+      ? mockUsageRecordResponse.rows.filter((row) => {
+          return row.source === source;
+        })
+      : mockUsageRecordResponse.rows;
+    const offset = (page - 1) * pageSize;
+
+    return respond(200, {
+      rows: rows.slice(offset, offset + pageSize),
+      pagination: { page, pageSize, total: rows.length },
+    });
   }),
 ];
