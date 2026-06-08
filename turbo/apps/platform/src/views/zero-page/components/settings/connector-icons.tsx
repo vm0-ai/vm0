@@ -186,6 +186,7 @@ const CONNECTOR_ICON_COLORFUL = {
   netdata: true,
   nyne: true,
   openweather: true,
+  "outlook-calendar": true,
   pandadoc: true,
   pdf4me: true,
   pdfco: true,
