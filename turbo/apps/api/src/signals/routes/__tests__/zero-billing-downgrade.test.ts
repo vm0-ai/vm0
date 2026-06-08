@@ -511,6 +511,166 @@ describe("POST /api/zero/billing/downgrade", () => {
     );
   });
 
+  it("preserves fixed-term team access when cancelling to pro-suspend", async () => {
+    const subId = `sub-team-fixed-term-${randomUUID().slice(0, 8)}`;
+    const periodStart = 1_782_809_751;
+    const periodEnd = 1_785_401_751;
+    const finalEnd = 1_790_587_151;
+    const finalEndDate = new Date(finalEnd * 1000);
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeSubscriptionId: subId,
+          subscriptionStatus: "active",
+          tier: "team",
+          currentPeriodEnd: finalEndDate,
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subId,
+      schedule: null,
+      items: {
+        data: [
+          {
+            id: "si_item_team",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 1,
+            price: {
+              id: TEST_PRICE_TEAM,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({ id: subId });
+
+    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const response = await accept(
+      client.create({
+        body: { targetTier: "pro-suspend" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      effectiveDate: finalEndDate.toISOString(),
+    });
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      subId,
+      {
+        cancel_at: finalEnd,
+        cancel_at_period_end: false,
+      },
+    );
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).not.toHaveBeenCalled();
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
+        currentPeriodEnd: orgMetadata.currentPeriodEnd,
+        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+    expect(row?.cancelAtPeriodEnd).toBeTruthy();
+    expect(row?.currentPeriodEnd?.toISOString()).toBe(
+      finalEndDate.toISOString(),
+    );
+    expect(row?.pendingSubscriptionChangeAt?.toISOString()).toBe(
+      finalEndDate.toISOString(),
+    );
+  });
+
+  it("does not overwrite an existing subscription cancel_at", async () => {
+    const subId = `sub-pro-fixed-cancel-${randomUUID().slice(0, 8)}`;
+    const periodStart = 1_782_809_751;
+    const periodEnd = 1_785_401_751;
+    const cancelAt = 1_790_587_151;
+    const cancelAtDate = new Date(cancelAt * 1000);
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeSubscriptionId: subId,
+          subscriptionStatus: "active",
+          tier: "pro",
+          currentPeriodEnd: new Date(periodEnd * 1000),
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subId,
+      cancel_at: cancelAt,
+      schedule: null,
+      items: {
+        data: [
+          {
+            id: "si_item_pro",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 1,
+            price: {
+              id: TEST_PRICE_PRO,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    });
+
+    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const response = await accept(
+      client.create({
+        body: { targetTier: "pro-suspend" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      effectiveDate: cancelAtDate.toISOString(),
+    });
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).not.toHaveBeenCalled();
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
+        currentPeriodEnd: orgMetadata.currentPeriodEnd,
+        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+    expect(row?.cancelAtPeriodEnd).toBeTruthy();
+    expect(row?.currentPeriodEnd?.toISOString()).toBe(
+      cancelAtDate.toISOString(),
+    );
+    expect(row?.pendingSubscriptionChangeAt?.toISOString()).toBe(
+      cancelAtDate.toISOString(),
+    );
+  });
+
   it("preserves external schedule phases when cancelling at schedule end", async () => {
     const subId = `sub-pro-external-schedule-${randomUUID().slice(0, 8)}`;
     const scheduleId = `sched-external-${randomUUID().slice(0, 8)}`;
@@ -526,6 +686,8 @@ describe("POST /api/zero/billing/downgrade", () => {
           subscriptionStatus: "active",
           tier: "pro",
           currentPeriodEnd: new Date(periodEnd * 1000),
+          pendingSubscriptionScheduleId: scheduleId,
+          pendingSubscriptionTargetTier: "pro",
         },
         context.signal,
       ),

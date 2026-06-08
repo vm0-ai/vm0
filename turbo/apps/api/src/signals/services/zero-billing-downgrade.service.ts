@@ -117,11 +117,22 @@ function subscriptionItemPhaseRange(
   return { startDate, endDate };
 }
 
+function subscriptionCancelAt(subscription: Stripe.Subscription): Date | null {
+  return typeof subscription.cancel_at === "number"
+    ? new Date(subscription.cancel_at * 1000)
+    : null;
+}
+
+function dateUnixSeconds(date: Date): number {
+  return Math.floor(date.getTime() / 1000);
+}
+
 function shouldReplacePendingDowngradeSchedule(
   context: DowngradeContext,
   scheduleId: string,
 ): boolean {
   return (
+    context.org.tier === "team" &&
     context.org.pendingSubscriptionScheduleId === scheduleId &&
     context.org.pendingSubscriptionTargetTier === "pro"
   );
@@ -172,12 +183,29 @@ async function scheduleCancellationAtPeriodEnd(
       });
     }
   } else {
-    await context.stripe.subscriptions.update(
-      context.org.stripeSubscriptionId,
-      {
-        cancel_at_period_end: true,
-      },
-    );
+    const cancelAt = subscriptionCancelAt(subscription);
+    if (cancelAt) {
+      effectiveDate = cancelAt;
+    } else if (
+      context.org.currentPeriodEnd &&
+      dateUnixSeconds(context.org.currentPeriodEnd) > currentPhaseRange.endDate
+    ) {
+      effectiveDate = context.org.currentPeriodEnd;
+      await context.stripe.subscriptions.update(
+        context.org.stripeSubscriptionId,
+        {
+          cancel_at: dateUnixSeconds(effectiveDate),
+          cancel_at_period_end: false,
+        },
+      );
+    } else {
+      await context.stripe.subscriptions.update(
+        context.org.stripeSubscriptionId,
+        {
+          cancel_at_period_end: true,
+        },
+      );
+    }
   }
   context.signal.throwIfAborted();
 
@@ -285,9 +313,9 @@ async function scheduleDowngradeToPro(
 
 /**
  * Downgrade an org's Stripe subscription. Two branches:
- * - `* → pro-suspend`: schedules cancel-at-period-end and flips local
- *   `cancelAtPeriodEnd` flag. Existing external schedules are preserved and
- *   cancelled at their final phase end.
+ * - `* → pro-suspend`: schedules cancellation and flips the local
+ *   `cancelAtPeriodEnd` flag. Existing `cancel_at`, fixed-term paid-through
+ *   dates, and external schedule final ends are preserved.
  * - `team → pro`: schedules a period-end phase change to Pro. effectiveDate
  *   is the current phase end ISO string.
  */
