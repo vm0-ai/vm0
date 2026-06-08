@@ -1,7 +1,8 @@
 import { command } from "ccstate";
 import { zeroBillingDowngradeContract } from "@vm0/api-contracts/contracts/zero-billing";
 
-import { optionalEnv } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
+import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import {
   badRequestMessage,
   conflict,
@@ -38,10 +39,14 @@ const downgradeAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   const { targetTier } = bodyResult.data;
+  const returnUrl = bodyResult.data.returnUrl ?? env("APP_URL");
+  if (!billingRedirectAllowed(returnUrl)) {
+    return badRequestMessage("returnUrl must match the platform origin");
+  }
 
   const result = await set(
     downgradeSubscription$,
-    { orgId: auth.orgId, targetTier },
+    { orgId: auth.orgId, targetTier, returnUrl },
     signal,
   );
   signal.throwIfAborted();
@@ -57,7 +62,13 @@ const downgradeAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return {
     status: 200 as const,
-    body: { success: true, effectiveDate: result.effectiveDate },
+    body:
+      result.status === "scheduled"
+        ? { success: true, effectiveDate: result.effectiveDate }
+        : {
+            status: "payment_method_required" as const,
+            checkoutUrl: result.checkoutUrl,
+          },
   };
 });
 

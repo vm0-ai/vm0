@@ -186,6 +186,7 @@ import { mondayFirewall } from "./monday.generated";
 import { msg9Firewall } from "./msg9.generated";
 import { n8nFirewall } from "./n8n.generated";
 import { neonFirewall } from "./neon.generated";
+import { netdataFirewall } from "./netdata.generated";
 import { notionFirewall } from "./notion.generated";
 import { novitaFirewall } from "./novita.generated";
 import { nyneFirewall } from "./nyne.generated";
@@ -442,6 +443,7 @@ const CONNECTOR_FIREWALLS = {
   msg9: msg9Firewall,
   n8n: n8nFirewall,
   neon: neonFirewall,
+  netdata: netdataFirewall,
   notion: notionFirewall,
   novita: novitaFirewall,
   onyx: onyxFirewall,

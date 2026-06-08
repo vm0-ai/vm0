@@ -8,11 +8,11 @@ import {
 } from "@vm0/api-contracts/contracts/zero-schedules";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import type { ChatMessageScheduleSnapshot } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { Cron } from "croner";
 import { and, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
 
@@ -28,6 +28,7 @@ import {
   type AutomationInterpreter,
   type TimeTriggerEvent,
 } from "./automations/time-interpreter";
+import { calculateNextRun, TimeTrigger } from "./automations/time-trigger";
 import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
@@ -45,6 +46,21 @@ const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 const LIGHTWEIGHT_MODEL = "google/gemini-3.1-flash-lite-preview";
 const MAX_CONSECUTIVE_FAILURES = 3;
+
+type ScheduleSnapshotSource = Pick<
+  typeof zeroAgentSchedules.$inferSelect,
+  "id" | "name" | "description"
+>;
+
+function chatMessageScheduleSnapshot(
+  schedule: ScheduleSnapshotSource,
+): ChatMessageScheduleSnapshot {
+  return {
+    id: schedule.id,
+    title: schedule.name,
+    description: schedule.description ?? null,
+  };
+}
 
 function scheduleResponse(
   schedule: typeof zeroAgentSchedules.$inferSelect,
@@ -75,13 +91,9 @@ function scheduleResponse(
   };
 }
 
-export function calculateNextRun(
-  cronExpression: string,
-  timezone: string,
-  fromDate: Date,
-): Date | null {
-  return new Cron(cronExpression, { timezone }).nextRun(fromDate);
-}
+// Re-exported from the time trigger so existing callers (the reschedule
+// callback route and the schedule tests) keep importing it from the service.
+export { calculateNextRun };
 
 type DeployScheduleBody = z.infer<
   (typeof zeroSchedulesMainContract.deploy)["body"]
@@ -249,32 +261,6 @@ async function generateScheduleDescription(
   }
 
   return result.value ?? buildTemplateDescription(request, agentName);
-}
-
-function resolveTrigger(
-  request: DeployScheduleBody,
-  currentTime: Date,
-): {
-  readonly triggerType: "cron" | "once" | "loop";
-  readonly nextRunAt: Date | null;
-} {
-  if (request.cronExpression) {
-    return {
-      triggerType: "cron",
-      nextRunAt: calculateNextRun(
-        request.cronExpression,
-        request.timezone,
-        currentTime,
-      ),
-    };
-  }
-  if (request.atTime) {
-    return { triggerType: "once", nextRunAt: new Date(request.atTime) };
-  }
-  return {
-    triggerType: "loop",
-    nextRunAt: request.enabled ? currentTime : null,
-  };
 }
 
 function validateAtTimeNotPast(
@@ -675,7 +661,7 @@ export const deploySchedule$ = command(
         : effectiveBody;
     signal.throwIfAborted();
 
-    const { triggerType, nextRunAt } = resolveTrigger(
+    const { triggerType, nextRunAt } = new TimeTrigger().resolve(
       bodyWithDescription,
       currentTime,
     );
@@ -904,29 +890,6 @@ function isInsufficientCreditsFailure(error: unknown): boolean {
   );
 }
 
-function nextRunAfterPreRunFailure(args: {
-  readonly schedule: typeof zeroAgentSchedules.$inferSelect;
-  readonly failureTime: Date;
-  readonly shouldDisable: boolean;
-}): Date | null {
-  if (args.shouldDisable) {
-    return null;
-  }
-  if (args.schedule.triggerType === "cron" && args.schedule.cronExpression) {
-    return calculateNextRun(
-      args.schedule.cronExpression,
-      args.schedule.timezone,
-      args.failureTime,
-    );
-  }
-  if (args.schedule.triggerType === "loop" && args.schedule.intervalSeconds) {
-    return new Date(
-      args.failureTime.getTime() + args.schedule.intervalSeconds * 1000,
-    );
-  }
-  return null;
-}
-
 async function recordSchedulePreRunFailure(
   db: Db,
   schedule: typeof zeroAgentSchedules.$inferSelect,
@@ -952,7 +915,7 @@ async function recordSchedulePreRunFailure(
   const failureTime = nowDate();
   const newFailureCount = schedule.consecutiveFailures + 1;
   const shouldDisable = newFailureCount >= MAX_CONSECUTIVE_FAILURES;
-  const nextRunAt = nextRunAfterPreRunFailure({
+  const nextRunAt = new TimeTrigger().advanceAfterPreRunFailure({
     schedule,
     failureTime,
     shouldDisable,
@@ -1003,6 +966,7 @@ export const executeDueSchedules$ = command(
 
     let executed = 0;
     let skipped = 0;
+    const timeTrigger = new TimeTrigger();
 
     for (const schedule of dueSchedules) {
       if (schedule.lastRunId) {
@@ -1023,22 +987,7 @@ export const executeDueSchedules$ = command(
         }
       }
 
-      const [claimed] = await db
-        .update(zeroAgentSchedules)
-        .set({
-          nextRunAt: null,
-          lastRunAt: currentTime,
-          retryStartedAt: null,
-          updatedAt: currentTime,
-          ...(schedule.triggerType === "once" ? { enabled: false } : {}),
-        })
-        .where(
-          and(
-            eq(zeroAgentSchedules.id, schedule.id),
-            eq(zeroAgentSchedules.nextRunAt, schedule.nextRunAt!),
-          ),
-        )
-        .returning();
+      const claimed = await timeTrigger.evaluate({ db, schedule, currentTime });
       signal.throwIfAborted();
 
       if (!claimed) {
@@ -1256,6 +1205,7 @@ export const runScheduleNow$ = command(
       appendQueueMarker: result.body.status === "queued",
       scheduleId: schedule.id,
       scheduleTitle: schedule.name,
+      scheduleSnapshot: chatMessageScheduleSnapshot(schedule),
     });
     signal.throwIfAborted();
 

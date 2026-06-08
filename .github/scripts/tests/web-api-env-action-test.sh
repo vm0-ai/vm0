@@ -128,8 +128,8 @@ run_action() {
     INPUT_APP_URL="https://pr-123-app.vm0.test" \
     INPUT_API_URL="https://pr-123-api.vm0.test" \
     INPUT_API_BACKEND_URL="https://pr-123-api-backend.vm0.test" \
-    REPO_VARS_JSON='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test"}' \
-    REPO_SECRETS_JSON='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret"}' \
+    REPO_VARS_JSON='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test","ATOM_URL":"https://atom.github.test"}' \
+    REPO_SECRETS_JSON='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret"}' \
     DOPPLER_SECRETS_JSON="$doppler_secrets_json" \
     bash "$action_script"
 }
@@ -155,6 +155,8 @@ assert_env_value "$success_env_file" GOOGLE_ADS_DEVELOPER_TOKEN "github-google-a
 assert_env_value "$success_env_file" FINICITY_APP_KEY "github-finicity-app-key"
 assert_env_value "$success_env_file" FINICITY_APP_SECRET "github-finicity-app-secret"
 assert_env_value "$success_env_file" FINICITY_PARTNER_ID "github-finicity-partner-id"
+assert_env_value "$success_env_file" ATOM_URL "https://tunnel-yuma-atom-api.vm7.ai"
+assert_env_value "$success_env_file" VM0_MACHINE_SECRET_KEY "github-atom-machine-secret"
 assert_env_value "$success_env_file" VM0_PREVIEW_JOB_REF "pr-123"
 assert_env_absent_value "$success_env_file" "github-gh-client-id"
 assert_env_absent_value "$success_env_file" "github-gh-client-secret"
@@ -169,6 +171,16 @@ production_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' 
 assert_contains "$production_web_output" "Rendered"
 assert_env_value "$production_web_env_file" POSTHOG_KEY "github-posthog-key"
 assert_env_value "$production_web_env_file" POSTHOG_HOST "https://posthog.github.test"
+assert_env_absent_value "$production_web_env_file" "ATOM_URL="
+assert_env_absent_value "$production_web_env_file" "VM0_MACHINE_SECRET_KEY="
+
+production_api_dir="$(mktemp -d)"
+TEMP_DIRS+=("$production_api_dir")
+production_api_output="$(run_action "$(build_doppler_secrets_json)" "$production_api_dir" api production)"
+production_api_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_api_dir}/github-output")"
+assert_contains "$production_api_output" "Rendered"
+assert_env_value "$production_api_env_file" ATOM_URL "https://atom.github.test"
+assert_env_value "$production_api_env_file" VM0_MACHINE_SECRET_KEY "github-atom-machine-secret"
 
 missing_dir="$(mktemp -d)"
 TEMP_DIRS+=("$missing_dir")

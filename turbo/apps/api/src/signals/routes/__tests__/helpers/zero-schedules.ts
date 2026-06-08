@@ -30,6 +30,7 @@ import { writeDb$, type Db } from "../../../external/db";
 export interface ScheduleSeed {
   readonly name: string;
   readonly prompt: string;
+  readonly description?: string | null;
   readonly cronExpression?: string;
   readonly atTime?: Date;
   readonly intervalSeconds?: number;
@@ -110,6 +111,7 @@ async function seedSchedule(
     atTime: args.seed.atTime ?? null,
     intervalSeconds: args.seed.intervalSeconds ?? null,
     prompt: args.seed.prompt,
+    description: args.seed.description ?? null,
     timezone: args.seed.timezone ?? "UTC",
     nextRunAt: args.seed.nextRunAt ?? null,
     lastRunId: args.seed.lastRunId ?? null,

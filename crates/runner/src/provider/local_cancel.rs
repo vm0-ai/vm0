@@ -10,6 +10,7 @@ use crate::ids::RunId;
 #[cfg(test)]
 use crate::local_queue;
 use crate::local_queue::{CancelTargetState, LocalQueue};
+use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 
 /// Poll interval for scanning local cancel markers.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -17,7 +18,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 #[derive(Clone)]
 pub(super) struct LocalCancelScanner {
     queue: LocalQueue,
-    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    cancel_tokens: SharedRunCancellationMap,
     owned_claims: Arc<tokio::sync::Mutex<HashSet<RunId>>>,
 }
 
@@ -29,7 +30,7 @@ pub(super) struct LocalCancelWatcher {
 impl LocalCancelScanner {
     pub(super) fn new(
         queue: LocalQueue,
-        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        cancel_tokens: SharedRunCancellationMap,
         owned_claims: Arc<tokio::sync::Mutex<HashSet<RunId>>>,
     ) -> Self {
         Self {
@@ -71,10 +72,8 @@ impl LocalCancelScanner {
         let mut delete_cancel_ids = Vec::new();
         for marker in cancel_markers {
             let run_id = marker.run_id;
-            if let Some(token) = tokens.get(&run_id) {
-                let was_cancelled = token.is_cancelled();
-                token.cancel();
-                if !was_cancelled {
+            if let Some(handle) = tokens.get(&run_id) {
+                if handle.cancel().await {
                     info!(run_id = %run_id, "local: cancel file detected, cancelling job");
                 }
                 let should_delete = owned_claims.contains(&run_id)
@@ -102,7 +101,7 @@ impl LocalCancelScanner {
     async fn snapshot_cancel_tokens(
         &self,
         cancel_ids: &[RunId],
-    ) -> HashMap<RunId, CancellationToken> {
+    ) -> HashMap<RunId, RunCancellationHandle> {
         let tokens = self.cancel_tokens.lock().await;
         cancel_ids
             .iter()
@@ -223,19 +222,26 @@ impl Drop for LocalCancelWatcher {
 mod tests {
     use super::*;
 
-    fn empty_cancel_tokens() -> Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> {
+    fn empty_cancel_tokens() -> SharedRunCancellationMap {
         Arc::new(tokio::sync::Mutex::new(HashMap::new()))
     }
 
-    fn scanner(
-        dir: &std::path::Path,
-        tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
-    ) -> LocalCancelScanner {
+    fn scanner(dir: &std::path::Path, tokens: SharedRunCancellationMap) -> LocalCancelScanner {
         LocalCancelScanner::new(
             LocalQueue::new(dir.to_path_buf()),
             tokens,
             Arc::new(tokio::sync::Mutex::new(HashSet::new())),
         )
+    }
+
+    async fn insert_cancel_handle(
+        tokens: &SharedRunCancellationMap,
+        run_id: RunId,
+    ) -> CancellationToken {
+        let handle = RunCancellationHandle::new();
+        let token = handle.token();
+        tokens.lock().await.insert(run_id, handle);
+        token
     }
 
     fn write_job(dir: &std::path::Path, run_id: RunId) {
@@ -270,8 +276,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
         write_job(dir.path(), run_id);
         write_cancel(dir.path(), run_id);
 
@@ -285,8 +290,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
         write_job(dir.path(), run_id);
         let cancel_path = write_cancel(dir.path(), run_id);
         let scanner = scanner(dir.path(), tokens);
@@ -306,8 +310,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
         write_job(dir.path(), run_id);
         let cancel_path = write_cancel(dir.path(), run_id);
 
@@ -328,8 +331,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
         let cancel_path = write_cancel(dir.path(), run_id);
         write_claim(dir.path(), run_id);
 
@@ -350,8 +352,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
         let cancel_path = write_cancel(dir.path(), run_id);
 
         scanner(dir.path(), tokens).scan_cancel_files().await;
@@ -371,8 +372,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
         let cancel_path = write_cancel(dir.path(), run_id);
         write_result(dir.path(), run_id, b"terminal");
         write_claim(dir.path(), run_id);
@@ -395,8 +395,7 @@ mod tests {
         let tokens = empty_cancel_tokens();
         let scanner = scanner(dir.path(), Arc::clone(&tokens));
         let run_id = RunId::new_v4();
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
         write_job(dir.path(), run_id);
         write_cancel(dir.path(), run_id);
         scanner.mark_owned_claim(run_id).await;
@@ -427,7 +426,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        tokens.lock().await.insert(run_id, CancellationToken::new());
+        let _job_token = insert_cancel_handle(&tokens, run_id).await;
         let scanner = scanner(dir.path(), Arc::clone(&tokens));
         scanner.mark_owned_claim(run_id).await;
         assert!(
@@ -578,8 +577,7 @@ mod tests {
             "cancel file should survive while there is no token"
         );
 
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
         scanner.mark_owned_claim(run_id).await;
         scanner.scan_cancel_files().await;
 

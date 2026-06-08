@@ -1,8 +1,13 @@
 import { command } from "ccstate";
 import { zeroBillingRestoreContract } from "@vm0/api-contracts/contracts/zero-billing";
 
-import { optionalEnv } from "../../lib/env";
-import { conflict, providerUnavailable } from "../../lib/error";
+import { env, optionalEnv } from "../../lib/env";
+import { billingRedirectAllowed } from "../../lib/billing-redirect";
+import {
+  badRequestMessage,
+  conflict,
+  providerUnavailable,
+} from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -31,8 +36,16 @@ const restoreAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
+  const returnUrl = bodyResult.data.returnUrl ?? env("APP_URL");
+  if (!billingRedirectAllowed(returnUrl)) {
+    return badRequestMessage("returnUrl must match the platform origin");
+  }
 
-  const result = await set(restoreSubscription$, { orgId: auth.orgId }, signal);
+  const result = await set(
+    restoreSubscription$,
+    { orgId: auth.orgId, returnUrl },
+    signal,
+  );
   signal.throwIfAborted();
 
   if (!result.ok) {
@@ -44,7 +57,13 @@ const restoreAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return {
     status: 200 as const,
-    body: { success: true },
+    body:
+      result.status === "restored"
+        ? { status: "restored" as const }
+        : {
+            status: "payment_method_required" as const,
+            checkoutUrl: result.checkoutUrl,
+          },
   };
 });
 

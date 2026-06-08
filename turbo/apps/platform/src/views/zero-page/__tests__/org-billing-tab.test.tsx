@@ -37,10 +37,14 @@ vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
 
 const context = testContext();
 const mockApi = createMockApi(context);
+const restorePaymentPendingKey = "vm0:billing:restore-payment-pending";
+const downgradePaymentPendingKey = "vm0:billing:downgrade-payment-pending";
 
 beforeEach(() => {
   vi.mocked(toast.error).mockClear();
   vi.mocked(toast.success).mockClear();
+  window.sessionStorage.removeItem(restorePaymentPendingKey);
+  window.sessionStorage.removeItem(downgradePaymentPendingKey);
 });
 
 async function openBillingTab() {
@@ -59,6 +63,14 @@ function findButtonByText(
     return typeof text === "string"
       ? buttonText === text
       : text.test(buttonText);
+  });
+}
+
+function formatExpectedBillingDate(value: string): string {
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 
@@ -922,7 +934,7 @@ describe("org billing tab - cancellation pending", () => {
       mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
         restoreCalled = true;
         setMockBillingStatus({ cancelAtPeriodEnd: false });
-        return respond(200, { success: true });
+        return respond(200, { status: "restored" });
       }),
     );
     setMockBillingStatus({
@@ -971,12 +983,93 @@ describe("org billing tab - cancellation pending", () => {
     expect(screen.queryByText(/has been cancelled/)).not.toBeInTheDocument();
   });
 
+  it("should redirect to setup checkout when restore requires a payment method", async () => {
+    const checkoutUrl = "https://checkout.stripe.com/setup/restore";
+    const assignSpy = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => {});
+    let restoreCalled = false;
+    let restoreReturnUrl: string | undefined;
+    server.use(
+      mockApi(zeroBillingRestoreContract.create, ({ body, respond }) => {
+        restoreCalled = true;
+        restoreReturnUrl = body.returnUrl;
+        return respond(200, {
+          status: "payment_method_required",
+          checkoutUrl,
+        });
+      }),
+    );
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: true,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    const restoreButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Restore plan";
+    });
+    expect(restoreButton).toBeDefined();
+    click(restoreButton!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Restore Pro plan?" });
+    });
+    const confirmRestoreButton = findButtonByText(
+      confirmDialog,
+      "Restore plan",
+    );
+    expect(confirmRestoreButton).toBeDefined();
+    click(confirmRestoreButton!);
+
+    await waitFor(() => {
+      expect(restoreCalled).toBeTruthy();
+      expect(restoreReturnUrl).toBeDefined();
+      expect(assignSpy).toHaveBeenCalledWith(checkoutUrl);
+    });
+    expect(window.sessionStorage.getItem(restorePaymentPendingKey)).toBe("1");
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    assignSpy.mockRestore();
+  });
+
+  it("should toast when setup checkout restore completes through billing refresh", async () => {
+    window.sessionStorage.setItem(restorePaymentPendingKey, "1");
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: false,
+      scheduledChange: null,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        "Plan restored. Your subscription will renew normally.",
+      );
+    });
+    expect(window.sessionStorage.getItem(restorePaymentPendingKey)).toBeNull();
+  });
+
   it("should close restore confirmation without calling API", async () => {
     let restoreCalled = false;
     server.use(
       mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
         restoreCalled = true;
-        return respond(200, { success: true });
+        return respond(200, { status: "restored" });
       }),
     );
     setMockBillingStatus({
@@ -1070,7 +1163,7 @@ describe("org billing tab - cancellation pending", () => {
       mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
         restoreCalled = true;
         setMockBillingStatus({ scheduledChange: null });
-        return respond(200, { success: true });
+        return respond(200, { status: "restored" });
       }),
     );
     setMockBillingStatus({
@@ -1211,7 +1304,7 @@ describe("org billing tab - plan card details", () => {
       mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
         restoreCalled = true;
         setMockBillingStatus({ cancelAtPeriodEnd: false });
-        return respond(200, { success: true });
+        return respond(200, { status: "restored" });
       }),
     );
     setMockBillingStatus({
@@ -1239,7 +1332,7 @@ describe("org billing tab - plan card details", () => {
     expect(proCard).not.toBeNull();
     expect(
       within(proCard!).getByText(
-        `Ends on ${new Date(periodEnd).toLocaleDateString("en-US")}`,
+        `Ends on ${formatExpectedBillingDate(periodEnd)}`,
       ),
     ).toBeInTheDocument();
 
@@ -1272,7 +1365,7 @@ describe("org billing tab - plan card details", () => {
       mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
         restoreCalled = true;
         setMockBillingStatus({ scheduledChange: null });
-        return respond(200, { success: true });
+        return respond(200, { status: "restored" });
       }),
     );
     setMockBillingStatus({
@@ -1301,7 +1394,7 @@ describe("org billing tab - plan card details", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    const dateText = new Date(periodEnd).toLocaleDateString("en-US");
+    const dateText = formatExpectedBillingDate(periodEnd);
     const teamCard = screen.getByText("Team").closest("div");
     const proCard = screen.getByText("Pro").closest("div");
     expect(teamCard).not.toBeNull();
@@ -1753,11 +1846,107 @@ describe("org billing tab - downgrade flow", () => {
     click(cancelSubscriptionBtn!);
 
     await waitFor(() => {
-      expect(capturedBody).toStrictEqual({ targetTier: "pro-suspend" });
+      expect(capturedBody).toStrictEqual(
+        expect.objectContaining({
+          targetTier: "pro-suspend",
+          returnUrl: expect.any(String),
+        }),
+      );
       expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
         "Cancellation scheduled. Your current plan stays active until the billing period ends.",
       );
     });
+  });
+
+  it("should redirect to setup checkout when downgrade requires a payment method", async () => {
+    const checkoutUrl = "https://checkout.stripe.com/setup/downgrade";
+    const assignSpy = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => {});
+    let capturedBody: unknown = null;
+    server.use(
+      mockApi(zeroBillingDowngradeContract.create, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
+          status: "payment_method_required",
+          checkoutUrl,
+        });
+      }),
+    );
+
+    setMockBillingStatus({
+      tier: "team",
+      credits: 120_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Team plan")).toBeInTheDocument();
+    });
+
+    const downgradeButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Downgrade";
+    });
+    expect(downgradeButton).toBeDefined();
+    click(downgradeButton!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Downgrade plan" });
+    });
+    const proOption = findButtonByText(confirmDialog, /Pro\s*\$20\/month/);
+    expect(proOption).toBeDefined();
+    click(proOption!);
+
+    const confirmButton = findButtonByText(confirmDialog, "Downgrade to Pro");
+    expect(confirmButton).toBeDefined();
+    click(confirmButton!);
+
+    await waitFor(() => {
+      expect(capturedBody).toStrictEqual(
+        expect.objectContaining({
+          targetTier: "pro",
+          returnUrl: expect.any(String),
+        }),
+      );
+      expect(assignSpy).toHaveBeenCalledWith(checkoutUrl);
+    });
+    expect(window.sessionStorage.getItem(downgradePaymentPendingKey)).toBe(
+      "pro",
+    );
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    assignSpy.mockRestore();
+  });
+
+  it("should toast when setup checkout downgrade completes through billing refresh", async () => {
+    const periodEnd = "2026-07-04T00:00:00.000Z";
+    window.sessionStorage.setItem(downgradePaymentPendingKey, "pro");
+    setMockBillingStatus({
+      tier: "team",
+      credits: 120_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      scheduledChange: {
+        type: "downgrade",
+        targetTier: "pro",
+        effectiveDate: periodEnd,
+      },
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Team plan")).toBeInTheDocument();
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        "Downgrade scheduled. Your current plan stays active until Jul 4, 2026.",
+      );
+    });
+    expect(
+      window.sessionStorage.getItem(downgradePaymentPendingKey),
+    ).toBeNull();
   });
 
   it("should ignore stale pro target when current plan is pro", async () => {
@@ -1803,7 +1992,12 @@ describe("org billing tab - downgrade flow", () => {
     click(cancelSubscriptionBtn!);
 
     await waitFor(() => {
-      expect(capturedBody).toStrictEqual({ targetTier: "pro-suspend" });
+      expect(capturedBody).toStrictEqual(
+        expect.objectContaining({
+          targetTier: "pro-suspend",
+          returnUrl: expect.any(String),
+        }),
+      );
     });
   });
 

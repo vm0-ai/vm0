@@ -12,7 +12,11 @@ import {
   zeroNeedsOnboarding$,
   zeroSelectedConnectors$,
 } from "../zero-page/zero-onboarding.ts";
-import { continueOnboardingAfterCheckout$ } from "../zero-page/zero-onboarding-actions.ts";
+import {
+  onboardingEffectiveStep$,
+  continueOnboardingAfterCheckout$,
+  redeemOnboardingSearchParamCode$,
+} from "../zero-page/zero-onboarding-actions.ts";
 import {
   clearCompletedBillingCheckout$,
   completedBillingCheckout$,
@@ -106,6 +110,16 @@ export const setupOnboardingPage$ = command(
     if (!needsOnboarding && !hasUseCaseLink) {
       set(detachedNavigateTo$, "/", { replace: true });
       return;
+    }
+
+    const effectiveStep = await get(onboardingEffectiveStep$);
+    signal.throwIfAborted();
+    if (effectiveStep === "4") {
+      const redeemed = await set(redeemOnboardingSearchParamCode$, signal);
+      signal.throwIfAborted();
+      if (redeemed) {
+        return;
+      }
     }
 
     // Scope session replay to the onboarding flow so we can see where new users

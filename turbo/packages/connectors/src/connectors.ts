@@ -163,6 +163,7 @@ import { moss } from "./connectors/moss";
 import { msg9 } from "./connectors/msg9";
 import { n8n } from "./connectors/n8n";
 import { neon } from "./connectors/neon";
+import { netdata } from "./connectors/netdata";
 import { novita } from "./connectors/novita";
 import { nyne } from "./connectors/nyne";
 import { onyx } from "./connectors/onyx";
@@ -1112,6 +1113,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...msg9,
   ...n8n,
   ...neon,
+  ...netdata,
   ...novita,
   ...nyne,
   ...onyx,

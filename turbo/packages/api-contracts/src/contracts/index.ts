@@ -999,6 +999,22 @@ export {
   type DeployScheduleResponse,
 } from "./zero-schedules";
 export {
+  automationsMainContract,
+  automationsByNameContract,
+  automationsEnableContract,
+  automationRunContract,
+  automationResponseSchema,
+  automationListResponseSchema,
+  automationMutationResponseSchema,
+  type AutomationsMainContract,
+  type AutomationsByNameContract,
+  type AutomationsEnableContract,
+  type AutomationRunContract,
+  type AutomationResponse,
+  type AutomationListResponse,
+  type AutomationMutationResponse,
+} from "./automations";
+export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
   type ZeroModelProvidersMainContract,

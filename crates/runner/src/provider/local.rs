@@ -6,7 +6,7 @@
 //! The winning runner executes the job and writes a group-wide
 //! `{job_id}.result` file that `submit` polls for.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -21,6 +21,7 @@ use crate::ids::RunId;
 #[cfg(test)]
 use crate::local_queue::{self, JobRequest, JobResponse};
 use crate::local_queue::{LocalClaimResult, LocalDiscoveredJob, LocalQueue};
+use crate::run_cancellation::SharedRunCancellationMap;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 use sandbox::SandboxId;
 
@@ -51,7 +52,7 @@ impl LocalProvider {
         group_dir: PathBuf,
         supported_profiles: Vec<String>,
         cancel: CancellationToken,
-        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
         Self::new_inner(group_dir, supported_profiles, cancel, cancel_tokens, true)
     }
@@ -60,7 +61,7 @@ impl LocalProvider {
         group_dir: PathBuf,
         mut supported_profiles: Vec<String>,
         cancel: CancellationToken,
-        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        cancel_tokens: SharedRunCancellationMap,
         start_cancel_watcher: bool,
     ) -> Arc<Self> {
         supported_profiles.sort();
@@ -93,7 +94,7 @@ impl LocalProvider {
         group_dir: PathBuf,
         supported_profiles: Vec<String>,
         cancel: CancellationToken,
-        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
         Self::new_inner(group_dir, supported_profiles, cancel, cancel_tokens, false)
     }
@@ -282,10 +283,22 @@ impl JobProvider for LocalProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::run_cancellation::RunCancellationHandle;
+    use std::collections::HashMap;
 
     /// Create a default empty cancel_tokens map for tests.
-    fn empty_cancel_tokens() -> Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> {
+    fn empty_cancel_tokens() -> SharedRunCancellationMap {
         Arc::new(tokio::sync::Mutex::new(HashMap::new()))
+    }
+
+    async fn insert_cancel_handle(
+        tokens: &SharedRunCancellationMap,
+        run_id: RunId,
+    ) -> CancellationToken {
+        let handle = RunCancellationHandle::new();
+        let token = handle.token();
+        tokens.lock().await.insert(run_id, handle);
+        token
     }
 
     fn profiles(names: &[&str]) -> Vec<String> {
@@ -299,7 +312,7 @@ mod tests {
     fn default_provider(
         dir: &std::path::Path,
         cancel: CancellationToken,
-        tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        tokens: SharedRunCancellationMap,
     ) -> Arc<LocalProvider> {
         LocalProvider::new_without_cancel_watcher(
             dir.to_path_buf(),
@@ -313,7 +326,7 @@ mod tests {
         dir: &std::path::Path,
         supported_profiles: &[&str],
         cancel: CancellationToken,
-        tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        tokens: SharedRunCancellationMap,
     ) -> Arc<LocalProvider> {
         LocalProvider::new_without_cancel_watcher(
             dir.to_path_buf(),
@@ -680,8 +693,7 @@ mod tests {
         let tokens = empty_cancel_tokens();
 
         let run_id = RunId::new_v4();
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
 
         let provider = default_provider(dir.path(), cancel, tokens);
 
@@ -702,8 +714,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tokens = empty_cancel_tokens();
         let run_id = RunId::new_v4();
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
         let provider = default_provider(dir.path(), CancellationToken::new(), tokens);
         write_job(dir.path(), run_id, "owned");
         let candidate = provider.discover().await.unwrap();
@@ -764,8 +775,7 @@ mod tests {
             "cancel file should survive before the token is inserted"
         );
 
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
         provider.claim(candidate).await.unwrap();
         let other_job = RunId::new_v4();
         write_job(dir.path(), other_job, "next job");
@@ -794,8 +804,7 @@ mod tests {
             Arc::clone(&tokens),
         );
         let run_id = RunId::new_v4();
-        let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token.clone());
+        let job_token = insert_cancel_handle(&tokens, run_id).await;
         write_job(dir.path(), run_id, "owned");
         let candidate = provider.discover().await.unwrap();
         provider.claim(candidate).await.unwrap();

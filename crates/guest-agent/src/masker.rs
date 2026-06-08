@@ -1,13 +1,14 @@
-//! Secret masking for event payloads.
+//! Secret masking for event payloads and CLI diagnostics.
 //!
-//! Reads `VM0_SECRET_VALUES` (base64-encoded JSON array), pre-computes
-//! plain / base64 / URL-encoded variants, and replaces matches in
-//! `serde_json::Value` trees with `"***"`.
+//! Reads `VM0_SECRET_VALUES` (comma-separated base64 values), pre-computes
+//! plain / base64 / URL-encoded variants for normal payload masking, and derives
+//! diagnostic-only multiline variants for bounded CLI stderr tails.
 
 use crate::env;
 use aho_corasick::{AhoCorasick, MatchKind};
 use base64::Engine;
 use serde_json::Value;
+use std::{collections::HashSet, ops::Range};
 
 /// Minimum secret length to avoid false-positive masking.
 const MIN_SECRET_LEN: usize = 5;
@@ -19,6 +20,7 @@ const MIN_SECRET_LEN: usize = 5;
 /// partial secret survives. See issue #9778.
 pub struct SecretMasker {
     matcher: Option<Matcher>,
+    diagnostic_matcher: Option<Matcher>,
 }
 
 struct Matcher {
@@ -34,8 +36,9 @@ impl SecretMasker {
 
     /// Build a masker from a raw comma-separated base64-encoded secret string.
     ///
-    /// For each secret ≥ 5 chars, three variants are stored:
-    /// plain, base64-encoded, and percent-encoded.
+    /// For each secret ≥ 5 chars, the normal matcher stores plain,
+    /// base64-encoded, and percent-encoded variants. The diagnostic matcher
+    /// also stores multiline-only variants for bounded stderr masking.
     pub fn from_raw(raw: &str) -> Self {
         if raw.is_empty() {
             return Self::empty();
@@ -59,27 +62,41 @@ impl SecretMasker {
             .collect();
 
         let mut patterns = Vec::new();
+        let mut diagnostic_patterns = Vec::new();
         for secret in &secrets {
             if secret.len() < MIN_SECRET_LEN {
                 continue;
             }
-            // Plain
-            patterns.push(secret.clone());
-            // Base64-encoded
-            let b64 = base64::engine::general_purpose::STANDARD.encode(secret);
-            patterns.push(b64);
-            // URL-encoded (percent-encode)
-            let url_encoded = url_encode(secret);
-            if url_encoded != *secret {
-                patterns.push(url_encoded);
-            }
+            push_secret_patterns(secret, &mut patterns);
+            push_secret_patterns(secret, &mut diagnostic_patterns);
+            push_diagnostic_multiline_patterns(secret, &mut diagnostic_patterns);
         }
 
-        Self::build(patterns)
+        Self::build_with_diagnostic_patterns(patterns, diagnostic_patterns)
     }
 
     fn empty() -> Self {
-        Self { matcher: None }
+        Self {
+            matcher: None,
+            diagnostic_matcher: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn build(patterns: Vec<String>) -> Self {
+        Self::build_with_diagnostic_patterns(patterns.clone(), patterns)
+    }
+
+    fn build_with_diagnostic_patterns(
+        patterns: Vec<String>,
+        diagnostic_patterns: Vec<String>,
+    ) -> Self {
+        let matcher = Self::build_matcher(&patterns);
+        let diagnostic_matcher = Self::build_matcher(&diagnostic_patterns);
+        Self {
+            matcher,
+            diagnostic_matcher,
+        }
     }
 
     /// # Panics
@@ -89,18 +106,23 @@ impl SecretMasker {
     /// that bound. A hard abort is preferred over silently degrading to a
     /// pass-through masker, which would leak every subsequent event payload.
     #[allow(clippy::expect_used)]
-    fn build(patterns: Vec<String>) -> Self {
+    fn build_matcher(patterns: &[String]) -> Option<Matcher> {
         if patterns.is_empty() {
-            return Self::empty();
+            return None;
+        }
+        let mut seen = HashSet::with_capacity(patterns.len());
+        let mut unique_patterns = Vec::with_capacity(patterns.len());
+        for pattern in patterns {
+            if seen.insert(pattern.as_str()) {
+                unique_patterns.push(pattern.as_str());
+            }
         }
         let ac = AhoCorasick::builder()
             .match_kind(MatchKind::LeftmostLongest)
-            .build(&patterns)
+            .build(unique_patterns.iter().copied())
             .expect("AhoCorasick build failed for secret pattern set");
-        let replacements = vec!["***"; patterns.len()];
-        Self {
-            matcher: Some(Matcher { ac, replacements }),
-        }
+        let replacements = vec!["***"; unique_patterns.len()];
+        Some(Matcher { ac, replacements })
     }
 
     /// Recursively mask secrets in a JSON value tree (in-place).
@@ -137,6 +159,66 @@ impl SecretMasker {
 
     pub(crate) fn mask_owned_string(&self, s: String) -> String {
         self.masked_string(&s).unwrap_or(s)
+    }
+
+    /// Mask diagnostic text while preserving the caller's line boundaries.
+    pub(crate) fn mask_diagnostic_lines(&self, lines: Vec<String>) -> Vec<String> {
+        let Some(matcher) = self.diagnostic_matcher.as_ref() else {
+            return lines;
+        };
+        if lines.is_empty() {
+            return lines;
+        }
+
+        let joined_len = lines
+            .iter()
+            .map(String::len)
+            .sum::<usize>()
+            .saturating_add(lines.len().saturating_sub(1));
+        let mut joined = String::with_capacity(joined_len);
+        let mut line_starts = Vec::with_capacity(lines.len());
+        let mut line_ends = Vec::with_capacity(lines.len());
+        for (index, line) in lines.iter().enumerate() {
+            if index > 0 {
+                joined.push('\n');
+            }
+            line_starts.push(joined.len());
+            joined.push_str(line);
+            line_ends.push(joined.len());
+        }
+        if !matcher.ac.is_match(&joined) {
+            return lines;
+        }
+
+        let mut redactions = vec![Vec::new(); lines.len()];
+        for matched in matcher.ac.find_iter(&joined) {
+            let match_start = matched.start();
+            let match_end = matched.end();
+            let first_line = line_ends.partition_point(|&line_end| line_end <= match_start);
+            for ((line_start, line_end), line_redactions) in line_starts
+                .iter()
+                .copied()
+                .zip(line_ends.iter().copied())
+                .zip(redactions.iter_mut())
+                .skip(first_line)
+            {
+                if line_start >= match_end {
+                    break;
+                }
+                let redaction_start = match_start.max(line_start);
+                let redaction_end = match_end.min(line_end);
+                if redaction_start < redaction_end {
+                    line_redactions
+                        .push((redaction_start - line_start)..(redaction_end - line_start));
+                }
+            }
+        }
+
+        lines
+            .into_iter()
+            .zip(redactions)
+            .map(|(line, ranges)| redact_ranges(line, &ranges))
+            .collect()
     }
 
     fn mask_string_in_place(&self, s: &mut String) -> bool {
@@ -200,6 +282,58 @@ fn hex_digit(n: u8) -> char {
         0..=9 => (b'0' + n) as char,
         _ => (b'A' + n - 10) as char,
     }
+}
+
+fn push_secret_patterns(secret: &str, patterns: &mut Vec<String>) {
+    patterns.push(secret.to_string());
+    let b64 = base64::engine::general_purpose::STANDARD.encode(secret);
+    patterns.push(b64);
+    let url_encoded = url_encode(secret);
+    if url_encoded != secret {
+        patterns.push(url_encoded);
+    }
+}
+
+fn push_diagnostic_multiline_patterns(secret: &str, patterns: &mut Vec<String>) {
+    let normalized = secret.replace("\r\n", "\n");
+    if !normalized.contains('\n') {
+        return;
+    }
+    if normalized != secret && normalized.len() >= MIN_SECRET_LEN {
+        patterns.push(normalized.clone());
+    }
+    if let Some(without_final_newline) = normalized.strip_suffix('\n')
+        && without_final_newline.len() >= MIN_SECRET_LEN
+    {
+        patterns.push(without_final_newline.to_string());
+    }
+    for line in normalized.split('\n') {
+        if line.len() >= MIN_SECRET_LEN {
+            patterns.push(line.to_string());
+        }
+    }
+}
+
+fn redact_ranges(line: String, ranges: &[Range<usize>]) -> String {
+    if ranges.is_empty() {
+        return line;
+    }
+
+    let mut redacted = String::with_capacity(line.len());
+    let mut cursor = 0;
+    for range in ranges {
+        if range.start > cursor {
+            redacted.push_str(&line[cursor..range.start]);
+        }
+        if range.end > cursor {
+            redacted.push_str("***");
+            cursor = range.end;
+        }
+    }
+    if cursor < line.len() {
+        redacted.push_str(&line[cursor..]);
+    }
+    redacted
 }
 
 #[cfg(test)]
@@ -285,6 +419,124 @@ mod tests {
         assert_eq!(
             masker.mask_owned_string("stderr has secret123".to_string()),
             "stderr has ***"
+        );
+    }
+
+    #[test]
+    fn diagnostic_lines_mask_multiline_secret_without_collapsing_lines() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "first-line\nsecond-secret-line\nthird-line\n";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        let lines = vec![
+            "before".to_string(),
+            "first-line".to_string(),
+            "second-secret-line".to_string(),
+            "third-line".to_string(),
+            "after".to_string(),
+        ];
+
+        assert_eq!(
+            masker.mask_diagnostic_lines(lines),
+            vec![
+                "before".to_string(),
+                "***".to_string(),
+                "***".to_string(),
+                "***".to_string(),
+                "after".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn diagnostic_lines_mask_trailing_newline_secret_at_end_with_short_lines() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "aa\nbb\ncc\n";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_diagnostic_lines(vec![
+                "before".to_string(),
+                "aa".to_string(),
+                "bb".to_string(),
+                "cc".to_string(),
+            ]),
+            vec![
+                "before".to_string(),
+                "***".to_string(),
+                "***".to_string(),
+                "***".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn diagnostic_lines_mask_single_line_secret_with_terminal_newline() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "abcde\n";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_diagnostic_lines(vec!["abcde".to_string()]),
+            vec!["***".to_string()]
+        );
+    }
+
+    #[test]
+    fn diagnostic_lines_mask_repeated_matches_on_same_line() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "abcde\n";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_diagnostic_lines(vec!["abcde abcde".to_string()]),
+            vec!["*** ***".to_string()]
+        );
+    }
+
+    #[test]
+    fn diagnostic_lines_mask_only_one_missing_terminal_newline() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "aa\nbb\ncc\n\n";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_diagnostic_lines(vec![
+                "before".to_string(),
+                "aa".to_string(),
+                "bb".to_string(),
+                "cc".to_string(),
+                String::new(),
+            ]),
+            vec![
+                "before".to_string(),
+                "***".to_string(),
+                "***".to_string(),
+                "***".to_string(),
+                String::new(),
+            ]
+        );
+    }
+
+    #[test]
+    fn normal_masking_does_not_use_multiline_fragments() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "first-line\nsecond-secret-line\nthird-line";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_string("second-secret-line"),
+            "second-secret-line"
+        );
+        assert_eq!(
+            masker.mask_diagnostic_lines(vec!["second-secret-line".to_string()]),
+            vec!["***".to_string()]
         );
     }
 

@@ -9,6 +9,7 @@ use tracing::{error, info, warn};
 use super::api::ApiClient;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
+use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
@@ -378,7 +379,7 @@ impl AblySupervisor {
         group: String,
         runner_id: String,
         poll_wakeups: Arc<PollWakeups>,
-        cancel_tokens: Arc<Mutex<HashMap<RunId, CancellationToken>>>,
+        cancel_tokens: SharedRunCancellationMap,
         provider_cancel: CancellationToken,
     ) -> Self {
         let shutdown = CancellationToken::new();
@@ -438,7 +439,7 @@ async fn run_supervisor(
     group: String,
     runner_id: String,
     poll_wakeups: Arc<PollWakeups>,
-    cancel_tokens: Arc<Mutex<HashMap<RunId, CancellationToken>>>,
+    cancel_tokens: SharedRunCancellationMap,
     provider_cancel: CancellationToken,
     shutdown: CancellationToken,
 ) {
@@ -530,13 +531,13 @@ async fn handle_ably_message(
     msg: &ably_subscriber::Message,
     runner_id: &str,
     poll_wakeups: &PollWakeups,
-    cancel_tokens: &Mutex<HashMap<RunId, CancellationToken>>,
+    cancel_tokens: &Mutex<HashMap<RunId, RunCancellationHandle>>,
 ) {
     if let Some(run_id) = parse_cancel_notification(msg) {
-        let token = cancel_tokens.lock().await.get(&run_id).cloned();
-        if let Some(token) = token {
+        let handle = cancel_tokens.lock().await.get(&run_id).cloned();
+        if let Some(handle) = handle {
             info!(run_id = %run_id, "ably: cancel notification, killing job");
-            token.cancel();
+            handle.cancel().await;
         }
         return;
     }
@@ -1302,8 +1303,9 @@ mod tests {
     #[tokio::test]
     async fn cancel_notification_cancels_token_without_discovery() {
         let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
-        let token = CancellationToken::new();
-        let tokens = Mutex::new(HashMap::from([(run_id, token.clone())]));
+        let handle = RunCancellationHandle::new();
+        let token = handle.token();
+        let tokens = Mutex::new(HashMap::from([(run_id, handle)]));
         let wakeups = PollWakeups::new(true);
         let msg = make_message(Some("cancel"), serde_json::json!({ "runId": run_id }));
 

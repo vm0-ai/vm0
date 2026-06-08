@@ -59,6 +59,7 @@ use crate::provider::{ApiProvider, JobProvider, LocalProvider};
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
+use crate::run_cancellation::SharedRunCancellationMap;
 use crate::status::{RunnerMode, StatusTracker};
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
@@ -445,8 +446,7 @@ pub async fn run_start(
     })?;
     let name = runner_config.name;
     let group = runner_config.group;
-    let cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
-        Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let cancel_tokens: SharedRunCancellationMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
 
     let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
@@ -605,7 +605,7 @@ struct ProviderState {
     provider: Arc<dyn JobProvider>,
     /// Per-job cancel tokens shared with the provider for cancel events
     /// (Ably for ApiProvider, `.cancel` files for LocalProvider).
-    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    cancel_tokens: SharedRunCancellationMap,
     cancel: CancellationToken,
 }
 
