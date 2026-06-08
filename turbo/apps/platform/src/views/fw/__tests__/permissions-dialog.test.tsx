@@ -185,6 +185,19 @@ function getAllowOptionsButton(
   return button;
 }
 
+function getResetChangesButton(
+  row: HTMLElement,
+  permission: string,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", row).find((el) => {
+    return el.getAttribute("aria-label") === `Reset ${permission} changes`;
+  });
+  if (!(button instanceof HTMLElement)) {
+    throw new Error(`Reset changes button not found: ${permission}`);
+  }
+  return button;
+}
+
 async function selectAllowDuration(
   row: HTMLElement,
   permission: string,
@@ -326,6 +339,10 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     expect(allowButton).toHaveTextContent("Allow");
     expect(screen.getByText("Apply")).toBeDisabled();
 
+    await selectAllowDuration(row, "insert_comments", "Allow always");
+    expect(allowButton).toHaveTextContent("Allow");
+    expect(screen.getByText("Apply")).toBeDisabled();
+
     await selectAllowDuration(row, "insert_comments", "Allow for 24h");
     expect(allowButton).toHaveTextContent("Allow · 24h");
     expect(screen.getByText("Apply")).toBeEnabled();
@@ -426,7 +443,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     });
   });
 
-  it("keeps deny policy when choosing current duration from allow options", async () => {
+  it("resets pending allow duration changes from allow options", async () => {
     mockAPIs({
       connectorType: "notion",
       userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
@@ -451,19 +468,30 @@ describe("permissions dialog - flat list connector (Notion)", () => {
         return item.textContent?.trim() === "Allow";
       }),
     ).toBeFalsy();
+    expect(
+      menuItems.some((item) => {
+        return item.textContent?.includes("Keep current") ?? false;
+      }),
+    ).toBeFalsy();
 
-    const keepCurrent = menuItems.find((item) => {
-      return item.textContent?.includes("Keep current") ?? false;
+    const allowFor24h = menuItems.find((item) => {
+      return item.textContent?.includes("Allow for 24h") ?? false;
     });
-    if (!(keepCurrent instanceof HTMLElement)) {
-      throw new Error("Keep current menu item not found");
+    if (!(allowFor24h instanceof HTMLElement)) {
+      throw new Error("Allow for 24h menu item not found");
     }
-    click(keepCurrent);
+    click(allowFor24h);
+
+    expect(getPolicyButton(row, "Allow")).toHaveTextContent("Allow · 24h");
+    expect(screen.getByText("Apply")).toBeEnabled();
+
+    click(getResetChangesButton(row, "insert_comments"));
 
     expect(getPolicyButton(row, "Deny")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
+    expect(getPolicyButton(row, "Allow")).toHaveTextContent("Allow");
     expect(screen.getByText("Apply")).toBeDisabled();
   });
 
