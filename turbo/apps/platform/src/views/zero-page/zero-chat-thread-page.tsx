@@ -2576,7 +2576,7 @@ function RecommendedFollowupList({
             <span className="shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground">
               <RecommendedFollowupIcon followup={followup} />
             </span>
-            <span className="min-w-0 flex-1 break-words text-xs font-medium leading-5 text-muted-foreground group-hover:text-foreground">
+            <span className="min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 text-muted-foreground group-hover:text-foreground">
               {followup.prompt}
             </span>
             <IconArrowUpRight
@@ -3046,7 +3046,7 @@ function ThinkingLabel({
 
   if (isQueued) {
     return (
-      <p className="zero-shimmer-text text-xs truncate">
+      <p className="zero-shimmer-text text-[0.8125rem] truncate">
         Waiting in{" "}
         <button
           type="button"
@@ -3061,7 +3061,11 @@ function ThinkingLabel({
     );
   }
 
-  return <p className="zero-shimmer-text text-xs truncate">{rotatingLabel}</p>;
+  return (
+    <p className="zero-shimmer-text text-[0.8125rem] truncate">
+      {rotatingLabel}
+    </p>
+  );
 }
 
 function InlineThinkingRow({
@@ -3131,7 +3135,7 @@ function WaitingForAssistantResponse({
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
-        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
+        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-relaxed min-w-0 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0">
             <span className="zero-blocks shrink-0" style={blockStyle}>
               <span />
@@ -3295,6 +3299,7 @@ function BodyContentBlocks({
               }
               mediaPreview
               mathEnabled
+              style={{ fontSize: "inherit" }}
             />
           );
         }
@@ -3382,10 +3387,10 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
           <ConnectorIcon type={block.connectorType} size={22} />
         </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-foreground">
+          <div className="truncate text-[0.9375rem] font-medium text-foreground">
             {config.label}
           </div>
-          <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
+          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
             {config.helpText}
           </div>
         </div>
@@ -3396,7 +3401,7 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
         onClick={() => {
           detach(activate(pageSignal), Reason.DomCallback);
         }}
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {activating && <IconLoader2 size={15} className="animate-spin" />}
         {complete ? "Connected" : "Connect"}
@@ -3497,7 +3502,9 @@ function PermissionActionButton({
   const status = permissionActionStatusText(state, action);
   if (status) {
     return (
-      <span className={`shrink-0 text-sm font-medium ${status.className}`}>
+      <span
+        className={`shrink-0 text-[0.9375rem] font-medium ${status.className}`}
+      >
         {status.label}
       </span>
     );
@@ -3508,7 +3515,7 @@ function PermissionActionButton({
       type="button"
       disabled={permissionActionButtonDisabled(state)}
       onClick={onClick}
-      className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+      className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
     >
       {state.saving && <IconLoader2 size={15} className="animate-spin" />}
       {permissionActionButtonLabel(state)}
@@ -3787,10 +3794,10 @@ function PermissionActionCardContent({
           <ConnectorIcon type={block.connectorRef} size={22} />
         </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-foreground">
+          <div className="truncate text-[0.9375rem] font-medium text-foreground">
             {connectorLabel} permissions
           </div>
-          <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
+          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
             {actionLabel} {permissionName}
           </div>
           {expiryText && (
@@ -3942,10 +3949,10 @@ function customCreditsFromForm(form: HTMLFormElement | null): number | null {
 function CreditsAvailableMessage() {
   return (
     <div className="max-w-md">
-      <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+      <p className="text-[0.9375rem] font-medium text-emerald-700 dark:text-emerald-300">
         Credits available
       </p>
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="mt-1 text-sm text-muted-foreground">
         Your credits have been added. You can continue chatting with Zero.
       </p>
     </div>
@@ -4017,7 +4024,7 @@ function PaidCreditCheckoutActions({
                 handleCreditClick({ credits }, event);
               }}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
             >
               {formatCreditsUsd(credits)}
             </button>
@@ -4026,12 +4033,12 @@ function PaidCreditCheckoutActions({
         <details>
           <summary
             role="button"
-            className="inline-flex h-8 cursor-pointer list-none items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent marker:hidden disabled:opacity-60 [&::-webkit-details-marker]:hidden"
+            className="inline-flex h-8 cursor-pointer list-none items-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent marker:hidden disabled:opacity-60 [&::-webkit-details-marker]:hidden"
           >
             Custom
           </summary>
           <form className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">$</span>
+            <span className="text-sm text-muted-foreground">$</span>
             <input
               type="text"
               inputMode="numeric"
@@ -4044,13 +4051,13 @@ function PaidCreditCheckoutActions({
                 );
               }}
               aria-label="Custom dollar amount"
-              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none transition-colors focus:border-ring"
+              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition-colors focus:border-ring"
             />
             <button
               type="button"
               onClick={handleCustomCreditClick}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
             >
               {redirecting ? "Redirecting..." : "Buy"}
             </button>
@@ -4125,14 +4132,14 @@ function InsufficientCreditsCard() {
 
   return (
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
-      <p className="text-sm font-medium text-foreground">{headline}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+      <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
       {!canManageBilling ? null : shouldStartProCheckout ? (
         <button
           type="button"
           onClick={handleUpgradeClick}
           disabled={redirecting}
-          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
         >
           {redirecting ? "Redirecting..." : "Upgrade to Pro"}
         </button>
@@ -4158,7 +4165,7 @@ function AssistantErrorContent({ error }: { error: string }) {
   if (error.trim().toLowerCase() === "run cancelled") {
     return (
       <div
-        className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[13px] text-muted-foreground"
+        className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[0.9375rem] text-muted-foreground"
         style={{
           border: "0.7px solid hsl(var(--border))",
           borderRadius: "12px",
@@ -4258,7 +4265,7 @@ function AssistantErrorContent({ error }: { error: string }) {
   return (
     <div className="flex items-start gap-2 text-destructive">
       <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
-      <Markdown source={error} />
+      <Markdown source={error} style={{ fontSize: "inherit" }} />
     </div>
   );
 }
@@ -4809,7 +4816,7 @@ function PagedUserMessage({
           <UserMessageGenerationTemplate
             generationTemplate={message.generationTemplate}
           />
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
                 <BodyContentBlocks
@@ -4881,7 +4888,7 @@ function PagedAssistantMessageItem({
 
   if (message.error) {
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         <AssistantErrorContent error={message.error} />
       </div>
     );
@@ -4890,7 +4897,7 @@ function PagedAssistantMessageItem({
   if (message.content) {
     const { blocks } = message;
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         {blocks.length > 0 ? (
           <BodyContentBlocks
             blocks={blocks}
