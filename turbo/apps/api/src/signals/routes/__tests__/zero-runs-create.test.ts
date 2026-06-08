@@ -645,6 +645,7 @@ describe("POST /api/zero/runs", () => {
       "zero credit <credits>",
       "zero doctor permission-deny --help",
       "zero doctor permission-change --help",
+      "--duration 1h|24h|7d|always",
       "zero skill --help",
       "zero developer-support --help",
       "zero maps --help",

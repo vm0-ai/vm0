@@ -31,7 +31,8 @@ Examples:
 
 Notes:
   - Identifies which named permission covers a denied request
-  - Use permission-change to request or enable the permission`,
+  - Use permission-change to request or enable the permission
+  - Permission-change enable requests default to --duration 1h; pick 24h, 7d, or always only when appropriate`,
   )
   .action(
     withErrorHandler(
@@ -78,7 +79,7 @@ Notes:
         });
         console.log(`This is covered by the "${permission}" permission.`);
         console.log(
-          `To allow this permission, run: zero doctor permission-change ${connectorRef} --permission ${permission} --enable`,
+          `To allow this permission, run: zero doctor permission-change ${connectorRef} --permission ${permission} --enable --duration 1h`,
         );
       },
     ),
