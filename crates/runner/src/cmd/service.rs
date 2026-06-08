@@ -374,6 +374,50 @@ fn unit_staging_prefix(path: &Path) -> RunnerResult<String> {
     Ok(format!("{file_name}{UNIT_STAGING_MARKER}"))
 }
 
+fn legacy_unit_staging_prefix(path: &Path) -> RunnerResult<String> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "unit file path has no UTF-8 file name: {}",
+                path.display()
+            ))
+        })?;
+    Ok(format!(".{file_name}.tmp."))
+}
+
+fn is_generated_unit_staging_suffix(value: &str) -> bool {
+    let mut parts = value.split('.');
+    let Some(pid) = parts.next() else {
+        return false;
+    };
+    let Some(nanos) = parts.next() else {
+        return false;
+    };
+    let Some(attempt) = parts.next() else {
+        return false;
+    };
+    parts.next().is_none()
+        && pid.parse::<u32>().is_ok()
+        && nanos.parse::<u128>().is_ok()
+        && attempt.parse::<u64>().is_ok()
+}
+
+fn is_unit_staging_file_name(
+    name: &str,
+    staging_prefix: &str,
+    legacy_staging_prefix: &str,
+) -> bool {
+    if let Some(suffix) = name.strip_prefix(staging_prefix) {
+        return is_generated_unit_staging_suffix(suffix);
+    }
+    if let Some(suffix) = name.strip_prefix(legacy_staging_prefix) {
+        return uuid::Uuid::parse_str(suffix).is_ok();
+    }
+    false
+}
+
 fn remove_stale_unit_staging_file(path: &Path) -> RunnerResult<()> {
     let meta = match std::fs::symlink_metadata(path) {
         Ok(meta) => meta,
@@ -400,6 +444,7 @@ fn remove_stale_unit_staging_file(path: &Path) -> RunnerResult<()> {
 fn cleanup_unit_staging_files(path: &Path) -> RunnerResult<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let prefix = unit_staging_prefix(path)?;
+    let legacy_prefix = legacy_unit_staging_prefix(path)?;
 
     // Do not remove the old fixed `<target>.tmp` path here: during a rolling
     // deploy an older runner binary may still be using it as its staging file.
@@ -421,7 +466,7 @@ fn cleanup_unit_staging_files(path: &Path) -> RunnerResult<()> {
         let Some(name) = file_name.to_str() else {
             continue;
         };
-        if name.starts_with(&prefix) {
+        if is_unit_staging_file_name(name, &prefix, &legacy_prefix) {
             remove_stale_unit_staging_file(&entry.path())?;
         }
     }
@@ -2087,6 +2132,11 @@ mod tests {
         let path = dir.path().join("vm0-runner-test.service");
         let legacy_tmp = path.with_extension("tmp");
         let stale_unique = dir.path().join("vm0-runner-test.service.tmp@123.456.0");
+        let legacy_unique = dir.path().join(format!(
+            ".vm0-runner-test.service.tmp.{}",
+            uuid::Uuid::new_v4()
+        ));
+        let invalid_staging = dir.path().join("vm0-runner-test.service.tmp@manual");
         let other_unit_staging = dir.path().join("vm0-runner-other.service.tmp@123.456.0");
         let colliding_unit_staging = dir
             .path()
@@ -2096,6 +2146,8 @@ mod tests {
         std::fs::write(&path, "current").unwrap();
         std::fs::write(&legacy_tmp, "legacy").unwrap();
         std::fs::write(&stale_unique, "stale").unwrap();
+        std::fs::write(&legacy_unique, "legacy unique").unwrap();
+        std::fs::write(&invalid_staging, "manual").unwrap();
         std::fs::write(&other_unit_staging, "other").unwrap();
         std::fs::write(&colliding_unit_staging, "colliding").unwrap();
         std::fs::create_dir(&staging_dir).unwrap();
@@ -2108,6 +2160,14 @@ mod tests {
             "legacy fixed staging may be in use by an older runner binary"
         );
         assert!(!stale_unique.exists(), "unique staging must be removed");
+        assert!(
+            !legacy_unique.exists(),
+            "legacy dot-prefixed unique staging must be removed"
+        );
+        assert!(
+            invalid_staging.exists(),
+            "invalid staging-like files must not be removed"
+        );
         assert!(
             other_unit_staging.exists(),
             "other unit staging must not be removed"
