@@ -191,6 +191,10 @@ const UPDATERS: Updater[] = [
   staticUpdater("strava", [
     "https://developers.strava.com/swagger/swagger.json",
   ]),
+  staticUpdater("stripe", [
+    "https://raw.githubusercontent.com/stripe/openapi/master/latest/openapi.spec3.json",
+    "https://docs.stripe.com/stripe-apps/reference/permissions.md",
+  ]),
   staticUpdater("vercel", ["https://openapi.vercel.sh/"]),
   staticUpdater("x", ["https://api.twitter.com/2/openapi.json"]),
   staticUpdater("xero", [

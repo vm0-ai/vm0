@@ -20,6 +20,7 @@
     "update-specs:sentry": "tsx src/update-specs.ts sentry",
     "update-specs:slack": "tsx src/update-specs.ts slack",
     "update-specs:strava": "tsx src/update-specs.ts strava",
+    "update-specs:stripe": "tsx src/update-specs.ts stripe",
     "update-specs:vercel": "tsx src/update-specs.ts vercel",
     "update-specs:x": "tsx src/update-specs.ts x",
     "update-specs:xero": "tsx src/update-specs.ts xero",

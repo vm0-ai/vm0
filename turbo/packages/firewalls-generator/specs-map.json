@@ -399,6 +399,10 @@
   "strava": {
     "https://developers.strava.com/swagger/swagger.json": "2d3a43ebfa6afdc89324897cb4b52f14aa9cc5e866fa21a1b117c9fb4627ac99"
   },
+  "stripe": {
+    "https://docs.stripe.com/stripe-apps/reference/permissions.md": "7079059fbd5e65f617ad3b2da1644779dd4b028fe680078fbc07740f3a17cd53",
+    "https://raw.githubusercontent.com/stripe/openapi/master/latest/openapi.spec3.json": "f00242857c84b56ec6cfab86cbb487b7a84611bc447bc2cbd56e1dac7f86fabe"
+  },
   "vercel": {
     "https://openapi.vercel.sh/": "5b3f7e764fac6e87a1092c7e599841a316613b3bc63edef2ccd286d9e3a4b8cc"
   },

@@ -6,6 +6,7 @@ describe("hasConnectorPermissions", () => {
     expect(hasConnectorPermissions("slack")).toBeTruthy();
     expect(hasConnectorPermissions("gmail")).toBeTruthy();
     expect(hasConnectorPermissions("x")).toBeTruthy();
+    expect(hasConnectorPermissions("stripe")).toBeTruthy();
   });
 
   it("should return false for connectors without permissions", () => {
@@ -13,9 +14,8 @@ describe("hasConnectorPermissions", () => {
   });
 
   it("should return false for connectors with config but no permissions", () => {
-    // hubspot, atlassian, stripe have connector configs but no permissions defined
+    // hubspot and atlassian have connector configs but no permissions defined
     expect(hasConnectorPermissions("hubspot")).toBeFalsy();
     expect(hasConnectorPermissions("atlassian")).toBeFalsy();
-    expect(hasConnectorPermissions("stripe")).toBeFalsy();
   });
 });
