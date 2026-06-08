@@ -408,6 +408,35 @@ describe("zero chat thread page display - permission action card", () => {
     ).toBeUndefined();
   });
 
+  it("shows existing expiration for already-applied permission actions", async () => {
+    mockPermissionAgent();
+    mockPermissionMessage();
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+        expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    expect(within(card).getByText("Expires in 2 hours")).toBeInTheDocument();
+    expect(
+      within(card).queryByRole("combobox", { name: "Permission duration" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("does not write grants for unknown permission actions", async () => {
     let grantWritten = false;
     mockPermissionAgent();

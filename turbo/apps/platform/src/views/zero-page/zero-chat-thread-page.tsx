@@ -3521,6 +3521,23 @@ function permissionActionUserGrantPolicy(
   );
 }
 
+function permissionActionUserGrant(
+  loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
+  block: PermissionActionBlock,
+): PermissionActionUserGrant | undefined {
+  const grants = loadableData(loadable);
+  if (!grants) {
+    return undefined;
+  }
+  return grants.find((grant) => {
+    return (
+      grant.connectorRef === block.connectorRef &&
+      grant.permission === block.permission &&
+      grant.action === block.action
+    );
+  });
+}
+
 function createPermissionActionButtonState(params: {
   hasAgent: boolean;
   hasPermission: boolean;
@@ -3772,6 +3789,11 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
   });
+  const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
+  const grantExpiresAt =
+    grantLoadable.state === "hasData"
+      ? grantLoadable.data.expiresAt
+      : (existingGrant?.expiresAt ?? null);
 
   return (
     <PermissionActionCardContent
@@ -3785,9 +3807,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       onExpiresInChange={(value) => {
         setExpiresInForScope(durationScope, value);
       }}
-      expiresAt={
-        grantLoadable.state === "hasData" ? grantLoadable.data.expiresAt : null
-      }
+      expiresAt={grantExpiresAt}
       onClick={createPermissionActionHandler({
         block,
         pageSignal,
