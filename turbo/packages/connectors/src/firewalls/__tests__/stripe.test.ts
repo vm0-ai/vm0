@@ -249,15 +249,14 @@ describe("stripe firewall", () => {
       return count + (api.permissions?.length ?? 0);
     }, 0);
 
-    expect(stripeGenerationStats.totalOperations).toBeGreaterThan(0);
-    expect(stripeGenerationStats.mappedOperations).toBeGreaterThan(0);
-    expect(stripeGenerationStats.docsMappedOperations).toBeGreaterThan(0);
-    expect(
-      stripeGenerationStats.openApiResourceMappedOperations,
-    ).toBeGreaterThan(0);
+    expect(stripeGenerationStats.totalOperations).toBe(619);
+    expect(stripeGenerationStats.mappedOperations).toBe(619);
+    expect(stripeGenerationStats.docsMappedOperations).toBe(53);
+    expect(stripeGenerationStats.openApiResourceMappedOperations).toBe(239);
     expect(stripeGenerationStats.legacyAmbiguousMappedOperations).toBe(16);
     expect(stripeGenerationStats.unmappedOperations).toBe(0);
     expect(stripeGenerationStats.ambiguousOperations).toBe(0);
+    expect(stripeGenerationStats.permissionCount).toBe(236);
     expect(stripeGenerationStats.permissionCount).toBe(permissionCount);
   });
 

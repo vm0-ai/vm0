@@ -7,6 +7,13 @@ export const STRIPE_PERMISSIONS_URL =
 export const STRIPE_RESTRICTED_API_KEYS_URL =
   "https://docs.stripe.com/keys/restricted-api-keys.md";
 
+// Supplemental sources are only for official Stripe docs that identify a
+// resource/endpoint family not covered by the public Apps permission table or
+// OpenAPI resource IDs. When a resource exists in the Apps permission table,
+// attach its API docs through STRIPE_ADDITIONAL_API_DOC_ENDPOINT_URLS_BY_RESOURCE
+// so the generated permission name stays identical to Stripe's published name.
+// Otherwise derive the permission stem from a required official object value,
+// for example "v2.core.account" -> "v2_core_account".
 export const STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES = [
   {
     url: "https://docs.stripe.com/payments/vault-and-forward.md",
