@@ -7,9 +7,11 @@ import {
   IconDots,
   IconExternalLink,
   IconLoader2,
+  IconPencil,
   IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   useGet,
   useLastLoadable,
@@ -28,6 +30,7 @@ import {
   type ArtifactRef,
   closeArtifact$,
   currentArtifactRef$,
+  openPresentationEditor$,
   toggleArtifactFullscreen$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import {
@@ -58,6 +61,11 @@ import {
   artifactTitleSubtitle,
 } from "./zero-artifact-display.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  presentationHtmlPreviewUrl,
+  presentationHtmlRefreshVersion$,
+} from "../../signals/zero-page/presentation-html-cache-bust.ts";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — page-level pane for previewing the artifact pointed to
@@ -165,6 +173,7 @@ function ArtifactSidebarContent({
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const pageSignal = useGet(pageSignal$);
   const closePreview = onClose ?? close;
+  const openPresentationEditor = useSet(openPresentationEditor$);
 
   const display = resolveArtifactDisplay(artifactRef, item);
   const syncTarget =
@@ -248,6 +257,13 @@ function ArtifactSidebarContent({
         syncTarget={syncTarget}
         url={display.url}
         fullscreen={fullscreen}
+        onEditPresentation={
+          display.artifactKind === "presentation-html"
+            ? () => {
+                openPresentationEditor(display.url);
+              }
+            : undefined
+        }
         onBack={onBack}
         onToggleFullscreen={toggleFullscreenWithImageReset}
         onClose={closePreview}
@@ -352,6 +368,7 @@ function ArtifactSidebarHeader({
   url,
   fullscreen,
   onBack,
+  onEditPresentation,
   onToggleFullscreen,
   onClose,
 }: {
@@ -363,6 +380,7 @@ function ArtifactSidebarHeader({
   url?: string;
   fullscreen: boolean;
   onBack?: () => void;
+  onEditPresentation?: () => void;
   onToggleFullscreen: () => void;
   onClose: () => void;
 }) {
@@ -396,6 +414,7 @@ function ArtifactSidebarHeader({
         fullscreen={fullscreen}
         kind={kind}
         onClose={onClose}
+        onEditPresentation={onEditPresentation}
         onToggleFullscreen={onToggleFullscreen}
         syncTarget={syncTarget}
         title={title}
@@ -411,6 +430,7 @@ function ArtifactSidebarActions({
   fullscreen,
   kind,
   onClose,
+  onEditPresentation,
   onToggleFullscreen,
   syncTarget,
   title,
@@ -421,11 +441,18 @@ function ArtifactSidebarActions({
   fullscreen: boolean;
   kind?: ArtifactKindForBody;
   onClose: () => void;
+  onEditPresentation?: () => void;
   onToggleFullscreen: () => void;
   syncTarget?: ArtifactDownloadSyncTarget;
   title: string;
   url?: string;
 }) {
+  const features = useLastResolved(featureSwitch$);
+  const showPresentationEdit =
+    artifactKind === "presentation-html" &&
+    Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]) &&
+    onEditPresentation !== undefined;
+
   return (
     <div className="flex shrink-0 items-center gap-1">
       {url && (
@@ -440,6 +467,12 @@ function ArtifactSidebarActions({
             url={url}
           />
           <ArtifactActionSeparator />
+          {showPresentationEdit && (
+            <>
+              <ArtifactEditPresentationAction onClick={onEditPresentation} />
+              <ArtifactActionSeparator />
+            </>
+          )}
         </>
       )}
       <ArtifactFullscreenAction
@@ -452,6 +485,19 @@ function ArtifactSidebarActions({
         <ArtifactCloseAction onClose={onClose} />
       )}
     </div>
+  );
+}
+
+function ArtifactEditPresentationAction({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Edit presentation"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+    >
+      <IconPencil size={16} stroke={1.5} />
+    </button>
   );
 }
 
@@ -938,14 +984,20 @@ function ArtifactIframeBody({
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
   // and toolbar by default. Firefox/PDF.js silently ignores it.
-  const src = kind === "pdf" ? `${url}#navpanes=0` : url;
+  const publicUrl = publicAttachmentUrl(url);
+  const src = kind === "pdf" ? `${publicUrl}#navpanes=0` : publicUrl;
   const fullscreen = useGet(artifactFullscreen$);
+  const htmlRefreshVersion = useGet(presentationHtmlRefreshVersion$);
   if (kind === "html") {
+    const versionedSrc = presentationHtmlPreviewUrl(
+      publicUrl,
+      htmlRefreshVersion,
+    );
     return (
       <AutoFocusedArtifactIframe
-        focusKey={`${src}:${fullscreen ? "fullscreen" : "sidebar"}`}
+        focusKey={`${versionedSrc}:${fullscreen ? "fullscreen" : "sidebar"}`}
         focusOnMount={fullscreen}
-        src={src}
+        src={versionedSrc}
         title={`${filename} preview`}
         sandbox="allow-scripts"
         className="h-full w-full border-0 bg-background"

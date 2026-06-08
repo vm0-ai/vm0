@@ -13,10 +13,12 @@ import {
   IconColumns2,
   IconFileMusic,
   IconPhoto,
+  IconPencil,
   IconLoader2,
   IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
@@ -52,7 +54,15 @@ import {
   type AttachmentArtifactMetadata,
   type AttachmentLightboxState,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { openArtifactSidebarPreview$ } from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import {
+  openArtifactSidebarPreview$,
+  openPresentationEditor$,
+} from "../../signals/zero-page/zero-artifact-sidebar.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  presentationHtmlPreviewUrl,
+  presentationHtmlRefreshVersion$,
+} from "../../signals/zero-page/presentation-html-cache-bust.ts";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
   attachmentFilenameFromUrl,
@@ -299,6 +309,18 @@ function ArtifactDialogFullscreenButton({
       ) : (
         <IconArrowsDiagonal size={18} stroke={1.8} />
       )}
+    </DialogIconButton>
+  );
+}
+
+function ArtifactDialogEditPresentationButton({
+  onClick,
+}: {
+  onClick: () => void;
+}) {
+  return (
+    <DialogIconButton ariaLabel="Edit presentation" onClick={onClick}>
+      <IconPencil size={18} stroke={1.8} />
     </DialogIconButton>
   );
 }
@@ -686,23 +708,7 @@ function ArtifactDialogBody({
   }
 
   if (preview.kind === "html") {
-    return (
-      <div
-        className="h-full w-full bg-background"
-        data-testid="artifact-dialog-site-frame"
-      >
-        <AutoFocusedArtifactIframe
-          focusKey={`${preview.url}:${fullscreen ? "fullscreen" : "dialog"}`}
-          focusOnMount
-          src={preview.url}
-          title={`${filename} preview`}
-          sandbox="allow-scripts"
-          scrolling="yes"
-          className="block h-full w-full border-0 bg-background"
-          data-testid="artifact-dialog-body-html"
-        />
-      </div>
-    );
+    return <ArtifactDialogHtmlBody filename={filename} preview={preview} />;
   }
 
   return (
@@ -721,6 +727,41 @@ function ArtifactDialogBody({
         />
       </div>
     </ArtifactDialogStage>
+  );
+}
+
+function ArtifactDialogHtmlBody({
+  filename,
+  preview,
+}: {
+  filename: string;
+  preview: AttachmentLightboxState;
+}) {
+  const fullscreen = useGet(lightboxDialogFullscreen$);
+  const presentationHtmlRefreshVersion = useGet(
+    presentationHtmlRefreshVersion$,
+  );
+  const src = presentationHtmlPreviewUrl(
+    publicAttachmentUrl(preview.url),
+    presentationHtmlRefreshVersion,
+  );
+
+  return (
+    <div
+      className="h-full w-full bg-background"
+      data-testid="artifact-dialog-site-frame"
+    >
+      <AutoFocusedArtifactIframe
+        focusKey={`${preview.url}:${fullscreen ? "fullscreen" : "dialog"}`}
+        focusOnMount
+        src={src}
+        title={`${filename} preview`}
+        sandbox="allow-scripts"
+        scrolling="yes"
+        className="block h-full w-full border-0 bg-background"
+        data-testid="artifact-dialog-body-html"
+      />
+    </div>
   );
 }
 
@@ -839,6 +880,89 @@ function resetArtifactDialogImageZoom({
   resetZoom(artifactDialogImageZoomKey(preview.url, targetFullscreen));
 }
 
+function ArtifactPreviewDialogActions({
+  artifact,
+  fullscreen,
+  preview,
+}: {
+  artifact: AttachmentArtifactMetadata | undefined;
+  fullscreen: boolean;
+  preview: AttachmentLightboxState;
+}) {
+  const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
+  const openArtifactSidebarPreview = useSet(openArtifactSidebarPreview$);
+  const openPresentationEditor = useSet(openPresentationEditor$);
+  const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
+  const toggleLightboxDialogFullscreen = useSet(
+    toggleLightboxDialogFullscreen$,
+  );
+  const features = useGet(featureSwitch$);
+  const showPresentationEdit =
+    preview.kind === "html" &&
+    artifact?.artifactKind === "presentation-html" &&
+    Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]);
+  const resetDialogImageZoom = (targetFullscreen: boolean) => {
+    resetArtifactDialogImageZoom({
+      fullscreen,
+      preview,
+      resetZoom: resetZoomableImageCanvasZoom,
+      targetFullscreen,
+    });
+  };
+  const openInSplitView = () => {
+    resetDialogImageZoom(fullscreen);
+    if (preview.kind === "image") {
+      resetZoomableImageCanvasZoom(
+        zoomableArtifactImageKey("artifact-sidebar", preview.url, "sidebar"),
+      );
+    }
+    openArtifactSidebarPreview(preview.url);
+    closeLightboxWithDialogExit();
+  };
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <ArtifactShareButton ariaLabel="Share" iconSize={18} url={preview.url} />
+      <ArtifactDownloadMenu
+        ariaLabel="Download options"
+        artifactKind={artifact?.artifactKind}
+        filename={artifact?.filename ?? artifactDialogFilename(preview)}
+        iconSize={18}
+        syncTarget={artifactDialogSyncTarget(artifact)}
+        url={preview.url}
+      />
+      <ArtifactActionSeparator />
+      {showPresentationEdit && (
+        <>
+          <ArtifactDialogEditPresentationButton
+            onClick={() => {
+              closeLightboxWithDialogExit();
+              openPresentationEditor(preview.url);
+            }}
+          />
+          <ArtifactActionSeparator />
+        </>
+      )}
+      <ArtifactDialogSplitViewButton onClick={openInSplitView} />
+      <ArtifactDialogFullscreenButton
+        fullscreen={fullscreen}
+        onClick={() => {
+          resetDialogImageZoom(!fullscreen);
+          toggleLightboxDialogFullscreen();
+        }}
+      />
+      <DialogIconButton
+        ariaLabel="Close"
+        onClick={() => {
+          closeLightboxWithDialogExit();
+        }}
+      >
+        <IconX size={18} stroke={1.8} />
+      </DialogIconButton>
+    </div>
+  );
+}
+
 function ArtifactPreviewDialogContent({
   artifact,
   preview,
@@ -848,39 +972,13 @@ function ArtifactPreviewDialogContent({
 }) {
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
-  const openArtifactSidebarPreview = useSet(openArtifactSidebarPreview$);
-  const toggleLightboxDialogFullscreen = useSet(
-    toggleLightboxDialogFullscreen$,
-  );
-  const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
   const pageSignal = useGet(pageSignal$);
   const filename = artifact?.filename ?? artifactDialogFilename(preview);
   const subtitle = artifactDialogKindLabel(preview, artifact);
-  const syncTarget = artifactDialogSyncTarget(artifact);
   const visible = useGet(lightboxDialogVisible$);
   const fullscreen = useGet(lightboxDialogFullscreen$);
 
   const closeWithAnimation = () => {
-    closeLightboxWithDialogExit();
-  };
-
-  const resetDialogImageZoom = (targetFullscreen: boolean) => {
-    resetArtifactDialogImageZoom({
-      fullscreen,
-      preview,
-      resetZoom: resetZoomableImageCanvasZoom,
-      targetFullscreen,
-    });
-  };
-
-  const openInSplitView = () => {
-    resetDialogImageZoom(fullscreen);
-    if (preview.kind === "image") {
-      resetZoomableImageCanvasZoom(
-        zoomableArtifactImageKey("artifact-sidebar", preview.url, "sidebar"),
-      );
-    }
-    openArtifactSidebarPreview(preview.url);
     closeLightboxWithDialogExit();
   };
 
@@ -923,38 +1021,11 @@ function ArtifactPreviewDialogContent({
               {subtitle}
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <ArtifactShareButton
-              ariaLabel="Share"
-              iconSize={18}
-              url={preview.url}
-            />
-            <ArtifactDownloadMenu
-              ariaLabel="Download options"
-              artifactKind={artifact?.artifactKind}
-              filename={filename}
-              iconSize={18}
-              syncTarget={syncTarget}
-              url={preview.url}
-            />
-            <ArtifactActionSeparator />
-            <ArtifactDialogSplitViewButton onClick={openInSplitView} />
-            <ArtifactDialogFullscreenButton
-              fullscreen={fullscreen}
-              onClick={() => {
-                resetDialogImageZoom(!fullscreen);
-                toggleLightboxDialogFullscreen();
-              }}
-            />
-            <DialogIconButton
-              ariaLabel="Close"
-              onClick={() => {
-                closeWithAnimation();
-              }}
-            >
-              <IconX size={18} stroke={1.8} />
-            </DialogIconButton>
-          </div>
+          <ArtifactPreviewDialogActions
+            artifact={artifact}
+            fullscreen={fullscreen}
+            preview={preview}
+          />
         </div>
         <div className="min-h-0 flex-1 bg-background">
           <ArtifactDialogBody pageSignal={pageSignal} preview={preview} />

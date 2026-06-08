@@ -2252,6 +2252,31 @@ describe("zero chat thread page display - artifact sidebar", () => {
     expect(queryRoleByText("menuitem", "Download (.pptx)")).toBeUndefined();
   });
 
+  it("ignores presentation editor query when the feature switch is disabled", async () => {
+    const fileUrl = "https://demo-deck.sites.vm0.io";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create slides",
+          runId: "run-presentation-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/thread-test-1?presentation-editor=${encodeURIComponent(fileUrl)}&artifact-fullscreen=1`,
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationHtmlPptxDownload]: false,
+      },
+    });
+
+    await expect(screen.findByText("Create slides")).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
+  });
+
   it("downloads presentation HTML artifacts as PPTX when the feature switch is enabled", async () => {
     const user = userEvent.setup();
     const fileUrl = "https://demo-deck.sites.vm0.io";
