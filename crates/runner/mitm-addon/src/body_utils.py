@@ -94,6 +94,7 @@ _HTTP_IMF_FIXDATE_PATTERN = re.compile(
     r"(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9] GMT"
 )
 _UNSAFE_CAPTURE_HEADER_VALUE_CHARS = re.compile(r"[\r\n]")
+_HTTP_OPTIONAL_WHITESPACE = " \t"
 _MAX_CAPTURE_HEADER_NAME_LENGTH = 256
 _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE = 256
 _REDACTED_HEADER_NAME = "[redacted-header-name]"
@@ -605,11 +606,40 @@ def _is_http_date_header_value(value: str) -> bool:
 
 
 def _sanitize_content_type_for_capture(value: str) -> str | None:
-    parameter_start = value.find(";")
-    raw_media_type = value[:parameter_start].strip() if parameter_start != -1 else value.strip()
-    if len(raw_media_type) > _MAX_CAPTURE_CONTENT_TYPE_MEDIA_TYPE_LENGTH:
+    media_start: int | None = None
+    media_end = 0
+    optional_whitespace_length = 0
+    in_parameters = False
+
+    for index, char in enumerate(value):
+        if char in "\r\n":
+            return None
+        if in_parameters:
+            continue
+        if char == ";":
+            in_parameters = True
+            continue
+        if media_start is None:
+            if char in _HTTP_OPTIONAL_WHITESPACE:
+                optional_whitespace_length += 1
+                if optional_whitespace_length > _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE:
+                    return None
+                continue
+            media_start = index
+            optional_whitespace_length = 0
+        if char in _HTTP_OPTIONAL_WHITESPACE:
+            optional_whitespace_length += 1
+            if optional_whitespace_length > _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE:
+                return None
+            continue
+        optional_whitespace_length = 0
+        media_end = index + 1
+        if media_end - media_start > _MAX_CAPTURE_CONTENT_TYPE_MEDIA_TYPE_LENGTH:
+            return None
+
+    if media_start is None or media_end == media_start:
         return None
-    media_type = raw_media_type.lower()
+    media_type = value[media_start:media_end].lower()
     if media_type not in _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES:
         return None
     return media_type
@@ -619,8 +649,6 @@ def _sanitize_allowed_capture_header_value(name: str, value: str) -> str | None:
     normalized_name = name.strip().lower()
 
     if normalized_name == "content-type":
-        if _UNSAFE_CAPTURE_HEADER_VALUE_CHARS.search(value) is not None:
-            return None
         return _sanitize_content_type_for_capture(value)
 
     pattern = _VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS.get(normalized_name)
