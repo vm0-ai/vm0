@@ -31,7 +31,8 @@
     "ccstate": "^5.3.0",
     "ccstate-react": "^5.3.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "update-electron-app": "3.2.0"
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.1",

@@ -41,6 +41,7 @@ import {
 } from "./computer-use-permissions";
 import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
+import { installDesktopAutoUpdates } from "./desktop-auto-updates";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import { DesktopAuthSession } from "./desktop-auth-session";
 import {
@@ -90,6 +91,7 @@ const COMPUTER_USE_QUIT_STOP_TIMEOUT_MS = 1_000;
 let mainWindow: BrowserWindow | null = null;
 let appIsQuitting = false;
 let computerUseQuitStopStarted = false;
+let computerUseNativeBackendDisposed = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
 let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
@@ -315,6 +317,23 @@ async function stopComputerUseRuntimeForQuit(): Promise<void> {
       setTimeout(resolve, COMPUTER_USE_QUIT_STOP_TIMEOUT_MS);
     }),
   ]);
+}
+
+function disposeComputerUseNativeBackend(): void {
+  if (computerUseNativeBackendDisposed) {
+    return;
+  }
+  computerUseNativeBackendDisposed = true;
+  computerUseNativeBackend.dispose();
+}
+
+async function prepareForQuitAndInstall(): Promise<void> {
+  appIsQuitting = true;
+  if (!computerUseQuitStopStarted) {
+    computerUseQuitStopStarted = true;
+    await stopComputerUseRuntimeForQuit();
+  }
+  disposeComputerUseNativeBackend();
 }
 
 function installDesktopAuth(): void {
@@ -735,13 +754,13 @@ if (!hasSingleInstanceLock) {
   app.on("before-quit", (event) => {
     appIsQuitting = true;
     if (!computerUseRuntime || computerUseQuitStopStarted) {
-      computerUseNativeBackend.dispose();
+      disposeComputerUseNativeBackend();
       return;
     }
     computerUseQuitStopStarted = true;
     event.preventDefault();
     void stopComputerUseRuntimeForQuit().finally(() => {
-      computerUseNativeBackend.dispose();
+      disposeComputerUseNativeBackend();
       app.quit();
     });
   });
@@ -751,6 +770,11 @@ if (!hasSingleInstanceLock) {
     applyApplicationMenu();
     registerDesktopAuthProtocol();
     installDesktopRendererProtocol();
+    installDesktopAutoUpdates({
+      config,
+      apiBaseUrl: desktopApiBaseUrl,
+      prepareForQuitAndInstall,
+    });
     installComputerUse();
     refreshComputerUsePermissionsForState();
     const desktopAuthSession = getAuthSession();

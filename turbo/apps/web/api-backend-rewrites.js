@@ -390,6 +390,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/desktop-auth/handoff", "/api/desktop-auth/handoff"],
   ["/api/desktop-auth/consume", "/api/desktop-auth/consume"],
   [
+    "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",
+    "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",
+  ],
+  [
     AGENT_RUN_CANCEL_REWRITE_SOURCE,
     "/api/agent/runs/:id/cancel",
     AGENT_RUN_CANCEL_PATH_RE,

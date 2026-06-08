@@ -236,6 +236,48 @@ jobs:
           TAG_NAME: desktop-v${{ needs.release-please.outputs.desktop_version }}
         run: gh release upload "$TAG_NAME" "${{ steps.build-desktop.outputs.path }}" --repo "${{ github.repository }}" --clobber
 
+      - name: Publish Desktop update manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MANIFEST_TAG: desktop-updates
+          RELEASE_TAG: desktop-v${{ needs.release-please.outputs.desktop_version }}
+        run: |
+          manifest_dir="apps/desktop/out/update-manifest"
+          manifest_path="$manifest_dir/desktop-update-manifest.json"
+          zip_url="https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
+
+          mkdir -p "$manifest_dir"
+          if gh release view "$MANIFEST_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            if gh release view "$MANIFEST_TAG" \
+              --repo "${{ github.repository }}" \
+              --json assets \
+              --jq '.assets[].name' | grep -qx desktop-update-manifest.json; then
+              gh release download "$MANIFEST_TAG" \
+                --repo "${{ github.repository }}" \
+                --pattern desktop-update-manifest.json \
+                --dir "$manifest_dir" \
+                --clobber
+            fi
+          else
+            gh release create "$MANIFEST_TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Desktop Updates" \
+              --notes "Mutable manifest used by the Desktop auto-update feed." \
+              --latest=false
+          fi
+
+          node apps/desktop/scripts/update-desktop-release-manifest.mjs \
+            --manifest "$manifest_path" \
+            --version "$DESKTOP_VERSION" \
+            --zip-url "$zip_url" \
+            --channel stable \
+            --platform darwin \
+            --arch arm64
+
+          gh release upload "$MANIFEST_TAG" "$manifest_path" \
+            --repo "${{ github.repository }}" \
+            --clobber
+
       - name: Delete temporary keychain
         if: ${{ always() && steps.signing-certificate.outputs.keychain_path != '' }}
         run: security delete-keychain "${{ steps.signing-certificate.outputs.keychain_path }}" || true

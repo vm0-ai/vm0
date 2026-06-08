@@ -5,7 +5,7 @@ import desktopIdentities from "./desktop-identities.json";
 const PRODUCTION_PLATFORM_URL = "https://app.vm0.ai";
 const DESKTOP_RUNTIME_CONFIG_FILE = "desktop-runtime-config.json";
 
-type DesktopEnvironment = "production" | "staging" | "development";
+export type DesktopEnvironment = "production" | "staging" | "development";
 type DesktopIdentityKind = "production" | "development";
 
 interface DesktopIdentity {
@@ -18,7 +18,7 @@ interface DesktopIdentity {
 const DESKTOP_IDENTITIES: Record<DesktopIdentityKind, DesktopIdentity> =
   desktopIdentities;
 
-interface DesktopConfig {
+export interface DesktopConfig {
   readonly platformUrl: URL;
   readonly webUrl: URL;
   readonly environment: DesktopEnvironment;
