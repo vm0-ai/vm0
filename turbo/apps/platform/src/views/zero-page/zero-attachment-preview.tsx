@@ -257,7 +257,6 @@ function HtmlSitePreviewCard({
         >
           <iframe
             src={publicUrl}
-            data-preview-src={publicUrl}
             title={`Site preview for ${title}`}
             sandbox="allow-scripts"
             tabIndex={-1}
