@@ -86,6 +86,23 @@ describe("stripe firewall", () => {
     );
   });
 
+  it("uses official Stripe API docs endpoint lists for rules without resource IDs", () => {
+    expectStripeRule(
+      "checkout_session_read",
+      "GET /v1/checkout/sessions/{session}/line_items",
+    );
+    expectStripeRule(
+      "credit_note_read",
+      "GET /v1/credit_notes/{credit_note}/lines",
+    );
+    expectStripeRule("quote_read", "GET /v1/quotes/{quote}/pdf");
+    expectStripeRule("source_write", "POST /v1/customers/{customer}/sources");
+    expectStripeRule(
+      "confirmation_token_client_write",
+      "POST /v1/test_helpers/confirmation_tokens",
+    );
+  });
+
   it("reports generated mapping coverage without hiding unmapped operations", () => {
     const firewall = getConnectorFirewall("stripe");
     const permissionCount = firewall.apis.reduce((count, api) => {
@@ -94,6 +111,7 @@ describe("stripe firewall", () => {
 
     expect(stripeGenerationStats.totalOperations).toBeGreaterThan(0);
     expect(stripeGenerationStats.mappedOperations).toBeGreaterThan(0);
+    expect(stripeGenerationStats.docsMappedOperations).toBeGreaterThan(0);
     expect(stripeGenerationStats.unmappedOperations).toBeGreaterThan(0);
     expect(stripeGenerationStats.permissionCount).toBe(permissionCount);
   });

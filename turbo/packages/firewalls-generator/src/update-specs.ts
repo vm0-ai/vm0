@@ -19,6 +19,11 @@ import {
   hashContent,
   writeSpecFile,
 } from "./codegen";
+import {
+  STRIPE_OPENAPI_URL,
+  STRIPE_PERMISSIONS_URL,
+  stripeApiDocUrlsFromDescription,
+} from "./stripe-sources";
 
 type SpecEntries = Map<string, string>; // key → content
 
@@ -146,6 +151,60 @@ const slackUpdater: Updater = {
   },
 };
 
+function stripePermissionApiDocsUrls(markdown: string): string[] {
+  const urls = new Set<string>();
+  let inObjectTable = false;
+
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === "Product | Resource | Permissions | Description") {
+      inObjectTable = true;
+      continue;
+    }
+    if (inObjectTable && line.startsWith("## Event permissions")) {
+      break;
+    }
+    if (!inObjectTable || line === "" || line.startsWith("--- |")) {
+      continue;
+    }
+
+    for (const url of stripeApiDocUrlsFromDescription(line)) {
+      urls.add(url);
+    }
+  }
+
+  return [...urls].sort();
+}
+
+const stripeUpdater: Updater = {
+  name: "stripe",
+  fetch: async () => {
+    const entries = new Map<string, string>();
+
+    const openapiRes = await fetchRemote(
+      STRIPE_OPENAPI_URL,
+      "stripe: OpenAPI spec",
+    );
+    entries.set(STRIPE_OPENAPI_URL, await openapiRes.text());
+
+    const permissionsRes = await fetchRemote(
+      STRIPE_PERMISSIONS_URL,
+      "stripe: permissions reference",
+    );
+    const permissionsMarkdown = await permissionsRes.text();
+    entries.set(STRIPE_PERMISSIONS_URL, permissionsMarkdown);
+
+    const docsUrls = stripePermissionApiDocsUrls(permissionsMarkdown);
+    console.error(`  Found ${docsUrls.length} Stripe API docs links`);
+    for (const url of docsUrls) {
+      const res = await fetchRemote(url, `stripe: ${url}`);
+      entries.set(url, await res.text());
+    }
+
+    return entries;
+  },
+};
+
 // ── Updater registry ────────────────────────────────────────────────────
 
 const UPDATERS: Updater[] = [
@@ -191,10 +250,7 @@ const UPDATERS: Updater[] = [
   staticUpdater("strava", [
     "https://developers.strava.com/swagger/swagger.json",
   ]),
-  staticUpdater("stripe", [
-    "https://raw.githubusercontent.com/stripe/openapi/master/latest/openapi.spec3.json",
-    "https://docs.stripe.com/stripe-apps/reference/permissions.md",
-  ]),
+  stripeUpdater,
   staticUpdater("vercel", ["https://openapi.vercel.sh/"]),
   staticUpdater("x", ["https://api.twitter.com/2/openapi.json"]),
   staticUpdater("xero", [

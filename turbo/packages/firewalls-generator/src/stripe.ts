@@ -8,8 +8,9 @@
  * The OpenAPI spec provides official path/method rules. The permissions
  * reference provides official Stripe permission names. Stripe does not publish
  * a direct operation-to-permission map in the public GA OpenAPI spec, so this
- * generator only maps operations whose response schema has an unambiguous
- * x-resourceId that normalizes to an official permission name.
+ * generator maps operations through either unambiguous OpenAPI x-resourceId
+ * schemas or endpoint lists from official API docs linked by the permissions
+ * reference.
  *
  * Token format (gitleaks: stripe-access-token):
  *   (sk|rk)_(test|live|prod)_ + 10-99 alphanumeric chars
@@ -26,11 +27,11 @@ import {
   writeOutput,
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
-
-const OPENAPI_URL =
-  "https://raw.githubusercontent.com/stripe/openapi/master/latest/openapi.spec3.json";
-const PERMISSIONS_URL =
-  "https://docs.stripe.com/stripe-apps/reference/permissions.md";
+import {
+  STRIPE_OPENAPI_URL,
+  STRIPE_PERMISSIONS_URL,
+  stripeApiDocUrlsFromDescription,
+} from "./stripe-sources";
 
 // Format: sk_live_ + [a-zA-Z0-9]{10,99} (gitleaks: stripe-access-token)
 const PLACEHOLDER_VALUE = "sk_live_CoffeeSafeLocalCoffeeSafeLocalCoff";
@@ -127,10 +128,19 @@ interface StripePermissionDefinition {
   description: string;
 }
 
+interface StripePermissionRow {
+  product: string;
+  resource: string;
+  permissions: string[];
+  description: string;
+  apiDocUrls: string[];
+}
+
 interface BuildStats {
   specVersion: string;
   totalOperations: number;
   mappedOperations: number;
+  docsMappedOperations: number;
   unmappedOperations: number;
   ambiguousOperations: number;
   permissionCount: number;
@@ -385,10 +395,12 @@ function cleanPermissionName(value: string): string {
   return value.replace(/`/g, "").trim();
 }
 
-function parsePermissionDefinitions(
-  markdown: string,
-): Map<string, StripePermissionDefinition> {
-  const definitions = new Map<string, StripePermissionDefinition>();
+function parseApiDocUrls(description: string): string[] {
+  return stripeApiDocUrlsFromDescription(description);
+}
+
+function parsePermissionRows(markdown: string): StripePermissionRow[] {
+  const rows: StripePermissionRow[] = [];
   let inObjectTable = false;
 
   for (const rawLine of markdown.split(/\r?\n/)) {
@@ -410,11 +422,41 @@ function parsePermissionDefinitions(
     const product = parts[0]?.trim();
     const resource = parts[1]?.trim();
     const permissionColumn = parts[2]?.trim();
-    if (!product || !resource || !permissionColumn) continue;
+    const description = parts[3]?.trim();
+    if (!product || !resource || !permissionColumn || !description) continue;
 
-    const description = `${product} - ${resource}`;
-    for (const rawPermission of permissionColumn.split(",")) {
-      const name = cleanPermissionName(rawPermission);
+    const permissions = permissionColumn
+      .split(",")
+      .map(cleanPermissionName)
+      .filter((permission) => {
+        return permission !== "";
+      });
+    if (permissions.length === 0) continue;
+
+    rows.push({
+      product,
+      resource,
+      permissions,
+      description,
+      apiDocUrls: parseApiDocUrls(description),
+    });
+  }
+
+  if (rows.length === 0) {
+    throw new Error("No Stripe permission rows found in permissions reference");
+  }
+
+  return rows;
+}
+
+function buildPermissionDefinitions(
+  rows: StripePermissionRow[],
+): Map<string, StripePermissionDefinition> {
+  const definitions = new Map<string, StripePermissionDefinition>();
+
+  for (const row of rows) {
+    const description = `${row.product} - ${row.resource}`;
+    for (const name of row.permissions) {
       if (!name) continue;
 
       const existing = definitions.get(name);
@@ -438,6 +480,125 @@ function accessForMethod(methodLower: string): "read" | "write" | null {
   if (READ_METHODS.has(methodLower)) return "read";
   if (WRITE_METHODS.has(methodLower)) return "write";
   return null;
+}
+
+function accessForMethodUpper(methodUpper: string): "read" | "write" | null {
+  return accessForMethod(methodUpper.toLowerCase());
+}
+
+function ruleShape(methodUpper: string, apiPath: string): string {
+  const normalizedPath = apiPath
+    .replace(/:[A-Za-z0-9_]+/g, "{}")
+    .replace(/\{[^}]+\}/g, "{}");
+  return `${methodUpper} ${normalizedPath}`;
+}
+
+function buildOpenApiRuleByShape(spec: StripeOpenApiSpec): Map<string, string> {
+  if (!spec.paths) {
+    throw new Error("Stripe OpenAPI spec has no 'paths'");
+  }
+
+  const rules = new Map<string, string>();
+  for (const [apiPath, methods] of Object.entries(spec.paths)) {
+    for (const methodLower of Object.keys(methods)) {
+      if (!ALL_METHODS.has(methodLower)) continue;
+
+      const methodUpper = methodLower.toUpperCase();
+      const shape = ruleShape(methodUpper, apiPath);
+      const existing = rules.get(shape);
+      if (existing) {
+        throw new Error(
+          `Stripe OpenAPI has duplicate endpoint shape "${shape}": ${existing}, ${methodUpper} ${apiPath}`,
+        );
+      }
+      rules.set(shape, `${methodUpper} ${apiPath}`);
+    }
+  }
+  return rules;
+}
+
+function permissionForEndpointMethod(
+  row: StripePermissionRow,
+  methodUpper: string,
+): string | null {
+  const access = accessForMethodUpper(methodUpper);
+  if (!access) return null;
+
+  return (
+    row.permissions.find((permission) => {
+      return permission.endsWith(`_${access}`);
+    }) ?? null
+  );
+}
+
+function parseApiDocEndpointRules(markdown: string): Array<{
+  methodUpper: string;
+  apiPath: string;
+}> {
+  return [...markdown.matchAll(/- \[([A-Z]+) ([^\]]+)\]\(/g)].map((match) => {
+    return {
+      methodUpper: match[1]!,
+      apiPath: match[2]!,
+    };
+  });
+}
+
+async function buildApiDocsPermissionMap(
+  spec: StripeOpenApiSpec,
+  rows: StripePermissionRow[],
+): Promise<{
+  permissionsByRule: Map<string, string>;
+  conflictRules: string[];
+}> {
+  const openApiRuleByShape = buildOpenApiRuleByShape(spec);
+  const permissionsByRule = new Map<string, string>();
+  const conflictRules = new Set<string>();
+  const apiDocUrls = new Map<string, StripePermissionRow[]>();
+
+  for (const row of rows) {
+    for (const url of row.apiDocUrls) {
+      const linkRows = apiDocUrls.get(url) ?? [];
+      linkRows.push(row);
+      apiDocUrls.set(url, linkRows);
+    }
+  }
+
+  console.error(`  ${apiDocUrls.size} official Stripe API docs pages loaded`);
+  for (const [url, linkRows] of apiDocUrls) {
+    const res = await fetchSpec(url, `Stripe API docs page ${url}`);
+    const endpointRules = parseApiDocEndpointRules(await res.text());
+
+    for (const endpoint of endpointRules) {
+      const openApiRule = openApiRuleByShape.get(
+        ruleShape(endpoint.methodUpper, endpoint.apiPath),
+      );
+      if (!openApiRule) continue;
+
+      for (const row of linkRows) {
+        const permission = permissionForEndpointMethod(
+          row,
+          endpoint.methodUpper,
+        );
+        if (!permission) continue;
+
+        const existing = permissionsByRule.get(openApiRule);
+        if (existing && existing !== permission) {
+          conflictRules.add(openApiRule);
+          continue;
+        }
+        permissionsByRule.set(openApiRule, permission);
+      }
+    }
+  }
+
+  for (const rule of conflictRules) {
+    permissionsByRule.delete(rule);
+  }
+
+  return {
+    permissionsByRule,
+    conflictRules: [...conflictRules].sort(),
+  };
 }
 
 function validateRepresentativeRules(
@@ -482,6 +643,7 @@ function validateRepresentativeRules(
 function buildGroups(
   spec: StripeOpenApiSpec,
   permissionDefinitions: Map<string, StripePermissionDefinition>,
+  apiDocsPermissionsByRule: Map<string, string>,
 ): BuildResult {
   if (!spec.paths) {
     throw new Error("Stripe OpenAPI spec has no 'paths'");
@@ -492,6 +654,7 @@ function buildGroups(
   const ambiguousRules: string[] = [];
   let totalOperations = 0;
   let mappedOperations = 0;
+  let docsMappedOperations = 0;
 
   for (const [apiPath, methods] of Object.entries(spec.paths)) {
     for (const [methodLower, op] of Object.entries(methods)) {
@@ -514,7 +677,7 @@ function buildGroups(
       const operation = op as Record<string, unknown>;
       const resourceIds = resourceIdsForOperation(spec, operation);
 
-      const permissionName =
+      const resourcePermissionName =
         resourceIds.length === 1
           ? chooseSingleResourcePermission(
               resourceIds[0]!,
@@ -526,6 +689,18 @@ function buildGroups(
               access,
               permissionDefinitions,
             );
+      const docsPermissionName = apiDocsPermissionsByRule.get(rule) ?? null;
+      if (
+        resourcePermissionName &&
+        docsPermissionName &&
+        resourcePermissionName !== docsPermissionName
+      ) {
+        throw new Error(
+          `Stripe permission sources disagree for "${rule}": OpenAPI resourceId maps to "${resourcePermissionName}", API docs map to "${docsPermissionName}"`,
+        );
+      }
+
+      const permissionName = resourcePermissionName ?? docsPermissionName;
       if (!permissionName) {
         if (resourceIds.length > 1) {
           ambiguousRules.push(rule);
@@ -542,6 +717,9 @@ function buildGroups(
       }
       ruleSet.add(rule);
       mappedOperations += 1;
+      if (!resourcePermissionName && docsPermissionName) {
+        docsMappedOperations += 1;
+      }
     }
   }
 
@@ -560,12 +738,18 @@ function buildGroups(
     specVersion: spec.info?.version ?? "unknown",
     totalOperations,
     mappedOperations,
+    docsMappedOperations,
     unmappedOperations: totalOperations - mappedOperations,
     ambiguousOperations: ambiguousRules.length,
     permissionCount: permissions.length,
   };
 
-  return { permissions, stats, unmappedRules, ambiguousRules };
+  return {
+    permissions,
+    stats,
+    unmappedRules,
+    ambiguousRules,
+  };
 }
 
 function renderStats(stats: BuildStats): string[] {
@@ -575,6 +759,7 @@ function renderStats(stats: BuildStats): string[] {
     `  specVersion: "${escapeString(stats.specVersion)}",`,
     `  totalOperations: ${stats.totalOperations},`,
     `  mappedOperations: ${stats.mappedOperations},`,
+    `  docsMappedOperations: ${stats.docsMappedOperations},`,
     `  unmappedOperations: ${stats.unmappedOperations},`,
     `  ambiguousOperations: ${stats.ambiguousOperations},`,
     `  permissionCount: ${stats.permissionCount},`,
@@ -589,8 +774,8 @@ function generateTypeScript(
 ): string {
   const lines: string[] = [
     "// Auto-generated from official Stripe API data.",
-    `// OpenAPI source: ${OPENAPI_URL}`,
-    `// Permissions source: ${PERMISSIONS_URL}`,
+    `// OpenAPI source: ${STRIPE_OPENAPI_URL}`,
+    `// Permissions source: ${STRIPE_PERMISSIONS_URL}`,
     "// Update sources: cd turbo && pnpm -F @vm0/firewalls-generator update-specs:stripe",
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:stripe",
     "//",
@@ -640,24 +825,31 @@ function logUnmapped(kind: string, rules: string[]): void {
 export async function generate(): Promise<void> {
   console.error("Generating Stripe firewall config...");
 
-  const openapiRes = await fetchSpec(OPENAPI_URL, "Stripe OpenAPI spec");
+  const openapiRes = await fetchSpec(STRIPE_OPENAPI_URL, "Stripe OpenAPI spec");
   const spec = (await openapiRes.json()) as StripeOpenApiSpec;
   console.error(`  Spec version: ${spec.info?.version ?? "unknown"}`);
 
   const permissionsRes = await fetchSpec(
-    PERMISSIONS_URL,
+    STRIPE_PERMISSIONS_URL,
     "Stripe permissions reference",
   );
-  const permissionDefinitions = parsePermissionDefinitions(
-    await permissionsRes.text(),
-  );
+  const permissionRows = parsePermissionRows(await permissionsRes.text());
+  const permissionDefinitions = buildPermissionDefinitions(permissionRows);
   console.error(
     `  ${permissionDefinitions.size} official permission names loaded`,
   );
+  const { permissionsByRule, conflictRules } = await buildApiDocsPermissionMap(
+    spec,
+    permissionRows,
+  );
+  if (conflictRules.length > 0) {
+    logUnmapped("conflicting API docs", conflictRules);
+  }
 
   const { permissions, stats, unmappedRules, ambiguousRules } = buildGroups(
     spec,
     permissionDefinitions,
+    permissionsByRule,
   );
   logUnmapped("unmapped", unmappedRules);
   logUnmapped("ambiguous", ambiguousRules);
