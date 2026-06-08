@@ -4638,7 +4638,6 @@ function PagedUserMessage({
             generationTemplate={message.generationTemplate}
           />
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
-
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
                 <BodyContentBlocks
