@@ -1,4 +1,26 @@
-use super::*;
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use agent_diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
+use sandbox::ProcessOutputChunk;
+use sandbox_mock::MockSandbox;
+
+use super::super::diagnostics::{
+    AgentStdoutStreamDiagnostics, GuestLogCopyFailureKind, StdoutDrainError,
+    append_stdout_stream_diagnostics, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
+    copy_guest_logs, dmesg_indicates_oom, drain_stdout_to_file, guest_log_copy_failure_kind,
+    host_dmesg_indicates_oom, read_guest_error_file, read_guest_failure_diagnostic_file,
+    read_guest_session_id,
+};
+use super::super::sandbox_run::post_job_cleanup;
+use super::super::{
+    AGENT_ENV_KEY_DIAGNOSTIC_LIMIT, AGENT_ENV_KEY_MAX_CHARS, GUEST_LOG_COPY_MAX_BYTES,
+    SMALL_GUEST_FILE_MAX_BYTES, STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER,
+    guest_runtime_path,
+};
+use super::support::{minimal_context, sandbox_exec_error, test_executor_config};
+use crate::ids::RunId;
+use crate::paths::LogPaths;
 
 #[test]
 fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
