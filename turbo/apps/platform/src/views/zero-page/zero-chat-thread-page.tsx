@@ -2294,6 +2294,9 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const pageSignal = useGet(pageSignal$);
   const [, sendMessage] = useLoadableSet(thread.sendMessage$);
   const rootSignal = useGet(rootSignal$);
+  const features = useLastResolved(featureSwitch$);
+  const inlineFeedbackEnabled =
+    features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
   const onSubmitFeedback = (prompt: string) => {
     detach(
       sendMessage(prompt, null, { includeDraftAttachments: false }, rootSignal),
@@ -2353,7 +2356,9 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
         {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
       </div>
 
-      <ChatFeedbackSelection onSubmit={onSubmitFeedback} />
+      {inlineFeedbackEnabled && (
+        <ChatFeedbackSelection onSubmit={onSubmitFeedback} />
+      )}
     </>
   );
 }
