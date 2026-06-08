@@ -1,1 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>Garmin</title><path d="M11.5 2.87Q12 2 12.5 2.87L22.5 20.13Q23 21 22 21H2Q1 21 1.5 20.13Z" fill="#007CC3"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="garmin-connect-tile">
+      <rect width="512" height="512" rx="72" />
+    </clipPath>
+  </defs>
+  <g clip-path="url(#garmin-connect-tile)">
+    <rect width="512" height="512" fill="#494848" />
+    <path d="M0 0h512v96L0 219Z" fill="#11A9ED" />
+    <g fill="#11A9ED">
+      <path d="M391 282h-43c-18-31-51-50-90-50-47 0-85 35-93 81h-45c8-70 67-124 138-124 61 0 114 38 133 93Z" />
+      <path d="M120 344h45c8 46 46 80 93 80 39 0 72-20 89-49h44c-20 55-72 93-133 93-71 0-130-54-138-124Z" />
+    </g>
+    <g
+      fill="#494848"
+      font-family="Arial Black, Arial, sans-serif"
+      font-weight="900"
+      transform="rotate(-13 222 119)"
+    >
+      <text x="42" y="157" font-size="58" letter-spacing="6">GARMIN</text>
+      <text x="397" y="103" font-size="17" letter-spacing="0">&#174;</text>
+    </g>
+  </g>
+</svg>
