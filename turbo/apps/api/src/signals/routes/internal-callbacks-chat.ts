@@ -597,22 +597,24 @@ async function handleCompletedChatCallback(args: {
     currentAssistantReply: lastResultText ?? undefined,
   });
 
-  const lifecycleMarkerStep = generateRecommendedFollowupsForCompletedRun({
-    db: args.db,
-    threadId: args.chatThread.chatThreadId,
-    orgId: args.chatThread.orgId,
-    userId: args.chatThread.userId,
-    signal: args.signal,
-  }).then((recommendedFollowups) =>
-    insertRunLifecycleMarker({
+  const lifecycleMarkerStep = (async () => {
+    const recommendedFollowups =
+      await generateRecommendedFollowupsForCompletedRun({
+        db: args.db,
+        threadId: args.chatThread.chatThreadId,
+        orgId: args.chatThread.orgId,
+        userId: args.chatThread.userId,
+        signal: args.signal,
+      });
+    await insertRunLifecycleMarker({
       db: args.db,
       runId: args.runId,
       threadId: args.chatThread.chatThreadId,
       userId: args.chatThread.userId,
       event: "completed",
       recommendedFollowups,
-    }),
-  );
+    });
+  })();
 
   const pushStep = (async () => {
     let summary: string | null = null;
