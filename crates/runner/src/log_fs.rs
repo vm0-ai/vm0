@@ -62,7 +62,8 @@ pub(crate) fn secure_open_log_fd_sync<Fd: std::os::fd::AsRawFd>(
         )));
     }
     ensure_trusted_log_owner_io(path, stat.st_uid, nix::unistd::geteuid().as_raw())?;
-    if stat.st_mode & 0o777 == LOG_FILE_MODE {
+    let mode = stat.st_mode & 0o7777;
+    if mode == LOG_FILE_MODE {
         return Ok(());
     }
     // SAFETY: `fchmod` operates on the live fd and does not affect Rust aliasing.
@@ -257,7 +258,8 @@ fn secure_open_log_dir(
         )));
     }
     ensure_trusted_log_owner(dir, stat.st_uid, expected_uid)?;
-    if enforce_private_mode && (stat.st_mode as u32) & 0o777 != LOG_DIR_MODE {
+    let mode = (stat.st_mode as u32) & 0o7777;
+    if enforce_private_mode && mode != LOG_DIR_MODE {
         chmod_open_log_dir(fd, dir)?;
     }
     Ok(())
@@ -353,7 +355,8 @@ fn secure_open_log_file_fd(fd: &std::os::fd::OwnedFd, path: &Path) -> RunnerResu
         )));
     }
     ensure_trusted_log_owner(path, stat.st_uid, nix::unistd::geteuid().as_raw())?;
-    if (stat.st_mode as u32) & 0o777 != LOG_FILE_MODE {
+    let mode = (stat.st_mode as u32) & 0o7777;
+    if mode != LOG_FILE_MODE {
         chmod_open_log_file(fd, path)?;
     }
     Ok(())
@@ -425,7 +428,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     fn mode(path: &Path) -> u32 {
-        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o7777
     }
 
     #[test]
@@ -446,6 +449,18 @@ mod tests {
         std::fs::set_permissions(&logs_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         ensure_log_dir(&logs_dir).await.unwrap();
+
+        assert_eq!(mode(&logs_dir), LOG_DIR_MODE);
+    }
+
+    #[test]
+    fn ensure_log_dir_sync_clears_existing_special_bits() {
+        let dir = tempfile::tempdir().unwrap();
+        let logs_dir = dir.path().join("logs");
+        std::fs::create_dir(&logs_dir).unwrap();
+        std::fs::set_permissions(&logs_dir, std::fs::Permissions::from_mode(0o1700)).unwrap();
+
+        ensure_log_dir_sync(&logs_dir).unwrap();
 
         assert_eq!(mode(&logs_dir), LOG_DIR_MODE);
     }
@@ -482,6 +497,35 @@ mod tests {
         std::fs::set_permissions(&log_file, std::fs::Permissions::from_mode(0o644)).unwrap();
 
         secure_log_file(&log_file).await.unwrap();
+
+        assert_eq!(mode(&log_file), LOG_FILE_MODE);
+    }
+
+    #[tokio::test]
+    async fn secure_log_file_clears_existing_special_bits() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_file = dir.path().join("network.jsonl");
+        std::fs::write(&log_file, "{}\n").unwrap();
+        std::fs::set_permissions(&log_file, std::fs::Permissions::from_mode(0o4600)).unwrap();
+
+        secure_log_file(&log_file).await.unwrap();
+
+        assert_eq!(mode(&log_file), LOG_FILE_MODE);
+    }
+
+    #[test]
+    fn secure_open_log_file_clears_existing_special_bits() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_file = dir.path().join("network.jsonl");
+        std::fs::write(&log_file, "{}\n").unwrap();
+        std::fs::set_permissions(&log_file, std::fs::Permissions::from_mode(0o4600)).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&log_file)
+            .unwrap();
+
+        secure_open_log_file_sync(&file, &log_file).unwrap();
 
         assert_eq!(mode(&log_file), LOG_FILE_MODE);
     }
