@@ -23,6 +23,12 @@ import { Cron } from "croner";
 import { and, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
 
+import {
+  conflict,
+  isApiRouteError,
+  notFound,
+  throwApiError,
+} from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
 import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
@@ -106,26 +112,7 @@ type DeployScheduleResult =
   | { readonly kind: "bad_request"; readonly message: string }
   | { readonly kind: "schedule_past"; readonly message: string };
 
-type RunCreationErrorResponse = {
-  readonly status: 400 | 402 | 403 | 404 | 429 | 503;
-  readonly body: {
-    readonly error: {
-      readonly message: string;
-      readonly code: string;
-    };
-  };
-};
-
-type RunScheduleNowResult =
-  | { readonly kind: "ok"; readonly runId: string }
-  | { readonly kind: "not_found"; readonly message: string }
-  | { readonly kind: "conflict"; readonly message: string }
-  | {
-      readonly kind: "run_error";
-      readonly response: RunCreationErrorResponse;
-    };
-
-type ExecuteScheduleFailure = Exclude<RunScheduleNowResult, { kind: "ok" }>;
+type RunScheduleNowResult = { readonly runId: string };
 
 interface ExecuteDueSchedulesResult {
   readonly executed: number;
@@ -911,33 +898,17 @@ function isActivePreviousRunStatus(status: string): boolean {
   return status === "pending" || status === "running";
 }
 
-function isExecuteScheduleFailure(
-  error: unknown,
-): error is ExecuteScheduleFailure {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "kind" in error &&
-    (error.kind === "not_found" ||
-      error.kind === "conflict" ||
-      error.kind === "run_error")
-  );
-}
-
 function scheduleFailureMessage(error: unknown): string {
-  if (!isExecuteScheduleFailure(error)) {
-    return error instanceof Error ? error.message : String(error);
+  if (isApiRouteError(error)) {
+    const { response } = error;
+    return `${response.status} ${response.body.error.code}: ${response.body.error.message}`;
   }
-  if (error.kind === "run_error") {
-    return `${error.response.status} ${error.response.body.error.code}: ${error.response.body.error.message}`;
-  }
-  return error.message;
+  return error instanceof Error ? error.message : String(error);
 }
 
 function isInsufficientCreditsFailure(error: unknown): boolean {
   return (
-    isExecuteScheduleFailure(error) &&
-    error.kind === "run_error" &&
+    isApiRouteError(error) &&
     error.response.body.error.code === "INSUFFICIENT_CREDITS"
   );
 }
@@ -1110,12 +1081,6 @@ export const executeDueSchedules$ = command(
         skipped++;
         continue;
       }
-      const result = runResult.value;
-      if (result.kind !== "ok") {
-        await recordSchedulePreRunFailure(db, schedule, result, signal);
-        skipped++;
-        continue;
-      }
       executed++;
     }
 
@@ -1221,7 +1186,7 @@ export const runScheduleNow$ = command(
     signal.throwIfAborted();
 
     if (!schedule) {
-      return { kind: "not_found", message: "Schedule not found" };
+      throwApiError(notFound("Schedule not found"));
     }
 
     if (schedule.lastRunId) {
@@ -1236,10 +1201,7 @@ export const runScheduleNow$ = command(
         lastRun &&
         (lastRun.status === "pending" || lastRun.status === "running")
       ) {
-        return {
-          kind: "conflict",
-          message: "Previous run is still active",
-        };
+        throwApiError(conflict("Previous run is still active"));
       }
     }
 
@@ -1252,12 +1214,9 @@ export const runScheduleNow$ = command(
     signal.throwIfAborted();
     if ("status" in threadModelPin) {
       // No user is present to receive a model-config error; surface it as a
-      // run_error (normalized to 400) so it feeds consecutiveFailures / the
+      // typed run error (normalized to 400) so it feeds consecutiveFailures / the
       // manual run-now response.
-      return {
-        kind: "run_error",
-        response: { status: 400, body: threadModelPin.body },
-      };
+      throwApiError({ status: 400, body: threadModelPin.body });
     }
 
     const providerAdmission = await resolveModelFirstProviderAdmission({
@@ -1269,7 +1228,7 @@ export const runScheduleNow$ = command(
     });
     signal.throwIfAborted();
     if (providerAdmission.error) {
-      return { kind: "run_error", response: providerAdmission.error };
+      throwApiError(providerAdmission.error);
     }
 
     const result = await set(
@@ -1304,7 +1263,7 @@ export const runScheduleNow$ = command(
     signal.throwIfAborted();
 
     if (result.status !== 201) {
-      return { kind: "run_error", response: result };
+      throwApiError(result);
     }
 
     await postScheduleUserMessage({
@@ -1337,7 +1296,7 @@ export const runScheduleNow$ = command(
       .where(eq(zeroAgentSchedules.id, schedule.id));
     signal.throwIfAborted();
 
-    return { kind: "ok", runId: result.body.runId };
+    return { runId: result.body.runId };
   },
 );
 

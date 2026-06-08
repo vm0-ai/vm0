@@ -6,7 +6,7 @@ import {
   zeroSchedulesMainContract,
 } from "@vm0/api-contracts/contracts/zero-schedules";
 
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
@@ -179,15 +179,6 @@ const runNowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
   signal.throwIfAborted();
 
-  if (result.kind === "not_found") {
-    return notFound(result.message);
-  }
-  if (result.kind === "conflict") {
-    return conflict(result.message);
-  }
-  if (result.kind === "run_error") {
-    return result.response;
-  }
   return { status: 201 as const, body: { runId: result.runId } };
 });
 

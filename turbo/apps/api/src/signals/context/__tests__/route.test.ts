@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { ApiRouteError, conflict } from "../../../lib/error";
 import { ROUTES } from "../../route";
 
 const context = testContext();
@@ -45,6 +46,18 @@ const routeTestContract = c.router({
     responses: {
       200: z.object({
         ok: z.literal(true),
+      }),
+    },
+  },
+  apiError: {
+    method: "GET",
+    path: "/__test/api-error",
+    responses: {
+      409: z.object({
+        error: z.object({
+          message: z.string(),
+          code: z.string(),
+        }),
       }),
     },
   },
@@ -139,5 +152,24 @@ describe("honoSignalHandler", () => {
     );
 
     expect(response.body).toStrictEqual({ ok: true });
+  });
+
+  it("translates thrown typed API errors into route responses", async () => {
+    const handler$ = computed((): never => {
+      throw new ApiRouteError(conflict("Already running"));
+    });
+    const client = setupApp({
+      context,
+      routes: [
+        ...ROUTES,
+        { route: routeTestContract.apiError, handler: handler$ },
+      ],
+    })(routeTestContract);
+
+    const response = await accept(client.apiError(), [409]);
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Already running", code: "CONFLICT" },
+    });
   });
 });

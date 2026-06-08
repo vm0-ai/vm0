@@ -3,6 +3,8 @@ import { createStore, type Command, type Computed } from "ccstate";
 import type { Handler } from "hono";
 import type { ContentfulStatusCode, StatusCode } from "hono/utils/http-status";
 
+import { isApiRouteError } from "../../lib/error";
+import { settle } from "../utils";
 import { initHono$ } from "./hono";
 import { requestValidation$ } from "./request";
 import { setRootSignal$ } from "./root";
@@ -85,6 +87,27 @@ function isContentlessStatus(status: StatusCode): boolean {
   return status === 101 || status === 204 || status === 205 || status === 304;
 }
 
+function routeResultToHonoResponse(
+  context: Parameters<Handler>[0],
+  contract: AppRoute,
+  data: RouteResult,
+): Response | Promise<Response> {
+  const response = validateResponse({
+    appRoute: contract,
+    response: data,
+  });
+  const status = response.status as StatusCode;
+  if (
+    isContentlessStatus(status) ||
+    !("body" in response) ||
+    response.body === undefined
+  ) {
+    return context.body(null, status);
+  }
+
+  return context.json(response.body, status as ContentfulStatusCode);
+}
+
 export function honoSignalHandler(
   handler$: SignalRouteHandler<unknown>,
   contract: AppRoute,
@@ -103,9 +126,19 @@ export function honoSignalHandler(
       return context.json(validationError.body, validationError.status);
     }
 
-    const data = await (isCommand(handler$)
-      ? store.set(handler$, signal)
-      : store.get(handler$));
+    const resolveRouteData = async (): Promise<unknown> => {
+      return isCommand(handler$)
+        ? await store.set(handler$, signal)
+        : store.get(handler$);
+    };
+    const settled = await settle(resolveRouteData(), signal);
+    const data = settled.ok ? settled.value : settled.error;
+    if (!settled.ok) {
+      if (!isApiRouteError(data)) {
+        throw data;
+      }
+      return routeResultToHonoResponse(context, contract, data.response);
+    }
 
     if (data instanceof Response) {
       return data;
@@ -119,19 +152,6 @@ export function honoSignalHandler(
       throw new Error("Route handler must return a ts-rest response object");
     }
 
-    const response = validateResponse({
-      appRoute: contract,
-      response: data,
-    });
-    const status = response.status as StatusCode;
-    if (
-      isContentlessStatus(status) ||
-      !("body" in response) ||
-      response.body === undefined
-    ) {
-      return context.body(null, status);
-    }
-
-    return context.json(response.body, status as ContentfulStatusCode);
+    return routeResultToHonoResponse(context, contract, data);
   };
 }

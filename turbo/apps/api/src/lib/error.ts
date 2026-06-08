@@ -1,8 +1,23 @@
+export interface ApiErrorBody<CODE extends string = string> {
+  readonly error: {
+    readonly message: string;
+    readonly code: CODE;
+  };
+}
+
+export interface ApiErrorResponse<
+  STATUS extends number = number,
+  CODE extends string = string,
+> {
+  readonly status: STATUS;
+  readonly body: ApiErrorBody<CODE>;
+}
+
 function httpError<STATUS extends number, CODE extends string>(
   status: STATUS,
   code: CODE,
   message: string,
-) {
+): ApiErrorResponse<STATUS, CODE> {
   return Object.freeze({
     status,
     body: {
@@ -12,6 +27,24 @@ function httpError<STATUS extends number, CODE extends string>(
       },
     },
   });
+}
+
+export class ApiRouteError extends Error {
+  readonly response: ApiErrorResponse;
+
+  constructor(response: ApiErrorResponse, options?: ErrorOptions) {
+    super(response.body.error.message, options);
+    this.name = "ApiRouteError";
+    this.response = response;
+  }
+}
+
+export function isApiRouteError(error: unknown): error is ApiRouteError {
+  return error instanceof ApiRouteError;
+}
+
+export function throwApiError(response: ApiErrorResponse): never {
+  throw new ApiRouteError(response);
 }
 
 export function notFound(message: string) {
