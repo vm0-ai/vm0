@@ -68,7 +68,7 @@ import {
   IconChevronRight,
   IconClock,
   IconChevronDown,
-  IconRefresh,
+  IconArrowBackUp,
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
@@ -584,7 +584,7 @@ function PermissionGrantResetButton({
                     : "hover:bg-muted/50 hover:text-foreground"
                 }`}
               >
-                <IconRefresh size={13} stroke={2.2} />
+                <IconArrowBackUp size={13} stroke={2.2} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="top">Reset changes</TooltipContent>
