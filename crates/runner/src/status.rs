@@ -234,13 +234,8 @@ impl StatusTracker {
             }
         };
 
-        let tmp = self.path.with_extension("tmp");
-        if let Err(e) = tokio::fs::write(&tmp, json.as_bytes()).await {
-            warn!(error = %e, path = %tmp.display(), "failed to write status temp file");
-            return;
-        }
-        if let Err(e) = tokio::fs::rename(&tmp, &self.path).await {
-            warn!(error = %e, "failed to rename status file");
+        if let Err(e) = crate::private_fs::write_private_file(&self.path, json.as_bytes()).await {
+            warn!(error = %e, path = %self.path.display(), "failed to write status file");
         }
     }
 }
@@ -281,6 +276,30 @@ mod tests {
         assert!(status["active_runs"].as_array().unwrap().is_empty());
         assert!(status["started_at"].as_str().is_some());
         assert!(status["updated_at"].as_str().is_some());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn write_initial_does_not_follow_stale_status_temp_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let stale_target = dir.path().join("outside-status-target");
+        let stale_tmp = dir.path().join("status.tmp");
+        std::fs::write(&stale_target, b"do not overwrite").unwrap();
+        std::os::unix::fs::symlink(&stale_target, &stale_tmp).unwrap();
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+
+        tracker.write_initial().await;
+
+        assert_eq!(std::fs::read(&stale_target).unwrap(), b"do not overwrite");
+        assert!(
+            std::fs::symlink_metadata(&stale_tmp)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let status = read_status(&path);
+        assert_eq!(status["mode"], "running");
     }
 
     #[tokio::test]

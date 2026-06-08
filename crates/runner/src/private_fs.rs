@@ -115,6 +115,44 @@ async fn reject_existing_symlink_components(path: &Path) -> RunnerResult<()> {
 }
 
 #[cfg(unix)]
+pub async fn read_private_file_to_string(path: &Path) -> RunnerResult<Option<String>> {
+    use tokio::io::AsyncReadExt;
+
+    let mut options = tokio::fs::OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC);
+    let mut file = match options.open(path).await {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => {
+            return Err(RunnerError::Config(format!(
+                "open private file {}: {e}",
+                path.display()
+            )));
+        }
+    };
+    secure_open_private_file(&file, path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)
+        .await
+        .map_err(|e| RunnerError::Config(format!("read private file {}: {e}", path.display())))?;
+    Ok(Some(contents))
+}
+
+#[cfg(not(unix))]
+pub async fn read_private_file_to_string(path: &Path) -> RunnerResult<Option<String>> {
+    match tokio::fs::read_to_string(path).await {
+        Ok(contents) => Ok(Some(contents)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(RunnerError::Config(format!(
+            "read private file {}: {e}",
+            path.display()
+        ))),
+    }
+}
+
+#[cfg(unix)]
 pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()> {
     use std::ffi::OsString;
     use std::os::unix::fs::PermissionsExt;
@@ -518,6 +556,53 @@ fn ensure_private_dir_fd_owned_by(
 
     chmod_open_private_dir(fd, path)?;
     Ok(())
+}
+
+#[cfg(unix)]
+fn secure_open_private_file<Fd: std::os::fd::AsRawFd>(file: &Fd, path: &Path) -> RunnerResult<()> {
+    let mut stat = std::mem::MaybeUninit::<nix::libc::stat>::uninit();
+    // SAFETY: `stat` points to valid writable memory and `file` owns a live fd.
+    let result = unsafe { nix::libc::fstat(file.as_raw_fd(), stat.as_mut_ptr()) };
+    if result != 0 {
+        return Err(RunnerError::Config(format!(
+            "stat private file {}: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        )));
+    }
+    // SAFETY: successful `fstat` initialized the full `stat` struct.
+    let stat = unsafe { stat.assume_init() };
+    let file_type = stat.st_mode & nix::libc::S_IFMT;
+    if file_type != nix::libc::S_IFREG {
+        return Err(RunnerError::Config(format!(
+            "{} is not a regular private file",
+            path.display()
+        )));
+    }
+    let expected_uid = nix::unistd::geteuid().as_raw();
+    if stat.st_uid != expected_uid {
+        return Err(RunnerError::Config(format!(
+            "{} is owned by uid {}, but runner euid is {expected_uid}; fix ownership before starting the runner",
+            path.display(),
+            stat.st_uid
+        )));
+    }
+    let mode = stat.st_mode & 0o7777;
+    if mode == PRIVATE_FILE_MODE {
+        return Ok(());
+    }
+    // SAFETY: `fchmod` operates on the live fd and does not affect Rust aliasing.
+    let result =
+        unsafe { nix::libc::fchmod(file.as_raw_fd(), PRIVATE_FILE_MODE as nix::libc::mode_t) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(RunnerError::Config(format!(
+            "chmod private file {}: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        )))
+    }
 }
 
 #[cfg(all(unix, target_os = "linux"))]
