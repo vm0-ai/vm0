@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -495,6 +495,30 @@ fn parse_usage_pending_state(content: &str) -> Result<UsagePendingState, String>
         .map_err(|e| format!("state file is not valid usage-pending JSON: {e}"))
 }
 
+#[cfg(unix)]
+async fn read_usage_pending_file(path: &Path) -> std::io::Result<String> {
+    let mut options = tokio::fs::OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK);
+    let mut file = options.open(path).await?;
+    let metadata = file.metadata().await?;
+    if !metadata.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("{} is not a regular usage-pending file", path.display()),
+        ));
+    }
+    let mut content = String::new();
+    file.read_to_string(&mut content).await?;
+    Ok(content)
+}
+
+#[cfg(not(unix))]
+async fn read_usage_pending_file(path: &Path) -> std::io::Result<String> {
+    tokio::fs::read_to_string(path).await
+}
+
 fn validate_usage_pending_state(
     state: &UsagePendingState,
     request: &UsageFlushRequest,
@@ -561,7 +585,7 @@ pub async fn wait_usage_flush_requesting(
     let deadline = started_at + timeout;
     let mut next_flush_request_at = started_at + USAGE_FLUSH_REQUEST_INTERVAL;
     loop {
-        let (not_ready, snapshot) = match tokio::fs::read_to_string(&path).await {
+        let (not_ready, snapshot) = match read_usage_pending_file(&path).await {
             Ok(content) => match parse_usage_pending_state(&content) {
                 Ok(state) => {
                     let snapshot = Some(UsagePendingSnapshot::from(&state));
@@ -2272,6 +2296,30 @@ while True:
         let dir = tempfile::tempdir().unwrap();
         let request = usage_request();
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_usage_pending_file_rejects_fifo_without_blocking() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("usage-pending");
+        let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+        let result = unsafe { nix::libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(
+            result,
+            0,
+            "mkfifo failed: {}",
+            std::io::Error::last_os_error()
+        );
+
+        let result =
+            tokio::time::timeout(Duration::from_millis(100), read_usage_pending_file(&path))
+                .await
+                .expect("usage-pending FIFO read should not block");
+
+        assert!(result.is_err(), "usage-pending FIFO should be rejected");
     }
 
     #[tokio::test(start_paused = true)]
