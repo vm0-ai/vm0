@@ -273,7 +273,8 @@ def decompress_body(
     bombs.  Cap enforcement varies by codec:
 
     - gzip/deflate: hard cap via ``decompressobj.decompress(data, max_length=)``;
-      zlib stops decoding once the cap is reached.
+      zlib stops decoding once the cap is reached. Concatenated members are
+      decoded until the shared cap is exhausted.
     - zstd: hard cap via ``ZstdDecompressor.stream_reader(data).read(max_output)``;
       zstd reads incrementally so total memory is bounded by
       ``max_output`` plus library internal buffers.
@@ -284,9 +285,11 @@ def decompress_body(
       full response before slicing.
 
     Returns the original data unchanged when the encoding is missing,
-    ``identity``, or unrecognised, and on decompression error.  A valid
-    frame that decodes to an empty body returns ``b""`` — callers that
-    short-circuit via ``if not body`` rely on that (see #10287).
+    ``identity``, unrecognised, or invalid before any compressed member
+    completes. Once a member has completed, later invalid trailing data is
+    ignored on this best-effort path. A valid frame that decodes to an empty
+    body returns ``b""`` — callers that short-circuit via ``if not body`` rely
+    on that (see #10287).
     """
     result = _decode_body_bounded(data, headers, max_output=max_output)
     if result.failed and result.error is not None:
@@ -297,6 +300,48 @@ def decompress_body(
                 f"({headers.get('content-encoding', '').strip().lower()}): {result.error}"
             )
     return result.body
+
+
+def _decompress_zlib_best_effort_bounded(
+    data: bytes, encoding: Literal["gzip", "deflate"], max_output: int
+) -> _BoundedDecodeResult:
+    if max_output <= 0:
+        return _BoundedDecodeResult(b"", False)
+
+    wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+    remaining_data = data
+    out = bytearray()
+    completed_member = False
+
+    while remaining_data and len(out) < max_output:
+        obj = zlib.decompressobj(wbits)
+        member_data = remaining_data
+
+        while member_data and len(out) < max_output:
+            try:
+                decoded = obj.decompress(member_data, max_length=max_output - len(out))
+            except zlib.error as exc:
+                if completed_member:
+                    return _BoundedDecodeResult(bytes(out), False)
+                return _BoundedDecodeResult(data, True, exc)
+
+            out.extend(decoded)
+            if obj.unconsumed_tail:
+                member_data = obj.unconsumed_tail
+                continue
+            break
+
+        if len(out) >= max_output:
+            return _BoundedDecodeResult(bytes(out), False)
+        if obj.eof:
+            completed_member = True
+            if obj.unused_data:
+                remaining_data = obj.unused_data
+                continue
+            return _BoundedDecodeResult(bytes(out), False)
+        return _BoundedDecodeResult(bytes(out), False)
+
+    return _BoundedDecodeResult(bytes(out), False)
 
 
 def _decode_body_bounded(
@@ -311,13 +356,7 @@ def _decode_body_bounded(
         return _BoundedDecodeResult(data, False)
     try:
         if encoding in ("gzip", "deflate"):
-            # wbits: gzip=16+MAX_WBITS, deflate=MAX_WBITS
-            wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
-            obj = zlib.decompressobj(wbits)
-            return _BoundedDecodeResult(
-                obj.decompress(data, max_length=max_output),
-                False,
-            )
+            return _decompress_zlib_best_effort_bounded(data, encoding, max_output)
         if encoding == "br":
             return _BoundedDecodeResult(_decompress_brotli_bounded(data, max_output), False)
         if encoding == "zstd":
