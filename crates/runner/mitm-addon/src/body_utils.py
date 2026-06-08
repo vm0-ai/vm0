@@ -97,6 +97,14 @@ _HTTP_ENCODING_PATTERN = (
     rf"(?:{_HTTP_TCHAR_PATTERN}|\*)"
     r"(?:\s*;\s*q=(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?))?"
 )
+_HTTP_IMF_FIXDATE_PATTERN = re.compile(
+    r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), "
+    r"(?:0[1-9]|[12][0-9]|3[01]) "
+    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) "
+    r"[0-9]{4} "
+    r"(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9] GMT"
+)
+_UNSAFE_CAPTURE_HEADER_VALUE_CHARS = re.compile(r"[\r\n]")
 
 # Captured header values are untrusted persistent-log data by default. Preserve
 # only low-risk protocol metadata that matches conservative HTTP value shapes.
@@ -566,6 +574,8 @@ def _encode_body(content: bytes, content_type: str) -> tuple:
 
 
 def _is_http_date_header_value(value: str) -> bool:
+    if _HTTP_IMF_FIXDATE_PATTERN.fullmatch(value) is None:
+        return False
     try:
         parsedate_to_datetime(value)
     except (TypeError, ValueError, IndexError, OverflowError):
@@ -574,6 +584,8 @@ def _is_http_date_header_value(value: str) -> bool:
 
 
 def _can_preserve_capture_header_value(name: str, value: str) -> bool:
+    if _UNSAFE_CAPTURE_HEADER_VALUE_CHARS.search(value) is not None:
+        return False
     normalized_name = name.strip().lower()
     normalized_value = value.strip()
     if normalized_name == "date":

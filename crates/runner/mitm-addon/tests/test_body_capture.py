@@ -175,11 +175,15 @@ class TestSanitizeHeadersForCapture:
         [
             ("Content-Type", "https://app.example/private/secret-token"),
             ("Content-Type", 'application/json; profile="https://app.example/secret-token"'),
+            ("Content-Type", "application/json\r\n"),
             ("Content-Length", "secret-token"),
             ("Content-Encoding", "gzip, https://app.example/private/secret-token"),
             ("Accept", 'application/json; profile="https://app.example/secret-token"'),
             ("Accept-Encoding", "gzip, https://app.example/private/secret-token"),
             ("Date", "secret-token"),
+            ("Date", "Mon, 08 Jun 2026 03:29:48 GMT secret-token"),
+            ("Date", "Mon, 08 Jun 2026 03:29:48 GMT\r\n"),
+            ("Date", "Mon, 08 Jun 2026 03:29:48 GMT\r\nSet-Cookie: session=secret"),
         ],
     )
     def test_allowlisted_header_names_with_unexpected_values_are_redacted(
