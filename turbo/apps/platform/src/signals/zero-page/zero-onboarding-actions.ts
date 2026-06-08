@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { zeroBillingRedeemCodeContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
@@ -436,20 +436,20 @@ const redeemedOnboardingReady$ = command(
   },
 );
 
-const ONBOARDING_REDEEM_CODE_SEARCH_PARAMS = [
-  "redeemCode",
-  "redeem_code",
-  "code",
-] as const;
+const internalRedeemingOnboardingSearchParamCode$ = state(false);
+
+export const redeemingOnboardingSearchParamCode$ = computed((get) => {
+  return get(internalRedeemingOnboardingSearchParamCode$);
+});
+
+const ONBOARDING_REDEEM_CODE_SEARCH_PARAM = "redeemCode";
 
 function onboardingRedeemCodeFromSearchParams(
   searchParams: URLSearchParams,
 ): string | null {
-  for (const param of ONBOARDING_REDEEM_CODE_SEARCH_PARAMS) {
-    const value = searchParams.get(param)?.trim();
-    if (value) {
-      return value;
-    }
+  const value = searchParams.get(ONBOARDING_REDEEM_CODE_SEARCH_PARAM)?.trim();
+  if (value) {
+    return value;
   }
   return null;
 }
@@ -458,9 +458,7 @@ function withoutOnboardingRedeemCodeSearchParams(
   searchParams: URLSearchParams,
 ): URLSearchParams {
   const cleaned = new URLSearchParams(searchParams);
-  for (const param of ONBOARDING_REDEEM_CODE_SEARCH_PARAMS) {
-    cleaned.delete(param);
-  }
+  cleaned.delete(ONBOARDING_REDEEM_CODE_SEARCH_PARAM);
   return cleaned;
 }
 
@@ -506,7 +504,7 @@ const redeemOnboardingCode$ = command(
   },
 );
 
-const redeemOnboardingSearchParamCode$ = command(
+export const redeemOnboardingSearchParamCode$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
     const searchParams = get(searchParams$);
     const code = onboardingRedeemCodeFromSearchParams(searchParams);
@@ -518,7 +516,13 @@ const redeemOnboardingSearchParamCode$ = command(
       updateSearchParams$,
       withoutOnboardingRedeemCodeSearchParams(searchParams),
     );
-    return await set(redeemOnboardingCode$, code, signal);
+    set(internalRedeemingOnboardingSearchParamCode$, true);
+    const redeemed = await set(redeemOnboardingCode$, code, signal);
+    signal.throwIfAborted();
+    if (!redeemed) {
+      set(internalRedeemingOnboardingSearchParamCode$, false);
+    }
+    return redeemed;
   },
 );
 

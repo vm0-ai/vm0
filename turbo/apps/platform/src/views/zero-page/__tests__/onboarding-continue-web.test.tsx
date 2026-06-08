@@ -283,6 +283,59 @@ describe("prompt param forwarding", () => {
       expect(redeemedCode).toBe("YUMA-123");
     });
     await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).toHaveAttribute(
+        "aria-busy",
+        "true",
+      );
+    });
+    await waitFor(() => {
+      expect(hasSubscription("billing:changed")).toBeTruthy();
+    });
+
+    billingComplete = true;
+    triggerAblyEvent("billing:changed");
+
+    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe(
+        `/agents/${MOCK_AGENT_ID}/chat`,
+      );
+    });
+    await waitFor(() => {
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        "Redeem code applied",
+      );
+    });
+  });
+
+  it("redeems a code from a direct trial-step link", async () => {
+    let billingComplete = false;
+    let redeemedCode: string | null = null;
+
+    server.use(
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+        return respond(200, {
+          needsOnboarding: !billingComplete,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: MOCK_AGENT_ID,
+          defaultAgentMetadata: null,
+        });
+      }),
+    );
+    setMockRedeemCodeHandler((code) => {
+      redeemedCode = code;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?redeemCode=YUMA-123",
+    });
+
+    await waitFor(() => {
+      expect(redeemedCode).toBe("YUMA-123");
+    });
+    await waitFor(() => {
       expect(hasSubscription("billing:changed")).toBeTruthy();
     });
 
