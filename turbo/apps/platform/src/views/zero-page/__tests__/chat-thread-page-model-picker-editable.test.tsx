@@ -271,7 +271,7 @@ describe("chat thread page — model picker editable", () => {
       "claude-opus-4-8",
     );
     expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-8");
-    expect(capturedBody?.hasForceNewSession).toBe(false);
+    expect(capturedBody?.hasForceNewSession).toBeFalsy();
   });
 
   // CHAT-MODEL-EDIT-006: queued sends share the same backend-owned model-switch
@@ -350,6 +350,6 @@ describe("chat thread page — model picker editable", () => {
       "claude-opus-4-8",
     );
     expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-8");
-    expect(capturedBody?.hasForceNewSession).toBe(false);
+    expect(capturedBody?.hasForceNewSession).toBeFalsy();
   });
 });

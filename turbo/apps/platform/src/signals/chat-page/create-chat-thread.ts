@@ -2160,10 +2160,11 @@ export function createChatThreadSignals(
   dataSource: ChatThreadDataSource = createRemoteChatThreadDataSource(threadId),
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(dataSource);
-  const {
-    modelSelection$,
-    setModelSelection$,
-  } = createModelSelection(threadId, threadData$, dataSource);
+  const { modelSelection$, setModelSelection$ } = createModelSelection(
+    threadId,
+    threadData$,
+    dataSource,
+  );
   const { recordScrollHeightForPrepend$, ...scrollSignals } =
     createScrollSignals(threadId);
   const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
