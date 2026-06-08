@@ -124,7 +124,6 @@ const CONNECTOR_ICON_COLORFUL = {
   explorium: true,
   fal: true,
   figma: true,
-  firecrawl: true,
   fireflies: true,
   flightaware: true,
   freshdesk: true,
