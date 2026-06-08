@@ -18,6 +18,10 @@ import {
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
 import { isCurrentStripePreviewMetadata } from "./stripe-preview-metadata.service";
+import {
+  subscriptionScheduleCancellationEnd,
+  subscriptionScheduleId,
+} from "./stripe-subscription-schedules.service";
 import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
 import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
 
@@ -108,6 +112,7 @@ interface SubscriptionInvoiceDetails {
   readonly tier: SubscriptionCheckoutTier;
   readonly credits: number;
   readonly periodEndDate: Date;
+  readonly scheduledEndDate: Date | null;
   readonly expiresAt: Date;
 }
 
@@ -136,21 +141,16 @@ function subscriptionWillCancel(subscription: SubscriptionInput): boolean {
   );
 }
 
-function subscriptionScheduleId(
+async function subscriptionScheduledEnd(
+  stripe: ReturnType<typeof getStripeClient>,
   subscription: SubscriptionInput,
-): string | null {
-  const schedule = subscription.schedule;
-  if (typeof schedule === "string") {
-    return schedule;
-  }
-  return schedule?.id ?? null;
-}
-
-function subscriptionScheduledEnd(
-  subscription: SubscriptionInput,
-): Date | null {
+): Promise<Date | null> {
   return (
-    subscriptionCancelAt(subscription) ?? subscriptionPeriodEnd(subscription)
+    subscriptionCancelAt(subscription) ??
+    (await subscriptionScheduleCancellationEnd(stripe, subscription)) ??
+    (subscription.cancel_at_period_end
+      ? subscriptionPeriodEnd(subscription)
+      : null)
   );
 }
 
@@ -171,11 +171,9 @@ function subscriptionTrialEnd(subscription: SubscriptionInput): Date | null {
 function subscriptionPendingChangeCleared(
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
+  willCancel: boolean,
 ): boolean {
-  if (
-    subscriptionWillCancel(subscription) ||
-    subscriptionScheduleId(subscription)
-  ) {
+  if (willCancel || subscriptionScheduleId(subscription)) {
     return false;
   }
 
@@ -1044,11 +1042,15 @@ async function subscriptionInvoiceDetails(
   }
 
   const periodEndDate = subscriptionPeriodEndFromInvoice(invoice, args.orgId);
+  const scheduledEndDate =
+    (await subscriptionScheduledEnd(stripe, subscription)) ??
+    (subscriptionWillCancel(subscription) ? periodEndDate : null);
   return {
     subscription,
     tier,
     credits,
     periodEndDate,
+    scheduledEndDate,
     expiresAt: subscriptionCreditExpiresAt(subscription, periodEndDate),
   };
 }
@@ -1062,19 +1064,25 @@ async function updateSubscriptionInvoiceMetadata(
     readonly details: SubscriptionInvoiceDetails;
   },
 ): Promise<void> {
+  const scheduleId = subscriptionScheduleId(args.details.subscription);
+  const willCancel =
+    subscriptionWillCancel(args.details.subscription) ||
+    args.details.scheduledEndDate !== null;
+  const pendingChangeAt = args.details.scheduledEndDate;
+
   await tx
     .update(orgMetadata)
     .set({
       tier: args.details.tier,
       stripeSubscriptionId: args.subscriptionId,
       subscriptionStatus: args.details.subscription.status,
-      cancelAtPeriodEnd: subscriptionWillCancel(args.details.subscription),
+      cancelAtPeriodEnd: willCancel,
       onboardingPaymentPending: false,
       lastProcessedInvoiceId: args.invoiceId,
-      currentPeriodEnd: args.details.periodEndDate,
-      pendingSubscriptionScheduleId: null,
-      pendingSubscriptionTargetTier: null,
-      pendingSubscriptionChangeAt: null,
+      currentPeriodEnd: pendingChangeAt ?? args.details.periodEndDate,
+      pendingSubscriptionScheduleId: pendingChangeAt ? scheduleId : null,
+      pendingSubscriptionTargetTier: pendingChangeAt ? "pro-suspend" : null,
+      pendingSubscriptionChangeAt: pendingChangeAt,
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.orgId, args.orgId));
@@ -1347,13 +1355,14 @@ async function handleSubscriptionUpdated(
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
 ): Promise<readonly string[]> {
-  const periodEnd = subscriptionWillCancel(subscription)
-    ? subscriptionScheduledEnd(subscription)
-    : null;
+  const stripe = getStripeClient();
+  const periodEnd = await subscriptionScheduledEnd(stripe, subscription);
+  const willCancel = subscriptionWillCancel(subscription) || periodEnd !== null;
   const pendingScheduleId = subscriptionScheduleId(subscription);
   const clearPendingChange = subscriptionPendingChangeCleared(
     subscription,
     previousAttributes,
+    willCancel,
   );
   const trialEnd = subscriptionTrialEnd(subscription);
   const previousTrialEnd =
@@ -1371,7 +1380,7 @@ async function handleSubscriptionUpdated(
       .update(orgMetadata)
       .set({
         subscriptionStatus: subscription.status,
-        cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+        cancelAtPeriodEnd: willCancel,
         updatedAt: nowDate(),
         ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
         ...(periodEnd && pendingScheduleId

@@ -62,6 +62,14 @@ function findButtonByText(
   });
 }
 
+function formatExpectedBillingDate(value: string): string {
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 describe("org billing tab - plan display", () => {
   it("opens workspace billing from an agent chat settings URL for admins", async () => {
     const agentId = "d80ad561-0801-4082-a3fe-e34470cee304";
@@ -1239,7 +1247,7 @@ describe("org billing tab - plan card details", () => {
     expect(proCard).not.toBeNull();
     expect(
       within(proCard!).getByText(
-        `Ends on ${new Date(periodEnd).toLocaleDateString("en-US")}`,
+        `Ends on ${formatExpectedBillingDate(periodEnd)}`,
       ),
     ).toBeInTheDocument();
 
@@ -1301,7 +1309,7 @@ describe("org billing tab - plan card details", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    const dateText = new Date(periodEnd).toLocaleDateString("en-US");
+    const dateText = formatExpectedBillingDate(periodEnd);
     const teamCard = screen.getByText("Team").closest("div");
     const proCard = screen.getByText("Pro").closest("div");
     expect(teamCard).not.toBeNull();

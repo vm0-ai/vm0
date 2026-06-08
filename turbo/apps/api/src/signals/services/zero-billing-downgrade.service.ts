@@ -8,6 +8,10 @@ import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { getStripeClient } from "../external/stripe-client";
+import {
+  subscriptionScheduleFinalEnd,
+  subscriptionScheduleId,
+} from "./stripe-subscription-schedules.service";
 import { activePriceId } from "./zero-billing-checkout.service";
 
 const L = logger("BillingDowngrade");
@@ -39,6 +43,7 @@ interface DowngradeOrg {
   readonly stripeSubscriptionId: string;
   readonly currentPeriodEnd: Date | null;
   readonly pendingSubscriptionScheduleId: string | null;
+  readonly pendingSubscriptionTargetTier: string | null;
 }
 
 interface DowngradeContext {
@@ -99,16 +104,6 @@ function subscriptionCurrentItem(
   return currentItem;
 }
 
-function subscriptionScheduleId(
-  subscription: Stripe.Subscription,
-): string | null {
-  const schedule = subscription.schedule;
-  if (typeof schedule === "string") {
-    return schedule;
-  }
-  return schedule?.id ?? null;
-}
-
 function subscriptionItemPhaseRange(
   subscriptionItem: Stripe.SubscriptionItem,
 ): { readonly startDate: number; readonly endDate: number } {
@@ -120,6 +115,16 @@ function subscriptionItemPhaseRange(
   }
 
   return { startDate, endDate };
+}
+
+function shouldReplacePendingDowngradeSchedule(
+  context: DowngradeContext,
+  scheduleId: string,
+): boolean {
+  return (
+    context.org.pendingSubscriptionScheduleId === scheduleId &&
+    context.org.pendingSubscriptionTargetTier === "pro"
+  );
 }
 
 async function scheduleCancellationAtPeriodEnd(
@@ -135,24 +140,37 @@ async function scheduleCancellationAtPeriodEnd(
     subscriptionScheduleId(subscription);
   const currentItem = subscriptionCurrentItem(subscription);
   const currentPhaseRange = subscriptionItemPhaseRange(currentItem);
-  const effectiveDate =
+  let effectiveDate =
     context.org.currentPeriodEnd ?? new Date(currentPhaseRange.endDate * 1000);
 
   if (scheduleId) {
-    await context.stripe.subscriptionSchedules.update(scheduleId, {
-      end_behavior: "cancel",
-      proration_behavior: "none",
-      phases: [
-        {
-          start_date: currentPhaseRange.startDate,
-          end_date: currentPhaseRange.endDate,
-          items: [
-            schedulePhaseItem(currentItem.price.id, currentItem.quantity),
-          ],
-          proration_behavior: "none",
-        },
-      ],
-    });
+    if (shouldReplacePendingDowngradeSchedule(context, scheduleId)) {
+      await context.stripe.subscriptionSchedules.update(scheduleId, {
+        end_behavior: "cancel",
+        proration_behavior: "none",
+        phases: [
+          {
+            start_date: currentPhaseRange.startDate,
+            end_date: currentPhaseRange.endDate,
+            items: [
+              schedulePhaseItem(currentItem.price.id, currentItem.quantity),
+            ],
+            proration_behavior: "none",
+          },
+        ],
+      });
+    } else {
+      const schedule =
+        await context.stripe.subscriptionSchedules.retrieve(scheduleId);
+      effectiveDate =
+        subscriptionScheduleFinalEnd(schedule) ??
+        context.org.currentPeriodEnd ??
+        new Date(currentPhaseRange.endDate * 1000);
+      await context.stripe.subscriptionSchedules.update(scheduleId, {
+        end_behavior: "cancel",
+        proration_behavior: "none",
+      });
+    }
   } else {
     await context.stripe.subscriptions.update(
       context.org.stripeSubscriptionId,
@@ -268,7 +286,8 @@ async function scheduleDowngradeToPro(
 /**
  * Downgrade an org's Stripe subscription. Two branches:
  * - `* → pro-suspend`: schedules cancel-at-period-end and flips local
- *   `cancelAtPeriodEnd` flag. effectiveDate = currentPeriodEnd ISO string.
+ *   `cancelAtPeriodEnd` flag. Existing external schedules are preserved and
+ *   cancelled at their final phase end.
  * - `team → pro`: schedules a period-end phase change to Pro. effectiveDate
  *   is the current phase end ISO string.
  */
@@ -287,6 +306,8 @@ export const downgradeSubscription$ = command(
         currentPeriodEnd: orgMetadata.currentPeriodEnd,
         pendingSubscriptionScheduleId:
           orgMetadata.pendingSubscriptionScheduleId,
+        pendingSubscriptionTargetTier:
+          orgMetadata.pendingSubscriptionTargetTier,
       })
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, args.orgId))
@@ -313,6 +334,7 @@ export const downgradeSubscription$ = command(
       stripeSubscriptionId: org.stripeSubscriptionId,
       currentPeriodEnd: org.currentPeriodEnd,
       pendingSubscriptionScheduleId: org.pendingSubscriptionScheduleId,
+      pendingSubscriptionTargetTier: org.pendingSubscriptionTargetTier,
     };
     const context = {
       db: writeDb,

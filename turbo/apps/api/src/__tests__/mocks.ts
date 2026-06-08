@@ -126,6 +126,7 @@ export interface ApiTestMocks {
       readonly cancel: AsyncMock;
     };
     readonly subscriptionSchedules: {
+      readonly retrieve: AsyncMock;
       readonly create: AsyncMock;
       readonly update: AsyncMock;
       readonly release: AsyncMock;
@@ -280,6 +281,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       cancel: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     subscriptionSchedules: {
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       release: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -573,6 +575,7 @@ vi.mock("stripe", async (importOriginal) => {
           cancel: apiTestMocks.stripe.subscriptions.cancel,
         },
         subscriptionSchedules: {
+          retrieve: apiTestMocks.stripe.subscriptionSchedules.retrieve,
           create: apiTestMocks.stripe.subscriptionSchedules.create,
           update: apiTestMocks.stripe.subscriptionSchedules.update,
           release: apiTestMocks.stripe.subscriptionSchedules.release,
@@ -806,6 +809,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.subscriptions.retrieve.mockReset();
   apiTestMocks.stripe.subscriptions.update.mockReset();
   apiTestMocks.stripe.subscriptions.cancel.mockReset();
+  apiTestMocks.stripe.subscriptionSchedules.retrieve.mockReset();
   apiTestMocks.stripe.subscriptionSchedules.create.mockReset();
   apiTestMocks.stripe.subscriptionSchedules.update.mockReset();
   apiTestMocks.stripe.subscriptionSchedules.release.mockReset();

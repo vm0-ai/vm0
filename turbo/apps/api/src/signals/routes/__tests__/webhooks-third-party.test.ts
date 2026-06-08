@@ -3636,6 +3636,59 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.currentPeriodEnd).toStrictEqual(new Date(cancelAt * 1000));
     });
 
+    it("syncs final schedule end for schedule-managed cancellation", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const scheduleId = stripeId("sched");
+      const monthlyEnd = 1_800_000_000;
+      const finalEnd = 1_805_184_000;
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        tier: "pro",
+      });
+      context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
+        id: scheduleId,
+        end_behavior: "cancel",
+        current_phase: { start_date: 1_797_408_000, end_date: finalEnd },
+        phases: [
+          { start_date: 1_797_408_000, end_date: monthlyEnd },
+          { start_date: monthlyEnd, end_date: finalEnd },
+        ],
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.updated",
+        dataObject: {
+          id: subId,
+          status: "active",
+          schedule: scheduleId,
+          cancel_at_period_end: false,
+          items: {
+            data: [
+              {
+                price: { id: STRIPE_PRICE_PRO },
+                current_period_end: monthlyEnd,
+              },
+            ],
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.cancelAtPeriodEnd).toBeTruthy();
+      expect(billing.currentPeriodEnd).toStrictEqual(new Date(finalEnd * 1000));
+      expect(billing.pendingSubscriptionScheduleId).toBe(scheduleId);
+      expect(billing.pendingSubscriptionTargetTier).toBe("pro-suspend");
+      expect(billing.pendingSubscriptionChangeAt).toStrictEqual(
+        new Date(finalEnd * 1000),
+      );
+    });
+
     it("clears cancelAtPeriodEnd when subscription is uncancelled", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
@@ -4298,6 +4351,63 @@ describe("POST /api/webhooks/stripe", () => {
       expect(
         (await selectStripeBilling(fixture)).currentPeriodEnd,
       ).toStrictEqual(new Date("2026-04-26T07:24:12Z"));
+    });
+
+    it("keeps scheduled cancellation end when invoice period is shorter", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const invId = stripeId("inv");
+      const scheduleId = stripeId("sched");
+      const monthlyEnd = Math.floor(
+        new Date("2026-04-26T07:24:12Z").getTime() / 1000,
+      );
+      const finalEnd = Math.floor(
+        new Date("2026-06-26T07:24:12Z").getTime() / 1000,
+      );
+      await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: subId,
+        status: "active",
+        schedule: scheduleId,
+        cancel_at_period_end: false,
+        items: {
+          data: [
+            { price: { id: STRIPE_PRICE_PRO }, current_period_end: monthlyEnd },
+          ],
+        },
+      });
+      context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
+        id: scheduleId,
+        end_behavior: "cancel",
+        current_phase: { start_date: monthlyEnd - 86_400, end_date: finalEnd },
+        phases: [
+          { start_date: monthlyEnd - 86_400, end_date: monthlyEnd },
+          { start_date: monthlyEnd, end_date: finalEnd },
+        ],
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(monthlyEnd),
+          parent: { subscription_details: { subscription: subId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.currentPeriodEnd).toStrictEqual(new Date(finalEnd * 1000));
+      expect(billing.cancelAtPeriodEnd).toBeTruthy();
+      expect(billing.pendingSubscriptionScheduleId).toBe(scheduleId);
+      expect(billing.pendingSubscriptionChangeAt).toStrictEqual(
+        new Date(finalEnd * 1000),
+      );
     });
 
     it("auto-recharge writes a sentinel expires record with far-future expiresAt", async () => {
