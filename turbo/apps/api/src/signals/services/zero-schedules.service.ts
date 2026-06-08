@@ -1236,7 +1236,7 @@ function buildScheduleAppendSystemPrompt(schedule: ScheduleRow): string {
 // from the thread pin (org default if unpinned); the session is always fresh
 // (no sessionId); the chat callback owns the summary while the reschedule
 // callback advances next_run_at (D9).
-const directScheduleRunExecutor = {
+const directScheduleRunExecutor = Object.freeze({
   async execute(
     args: {
       readonly db: Db;
@@ -1361,7 +1361,7 @@ const directScheduleRunExecutor = {
 
     return { kind: "ok", runId: result.body.runId };
   },
-};
+});
 
 export const runScheduleNow$ = command(
   async (
