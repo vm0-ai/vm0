@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import {
   zeroAgentsByIdContract,
@@ -219,6 +220,95 @@ describe("permissions dialog - flat list connector (Notion)", () => {
       return b.textContent?.includes("Allow") ?? false;
     });
     expect(allowBtn).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("allows updating expiration on an existing explicit grant", async () => {
+    const grantBodies: unknown[] = [];
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [
+        createMockUserPermissionGrantResponse({
+          agentId: AGENT_ID,
+          connectorRef: "notion",
+          permission: "insert_comments",
+          action: "deny",
+          expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        }),
+      ],
+    });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    await waitFor(() => {
+      expect(screen.getByText("Expires in 2 hours")).toBeInTheDocument();
+    });
+    click(
+      screen.getByRole("combobox", {
+        name: "insert_comments grant duration",
+      }),
+    );
+    click(await screen.findByRole("option", { name: "7 days" }));
+
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+      permission: "insert_comments",
+      action: "deny",
+      expiresIn: "7d",
+    });
+  });
+
+  it("saves selected expiration for a newly changed grant", async () => {
+    const grantBodies: unknown[] = [];
+    mockAPIs({ connectorType: "notion" });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    click(getPolicyButton(row, "Deny"));
+    click(
+      screen.getByRole("combobox", {
+        name: "insert_comments grant duration",
+      }),
+    );
+    click(await screen.findByRole("option", { name: "24 hours" }));
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+      permission: "insert_comments",
+      action: "deny",
+      expiresIn: "24h",
+    });
   });
 });
 

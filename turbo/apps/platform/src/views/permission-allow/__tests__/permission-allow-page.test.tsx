@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
@@ -93,9 +95,38 @@ describe("permission allow page", () => {
     });
   });
 
+  it("ignores expired matching grants", async () => {
+    mockAgent();
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: AGENT_ID,
+        connectorRef: "slack",
+        permission: "chat:write",
+        action: "allow",
+        expiresAt: new Date(Date.now() - 60 * 1000).toISOString(),
+      }),
+    ]);
+
+    setupPermissionPage(
+      `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow`,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Research agent")).toBeInTheDocument();
+      expect(getButtonByText("Confirm")).toBeEnabled();
+    });
+  });
+
   it("writes a current-user grant from the confirm action", async () => {
+    let grantBody: unknown;
     mockAgent();
     setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
 
     setupPermissionPage(
       `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow`,
@@ -110,6 +141,81 @@ describe("permission allow page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    });
+    expect(grantBody).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "allow",
+    });
+    expect(grantBody).not.toMatchObject({ expiresIn: expect.any(String) });
+  });
+
+  it("submits the default duration when expiring grants are enabled", async () => {
+    let grantBody: unknown;
+    mockAgent();
+    setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            ...body,
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow`,
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Research agent")).toBeInTheDocument();
+      expect(
+        screen.getByRole("combobox", { name: "Permission duration" }),
+      ).toHaveTextContent("1 hour");
+    });
+
+    await click(getButtonByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({ expiresIn: "1h" });
+    });
+    expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    expect(screen.getByText("Expires in 1 hour")).toBeInTheDocument();
+  });
+
+  it("submits the selected duration when expiring grants are enabled", async () => {
+    let grantBody: unknown;
+    mockAgent();
+    setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow`,
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const durationSelect = await screen.findByRole("combobox", {
+      name: "Permission duration",
+    });
+    click(durationSelect);
+    click(await screen.findByRole("option", { name: "7 days" }));
+    await click(getButtonByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({ expiresIn: "7d" });
     });
   });
 });

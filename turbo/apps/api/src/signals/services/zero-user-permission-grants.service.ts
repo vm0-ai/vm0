@@ -9,6 +9,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import type {
   UpsertUserPermissionGrantRequest,
+  UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 
@@ -56,6 +57,9 @@ type UpsertUserPermissionGrantResult =
     }
   | NotFoundResponse
   | ValidationErrorResponse;
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 function validationError(message: string): ValidationErrorResponse {
   return {
@@ -133,6 +137,27 @@ function activeGrantCondition(checkedAt: Date) {
     isNull(userPermissionGrants.expiresAt),
     gt(userPermissionGrants.expiresAt, checkedAt),
   );
+}
+
+function resolveGrantExpiresAt(
+  expiresIn: UserPermissionGrantExpiresIn | undefined,
+  timestamp: Date,
+): Date | null {
+  switch (expiresIn) {
+    case "1h": {
+      return new Date(timestamp.getTime() + HOUR_MS);
+    }
+    case "24h": {
+      return new Date(timestamp.getTime() + DAY_MS);
+    }
+    case "7d": {
+      return new Date(timestamp.getTime() + 7 * DAY_MS);
+    }
+    case "forever":
+    case undefined: {
+      return null;
+    }
+  }
 }
 
 function formatUserPermissionGrant(
@@ -223,6 +248,7 @@ async function upsertVisibleGrantRow(
     }
 
     const timestamp = nowDate();
+    const expiresAt = resolveGrantExpiresAt(args.grant.expiresIn, timestamp);
     const [row] = await tx
       .insert(userPermissionGrants)
       .values({
@@ -232,7 +258,7 @@ async function upsertVisibleGrantRow(
         connectorRef: args.grant.connectorRef,
         permission: args.grant.permission,
         action: args.grant.action,
-        expiresAt: null,
+        expiresAt,
         createdAt: timestamp,
         updatedAt: timestamp,
       })
@@ -246,7 +272,7 @@ async function upsertVisibleGrantRow(
         ],
         set: {
           action: args.grant.action,
-          expiresAt: null,
+          expiresAt,
           updatedAt: timestamp,
         },
       })

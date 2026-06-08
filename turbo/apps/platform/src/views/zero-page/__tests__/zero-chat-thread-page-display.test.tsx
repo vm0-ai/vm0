@@ -301,9 +301,45 @@ describe("zero chat thread page display - permission action card", () => {
         action: "allow",
       });
     });
+    expect(grantBody).not.toMatchObject({ expiresIn: expect.any(String) });
     const status = within(card).getByText("Permissions updated");
     expect(status).toBeInTheDocument();
     expect(status.closest("button")).toBeNull();
+  });
+
+  it("submits the default duration from permission action cards when enabled", async () => {
+    let grantBody: unknown;
+    mockPermissionAgent();
+    mockPermissionMessage();
+    setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(
+      within(card).getByRole("combobox", { name: "Permission duration" }),
+    ).toHaveTextContent("1 hour");
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        permission: "channels:write",
+        action: "allow",
+        expiresIn: "1h",
+      });
+    });
   });
 
   it("uses current-user grants for already-applied permission actions", async () => {

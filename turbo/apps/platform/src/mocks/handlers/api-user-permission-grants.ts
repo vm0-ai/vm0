@@ -2,6 +2,7 @@ import {
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { userPermissionGrantExpiresAt } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { mockApi } from "../msw-contract.ts";
 
 let mockUserPermissionGrants: UserPermissionGrantResponse[] = [];
@@ -13,6 +14,10 @@ function grantKey(
   >,
 ): string {
   return `${grant.agentId}:${grant.connectorRef}:${grant.permission}`;
+}
+
+function isActiveGrant(grant: UserPermissionGrantResponse, checkedAt: Date) {
+  return grant.expiresAt === null || new Date(grant.expiresAt) > checkedAt;
 }
 
 export function createMockUserPermissionGrantResponse(
@@ -43,10 +48,13 @@ export function resetMockUserPermissionGrants(): void {
 
 export const apiUserPermissionGrantsHandlers = [
   mockApi(zeroUserPermissionGrantsContract.list, ({ query, respond }) => {
+    const checkedAt = new Date();
     return respond(
       200,
       mockUserPermissionGrants.filter((grant) => {
-        return grant.agentId === query.agentId;
+        return (
+          grant.agentId === query.agentId && isActiveGrant(grant, checkedAt)
+        );
       }),
     );
   }),
@@ -61,7 +69,7 @@ export const apiUserPermissionGrantsHandlers = [
       connectorRef: body.connectorRef,
       permission: body.permission,
       action: body.action,
-      expiresAt: null,
+      expiresAt: userPermissionGrantExpiresAt(body.expiresIn, now.getTime()),
       createdAt: existing?.createdAt ?? now.toISOString(),
       updatedAt: now.toISOString(),
     };

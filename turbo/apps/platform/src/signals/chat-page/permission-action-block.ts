@@ -2,6 +2,8 @@ import {
   isFirewallConnectorType,
   type FirewallConnectorType,
 } from "@vm0/connectors/firewalls";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { parseUserPermissionGrantExpiresIn } from "../permission-allow/permission-grant-expiration.ts";
 
 type PermissionAction = "allow" | "deny";
 type PlatformHostTarget = "api" | "www" | "app" | "platform";
@@ -14,6 +16,7 @@ export interface PermissionActionDescriptor {
   method: string | null;
   path: string | null;
   reason: string | null;
+  expiresIn: UserPermissionGrantExpiresIn | null;
   search: string;
   originalUrl: string;
 }
@@ -138,6 +141,9 @@ export function parsePermissionActionUrl(
   const method = url.searchParams.get("method");
   const path = url.searchParams.get("path");
   const reason = url.searchParams.get("reason");
+  const expiresIn = parseUserPermissionGrantExpiresIn(
+    url.searchParams.get("expiresIn"),
+  );
 
   if (
     !agentId ||
@@ -157,6 +163,7 @@ export function parsePermissionActionUrl(
     method,
     path,
     reason,
+    expiresIn,
     search: url.searchParams.toString(),
     originalUrl: value,
   };

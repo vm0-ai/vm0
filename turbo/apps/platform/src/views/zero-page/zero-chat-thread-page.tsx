@@ -62,7 +62,10 @@ import type {
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type {
+  UserPermissionGrantExpiresIn,
+  UserPermissionGrantResponse,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { IN_VITEST } from "../../env.ts";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
@@ -107,7 +110,14 @@ import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
+import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
+  permissionGrantExpiresInByScope$,
+  permissionGrantExpiryText,
+  setPermissionGrantExpiresIn$,
+} from "../../signals/permission-allow/permission-grant-expiration.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -3373,9 +3383,10 @@ type UpsertUserPermissionGrantFn = (
     connectorRef: string;
     permission: string;
     action: PermissionAction;
+    expiresIn?: UserPermissionGrantExpiresIn;
   },
   signal: AbortSignal,
-) => Promise<void>;
+) => Promise<UserPermissionGrantResponse>;
 
 function loadableData<T>(loadable: LoadableLike<T>): T | undefined {
   return loadable.state === "hasData" ? loadable.data : undefined;
@@ -3626,6 +3637,8 @@ function createPermissionActionHandler(params: {
   focusedPermission: { name: string } | undefined;
   state: PermissionActionButtonState;
   finished: boolean;
+  expirationEnabled: boolean;
+  expiresIn: UserPermissionGrantExpiresIn;
   upsertGrant: UpsertUserPermissionGrantFn;
 }): () => void {
   return () => {
@@ -3644,6 +3657,9 @@ function createPermissionActionHandler(params: {
               connectorRef: params.block.connectorRef,
               permission: permissionName,
               action: params.block.action,
+              ...(params.expirationEnabled
+                ? { expiresIn: params.expiresIn }
+                : {}),
             },
             params.pageSignal,
           ),
@@ -3660,6 +3676,10 @@ function PermissionActionCardContent({
   actionLabel,
   permissionName,
   buttonState,
+  expirationEnabled,
+  expiresIn,
+  onExpiresInChange,
+  expiresAt,
   onClick,
 }: {
   block: PermissionActionBlock;
@@ -3667,8 +3687,15 @@ function PermissionActionCardContent({
   actionLabel: string;
   permissionName: string;
   buttonState: PermissionActionButtonState;
+  expirationEnabled: boolean;
+  expiresIn: UserPermissionGrantExpiresIn;
+  onExpiresInChange: (value: UserPermissionGrantExpiresIn) => void;
+  expiresAt: string | null;
   onClick: () => void;
 }) {
+  const expiryText = permissionGrantExpiryText(expiresAt);
+  const showDurationSelect =
+    expirationEnabled && !buttonState.alreadyApplied && !buttonState.saveDone;
   return (
     <div
       data-testid="permission-action-card"
@@ -3685,13 +3712,28 @@ function PermissionActionCardContent({
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
             {actionLabel} {permissionName}
           </div>
+          {expiryText && (
+            <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              {expiryText}
+            </div>
+          )}
         </div>
       </div>
-      <PermissionActionButton
-        state={buttonState}
-        action={block.action}
-        onClick={onClick}
-      />
+      <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+        {showDurationSelect && (
+          <PermissionGrantDurationSelect
+            value={expiresIn}
+            onValueChange={onExpiresInChange}
+            disabled={buttonState.loading || buttonState.saving}
+            ariaLabel="Permission duration"
+          />
+        )}
+        <PermissionActionButton
+          state={buttonState}
+          action={block.action}
+          onClick={onClick}
+        />
+      </div>
     </div>
   );
 }
@@ -3699,6 +3741,16 @@ function PermissionActionCardContent({
 function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const pageSignal = useGet(pageSignal$);
   const config = CONNECTOR_TYPES[block.connectorRef];
+  const features = useLastResolved(featureSwitch$);
+  const expirationEnabled =
+    features?.[FeatureSwitchKey.ExpiringPermissionGrants] ?? false;
+  const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
+  const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
+  const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
+  const expiresIn =
+    expiresInByScope[durationScope] ??
+    block.expiresIn ??
+    DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
   const agentLoadable = useLastLoadable(agentById(block.agentId));
   const [grantLoadable, upsertGrant] = useLoadableSet(
     upsertUserPermissionGrant$,
@@ -3725,6 +3777,14 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? block.permission}
       buttonState={actionState.buttonState}
+      expirationEnabled={expirationEnabled}
+      expiresIn={expiresIn}
+      onExpiresInChange={(value) => {
+        setExpiresInForScope(durationScope, value);
+      }}
+      expiresAt={
+        grantLoadable.state === "hasData" ? grantLoadable.data.expiresAt : null
+      }
       onClick={createPermissionActionHandler({
         block,
         pageSignal,
@@ -3732,6 +3792,8 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
         focusedPermission: actionState.focusedPermission,
         state: actionState.buttonState,
         finished: actionState.finished,
+        expirationEnabled,
+        expiresIn,
         upsertGrant,
       })}
     />

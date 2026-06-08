@@ -266,6 +266,26 @@ describe("parseBodyRenderBlocks", () => {
     });
   });
 
+  it("parses permission link expiration options", () => {
+    vi.stubEnv("VITE_API_URL", "https://app.vm0.ai");
+    const url =
+      "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Aread&action=allow&expiresIn=24h";
+
+    const { blocks } = parseBodyRenderBlocks(url, {
+      previews: false,
+    });
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "permission-action",
+      connectorRef: "slack",
+      permission: "channels:read",
+      action: "allow",
+      expiresIn: "24h",
+      href: "/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Aread&action=allow&expiresIn=24h",
+    });
+  });
+
   it("renders tunnel host variant permission links as permission action blocks", () => {
     vi.stubEnv("VITE_API_URL", "https://tunnel-yuma-vm0-api.vm7.ai");
     const url =

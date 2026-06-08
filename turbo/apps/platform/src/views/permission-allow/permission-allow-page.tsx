@@ -1,4 +1,4 @@
-import { useGet, useLastLoadable } from "ccstate-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Button } from "@vm0/ui";
 import {
@@ -7,7 +7,9 @@ import {
   IconCheck,
   IconLoader2,
 } from "@tabler/icons-react";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFirewallConnectorType } from "@vm0/connectors/firewalls";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -16,14 +18,23 @@ import {
   permissionAllowAction$,
   permissionAllowAgent$,
   permissionAllowAgentId$,
+  permissionAllowExpiresIn$,
   permissionAllowPermission$,
   permissionAllowRef$,
   permissionAllowUserPermissionGrants$,
   resolveUserPermissionGrantPolicy,
   upsertUserPermissionGrant$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
+import {
+  DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
+  permissionGrantExpiresInByScope$,
+  permissionGrantExpiryText,
+  setPermissionGrantExpiresIn$,
+} from "../../signals/permission-allow/permission-grant-expiration.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
+import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 
@@ -121,8 +132,15 @@ function LoadingCard() {
   );
 }
 
-function ResultCard({ action }: { action: "allow" | "deny" }) {
+function ResultCard({
+  action,
+  expiresAt,
+}: {
+  action: "allow" | "deny";
+  expiresAt?: string | null;
+}) {
   const allowed = action === "allow";
+  const expiryText = permissionGrantExpiryText(expiresAt ?? null);
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
@@ -141,6 +159,11 @@ function ResultCard({ action }: { action: "allow" | "deny" }) {
               ? "Your connector permission grant has been updated"
               : "Your connector permission grant has been denied"}
           </p>
+          {expiryText && (
+            <p className="text-center text-xs font-medium text-amber-700 dark:text-amber-400">
+              {expiryText}
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -191,6 +214,8 @@ function ConfirmGrantCard({
   connectorRef,
   permission,
   action,
+  expirationEnabled,
+  initialExpiresIn,
   agentDisplayName,
   agentAvatarUrl,
   userName,
@@ -199,18 +224,29 @@ function ConfirmGrantCard({
   connectorRef: string;
   permission: Permission;
   action: "allow" | "deny";
+  expirationEnabled: boolean;
+  initialExpiresIn: UserPermissionGrantExpiresIn | null;
   agentDisplayName: string;
   agentAvatarUrl: string | null;
   userName: string;
 }) {
   const pageSignal = useGet(pageSignal$);
+  const durationScope = `${agentId}\u0000${connectorRef}\u0000${permission.name}\u0000${action}\u0000${initialExpiresIn ?? ""}`;
+  const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
+  const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
+  const expiresIn =
+    expiresInByScope[durationScope] ??
+    initialExpiresIn ??
+    DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
   const [grantLoadable, upsertGrant] = useLoadableSet(
     upsertUserPermissionGrant$,
   );
   const saving = grantLoadable.state === "loading";
 
   if (grantLoadable.state === "hasData") {
-    return <ResultCard action={action} />;
+    return (
+      <ResultCard action={action} expiresAt={grantLoadable.data.expiresAt} />
+    );
   }
 
   const handleSave = () => {
@@ -221,6 +257,7 @@ function ConfirmGrantCard({
           connectorRef,
           permission: permission.name,
           action,
+          ...(expirationEnabled ? { expiresIn } : {}),
         },
         pageSignal,
       ),
@@ -251,6 +288,21 @@ function ConfirmGrantCard({
               action={action}
             />
           </div>
+          {expirationEnabled && (
+            <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2">
+              <span className="text-sm font-medium text-foreground">
+                Duration
+              </span>
+              <PermissionGrantDurationSelect
+                value={expiresIn}
+                onValueChange={(value) => {
+                  setExpiresInForScope(durationScope, value);
+                }}
+                disabled={saving}
+                ariaLabel="Permission duration"
+              />
+            </div>
+          )}
         </div>
 
         <div className="w-[500px] max-w-[calc(100vw-96px)] px-[26px]">
@@ -273,15 +325,20 @@ function PermissionAllowDoctorPage({
   ref,
   permission,
   action,
+  initialExpiresIn,
 }: {
   agentId: string;
   ref: string;
   permission: string;
   action: "allow" | "deny";
+  initialExpiresIn: UserPermissionGrantExpiresIn | null;
 }) {
   const agentLoadable = useLastLoadable(permissionAllowAgent$);
   const userLoadable = useLastLoadable(user$);
   const grantsLoadable = useLastLoadable(permissionAllowUserPermissionGrants$);
+  const features = useGet(featureSwitch$);
+  const expirationEnabled =
+    features[FeatureSwitchKey.ExpiringPermissionGrants] ?? false;
 
   if (
     agentLoadable.state === "loading" ||
@@ -314,8 +371,15 @@ function PermissionAllowDoctorPage({
     ref,
     focusedPermission.name,
   );
+  const explicitGrant = grants.find((grant) => {
+    return (
+      grant.connectorRef === ref &&
+      grant.permission === focusedPermission.name &&
+      grant.action === action
+    );
+  });
   if (effectivePolicy === action) {
-    return <ResultCard action={action} />;
+    return <ResultCard action={action} expiresAt={explicitGrant?.expiresAt} />;
   }
 
   const currentUser =
@@ -327,6 +391,8 @@ function PermissionAllowDoctorPage({
       connectorRef={ref}
       permission={focusedPermission}
       action={action}
+      expirationEnabled={expirationEnabled}
+      initialExpiresIn={initialExpiresIn}
       agentDisplayName={agent.displayName ?? agentId}
       agentAvatarUrl={agent.avatarUrl}
       userName={resolveUserName(currentUser)}
@@ -339,6 +405,7 @@ export function PermissionAllowPage() {
   const ref = useGet(permissionAllowRef$);
   const permission = useGet(permissionAllowPermission$);
   const action = useGet(permissionAllowAction$);
+  const expiresIn = useGet(permissionAllowExpiresIn$);
 
   if (!agentId) {
     return <ErrorMessage message="Missing agent ID in URL parameters" />;
@@ -358,6 +425,7 @@ export function PermissionAllowPage() {
       ref={ref}
       permission={permission}
       action={action ?? "allow"}
+      initialExpiresIn={expiresIn}
     />
   );
 }

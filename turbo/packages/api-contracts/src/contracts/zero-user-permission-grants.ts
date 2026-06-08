@@ -9,6 +9,12 @@ const connectorRefSchema = z.string().min(1).max(64);
 const permissionSchema = z.string().min(1).max(128);
 
 export const userPermissionGrantActionSchema = z.enum(["allow", "deny"]);
+export const userPermissionGrantExpiresInSchema = z.enum([
+  "1h",
+  "24h",
+  "7d",
+  "forever",
+]);
 
 export const userPermissionGrantResponseSchema = z.object({
   agentId: agentIdSchema,
@@ -29,6 +35,7 @@ export const upsertUserPermissionGrantRequestSchema = z.object({
   connectorRef: connectorRefSchema,
   permission: permissionSchema,
   action: userPermissionGrantActionSchema,
+  expiresIn: userPermissionGrantExpiresInSchema.optional(),
 });
 
 export const zeroUserPermissionGrantsContract = c.router({
@@ -64,6 +71,9 @@ export const zeroUserPermissionGrantsContract = c.router({
 
 export type UserPermissionGrantAction = z.infer<
   typeof userPermissionGrantActionSchema
+>;
+export type UserPermissionGrantExpiresIn = z.infer<
+  typeof userPermissionGrantExpiresInSchema
 >;
 export type UserPermissionGrantResponse = z.infer<
   typeof userPermissionGrantResponseSchema

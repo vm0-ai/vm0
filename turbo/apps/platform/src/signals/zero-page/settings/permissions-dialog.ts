@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { PermissionPolicy } from "./permissions.ts";
 
 // ---------------------------------------------------------------------------
@@ -45,6 +46,27 @@ export const setPermissionAllPolicies$ = command(
   ({ get, set }, ref: string, policies: Record<string, PermissionPolicy>) => {
     const all = get(internalAllPolicies$);
     set(internalAllPolicies$, { ...all, [ref]: policies });
+  },
+);
+
+const internalGrantExpirationFormKey$ = state<string | null>(null);
+const internalGrantExpirations$ = state<
+  Record<string, UserPermissionGrantExpiresIn>
+>({});
+export const permissionGrantExpirations$ = computed((get) => {
+  return get(internalGrantExpirations$);
+});
+export const setPermissionGrantExpiration$ = command(
+  (
+    { get, set },
+    permission: string,
+    expiresIn: UserPermissionGrantExpiresIn,
+  ) => {
+    const current = get(internalGrantExpirations$);
+    set(internalGrantExpirations$, {
+      ...current,
+      [permission]: expiresIn,
+    });
   },
 );
 
@@ -99,6 +121,20 @@ export const initPermissionPolicies$ = command(
   },
 );
 
+export const initPermissionGrantExpirations$ = command(
+  (
+    { get, set },
+    formKey: string,
+    expirations: Record<string, UserPermissionGrantExpiresIn>,
+  ) => {
+    if (get(internalGrantExpirationFormKey$) === formKey) {
+      return;
+    }
+    set(internalGrantExpirationFormKey$, formKey);
+    set(internalGrantExpirations$, expirations);
+  },
+);
+
 export const resetPermissionPolicies$ = command(
   ({ get, set }, formKey: string) => {
     if (get(internalFormKey$) !== formKey) {
@@ -109,6 +145,16 @@ export const resetPermissionPolicies$ = command(
     set(internalUnknownPolicy$, "allow");
     set(internalScrolled$, false);
     set(internalExpandedGroups$, new Set());
+  },
+);
+
+export const resetPermissionGrantExpirations$ = command(
+  ({ get, set }, formKey: string) => {
+    if (get(internalGrantExpirationFormKey$) !== formKey) {
+      return;
+    }
+    set(internalGrantExpirationFormKey$, null);
+    set(internalGrantExpirations$, {});
   },
 );
 
