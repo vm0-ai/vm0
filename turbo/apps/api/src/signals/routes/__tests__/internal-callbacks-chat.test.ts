@@ -257,11 +257,16 @@ async function postSignedCallback(
 ): Promise<Response> {
   const rawBody = JSON.stringify(body);
   const app = createApp({ signal: context.signal });
-  return await app.request(PATH, {
+  const response = await app.request(PATH, {
     method: "POST",
     headers: signedHeaders(rawBody, secret),
     body: rawBody,
   });
+  // The route now acknowledges immediately and runs terminal processing
+  // (message persistence, LLM generation, push) in the background via
+  // waitUntil. Drain that detached work so callers can assert on its effects.
+  await clearAllDetached();
+  return response;
 }
 
 function completedAssistantOutput(text: string): void {
