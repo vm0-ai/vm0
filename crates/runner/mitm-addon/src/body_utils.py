@@ -81,14 +81,7 @@ _TEXT_CONTENT_TYPES = (
 )
 
 _HTTP_TCHAR_PATTERN = r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+"
-_HTTP_QUOTED_VALUE_PATTERN = rf'"{_HTTP_TCHAR_PATTERN}"'
-_HTTP_PARAMETER_PATTERN = (
-    rf"{_HTTP_TCHAR_PATTERN}=(?:{_HTTP_TCHAR_PATTERN}|{_HTTP_QUOTED_VALUE_PATTERN})"
-)
-_HTTP_MEDIA_TYPE_PATTERN = (
-    rf"{_HTTP_TCHAR_PATTERN}/{_HTTP_TCHAR_PATTERN}"
-    rf"(?:\s*;\s*{_HTTP_PARAMETER_PATTERN})*"
-)
+_HTTP_MEDIA_TYPE_NAME_PATTERN = re.compile(rf"{_HTTP_TCHAR_PATTERN}/{_HTTP_TCHAR_PATTERN}")
 _HTTP_KNOWN_CONTENT_CODING_PATTERN = r"(?:br|compress|deflate|gzip|identity|zstd)"
 _HTTP_ENCODING_PATTERN = (
     rf"(?:{_HTTP_KNOWN_CONTENT_CODING_PATTERN}|\*)"
@@ -102,6 +95,29 @@ _HTTP_IMF_FIXDATE_PATTERN = re.compile(
     r"(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9] GMT"
 )
 _UNSAFE_CAPTURE_HEADER_VALUE_CHARS = re.compile(r"[\r\n]")
+_MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE = 256
+_VALUE_PRESERVING_CAPTURE_CONTENT_TYPES = frozenset(
+    {
+        "application/graphql",
+        "application/javascript",
+        "application/json",
+        "application/octet-stream",
+        "application/pdf",
+        "application/x-ndjson",
+        "application/x-www-form-urlencoded",
+        "application/xml",
+        "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "multipart/form-data",
+        "text/csv",
+        "text/event-stream",
+        "text/html",
+        "text/plain",
+        "text/xml",
+    }
+)
 
 # Captured header values are untrusted persistent-log data by default. Preserve
 # only low-risk protocol metadata that matches conservative HTTP value shapes.
@@ -115,7 +131,6 @@ _VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS: dict[str, re.Pattern[str]] = {
         re.IGNORECASE,
     ),
     "content-length": re.compile(r"(?:0|[1-9][0-9]*)"),
-    "content-type": re.compile(_HTTP_MEDIA_TYPE_PATTERN),
 }
 
 
@@ -585,22 +600,35 @@ def _is_http_date_header_value(value: str) -> bool:
     return True
 
 
-def _can_preserve_capture_header_value(name: str, value: str) -> bool:
+def _sanitize_content_type_for_capture(value: str) -> str | None:
+    media_type = value.partition(";")[0].strip().lower()
+    if _HTTP_MEDIA_TYPE_NAME_PATTERN.fullmatch(media_type) is None:
+        return None
+    if media_type not in _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES:
+        return None
+    return media_type
+
+
+def _sanitize_allowed_capture_header_value(name: str, value: str) -> str | None:
     if _UNSAFE_CAPTURE_HEADER_VALUE_CHARS.search(value) is not None:
-        return False
+        return None
+    if len(value) > _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE:
+        return None
     normalized_name = name.strip().lower()
     normalized_value = value.strip()
+    if normalized_name == "content-type":
+        return _sanitize_content_type_for_capture(normalized_value)
     if normalized_name == "date":
-        return _is_http_date_header_value(normalized_value)
+        return normalized_value if _is_http_date_header_value(normalized_value) else None
 
     pattern = _VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS.get(normalized_name)
-    return pattern is not None and pattern.fullmatch(normalized_value) is not None
+    if pattern is None or pattern.fullmatch(normalized_value) is None:
+        return None
+    return normalized_value
 
 
 def _sanitize_header_value_for_capture(name: str, value: str) -> str:
-    if _can_preserve_capture_header_value(name, value):
-        return value
-    return _REDACTED_HEADER_VALUE
+    return _sanitize_allowed_capture_header_value(name, value) or _REDACTED_HEADER_VALUE
 
 
 def _sanitize_headers_for_capture(headers) -> dict:

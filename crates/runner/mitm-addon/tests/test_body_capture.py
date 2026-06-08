@@ -158,6 +158,7 @@ class TestSanitizeHeadersForCapture:
         ("name", "value"),
         [
             ("Content-Type", "application/json"),
+            ("Content-Type", "multipart/form-data"),
             ("Content-Length", "123"),
             ("Content-Encoding", "gzip"),
             ("Accept-Encoding", "gzip, br"),
@@ -171,10 +172,23 @@ class TestSanitizeHeadersForCapture:
         assert result[name] == value
 
     @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("application/json; charset=utf-8", "application/json"),
+            ('application/json; profile="https://app.example/secret-token"', "application/json"),
+            ("multipart/form-data; boundary=secret-token", "multipart/form-data"),
+        ],
+    )
+    def test_content_type_parameters_are_dropped(self, headers, value, expected):
+        result = _sanitize_headers_for_capture(headers(("Content-Type", value)))
+        assert result["Content-Type"] == expected
+
+    @pytest.mark.parametrize(
         ("name", "value"),
         [
             ("Content-Type", "https://app.example/private/secret-token"),
-            ("Content-Type", 'application/json; profile="https://app.example/secret-token"'),
+            ("Content-Type", "secret-token/secret-token"),
+            ("Content-Type", "application/x-secret-token"),
             ("Content-Type", "application/json\r\n"),
             ("Content-Length", "secret-token"),
             ("Content-Encoding", "secret-token"),
@@ -212,6 +226,16 @@ class TestSanitizeHeadersForCapture:
     def test_non_allowlisted_header_values_are_redacted(self, headers, name):
         result = _sanitize_headers_for_capture(headers((name, "captured-value")))
         assert result[name] == "***"
+
+    def test_overlong_allowlisted_header_values_are_redacted(self, headers):
+        result = _sanitize_headers_for_capture(
+            headers(
+                ("Content-Length", "1" * 257),
+                ("Accept-Encoding", ", ".join(["gzip"] * 60)),
+            )
+        )
+        assert result["Content-Length"] == "***"
+        assert result["Accept-Encoding"] == "***"
 
     def test_redacts_non_allowlisted_keeps_allowlisted(self, headers):
         headers = headers(
