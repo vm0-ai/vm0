@@ -90,6 +90,7 @@ pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
 /// Poll interval when waiting for usage flush.
 const USAGE_FLUSH_POLL: Duration = Duration::from_millis(200);
 const USAGE_PENDING_MAX_BYTES: u64 = 64 * 1024;
+const PROXY_REGISTRY_MAX_BYTES: u64 = 1024 * 1024;
 
 /// Minimum interval between repeated runner-triggered usage flush requests
 /// while the addon is not ready.
@@ -944,11 +945,54 @@ fn find_available_port() -> RunnerResult<u16> {
 
 /// Read the proxy registry JSON file.
 async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyRegistry> {
-    let content = tokio::fs::read_to_string(path)
+    let content = read_registry_file(path)
         .await
         .map_err(|e| RunnerError::Internal(format!("read registry: {e}")))?;
     serde_json::from_str(&content)
         .map_err(|e| RunnerError::Internal(format!("parse registry: {e}")))
+}
+
+#[cfg(unix)]
+async fn read_registry_file(path: &std::path::Path) -> std::io::Result<String> {
+    let mut options = tokio::fs::OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK);
+    let file = options.open(path).await?;
+    let metadata = file.metadata().await?;
+    if !metadata.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("{} is not a regular proxy registry file", path.display()),
+        ));
+    }
+    read_registry_file_content(file, path).await
+}
+
+async fn read_registry_file_content(
+    file: tokio::fs::File,
+    path: &std::path::Path,
+) -> std::io::Result<String> {
+    let mut limited = file.take(PROXY_REGISTRY_MAX_BYTES + 1);
+    let mut content = Vec::new();
+    limited.read_to_end(&mut content).await?;
+    if content.len() as u64 > PROXY_REGISTRY_MAX_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "{} exceeds {} bytes",
+                path.display(),
+                PROXY_REGISTRY_MAX_BYTES
+            ),
+        ));
+    }
+    String::from_utf8(content).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+#[cfg(not(unix))]
+async fn read_registry_file(path: &std::path::Path) -> std::io::Result<String> {
+    let file = tokio::fs::File::open(path).await?;
+    read_registry_file_content(file, path).await
 }
 
 /// Write the proxy registry JSON file atomically (write tmp + rename).
@@ -1446,6 +1490,59 @@ PY
         );
         assert!(!tmp_path.exists(), "registry tmp should be cleaned up");
         assert!(registry_path.is_dir());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_registry_rejects_fifo_without_blocking() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let c_path = std::ffi::CString::new(registry_path.as_os_str().as_bytes()).unwrap();
+        let result = unsafe { nix::libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(
+            result,
+            0,
+            "mkfifo failed: {}",
+            std::io::Error::last_os_error()
+        );
+
+        let result =
+            tokio::time::timeout(Duration::from_millis(100), read_registry(&registry_path))
+                .await
+                .expect("registry FIFO read should not block");
+
+        assert!(result.is_err(), "registry FIFO should be rejected");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_registry_rejects_symlink_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let outside = dir.path().join("outside-registry.json");
+        std::fs::write(&outside, r#"{"vms":{},"updatedAt":42}"#).unwrap();
+        std::os::unix::fs::symlink(&outside, &registry_path).unwrap();
+
+        let result = read_registry(&registry_path).await;
+
+        assert!(result.is_err(), "registry symlink should be rejected");
+    }
+
+    #[tokio::test]
+    async fn read_registry_rejects_large_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        std::fs::write(
+            &registry_path,
+            vec![b'x'; (PROXY_REGISTRY_MAX_BYTES + 1) as usize],
+        )
+        .unwrap();
+
+        let result = read_registry(&registry_path).await;
+
+        assert!(result.is_err(), "oversized registry should be rejected");
     }
 
     #[tokio::test]
