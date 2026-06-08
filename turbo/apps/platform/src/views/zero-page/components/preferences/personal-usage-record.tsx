@@ -79,6 +79,10 @@ function formatDate(iso: string): string {
   }).format(date);
 }
 
+function usageRowKey(row: UsageRecordRow): string {
+  return `${row.source}:${row.threadId ?? row.runId ?? row.lastActivityAt}`;
+}
+
 export function SourceFilter({
   value,
   onChange,
@@ -228,9 +232,7 @@ export function PersonalUsageRecord() {
               style={{ border: CARD_BORDER }}
             >
               {loadable.data.rows.map((row) => {
-                return (
-                  <UsageRow key={row.threadId ?? row.runId ?? ""} row={row} />
-                );
+                return <UsageRow key={usageRowKey(row)} row={row} />;
               })}
             </div>
             {loadable.data.rows.length < loadable.data.pagination.total && (
