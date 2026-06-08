@@ -27,6 +27,7 @@ import { and, eq } from "drizzle-orm";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
+import { clearAllDetached } from "../../utils";
 import {
   signPatJwtForTests,
   signSandboxJwtForTests,
@@ -321,6 +322,7 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
   });
 
   afterEach(async () => {
+    await clearAllDetached();
     while (threads.length > 0) {
       const t = threads.pop();
       if (t) {
@@ -504,6 +506,7 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
   });
 
   afterEach(async () => {
+    await clearAllDetached();
     while (threads.length > 0) {
       const t = threads.pop();
       if (t) {
@@ -707,6 +710,7 @@ describe("POST /api/v1/chat-threads/messages", () => {
   });
 
   afterEach(async () => {
+    await clearAllDetached();
     while (threads.length > 0) {
       const t = threads.pop();
       if (t) {
