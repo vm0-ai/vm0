@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.19...guest-agent-v0.34.20) (2026-06-08)
+
+
+### Bug Fixes
+
+* mask multiline cli stderr secrets ([#16669](https://github.com/vm0-ai/vm0/issues/16669)) ([7712ba4](https://github.com/vm0-ai/vm0/commit/7712ba4ae44820960f55e12103791db677b353d0))
+
 ## [0.34.19](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.18...guest-agent-v0.34.19) (2026-06-07)
 
 

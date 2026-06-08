@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.108.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.18...runner-rs-v0.108.19) (2026-06-08)
+
+
+### Bug Fixes
+
+* coordinate run cancellation with idle pool transfer ([#16692](https://github.com/vm0-ai/vm0/issues/16692)) ([e4b432e](https://github.com/vm0-ai/vm0/commit/e4b432ed93981c7dd3bdf6fb6fda889dfe6158d2))
+
 ## [0.108.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.17...runner-rs-v0.108.18) (2026-06-08)
 
 

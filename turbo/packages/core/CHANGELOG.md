@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.317.0](https://github.com/vm0-ai/vm0/compare/core-v8.316.0...core-v8.317.0) (2026-06-08)
+
+
+### Features
+
+* collapse scheduled chat runs into cards ([#16579](https://github.com/vm0-ai/vm0/issues/16579)) ([068db4e](https://github.com/vm0-ai/vm0/commit/068db4efd32eb1e7651be7096bbd519079a106a8))
+* **zero:** add Automations API over the shared schedule service ([#16674](https://github.com/vm0-ai/vm0/issues/16674)) ([5a01efc](https://github.com/vm0-ai/vm0/commit/5a01efcef4af070adcb0a2daaeb5debec7305e95))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.70.0
+    * @vm0/connectors bumped to 1.52.0
+
 ## [8.316.0](https://github.com/vm0-ai/vm0/compare/core-v8.315.0...core-v8.316.0) (2026-06-08)
 
 

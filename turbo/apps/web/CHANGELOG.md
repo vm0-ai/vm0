@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.414.0](https://github.com/vm0-ai/vm0/compare/web-v12.413.0...web-v12.414.0) (2026-06-08)
+
+
+### Features
+
+* add onboarding redeem code flow ([#16614](https://github.com/vm0-ai/vm0/issues/16614)) ([b09c0e1](https://github.com/vm0-ai/vm0/commit/b09c0e10a3ff53ebb694a8fc23a6e24ee0370eb0))
+* **zero:** add Automations API over the shared schedule service ([#16674](https://github.com/vm0-ai/vm0/issues/16674)) ([5a01efc](https://github.com/vm0-ai/vm0/commit/5a01efcef4af070adcb0a2daaeb5debec7305e95))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.70.0
+    * @vm0/core bumped to 8.317.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.52.0
+
 ## [12.413.0](https://github.com/vm0-ai/vm0/compare/web-v12.412.7...web-v12.413.0) (2026-06-08)
 
 
