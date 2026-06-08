@@ -94,6 +94,10 @@ describe("stripe firewall", () => {
       "POST /v1/test_helpers/test_clocks/{test_clock}/advance",
     );
     expectStripeRule(
+      "entitlement_read",
+      "GET /v1/entitlements/active_entitlements/{id}",
+    );
+    expectStripeRule(
       "terminal_reader_read",
       "GET /v1/terminal/readers/{reader}",
     );
@@ -109,7 +113,16 @@ describe("stripe firewall", () => {
       "GET /v1/credit_notes/{credit_note}/lines",
     );
     expectStripeRule("quote_read", "GET /v1/quotes/{quote}/pdf");
+    expectStripeRule("source_read", "GET /v1/customers/{customer}/cards");
+    expectStripeRule(
+      "source_read",
+      "GET /v1/customers/{customer}/bank_accounts/{id}",
+    );
     expectStripeRule("source_write", "POST /v1/customers/{customer}/sources");
+    expectStripeRule(
+      "source_write",
+      "POST /v1/customers/{customer}/sources/{id}/verify",
+    );
     expectStripeRule(
       "confirmation_token_client_write",
       "POST /v1/test_helpers/confirmation_tokens",

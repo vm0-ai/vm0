@@ -30,6 +30,7 @@ import type { PermissionGroup } from "./codegen";
 import {
   STRIPE_OPENAPI_URL,
   STRIPE_PERMISSIONS_URL,
+  stripeAdditionalApiDocUrlsForResource,
   stripeApiDocUrlsFromDescription,
 } from "./stripe-sources";
 
@@ -47,6 +48,7 @@ const RESOURCE_ID_PERMISSION_STEM_ALIASES = new Map<string, string>([
   ["apps.secret", "secret"],
   ["billing_portal.configuration", "customer_portal"],
   ["billing_portal.session", "customer_portal"],
+  ["entitlements.active_entitlement", "entitlement"],
   ["login_link", "edit_link"],
   ["payment_link", "payment_links"],
   ["payment_record", "payment_records"],
@@ -397,8 +399,13 @@ function cleanPermissionName(value: string): string {
   return value.replace(/`/g, "").trim();
 }
 
-function parseApiDocUrls(description: string): string[] {
-  return stripeApiDocUrlsFromDescription(description);
+function parseApiDocUrls(resource: string, description: string): string[] {
+  return [
+    ...new Set([
+      ...stripeApiDocUrlsFromDescription(description),
+      ...stripeAdditionalApiDocUrlsForResource(resource),
+    ]),
+  ].sort();
 }
 
 function parsePermissionRows(markdown: string): StripePermissionRow[] {
@@ -440,7 +447,7 @@ function parsePermissionRows(markdown: string): StripePermissionRow[] {
       resource,
       permissions,
       description,
-      apiDocUrls: parseApiDocUrls(description),
+      apiDocUrls: parseApiDocUrls(resource, description),
     });
   }
 

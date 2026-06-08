@@ -22,6 +22,7 @@ import {
 import {
   STRIPE_OPENAPI_URL,
   STRIPE_PERMISSIONS_URL,
+  stripeAdditionalApiDocUrlsForResource,
   stripeApiDocUrlsFromDescription,
 } from "./stripe-sources";
 
@@ -168,8 +169,14 @@ function stripePermissionApiDocsUrls(markdown: string): string[] {
       continue;
     }
 
+    const resource = line.split(" | ")[1]?.trim();
     for (const url of stripeApiDocUrlsFromDescription(line)) {
       urls.add(url);
+    }
+    if (resource) {
+      for (const url of stripeAdditionalApiDocUrlsForResource(resource)) {
+        urls.add(url);
+      }
     }
   }
 

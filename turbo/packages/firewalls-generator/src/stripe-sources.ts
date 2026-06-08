@@ -15,9 +15,34 @@ const STRIPE_SKIPPED_API_DOC_ENDPOINT_URLS = new Set([
   "https://docs.stripe.com/api/subscription_items.md",
 ]);
 
+const STRIPE_ADDITIONAL_API_DOC_ENDPOINT_URLS_BY_RESOURCE = new Map<
+  string,
+  string[]
+>([
+  [
+    "Sources",
+    [
+      // Stripe exposes one Sources permission for the legacy customer source
+      // family; the card and customer bank account API pages list additional
+      // customer source endpoints that the Sources page links to by guide only.
+      "https://docs.stripe.com/api/cards.md",
+      "https://docs.stripe.com/api/customer_bank_accounts.md",
+    ],
+  ],
+]);
+
 function stripeDocsMarkdownUrl(url: string): string | null {
-  if (!url.startsWith("https://docs.stripe.com/api/")) return null;
-  return url.endsWith(".md") ? url : `${url}.md`;
+  const parsedUrl = new URL(url);
+  if (
+    parsedUrl.origin !== "https://docs.stripe.com" ||
+    !parsedUrl.pathname.startsWith("/api/")
+  ) {
+    return null;
+  }
+  if (!parsedUrl.pathname.endsWith(".md")) {
+    parsedUrl.pathname = `${parsedUrl.pathname}.md`;
+  }
+  return parsedUrl.toString();
 }
 
 export function stripeApiDocUrlsFromDescription(description: string): string[] {
@@ -29,4 +54,12 @@ export function stripeApiDocUrlsFromDescription(description: string): string[] {
     }
   }
   return [...urls].sort();
+}
+
+export function stripeAdditionalApiDocUrlsForResource(
+  resource: string,
+): string[] {
+  return (
+    STRIPE_ADDITIONAL_API_DOC_ENDPOINT_URLS_BY_RESOURCE.get(resource) ?? []
+  );
 }
