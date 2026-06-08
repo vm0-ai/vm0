@@ -2385,6 +2385,7 @@ mod tests {
         let unit = service::unit_name(version).unwrap();
         std::fs::create_dir_all(bin_dir.join(version)).unwrap();
         std::fs::create_dir_all(runners_dir.join(version)).unwrap();
+        age_version_past_gc_min_age(&home, version);
         let _service_lock = lock::acquire(home.service_lock(&unit)).await.unwrap();
 
         let removed = gc_versions(&home, false, None, None).await.unwrap();
