@@ -197,8 +197,16 @@ export function downloadS3Buffer(
   bucket: string,
   key: string,
 ): Computed<Promise<Buffer>> {
+  return downloadS3BufferWithClient(s3ClientForBucket(bucket), bucket, key);
+}
+
+function downloadS3BufferWithClient(
+  client$: Computed<S3Client>,
+  bucket: string,
+  key: string,
+): Computed<Promise<Buffer>> {
   return computed(async (get): Promise<Buffer> => {
-    const client = get(s3ClientForBucket(bucket));
+    const client = get(client$);
     const response = await client.send(
       new GetObjectCommand({ Bucket: bucket, Key: key }),
     );
@@ -220,6 +228,13 @@ export function downloadS3Buffer(
       totalLength,
     );
   });
+}
+
+export function downloadHostedSitesS3Buffer(
+  bucket: string,
+  key: string,
+): Computed<Promise<Buffer>> {
+  return downloadS3BufferWithClient(hostedSitesS3Client$, bucket, key);
 }
 
 /**
