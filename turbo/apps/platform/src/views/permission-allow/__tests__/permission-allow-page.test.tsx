@@ -95,6 +95,28 @@ describe("permission allow page", () => {
     });
   });
 
+  it("hides existing grant expiry when expiring grants are disabled", async () => {
+    mockAgent();
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: AGENT_ID,
+        connectorRef: "slack",
+        permission: "users:read",
+        action: "allow",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }),
+    ]);
+
+    setupPermissionPage(
+      `/agents/${AGENT_ID}/permissions?ref=slack&permission=users:read&action=allow`,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Expires in/)).not.toBeInTheDocument();
+  });
+
   it("ignores expired matching grants", async () => {
     mockAgent();
     setMockUserPermissionGrants([

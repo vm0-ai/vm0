@@ -3693,7 +3693,9 @@ function PermissionActionCardContent({
   expiresAt: string | null;
   onClick: () => void;
 }) {
-  const expiryText = permissionGrantExpiryText(expiresAt);
+  const expiryText = expirationEnabled
+    ? permissionGrantExpiryText(expiresAt)
+    : null;
   const showDurationSelect =
     expirationEnabled && !buttonState.alreadyApplied && !buttonState.saveDone;
   return (

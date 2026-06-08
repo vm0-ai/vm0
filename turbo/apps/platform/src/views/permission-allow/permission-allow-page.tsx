@@ -135,12 +135,16 @@ function LoadingCard() {
 function ResultCard({
   action,
   expiresAt,
+  showExpiry,
 }: {
   action: "allow" | "deny";
   expiresAt?: string | null;
+  showExpiry: boolean;
 }) {
   const allowed = action === "allow";
-  const expiryText = permissionGrantExpiryText(expiresAt ?? null);
+  const expiryText = showExpiry
+    ? permissionGrantExpiryText(expiresAt ?? null)
+    : null;
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
@@ -245,7 +249,11 @@ function ConfirmGrantCard({
 
   if (grantLoadable.state === "hasData") {
     return (
-      <ResultCard action={action} expiresAt={grantLoadable.data.expiresAt} />
+      <ResultCard
+        action={action}
+        expiresAt={grantLoadable.data.expiresAt}
+        showExpiry={expirationEnabled}
+      />
     );
   }
 
@@ -379,7 +387,13 @@ function PermissionAllowDoctorPage({
     );
   });
   if (effectivePolicy === action) {
-    return <ResultCard action={action} expiresAt={explicitGrant?.expiresAt} />;
+    return (
+      <ResultCard
+        action={action}
+        expiresAt={explicitGrant?.expiresAt}
+        showExpiry={expirationEnabled}
+      />
+    );
   }
 
   const currentUser =
