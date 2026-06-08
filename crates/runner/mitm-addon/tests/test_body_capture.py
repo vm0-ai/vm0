@@ -260,6 +260,20 @@ class TestSanitizeHeadersForCapture:
         result = _sanitize_headers_for_capture(headers(("Content_Type", "application/json")))
         assert result["Content_Type"] == "***"
 
+    def test_invalid_header_names_are_redacted(self, headers):
+        result = _sanitize_headers_for_capture(
+            headers(
+                ("X-Bad\r\nInjected: secret", "application/json"),
+                ("X-" + ("a" * 300), "gzip"),
+                ("Content-Type", "application/json"),
+            )
+        )
+        assert result["[redacted-header-name]"] == "***"
+        assert "X-Bad\r\nInjected: secret" not in result
+        assert "X-" + ("a" * 300) not in result
+        assert result["Content-Type"] == "application/json"
+        assert len(result) == 2
+
     def test_duplicate_headers_keeps_first_case_insensitive(self, headers):
         headers = headers(
             ("Content-Type", "application/json"),
@@ -400,6 +414,22 @@ class TestAddCaptureFields:
         add_capture_fields(flow, entry)
         assert entry["request_headers"]["Content-Type"] == "application/json"
         assert entry["response_headers"]["Content-Type"] == "***"
+
+    def test_captured_invalid_header_names_are_redacted(self, real_flow, headers):
+        flow = real_flow(
+            method="GET",
+            host="api.example.com",
+            request_headers=headers(
+                ("X-Bad\r\nInjected: secret", "application/json"),
+            ),
+            response_headers=headers(
+                ("X-" + ("a" * 300), "gzip"),
+            ),
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_headers"] == {"[redacted-header-name]": "***"}
+        assert entry["response_headers"] == {"[redacted-header-name]": "***"}
 
     def test_response_headers_redacts_sensitive(self, real_flow, headers):
         flow = real_flow(

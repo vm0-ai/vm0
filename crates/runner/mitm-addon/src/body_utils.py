@@ -80,6 +80,7 @@ _TEXT_CONTENT_TYPES = (
     "application/graphql",
 )
 
+_HTTP_FIELD_NAME_PATTERN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 _HTTP_KNOWN_CONTENT_CODING_PATTERN = r"(?:br|compress|deflate|gzip|identity|zstd)"
 _HTTP_ENCODING_PATTERN = (
     rf"(?:{_HTTP_KNOWN_CONTENT_CODING_PATTERN}|\*)"
@@ -93,7 +94,9 @@ _HTTP_IMF_FIXDATE_PATTERN = re.compile(
     r"(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9] GMT"
 )
 _UNSAFE_CAPTURE_HEADER_VALUE_CHARS = re.compile(r"[\r\n]")
+_MAX_CAPTURE_HEADER_NAME_LENGTH = 256
 _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE = 256
+_REDACTED_HEADER_NAME = "[redacted-header-name]"
 _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES = frozenset(
     {
         "application/graphql",
@@ -634,16 +637,25 @@ def _sanitize_header_value_for_capture(name: str, value: str) -> str:
     return _sanitize_allowed_capture_header_value(name, value) or _REDACTED_HEADER_VALUE
 
 
+def _sanitize_header_name_for_capture(name: str) -> str:
+    if len(name) > _MAX_CAPTURE_HEADER_NAME_LENGTH:
+        return _REDACTED_HEADER_NAME
+    if _HTTP_FIELD_NAME_PATTERN.fullmatch(name) is None:
+        return _REDACTED_HEADER_NAME
+    return name
+
+
 def _sanitize_headers_for_capture(headers) -> dict:
     """Build a dict of captured headers safe for persistent network logs."""
     result = {}
     seen_names: set[str] = set()
     for name, value in headers.items(multi=True):
-        case_insensitive_name = name.lower()
+        captured_name = _sanitize_header_name_for_capture(name)
+        case_insensitive_name = captured_name.lower()
         if case_insensitive_name in seen_names:
             continue  # keep first occurrence only (headers.items gives all)
         seen_names.add(case_insensitive_name)
-        result[name] = _sanitize_header_value_for_capture(name, value)
+        result[captured_name] = _sanitize_header_value_for_capture(captured_name, value)
     return result
 
 
