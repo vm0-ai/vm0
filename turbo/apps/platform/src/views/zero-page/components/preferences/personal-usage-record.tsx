@@ -24,7 +24,6 @@ import {
 } from "@vm0/ui";
 import {
   loadMoreUsageRecord$,
-  setUsageSourceFilter$,
   usageRecordAsync$,
   usageSourceFilter$,
 } from "../../../../signals/zero-page/settings/personal-usage-record.ts";
@@ -78,7 +77,7 @@ function formatDate(iso: string): string {
   }).format(date);
 }
 
-function SourceFilter({
+export function SourceFilter({
   value,
   onChange,
 }: {
@@ -130,20 +129,23 @@ function SourceFilter({
 function UsageRow({ row }: { row: UsageRecordRow }) {
   const { label, Icon } = SOURCE_META[row.source];
   const title = row.title && row.title.length > 0 ? row.title : "Untitled";
-  const credits = row.credits > 0 ? `−${formatCredits(row.credits)}` : "0";
+  const credits = `${formatCredits(row.credits)} credits`;
   const inner = (
     <>
-      <span className="flex w-28 shrink-0 items-center gap-2 text-xs text-muted-foreground">
-        <Icon size={15} stroke={1.5} className="shrink-0" />
-        <span className="truncate">{label}</span>
+      <span
+        title={label}
+        aria-label={label}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
+      >
+        <Icon size={17} stroke={1.5} />
       </span>
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
         {title}
       </span>
-      <span className="w-16 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+      <span className="shrink-0 text-right text-xs text-muted-foreground tabular-nums">
         {formatDate(row.lastActivityAt)}
       </span>
-      <span className="w-16 shrink-0 text-right text-sm font-medium text-foreground tabular-nums">
+      <span className="shrink-0 whitespace-nowrap text-right text-sm font-medium text-foreground tabular-nums">
         {credits}
       </span>
     </>
@@ -200,18 +202,10 @@ function UsageRecordSkeleton() {
 export function PersonalUsageRecord() {
   const loadable = useLastLoadable(usageRecordAsync$);
   const loadMore = useSet(loadMoreUsageRecord$);
-  const setFilter = useSet(setUsageSourceFilter$);
   const filter = useGet(usageSourceFilter$);
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          What each run has spent, newest first.
-        </p>
-        <SourceFilter value={filter} onChange={setFilter} />
-      </div>
-
       {loadable.state === "loading" && <UsageRecordSkeleton />}
       {loadable.state === "hasError" && (
         <p className="text-sm text-muted-foreground" role="alert">
@@ -227,12 +221,6 @@ export function PersonalUsageRecord() {
           </p>
         ) : (
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3 px-5 text-xs font-medium text-muted-foreground">
-              <span className="w-28 shrink-0">Source</span>
-              <span className="min-w-0 flex-1">Run</span>
-              <span className="w-16 shrink-0 text-right">Date</span>
-              <span className="w-16 shrink-0 text-right">Credits</span>
-            </div>
             <div
               className="overflow-hidden rounded-xl bg-card"
               style={{ border: CARD_BORDER }}
