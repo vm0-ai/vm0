@@ -193,6 +193,9 @@ runs:
         if [[ "$INPUT_APP" == "api" ]]; then
           add_env VM0_WEB_URL "$web_url"
           add_env ENV "$deploy_env"
+          if [[ "$INPUT_ENVIRONMENT" == "preview" && -n "$INPUT_JOB_REF" ]]; then
+            add_env VM0_PREVIEW_JOB_REF "$INPUT_JOB_REF"
+          fi
         fi
         # Inject the workflow head commit explicitly so OTel / Sentry can tag
         # service.version and release on every deploy. Vercel CLI prebuilt

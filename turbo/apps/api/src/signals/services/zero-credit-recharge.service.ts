@@ -8,6 +8,7 @@ import { getStripeClient } from "../external/stripe-client";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import { logger } from "../../lib/log";
+import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 
 const L = logger("CreditRecharge");
 
@@ -157,6 +158,7 @@ export const triggerAutoRecharge$ = command(
             type: "auto_recharge",
             orgId,
             creditsAmount: String(creditsAmount),
+            ...stripePreviewMetadata(),
           },
         });
         signal.throwIfAborted();
