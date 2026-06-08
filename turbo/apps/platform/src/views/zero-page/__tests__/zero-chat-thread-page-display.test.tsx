@@ -21,7 +21,10 @@ import {
 import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import {
+  type UserPermissionGrantExpiresIn,
+  zeroUserPermissionGrantsContract,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
@@ -367,12 +370,17 @@ describe("zero chat thread page display - permission action card", () => {
     );
   }
 
-  function mockPermissionMessage(permission = "channels:write") {
+  function mockPermissionMessage(
+    permission = "channels:write",
+    action: "allow" | "deny" = "allow",
+    expiresIn?: UserPermissionGrantExpiresIn,
+  ) {
+    const expiresInQuery = expiresIn ? `&expiresIn=${expiresIn}` : "";
     mockChatLifecycle({
       chatMessages: [
         {
           role: "assistant",
-          content: `https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=${encodeURIComponent(permission)}&action=allow`,
+          content: `https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=${encodeURIComponent(permission)}&action=${action}${expiresInQuery}`,
           runId: "run-user-grant-permission-action",
           status: "completed",
           createdAt: "2026-03-10T00:00:00Z",
@@ -419,9 +427,80 @@ describe("zero chat thread page display - permission action card", () => {
         action: "allow",
       });
     });
+    expect(grantBody).not.toMatchObject({ expiresIn: expect.any(String) });
     const status = within(card).getByText("Permissions updated");
     expect(status).toBeInTheDocument();
     expect(status.closest("button")).toBeNull();
+  });
+
+  it("submits the default duration from permission action cards when enabled", async () => {
+    let grantBody: unknown;
+    mockPermissionAgent();
+    mockPermissionMessage();
+    setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(
+      within(card).getByRole("combobox", { name: "Permission duration" }),
+    ).toHaveTextContent("1 hour");
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        permission: "channels:write",
+        action: "allow",
+        expiresIn: "1h",
+      });
+    });
+  });
+
+  it("does not show or submit duration for deny permission action cards", async () => {
+    let grantBody: unknown;
+    mockPermissionAgent();
+    mockPermissionMessage("channels:read", "deny");
+    setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(
+      within(card).queryByRole("combobox", { name: "Permission duration" }),
+    ).not.toBeInTheDocument();
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        permission: "channels:read",
+        action: "deny",
+      });
+    });
+    expect(grantBody).not.toMatchObject({ expiresIn: expect.any(String) });
   });
 
   it("uses current-user grants for already-applied permission actions", async () => {
@@ -450,6 +529,111 @@ describe("zero chat thread page display - permission action card", () => {
         return element.textContent?.trim() === "Confirm";
       }),
     ).toBeUndefined();
+  });
+
+  it("confirms requested expiration changes for already-applied permission actions", async () => {
+    let grantBody: unknown;
+    mockPermissionAgent();
+    mockPermissionMessage("channels:write", "allow", "24h");
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+      }),
+    ]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(
+      within(card).getByRole("combobox", { name: "Permission duration" }),
+    ).toHaveTextContent("24 hours");
+
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        permission: "channels:write",
+        action: "allow",
+        expiresIn: "24h",
+      });
+    });
+  });
+
+  it("treats requested always as already applied for permanent allow permission actions", async () => {
+    mockPermissionAgent();
+    mockPermissionMessage("channels:write", "allow", "always");
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+        expiresAt: null,
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    expect(
+      within(card).queryByRole("combobox", { name: "Permission duration" }),
+    ).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button", card).find((element) => {
+        return element.textContent?.trim() === "Confirm";
+      }),
+    ).toBeUndefined();
+  });
+
+  it("shows existing expiration for already-applied permission actions", async () => {
+    mockPermissionAgent();
+    mockPermissionMessage();
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+        expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    expect(within(card).getByText("Expires in 2 hours")).toBeInTheDocument();
+    expect(
+      within(card).queryByRole("combobox", { name: "Permission duration" }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not write grants for unknown permission actions", async () => {
@@ -2310,6 +2494,145 @@ describe("zero chat thread page display - artifact sidebar", () => {
       ).toHaveAttribute("aria-disabled", "true");
     });
     await user.keyboard("{Escape}");
+  });
+
+  it("hides presentation PPTX download when the feature switch is disabled", async () => {
+    const user = userEvent.setup();
+    const fileUrl = "https://demo-deck.sites.vm0.io";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create slides",
+          runId: "run-presentation-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setMockConnectors([]);
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-presentation-artifact",
+              files: [
+                {
+                  id: fileUrl,
+                  filename: "demo-deck.html",
+                  contentType: "text/html",
+                  size: 4096,
+                  url: fileUrl,
+                  artifactKind: "presentation-html",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationHtmlPptxDownload]: false,
+      },
+    });
+
+    click(await screen.findByLabelText("Open artifacts"));
+    await user.click(
+      await screen.findByLabelText("Open artifact demo-deck.html"),
+    );
+    const downloadButton = await screen.findByLabelText("Download artifact");
+    await user.click(downloadButton);
+
+    await waitFor(() => {
+      expect(queryRoleByText("menuitem", "Download")).toBeInTheDocument();
+    });
+    expect(queryRoleByText("menuitem", "Download (.pptx)")).toBeUndefined();
+  });
+
+  it("downloads presentation HTML artifacts as PPTX when the feature switch is enabled", async () => {
+    const user = userEvent.setup();
+    const fileUrl = "https://demo-deck.sites.vm0.io";
+    let presentationHtmlRequested = false;
+    const presentationHtml = `
+      <!doctype html>
+      <html>
+        <head><title>Demo deck</title></head>
+        <body>
+          <section data-vm0-slide>
+            <h1>Demo deck</h1>
+          </section>
+        </body>
+      </html>
+    `;
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create slides",
+          runId: "run-presentation-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setMockConnectors([]);
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-presentation-artifact",
+              files: [
+                {
+                  id: fileUrl,
+                  filename: "demo-deck.html",
+                  contentType: "text/html",
+                  size: 4096,
+                  url: fileUrl,
+                  artifactKind: "presentation-html",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+      http.get(fileUrl, () => {
+        presentationHtmlRequested = true;
+        return HttpResponse.html(presentationHtml);
+      }),
+      http.get("/__vm0-dev-artifact-fetch", ({ request }) => {
+        const requestUrl = new URL(request.url);
+        if (requestUrl.searchParams.get("url") !== fileUrl) {
+          return new HttpResponse(null, { status: 404 });
+        }
+        presentationHtmlRequested = true;
+        return HttpResponse.html(presentationHtml);
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
+      },
+    });
+
+    click(await screen.findByLabelText("Open artifacts"));
+    await user.click(
+      await screen.findByLabelText("Open artifact demo-deck.html"),
+    );
+    await user.click(await screen.findByLabelText("Download artifact"));
+    await user.click(await screen.findByText("Download (.pptx)"));
+
+    await waitFor(() => {
+      expect(presentationHtmlRequested).toBeTruthy();
+    });
   });
 
   it("opens Google Drive OAuth in a new tab and syncs after the connector event", async () => {

@@ -549,7 +549,7 @@ fn lock_metadata_inode_is_current(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(e) => return Err(format!("stat lock {}: {e}", path.display())),
     };
-    Ok(lock_meta.ino() == path_meta.ino())
+    Ok(lock_meta.dev() == path_meta.dev() && lock_meta.ino() == path_meta.ino())
 }
 
 fn lock_probe_inode_is_current(lock: &Flock<std::fs::File>, path: &Path) -> Result<bool, String> {
@@ -748,9 +748,13 @@ fn debootstrap_cache_file_kind(path: &Path) -> Option<DeBootstrapCacheFileKind> 
     }
 }
 
-/// Remove unused lock files. Any lock file that can be exclusively locked is
-/// not held by any process and can be safely deleted — `open_lock_file` will
-/// recreate it on next use, and the inode recheck in `lock.rs` prevents races.
+/// Remove unused lock files.
+///
+/// Most lock files that can be exclusively locked are safe to delete:
+/// `open_lock_file` will recreate them on next use, and the inode recheck in
+/// `lock.rs` prevents stale-fd races. Service locks are intentionally retained
+/// because this GC pass runs before version GC, which relies on those lock paths
+/// to coordinate with concurrent service install/uninstall commands.
 async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
     let locks_dir = home.locks_dir();
     let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
@@ -763,6 +767,11 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         if !name.ends_with(".lock") {
+            continue;
+        }
+        // Version GC later in this same command uses service locks to avoid
+        // deleting a version that another process is installing or uninstalling.
+        if name.starts_with("service-") {
             continue;
         }
 
@@ -786,13 +795,8 @@ async fn remove_unused_lock_after_probe(
     name: &str,
     dry_run: bool,
 ) -> bool {
-    match lock_probe_inode_is_current(lock, lock_path) {
-        Ok(true) => {}
-        Ok(false) => return false,
-        Err(e) => {
-            warn!("{e}");
-            return false;
-        }
+    if !lock_guard_matches_path(lock_path, lock) {
+        return false;
     }
 
     if dry_run {
@@ -800,11 +804,28 @@ async fn remove_unused_lock_after_probe(
         return true;
     }
 
-    match tokio::fs::remove_file(lock_path).await {
-        Ok(()) => {
-            info!("removed unused lock {name}");
-            true
+    if remove_lock_file(lock_path).await {
+        info!("removed unused lock {name}");
+        true
+    } else {
+        false
+    }
+}
+
+fn lock_guard_matches_path(lock_path: &Path, lock: &Flock<std::fs::File>) -> bool {
+    match lock_probe_inode_is_current(lock, lock_path) {
+        Ok(true) => true,
+        Ok(false) => false,
+        Err(e) => {
+            warn!("{e}");
+            false
         }
+    }
+}
+
+async fn remove_lock_file(lock_path: &Path) -> bool {
+    match tokio::fs::remove_file(lock_path).await {
+        Ok(()) => true,
         Err(e) => {
             warn!("cannot remove {}: {e}", lock_path.display());
             false
@@ -924,6 +945,34 @@ fn parse_semver(name: &str) -> Option<(u32, u32, u32)> {
     Some((major, minor, patch))
 }
 
+async fn version_newest_mtime(home: &HomePaths, bin_dir: &Path, name: &str) -> SystemTime {
+    let version_bin = bin_dir.join(name);
+    let version_config = home.runners_dir().join(name);
+    let version_binary = version_bin.join("runner");
+    let version_config_file = version_config.join("runner.yaml");
+    let mut newest_mtime = SystemTime::UNIX_EPOCH;
+    for path in [
+        &version_bin,
+        &version_binary,
+        &version_config,
+        &version_config_file,
+    ] {
+        if let Ok(meta) = tokio::fs::metadata(path).await
+            && let Ok(mtime) = meta.modified()
+            && mtime > newest_mtime
+        {
+            newest_mtime = mtime;
+        }
+    }
+    newest_mtime
+}
+
+async fn version_gc_age(home: &HomePaths, bin_dir: &Path, name: &str) -> Duration {
+    SystemTime::now()
+        .duration_since(version_newest_mtime(home, bin_dir, name).await)
+        .unwrap_or_default()
+}
+
 /// Remove old deployment version directories that are not actively running.
 ///
 /// Scans `home.bin_dir()` for semver-named subdirectories (e.g. `v0.2.0`) and
@@ -935,6 +984,10 @@ fn parse_semver(name: &str) -> Option<(u32, u32, u32)> {
 ///   the "staged but not yet installed" case where two overlapping releases
 ///   race: the older release's promote must not wipe the newer release's
 ///   just-staged binary even though the newer unit isn't active yet.
+/// - The version binary, config file, or their directories are too recent to
+///   safely delete.
+/// - The corresponding service lifecycle lock is held by another install,
+///   uninstall, or GC pass.
 /// - The corresponding systemd unit is active.
 async fn gc_versions(
     home: &HomePaths,
@@ -952,6 +1005,19 @@ async fn gc_versions(
     // in one pass.
     let mut semver_dirs: Vec<(String, (u32, u32, u32))> = Vec::new();
     while let Some(entry) = next_entry_warn(&mut entries, "gc_versions", &bin_dir).await {
+        let file_type = match entry.file_type().await {
+            Ok(file_type) => file_type,
+            Err(e) => {
+                warn!(
+                    "version entry {}: cannot read file type ({e}), skipping",
+                    entry.path().display()
+                );
+                continue;
+            }
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         if let Some(ver) = parse_semver(name) {
@@ -986,11 +1052,71 @@ async fn gc_versions(
             continue;
         }
 
-        // Check if the corresponding systemd unit is active — skip if so.
+        let version_bin = bin_dir.join(name);
+        let version_config = home.runners_dir().join(name);
+        let age = version_gc_age(home, &bin_dir, name).await;
+        if age < GC_MIN_AGE {
+            info!("version {name}: too recent ({}s), skipping", age.as_secs());
+            continue;
+        }
+
         let unit = match service::unit_name(name) {
             Ok(u) => u,
             Err(_) => continue,
         };
+        let service_lock_path = home.service_lock(&unit);
+        let service_lock_name = service_lock_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("service lock")
+            .to_string();
+        let service_lock = if dry_run {
+            match service_lock_path.try_exists() {
+                Ok(false) => None,
+                Ok(true) => match lock::try_acquire_or_busy(service_lock_path.clone()).await {
+                    Ok(lock::TryLock::Acquired(lock)) => Some(lock),
+                    Ok(lock::TryLock::Busy) => {
+                        info!("version {name}: service lock held, skipping");
+                        continue;
+                    }
+                    Err(e) => {
+                        warn!("version {name}: cannot acquire service lock ({e}), skipping");
+                        continue;
+                    }
+                },
+                Err(e) => {
+                    warn!(
+                        "version {name}: cannot check service lock {} before dry-run ({e}), skipping",
+                        service_lock_path.display()
+                    );
+                    continue;
+                }
+            }
+        } else {
+            match lock::try_acquire_or_busy(service_lock_path.clone()).await {
+                Ok(lock::TryLock::Acquired(lock)) => Some(lock),
+                Ok(lock::TryLock::Busy) => {
+                    info!("version {name}: service lock held, skipping");
+                    continue;
+                }
+                Err(e) => {
+                    warn!("version {name}: cannot acquire service lock ({e}), skipping");
+                    continue;
+                }
+            }
+        };
+
+        let age = version_gc_age(home, &bin_dir, name).await;
+        if age < GC_MIN_AGE {
+            info!(
+                "version {name}: became too recent before delete ({}s), skipping",
+                age.as_secs()
+            );
+            continue;
+        }
+
+        // Check while holding the service lifecycle lock so install cannot
+        // race between the active probe and the remove path.
         match service::is_unit_active(&unit).await {
             Ok(true) => {
                 info!("version {name}: active, skipping");
@@ -1009,11 +1135,14 @@ async fn gc_versions(
         if dry_run {
             info!("[dry-run] would remove version {name}");
         } else {
+            let Some(service_lock) = service_lock.as_ref() else {
+                warn!("version {name}: service lock missing before delete, skipping");
+                continue;
+            };
             // Best-effort uninstall the systemd service (may not exist).
-            let _ = service::uninstall_service(name).await;
+            let _ = service::uninstall_service_unit(&unit).await;
 
             // Remove bin directory.
-            let version_bin = bin_dir.join(name);
             if let Err(e) = tokio::fs::remove_dir_all(&version_bin).await
                 && e.kind() != std::io::ErrorKind::NotFound
             {
@@ -1022,10 +1151,16 @@ async fn gc_versions(
             }
 
             // Best-effort remove runner config directory.
-            let version_config = home.runners_dir().join(name);
             let _ = tokio::fs::remove_dir_all(&version_config).await;
 
             info!("removed version {name}");
+            remove_unused_lock_after_probe(
+                &service_lock_path,
+                service_lock,
+                &service_lock_name,
+                false,
+            )
+            .await;
         }
         removed.push(name.clone());
     }
@@ -1914,8 +2049,55 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn gc_orphaned_locks_preserves_service_locks() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+        let service_lock = locks_dir.join("service-vm0-runner-v1.0.0.lock");
+        let stale_lock = locks_dir.join("workspace-image-cache-test.lock");
+        std::fs::write(&service_lock, "").unwrap();
+        std::fs::write(&stale_lock, "").unwrap();
+
+        let removed = gc_orphaned_locks(&home, false).await.unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(
+            service_lock.exists(),
+            "service locks must survive orphaned lock cleanup"
+        );
+        assert!(
+            !stale_lock.exists(),
+            "ordinary free locks should still be cleaned"
+        );
+    }
+
     fn test_home(root: &Path) -> HomePaths {
         HomePaths::with_root(root.to_path_buf())
+    }
+
+    fn age_version_past_gc_min_age(home: &HomePaths, name: &str) {
+        let old_time = SystemTime::now() - Duration::from_secs(GC_MIN_AGE.as_secs() + 60);
+        for path in [
+            home.bin_dir().join(name),
+            home.bin_dir().join(name).join("runner"),
+            home.runners_dir().join(name),
+            home.runners_dir().join(name).join("runner.yaml"),
+        ] {
+            if path.exists() {
+                std::fs::File::open(path)
+                    .unwrap()
+                    .set_times(std::fs::FileTimes::new().set_modified(old_time))
+                    .unwrap();
+            }
+        }
+    }
+
+    fn age_versions_past_gc_min_age(home: &HomePaths, names: &[&str]) {
+        for name in names {
+            age_version_past_gc_min_age(home, name);
+        }
     }
 
     #[tokio::test]
@@ -2231,6 +2413,7 @@ mod tests {
 
         // Create corresponding runner config dirs
         std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
+        age_versions_past_gc_min_age(&home, &["v1.0.0", "v2.0.0"]);
 
         // systemctl will fail in test env, so versions are treated as inactive
         let mut removed = gc_versions(&home, false, None, None).await.unwrap();
@@ -2246,16 +2429,233 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_versions_skips_version_when_service_lock_is_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+        let version = "v1.0.0";
+        let unit = service::unit_name(version).unwrap();
+        std::fs::create_dir_all(bin_dir.join(version)).unwrap();
+        std::fs::create_dir_all(runners_dir.join(version)).unwrap();
+        age_version_past_gc_min_age(&home, version);
+        let _service_lock = lock::acquire(home.service_lock(&unit)).await.unwrap();
+
+        let removed = gc_versions(&home, false, None, None).await.unwrap();
+
+        assert!(removed.is_empty());
+        assert!(bin_dir.join(version).exists());
+        assert!(runners_dir.join(version).exists());
+    }
+
+    #[tokio::test]
     async fn gc_versions_dry_run() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         let bin_dir = home.bin_dir();
 
         std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
+        age_version_past_gc_min_age(&home, "v1.0.0");
+        let unit = service::unit_name("v1.0.0").unwrap();
+        let service_lock_path = home.service_lock(&unit);
 
         let removed = gc_versions(&home, true, None, None).await.unwrap();
         assert_eq!(removed, ["v1.0.0"]);
         assert!(bin_dir.join("v1.0.0").exists(), "dry-run should not delete");
+        assert!(
+            !service_lock_path.exists(),
+            "dry-run should not leave a service lock it created"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_versions_dry_run_preserves_existing_service_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let version = "v1.0.0";
+
+        std::fs::create_dir_all(bin_dir.join(version)).unwrap();
+        age_version_past_gc_min_age(&home, version);
+        let unit = service::unit_name(version).unwrap();
+        let service_lock_path = home.service_lock(&unit);
+        drop(lock::open_lock_file(&service_lock_path).unwrap());
+
+        let removed = gc_versions(&home, true, None, None).await.unwrap();
+
+        assert_eq!(removed, [version]);
+        assert!(
+            service_lock_path.exists(),
+            "dry-run must not remove an existing service lock"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_versions_keeps_recent_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+
+        std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
+        std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
+
+        let removed = gc_versions(&home, false, None, None).await.unwrap();
+
+        assert!(removed.is_empty());
+        assert!(
+            bin_dir.join("v1.0.0").exists(),
+            "recent version bin dir should survive"
+        );
+        assert!(
+            runners_dir.join("v1.0.0").exists(),
+            "recent version config dir should survive"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_versions_keeps_recent_runner_binary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+
+        std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
+        age_version_past_gc_min_age(&home, "v1.0.0");
+        std::fs::write(bin_dir.join("v1.0.0").join("runner"), "binary").unwrap();
+
+        let removed = gc_versions(&home, false, None, None).await.unwrap();
+
+        assert!(removed.is_empty());
+        assert!(
+            bin_dir.join("v1.0.0").exists(),
+            "recent runner binary file should protect its version"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_versions_keeps_recent_runner_config_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+
+        std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
+        std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
+        age_version_past_gc_min_age(&home, "v1.0.0");
+        std::fs::write(runners_dir.join("v1.0.0").join("runner.yaml"), "config").unwrap();
+
+        let removed = gc_versions(&home, false, None, None).await.unwrap();
+
+        assert!(removed.is_empty());
+        assert!(
+            bin_dir.join("v1.0.0").exists(),
+            "recent runner config file should protect its version"
+        );
+        assert!(
+            runners_dir.join("v1.0.0").exists(),
+            "recent runner config file should protect its config directory"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_versions_ignores_semver_named_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        std::fs::write(bin_dir.join("v1.0.0"), "not a directory").unwrap();
+        std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
+        age_version_past_gc_min_age(&home, "v1.0.0");
+
+        let removed = gc_versions(&home, false, None, None).await.unwrap();
+
+        assert!(removed.is_empty());
+        assert!(
+            bin_dir.join("v1.0.0").is_file(),
+            "semver-named files are not version dirs"
+        );
+        assert!(
+            runners_dir.join("v1.0.0").exists(),
+            "config dir must not be removed for a non-directory bin entry"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_versions_ignores_semver_named_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let target_dir = dir.path().join("external-version");
+
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        std::fs::create_dir_all(&target_dir).unwrap();
+        std::os::unix::fs::symlink(&target_dir, bin_dir.join("v1.0.0")).unwrap();
+
+        let removed = gc_versions(&home, false, None, None).await.unwrap();
+
+        assert!(removed.is_empty());
+        assert!(
+            std::fs::symlink_metadata(bin_dir.join("v1.0.0"))
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "semver-named symlinks are not version dirs"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_versions_skips_when_service_lock_is_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+
+        std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
+        std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
+        age_version_past_gc_min_age(&home, "v1.0.0");
+
+        let unit = service::unit_name("v1.0.0").unwrap();
+        let lock_file = lock::open_lock_file(&home.service_lock(&unit)).unwrap();
+        let _held_lock = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+        let removed = gc_versions(&home, false, None, None).await.unwrap();
+
+        assert!(removed.is_empty());
+        assert!(
+            bin_dir.join("v1.0.0").exists(),
+            "locked version bin dir should survive"
+        );
+        assert!(
+            runners_dir.join("v1.0.0").exists(),
+            "locked version config dir should survive"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_versions_removes_service_lock_after_version_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+        let version = "v1.0.0";
+
+        std::fs::create_dir_all(bin_dir.join(version)).unwrap();
+        std::fs::create_dir_all(runners_dir.join(version)).unwrap();
+        age_version_past_gc_min_age(&home, version);
+        let unit = service::unit_name(version).unwrap();
+        let service_lock_path = home.service_lock(&unit);
+        drop(lock::open_lock_file(&service_lock_path).unwrap());
+
+        let removed = gc_versions(&home, false, None, None).await.unwrap();
+
+        assert_eq!(removed, [version]);
+        assert!(
+            !service_lock_path.exists(),
+            "removed version should not leave its service lock behind"
+        );
     }
 
     #[tokio::test]
@@ -2285,6 +2685,7 @@ mod tests {
 
         std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
         std::fs::create_dir_all(bin_dir.join("v2.0.0")).unwrap();
+        age_versions_past_gc_min_age(&home, &["v1.0.0", "v2.0.0"]);
 
         let mut removed = gc_versions(&home, false, Some("v1.0.0"), None)
             .await
@@ -2311,6 +2712,7 @@ mod tests {
         for v in ["v0.88.0", "v0.88.1", "v0.88.2", "v0.88.3"] {
             std::fs::create_dir_all(bin_dir.join(v)).unwrap();
         }
+        age_versions_past_gc_min_age(&home, &["v0.88.0", "v0.88.1", "v0.88.2", "v0.88.3"]);
 
         // Simulating v0.88.2's own promote: protects itself, keeps top 1.
         // v0.88.3 must survive via keep_latest even though protect is v0.88.2.
@@ -2339,6 +2741,7 @@ mod tests {
         for v in ["v0.9.0", "v0.10.0"] {
             std::fs::create_dir_all(bin_dir.join(v)).unwrap();
         }
+        age_versions_past_gc_min_age(&home, &["v0.9.0", "v0.10.0"]);
 
         let removed = gc_versions(&home, false, None, Some(1)).await.unwrap();
         assert_eq!(removed, ["v0.9.0"]);

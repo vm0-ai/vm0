@@ -35,13 +35,13 @@ export default createRule({
     schema: [],
     messages: {
       noDirectDb:
-        "Do not use globalThis.services.db in test files. Use API helpers instead. See docs/testing/web-testing.md#avoid-db-operations",
+        "Do not use globalThis.services.db in test files. Use API helpers instead. See docs/testing/api-testing.md#fixtures-and-database-state",
       noInitServices:
         "Do not call initServices() in test files. The web app no longer exposes a services singleton.",
       noDbSchemaImport:
         "Do not import from db/schema/* in web test files. Test through route handlers, or move DB-owned tests to @vm0/db.",
       noServiceImport:
-        "Do not import service functions directly in test files. Test through route handlers instead. See docs/testing/web-testing.md#acceptable-service-level-test-exceptions",
+        "Do not import service functions directly in test files. Test through routes instead. See docs/testing/api-testing.md#service-level-exceptions",
     },
   },
   create(context) {

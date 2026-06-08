@@ -1,6 +1,12 @@
 """URL reconstruction and rewriting utilities.
 
 Pure functions with no module-level state or I/O.
+
+Trusted request authority validation and auth.base rewrite validation share
+low-level host canonicalization primitives, but they are different trust
+boundaries: Host/SNI input must not accept percent-encoded authority syntax,
+while auth.base targets reject unsafe percent-encoded host syntax before
+forwarding credential-bearing requests.
 """
 
 import ipaddress
@@ -10,25 +16,23 @@ from typing import Literal
 
 from mitmproxy import http
 
+from authority_utils import (
+    IPV6_VERSION,
+    format_url_host,
+    has_ascii_space_or_control,
+    is_default_scheme_port,
+    parse_authority_port,
+    percent_decode_host,
+)
 from host_normalization import normalize_idna_hostname
 from path_security import has_unsafe_path
 from url_syntax import (
-    ASCII_CONTROL_MAX,
-    ASCII_DELETE,
     has_raw_whitespace,
     has_unsafe_url_codepoint,
     strip_optional_terminal_slash,
 )
 
-# Well-known IANA ports for HTTP and HTTPS.  When the connection uses the
-# default port for its scheme we omit ``:port`` from the reconstructed URL.
-_HTTP_DEFAULT_PORT = 80
-_HTTPS_DEFAULT_PORT = 443
-_IPV6_VERSION = 6
-_MAX_PORT = 65535
-_PERCENT_ESCAPE_LENGTH = 3
 _FORBIDDEN_HOST_CHARS = frozenset("#%,/<>?@[\\]^|{}")
-_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
 _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
 _URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="
@@ -97,13 +101,7 @@ class AuthorityValidationError(Exception):
 
 
 def _has_invalid_hostname_chars(host: str) -> bool:
-    return any(
-        char.isspace()
-        or ord(char) < ASCII_CONTROL_MAX
-        or ord(char) == ASCII_DELETE
-        or char in _FORBIDDEN_HOST_CHARS
-        for char in host
-    )
+    return has_ascii_space_or_control(host) or any(char in _FORBIDDEN_HOST_CHARS for char in host)
 
 
 def _normalize_hostname(host: str) -> str:
@@ -114,7 +112,7 @@ def _normalize_hostname(host: str) -> str:
             parsed = ipaddress.ip_address(host)
         except ValueError as exc:
             raise ValueError("invalid IPv6 hostname") from exc
-        if parsed.version == _IPV6_VERSION:
+        if parsed.version == IPV6_VERSION:
             return parsed.compressed.lower()
         raise ValueError("colon host must be IPv6")
     if _has_invalid_hostname_chars(host):
@@ -122,26 +120,9 @@ def _normalize_hostname(host: str) -> str:
     return normalize_idna_hostname(host)
 
 
-def _format_url_host(host: str) -> str:
-    candidate = host
-    if candidate.startswith("[") and candidate.endswith("]"):
-        candidate = candidate[1:-1]
-    if ":" not in candidate:
-        return host
-    try:
-        parsed = ipaddress.ip_address(candidate)
-    except ValueError:
-        return host
-    if parsed.version == _IPV6_VERSION:
-        return f"[{candidate}]"
-    return candidate
-
-
 def _host_with_port(scheme: str, host: str, port: int) -> str:
-    url_host = _format_url_host(host)
-    if (scheme == "https" and port != _HTTPS_DEFAULT_PORT) or (
-        scheme == "http" and port != _HTTP_DEFAULT_PORT
-    ):
+    url_host = format_url_host(host)
+    if scheme in ("http", "https") and not is_default_scheme_port(scheme, port):
         return f"{url_host}:{port}"
     return url_host
 
@@ -150,20 +131,8 @@ def _build_url(scheme: str, host: str, port: int, path: str) -> str:
     return f"{scheme}://{_host_with_port(scheme, host, port)}{path}"
 
 
-def _parse_authority_port(raw_port: str) -> int:
-    if not raw_port or not raw_port.isdigit():
-        raise ValueError("invalid authority port")
-    port = int(raw_port)
-    if port > _MAX_PORT:
-        raise ValueError("authority port out of range")
-    return port
-
-
 def _parse_host_authority(authority: str) -> tuple[str, int | None]:
-    if not authority or any(
-        char.isspace() or ord(char) < ASCII_CONTROL_MAX or ord(char) == ASCII_DELETE
-        for char in authority
-    ):
+    if not authority or has_ascii_space_or_control(authority):
         raise ValueError("invalid authority")
 
     if authority.startswith("["):
@@ -175,13 +144,13 @@ def _parse_host_authority(authority: str) -> tuple[str, int | None]:
         if rest == "":
             port = None
         elif rest.startswith(":"):
-            port = _parse_authority_port(rest[1:])
+            port = parse_authority_port(rest[1:])
         else:
             raise ValueError("invalid IPv6 authority")
         if "%" in host:
             raise ValueError("IPv6 scope identifiers are not allowed")
         parsed = ipaddress.ip_address(host)
-        if parsed.version != _IPV6_VERSION:
+        if parsed.version != IPV6_VERSION:
             raise ValueError("bracketed authority must be IPv6")
         return host, port
 
@@ -195,7 +164,7 @@ def _parse_host_authority(authority: str) -> tuple[str, int | None]:
     host, raw_port = authority.rsplit(":", maxsplit=1)
     if not host:
         raise ValueError("missing authority host")
-    return host, _parse_authority_port(raw_port)
+    return host, parse_authority_port(raw_port)
 
 
 def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
@@ -406,32 +375,12 @@ def _merge_rewrite_query(
 
 
 def _percent_decode_host(host: str) -> str:
-    if "%" not in host:
-        return host
-
-    index = host.find("%")
-    while index != -1:
-        run_end = index
-        while run_end < len(host) and host[run_end] == "%":
-            hex_start = run_end + 1
-            hex_end = hex_start + 2
-            hex_value = host[hex_start:hex_end]
-            if hex_end > len(host) or not all(char in _HEX_DIGITS for char in hex_value):
-                raise ValueError("Invalid auth.base URL: host has invalid percent encoding")
-            run_end += _PERCENT_ESCAPE_LENGTH
-
-        try:
-            decoded_run = urllib.parse.unquote_to_bytes(host[index:run_end]).decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise ValueError("Invalid auth.base URL: host has invalid percent encoding") from exc
-        if any(char in _PERCENT_DECODED_HOST_SYNTAX_CHARS for char in decoded_run):
-            raise ValueError("Invalid auth.base URL: host has unsafe percent encoding")
-        index = host.find("%", run_end)
-
-    try:
-        return urllib.parse.unquote_to_bytes(host).decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ValueError("Invalid auth.base URL: host has invalid percent encoding") from exc
+    decoded = percent_decode_host(host, syntax_chars=_PERCENT_DECODED_HOST_SYNTAX_CHARS)
+    if decoded.invalid_encoding:
+        raise ValueError("Invalid auth.base URL: host has invalid percent encoding")
+    if decoded.decoded_syntax:
+        raise ValueError("Invalid auth.base URL: host has unsafe percent encoding")
+    return decoded.value
 
 
 def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResult, str]:
@@ -468,7 +417,7 @@ def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResul
         port = parsed.port
     except ValueError as exc:
         raise ValueError(str(exc)) from exc
-    authority = _format_url_host(normalized_host)
+    authority = format_url_host(normalized_host)
     if port is not None:
         authority = f"{authority}:{port}"
     return parsed, authority

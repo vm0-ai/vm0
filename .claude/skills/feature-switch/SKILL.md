@@ -123,7 +123,7 @@ myConnector: {
 
 #### Zero token capability gating
 
-In `turbo/apps/web/src/lib/auth/sandbox-token.ts`, add to `CONDITIONAL_CAPABILITIES`:
+In `turbo/apps/api/src/signals/auth/tokens.ts`, add to `CONDITIONAL_CAPABILITIES`:
 
 ```typescript
 const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
@@ -142,7 +142,7 @@ const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
 | `turbo/apps/platform/src/signals/external/feature-switch.ts` | Client-side reactive state with override layers |
 | `turbo/apps/platform/src/views/zero-page/zero-sidebar.tsx` | Sidebar nav items with `featureGate` |
 | `turbo/packages/core/src/contracts/connectors.ts` | Connector type definitions with `featureFlag` field |
-| `turbo/apps/web/src/lib/auth/sandbox-token.ts` | Token capability gating |
+| `turbo/apps/api/src/signals/auth/tokens.ts` | Token capability gating |
 
 ## Override Layers
 

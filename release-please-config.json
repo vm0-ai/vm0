@@ -30,6 +30,10 @@
         "turbo/apps/platform": {
             "release-type": "node"
         },
+        "turbo/apps/desktop": {
+            "release-type": "node",
+            "component": "desktop"
+        },
         "turbo/apps/host-worker": {
             "release-type": "node"
         },

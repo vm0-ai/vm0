@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.108.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.17...runner-rs-v0.108.18) (2026-06-08)
+
+
+### Bug Fixes
+
+* **runner:** harden proxy and workspace state files ([#16668](https://github.com/vm0-ai/vm0/issues/16668)) ([7bf9851](https://github.com/vm0-ai/vm0/commit/7bf985137af718d843c086fc74f8c90a3f720783))
+* **runner:** serialize service unit installs ([#16539](https://github.com/vm0-ai/vm0/issues/16539)) ([453e1ef](https://github.com/vm0-ai/vm0/commit/453e1ef7ce3a2061de1536e3302e322d6651b0a3))
+
+
+### Refactoring
+
+* **runner:** split executor test support harness ([#16666](https://github.com/vm0-ai/vm0/issues/16666)) ([965d370](https://github.com/vm0-ai/vm0/commit/965d370563b2491ff9b8341e903c831509847cf1))
+
+
+### Performance Improvements
+
+* **runner:** avoid dns parser token allocation ([#16664](https://github.com/vm0-ai/vm0/issues/16664)) ([7274f04](https://github.com/vm0-ai/vm0/commit/7274f04f9ed5388bcc0b461209368f22c2326d11))
+
+## [0.108.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.16...runner-rs-v0.108.17) (2026-06-08)
+
+
+### Bug Fixes
+
+* default redact captured header values ([#16456](https://github.com/vm0-ai/vm0/issues/16456)) ([bad2803](https://github.com/vm0-ai/vm0/commit/bad2803f0accee54b96ccdc4e430e4c2ac4d8b7d))
+* harden runner private state files ([#16584](https://github.com/vm0-ai/vm0/issues/16584)) ([d399316](https://github.com/vm0-ai/vm0/commit/d399316c0333015029ccaa6b34545083dc23bbc0))
+* **mitm-addon:** bound tcp message retention ([#16648](https://github.com/vm0-ai/vm0/issues/16648)) ([166f3c9](https://github.com/vm0-ai/vm0/commit/166f3c9595ab705bcca3f143248460d72a7633c9))
+* serialize runner service unit updates ([#16505](https://github.com/vm0-ai/vm0/issues/16505)) ([1c6a723](https://github.com/vm0-ai/vm0/commit/1c6a723e528dd8166873be7bb5996e3c8b805df8))
+
+
+### Refactoring
+
+* share mitm authority primitives ([#16642](https://github.com/vm0-ai/vm0/issues/16642)) ([eb3a89c](https://github.com/vm0-ai/vm0/commit/eb3a89c305947d28ce1ac21401e7e07128a8635b))
+
+
+### Performance Improvements
+
+* **runner:** offload mitm jsonl log writes ([#16601](https://github.com/vm0-ai/vm0/issues/16601)) ([9028927](https://github.com/vm0-ai/vm0/commit/9028927ea210478982b5c40d774b10fcf17cdff4))
+
+## [0.108.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.15...runner-rs-v0.108.16) (2026-06-08)
+
+
+### Bug Fixes
+
+* handle concatenated zlib bodies ([#16578](https://github.com/vm0-ai/vm0/issues/16578)) ([9c86ca8](https://github.com/vm0-ai/vm0/commit/9c86ca81217c8931abd21179f936a944ef3a7ea4))
+
+
+### Refactoring
+
+* **runner:** consolidate finalization destroy bookkeeping ([#16554](https://github.com/vm0-ai/vm0/issues/16554)) ([f5fe9e1](https://github.com/vm0-ai/vm0/commit/f5fe9e183dda646494fdce8bb4f7f6d181cb923a))
+
 ## [0.108.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.14...runner-rs-v0.108.15) (2026-06-08)
 
 

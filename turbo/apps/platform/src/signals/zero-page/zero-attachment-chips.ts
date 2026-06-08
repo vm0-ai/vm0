@@ -9,6 +9,7 @@ const LIGHTBOX_DIALOG_EXIT_DURATION_MS = 180;
 
 export type AttachmentArtifactMetadata = {
   readonly agentId?: string | null;
+  readonly artifactKind?: "hosted-site" | "presentation-html";
   readonly contentType: string;
   readonly createdAt: string;
   readonly fileId: string;

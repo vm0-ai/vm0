@@ -155,6 +155,13 @@ fn make_profiles() -> BTreeMap<String, ProfileConfig> {
     profiles
 }
 
+#[cfg(unix)]
+fn mode_of(path: &std::path::Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
 #[tokio::test]
 async fn load_config_with_profiles() {
     let fixture = ConfigFixture::new().await;
@@ -716,9 +723,8 @@ async fn generate_then_load_round_trip() {
 
     generate(&config).await.unwrap();
 
-    let generated = tokio::fs::read_to_string(runner_dir.join("runner.yaml"))
-        .await
-        .unwrap();
+    let config_path = runner_dir.join("runner.yaml");
+    let generated = tokio::fs::read_to_string(&config_path).await.unwrap();
     assert!(generated.contains("rootfs_disk_mb: 8192"));
     assert!(generated.contains("workspace_disk_mb: 16384"));
     assert!(
@@ -726,8 +732,55 @@ async fn generate_then_load_round_trip() {
             .lines()
             .all(|line| !line.trim_start().starts_with("disk_mb:"))
     );
+    #[cfg(unix)]
+    {
+        assert_eq!(mode_of(&runner_dir), 0o700);
+        assert_eq!(mode_of(&config_path), 0o600);
+    }
 
-    let loaded = load_with_home(&runner_dir.join("runner.yaml"), &fixture.home, true)
+    let loaded = load_with_home(&config_path, &fixture.home, true)
+        .await
+        .unwrap();
+    assert_eq!(loaded, config);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn generate_tightens_existing_runner_dir_and_config_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = ConfigFixture::new().await;
+    let runner_dir = fixture.path().join("my-runner");
+    tokio::fs::create_dir_all(&runner_dir).await.unwrap();
+    std::fs::set_permissions(&runner_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let config_path = runner_dir.join("runner.yaml");
+    tokio::fs::write(&config_path, "server:\n  token: old\n")
+        .await
+        .unwrap();
+    std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    let config = RunnerConfig {
+        name: "test-runner".into(),
+        group: "vm0/prod".into(),
+        base_dir: runner_dir.clone(),
+        ca_dir: fixture.path().to_path_buf(),
+        firecracker: FirecrackerConfig {
+            binary: fixture.firecracker.clone(),
+            kernel: fixture.kernel.clone(),
+        },
+        profiles: make_profiles(),
+        sandbox: SandboxConfig::default(),
+        server: Some(ServerConfig {
+            url: "https://api.example.com".into(),
+            token: "secret".into(),
+        }),
+    };
+
+    generate(&config).await.unwrap();
+
+    assert_eq!(mode_of(&runner_dir), 0o700);
+    assert_eq!(mode_of(&config_path), 0o600);
+    let loaded = load_with_home(&config_path, &fixture.home, true)
         .await
         .unwrap();
     assert_eq!(loaded, config);

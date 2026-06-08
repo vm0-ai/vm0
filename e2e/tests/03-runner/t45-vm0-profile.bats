@@ -66,7 +66,7 @@ EOF
 
     run $VM0_CLI run "$AGENT_NAME" \
         --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "agent-browser open https://github.com && agent-browser get title && agent-browser close"
+        "agent-browser open https://github.com && agent-browser get title | grep -Fq GitHub && agent-browser close"
     assert_success
-    assert_output --partial "GitHub"
+    assert_output --partial "https://github.com/"
 }

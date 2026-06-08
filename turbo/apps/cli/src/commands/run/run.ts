@@ -114,7 +114,7 @@ export const mainRunCommand = new Command()
   .option("--verbose", "Show full tool inputs and outputs")
   .option(
     "--capture-network-bodies",
-    "Capture HTTP request headers, request bodies, and response bodies in network logs",
+    "Capture HTTP header names, selected safe header values, request bodies, and response bodies in network logs",
   )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--debug-no-mock-codex").hideHelp())

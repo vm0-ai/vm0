@@ -94,8 +94,15 @@ class TestReportModelProviderUsage:
         body = webhook.requests[0].json_body()
         assert body["events"][0]["provider"] == "unknown"
 
-        flow.metadata["model_provider_usage"]["message_id"] = "msg-usage-2"
-        flow.metadata["model_provider_usage"]["model"] = "claude-sonnet-4-6"
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_provider_usage"] = {
+            "message_id": "msg-usage-2",
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 100,
+        }
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
@@ -342,6 +349,29 @@ class TestReportModelProviderUsage:
         body = webhook.requests[0].json_body()
         assert body["events"][0]["quantity"] == 10
 
+    def test_source_dedupe_uses_flow_id_when_message_id_present(
+        self, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.id = "flow-uuid-xyz-123"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_provider_usage"] = {
+            "model": "claude-sonnet-4-6",
+            "message_id": "msg_real_anthropic_id",
+            "tokens.input": 10,
+        }
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage(flow, "run-fallback")
+            usage.report_model_provider_usage(flow, "run-fallback")
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        body = webhook.requests[0].json_body()
+        assert body["events"][0]["quantity"] == 10
+
     def test_source_dedupe_separates_flows_when_message_id_missing(
         self, real_flow, fresh_usage_executor, usage_webhook_api
     ):
@@ -367,7 +397,7 @@ class TestReportModelProviderUsage:
         body = webhook.requests[0].json_body()
         assert body["events"][0]["quantity"] == 20
 
-    def test_source_dedupe_preserves_message_id_over_flow_id(
+    def test_source_dedupe_separates_flows_when_message_id_matches(
         self, real_flow, fresh_usage_executor, usage_webhook_api
     ):
         first = real_flow(with_response=False, host="api.anthropic.com")
@@ -391,4 +421,31 @@ class TestReportModelProviderUsage:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         body = webhook.requests[0].json_body()
-        assert body["events"][0]["quantity"] == 10
+        assert body["events"][0]["quantity"] == 20
+
+    def test_observation_source_dedupe_separates_flows_when_message_id_matches(
+        self, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
+        first = real_flow(with_response=False, host="api.anthropic.com")
+        first.id = "flow-first"
+        second = real_flow(with_response=False, host="api.anthropic.com")
+        second.id = "flow-second"
+        for flow in (first, second):
+            flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+            flow.metadata["firewall_billable"] = False
+            flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
+            flow.metadata["vm_sandbox_token"] = "tok-xyz"
+            flow.metadata["model_provider_usage"] = {
+                "model": "ignored-runtime-model",
+                "message_id": "msg_real_anthropic_id",
+                "tokens.input": 10,
+            }
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage_observation(first, "run-preserved")
+            usage.report_model_provider_usage_observation(second, "run-preserved")
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        body = webhook.requests[0].json_body()
+        assert body["events"][0]["quantity"] == 20

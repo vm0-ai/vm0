@@ -158,6 +158,7 @@ class TestLogProxyEntry:
             logging_utils.log_proxy_entry(
                 str(tmp_path / "missing" / "proxy.jsonl"), "warn", "message"
             )
+            logging_utils.flush_log_path(str(tmp_path / "missing" / "proxy.jsonl"))
 
         log.warn.assert_called_once()
         warning = log.warn.call_args.args[0]
@@ -169,6 +170,7 @@ class TestLogProxyEntry:
 
         with patch.object(logging_utils.ctx, "log", log, create=True):
             logging_utils.log_proxy_entry(str(tmp_path), "warn", "message")
+            logging_utils.flush_log_path(str(tmp_path))
 
         log.warn.assert_called_once()
         warning = log.warn.call_args.args[0]

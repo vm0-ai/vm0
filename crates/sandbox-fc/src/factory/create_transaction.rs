@@ -6,6 +6,7 @@ use tracing::warn;
 
 use nbd_cow::PooledNbdCowDevice;
 
+use crate::cow_cleanup::CowCleanupOutcome;
 use crate::cow_pool::PrewarmedSlot;
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
 use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
@@ -15,7 +16,7 @@ use crate::paths::{SandboxPaths, SockPaths};
 
 #[async_trait]
 pub(super) trait CreateRollbackCleanup {
-    async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> bool;
+    async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> CowCleanupOutcome;
     async fn release_network(&self, network: &mut Option<NetnsLease>);
     async fn remove_dir(&self, kind: &'static str, path: PathBuf);
     async fn destroy_slot(&self, slot: PrewarmedSlot);
@@ -28,7 +29,7 @@ pub(super) struct FactoryCreateRollbackCleanup {
 
 #[async_trait]
 impl CreateRollbackCleanup for FactoryCreateRollbackCleanup {
-    async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> bool {
+    async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> CowCleanupOutcome {
         destroy_cow_device_with_retries(&self.id, cow_device).await
     }
 
@@ -308,11 +309,13 @@ impl SandboxCreateTransaction {
     {
         let keep_workspace = if let Some(cow_device) = self.cow_device.take() {
             // The COW finalizer continues in the background if this future is
-            // cancelled. Keep the workspace until the finalizer reports success.
+            // cancelled. Keep the workspace until backing files are safe to
+            // delete.
             self.delete_workspace_on_leak_cleanup = false;
-            let cow_destroyed = cleanup.destroy_cow_device(cow_device).await;
-            self.delete_workspace_on_leak_cleanup = cow_destroyed;
-            !cow_destroyed
+            let cow_cleanup_outcome = cleanup.destroy_cow_device(cow_device).await;
+            let backing_files_safe_to_delete = cow_cleanup_outcome.backing_files_safe_to_delete();
+            self.delete_workspace_on_leak_cleanup = backing_files_safe_to_delete;
+            !backing_files_safe_to_delete
         } else {
             false
         };
@@ -611,7 +614,7 @@ mod tests {
 
     #[async_trait]
     impl CreateRollbackCleanup for BlockingRemoveDirCleanup {
-        async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> bool {
+        async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> CowCleanupOutcome {
             panic!("test cleanup should not receive a real COW device");
         }
 
@@ -652,7 +655,7 @@ mod tests {
 
     #[async_trait]
     impl CreateRollbackCleanup for FailingNetworkReleaseCleanup {
-        async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> bool {
+        async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> CowCleanupOutcome {
             panic!("test cleanup should not receive a real COW device");
         }
 
@@ -679,7 +682,7 @@ mod tests {
 
     #[async_trait]
     impl CreateRollbackCleanup for RecordingCreateRollbackCleanup {
-        async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> bool {
+        async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> CowCleanupOutcome {
             panic!("test cleanup should not receive a real COW device");
         }
 

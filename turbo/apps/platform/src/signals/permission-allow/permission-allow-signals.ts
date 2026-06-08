@@ -1,5 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import {
+  type UserPermissionGrantExpiresIn,
   type UserPermissionGrantAction,
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
@@ -15,6 +16,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
 import { agentById, reloadAgentById$ } from "../agent.ts";
+import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
 
 // ---------------------------------------------------------------------------
 // Route params
@@ -37,6 +39,10 @@ export const permissionAllowPermission$ = computed((get) => {
 export const permissionAllowAction$ = computed((get) => {
   const action = get(searchParams$).get("action");
   return action === "allow" || action === "deny" ? action : null;
+});
+
+export const permissionAllowExpiresIn$ = computed((get) => {
+  return parseUserPermissionGrantExpiresIn(get(searchParams$).get("expiresIn"));
 });
 
 // ---------------------------------------------------------------------------
@@ -153,15 +159,29 @@ export const upsertUserPermissionGrant$ = command(
       connectorRef: string;
       permission: string;
       action: UserPermissionGrantAction;
+      expiresIn?: UserPermissionGrantExpiresIn;
     },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<UserPermissionGrantResponse> => {
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-    await accept(
+    const body =
+      params.action === "allow"
+        ? {
+            agentId: params.agentId,
+            connectorRef: params.connectorRef,
+            permission: params.permission,
+            action: "allow" as const,
+            ...(params.expiresIn ? { expiresIn: params.expiresIn } : {}),
+          }
+        : {
+            agentId: params.agentId,
+            connectorRef: params.connectorRef,
+            permission: params.permission,
+            action: "deny" as const,
+          };
+    const result = await accept(
       client.upsert({
-        body: {
-          ...params,
-        },
+        body,
         fetchOptions: { signal },
       }),
       [200],
@@ -174,5 +194,6 @@ export const upsertUserPermissionGrant$ = command(
       return prev + 1;
     });
     set(reloadAgentById$);
+    return result.body;
   },
 );

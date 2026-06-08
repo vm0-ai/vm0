@@ -9,6 +9,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import type {
   UpsertUserPermissionGrantRequest,
+  UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 
@@ -56,6 +57,9 @@ type UpsertUserPermissionGrantResult =
     }
   | NotFoundResponse
   | ValidationErrorResponse;
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 function validationError(message: string): ValidationErrorResponse {
   return {
@@ -128,11 +132,53 @@ function validateGrantTarget(
   return null;
 }
 
+function validateGrantExpiration(
+  grant: UpsertUserPermissionGrantRequest,
+): ValidationErrorResponse | null {
+  if (grant.action === "allow" || grant.expiresIn === undefined) {
+    return null;
+  }
+  return validationError(
+    "Permission grant expiration is only supported for allow grants",
+  );
+}
+
 function activeGrantCondition(checkedAt: Date) {
   return or(
     isNull(userPermissionGrants.expiresAt),
     gt(userPermissionGrants.expiresAt, checkedAt),
   );
+}
+
+function resolveGrantExpiresAt(
+  expiresIn: UserPermissionGrantExpiresIn | undefined,
+  timestamp: Date,
+): Date | null {
+  switch (expiresIn) {
+    case "1h": {
+      return new Date(timestamp.getTime() + HOUR_MS);
+    }
+    case "24h": {
+      return new Date(timestamp.getTime() + DAY_MS);
+    }
+    case "7d": {
+      return new Date(timestamp.getTime() + 7 * DAY_MS);
+    }
+    case "always":
+    case undefined: {
+      return null;
+    }
+  }
+}
+
+function preservedActiveGrantExpiresAt(
+  expiresAt: Date | null,
+  timestamp: Date,
+): Date | null {
+  if (!expiresAt) {
+    return null;
+  }
+  return expiresAt.getTime() > timestamp.getTime() ? expiresAt : null;
 }
 
 function formatUserPermissionGrant(
@@ -223,34 +269,63 @@ async function upsertVisibleGrantRow(
     }
 
     const timestamp = nowDate();
-    const [row] = await tx
-      .insert(userPermissionGrants)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        agentId: args.grant.agentId,
-        connectorRef: args.grant.connectorRef,
-        permission: args.grant.permission,
-        action: args.grant.action,
-        expiresAt: null,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      })
-      .onConflictDoUpdate({
-        target: [
-          userPermissionGrants.orgId,
-          userPermissionGrants.userId,
-          userPermissionGrants.agentId,
-          userPermissionGrants.connectorRef,
-          userPermissionGrants.permission,
-        ],
-        set: {
-          action: args.grant.action,
-          expiresAt: null,
-          updatedAt: timestamp,
-        },
-      })
-      .returning();
+    const [existing] = await tx
+      .select()
+      .from(userPermissionGrants)
+      .where(
+        and(
+          eq(userPermissionGrants.orgId, args.orgId),
+          eq(userPermissionGrants.userId, args.userId),
+          eq(userPermissionGrants.agentId, args.grant.agentId),
+          eq(userPermissionGrants.connectorRef, args.grant.connectorRef),
+          eq(userPermissionGrants.permission, args.grant.permission),
+        ),
+      )
+      .for("update")
+      .limit(1);
+
+    const expiresAt =
+      args.grant.action === "allow"
+        ? args.grant.expiresIn === undefined
+          ? preservedActiveGrantExpiresAt(
+              existing?.action === "allow" ? existing.expiresAt : null,
+              timestamp,
+            )
+          : resolveGrantExpiresAt(args.grant.expiresIn, timestamp)
+        : null;
+
+    const [row] = existing
+      ? await tx
+          .update(userPermissionGrants)
+          .set({
+            action: args.grant.action,
+            expiresAt,
+            updatedAt: timestamp,
+          })
+          .where(
+            and(
+              eq(userPermissionGrants.orgId, args.orgId),
+              eq(userPermissionGrants.userId, args.userId),
+              eq(userPermissionGrants.agentId, args.grant.agentId),
+              eq(userPermissionGrants.connectorRef, args.grant.connectorRef),
+              eq(userPermissionGrants.permission, args.grant.permission),
+            ),
+          )
+          .returning()
+      : await tx
+          .insert(userPermissionGrants)
+          .values({
+            orgId: args.orgId,
+            userId: args.userId,
+            agentId: args.grant.agentId,
+            connectorRef: args.grant.connectorRef,
+            permission: args.grant.permission,
+            action: args.grant.action,
+            expiresAt,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          })
+          .returning();
 
     if (!row) {
       throw new Error("User permission grant upsert did not return a row");
@@ -294,6 +369,10 @@ export const upsertUserPermissionGrant$ = command(
     );
     if (validation) {
       return validation;
+    }
+    const expirationValidation = validateGrantExpiration(args.grant);
+    if (expirationValidation) {
+      return expirationValidation;
     }
 
     const writeDb = set(writeDb$);

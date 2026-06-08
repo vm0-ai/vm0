@@ -891,10 +891,12 @@ export {
 export {
   zeroUserPermissionGrantsContract,
   userPermissionGrantActionSchema,
+  userPermissionGrantExpiresInSchema,
   userPermissionGrantResponseSchema,
   listUserPermissionGrantsQuerySchema,
   upsertUserPermissionGrantRequestSchema,
   type UserPermissionGrantAction,
+  type UserPermissionGrantExpiresIn,
   type UserPermissionGrantResponse,
   type ListUserPermissionGrantsQuery,
   type UpsertUserPermissionGrantRequest,

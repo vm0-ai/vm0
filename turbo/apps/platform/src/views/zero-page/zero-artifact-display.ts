@@ -14,7 +14,7 @@ type ArtifactDisplayKind =
 
 type ArtifactTitleMetadata = Pick<
   AttachmentArtifactMetadata,
-  "contentType" | "createdAt" | "filename" | "size"
+  "artifactKind" | "contentType" | "createdAt" | "filename" | "size"
 >;
 
 function fileExtension(filename: string): string | null {
@@ -108,7 +108,11 @@ function formatArtifactGeneratedTime(value: string): string {
 function artifactKindTitle(
   kind: ArtifactDisplayKind,
   filename: string,
+  artifactKind: ArtifactTitleMetadata["artifactKind"],
 ): string {
+  if (artifactKind === "presentation-html") {
+    return "Presentation";
+  }
   const extension = fileExtension(filename);
   if (extension && isPresentationExtension(extension)) {
     return "Presentation";
@@ -149,14 +153,14 @@ export function artifactFallbackSubtitle(
   kind: ArtifactDisplayKind,
   filename: string,
 ): string {
-  return artifactKindTitle(kind, filename);
+  return artifactKindTitle(kind, filename, undefined);
 }
 
 export function artifactTitleSubtitle(
   kind: ArtifactDisplayKind,
   meta: ArtifactTitleMetadata,
 ): string {
-  const parts = [artifactKindTitle(kind, meta.filename)];
+  const parts = [artifactKindTitle(kind, meta.filename, meta.artifactKind)];
   const format = artifactFormat(meta);
   if (format && parts[0] !== "Hosted site") {
     parts.push(format);

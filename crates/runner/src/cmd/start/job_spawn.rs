@@ -380,6 +380,16 @@ impl DeferredUploadPhase {
                 .network_log_manager
                 .flush_path(&network_log_path)
                 .await;
+            if let Some(mitm_jsonl_flush) = exec_config.mitm_jsonl_flush.as_ref() {
+                let flushed = mitm_jsonl_flush.flush_path(&network_log_path).await;
+                if !flushed {
+                    warn!(
+                        run_id = %run_id,
+                        path = %network_log_path.display(),
+                        "proxy network log flush did not complete before upload"
+                    );
+                }
+            }
             network_logs::upload_network_logs(
                 &exec_config.http,
                 run_id,

@@ -39,7 +39,11 @@ const NAV_MENU_TRIGGER_HOTZONE_Y = 18;
 const NAV_MENU_TRIGGER_HOTZONE_X = 12;
 const NAV_MENU_POPOVER_HOTZONE = 8;
 const NAV_MENU_SELECT_REOPEN_BLOCK_MS = 350;
-const DESKTOP_NAV_MENU_IDS = ["resources", "trust-and-tech"] as const;
+const DESKTOP_NAV_MENU_IDS = [
+  "explore",
+  "resources",
+  "trust-and-tech",
+] as const;
 
 type DesktopNavMenuId = (typeof DESKTOP_NAV_MENU_IDS)[number];
 
@@ -322,6 +326,9 @@ export function Navbar({
     scheduleClose,
     handlePointerMove,
   } = useDesktopNavMenus(desktopNavRef);
+  const openExploreMenu = useCallback(() => {
+    openMenu("explore");
+  }, [openMenu]);
   const openResourcesMenu = useCallback(() => {
     openMenu("resources");
   }, [openMenu]);
@@ -379,6 +386,39 @@ export function Navbar({
         icon: "/assets/nav/docs.png",
       }
     : null;
+
+  const exploreItems: NavMenuItem[] = [
+    {
+      label: t("useCases"),
+      description: t("useCasesDesc"),
+      href: "/use-cases",
+      icon: "/assets/nav/use-cases.png",
+    },
+    {
+      label: t("reports"),
+      description: t("reportsDesc"),
+      href: "/report",
+      icon: "/assets/nav/report.png",
+    },
+    {
+      label: t("presentations"),
+      description: t("presentationsDesc"),
+      href: "/presentation",
+      icon: "/assets/nav/presentation.png",
+    },
+    {
+      label: t("illustrations"),
+      description: t("illustrationsDesc"),
+      href: "/illustration",
+      icon: "/assets/nav/illustration.png",
+    },
+    {
+      label: t("webDesign"),
+      description: t("webDesignDesc"),
+      href: "/web-design",
+      icon: "/assets/nav/web-design.png",
+    },
+  ];
 
   const resourcesItems: NavMenuItem[] = [
     ...(docsItem ? [docsItem] : []),
@@ -451,9 +491,18 @@ export function Navbar({
             onPointerMove={handlePointerMove}
             onPointerLeave={scheduleClose}
           >
-            <Link href="/use-cases" className="nav-link">
-              {t("useCases")}
-            </Link>
+            <NavMenu
+              id="explore"
+              label={t("explore")}
+              items={exploreItems}
+              alignOffset={-40}
+              open={openMenuId === "explore"}
+              onOpen={openExploreMenu}
+              onClose={closeMenu}
+              onSelect={selectMenuItem}
+              onCancelClose={cancelClose}
+              onScheduleClose={scheduleClose}
+            />
             <NavMenu
               id="resources"
               label={t("resources")}
@@ -550,13 +599,11 @@ export function Navbar({
       <div className={`mobile-menu ${mobileMenuOpen ? "open" : ""}`}>
         <div className="mobile-menu-content">
           <div className="mobile-menu-links">
-            <Link
-              href="/use-cases"
-              className="mobile-menu-link"
-              onClick={closeMobile}
-            >
-              {t("useCases")}
-            </Link>
+            <MobileMenuGroup
+              label={t("explore")}
+              items={exploreItems}
+              onSelect={closeMobile}
+            />
             <Link
               href="/pricing"
               className="mobile-menu-link"

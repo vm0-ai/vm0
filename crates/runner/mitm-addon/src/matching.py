@@ -1,6 +1,11 @@
 """Firewall URL/host/path pattern matching functions.
 
 Pure functions with no module-level state or I/O.
+
+Firewall authority matching intentionally differs from trusted request
+authority and auth.base rewrite validation: config parsing may preserve
+malformed authority metadata so matched malformed configs can fail closed, and
+parameterized hosts are meaningful only for firewall config bases.
 """
 
 import ipaddress
@@ -8,13 +13,17 @@ import re
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Literal, NamedTuple
-from urllib.parse import unquote_to_bytes, urlsplit
+from urllib.parse import urlsplit
 
+from authority_utils import (
+    IPV6_VERSION,
+    has_ascii_space_or_control,
+    is_default_scheme_port,
+    percent_decode_host,
+)
 from host_normalization import normalize_idna_hostname
 from path_security import has_unsafe_path
 from url_syntax import (
-    ASCII_CONTROL_MAX,
-    ASCII_DELETE,
     has_raw_whitespace,
     has_unsafe_runtime_url_syntax,
     has_unsafe_url_codepoint,
@@ -33,8 +42,6 @@ _MULTI_PARAM_BRACE_COUNT = 2
 _RULE_TOKEN_COUNT = 2
 _MIN_HOST_SEGMENTS = 2
 _ASCII_MAX = 0x7F
-_PERCENT_ESCAPE_LENGTH = 3
-_IPV6_VERSION = 6
 _IDNA_DOT_TRANSLATION = str.maketrans(
     {
         "\u3002": ".",
@@ -45,7 +52,6 @@ _IDNA_DOT_TRANSLATION = str.maketrans(
 _FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
 _FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS = _FORBIDDEN_AUTHORITY_HOST_CHARS | frozenset("{}")
 _PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61")
-_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _VALID_RULE_METHODS = frozenset(
     (
         "GET",
@@ -60,7 +66,6 @@ _VALID_RULE_METHODS = frozenset(
 )
 _VALID_BASE_SCHEMES = frozenset(("http", "https"))
 _VALID_AUTH_BASE_SCHEME = "https"
-_DEFAULT_SCHEME_PORTS = MappingProxyType({"http": 80, "https": 443})
 _AUTH_TEMPLATE_START = "${{"
 _AUTH_REFERENCE_PATTERN = re.compile(r"\$\{\{\s*(?:secrets|vars)\.[a-zA-Z_][a-zA-Z0-9_]*\s*\}\}")
 _AUTH_REFERENCE_PREFIX_PATTERN = re.compile(
@@ -87,48 +92,21 @@ def _has_invalid_authority_host_chars(host: str, *, allow_host_params: bool = Fa
         if allow_host_params
         else _FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS
     )
-    return any(
-        char.isspace()
-        or ord(char) < ASCII_CONTROL_MAX
-        or ord(char) == ASCII_DELETE
-        or char in forbidden_chars
-        for char in host
-    )
+    return has_ascii_space_or_control(host) or any(char in forbidden_chars for char in host)
 
 
 def _percent_decode_authority_host(host: str) -> tuple[str, bool]:
     if "%" not in host:
         return host, False
 
-    index = host.find("%")
-    has_percent_encoded_syntax = False
-    while index != -1:
-        run_end = index
-        while run_end < len(host) and host[run_end] == "%":
-            hex_start = run_end + 1
-            hex_end = hex_start + 2
-            hex_value = host[hex_start:hex_end]
-            if hex_end > len(host) or not all(char in _HEX_DIGITS for char in hex_value):
-                return host, True
-            run_end += _PERCENT_ESCAPE_LENGTH
-
-        try:
-            decoded_run = unquote_to_bytes(host[index:run_end]).decode("utf-8")
-        except UnicodeError:
-            return host, True
-        if any(char in _PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS for char in decoded_run):
-            has_percent_encoded_syntax = True
-        index = host.find("%", run_end)
-
-    try:
-        decoded = unquote_to_bytes(host).decode("utf-8")
-    except UnicodeError:
-        return host, True
-    if has_percent_encoded_syntax:
-        return decoded.translate(_IDNA_DOT_TRANSLATION), True
-    if ":" in decoded:
-        return decoded, True
-    return decoded, False
+    decoded = percent_decode_host(host, syntax_chars=_PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS)
+    if decoded.invalid_encoding:
+        return decoded.value, True
+    if decoded.decoded_syntax:
+        return decoded.value.translate(_IDNA_DOT_TRANSLATION), True
+    if ":" in decoded.value:
+        return decoded.value, True
+    return decoded.value, False
 
 
 def _is_ascii(value: str) -> bool:
@@ -387,7 +365,7 @@ def _normalize_authority_host(host: str, *, allow_host_params: bool = False) -> 
             parsed_ip = ipaddress.ip_address(normalized)
         except ValueError:
             return normalized.lower(), True
-        if parsed_ip.version != _IPV6_VERSION:
+        if parsed_ip.version != IPV6_VERSION:
             return normalized.lower(), True
         return f"[{parsed_ip.compressed.lower()}]", False
     try:
@@ -414,7 +392,7 @@ def _normalize_authority(
     if port is None:
         return normalized_host, host_malformed
 
-    if port == _DEFAULT_SCHEME_PORTS.get(scheme.lower()):
+    if is_default_scheme_port(scheme, port):
         return normalized_host, host_malformed
     return f"{normalized_host}:{port}", host_malformed
 

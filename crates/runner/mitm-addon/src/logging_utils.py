@@ -5,13 +5,13 @@ log entries, and extracting firewall metadata.
 """
 
 import json
-import os
 from collections.abc import Mapping
 from datetime import datetime, timezone
 
 from mitmproxy import ctx, http
 
 import flow_metadata_keys as metadata_keys
+import jsonl_writer
 import network_log_sanitization
 
 _PROXY_LOG_RESERVED_FIELDS = {"timestamp", "level", "message"}
@@ -31,14 +31,27 @@ def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:
         ctx.log.warn(f"Failed to encode {log_name} log: {type(e).__name__}: {e}")
         return
 
-    try:
-        fd = os.open(log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
-        try:
-            os.write(fd, line)
-        finally:
-            os.close(fd)
-    except Exception as e:
-        ctx.log.warn(f"Failed to write {log_name} log: {type(e).__name__}: {e}")
+    jsonl_writer.write_jsonl_line(log_path, line, log_name)
+
+
+def flush_log_path(log_path: str) -> None:
+    """Flush accepted JSONL writes for a path."""
+    jsonl_writer.flush_log_path(log_path)
+
+
+def flush_all_logs() -> None:
+    """Flush accepted JSONL writes for all paths."""
+    jsonl_writer.flush_all_logs()
+
+
+def shutdown_log_writer() -> None:
+    """Drain and stop the JSONL writer."""
+    jsonl_writer.shutdown_writer()
+
+
+def reset_log_writer_for_tests() -> None:
+    """Reset JSONL writer state between tests."""
+    jsonl_writer.reset_for_tests()
 
 
 def log_network_entry(log_path: str, entry: dict) -> None:

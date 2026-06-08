@@ -371,6 +371,14 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
 });
 
 vi.mock("@aws-sdk/client-s3", () => {
+  class CopyObjectCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
   class GetObjectCommand {
     readonly input: unknown;
 
@@ -422,6 +430,7 @@ vi.mock("@aws-sdk/client-s3", () => {
   }
 
   return {
+    CopyObjectCommand,
     DeleteObjectsCommand,
     GetObjectCommand,
     HeadObjectCommand,

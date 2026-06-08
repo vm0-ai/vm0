@@ -14,13 +14,16 @@ This addon runs on the runner HOST (not inside VMs) and:
 import asyncio
 import functools
 import json
+import os
 import signal
 import tempfile
 import threading
 import time
 import urllib.parse
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
+from typing import TypeVar
 
 from mitmproxy import ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
@@ -49,7 +52,13 @@ from auth import (
     is_billable_firewall,
     request_force_refresh,
 )
-from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
+from logging_utils import (
+    add_firewall_metadata,
+    flush_log_path,
+    log_network_entry,
+    log_proxy_entry,
+    shutdown_log_writer,
+)
 from url_utils import AuthorityValidationError, get_trusted_authority
 
 # HTTP status boundaries used in response-phase classification.
@@ -70,24 +79,34 @@ _BROWSER_USER_AGENT_MARKERS = (
 )
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
+_TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
+_TCP_REQUEST_SIZE = "_tcp_request_size"
+_TCP_RESPONSE_SIZE = "_tcp_response_size"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 # Network log size fields are consumed as JavaScript numbers downstream.
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
 _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))
 
-# Runner-triggered usage drain protocol:
+# Runner-triggered flush protocols:
 # - Rust writes `usage-flush-request` with the active usageStateId and a fresh
 #   flushRequestId, then sends SIGUSR1 to this addon process.
 # - This addon flushes buffered usage and writes `usage-pending` with the
 #   matching flushRequestId so the runner can observe a fresh snapshot.
 # - Rust performs a bounded wait for the acknowledged snapshot to have zero
 #   flows, buffered events, and reports before stopping the proxy.
+# - Rust may also write `jsonl-flush-request` for a concrete network log path.
+#   This addon drains accepted JSONL writes for that path and acknowledges with
+#   `jsonl-flush-state` before the runner uploads the file.
 #
 # Keep this in sync with usage/counters.py and the Rust wait path in
 # crates/runner/src/proxy.rs plus crates/runner/src/cmd/start/mod.rs.
 _RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
 _usage_flush_requested = threading.Event()
 _usage_flush_signal_lock = threading.Lock()
+_jsonl_flush_state_write_lock = threading.Lock()
+_last_jsonl_flush_request_id: str | None = None
+_JSONL_FLUSH_REQUEST_FILE = "jsonl-flush-request"
+_JSONL_FLUSH_STATE_FILE = "jsonl-flush-state"
 
 # ============================================================================
 # Addon Configuration
@@ -143,11 +162,11 @@ def configure(updated: set[str]) -> None:
 
 
 def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
-    """Schedule runner-requested usage drain from the SIGUSR1 handler.
+    """Schedule runner-requested flush work from the SIGUSR1 handler.
 
     Keep this handler minimal: it may interrupt mitmproxy's event loop, so it
     only records that work is needed and lets the background worker perform
-    file I/O and usage flushing.
+    file I/O, usage flushing, and JSONL flushing.
     """
     del signum
     _usage_flush_requested.set()
@@ -155,13 +174,13 @@ def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
 
 
 def _start_usage_flush_worker() -> None:
-    """Start one usage-flush worker, coalescing repeated signals while active."""
+    """Start one flush worker, coalescing repeated signals while active."""
     if not _usage_flush_signal_lock.acquire(blocking=False):
         return
 
     thread = threading.Thread(
         target=_run_usage_flush_worker,
-        name="usage-flush-request",
+        name="runner-flush-request",
         daemon=True,
     )
     started = False
@@ -184,6 +203,7 @@ def _run_usage_flush_worker() -> None:
         while True:
             _usage_flush_requested.clear()
             _flush_usage_for_runner_request()
+            _flush_jsonl_for_runner_request()
             if not _usage_flush_requested.is_set():
                 return
     finally:
@@ -205,6 +225,82 @@ def _flush_usage_for_runner_request() -> None:
         ctx.log.warn(f"Failed to flush usage events after runner request ({type(exc).__name__})")
     finally:
         usage.write_pending_snapshot(flush_request_id=flush_request_id)
+
+
+def _flush_jsonl_for_runner_request() -> None:
+    global _last_jsonl_flush_request_id
+
+    request = _read_jsonl_flush_request()
+    if request is None:
+        return
+
+    log_path, flush_request_id = request
+    pending = 0
+    try:
+        flush_log_path(log_path)
+    except Exception as exc:
+        pending = 1
+        ctx.log.warn(f"Failed to flush JSONL logs after runner request ({type(exc).__name__})")
+    finally:
+        state_written = _write_jsonl_flush_state(log_path, flush_request_id, pending=pending)
+        if pending == 0 and state_written:
+            _last_jsonl_flush_request_id = flush_request_id
+
+
+def _read_jsonl_flush_request() -> tuple[str, str] | None:
+    marker_path = Path(__file__).resolve().parent / _JSONL_FLUSH_REQUEST_FILE
+    try:
+        marker = json.loads(marker_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(marker, dict):
+        return None
+    if marker.get("usageStateId") != usage.current_usage_state_id():
+        return None
+    flush_request_id = marker.get("flushRequestId")
+    if (
+        not isinstance(flush_request_id, str)
+        or not flush_request_id
+        or not _is_safe_jsonl_flush_request_id(flush_request_id)
+        or flush_request_id == _last_jsonl_flush_request_id
+    ):
+        return None
+    log_path = marker.get("path")
+    if not isinstance(log_path, str) or not log_path:
+        return None
+    return log_path, flush_request_id
+
+
+def _is_safe_jsonl_flush_request_id(flush_request_id: str) -> bool:
+    return all(
+        ("a" <= char <= "z") or ("A" <= char <= "Z") or ("0" <= char <= "9") or char in "-_"
+        for char in flush_request_id
+    )
+
+
+def _write_jsonl_flush_state(log_path: str, flush_request_id: str, *, pending: int = 0) -> bool:
+    state_path = Path(__file__).resolve().parent / _JSONL_FLUSH_STATE_FILE
+    state = {
+        "pid": os.getpid(),
+        "usageStateId": usage.current_usage_state_id(),
+        "updatedAtMs": int(time.time() * 1000),
+        "flushRequestId": flush_request_id,
+        "path": log_path,
+        "pending": pending,
+    }
+    tmp_path = state_path.with_name(f"{state_path.name}.{flush_request_id}.tmp")
+    with _jsonl_flush_state_write_lock:
+        try:
+            with tmp_path.open("w") as f:
+                json.dump(state, f, separators=(",", ":"))
+            tmp_path.replace(state_path)
+            return True
+        except OSError as exc:
+            with suppress(OSError):
+                tmp_path.unlink()
+            ctx.log.warn(f"Failed to write JSONL flush state: {type(exc).__name__}: {exc}")
+            return False
 
 
 def get_api_url() -> str:
@@ -633,10 +729,10 @@ def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
         flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True
 
 
-_WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
+_ScheduledFlow = TypeVar("_ScheduledFlow", http.HTTPFlow, tcp.TCPFlow)
 
 
-def _call_soon(callback: _WebSocketTrimCallback, flow: http.HTTPFlow) -> None:
+def _call_soon(callback: Callable[[_ScheduledFlow], None], flow: _ScheduledFlow) -> None:
     asyncio.get_running_loop().call_soon(callback, flow)
 
 
@@ -847,7 +943,7 @@ def response(flow: http.HTTPFlow) -> None:
         if firewall_base:
             add_firewall_metadata(flow, log_entry)
 
-        # Add request headers, request body, and response body when capture is enabled
+        # Add captured header names, selected safe header values, and bodies when enabled
         if flow.metadata.get(metadata_keys.CAPTURE_BODY):
             body_utils.add_capture_fields(flow, log_entry)
 
@@ -1008,7 +1104,10 @@ def done():
         with _usage_flush_signal_lock:
             usage.flush_usage_events(trigger="shutdown")
     finally:
-        usage.webhook.usage_executor.shutdown(wait=True)
+        try:
+            usage.webhook.usage_executor.shutdown(wait=True)
+        finally:
+            shutdown_log_writer()
 
 
 # ============================================================================
@@ -1039,6 +1138,11 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
     flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
 
 
+def tcp_message(flow: tcp.TCPFlow) -> None:
+    """Schedule bounded retention cleanup for registered TCP flows."""
+    _schedule_tcp_message_drain(flow)
+
+
 def tcp_end(flow: tcp.TCPFlow) -> None:
     """Log TCP connection details when it closes."""
     _log_tcp(flow)
@@ -1047,6 +1151,86 @@ def tcp_end(flow: tcp.TCPFlow) -> None:
 def tcp_error(flow: tcp.TCPFlow) -> None:
     """Log TCP connection errors."""
     _log_tcp(flow)
+
+
+def _is_registered_tcp_log_flow(flow: tcp.TCPFlow) -> bool:
+    return bool(
+        flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+        and flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
+    )
+
+
+def _tcp_counter_value(flow: tcp.TCPFlow, key: str) -> int:
+    value = flow.metadata.get(key)
+    if type(value) is not int:
+        return 0
+    return max(0, min(value, _MAX_SAFE_NETWORK_LOG_SIZE))
+
+
+def _has_tcp_size_counters(flow: tcp.TCPFlow) -> bool:
+    return (
+        type(flow.metadata.get(_TCP_REQUEST_SIZE)) is int
+        or type(flow.metadata.get(_TCP_RESPONSE_SIZE)) is int
+    )
+
+
+def _add_tcp_size(flow: tcp.TCPFlow, key: str, delta: int) -> None:
+    flow.metadata[key] = min(
+        _MAX_SAFE_NETWORK_LOG_SIZE,
+        _tcp_counter_value(flow, key) + delta,
+    )
+
+
+def _schedule_tcp_message_drain(flow: tcp.TCPFlow) -> None:
+    if not _is_registered_tcp_log_flow(flow):
+        return
+    if flow.metadata.get(_TCP_MESSAGE_DRAIN_SCHEDULED, False):
+        return
+    flow.metadata[_TCP_MESSAGE_DRAIN_SCHEDULED] = True
+    _call_soon(_drain_tcp_messages, flow)
+
+
+def _drain_tcp_messages(flow: tcp.TCPFlow) -> None:
+    flow.metadata.pop(_TCP_MESSAGE_DRAIN_SCHEDULED, None)
+    if not _is_registered_tcp_log_flow(flow):
+        return
+    if not flow.messages:
+        return
+
+    for message in flow.messages:
+        key = _TCP_REQUEST_SIZE if message.from_client else _TCP_RESPONSE_SIZE
+        _add_tcp_size(flow, key, len(message.content))
+    flow.messages.clear()
+
+
+def _sum_tcp_messages(flow: tcp.TCPFlow) -> tuple[int, int]:
+    request_size = 0
+    response_size = 0
+    for message in flow.messages:
+        if message.from_client:
+            request_size = min(
+                _MAX_SAFE_NETWORK_LOG_SIZE,
+                request_size + len(message.content),
+            )
+        else:
+            response_size = min(
+                _MAX_SAFE_NETWORK_LOG_SIZE,
+                response_size + len(message.content),
+            )
+    return request_size, response_size
+
+
+def _tcp_log_sizes(flow: tcp.TCPFlow) -> tuple[int, int]:
+    if flow.metadata.get(_TCP_MESSAGE_DRAIN_SCHEDULED, False) or _has_tcp_size_counters(flow):
+        _drain_tcp_messages(flow)
+        return (
+            _tcp_counter_value(flow, _TCP_REQUEST_SIZE),
+            _tcp_counter_value(flow, _TCP_RESPONSE_SIZE),
+        )
+
+    request_size, response_size = _sum_tcp_messages(flow)
+    flow.messages.clear()
+    return request_size, response_size
 
 
 def _log_tcp(flow: tcp.TCPFlow) -> None:
@@ -1058,8 +1242,7 @@ def _log_tcp(flow: tcp.TCPFlow) -> None:
     start_time = flow.metadata.get(metadata_keys.TCP_START_MONOTONIC)
     latency_ms = _elapsed_ms(start_time)
 
-    request_size = sum(len(m.content) for m in flow.messages if m.from_client)
-    response_size = sum(len(m.content) for m in flow.messages if not m.from_client)
+    request_size, response_size = _tcp_log_sizes(flow)
 
     server_addr = flow.server_conn.address if flow.server_conn else None
     host = server_addr[0] if server_addr else "unknown"
@@ -1091,6 +1274,7 @@ addons = [
     response,
     error,
     tcp_start,
+    tcp_message,
     tcp_end,
     tcp_error,
 ]

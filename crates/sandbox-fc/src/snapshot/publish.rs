@@ -7,16 +7,17 @@ use nbd_cow::{KeptCow, PooledNbdCowDevice};
 use sandbox::{PendingSnapshotPublish, SnapshotOutput};
 
 use crate::config::SnapshotConfig;
+use crate::cow_cleanup::cow_destroy_retry_policy;
 use crate::paths::SnapshotOutputPaths;
 
 use super::SnapshotError;
 use super::cow::{
     cleanup_snapshot_attempt_dir_for_cow, cleanup_snapshot_attempt_dir_for_cow_sync,
-    cow_destroy_retry_policy, destroy_snapshot_cow_and_cleanup_attempt_dir,
+    destroy_snapshot_cow_and_cleanup_attempt_dir,
 };
 use super::output::{
     cleanup_remove_file_result, publish_snapshot_complete_marker, remove_dir_all_if_exists_sync,
-    remove_file_if_exists_sync, sync_snapshot_output_dir,
+    remove_file_if_exists_sync, run_snapshot_blocking_fs, sync_snapshot_output_dir,
 };
 
 type KeepCowFinalizer =
@@ -223,7 +224,9 @@ impl FirecrackerPendingSnapshotPublish {
         );
         match state {
             FirecrackerPendingSnapshotPublishState::Pending(kept_cow) => {
-                match commit_snapshot_cow_output(&kept_cow, &self.output) {
+                match run_snapshot_blocking_fs(|| {
+                    commit_snapshot_cow_output(&kept_cow, &self.output)
+                }) {
                     Ok(()) => {
                         self.state = FirecrackerPendingSnapshotPublishState::Committed;
                         Ok(self.snapshot_config.clone())
@@ -256,15 +259,20 @@ impl FirecrackerPendingSnapshotPublish {
             | FirecrackerPendingSnapshotPublishState::Discarded => return Ok(()),
         };
 
-        let output_artifacts_cleaned = cleanup_uncommitted_snapshot_output_artifacts(&self.output);
-        let cow_cleaned = cleanup_kept_cow_paths_after_publish_cancellation(&cleanup_paths).await;
-        let work_cleaned = if cow_cleaned {
-            cleanup_snapshot_work_dir(&self.output)
-        } else {
-            false
-        };
+        let cleaned = run_snapshot_blocking_fs(|| {
+            let output_artifacts_cleaned =
+                cleanup_uncommitted_snapshot_output_artifacts(&self.output);
+            let cow_cleaned = cleanup_kept_cow_paths_after_publish_discard(&cleanup_paths);
+            let work_cleaned = if cow_cleaned {
+                cleanup_snapshot_work_dir(&self.output)
+            } else {
+                false
+            };
 
-        if output_artifacts_cleaned && cow_cleaned && work_cleaned {
+            output_artifacts_cleaned && cow_cleaned && work_cleaned
+        });
+
+        if cleaned {
             self.state = FirecrackerPendingSnapshotPublishState::Discarded;
             Ok(())
         } else {
@@ -379,14 +387,24 @@ fn cleanup_kept_cow_after_publish_drop(kept_cow: &KeptCow) -> bool {
     cleanup_kept_cow_paths_after_publish_drop(&KeptCowCleanupPaths::from_kept_cow(kept_cow))
 }
 
+fn cleanup_kept_cow_paths_after_publish_discard(paths: &KeptCowCleanupPaths) -> bool {
+    cleanup_kept_cow_paths_sync(
+        paths,
+        "failed to cleanup kept COW artifact after pending snapshot publish discard",
+    )
+}
+
 fn cleanup_kept_cow_paths_after_publish_drop(paths: &KeptCowCleanupPaths) -> bool {
+    cleanup_kept_cow_paths_sync(
+        paths,
+        "failed to cleanup kept COW artifact after pending snapshot publish drop",
+    )
+}
+
+fn cleanup_kept_cow_paths_sync(paths: &KeptCowCleanupPaths, warning: &'static str) -> bool {
     let mut cleaned = true;
     for path in [&paths.bitmap_file, &paths.cow_file] {
-        if !cleanup_remove_file_result(
-            std::fs::remove_file(path),
-            path,
-            "failed to cleanup kept COW artifact after pending snapshot publish drop",
-        ) {
+        if !cleanup_remove_file_result(std::fs::remove_file(path), path, warning) {
             cleaned = false;
         }
     }
@@ -533,6 +551,34 @@ mod tests {
         assert!(provider.is_complete(output.dir()).await.unwrap());
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn pending_snapshot_publish_commit_multi_thread_runtime_writes_complete_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let kept_cow =
+            write_kept_cow_for_test(&output.work_dir(), "pending-commit-multi-thread").await;
+        let mut pending: Box<dyn PendingSnapshotPublish> =
+            Box::new(FirecrackerPendingSnapshotPublish::new(
+                output.snapshot_config("pending-commit-multi-thread"),
+                SnapshotOutputPaths::new(output.dir().to_path_buf()),
+                kept_cow,
+            ));
+
+        pending
+            .commit()
+            .await
+            .expect("multi-thread commit should publish snapshot");
+
+        assert!(
+            FirecrackerSnapshotProvider
+                .is_complete(output.dir())
+                .await
+                .unwrap(),
+            "multi-thread commit should write a complete snapshot"
+        );
+    }
+
     #[tokio::test]
     async fn pending_snapshot_publish_commit_failure_does_not_publish_marker() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -572,7 +618,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn pending_snapshot_publish_discard_does_not_publish_marker_or_stable_cow() {
         let dir = tempfile::tempdir().expect("tempdir");
         let output = SnapshotOutputPaths::new(dir.path().join("output"));

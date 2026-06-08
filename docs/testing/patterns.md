@@ -2,103 +2,18 @@
 
 This document describes our standard testing patterns. These aren't arbitrary conventions—they're the patterns that have proven to work well for our codebase, helping us write tests that give real confidence while remaining maintainable.
 
-## Pattern 1: Legacy Web API Route Tests
+## Pattern 1: Route Integration Tests
 
-For `apps/web` routes that still intentionally live in Next.js, we follow a
-specific structure that has evolved through practice. For `apps/api` routes, use
-[api-testing.md](./api-testing.md) instead.
+API endpoints live in `apps/api` and are tested through the Hono app with
+`setupApp()` and the route's ts-rest contract. See
+[api-testing.md](./api-testing.md) for the full route-test pattern — file
+layout, fixtures, mocking rules, and service-level exceptions.
 
-```typescript
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { POST } from "../route";
-import {
-  createTestRequest,
-  createTestCompose,
-  createTestRun,
-} from "../../../../../src/__tests__/api-test-helpers";
-import {
-  testContext,
-  type UserContext,
-} from "../../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-
-// ========== MOCKS SECTION ==========
-// Only mock EXTERNAL third-party packages
-vi.mock("@clerk/nextjs/server");
-vi.mock("@aws-sdk/client-s3");
-vi.mock("@aws-sdk/s3-request-presigner");
-vi.mock("@axiomhq/js");
-
-// ========== TEST CONTEXT ==========
-const context = testContext();
-
-// ========== TEST SUITE ==========
-describe("POST /api/agent/runs", () => {
-  let user: UserContext;
-  let testComposeId: string;
-
-  beforeEach(async () => {
-    context.setupMocks();
-    user = await context.setupUser();
-    const { composeId } = await createTestCompose(uniqueId("agent"));
-    testComposeId = composeId;
-  });
-
-  it("should create a run with pending status", async () => {
-    const data = await createTestRun(testComposeId, "Test prompt");
-
-    expect(data.status).toBe("pending");
-    expect(data.runId).toBeDefined();
-  });
-});
-```
-
-The key points:
-
-1. **Mocks at the top, before imports**. Vitest hoists `vi.mock()` calls, so putting them at the top makes the hoisting explicit.
-
-2. **Only mock external dependencies**. Clerk, S3, Axiom are third-party SaaS requiring API keys. Our internal services use real implementations.
-
-3. **`testContext()` outside describe blocks**. This provides `setupMocks()` for external service mocks and `setupUser()` for isolated user context.
-
-4. **No `vi.clearAllMocks()` needed**. Vitest is configured with `clearMocks: true`, so mocks are automatically cleared between tests.
-
-5. **No `initServices()` in route tests**. Route handlers call `initServices()` internally. If you need it in tests, it means you're accessing the database directly instead of through API helpers.
-
-6. **No database cleanup needed**. `context.setupUser()` creates a unique userId each time, so data is naturally isolated.
-
-7. **Use API helpers for fixtures**. Create test data via `createTestCompose()`, `createTestRun()`, etc. instead of direct database operations.
-
-8. **Assert HTTP responses, not database state**. Test the behavior through the API, not internal implementation details.
-
-### Variations
-
-**Webhook endpoints** need double auth setup:
-
-```typescript
-beforeEach(() => {
-  // First call: Check CLI token (returns null)
-  // Second call: Check Clerk auth
-  mockAuth
-    .mockResolvedValueOnce({ userId: null } as Awaited<ReturnType<typeof auth>>)
-    .mockResolvedValueOnce({ userId: testUserId } as Awaited<
-      ReturnType<typeof auth>
-    >);
-});
-```
-
-**Multi-user scenarios** use multiple `setupUser()` calls:
-
-```typescript
-let user1: UserContext;
-let user2: UserContext;
-
-beforeEach(async () => {
-  context.setupMocks();
-  user1 = await context.setupUser({ prefix: "user1" });
-  user2 = await context.setupUser({ prefix: "user2" });
-});
-```
+`apps/web` no longer hosts API route handlers: the `app/api` directory was
+removed and a custom `no-new-api-routes` lint rule forbids adding new ones.
+Web-side tests therefore cover only routing compatibility — exact
+`API_BACKEND_REWRITES` entries, middleware bypass matchers, and security headers
+around proxied paths.
 
 ---
 

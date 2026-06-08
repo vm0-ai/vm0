@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.14](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.13...sandbox-fc-v0.37.14) (2026-06-08)
+
+
+### Refactoring
+
+* **sandbox-fc:** clarify cow cleanup outcome ([#16635](https://github.com/vm0-ai/vm0/issues/16635)) ([63fe471](https://github.com/vm0-ai/vm0/commit/63fe471bbb2ce746ea56d1bc409e192793cfcf0d))
+
+
+### Performance Improvements
+
+* offload snapshot filesystem critical sections ([#16634](https://github.com/vm0-ai/vm0/issues/16634)) ([813774e](https://github.com/vm0-ai/vm0/commit/813774eed4b4f592aaa21d2f84296a0fb3d5442f))
+
 ## [0.37.13](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.12...sandbox-fc-v0.37.13) (2026-06-07)
 
 

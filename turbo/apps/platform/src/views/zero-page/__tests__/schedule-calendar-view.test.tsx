@@ -18,9 +18,6 @@ function mockScheduleBase() {
   return {
     userId: "test-user-123",
     appendSystemPrompt: null,
-    vars: null,
-    secretNames: null,
-    volumeVersions: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
     nextRunAt: null,

@@ -390,6 +390,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/desktop-auth/handoff", "/api/desktop-auth/handoff"],
   ["/api/desktop-auth/consume", "/api/desktop-auth/consume"],
   [
+    "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",
+    "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",
+  ],
+  [
     AGENT_RUN_CANCEL_REWRITE_SOURCE,
     "/api/agent/runs/:id/cancel",
     AGENT_RUN_CANCEL_PATH_RE,
@@ -755,6 +759,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/host/deployments/:deploymentId/complete",
   ],
   ["/api/zero/host/deployments/prepare", "/api/zero/host/deployments/prepare"],
+  [
+    "/api/zero/host/presentation-html/redeploy",
+    "/api/zero/host/presentation-html/redeploy",
+  ],
   [ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE, "/api/zero/me/model-providers"],
   [
     ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,

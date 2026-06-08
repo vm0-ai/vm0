@@ -251,6 +251,13 @@ impl HomePaths {
         self.debootstrap_dir().join(".lock")
     }
 
+    /// Lock file for persistent service unit lifecycle operations.
+    ///
+    /// Callers should pass full unit names produced by `service::unit_name`.
+    pub fn service_lock(&self, unit: &str) -> PathBuf {
+        self.locks_dir().join(format!("service-{unit}.lock"))
+    }
+
     pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
         let hash = hex::encode(Sha256::digest(base_dir.as_os_str().as_encoded_bytes()));
         self.locks_dir().join(format!("base-dir-{hash}.lock"))
@@ -570,6 +577,17 @@ mod tests {
         assert_eq!(ca_lock, PathBuf::from("/test/locks/ca.lock"));
         let debootstrap_lock = home.debootstrap_lock();
         assert_eq!(debootstrap_lock, PathBuf::from("/test/debootstrap/.lock"));
+    }
+
+    #[test]
+    fn service_lock_path() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        let service_lock = home.service_lock("vm0-runner-v1.2.3");
+        assert_eq!(
+            service_lock,
+            PathBuf::from("/test/locks/service-vm0-runner-v1.2.3.lock")
+        );
+        assert_eq!(service_lock.parent(), Some(home.locks_dir().as_path()));
     }
 
     #[test]

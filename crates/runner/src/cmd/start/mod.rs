@@ -34,6 +34,7 @@ use std::time::{Duration, Instant};
 
 use clap::Args;
 use sandbox::{RuntimeProvider, SandboxRuntime};
+use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -224,14 +225,7 @@ pub async fn run_start(
         );
     }
 
-    tokio::fs::create_dir_all(&runner_config.base_dir)
-        .await
-        .map_err(|e| {
-            RunnerError::Config(format!(
-                "create base_dir {}: {e}",
-                runner_config.base_dir.display()
-            ))
-        })?;
+    crate::private_fs::ensure_private_dir(&runner_config.base_dir).await?;
 
     // Exclusive lock — prevents two runner processes from sharing the same base_dir.
     // Canonicalize so that equivalent paths (e.g. with `..`) produce the same lock.
@@ -453,6 +447,7 @@ pub async fn run_start(
     let group = runner_config.group;
     let cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
         Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
 
     let (provider, group_name): (Arc<dyn JobProvider>, String) = if args.local {
         let group_dir = home.groups_dir().join(&group);
@@ -490,6 +485,7 @@ pub async fn run_start(
         log_paths,
         network_log_manager,
         network_log_drain,
+        mitm_jsonl_flush: Some(mitm.jsonl_flush_handle(usage_flush_tx.clone())),
         home: home.clone(),
         workspace_cache: Some(SessionWorkspaceCache::shared(
             paths.clone(),
@@ -539,6 +535,8 @@ pub async fn run_start(
             dns_handle,
             memory_prefetch,
         },
+        usage_flush_tx,
+        usage_flush_rx,
         signals: SignalState {
             signal_source: SignalSource::Real(signals),
         },
@@ -565,6 +563,8 @@ struct RunConfig {
     proxy: ProxyState,
     exec_config: Arc<ExecutorConfig>,
     shutdown: ShutdownHandles,
+    usage_flush_tx: mpsc::Sender<()>,
+    usage_flush_rx: mpsc::Receiver<()>,
     signals: SignalState,
     orphan_reap: OrphanReapState,
     #[cfg(test)]
@@ -927,6 +927,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         proxy,
         exec_config,
         shutdown,
+        usage_flush_tx,
+        mut usage_flush_rx,
         signals,
         orphan_reap,
         #[cfg(test)]
@@ -1028,7 +1030,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // learns about a held session VM or workspace image cache without waiting
     // for the next 10-second tick.
     let park_notify = Arc::new(tokio::sync::Notify::new());
-    let (usage_flush_tx, mut usage_flush_rx) = tokio::sync::mpsc::channel(1);
     let orphaned_active_runs = OrphanedActiveRuns::new();
     let active_sessions = new_active_sessions();
     let mut orphan_reap_tick = tokio::time::interval_at(

@@ -15,13 +15,29 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
     let secret = "super-secret-value";
+    let multiline_secret = concat!(
+        "-----BEGIN VM0 TEST KEY-----\n",
+        "alpha-multiline-secret-fragment\n",
+        "beta-multiline-secret-fragment\n",
+        "-----END VM0 TEST KEY-----\n",
+    );
+    let tail_only_secret = [
+        "tail-boundary-start",
+        "dropped-tail-fragment-zero",
+        "retained-tail-fragment-one",
+        "retained-tail-fragment-two",
+        "retained-tail-fragment-three",
+    ]
+    .join("\n");
     let mut stderr_payload = (0..(common::CLI_STDERR_RESULT_MAX_LINES + 1))
-        .map(|i| {
-            if i == 42 {
-                String::new()
-            } else {
-                format!("line-{i}")
-            }
+        .map(|i| match i {
+            10 => "tail-boundary-start".to_string(),
+            11 => "dropped-tail-fragment-zero".to_string(),
+            12 => "retained-tail-fragment-one".to_string(),
+            13 => "retained-tail-fragment-two".to_string(),
+            14 => "retained-tail-fragment-three".to_string(),
+            42 => String::new(),
+            _ => format!("line-{i}"),
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -51,13 +67,24 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     stderr_payload.push_str(&format!("\ncodex stderr includes {secret}"));
     stderr_payload.push_str(&format!("\n{overlong_secret_line}"));
     stderr_payload.push_str("\nafter-overlong-line");
+    stderr_payload.push_str("\ncrlf multiline secret begins");
+    stderr_payload.push_str("\n-----BEGIN VM0 TEST KEY-----\r");
+    stderr_payload.push_str("\nalpha-multiline-secret-fragment\r");
+    stderr_payload.push_str("\nbeta-multiline-secret-fragment\r");
+    stderr_payload.push_str("\n-----END VM0 TEST KEY-----");
+    stderr_payload.push_str("\nafter-multiline-secret");
 
     unsafe {
         common::setup_env(&mock, tmp.path(), &format!("@fail:{stderr_payload}"), 3, 1)?;
     }
 
-    let encoded_secret = base64::engine::general_purpose::STANDARD.encode(secret);
-    let masker = SecretMasker::from_raw(&encoded_secret);
+    let engine = base64::engine::general_purpose::STANDARD;
+    let encoded_secret = engine.encode(secret);
+    let encoded_multiline_secret = engine.encode(multiline_secret);
+    let encoded_tail_only_secret = engine.encode(&tail_only_secret);
+    let masker = SecretMasker::from_raw(&format!(
+        "{encoded_secret},{encoded_multiline_secret},{encoded_tail_only_secret}"
+    ));
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
         guest_agent::cli::execute_cli(
@@ -75,13 +102,13 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
         common::CLI_STDERR_RESULT_MAX_LINES
     );
     let stderr = cli_result.stderr_lines.join("\n");
-    assert_eq!(
-        cli_result.stderr_lines.first().map(String::as_str),
-        Some("line-6")
-    );
     assert!(
         !cli_result.stderr_lines.iter().any(|line| line == "line-5"),
         "stderr result should drop old lines from the bounded tail, got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("tail-boundary-start") && !stderr.contains("dropped-tail-fragment-zero"),
+        "stderr result should drop the first part of the tail-boundary secret, got: {stderr}"
     );
     assert!(
         cli_result.stderr_lines.iter().any(String::is_empty),
@@ -127,6 +154,30 @@ async fn cli_failure_stderr_is_masked_in_result() -> Result<(), Box<dyn std::err
     assert!(
         !stderr.contains(secret),
         "stderr result leaked secret: {stderr}"
+    );
+    for leaked_fragment in [
+        "alpha-multiline-secret-fragment",
+        "beta-multiline-secret-fragment",
+        "retained-tail-fragment-one",
+        "retained-tail-fragment-two",
+        "retained-tail-fragment-three",
+    ] {
+        assert!(
+            !stderr.contains(leaked_fragment),
+            "stderr result leaked multiline secret fragment {leaked_fragment:?}: {stderr}"
+        );
+    }
+    assert!(
+        !stderr.contains(multiline_secret.trim_end_matches('\n')),
+        "stderr result leaked multiline secret: {stderr}"
+    );
+    assert!(
+        stderr.contains("crlf multiline secret begins"),
+        "stderr result should preserve non-secret multiline context, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("after-multiline-secret"),
+        "stderr result should preserve text after multiline secret, got: {stderr}"
     );
 
     Ok(())

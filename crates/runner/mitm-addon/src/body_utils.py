@@ -8,14 +8,16 @@ Exports:
   decompression for gzip, deflate, br, zstd.
 - Conservative request-body decoding for billing inspection.
 - UTF-8-safe truncation, text/binary content detection and encoding.
-- Header sanitization for sensitive names and URL-bearing values.
+- Header value allowlisting for capture-mode persistent logs.
 - ``add_capture_fields`` — composes capture-mode log entry fields.
 """
 
 import base64
 import contextlib
+import re
 import zlib
 from collections.abc import Callable
+from email.utils import parsedate_to_datetime
 from typing import IO, Literal, NamedTuple
 
 import brotli  # type: ignore[import-untyped]
@@ -23,7 +25,6 @@ import zstandard
 from mitmproxy import ctx, http
 
 import flow_metadata_keys as metadata_keys
-import network_log_sanitization
 
 # Cap for non-model-provider response body buffering and decompression output.
 STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
@@ -79,25 +80,70 @@ _TEXT_CONTENT_TYPES = (
     "application/graphql",
 )
 
-# Header names containing any of these keywords (case-insensitive) are redacted.
-_SENSITIVE_HEADER_KEYWORDS = (
-    "auth",
-    "token",
-    "secret",
-    "api-key",
-    "apikey",
-    "credential",
-    "password",
-    "cookie",
+_HTTP_FIELD_NAME_PATTERN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+_HTTP_KNOWN_CONTENT_CODING_PATTERN = r"(?:br|compress|deflate|gzip|identity|zstd)"
+_HTTP_OPTIONAL_WHITESPACE_PATTERN = r"[ \t]*"
+_HTTP_ENCODING_PATTERN = (
+    rf"(?:{_HTTP_KNOWN_CONTENT_CODING_PATTERN}|\*)"
+    rf"(?:{_HTTP_OPTIONAL_WHITESPACE_PATTERN};"
+    rf"{_HTTP_OPTIONAL_WHITESPACE_PATTERN}q="
+    r"(?:0(?:\.[0-9]{1,3})?|1(?:\.0{1,3})?))?"
 )
-_URL_BEARING_CAPTURE_HEADER_NAMES = frozenset(
+_HTTP_IMF_FIXDATE_PATTERN = re.compile(
+    r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), "
+    r"(?:0[1-9]|[12][0-9]|3[01]) "
+    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) "
+    r"[0-9]{4} "
+    r"(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9] GMT"
+)
+_UNSAFE_CAPTURE_HEADER_VALUE_CHARS = re.compile(r"[\x00-\x08\x0A-\x1F\x7F]")
+_HTTP_OPTIONAL_WHITESPACE = " \t"
+_MAX_CAPTURE_HEADER_NAME_LENGTH = 256
+_MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE = 256
+_REDACTED_HEADER_NAME = "[redacted-header-name]"
+_VALUE_PRESERVING_CAPTURE_CONTENT_TYPES = frozenset(
     {
-        "location",
-        "content-location",
-        "referer",
-        "referrer",
+        "application/graphql",
+        "application/javascript",
+        "application/json",
+        "application/octet-stream",
+        "application/pdf",
+        "application/x-ndjson",
+        "application/x-www-form-urlencoded",
+        "application/xml",
+        "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "multipart/form-data",
+        "text/csv",
+        "text/event-stream",
+        "text/html",
+        "text/plain",
+        "text/xml",
     }
 )
+_MAX_CAPTURE_CONTENT_TYPE_MEDIA_TYPE_LENGTH = max(
+    len(media_type) for media_type in _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES
+)
+
+# Captured header values are untrusted persistent-log data by default. Preserve
+# only low-risk protocol metadata that matches conservative HTTP value shapes.
+_VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS: dict[str, re.Pattern[str]] = {
+    "accept-encoding": re.compile(
+        rf"{_HTTP_ENCODING_PATTERN}"
+        rf"(?:{_HTTP_OPTIONAL_WHITESPACE_PATTERN},"
+        rf"{_HTTP_OPTIONAL_WHITESPACE_PATTERN}{_HTTP_ENCODING_PATTERN})*",
+        re.IGNORECASE | re.ASCII,
+    ),
+    "content-encoding": re.compile(
+        rf"{_HTTP_KNOWN_CONTENT_CODING_PATTERN}"
+        rf"(?:{_HTTP_OPTIONAL_WHITESPACE_PATTERN},"
+        rf"{_HTTP_OPTIONAL_WHITESPACE_PATTERN}{_HTTP_KNOWN_CONTENT_CODING_PATTERN})*",
+        re.IGNORECASE | re.ASCII,
+    ),
+    "content-length": re.compile(r"(?:0|[1-9][0-9]{0,18})"),
+}
 
 
 def _log_streaming_decode_error(encoding_label: str, exc: Exception) -> None:
@@ -595,31 +641,110 @@ def _encode_body(content: bytes, content_type: str) -> tuple:
         return base64.b64encode(content).decode("ascii"), "base64"
 
 
-def _is_sensitive_header(name: str) -> bool:
-    """Check if a header name likely carries sensitive data."""
-    lower = name.lower()
-    return any(kw in lower for kw in _SENSITIVE_HEADER_KEYWORDS)
+def _is_http_date_header_value(value: str) -> bool:
+    if _HTTP_IMF_FIXDATE_PATTERN.fullmatch(value) is None:
+        return False
+    try:
+        parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return False
+    return True
+
+
+def _sanitize_content_type_for_capture(value: str) -> str | None:
+    media_start: int | None = None
+    media_end = 0
+    optional_whitespace_length = 0
+
+    for index, char in enumerate(value):
+        if char in "\r\n":
+            return None
+        if char == ";":
+            return _preserved_capture_content_type(value, media_start, media_end)
+        if media_start is None:
+            if char in _HTTP_OPTIONAL_WHITESPACE:
+                optional_whitespace_length += 1
+                if optional_whitespace_length > _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE:
+                    return None
+                continue
+            media_start = index
+            optional_whitespace_length = 0
+        if char in _HTTP_OPTIONAL_WHITESPACE:
+            optional_whitespace_length += 1
+            if optional_whitespace_length > _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE:
+                return None
+            continue
+        optional_whitespace_length = 0
+        media_end = index + 1
+        if media_end - media_start > _MAX_CAPTURE_CONTENT_TYPE_MEDIA_TYPE_LENGTH:
+            return None
+
+    if media_start is None or media_end == media_start:
+        return None
+    return _preserved_capture_content_type(value, media_start, media_end)
+
+
+def _preserved_capture_content_type(
+    value: str,
+    media_start: int | None,
+    media_end: int,
+) -> str | None:
+    if media_start is None or media_end == media_start:
+        return None
+    media_type = value[media_start:media_end].lower()
+    if media_type not in _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES:
+        return None
+    return media_type
+
+
+def _sanitize_allowed_capture_header_value(name: str, value: str) -> str | None:
+    normalized_name = name.strip().lower()
+
+    if normalized_name == "content-type":
+        return _sanitize_content_type_for_capture(value)
+
+    pattern = _VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS.get(normalized_name)
+    if normalized_name != "date" and pattern is None:
+        return None
+
+    if len(value) > _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE:
+        return None
+    if _UNSAFE_CAPTURE_HEADER_VALUE_CHARS.search(value) is not None:
+        return None
+    normalized_value = value.strip(_HTTP_OPTIONAL_WHITESPACE)
+    if normalized_name == "date":
+        return normalized_value if _is_http_date_header_value(normalized_value) else None
+
+    if pattern is None:
+        return None
+    if pattern.fullmatch(normalized_value) is None:
+        return None
+    return normalized_value
 
 
 def _sanitize_header_value_for_capture(name: str, value: str) -> str:
-    lower_name = name.lower()
-    if _is_sensitive_header(name):
-        return _REDACTED_HEADER_VALUE
-    if lower_name in _URL_BEARING_CAPTURE_HEADER_NAMES:
-        return network_log_sanitization.sanitize_url_for_network_log(value)
-    if lower_name == "link":
-        sanitized_link = network_log_sanitization.sanitize_link_header_for_network_log(value)
-        return _REDACTED_HEADER_VALUE if sanitized_link is None else sanitized_link
-    return value
+    return _sanitize_allowed_capture_header_value(name, value) or _REDACTED_HEADER_VALUE
+
+
+def _sanitize_header_name_for_capture(name: str) -> str:
+    if len(name) > _MAX_CAPTURE_HEADER_NAME_LENGTH:
+        return _REDACTED_HEADER_NAME
+    if _HTTP_FIELD_NAME_PATTERN.fullmatch(name) is None:
+        return _REDACTED_HEADER_NAME
+    return name
 
 
 def _sanitize_headers_for_capture(headers) -> dict:
     """Build a dict of captured headers safe for persistent network logs."""
     result = {}
+    seen_names: set[str] = set()
     for name, value in headers.items(multi=True):
-        if name in result:
+        captured_name = _sanitize_header_name_for_capture(name)
+        case_insensitive_name = captured_name.lower()
+        if case_insensitive_name in seen_names:
             continue  # keep first occurrence only (headers.items gives all)
-        result[name] = _sanitize_header_value_for_capture(name, value)
+        seen_names.add(case_insensitive_name)
+        result[captured_name] = _sanitize_header_value_for_capture(captured_name, value)
     return result
 
 

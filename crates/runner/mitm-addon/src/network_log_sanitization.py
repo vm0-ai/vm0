@@ -29,10 +29,12 @@ def _sanitize_url_text_fallback_for_network_log(value: str) -> str:
 
 
 def sanitize_url_for_network_log(value: str) -> str:
-    """Return a URL string safe for persistent logs.
+    """Return a primary request/proxy URL string for persistent logs.
 
     Runtime metadata can keep raw URLs because firewall/auth and connector
-    billing may need query parameters. Persistent logs do not.
+    billing may need query parameters. Persistent logs do not. This sanitizer
+    still preserves path for request diagnostics and is not appropriate for
+    arbitrary captured header values.
     """
     try:
         parts = urllib.parse.urlsplit(value)
@@ -40,36 +42,3 @@ def sanitize_url_for_network_log(value: str) -> str:
         return _sanitize_url_text_fallback_for_network_log(value)
     netloc = _sanitize_netloc_for_network_log(parts.netloc)
     return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))
-
-
-def sanitize_link_header_for_network_log(value: str) -> str | None:
-    """Sanitize complete URI references in a Link header value.
-
-    This is intentionally narrow: it preserves text outside ``<...>`` URI
-    references and fails closed on malformed bracket structure.
-    """
-    output: list[str] = []
-    index = 0
-    saw_uri_reference = False
-    while index < len(value):
-        char = value[index]
-        if char == ">":
-            return None
-        if char != "<":
-            output.append(char)
-            index += 1
-            continue
-
-        close_index = value.find(">", index + 1)
-        if close_index == -1:
-            return None
-
-        raw_url = value[index + 1 : close_index]
-        if "<" in raw_url:
-            return None
-
-        saw_uri_reference = True
-        output.append(f"<{sanitize_url_for_network_log(raw_url)}>")
-        index = close_index + 1
-
-    return "".join(output) if saw_uri_reference or not value else None

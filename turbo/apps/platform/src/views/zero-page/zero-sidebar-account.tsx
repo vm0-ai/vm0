@@ -16,6 +16,7 @@ import {
   IconDatabaseExport,
   IconFlask,
   IconCoins,
+  IconBrain,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -35,6 +36,7 @@ import {
 } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  handleZeroNavSelect$,
   setSidebarExpanded$,
   type ZeroAccountAction,
 } from "../../signals/zero-page/zero-nav.ts";
@@ -256,16 +258,29 @@ function AdminCreditBalanceItemContent({
 }
 
 function UnifiedSettingsGroup({
+  memoryEnabled,
   labEnabled,
+  onOpenMemory,
   onAccountAction,
   onOpenSettings,
 }: {
+  memoryEnabled: boolean;
   labEnabled: boolean;
+  onOpenMemory: () => void;
   onAccountAction: (action: ZeroAccountAction) => void;
   onOpenSettings: () => void;
 }) {
   return (
     <>
+      {memoryEnabled && (
+        <DropdownMenuItem
+          onClick={onOpenMemory}
+          className="gap-3 px-3 py-2.5 rounded-lg"
+        >
+          <IconBrain size={18} stroke={1.5} className="text-muted-foreground" />
+          <span>Memory</span>
+        </DropdownMenuItem>
+      )}
       <DropdownMenuItem
         onClick={onOpenSettings}
         className="gap-3 px-3 py-2.5 rounded-lg"
@@ -432,7 +447,9 @@ export function AccountDropdown({
   const features = useLastResolved(featureSwitch$);
   const apiBase = useLastResolved(apiBaseForNavigation$);
   const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
+  const memoryEnabled = features?.[FeatureSwitchKey.MemoryViewer] ?? false;
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
+  const selectNav = useSet(handleZeroNavSelect$);
   const openSettings = useSet(openSettingsDialogAt$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
@@ -477,6 +494,11 @@ export function AccountDropdown({
     detach(clerk?.openSignIn(), Reason.DomCallback);
   };
 
+  const handleOpenMemory = () => {
+    selectNav("memory", pageSignal);
+    setSidebarExpanded(false);
+  };
+
   const handleOpenSettings = () => {
     setSidebarExpanded(false);
     detach(openSettings("preference", pageSignal), Reason.DomCallback);
@@ -510,7 +532,9 @@ export function AccountDropdown({
         )}
         {!hidePreferences && (
           <UnifiedSettingsGroup
+            memoryEnabled={memoryEnabled}
             labEnabled={labEnabled}
+            onOpenMemory={handleOpenMemory}
             onAccountAction={handleAccountAction}
             onOpenSettings={handleOpenSettings}
           />

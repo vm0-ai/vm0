@@ -34,6 +34,7 @@ from .buffer import (
     reset_usage_buffer_for_tests,
 )
 from .counters import (
+    current_usage_state_id,
     decrement_in_flight_flows,
     increment_in_flight_flows,
     read_usage_flush_request_id,
@@ -65,6 +66,7 @@ __all__ = [
     "create_connector_response_parser",
     "create_openai_responses_json_usage_extractor",
     "create_openai_responses_sse_usage_extractor",
+    "current_usage_state_id",
     "decrement_in_flight_flows",
     "extract_anthropic_messages_usage_from_json",
     "extract_anthropic_messages_usage_with_error_from_json",

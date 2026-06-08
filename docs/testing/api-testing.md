@@ -195,17 +195,17 @@ If a route wraps the service, test through the route.
 
 ## Migration From apps/web
 
-For migrated endpoints, put behavior coverage in `apps/api`. The web app should
-only keep compatibility coverage for routing concerns, such as:
+All endpoint behavior lives in `apps/api`. `apps/web` no longer hosts API route
+handlers, so the web app keeps only compatibility coverage for routing concerns,
+such as:
 
 - exact `API_BACKEND_REWRITES` entries
 - middleware bypass matchers
 - security header behavior around proxied paths
-- legacy routes that still intentionally live in `apps/web`
 
-Do not add a new thin `apps/web/app/api/**/route.ts` proxy for migrated
-endpoints. Route the web-compatible path back to `apps/api` through the API
-backend rewrite configuration.
+Do not add an `apps/web/app/api/**/route.ts` proxy (a custom `no-new-api-routes`
+lint rule forbids it). Route the web-compatible path back to `apps/api` through
+the API backend rewrite configuration.
 
 ## Commands
 

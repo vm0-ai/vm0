@@ -15,8 +15,10 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorAuthMethodIdsByGrantKind } from "@vm0/connectors/connectors";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { accept } from "../../lib/accept.ts";
 import {
@@ -25,6 +27,7 @@ import {
 } from "../../signals/api-client.ts";
 import { connectors$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason, tapError } from "../../signals/utils.ts";
 import {
   artifactDownloadMenuOpenKey$,
   closeArtifactDownloadMenu$,
@@ -36,12 +39,13 @@ import {
   syncArtifactFileToGoogleDrive,
   waitForGoogleDriveAndSyncArtifacts$,
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
-import { detach, Reason } from "../../signals/utils.ts";
 import {
   copyAttachmentLinkToClipboard,
   downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { downloadPresentationHtmlPptx } from "./presentation-html-pptx-download.ts";
 
 const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
   "Connect Google Drive to upload artifacts";
@@ -148,6 +152,22 @@ function syncArtifactToGoogleDriveAndRefresh(params: {
     })(),
     Reason.DomCallback,
     "artifact google drive sync",
+  );
+}
+
+function downloadPresentationPptx(params: {
+  filename: string;
+  signal: AbortSignal;
+  url: string;
+}): void {
+  detach(
+    tapError(downloadPresentationHtmlPptx(params), (error) => {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        toast.error("PPTX download failed");
+      }
+    }),
+    Reason.DomCallback,
+    "presentation html pptx download",
   );
 }
 
@@ -347,6 +367,7 @@ function GoogleDriveMenuItem({
 export function ArtifactDownloadMenu({
   align = "end",
   ariaLabel = "Download options",
+  artifactKind,
   className,
   filename,
   iconSize = 16,
@@ -355,6 +376,7 @@ export function ArtifactDownloadMenu({
 }: {
   align?: "center" | "end" | "start";
   ariaLabel?: string;
+  artifactKind?: ChatThreadArtifactFile["artifactKind"];
   className?: string;
   filename: string;
   iconSize?: number;
@@ -367,8 +389,11 @@ export function ArtifactDownloadMenu({
   const closeMenu = useSet(closeArtifactDownloadMenu$);
   const scheduleCloseMenu = useSet(scheduleArtifactDownloadMenuClose$);
   const pageSignal = useGet(pageSignal$);
+  const features = useLastResolved(featureSwitch$);
   const open = openKey === menuKey;
-
+  const showPresentationPptxDownload =
+    artifactKind === "presentation-html" &&
+    Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]);
   const show = () => {
     openMenu(menuKey);
   };
@@ -442,6 +467,21 @@ export function ArtifactDownloadMenu({
           <IconDownload size={14} stroke={1.5} />
           Download
         </ArtifactDownloadMenuItem>
+        {showPresentationPptxDownload && (
+          <ArtifactDownloadMenuItem
+            onClick={() => {
+              closeNow();
+              downloadPresentationPptx({
+                filename,
+                signal: pageSignal,
+                url,
+              });
+            }}
+          >
+            <IconDownload size={14} stroke={1.5} />
+            Download (.pptx)
+          </ArtifactDownloadMenuItem>
+        )}
         <GoogleDriveMenuItem
           closeMenu={closeNow}
           onHover={show}

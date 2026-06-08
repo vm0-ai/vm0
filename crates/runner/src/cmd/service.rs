@@ -1,6 +1,12 @@
 use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Output};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
 use crate::ids::RunId;
@@ -127,6 +133,14 @@ pub async fn run_service(args: ServiceArgs) -> RunnerResult<()> {
 // ---------------------------------------------------------------------------
 
 const UNIT_PREFIX: &str = "vm0-runner-";
+const UNIT_STAGING_MARKER: &str = ".tmp@";
+const UNIT_STAGING_MAX_ATTEMPTS: u64 = 32;
+// Older runner binaries created dot-UUID staging files without holding the
+// service lock, so only age them out after the rolling-upgrade window.
+const LEGACY_UNIT_STAGING_MIN_AGE: Duration = Duration::from_secs(10 * 60);
+#[cfg(unix)]
+const UNIT_FILE_MODE: u32 = 0o600;
+static UNIT_STAGING_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Build the full systemd unit name from the user-supplied suffix.
 ///
@@ -146,6 +160,11 @@ pub(crate) fn unit_name(suffix: &str) -> RunnerResult<String> {
 /// Path to the unit file under `/etc/systemd/system/`.
 fn unit_file_path(name: &str) -> PathBuf {
     PathBuf::from(format!("/etc/systemd/system/{name}.service"))
+}
+
+async fn acquire_service_lock(unit: &str) -> RunnerResult<nix::fcntl::Flock<std::fs::File>> {
+    let home = HomePaths::new()?;
+    crate::lock::acquire(home.service_lock(unit)).await
 }
 
 /// Resolve a config path to an absolute path.
@@ -258,6 +277,16 @@ fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
     Ok(())
 }
 
+fn validate_systemd_path(label: &str, path: &Path) -> RunnerResult<()> {
+    let value = path.display().to_string();
+    if value.contains(['\n', '\r', '\0']) {
+        return Err(RunnerError::Config(format!(
+            "{label} cannot contain newline or NUL characters"
+        )));
+    }
+    Ok(())
+}
+
 fn journalctl_logs_status(svc: &str, status: ExitStatus) -> RunnerResult<()> {
     if status.success() {
         return Ok(());
@@ -294,32 +323,266 @@ async fn run_systemctl(args: &[&str]) -> RunnerResult<()> {
     Ok(())
 }
 
-/// Write a unit file atomically: stage to a sibling `.tmp` file, then rename.
+fn validate_current_exe_path(path: PathBuf) -> RunnerResult<PathBuf> {
+    let meta = std::fs::metadata(&path).map_err(|e| {
+        RunnerError::Internal(format!("stat current executable {}: {e}", path.display()))
+    })?;
+    if !meta.is_file() {
+        return Err(RunnerError::Internal(format!(
+            "current executable {} is not a file",
+            path.display()
+        )));
+    }
+    #[cfg(unix)]
+    if meta.permissions().mode() & 0o111 == 0 {
+        return Err(RunnerError::Internal(format!(
+            "current executable {} is not executable",
+            path.display()
+        )));
+    }
+    Ok(path)
+}
+
+fn unit_staging_path(path: &Path, attempt: u64) -> RunnerResult<PathBuf> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = path.file_name().ok_or_else(|| {
+        RunnerError::Internal(format!(
+            "unit file path has no file name: {}",
+            path.display()
+        ))
+    })?;
+    let mut staging_name = OsString::from(file_name);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    staging_name.push(format!(
+        "{UNIT_STAGING_MARKER}{}.{}.{}",
+        std::process::id(),
+        nanos,
+        attempt
+    ));
+    Ok(parent.join(staging_name))
+}
+
+fn unit_staging_prefix(path: &Path) -> RunnerResult<String> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "unit file path has no UTF-8 file name: {}",
+                path.display()
+            ))
+        })?;
+    Ok(format!("{file_name}{UNIT_STAGING_MARKER}"))
+}
+
+fn legacy_unit_staging_prefix(path: &Path) -> RunnerResult<String> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "unit file path has no UTF-8 file name: {}",
+                path.display()
+            ))
+        })?;
+    Ok(format!(".{file_name}.tmp."))
+}
+
+fn is_generated_unit_staging_suffix(value: &str) -> bool {
+    let mut parts = value.split('.');
+    let Some(pid) = parts.next() else {
+        return false;
+    };
+    let Some(nanos) = parts.next() else {
+        return false;
+    };
+    let Some(attempt) = parts.next() else {
+        return false;
+    };
+    parts.next().is_none()
+        && pid.parse::<u32>().is_ok()
+        && nanos.parse::<u128>().is_ok()
+        && attempt.parse::<u64>().is_ok()
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UnitStagingFileKind {
+    Current,
+    Legacy,
+}
+
+fn unit_staging_file_kind(
+    name: &str,
+    staging_prefix: &str,
+    legacy_staging_prefix: &str,
+) -> Option<UnitStagingFileKind> {
+    if let Some(suffix) = name.strip_prefix(staging_prefix) {
+        return is_generated_unit_staging_suffix(suffix).then_some(UnitStagingFileKind::Current);
+    }
+    if let Some(suffix) = name.strip_prefix(legacy_staging_prefix) {
+        return uuid::Uuid::parse_str(suffix)
+            .is_ok()
+            .then_some(UnitStagingFileKind::Legacy);
+    }
+    None
+}
+
+fn remove_stale_unit_staging_file(path: &Path, min_age: Option<Duration>) -> RunnerResult<()> {
+    let meta = match std::fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "stat stale unit staging file {}: {e}",
+                path.display()
+            )));
+        }
+    };
+    let file_type = meta.file_type();
+    if !meta.is_file() && !file_type.is_symlink() {
+        return Ok(());
+    }
+    if let Some(min_age) = min_age {
+        let modified = meta.modified().map_err(|e| {
+            RunnerError::Internal(format!(
+                "stat stale unit staging file mtime {}: {e}",
+                path.display()
+            ))
+        })?;
+        if SystemTime::now()
+            .duration_since(modified)
+            .unwrap_or_default()
+            < min_age
+        {
+            return Ok(());
+        }
+    }
+    std::fs::remove_file(path).map_err(|e| {
+        RunnerError::Internal(format!(
+            "remove stale unit staging file {}: {e}",
+            path.display()
+        ))
+    })
+}
+
+fn cleanup_unit_staging_files(path: &Path) -> RunnerResult<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let prefix = unit_staging_prefix(path)?;
+    let legacy_prefix = legacy_unit_staging_prefix(path)?;
+
+    // Do not remove the old fixed `<target>.tmp` path here: during a rolling
+    // deploy an older runner binary may still be using it as its staging file.
+    let entries = match std::fs::read_dir(parent) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "read unit directory {}: {e}",
+                parent.display()
+            )));
+        }
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            RunnerError::Internal(format!("read unit directory {}: {e}", parent.display()))
+        })?;
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
+        match unit_staging_file_kind(name, &prefix, &legacy_prefix) {
+            Some(UnitStagingFileKind::Current) => {
+                remove_stale_unit_staging_file(&entry.path(), None)?;
+            }
+            Some(UnitStagingFileKind::Legacy) => {
+                remove_stale_unit_staging_file(&entry.path(), Some(LEGACY_UNIT_STAGING_MIN_AGE))?;
+            }
+            None => {}
+        }
+    }
+    Ok(())
+}
+
+/// Write a unit file atomically: stage to a unique sibling file, then rename.
 ///
 /// `rename(2)` is atomic on the same filesystem, so a concurrent
 /// `systemctl daemon-reload` (possibly triggered by unrelated unit changes
 /// on the host) sees either the old file or the new file — never a
 /// half-written one. Without this, the truncate+write window inside
 /// `std::fs::write` could let systemd parse a partial unit file and leave
-/// the unit in a broken state. Same pattern as `status::write_status`.
+/// the unit in a broken state. The staging file is unique so concurrent
+/// installs for the same unit do not share a writable temp path.
 fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, content)
-        .map_err(|e| RunnerError::Internal(format!("write {}: {e}", tmp.display())))?;
-    let result = std::fs::rename(&tmp, path).map_err(|e| {
-        RunnerError::Internal(format!(
-            "rename {} -> {}: {e}",
-            tmp.display(),
-            path.display()
-        ))
-    });
-    // Unlike short-lived dirs elsewhere in the crate, unit files live in
-    // /etc/systemd/system/ which no GC path sweeps, and the staged content
-    // contains Environment= secrets.
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+    for _ in 0..UNIT_STAGING_MAX_ATTEMPTS {
+        let attempt = UNIT_STAGING_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp = unit_staging_path(path, attempt)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            options.mode(UNIT_FILE_MODE);
+        }
+        let mut file = match options.open(&tmp) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => {
+                return Err(RunnerError::Internal(format!(
+                    "create staging unit file {}: {e}",
+                    tmp.display()
+                )));
+            }
+        };
+
+        #[cfg(unix)]
+        {
+            if let Err(e) = file.set_permissions(std::fs::Permissions::from_mode(UNIT_FILE_MODE)) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(RunnerError::Internal(format!(
+                    "set permissions on staging unit file {}: {e}",
+                    tmp.display()
+                )));
+            }
+        }
+        if let Err(e) = file.write_all(content.as_bytes()) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(RunnerError::Internal(format!(
+                "write {}: {e}",
+                tmp.display()
+            )));
+        }
+        #[cfg(not(unix))]
+        drop(file);
+        if let Err(e) = std::fs::rename(&tmp, path) {
+            // Unlike short-lived dirs elsewhere in the crate, unit files live
+            // in /etc/systemd/system/ which no GC path sweeps, and the staged
+            // content contains Environment= secrets.
+            let _ = std::fs::remove_file(&tmp);
+            return Err(RunnerError::Internal(format!(
+                "rename {} -> {}: {e}",
+                tmp.display(),
+                path.display()
+            )));
+        }
+        return Ok(());
     }
-    result
+
+    Err(RunnerError::Internal(format!(
+        "create unique staging unit file for {}: exhausted {UNIT_STAGING_MAX_ATTEMPTS} attempts",
+        path.display()
+    )))
+}
+
+fn remove_unit_file_if_exists(path: &Path) -> RunnerResult<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "remove unit file {}: {e}",
+            path.display()
+        ))),
+    }
 }
 
 /// Check whether a systemd unit is active (running or activating).
@@ -679,6 +942,22 @@ fn decide_gate(status: &RunnerStatusSnapshot) -> GateDecision {
 /// Returns an error on any I/O or parse failure — the caller should log the
 /// reason and fall through to forceful stop (status unknown → cannot protect
 /// jobs).
+async fn read_private_status_json(path: &Path) -> std::io::Result<String> {
+    match crate::private_fs::read_private_file_to_string_with_max(
+        path,
+        crate::private_fs::PRIVATE_STATUS_FILE_READ_MAX_BYTES,
+    )
+    .await
+    {
+        Ok(Some(content)) => Ok(content),
+        Ok(None) => Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("{} not found", path.display()),
+        )),
+        Err(error) => Err(std::io::Error::other(error.to_string())),
+    }
+}
+
 async fn read_runner_status(
     base_dir: &Path,
 ) -> Result<RunnerStatusSnapshot, RunnerStatusReadError> {
@@ -695,7 +974,7 @@ async fn read_runner_status(
     }
     let path = base_dir.join("status.json");
     let content =
-        tokio::fs::read_to_string(&path)
+        read_private_status_json(&path)
             .await
             .map_err(|error| RunnerStatusReadError::Read {
                 path: path.clone(),
@@ -836,8 +1115,11 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     }
 
     let config_path = resolve_config_path(&args.config)?;
-    let exe_path =
-        std::env::current_exe().map_err(|e| RunnerError::Internal(format!("current_exe: {e}")))?;
+    let exe_path = validate_current_exe_path(
+        std::env::current_exe().map_err(|e| RunnerError::Internal(format!("current_exe: {e}")))?,
+    )?;
+    validate_systemd_path("current executable path", &exe_path)?;
+    validate_systemd_path("config path", &config_path)?;
 
     let unit_arg = format!("--unit={unit}");
     let desc_arg = format!("--description=VM0 Runner ({unit})");
@@ -913,14 +1195,21 @@ async fn stop(args: ServiceStopArgs) -> RunnerResult<()> {
 /// `service install` — persistent unit file (production).
 async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
+    let _service_lock = acquire_service_lock(&unit).await?;
+
     validate_env_vars(&args.env)?;
+
     let config_path = resolve_config_path(&args.config)?;
-    let exe_path =
-        std::env::current_exe().map_err(|e| RunnerError::Internal(format!("current_exe: {e}")))?;
+    let exe_path = validate_current_exe_path(
+        std::env::current_exe().map_err(|e| RunnerError::Internal(format!("current_exe: {e}")))?,
+    )?;
+    validate_systemd_path("current executable path", &exe_path)?;
+    validate_systemd_path("config path", &config_path)?;
 
     let unit_content = generate_unit_file(&unit, &exe_path, &config_path, &args.env, args.local);
     let upath = unit_file_path(&unit);
 
+    cleanup_unit_staging_files(&upath)?;
     write_unit_file(&upath, &unit_content)?;
 
     run_systemctl(&["daemon-reload"]).await?;
@@ -931,11 +1220,12 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
     Ok(())
 }
 
-/// Stop + disable + remove the unit file for the given service suffix.
+/// Stop + disable + remove the unit file for the given full service unit name.
 ///
 /// Best-effort: does not fail if the service is already stopped or missing.
-pub(crate) async fn uninstall_service(suffix: &str) -> RunnerResult<()> {
-    let unit = unit_name(suffix)?;
+///
+/// Callers that can race with install/uninstall/GC must hold the service lock.
+pub(crate) async fn uninstall_service_unit(unit: &str) -> RunnerResult<()> {
     let svc = format!("{unit}.service");
 
     // Best-effort stop + disable (may already be stopped/disabled).
@@ -943,10 +1233,11 @@ pub(crate) async fn uninstall_service(suffix: &str) -> RunnerResult<()> {
     let _ = run_systemctl(&["disable", &svc]).await;
 
     // Remove the unit file if it exists.
-    let upath = unit_file_path(&unit);
-    if upath.exists()
-        && let Err(e) = std::fs::remove_file(&upath)
-    {
+    let upath = unit_file_path(unit);
+    if let Err(e) = cleanup_unit_staging_files(&upath) {
+        warn!(unit = %unit, error = %e, "failed to remove stale unit staging files");
+    }
+    if let Err(e) = remove_unit_file_if_exists(&upath) {
         warn!(unit = %unit, error = %e, "failed to remove unit file");
     }
 
@@ -961,12 +1252,11 @@ pub(crate) async fn uninstall_service(suffix: &str) -> RunnerResult<()> {
 /// `service uninstall` — stop + disable + remove unit file.
 ///
 /// Refuses when the runner has active jobs unless `--force` is passed.
-/// The internal [`uninstall_service`] helper (called from GC) is not
-/// guarded — GC already pre-checks `is_unit_active=false`.
 async fn uninstall(args: ServiceUninstallArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
+    let _service_lock = acquire_service_lock(&unit).await?;
     check_active_jobs_gate(&unit, &args.name, args.force, "uninstall").await?;
-    uninstall_service(&args.name).await
+    uninstall_service_unit(&unit).await
 }
 
 /// `service drain` — send SIGUSR1, disable unit, return immediately.
@@ -1495,6 +1785,49 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn validate_current_exe_path_accepts_executable_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vm0-runner");
+        std::fs::write(&path, "binary").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert_eq!(validate_current_exe_path(path.clone()).unwrap(), path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn validate_current_exe_path_rejects_non_executable_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vm0-runner");
+        std::fs::write(&path, "binary").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        assert!(validate_current_exe_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_current_exe_path_rejects_missing_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing-runner");
+
+        assert!(validate_current_exe_path(path).is_err());
+    }
+
+    #[test]
+    fn validate_current_exe_path_rejects_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vm0-runner");
+        std::fs::create_dir(&path).unwrap();
+
+        assert!(validate_current_exe_path(path).is_err());
+    }
+
     #[test]
     fn test_generate_unit_file() {
         let content = generate_unit_file(
@@ -1702,6 +2035,20 @@ mod tests {
     }
 
     #[test]
+    fn validate_systemd_path_rejects_line_breaks() {
+        assert!(validate_systemd_path("config path", Path::new("/tmp/runner config.yaml")).is_ok());
+        assert!(
+            validate_systemd_path("config path", Path::new("/tmp/runner\nconfig.yaml")).is_err()
+        );
+        assert!(
+            validate_systemd_path("config path", Path::new("/tmp/runner\rconfig.yaml")).is_err()
+        );
+        assert!(
+            validate_systemd_path("config path", Path::new("/tmp/runner\0config.yaml")).is_err()
+        );
+    }
+
+    #[test]
     fn write_unit_file_creates_target() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("vm0-runner-test.service");
@@ -1724,22 +2071,165 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "new content");
     }
 
+    #[cfg(unix)]
     #[test]
-    fn write_unit_file_does_not_leave_tmp_on_success() {
-        // The tmp file is consumed by the rename — it must not be left
-        // behind on disk. A residual `.tmp` would not be loaded by
-        // systemd (wrong suffix) but would clutter the unit directory.
+    fn write_unit_file_uses_restrictive_permissions_for_new_unit() {
+        use std::os::unix::fs::PermissionsExt;
+
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("vm0-runner-test.service");
+
         write_unit_file(&path, "content").unwrap();
-        let tmp = path.with_extension("tmp");
-        assert!(!tmp.exists(), "tmp file must be consumed by rename");
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_unit_file_tightens_existing_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vm0-runner-test.service");
+        std::fs::write(&path, "old content").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        write_unit_file(&path, "new content").unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new content");
     }
 
     #[test]
-    fn write_unit_file_cleans_up_tmp_on_rename_failure() {
+    fn write_unit_file_allows_concurrent_writers() {
+        use std::sync::{Arc, Barrier};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = Arc::new(dir.path().join("vm0-runner-test.service"));
+        let writer_count = 16;
+        let barrier = Arc::new(Barrier::new(writer_count));
+        let contents: Vec<String> = (0..writer_count)
+            .map(|idx| format!("content-{idx}-{}", "x".repeat(4096)))
+            .collect();
+
+        let handles: Vec<_> = contents
+            .iter()
+            .cloned()
+            .map(|content| {
+                let path = Arc::clone(&path);
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    write_unit_file(path.as_path(), &content)
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().unwrap().unwrap();
+        }
+
+        let final_content = std::fs::read_to_string(path.as_path()).unwrap();
+        assert!(contents.contains(&final_content));
+        assert_no_unit_staging_files(dir.path(), "vm0-runner-test.service");
+    }
+
+    #[test]
+    fn write_unit_file_does_not_leave_tmp_on_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vm0-runner-test.service");
+        write_unit_file(&path, "content").unwrap();
+        assert_no_unit_staging_files(dir.path(), "vm0-runner-test.service");
+    }
+
+    #[test]
+    fn write_unit_file_ignores_legacy_fixed_tmp_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vm0-runner-test.service");
+        let legacy_tmp = path.with_extension("tmp");
+        std::fs::write(&legacy_tmp, "legacy").unwrap();
+
+        write_unit_file(&path, "content").unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "content");
+        assert_eq!(std::fs::read_to_string(&legacy_tmp).unwrap(), "legacy");
+        assert_no_unit_staging_files(dir.path(), "vm0-runner-test.service");
+    }
+
+    #[test]
+    fn cleanup_unit_staging_files_preserves_legacy_fixed_tmp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vm0-runner-test.service");
+        let legacy_tmp = path.with_extension("tmp");
+        let stale_unique = dir.path().join("vm0-runner-test.service.tmp@123.456.0");
+        let old_legacy_unique = dir.path().join(format!(
+            ".vm0-runner-test.service.tmp.{}",
+            uuid::Uuid::new_v4()
+        ));
+        let recent_legacy_unique = dir.path().join(format!(
+            ".vm0-runner-test.service.tmp.{}",
+            uuid::Uuid::new_v4()
+        ));
+        let invalid_staging = dir.path().join("vm0-runner-test.service.tmp@manual");
+        let other_unit_staging = dir.path().join("vm0-runner-other.service.tmp@123.456.0");
+        let colliding_unit_staging = dir
+            .path()
+            .join("vm0-runner-test.service.tmp.other.service.tmp@123.456.0");
+        let staging_dir = dir.path().join("vm0-runner-test.service.tmp.dir");
+
+        std::fs::write(&path, "current").unwrap();
+        std::fs::write(&legacy_tmp, "legacy").unwrap();
+        std::fs::write(&stale_unique, "stale").unwrap();
+        std::fs::write(&old_legacy_unique, "old legacy unique").unwrap();
+        std::fs::write(&recent_legacy_unique, "recent legacy unique").unwrap();
+        std::fs::write(&invalid_staging, "manual").unwrap();
+        std::fs::write(&other_unit_staging, "other").unwrap();
+        std::fs::write(&colliding_unit_staging, "colliding").unwrap();
+        std::fs::create_dir(&staging_dir).unwrap();
+        let old_legacy_mtime =
+            SystemTime::now() - LEGACY_UNIT_STAGING_MIN_AGE - Duration::from_secs(60);
+        std::fs::File::open(&old_legacy_unique)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(old_legacy_mtime))
+            .unwrap();
+
+        cleanup_unit_staging_files(&path).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "current");
+        assert!(
+            legacy_tmp.exists(),
+            "legacy fixed staging may be in use by an older runner binary"
+        );
+        assert!(!stale_unique.exists(), "unique staging must be removed");
+        assert!(
+            !old_legacy_unique.exists(),
+            "old legacy dot-prefixed unique staging must be removed"
+        );
+        assert!(
+            recent_legacy_unique.exists(),
+            "recent legacy dot-prefixed staging may be in use by an older runner binary"
+        );
+        assert!(
+            invalid_staging.exists(),
+            "invalid staging-like files must not be removed"
+        );
+        assert!(
+            other_unit_staging.exists(),
+            "other unit staging must not be removed"
+        );
+        assert!(
+            colliding_unit_staging.exists(),
+            "dot-prefixed unit names must not collide with this unit staging"
+        );
+        assert!(staging_dir.exists(), "directories must not be removed");
+    }
+
+    #[test]
+    fn write_unit_file_cleans_up_staging_on_rename_failure() {
         // Rename fails when the target path is an existing directory
-        // (EISDIR). Verifies the staged `.tmp` — which may contain
+        // (EISDIR). Verifies the staged content — which may contain
         // Environment= secrets — is removed so it doesn't persist in
         // /etc/systemd/system/.
         let dir = tempfile::tempdir().unwrap();
@@ -1747,8 +2237,55 @@ mod tests {
         std::fs::create_dir(&path).unwrap();
         let result = write_unit_file(&path, "secret=xyz");
         assert!(result.is_err(), "rename onto existing dir must fail");
-        let tmp = path.with_extension("tmp");
-        assert!(!tmp.exists(), "tmp file must be cleaned up on failure");
+        assert_no_unit_staging_files(dir.path(), "target.service");
+    }
+
+    #[test]
+    fn remove_unit_file_if_exists_removes_regular_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("target.service");
+        std::fs::write(&path, "unit").unwrap();
+
+        remove_unit_file_if_exists(&path).unwrap();
+
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn remove_unit_file_if_exists_ignores_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("target.service");
+
+        remove_unit_file_if_exists(&path).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_unit_file_if_exists_removes_broken_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("target.service");
+        std::os::unix::fs::symlink(dir.path().join("missing-target"), &path).unwrap();
+
+        remove_unit_file_if_exists(&path).unwrap();
+
+        assert!(
+            std::fs::symlink_metadata(&path).is_err(),
+            "broken unit symlink should be removed"
+        );
+    }
+
+    fn assert_no_unit_staging_files(dir: &Path, unit_file_name: &str) {
+        let staging_prefix = format!("{unit_file_name}{UNIT_STAGING_MARKER}");
+        let staging_files: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(&staging_prefix))
+            .collect();
+        assert!(
+            staging_files.is_empty(),
+            "staging files must be cleaned up: {staging_files:?}"
+        );
     }
 
     // -----------------------------------------------------------------
@@ -1797,6 +2334,33 @@ mod tests {
             .await
             .unwrap();
         assert!(read_runner_status(dir.path()).await.is_err());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_runner_status_rejects_fifo_without_blocking() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let c_path = CString::new(path.as_os_str().as_bytes()).unwrap();
+        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(
+            result,
+            0,
+            "mkfifo failed: {}",
+            std::io::Error::last_os_error()
+        );
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            read_runner_status(dir.path()),
+        )
+        .await;
+
+        assert!(result.is_ok(), "FIFO read should not block");
+        assert!(result.unwrap().is_err(), "FIFO status should be rejected");
     }
 
     #[tokio::test]

@@ -5,6 +5,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
@@ -220,6 +221,10 @@ const seedSession$ = command(
 
 function zeroRunsClient() {
   return setupApp({ context })(zeroRunsMainContract);
+}
+
+function userPermissionGrantsClient() {
+  return setupApp({ context })(zeroUserPermissionGrantsContract);
 }
 
 const track = createFixtureTracker<UsageInsightFixture>((fixture) => {
@@ -630,9 +635,9 @@ describe("POST /api/zero/runs", () => {
       "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime",
       "`agent-browser` for browser automation and inspection",
       "Local dev servers are useful for agent-side verification",
-      "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]`",
+      "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open; for HTML presentations, include `--artifact-kind presentation-html`",
       "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime",
-      "zero host --help",
+      "for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help`",
       "zero connector status <type>",
       "zero doctor check-connector --help",
       "zero generate -h",
@@ -640,6 +645,7 @@ describe("POST /api/zero/runs", () => {
       "zero credit <credits>",
       "zero doctor permission-deny --help",
       "zero doctor permission-change --help",
+      "--duration 1h|24h|7d|always",
       "zero skill --help",
       "zero developer-support --help",
       "zero maps --help",
@@ -2774,6 +2780,31 @@ describe("POST /api/zero/runs", () => {
       action: "allow",
       expiresAt: new Date("2999-01-01T00:00:00.000Z"),
     });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("applies finite grants created through the user grant API", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+
+    await accept(
+      userPermissionGrantsClient().upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentId: agent.agentId,
+          connectorRef: SLACK_CONNECTOR,
+          permission: SLACK_WRITE_PERMISSION,
+          action: "allow",
+          expiresIn: "1h",
+        },
+      }),
+      [200],
+    );
 
     const policy = await createZeroRunNetworkPolicy(agent.agentId);
 

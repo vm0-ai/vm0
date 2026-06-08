@@ -59,6 +59,24 @@ jobs:
             echo "::warning::Turbo runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
           fi
 
+      - name: Cleanup Stripe CLI listener on all metal hosts
+        if: steps.check.outputs.should-cleanup == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+        run: |
+          cd ansible
+          JOB_REF="pr-${PR_NUMBER}"
+          if ! ansible-playbook \
+            -i "${METAL_HOSTS}," \
+            playbooks/cleanup-stripe-listener.yml \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=${JOB_REF}" \
+            -v; then
+            echo "::warning::Stripe CLI listener cleanup failed for ${JOB_REF} — stale Stripe forwarding may remain on metal hosts"
+          fi
+
       - name: Cleanup crates runner on all metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
         env:
@@ -93,24 +111,6 @@ jobs:
           neon-project-id: ${{ vars.NEON_PROJECT_ID }}
           branch-name: "pr-${{ github.event.pull_request.number }}"
           action: "cleanup"
-
-  cleanup-stripe-webhook:
-    # Delete the per-PR Stripe webhook endpoint created for API preview.
-    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Delete Stripe webhook endpoint
-        env:
-          JOB_REF: pr-${{ github.event.pull_request.number }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-        run: |
-          if [ -z "$STRIPE_SECRET_KEY" ]; then
-            echo "Stripe secret not available, skipping webhook cleanup"
-            exit 0
-          fi
-          bash .github/scripts/stripe-preview-webhook.sh cleanup
 
   cleanup-test-users:
     # Delete Clerk test users created by e2e browser tests for this PR

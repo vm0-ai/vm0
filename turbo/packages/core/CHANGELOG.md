@@ -1,5 +1,34 @@
 # Changelog
 
+## [8.316.0](https://github.com/vm0-ai/vm0/compare/core-v8.315.0...core-v8.316.0) (2026-06-08)
+
+
+### Features
+
+* register chibi-hero styled template resource ([#15423](https://github.com/vm0-ai/vm0/issues/15423)) ([54f9e3a](https://github.com/vm0-ai/vm0/commit/54f9e3a4f86c05c419adb506ebf7e1949f51fecb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.69.0
+
+## [8.315.0](https://github.com/vm0-ai/vm0/compare/core-v8.314.3...core-v8.315.0) (2026-06-08)
+
+
+### Features
+
+* add presentation PPTX download ([#16515](https://github.com/vm0-ai/vm0/issues/16515)) ([983d5cc](https://github.com/vm0-ai/vm0/commit/983d5ccc406a0394a78dd0a7027f64d77f8e55c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.68.1
+    * @vm0/connectors bumped to 1.51.0
+
 ## [8.314.3](https://github.com/vm0-ai/vm0/compare/core-v8.314.2...core-v8.314.3) (2026-06-07)
 
 

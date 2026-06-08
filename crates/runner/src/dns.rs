@@ -15,7 +15,7 @@
 //! Log format: dnsmasq `--log-queries=extra` outputs to stderr, parsed by a background
 //! async task that submits per-VM network JSON rows through `NetworkLogManager`.
 
-use std::process::Stdio;
+use std::{borrow::Cow, process::Stdio};
 
 use chrono::{DateTime, Utc};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt};
@@ -341,19 +341,24 @@ async fn handle_dns_line(network_log_manager: &NetworkLogManager, line: &str) {
 }
 
 /// Parsed DNS log entry.
-struct DnsLogEntry {
-    source_ip: String,
-    domain: String,
-    serial: String,
-    event: DnsEvent,
+struct DnsLogEntry<'a> {
+    source_ip: &'a str,
+    domain: &'a str,
+    serial: &'a str,
+    event: DnsEvent<'a>,
 }
 
-enum DnsEvent {
-    Query { query_type: String },
-    Result { kind: DnsResultKind, result: String },
+enum DnsEvent<'a> {
+    Query {
+        query_type: &'a str,
+    },
+    Result {
+        kind: DnsResultKind,
+        result: Cow<'a, str>,
+    },
 }
 
-impl DnsEvent {
+impl DnsEvent<'_> {
     fn name(&self) -> &'static str {
         match self {
             Self::Query { .. } => "query",
@@ -395,31 +400,41 @@ impl DnsResultKind {
 /// - `dnsmasq[PID]: SERIAL IP/PORT reply DOMAIN is RESULT`
 /// - `dnsmasq[PID]: SERIAL IP/PORT cached DOMAIN is RESULT`
 /// - `dnsmasq[PID]: SERIAL IP/PORT config DOMAIN is RESULT`
-fn parse_dns_line(line: &str) -> Option<DnsLogEntry> {
-    let tokens: Vec<&str> = line.split_whitespace().collect();
-    for (idx, token) in tokens.iter().enumerate().skip(2) {
+fn parse_dns_line(line: &str) -> Option<DnsLogEntry<'_>> {
+    let mut tokens = line.split_whitespace();
+    let mut prev_prev = None;
+    let mut prev = None;
+
+    while let Some(token) = tokens.next() {
         if token.starts_with("query[")
-            && let Some(entry) = parse_extra_query(&tokens, idx)
+            && let Some(entry) = parse_extra_query(prev_prev, prev, token, tokens.clone())
         {
             return Some(entry);
         }
-        if matches!(*token, "reply" | "cached" | "config")
-            && let Some(entry) = parse_extra_result(&tokens, idx)
+        if matches!(token, "reply" | "cached" | "config")
+            && let Some(entry) = parse_extra_result(prev_prev, prev, token, tokens.clone())
         {
             return Some(entry);
         }
+        prev_prev = prev;
+        prev = Some(token);
     }
     None
 }
 
-fn parse_extra_query(tokens: &[&str], idx: usize) -> Option<DnsLogEntry> {
-    let (serial, source_ip) = parse_extra_prefix(tokens, idx)?;
-    let query_type = parse_query_type(tokens.get(idx)?)?;
-    let domain = tokens.get(idx + 1)?.to_string();
-    if tokens.get(idx + 2)? != &"from" {
+fn parse_extra_query<'a>(
+    serial: Option<&'a str>,
+    requestor: Option<&'a str>,
+    token: &'a str,
+    mut tokens: std::str::SplitWhitespace<'a>,
+) -> Option<DnsLogEntry<'a>> {
+    let (serial, source_ip) = parse_extra_prefix(serial, requestor)?;
+    let query_type = parse_query_type(token)?;
+    let domain = tokens.next()?;
+    if tokens.next()? != "from" {
         return None;
     }
-    extract_ipv4_requestor(tokens.get(idx + 3)?)?;
+    extract_ipv4_requestor(tokens.next()?)?;
     Some(DnsLogEntry {
         source_ip,
         domain,
@@ -428,17 +443,29 @@ fn parse_extra_query(tokens: &[&str], idx: usize) -> Option<DnsLogEntry> {
     })
 }
 
-fn parse_extra_result(tokens: &[&str], idx: usize) -> Option<DnsLogEntry> {
-    let (serial, source_ip) = parse_extra_prefix(tokens, idx)?;
-    let kind = DnsResultKind::parse(tokens.get(idx)?)?;
-    let domain = tokens.get(idx + 1)?.to_string();
-    if tokens.get(idx + 2)? != &"is" {
+fn parse_extra_result<'a>(
+    serial: Option<&'a str>,
+    requestor: Option<&'a str>,
+    token: &'a str,
+    mut tokens: std::str::SplitWhitespace<'a>,
+) -> Option<DnsLogEntry<'a>> {
+    let (serial, source_ip) = parse_extra_prefix(serial, requestor)?;
+    let kind = DnsResultKind::parse(token)?;
+    let domain = tokens.next()?;
+    if tokens.next()? != "is" {
         return None;
     }
-    let result = tokens.get(idx + 3..)?.join(" ");
-    if result.is_empty() {
-        return None;
-    }
+    let first_result = tokens.next()?;
+    let result = if tokens.clone().next().is_none() {
+        Cow::Borrowed(first_result)
+    } else {
+        let mut result = first_result.to_string();
+        for token in tokens {
+            result.push(' ');
+            result.push_str(token);
+        }
+        Cow::Owned(result)
+    };
     Some(DnsLogEntry {
         source_ip,
         domain,
@@ -447,30 +474,32 @@ fn parse_extra_result(tokens: &[&str], idx: usize) -> Option<DnsLogEntry> {
     })
 }
 
-fn parse_extra_prefix(tokens: &[&str], idx: usize) -> Option<(String, String)> {
-    let serial = tokens.get(idx.checked_sub(2)?)?;
+fn parse_extra_prefix<'a>(
+    serial: Option<&'a str>,
+    requestor: Option<&'a str>,
+) -> Option<(&'a str, &'a str)> {
+    let serial = serial?;
     if serial.is_empty() || !serial.chars().all(|c| c.is_ascii_digit()) {
         return None;
     }
-    let requestor = tokens.get(idx - 1)?;
-    let source_ip = extract_ipv4_requestor(requestor)?;
-    Some((serial.to_string(), source_ip))
+    let source_ip = extract_ipv4_requestor(requestor?)?;
+    Some((serial, source_ip))
 }
 
-fn parse_query_type(token: &str) -> Option<String> {
+fn parse_query_type(token: &str) -> Option<&str> {
     let start = token.find('[')? + 1;
     let end = token[start..].find(']')? + start;
     let query_type = &token[start..end];
     if query_type.is_empty() {
         return None;
     }
-    Some(query_type.to_string())
+    Some(query_type)
 }
 
-fn extract_ipv4_requestor(token: &str) -> Option<String> {
+fn extract_ipv4_requestor(token: &str) -> Option<&str> {
     let ip = token.split(['/', '#']).next()?;
     if ip.parse::<std::net::Ipv4Addr>().is_ok() {
-        Some(ip.to_string())
+        Some(ip)
     } else {
         None
     }
@@ -478,15 +507,15 @@ fn extract_ipv4_requestor(token: &str) -> Option<String> {
 
 async fn append_dns_entry(
     network_log_manager: &NetworkLogManager,
-    entry: &DnsLogEntry,
+    entry: &DnsLogEntry<'_>,
     timestamp: DateTime<Utc>,
 ) -> bool {
     network_log_manager
-        .append_for_ip(&entry.source_ip, network_log_row(entry, timestamp))
+        .append_for_ip(entry.source_ip, network_log_row(entry, timestamp))
         .await
 }
 
-fn network_log_row(entry: &DnsLogEntry, timestamp: DateTime<Utc>) -> serde_json::Value {
+fn network_log_row(entry: &DnsLogEntry<'_>, timestamp: DateTime<Utc>) -> serde_json::Value {
     // [NETWORK_LOG_FIELDS] — shared schema consumed by api-contracts.
     let mut json = serde_json::json!({
         "timestamp": timestamp.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
@@ -503,19 +532,19 @@ fn network_log_row(entry: &DnsLogEntry, timestamp: DateTime<Utc>) -> serde_json:
             DnsEvent::Query { query_type } => {
                 object.insert(
                     "dns_query_type".to_string(),
-                    serde_json::Value::String(query_type.clone()),
+                    serde_json::Value::String((*query_type).to_string()),
                 );
             }
             DnsEvent::Result { result, .. } => {
                 object.insert(
                     "dns_result".to_string(),
-                    serde_json::Value::String(result.clone()),
+                    serde_json::Value::String(result.to_string()),
                 );
             }
         }
         object.insert(
             "dns_serial".to_string(),
-            serde_json::Value::String(entry.serial.clone()),
+            serde_json::Value::String(entry.serial.to_string()),
         );
     }
 
@@ -529,18 +558,18 @@ mod tests {
     use crate::network_log_drain::NetworkLogDrainContext;
     use tokio::io::AsyncWriteExt;
 
-    fn assert_query_event(entry: &DnsLogEntry, expected_query_type: &str) {
+    fn assert_query_event(entry: &DnsLogEntry<'_>, expected_query_type: &str) {
         assert_eq!(entry.event.name(), "query");
         match &entry.event {
-            DnsEvent::Query { query_type } => assert_eq!(query_type, expected_query_type),
+            DnsEvent::Query { query_type } => assert_eq!(*query_type, expected_query_type),
             DnsEvent::Result { .. } => panic!("expected query event"),
         }
     }
 
-    fn assert_result_event(entry: &DnsLogEntry, expected_kind: &str, expected_result: &str) {
+    fn assert_result_event(entry: &DnsLogEntry<'_>, expected_kind: &str, expected_result: &str) {
         assert_eq!(entry.event.name(), expected_kind);
         match &entry.event {
-            DnsEvent::Result { result, .. } => assert_eq!(result, expected_result),
+            DnsEvent::Result { result, .. } => assert_eq!(result.as_ref(), expected_result),
             DnsEvent::Query { .. } => panic!("expected result event"),
         }
     }
@@ -581,6 +610,26 @@ mod tests {
         assert_eq!(entry.source_ip, "10.200.0.9");
         assert_eq!(entry.domain, "google.com");
         assert_query_event(&entry, "AAAA");
+        assert_eq!(entry.serial, "314");
+    }
+
+    #[test]
+    fn parse_dns_line_continues_after_failed_lookahead_candidate() {
+        let line = "dnsmasq[1234]: 1 10.200.0.2/54321 reply 314 10.200.0.9/41234 query[AAAA] google.com from 10.200.0.9";
+        let entry = parse_dns_line(line).unwrap();
+        assert_eq!(entry.source_ip, "10.200.0.9");
+        assert_eq!(entry.domain, "google.com");
+        assert_query_event(&entry, "AAAA");
+        assert_eq!(entry.serial, "314");
+    }
+
+    #[test]
+    fn parse_dns_line_continues_after_failed_query_lookahead_candidate() {
+        let line = "dnsmasq[1234]: 1 10.200.0.2/54321 query[A] 314 10.200.0.9/41234 reply api.github.com is 140.82.121.4";
+        let entry = parse_dns_line(line).unwrap();
+        assert_eq!(entry.source_ip, "10.200.0.9");
+        assert_eq!(entry.domain, "api.github.com");
+        assert_result_event(&entry, "reply", "140.82.121.4");
         assert_eq!(entry.serial, "314");
     }
 
@@ -684,12 +733,10 @@ mod tests {
         // Locks the contract that row construction must use the provided
         // timestamp rather than calling `Utc::now()` internally.
         let entry = DnsLogEntry {
-            source_ip: "10.200.0.2".to_string(),
-            domain: "example.com".to_string(),
-            serial: "42".to_string(),
-            event: DnsEvent::Query {
-                query_type: "A".to_string(),
-            },
+            source_ip: "10.200.0.2",
+            domain: "example.com",
+            serial: "42",
+            event: DnsEvent::Query { query_type: "A" },
         };
         let ts = DateTime::parse_from_rfc3339("2024-01-15T10:30:45.123Z")
             .unwrap()
@@ -701,12 +748,10 @@ mod tests {
     #[test]
     fn network_log_row_serializes_query_fields() {
         let entry = DnsLogEntry {
-            source_ip: "10.200.0.2".to_string(),
-            domain: "example.com".to_string(),
-            serial: "42".to_string(),
-            event: DnsEvent::Query {
-                query_type: "AAAA".to_string(),
-            },
+            source_ip: "10.200.0.2",
+            domain: "example.com",
+            serial: "42",
+            event: DnsEvent::Query { query_type: "AAAA" },
         };
 
         let parsed = network_log_row(&entry, Utc::now());
@@ -727,12 +772,12 @@ mod tests {
         let manager = NetworkLogManager::new();
         let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
         let entry = DnsLogEntry {
-            source_ip: "10.200.0.2".to_string(),
-            domain: "api.github.com".to_string(),
-            serial: "42".to_string(),
+            source_ip: "10.200.0.2",
+            domain: "api.github.com",
+            serial: "42",
             event: DnsEvent::Result {
                 kind: DnsResultKind::Reply,
-                result: "140.82.121.4".to_string(),
+                result: Cow::Borrowed("140.82.121.4"),
             },
         };
         assert!(append_dns_entry(&manager, &entry, Utc::now()).await);
@@ -760,12 +805,12 @@ mod tests {
                 append_dns_entry(
                     &manager,
                     &DnsLogEntry {
-                        source_ip: "10.0.0.1".to_string(),
-                        domain: domain.to_string(),
-                        serial: "42".to_string(),
+                        source_ip: "10.0.0.1",
+                        domain,
+                        serial: "42",
                         event: DnsEvent::Result {
                             kind: DnsResultKind::Reply,
-                            result: "1.2.3.4".to_string(),
+                            result: Cow::Borrowed("1.2.3.4"),
                         },
                     },
                     Utc::now(),
@@ -805,12 +850,12 @@ mod tests {
                 append_dns_entry(
                     &manager,
                     &DnsLogEntry {
-                        source_ip: "10.0.0.1".to_string(),
-                        domain: "api.github.com".to_string(),
-                        serial: "42".to_string(),
+                        source_ip: "10.0.0.1",
+                        domain: "api.github.com",
+                        serial: "42",
                         event: DnsEvent::Result {
                             kind: DnsResultKind::Reply,
-                            result: result.to_string(),
+                            result: Cow::Borrowed(result),
                         },
                     },
                     Utc::now(),
@@ -845,12 +890,10 @@ mod tests {
             !append_dns_entry(
                 &manager,
                 &DnsLogEntry {
-                    source_ip: "10.0.0.1".to_string(),
-                    domain: "ignored.test".to_string(),
-                    serial: "42".to_string(),
-                    event: DnsEvent::Query {
-                        query_type: "A".to_string(),
-                    },
+                    source_ip: "10.0.0.1",
+                    domain: "ignored.test",
+                    serial: "42",
+                    event: DnsEvent::Query { query_type: "A" },
                 },
                 Utc::now(),
             )

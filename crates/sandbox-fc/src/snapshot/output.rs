@@ -1,6 +1,8 @@
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use tokio::runtime::{Handle, RuntimeFlavor};
+
 use crate::paths::SnapshotOutputPaths;
 
 use super::SnapshotError;
@@ -40,6 +42,17 @@ fn require_snapshot_artifact_regular_file_sync(path: &Path) -> io::Result<()> {
         return Err(non_file_snapshot_artifact_error(path));
     }
     Ok(())
+}
+
+pub(super) fn run_snapshot_blocking_fs<T>(f: impl FnOnce() -> T) -> T {
+    match Handle::try_current() {
+        Ok(handle) => match handle.runtime_flavor() {
+            RuntimeFlavor::MultiThread => tokio::task::block_in_place(f),
+            RuntimeFlavor::CurrentThread => f(),
+            _ => f(),
+        },
+        Err(_) => f(),
+    }
 }
 
 pub(super) async fn snapshot_artifacts_are_regular_files(
@@ -125,6 +138,10 @@ pub(super) async fn prepare_snapshot_output(
     // Use synchronous filesystem calls for shared snapshot-hash paths while the
     // caller holds the snapshot lock. A cancelled Tokio fs operation can keep
     // running on the blocking pool after the lock is dropped.
+    run_snapshot_blocking_fs(|| prepare_snapshot_output_sync(output))
+}
+
+fn prepare_snapshot_output_sync(output: &SnapshotOutputPaths) -> Result<PathBuf, SnapshotError> {
     let work = output.work_dir();
     remove_file_if_exists_sync(&output.complete_marker())?;
     remove_dir_all_if_exists_sync(&work)?;
@@ -192,6 +209,27 @@ mod tests {
     use crate::paths::SnapshotOutputPaths;
 
     use super::*;
+
+    #[test]
+    fn snapshot_blocking_fs_runs_without_tokio_runtime() {
+        assert_eq!(run_snapshot_blocking_fs(|| "done"), "done");
+    }
+
+    #[test]
+    #[should_panic(expected = "snapshot blocking fs panic")]
+    fn snapshot_blocking_fs_propagates_panic() {
+        run_snapshot_blocking_fs(|| panic!("snapshot blocking fs panic"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn snapshot_blocking_fs_current_thread_runtime_runs() {
+        assert_eq!(run_snapshot_blocking_fs(|| "done"), "done");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn snapshot_blocking_fs_multi_thread_runtime_runs() {
+        assert_eq!(run_snapshot_blocking_fs(|| "done"), "done");
+    }
 
     async fn write_required_snapshot_artifacts(output: &SnapshotOutputPaths) {
         tokio::fs::create_dir_all(output.dir())

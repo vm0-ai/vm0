@@ -189,17 +189,13 @@ async fn load_with_home(
 /// Generate a runner.yaml config file from a `RunnerConfig`.
 pub async fn generate(config: &RunnerConfig) -> RunnerResult<()> {
     let runner_dir = &config.base_dir;
-    tokio::fs::create_dir_all(runner_dir)
-        .await
-        .map_err(|e| RunnerError::Config(format!("create {}: {e}", runner_dir.display())))?;
+    crate::private_fs::ensure_private_dir(runner_dir).await?;
 
     let content = serde_yaml_ng::to_string(config)
         .map_err(|e| RunnerError::Config(format!("serialize config: {e}")))?;
 
     let config_path = runner_dir.join("runner.yaml");
-    tokio::fs::write(&config_path, content)
-        .await
-        .map_err(|e| RunnerError::Config(format!("write {}: {e}", config_path.display())))?;
+    crate::private_fs::write_private_file(&config_path, content.as_bytes()).await?;
     Ok(())
 }
 

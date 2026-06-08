@@ -1,5 +1,6 @@
 use tracing::{info, warn};
 
+use crate::cow_cleanup::CowCleanupOutcome;
 use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
 use crate::leaked_resources::LeakedResources;
 use crate::network::NetnsPoolHandle;
@@ -176,10 +177,10 @@ async fn cleanup_leaked_resource(leaked: LeakedResources, netns_pool: &NetnsPool
         "cleaning up leaked sandbox resources"
     );
 
-    let mut cow_destroyed = true;
-    if let Some(cow_device) = leaked.cow_device {
-        cow_destroyed = destroy_cow_device_with_retries(&leaked.sandbox_id, cow_device).await;
-    }
+    let cow_cleanup_outcome = match leaked.cow_device {
+        Some(cow_device) => destroy_cow_device_with_retries(&leaked.sandbox_id, cow_device).await,
+        None => CowCleanupOutcome::BackingFilesSafeToDelete,
+    };
 
     if let Some(network) = leaked.network {
         let mut network = Some(network);
@@ -191,7 +192,7 @@ async fn cleanup_leaked_resource(leaked: LeakedResources, netns_pool: &NetnsPool
     if let Err(e) = tokio::fs::remove_dir_all(&leaked.sock_dir).await {
         warn!(id = %leaked.sandbox_id, error = %e, "failed to delete leaked sock dir");
     }
-    if cow_destroyed
+    if cow_cleanup_outcome.backing_files_safe_to_delete()
         && leaked.delete_workspace
         && let Err(e) = tokio::fs::remove_dir_all(&leaked.workspace).await
     {
@@ -211,7 +212,7 @@ mod tests {
         },
     };
 
-    use crate::factory::cow_cleanup::cow_destroy_retry_policy;
+    use crate::cow_cleanup::cow_destroy_retry_policy;
     use crate::network::NetnsPool;
 
     fn test_leaked_resource(sandbox_id: &str) -> LeakedResources {
