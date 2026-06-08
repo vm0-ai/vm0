@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { findMatchingPermissions } from "../../firewall-rule-matcher";
 import { extractSecretNamesFromApis } from "../../firewall-types";
 import {
   getConnectorFirewall,
@@ -27,6 +28,19 @@ function getStripePermission(name: string) {
 function expectStripeRule(permissionName: string, rule: string): void {
   const permission = getStripePermission(permissionName);
   expect(permission.rules).toContain(rule);
+}
+
+function expectStripeMatches(
+  method: string,
+  path: string,
+  permissionNames: readonly string[],
+): void {
+  const matches = findMatchingPermissions(
+    method,
+    path,
+    getConnectorFirewall("stripe"),
+  );
+  expect([...matches].sort()).toStrictEqual([...permissionNames].sort());
 }
 
 describe("stripe firewall", () => {
@@ -154,6 +168,56 @@ describe("stripe firewall", () => {
     );
   });
 
+  it("maps legacy ambiguous Stripe unions into multiple resource permissions", () => {
+    expectStripeRule(
+      "external_account_write",
+      "POST /v1/accounts/{account}/external_accounts",
+    );
+    expectStripeRule(
+      "card_write",
+      "POST /v1/accounts/{account}/external_accounts",
+    );
+    expectStripeRule(
+      "bank_account_write",
+      "POST /v1/accounts/{account}/external_accounts",
+    );
+    expectStripeMatches("POST", "/v1/accounts/acct_123/external_accounts", [
+      "bank_account_write",
+      "card_write",
+      "external_account_write",
+    ]);
+
+    expectStripeRule("source_write", "POST /v1/customers/{customer}/cards");
+    expectStripeRule("card_write", "POST /v1/customers/{customer}/cards");
+    expectStripeRule(
+      "payment_source_write",
+      "POST /v1/customers/{customer}/cards",
+    );
+    expectStripeMatches("POST", "/v1/customers/cus_123/cards", [
+      "account_write",
+      "bank_account_write",
+      "card_write",
+      "payment_source_write",
+      "source_write",
+    ]);
+
+    expectStripeRule(
+      "source_read",
+      "GET /v1/customers/{customer}/sources/{id}",
+    );
+    expectStripeRule(
+      "connected_account_read",
+      "GET /v1/customers/{customer}/sources/{id}",
+    );
+    expectStripeMatches("GET", "/v1/customers/cus_123/sources/src_123", [
+      "bank_account_read",
+      "card_read",
+      "connected_account_read",
+      "payment_source_read",
+      "source_read",
+    ]);
+  });
+
   it("uses official Stripe API v2 docs for resource permissions without OpenAPI resource IDs", () => {
     expectStripeRule("v2_core_account_read", "GET /v2/core/accounts/{id}");
     expectStripeRule("v2_core_account_write", "POST /v2/core/accounts/{id}");
@@ -179,7 +243,7 @@ describe("stripe firewall", () => {
     );
   });
 
-  it("reports generated mapping coverage without hiding unmapped operations", () => {
+  it("reports generated mapping coverage with legacy ambiguous overrides", () => {
     const firewall = getConnectorFirewall("stripe");
     const permissionCount = firewall.apis.reduce((count, api) => {
       return count + (api.permissions?.length ?? 0);
@@ -191,7 +255,9 @@ describe("stripe firewall", () => {
     expect(
       stripeGenerationStats.openApiResourceMappedOperations,
     ).toBeGreaterThan(0);
-    expect(stripeGenerationStats.unmappedOperations).toBeGreaterThan(0);
+    expect(stripeGenerationStats.legacyAmbiguousMappedOperations).toBe(16);
+    expect(stripeGenerationStats.unmappedOperations).toBe(0);
+    expect(stripeGenerationStats.ambiguousOperations).toBe(0);
     expect(stripeGenerationStats.permissionCount).toBe(permissionCount);
   });
 
