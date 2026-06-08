@@ -106,6 +106,7 @@ interface ActiveSitePointer {
 
 type HostedSiteRow = typeof hostedSites.$inferSelect;
 type HostedDeploymentRow = typeof hostedDeployments.$inferSelect;
+type HostedSiteFile = HostedSitePrepareRequest["files"][number];
 
 type SiteDeploymentCreationResult =
   | {
@@ -124,6 +125,19 @@ interface CreateHostedSiteDeploymentContext {
   readonly publicSlug: string;
   readonly url: string;
   readonly allowExistingPublicSlug: boolean;
+}
+
+interface PresentationRedeployFiles {
+  readonly indexFile: HostedSiteFile;
+  readonly files: readonly HostedSiteFile[];
+}
+
+interface CreatePresentationRedeploymentInput {
+  readonly args: RedeployPresentationHtmlArgs;
+  readonly site: HostedSiteRow;
+  readonly activeDeployment: HostedDeploymentRow;
+  readonly publicSlug: string;
+  readonly files: readonly HostedSiteFile[];
 }
 
 interface HostedR2Config {
@@ -240,7 +254,7 @@ function hostedSiteFileForContent(
   path: string,
   content: string,
   contentType: string,
-): HostedSitePrepareRequest["files"][number] {
+): HostedSiteFile {
   const bytes = Buffer.from(content, "utf8");
   return {
     path,
@@ -308,9 +322,7 @@ async function findPresentationRedeployTarget(
   return { status: "ok", activeDeployment, site };
 }
 
-function validateFiles(
-  files: readonly HostedSitePrepareRequest["files"][number][],
-): string | null {
+function validateFiles(files: readonly HostedSiteFile[]): string | null {
   const seen = new Set<string>();
   let totalSize = 0;
   for (const file of files) {
@@ -341,7 +353,7 @@ function buildManifest(args: {
   readonly publicSlug: string;
   readonly artifactKind: HostedArtifactKind;
   readonly spaFallback: boolean;
-  readonly files: readonly HostedSitePrepareRequest["files"][number][];
+  readonly files: readonly HostedSiteFile[];
   readonly createdAt: Date;
 }): HostedSiteManifest {
   const manifestFiles: Record<string, HostedSiteManifestFile> = {};
@@ -470,6 +482,52 @@ function createHostedSiteDeployment(
 
     return { kind: "ok", site, deployment };
   });
+}
+
+function buildPresentationRedeployFiles(
+  activeDeployment: HostedDeploymentRow,
+  html: string,
+): PresentationRedeployFiles {
+  const indexFile = hostedSiteFileForContent(
+    "/index.html",
+    html,
+    "text/html; charset=utf-8",
+  );
+  return {
+    indexFile,
+    files: [
+      indexFile,
+      ...Object.values(activeDeployment.manifest.files).filter((file) => {
+        return file.path !== indexFile.path;
+      }),
+    ],
+  };
+}
+
+function createPresentationRedeployment(
+  writeDb: Db,
+  input: CreatePresentationRedeploymentInput,
+): Promise<SiteDeploymentCreationResult> {
+  const now = nowDate();
+  return createHostedSiteDeployment(
+    writeDb,
+    {
+      orgId: input.args.orgId,
+      userId: input.args.userId,
+      body: {
+        site: input.site.slug,
+        artifactKind: "presentation-html",
+        spaFallback: input.activeDeployment.spaFallback,
+        files: [...input.files],
+      },
+    },
+    {
+      now,
+      publicSlug: input.publicSlug,
+      url: publicUrl(input.publicSlug),
+      allowExistingPublicSlug: true,
+    },
+  );
 }
 
 export const prepareHostedSiteDeployment$ = command(
@@ -738,42 +796,22 @@ export const redeployPresentationHtml$ = command(
     }
     const { activeDeployment, site } = target;
 
-    const indexFile = hostedSiteFileForContent(
-      "/index.html",
+    const { files, indexFile } = buildPresentationRedeployFiles(
+      activeDeployment,
       args.body.html,
-      "text/html; charset=utf-8",
     );
-    const files = [
-      indexFile,
-      ...Object.values(activeDeployment.manifest.files).filter((file) => {
-        return file.path !== indexFile.path;
-      }),
-    ];
     const fileError = validateFiles(files);
     if (fileError) {
       return { status: "bad_request", message: fileError };
     }
 
-    const now = nowDate();
-    const result = await createHostedSiteDeployment(
-      writeDb,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        body: {
-          site: site.slug,
-          artifactKind: "presentation-html",
-          spaFallback: activeDeployment.spaFallback,
-          files,
-        },
-      },
-      {
-        now,
-        publicSlug,
-        url: publicUrl(publicSlug),
-        allowExistingPublicSlug: true,
-      },
-    );
+    const result = await createPresentationRedeployment(writeDb, {
+      args,
+      site,
+      activeDeployment,
+      publicSlug,
+      files,
+    });
     signal.throwIfAborted();
 
     if (result.kind === "slug_conflict") {
