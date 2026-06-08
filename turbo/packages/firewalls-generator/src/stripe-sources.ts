@@ -51,14 +51,6 @@ export const STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES = [
     requiredSnippets: ['"object": "v2.core.account_person_token"'],
   },
   {
-    url: "https://docs.stripe.com/api/v2/core/account-links/object.md",
-    product: "Core",
-    resource: "Account Links v2",
-    permissions: ["v2_core_account_link_write"],
-    apiDocUrls: ["https://docs.stripe.com/api/v2/core/account-links.md"],
-    requiredSnippets: ['"object": "v2.core.account_link"'],
-  },
-  {
     url: "https://docs.stripe.com/api/v2/core/account-tokens/object.md",
     product: "Core",
     resource: "Account Tokens v2",
@@ -67,52 +59,12 @@ export const STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES = [
     requiredSnippets: ['"object": "v2.core.account_token"'],
   },
   {
-    url: "https://docs.stripe.com/api/v2/core/events/object.md",
-    product: "Core",
-    resource: "Events v2",
-    permissions: ["v2_core_event_read"],
-    apiDocUrls: ["https://docs.stripe.com/api/v2/core/events.md"],
-    requiredSnippets: ['"object": "v2.core.event"'],
-  },
-  {
     url: "https://docs.stripe.com/api/v2/core/event-destinations/object.md",
-    product: "Core",
-    resource: "Event Destinations v2",
-    permissions: [
-      "v2_core_event_destination_read",
-      "v2_core_event_destination_write",
-    ],
-    apiDocUrls: ["https://docs.stripe.com/api/v2/core/event-destinations.md"],
-    requiredSnippets: ['"object": "v2.core.event_destination"'],
-  },
-  {
-    url: "https://docs.stripe.com/api/v2/core/event-destinations/object.md",
-    product: "Core",
-    resource: "Event Destinations v2",
-    permissions: ["v2_core_event_destination_write"],
+    product: "Webhook Endpoints",
+    resource: "Webhook Endpoints, Event Destinations",
+    permissions: ["webhook_write"],
     apiDocUrls: ["https://docs.stripe.com/api/v2/core/events.md"],
     requiredSnippets: ['"object": "v2.core.event_destination"'],
-  },
-  {
-    url: "https://docs.stripe.com/api/v2/billing/meter-events/object.md",
-    product: "Billing",
-    resource: "Meter Events v2",
-    permissions: ["v2_billing_meter_event_write"],
-    apiDocUrls: ["https://docs.stripe.com/api/v2/meter-events.md"],
-    requiredSnippets: ['"object": "v2.billing.meter_event"'],
-  },
-  {
-    url: "https://docs.stripe.com/api/v2/billing/meter-event-sessions/create-async.md",
-    product: "Billing",
-    resource: "Meter Events v2",
-    permissions: ["v2_billing_meter_event_write"],
-    apiDocUrls: [
-      "https://docs.stripe.com/api/v2/billing/meter-event-sessions/create-async.md",
-    ],
-    requiredSnippets: [
-      "Creates meter events",
-      "/v2/billing/meter_event_stream",
-    ],
   },
   {
     url: "https://docs.stripe.com/api/v2/billing/meter-event-adjustments/object.md",
@@ -134,19 +86,6 @@ export const STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES = [
     ],
     requiredSnippets: ['"object": "v2.billing.meter_event_session"'],
   },
-  {
-    url: "https://docs.stripe.com/api/v2/commerce/product-catalog-imports/object.md",
-    product: "Commerce",
-    resource: "Product Catalog Imports v2",
-    permissions: [
-      "v2_commerce_product_catalog_import_read",
-      "v2_commerce_product_catalog_import_write",
-    ],
-    apiDocUrls: [
-      "https://docs.stripe.com/api/v2/commerce/product-catalog-imports.md",
-    ],
-    requiredSnippets: ['"object": "v2.commerce.product_catalog_import"'],
-  },
 ] as const;
 
 const STRIPE_SKIPPED_API_DOC_ENDPOINT_URLS = new Set([
@@ -164,6 +103,19 @@ const STRIPE_ADDITIONAL_API_DOC_ENDPOINT_URLS_BY_RESOURCE = new Map<
   string,
   string[]
 >([
+  ["Account Links", ["https://docs.stripe.com/api/v2/core/account-links.md"]],
+  [
+    "Billing Meter Events",
+    [
+      "https://docs.stripe.com/api/v2/meter-events.md",
+      "https://docs.stripe.com/api/v2/billing/meter-event-sessions/create-async.md",
+    ],
+  ],
+  ["Events", ["https://docs.stripe.com/api/v2/core/events.md"]],
+  [
+    "Product Catalog Imports",
+    ["https://docs.stripe.com/api/v2/commerce/product-catalog-imports.md"],
+  ],
   [
     "Sources",
     [
@@ -173,6 +125,10 @@ const STRIPE_ADDITIONAL_API_DOC_ENDPOINT_URLS_BY_RESOURCE = new Map<
       "https://docs.stripe.com/api/cards.md",
       "https://docs.stripe.com/api/customer_bank_accounts.md",
     ],
+  ],
+  [
+    "Webhook Endpoints, Event Destinations",
+    ["https://docs.stripe.com/api/v2/core/event-destinations.md"],
   ],
 ]);
 

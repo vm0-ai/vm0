@@ -230,15 +230,15 @@ describe("stripe firewall", () => {
       "POST /v2/core/accounts/{account_id}/person_tokens",
     );
     expectStripeRule(
-      "v2_core_event_destination_write",
+      "webhook_write",
       "POST /v2/core/event_destinations/{id}/ping",
     );
     expectStripeRule(
-      "v2_billing_meter_event_write",
+      "billing_meter_event_write",
       "POST /v2/billing/meter_event_stream",
     );
     expectStripeRule(
-      "v2_commerce_product_catalog_import_read",
+      "product_catalog_import_read",
       "GET /v2/commerce/product_catalog/imports/{id}",
     );
   });
