@@ -46,9 +46,18 @@ globalThis.IDBTransaction = IDBTransaction;
 globalThis.IDBVersionChangeEvent = IDBVersionChangeEvent;
 
 // vitest.config.ts sets disableIframePageLoading: true so happy-dom does not
-// make real TCP connections when an iframe src is set. The resulting
-// NotSupportedError is dispatched as a window error event and suppressed by
-// the console.error spy below (happy-dom converts it via console.error).
+// make real TCP connections when an iframe src is set to an external URL.
+// happy-dom dispatches the resulting NotSupportedError as a window error event
+// (not console.error), which vitest would re-emit as process.uncaughtException
+// and fail the test run. This listener suppresses that specific error.
+window.addEventListener("error", (event) => {
+  if (
+    event.error instanceof DOMException &&
+    event.error.message.includes("Iframe page loading is disabled")
+  ) {
+    event.preventDefault();
+  }
+});
 
 beforeAll(() => {
   // Disable CSS animations/transitions so Radix UI dialog open/close
