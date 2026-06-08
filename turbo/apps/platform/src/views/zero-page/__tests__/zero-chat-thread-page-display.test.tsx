@@ -38,15 +38,8 @@ import {
   setMockSchedules,
 } from "../../../mocks/handlers/api-schedules.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
-import { downloadPresentationHtmlPptx } from "../presentation-html-pptx-download.ts";
 
 const context = testContext();
-
-vi.mock("../presentation-html-pptx-download.ts", () => {
-  return {
-    downloadPresentationHtmlPptx: vi.fn().mockResolvedValue(undefined),
-  };
-});
 
 function queryRoleByText(
   role: Parameters<typeof queryAllByRoleFast>[0],
@@ -99,7 +92,6 @@ function createMockAuthWindow() {
 }
 
 beforeEach(() => {
-  vi.mocked(downloadPresentationHtmlPptx).mockClear();
   vi.stubEnv("VITE_API_URL", "https://www.vm0.ai");
   vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
   server.use(
@@ -2263,6 +2255,7 @@ describe("zero chat thread page display - artifact sidebar", () => {
   it("downloads presentation HTML artifacts as PPTX when the feature switch is enabled", async () => {
     const user = userEvent.setup();
     const fileUrl = "https://demo-deck.sites.vm0.io";
+    let presentationHtmlRequested = false;
     mockChatLifecycle({
       chatMessages: [
         {
@@ -2295,6 +2288,20 @@ describe("zero chat thread page display - artifact sidebar", () => {
           ],
         });
       }),
+      http.get(fileUrl, () => {
+        presentationHtmlRequested = true;
+        return HttpResponse.html(`
+          <!doctype html>
+          <html>
+            <head><title>Demo deck</title></head>
+            <body>
+              <section data-vm0-slide>
+                <h1>Demo deck</h1>
+              </section>
+            </body>
+          </html>
+        `);
+      }),
     );
 
     detachedSetupPage({
@@ -2312,12 +2319,31 @@ describe("zero chat thread page display - artifact sidebar", () => {
     await user.click(await screen.findByLabelText("Download artifact"));
     await user.click(await screen.findByText("Download (.pptx)"));
 
+    const exportFrame = await screen.findByTitle("Presentation PPTX export");
+    expect(presentationHtmlRequested).toBe(true);
+    expect(exportFrame).toHaveAttribute(
+      "sandbox",
+      "allow-scripts allow-downloads",
+    );
+    expect(exportFrame).toHaveAttribute(
+      "srcdoc",
+      expect.stringContaining("window.domToPptx.exportToPptx"),
+    );
+
+    const exportWindow = (exportFrame as HTMLIFrameElement).contentWindow;
+    expect(exportWindow).not.toBeNull();
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: exportWindow,
+        data: {
+          type: "vm0-presentation-pptx-export",
+          status: "success",
+        },
+      }),
+    );
+
     await waitFor(() => {
-      expect(downloadPresentationHtmlPptx).toHaveBeenCalledWith({
-        filename: "demo-deck.html",
-        signal: expect.any(AbortSignal),
-        url: fileUrl,
-      });
+      expect(exportFrame).not.toBeInTheDocument();
     });
   });
 
