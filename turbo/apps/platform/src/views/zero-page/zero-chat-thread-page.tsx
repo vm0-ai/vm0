@@ -2114,6 +2114,11 @@ function useGithubPrTrackingOpen(
 interface ScheduledRunDisplay {
   userMessage: EnrichedChatMessage & { role: "user" };
   assistantMessages: (EnrichedChatMessage & { role: "assistant" })[];
+  previewText: string | null;
+  status: ScheduledRunStatus;
+  statusLabel: string;
+  title: string;
+  triggerTime: string;
 }
 
 type ChatThreadDisplayEntry =
@@ -2141,7 +2146,14 @@ function appendDisplayGroup(
 
 function buildChatThreadDisplayEntries(
   groups: readonly GroupedChatMessageGroup[],
+  scheduledRunCardEnabled: boolean,
 ): ChatThreadDisplayEntry[] {
+  if (!scheduledRunCardEnabled) {
+    return groups.map((group) => {
+      return { type: "group", group };
+    });
+  }
+
   const entries: ChatThreadDisplayEntry[] = [];
   const messages = groups.flatMap((group) => {
     return group.messages;
@@ -2169,10 +2181,7 @@ function buildChatThreadDisplayEntries(
       }
       entries.push({
         type: "scheduled-run",
-        run: {
-          userMessage: message,
-          assistantMessages,
-        },
+        run: createScheduledRunDisplay(message, assistantMessages),
       });
       index = nextIndex - 1;
       continue;
@@ -2210,7 +2219,13 @@ function ChatThreadMessagesMain({
     groups.length === 0 &&
     !messagesLoading &&
     !skeletonVisible;
-  const displayEntries = buildChatThreadDisplayEntries(activeGroups);
+  const features = useLastResolved(featureSwitch$);
+  const scheduledRunCardEnabled =
+    features?.[FeatureSwitchKey.ChatScheduledRunCard] ?? true;
+  const displayEntries = buildChatThreadDisplayEntries(
+    activeGroups,
+    scheduledRunCardEnabled,
+  );
   const suppressThinkingIndicator =
     displayEntries[displayEntries.length - 1]?.type === "scheduled-run";
 
@@ -4252,8 +4267,10 @@ function PagedUserGroup({
 
 type ScheduledRunStatus = "running" | "succeeded" | "failed";
 
-function scheduledRunTitle(run: ScheduledRunDisplay): string {
-  return run.userMessage.scheduleTitle?.trim() || "Scheduled run";
+function scheduledRunTitle(
+  userMessage: EnrichedChatMessage & { role: "user" },
+): string {
+  return userMessage.scheduleTitle?.trim() || "Scheduled run";
 }
 
 function formatScheduledRunTriggerTime(value: string): string {
@@ -4268,9 +4285,9 @@ function formatScheduledRunTriggerTime(value: string): string {
 }
 
 function resolveScheduledRunStatus(
-  run: ScheduledRunDisplay,
+  assistantMessages: readonly (EnrichedChatMessage & { role: "assistant" })[],
 ): ScheduledRunStatus {
-  const failed = run.assistantMessages.some((message) => {
+  const failed = assistantMessages.some((message) => {
     return (
       message.runLifecycleEvent === "failed" ||
       message.runLifecycleEvent === "cancelled" ||
@@ -4283,7 +4300,7 @@ function resolveScheduledRunStatus(
     return "failed";
   }
 
-  const succeeded = run.assistantMessages.some((message) => {
+  const succeeded = assistantMessages.some((message) => {
     return (
       message.runLifecycleEvent === "completed" ||
       message.status === "completed"
@@ -4328,6 +4345,56 @@ function ScheduledRunStatusIcon({ status }: { status: ScheduledRunStatus }) {
     return <IconAlertCircle size={16} stroke={1.8} />;
   }
   return <IconCheck size={16} stroke={1.8} />;
+}
+
+function latestRenderableAssistantMessage(
+  messages: readonly (EnrichedChatMessage & { role: "assistant" })[],
+): (EnrichedChatMessage & { role: "assistant" }) | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]!;
+    if (hasRenderableAssistantContent(message)) {
+      return message;
+    }
+  }
+  return undefined;
+}
+
+function lastThreeAssistantLines(
+  messages: readonly (EnrichedChatMessage & { role: "assistant" })[],
+): string | null {
+  const message = latestRenderableAssistantMessage(messages);
+  const content = (message?.error ?? message?.content ?? "").trim();
+  if (!content) {
+    return null;
+  }
+
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => {
+      return line.trim();
+    })
+    .filter((line) => {
+      return line.length > 0;
+    });
+  const preview = lines.slice(-3).join("\n").trim();
+  return preview.length > 0 ? preview : null;
+}
+
+function createScheduledRunDisplay(
+  userMessage: EnrichedChatMessage & { role: "user" },
+  assistantMessages: (EnrichedChatMessage & { role: "assistant" })[],
+): ScheduledRunDisplay {
+  const title = scheduledRunTitle(userMessage);
+  const status = resolveScheduledRunStatus(assistantMessages);
+  return {
+    userMessage,
+    assistantMessages,
+    previewText: lastThreeAssistantLines(assistantMessages),
+    status,
+    statusLabel: scheduledRunStatusLabel(status),
+    title,
+    triggerTime: formatScheduledRunTriggerTime(userMessage.createdAt),
+  };
 }
 
 function hasRenderableAssistantContent(message: EnrichedChatMessage): boolean {
@@ -4377,10 +4444,7 @@ function ScheduledRunCard({
   run: ScheduledRunDisplay;
   thread: ChatThreadSignals;
 }) {
-  const status = resolveScheduledRunStatus(run);
-  const title = scheduledRunTitle(run);
-  const statusLabel = scheduledRunStatusLabel(status);
-  const triggerTime = formatScheduledRunTriggerTime(run.userMessage.createdAt);
+  const { previewText, status, statusLabel, title, triggerTime } = run;
 
   return (
     <div
@@ -4391,7 +4455,7 @@ function ScheduledRunCard({
         <DialogTrigger asChild>
           <button
             type="button"
-            className="group flex w-full max-w-[640px] items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group flex w-full max-w-[640px] items-start gap-3 rounded-xl border border-border bg-background px-4 py-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={`Open scheduled run details for ${title}`}
           >
             <span
@@ -4410,6 +4474,11 @@ function ScheduledRunCard({
                 <IconClock size={13} stroke={1.8} className="shrink-0" />
                 <span className="min-w-0 truncate">{title}</span>
               </span>
+              {previewText && (
+                <span className="mt-2 block whitespace-pre-line text-xs leading-5 text-muted-foreground line-clamp-3">
+                  {previewText}
+                </span>
+              )}
             </span>
             <span
               className={cn(
@@ -4820,6 +4889,46 @@ function UserMessageGenerationTemplate({
   );
 }
 
+function ScheduleUserMessage({
+  scheduleId,
+  scheduleTitle,
+}: {
+  scheduleId: string | undefined;
+  scheduleTitle: string;
+}) {
+  const cardClassName =
+    "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
+  const body = (
+    <>
+      <IconClock size={15} className="shrink-0" />
+      <span className="min-w-0 truncate font-medium text-foreground">
+        {scheduleTitle}
+      </span>
+    </>
+  );
+  return (
+    <div data-role="user" className="group">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
+        <div className="flex w-full flex-col items-end">
+          {scheduleId ? (
+            <Link
+              pathname="/schedules/:scheduleId"
+              options={{ pathParams: { scheduleId } }}
+              className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
+              aria-label={`Open schedule ${scheduleTitle}`}
+            >
+              {body}
+            </Link>
+          ) : (
+            <div className={cardClassName}>{body}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PagedUserMessage({
   message,
   thread,
@@ -4871,6 +4980,15 @@ function PagedUserMessage({
       Reason.DomCallback,
     );
   };
+
+  if (message.scheduleTitle) {
+    return (
+      <ScheduleUserMessage
+        scheduleId={message.scheduleId}
+        scheduleTitle={message.scheduleTitle}
+      />
+    );
+  }
 
   return (
     <div data-role="user" className="group">

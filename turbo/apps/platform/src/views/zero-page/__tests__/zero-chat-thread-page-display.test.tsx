@@ -246,7 +246,12 @@ describe("zero chat thread page display - scheduled run card", () => {
         {
           id: "msg-scheduled-assistant",
           role: "assistant",
-          content: "I checked the latest numbers and prepared the report.",
+          content: [
+            "I checked the latest numbers.",
+            "Revenue is up 4%.",
+            "Open issues are unchanged.",
+            "I prepared the report.",
+          ].join("\n"),
           runId: "run-scheduled-report",
           status: "completed",
           createdAt: "2026-03-10T00:00:10Z",
@@ -270,10 +275,11 @@ describe("zero chat thread page display - scheduled run card", () => {
     expect(card).toHaveTextContent("Triggered at");
     expect(card).toHaveTextContent("Daily report");
     expect(card).toHaveTextContent("Succeeded");
+    expect(card).toHaveTextContent("Revenue is up 4%.");
+    expect(card).toHaveTextContent("Open issues are unchanged.");
+    expect(card).toHaveTextContent("I prepared the report.");
     expect(
-      screen.queryByText(
-        "I checked the latest numbers and prepared the report.",
-      ),
+      screen.queryByText("I checked the latest numbers."),
     ).not.toBeInTheDocument();
 
     await user.click(card);
@@ -282,10 +288,50 @@ describe("zero chat thread page display - scheduled run card", () => {
     expect(within(dialog).getByText("Scheduled run")).toBeInTheDocument();
     expect(within(dialog).getByText("Succeeded")).toBeInTheDocument();
     expect(
-      within(dialog).getByText(
-        "I checked the latest numbers and prepared the report.",
-      ),
+      within(dialog).getByText(/I checked the latest numbers/),
     ).toBeInTheDocument();
+  });
+
+  it("uses the original inline schedule display when the feature switch is disabled", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          id: "msg-scheduled-user",
+          role: "user",
+          content: "Run the daily report",
+          runId: "run-scheduled-report",
+          scheduleId: "schedule-report",
+          scheduleTitle: "Daily report",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-scheduled-assistant",
+          role: "assistant",
+          content: "I checked the latest numbers and prepared the report.",
+          runId: "run-scheduled-report",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:10Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatScheduledRunCard]: false },
+    });
+
+    const scheduleLink = await screen.findByLabelText(
+      "Open schedule Daily report",
+    );
+    expect(scheduleLink).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Open scheduled run details for Daily report"),
+    ).not.toBeInTheDocument();
+    const assistantMessage = await screen.findByText(
+      "I checked the latest numbers and prepared the report.",
+    );
+    expect(assistantMessage).toBeInTheDocument();
   });
 });
 
