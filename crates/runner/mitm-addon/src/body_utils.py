@@ -609,22 +609,12 @@ def _sanitize_content_type_for_capture(value: str) -> str | None:
     media_start: int | None = None
     media_end = 0
     optional_whitespace_length = 0
-    in_parameters = False
-    preserved_media_type: str | None = None
 
     for index, char in enumerate(value):
         if char in "\r\n":
             return None
-        if in_parameters:
-            continue
         if char == ";":
-            if media_start is None or media_end == media_start:
-                return None
-            preserved_media_type = value[media_start:media_end].lower()
-            if preserved_media_type not in _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES:
-                return None
-            in_parameters = True
-            continue
+            return _preserved_capture_content_type(value, media_start, media_end)
         if media_start is None:
             if char in _HTTP_OPTIONAL_WHITESPACE:
                 optional_whitespace_length += 1
@@ -645,8 +635,16 @@ def _sanitize_content_type_for_capture(value: str) -> str | None:
 
     if media_start is None or media_end == media_start:
         return None
-    if preserved_media_type is not None:
-        return preserved_media_type
+    return _preserved_capture_content_type(value, media_start, media_end)
+
+
+def _preserved_capture_content_type(
+    value: str,
+    media_start: int | None,
+    media_end: int,
+) -> str | None:
+    if media_start is None or media_end == media_start:
+        return None
     media_type = value[media_start:media_end].lower()
     if media_type not in _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES:
         return None
