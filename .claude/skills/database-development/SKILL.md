@@ -8,7 +8,7 @@ description: Database migrations and Drizzle ORM guidelines for the vm0 project
 ## Commands
 
 ```bash
-cd turbo/apps/web
+cd turbo/packages/db
 
 pnpm db:generate   # Generate migration from schema changes
 pnpm db:migrate    # Run pending migrations
@@ -20,7 +20,7 @@ pnpm db:studio     # Open Drizzle Studio UI
 ### Auto-Generated (simple changes)
 
 ```bash
-# 1. Edit schema in src/db/schema/
+# 1. Edit schema in src/schema/
 # 2. Generate migration (auto-updates _journal.json and snapshot)
 pnpm db:generate
 # 3. Run locally
@@ -47,7 +47,7 @@ When a data migration requires **external API calls** (e.g., reading from Clerk)
 it cannot be done in a SQL migration. These scripts live in:
 
 ```
-turbo/apps/web/scripts/migrations/NNN-description/
+turbo/packages/db/scripts/migrations/NNN-description/
 ├── backfill.ts   # (or sync.ts) — the migration script
 └── README.md     # Usage, prerequisites, verification steps
 ```
@@ -68,8 +68,8 @@ Pure data transforms that only touch the database should use regular SQL migrati
 
 Before committing:
 
-- [ ] Schema file updated in `src/db/schema/`
-- [ ] Schema exported in `src/db/db.ts` (if new table)
+- [ ] Schema file updated in `src/schema/`
+- [ ] Schema exported in `src/index.ts` (if new table)
 - [ ] Custom migrations created via `drizzle-kit generate --custom` (not manually)
 - [ ] `pnpm db:migrate` works locally
 - [ ] `pnpm test` passes
