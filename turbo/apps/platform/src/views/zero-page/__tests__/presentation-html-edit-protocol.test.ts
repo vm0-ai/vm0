@@ -117,6 +117,34 @@ describe("presentation HTML edit protocol", () => {
     expect(patched).toContain('"kind": "presentation-html"');
   });
 
+  it("preserves nested markup in unchanged editable blocks", () => {
+    const htmlWithFormatting = `
+      <!doctype html>
+      <html>
+        <body>
+          <section class="slide" data-slide-id="slide-1">
+            <h1 data-vm0-editable="text" data-edit-id="title"><em>Styled</em> title</h1>
+            <p data-vm0-editable="text" data-edit-id="subtitle">Plain subtitle</p>
+          </section>
+        </body>
+      </html>
+    `;
+    const draft = parsePresentationEditDraft(htmlWithFormatting);
+    const patched = patchPresentationHtml({
+      html: draft.html,
+      blocks: draft.blocks.map((block) => {
+        if (block.editId === "subtitle") {
+          return { ...block, text: "New subtitle" };
+        }
+        return block;
+      }),
+      slides: draft.slides,
+    });
+
+    expect(patched).toContain("<em>Styled</em> title");
+    expect(patched).toContain("New subtitle");
+  });
+
   it("keeps executable markup when saving patched HTML", () => {
     const htmlWithRuntime = `
       <!doctype html>

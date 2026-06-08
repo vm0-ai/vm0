@@ -8,7 +8,6 @@ import {
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import type { Computed } from "ccstate";
-import { IN_VITEST } from "../../env.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
@@ -257,12 +256,7 @@ function HtmlSitePreviewCard({
           className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25]"
         >
           <iframe
-            src={IN_VITEST ? undefined : publicUrl}
-            srcDoc={
-              IN_VITEST
-                ? "<!doctype html><html><body></body></html>"
-                : undefined
-            }
+            src={publicUrl}
             data-preview-src={publicUrl}
             title={`Site preview for ${title}`}
             sandbox="allow-scripts"

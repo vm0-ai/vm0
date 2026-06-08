@@ -951,7 +951,9 @@ function PresentationEditorReady({
       publishingRef,
       reason: "presentation html editor close",
       task: async () => {
-        await controller.ensureRedeployed().finally(onClose);
+        if (await controller.ensureRedeployed()) {
+          onClose();
+        }
       },
     });
   };

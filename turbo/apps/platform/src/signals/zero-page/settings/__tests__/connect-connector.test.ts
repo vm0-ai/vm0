@@ -595,6 +595,16 @@ describe("connectConnectorOAuthAuthCode$", () => {
 });
 
 describe("connectConnectorOAuthDeviceAuth$", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("shows a code before opening the verification page and polling completion", async () => {
     detachedSetupPage({
       context,
@@ -671,6 +681,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
       "oauth",
     );
 
+    await vi.advanceTimersByTimeAsync(1100);
     await expect(connectPromise).resolves.toBeTruthy();
     expect(open).toHaveBeenCalledWith(
       "https://oauth.test/device?user_code=VM0-DEVICE",
@@ -809,6 +820,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
       "oauth",
     );
 
+    await vi.advanceTimersByTimeAsync(1100);
     await expect(connectPromise).resolves.toBeTruthy();
     expect(open).toHaveBeenCalledWith(
       "https://oauth.test/device/manual",
@@ -884,14 +896,13 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
       "oauth",
     );
 
-    await vi.waitFor(() => {
-      const state = context.store.get(connectorOAuthDeviceAuthState$);
-      expect(state.status).toBe("pending");
-      if (state.status === "pending") {
-        expect(state.approvalOpened).toBeTruthy();
-        expect(state.pollIntervalMs).toBe(2000);
-      }
-    });
+    await vi.advanceTimersByTimeAsync(1100);
+    const state = context.store.get(connectorOAuthDeviceAuthState$);
+    expect(state.status).toBe("pending");
+    if (state.status === "pending") {
+      expect(state.approvalOpened).toBeTruthy();
+      expect(state.pollIntervalMs).toBe(2000);
+    }
 
     context.store.set(clearConnectorOAuthDeviceAuth$);
     await expect(connectPromise).resolves.toBeFalsy();

@@ -63,7 +63,6 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { IN_VITEST } from "../../env.ts";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -1337,10 +1336,7 @@ function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
         data-testid="artifact-html-preview-badge"
       >
         <iframe
-          src={IN_VITEST ? undefined : publicUrl}
-          srcDoc={
-            IN_VITEST ? "<!doctype html><html><body></body></html>" : undefined
-          }
+          src={publicUrl}
           title={`${file.filename} artifact thumbnail`}
           sandbox="allow-scripts"
           tabIndex={-1}

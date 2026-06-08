@@ -2273,7 +2273,9 @@ describe("zero chat thread page display - artifact sidebar", () => {
       },
     });
 
-    await expect(screen.findByText("Create slides")).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Create slides"),
+    ).resolves.toBeInTheDocument();
     expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
   });
 

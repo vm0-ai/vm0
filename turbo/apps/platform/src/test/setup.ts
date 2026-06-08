@@ -45,6 +45,26 @@ globalThis.IDBRequest = IDBRequest;
 globalThis.IDBTransaction = IDBTransaction;
 globalThis.IDBVersionChangeEvent = IDBVersionChangeEvent;
 
+// Prevent happy-dom from making real HTTP requests when an iframe src points
+// at an external URL. Without this, happy-dom initiates a real TCP connection
+// which is aborted during test teardown and crashes the Node.js worker with a
+// uv__stream_destroy assertion failure. The src value is preserved as the
+// data-preview-src attribute so tests can still inspect the intended URL.
+Object.defineProperty(HTMLIFrameElement.prototype, "src", {
+  configurable: true,
+  enumerable: true,
+  get(this: HTMLIFrameElement) {
+    return this.getAttribute("src") ?? "";
+  },
+  set(this: HTMLIFrameElement, value: string) {
+    if (!value || value.startsWith("about:") || value.startsWith("blob:")) {
+      this.setAttribute("src", value || "about:blank");
+    } else {
+      this.dataset.previewSrc = value;
+    }
+  },
+});
+
 beforeAll(() => {
   // Disable CSS animations/transitions so Radix UI dialog open/close
   // does not wait for animation frames to settle in act().

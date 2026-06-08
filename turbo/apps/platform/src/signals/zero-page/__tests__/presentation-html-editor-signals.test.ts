@@ -3,9 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createPushStateMock } from "../../../__tests__/page-helper.ts";
 import { mockLocation } from "../../location.ts";
 import { setPageSignal$ } from "../../page-signal.ts";
-import {
-  createPresentationDraftByUrlFactory,
-} from "../presentation-html-editor-draft.ts";
+import { createPresentationDraftByUrlFactory } from "../presentation-html-editor-draft.ts";
 import {
   presentationHtmlPreviewUrl,
   presentationHtmlRefreshVersion$,
@@ -71,7 +69,10 @@ describe("presentation HTML editor signals", () => {
   it("opens and closes the presentation editor through query params", () => {
     createPushStateMock(context.signal);
     mockLocation(
-      { pathname: "/chats/thread-1", search: "?artifact=https%3A%2F%2Fold.test" },
+      {
+        pathname: "/chats/thread-1",
+        search: "?artifact=https%3A%2F%2Fold.test",
+      },
       context.signal,
     );
 
@@ -99,7 +100,10 @@ describe("presentation HTML editor signals", () => {
       context.signal,
     );
 
-    context.store.set(openArtifactSidebarPreview$, "https://report.test/report.html");
+    context.store.set(
+      openArtifactSidebarPreview$,
+      "https://report.test/report.html",
+    );
 
     expect(context.store.get(currentPresentationEditorUrl$)).toBe(
       "https://deck.sites.vm0.io",
@@ -120,9 +124,13 @@ describe("presentation HTML editor signals", () => {
     const second = factory.get("https://two.sites.vm0.io");
 
     expect(second).not.toBe(first);
-    await expect(context.store.get(computed((get) => {
-      return Promise.all([get(first), get(second)]);
-    }))).resolves.toStrictEqual([
+    await expect(
+      context.store.get(
+        computed((get) => {
+          return Promise.all([get(first), get(second)]);
+        }),
+      ),
+    ).resolves.toStrictEqual([
       "https://one.sites.vm0.io",
       "https://two.sites.vm0.io",
     ]);
