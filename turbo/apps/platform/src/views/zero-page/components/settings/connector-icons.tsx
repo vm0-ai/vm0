@@ -190,6 +190,7 @@ const CONNECTOR_ICON_COLORFUL = {
   pandadoc: true,
   pdf4me: true,
   pdfco: true,
+  pdforge: true,
   "people-data-labs": true,
   pinecone: true,
   pipedrive: true,
