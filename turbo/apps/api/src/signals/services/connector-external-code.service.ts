@@ -51,6 +51,7 @@ const SUPERSEDED_SESSION_ERROR_CODE = "session_superseded";
 const SUPERSEDED_SESSION_ERROR_MESSAGE =
   "External-code authorization session was superseded";
 const PROVIDER_STATE_MAX_BYTES = 16 * 1024;
+const COMPLETING_SESSION_STALE_AFTER_MS = 30 * 60 * 1000;
 
 type ExternalCodeSessionRow = typeof connectorExternalCodeSessions.$inferSelect;
 
@@ -281,6 +282,20 @@ async function expireSession(args: {
     );
   args.signal.throwIfAborted();
   return badRequestMessage("External-code authorization session expired");
+}
+
+function isSessionExpired(session: ExternalCodeSessionRow, now: Date): boolean {
+  return now > session.expiresAt;
+}
+
+function isCompletingSessionStale(
+  session: ExternalCodeSessionRow,
+  now: Date,
+): boolean {
+  return (
+    now.getTime() - session.updatedAt.getTime() >
+    COMPLETING_SESSION_STALE_AFTER_MS
+  );
 }
 
 async function claimSession(args: {
@@ -776,13 +791,19 @@ export const completeConnectorExternalCodeSession$ = command(
     }
 
     const now = nowDate();
-    if (now > session.expiresAt) {
-      return await expireSession({ writeDb, session, now, signal });
-    }
     if (session.status === "completing") {
+      if (
+        isSessionExpired(session, now) &&
+        isCompletingSessionStale(session, now)
+      ) {
+        return await expireSession({ writeDb, session, now, signal });
+      }
       return badRequestMessage(
         "External-code authorization session is already completing",
       );
+    }
+    if (isSessionExpired(session, now)) {
+      return await expireSession({ writeDb, session, now, signal });
     }
 
     const claimStartedAt = now;

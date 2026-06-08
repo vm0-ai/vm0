@@ -763,12 +763,13 @@ describe("external-code connector routes", () => {
       [200],
     );
     const expiredAt = new Date(now() - 1000);
+    const staleCompletingUpdatedAt = new Date(now() - 31 * 60_000);
     await store
       .set(writeDb$)
       .update(connectorExternalCodeSessions)
       .set({
         status: "completing",
-        updatedAt: expiredAt,
+        updatedAt: staleCompletingUpdatedAt,
         expiresAt: expiredAt,
       })
       .where(eq(connectorExternalCodeSessions.id, start.body.sessionId));
@@ -803,6 +804,64 @@ describe("external-code connector routes", () => {
       errorCode: "expired_token",
     });
     expect(session?.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("does not expire an active completing session after the original session expiry", async () => {
+    setupUser({ enableAws: true });
+    const client = setupApp({ context })(
+      zeroConnectorExternalCodeSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "aws" },
+        body: { authMethod: "cli" },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    const activeCompletingUpdatedAt = new Date(now());
+    await store
+      .set(writeDb$)
+      .update(connectorExternalCodeSessions)
+      .set({
+        status: "completing",
+        updatedAt: activeCompletingUpdatedAt,
+        expiresAt: new Date(now() - 1000),
+      })
+      .where(eq(connectorExternalCodeSessions.id, start.body.sessionId));
+
+    const complete = await accept(
+      client.complete({
+        params: { type: "aws", sessionId: start.body.sessionId },
+        body: {
+          sessionToken: start.body.sessionToken,
+          code: "AWS-CODE",
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [400],
+    );
+
+    expect(complete.body.error.message).toBe(
+      "External-code authorization session is already completing",
+    );
+    const [session] = await store
+      .set(writeDb$)
+      .select({
+        status: connectorExternalCodeSessions.status,
+        updatedAt: connectorExternalCodeSessions.updatedAt,
+        completedAt: connectorExternalCodeSessions.completedAt,
+      })
+      .from(connectorExternalCodeSessions)
+      .where(eq(connectorExternalCodeSessions.id, start.body.sessionId))
+      .limit(1);
+    expect(session).toMatchObject({
+      status: "completing",
+      completedAt: null,
+    });
+    expect(session?.updatedAt.getTime()).toBe(
+      activeCompletingUpdatedAt.getTime(),
+    );
   });
 
   it("marks the session as error when stored provider state is invalid", async () => {
