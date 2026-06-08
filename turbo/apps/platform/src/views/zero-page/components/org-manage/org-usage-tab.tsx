@@ -135,7 +135,10 @@ function CreditGrantRow({ grant }: { grant: CreditGrant }) {
       <TooltipContent
         side="top"
         sideOffset={8}
-        style={{ backgroundColor: "white", color: "inherit" }}
+        style={{
+          backgroundColor: "hsl(var(--popover))",
+          color: "hsl(var(--popover-foreground))",
+        }}
         className="border shadow-md"
       >
         <div className="font-medium text-foreground">{expiresLabel(grant)}</div>
@@ -248,7 +251,10 @@ function CreditBalanceChart({
                     <TooltipContent
                       side="top"
                       sideOffset={8}
-                      style={{ backgroundColor: "white", color: "inherit" }}
+                      style={{
+                        backgroundColor: "hsl(var(--popover))",
+                        color: "hsl(var(--popover-foreground))",
+                      }}
                       className="border shadow-md"
                     >
                       <div className="font-medium text-foreground">
