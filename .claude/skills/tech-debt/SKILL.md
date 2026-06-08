@@ -877,7 +877,7 @@ args: "issue"
 - Bad smell documentation: `/docs/bad-smell.md`
 - Testing anti-patterns: `/docs/testing.md`
 - Testing anti-patterns catalog: `/docs/testing/anti-patterns.md`
-- Web testing patterns: `/docs/testing/web-testing.md`
+- API route testing patterns: `/docs/testing/api-testing.md`
 - App testing patterns: `/docs/testing/app-testing.md`
 - ccstate patterns: `/.claude/skills/ccstate/SKILL.md`
 - Code quality skill: `/.claude/skills/code-quality/SKILL.md`

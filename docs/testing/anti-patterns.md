@@ -404,10 +404,8 @@ it("should create a provider", async () => {
 
 The service test passes even if the route handler has a bug in request parsing, auth checking, or response formatting. The route test catches all of these.
 
-**Exception**: Some service functions have no route. For `apps/api`, see
-[Service-Level Exceptions](api-testing.md#service-level-exceptions). For legacy
-`apps/web` routes, see
-[Acceptable Service-Level Test Exceptions](web-testing.md#acceptable-service-level-test-exceptions).
+**Exception**: Some service functions have no route. See
+[Service-Level Exceptions](api-testing.md#service-level-exceptions).
 
 ---
 

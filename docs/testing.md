@@ -239,10 +239,10 @@ internal API services when a route can exercise the behavior.
 
 ### Web Route Compatibility
 
-For endpoints that still live in `apps/web`, test the legacy Next.js route
-handler directly. For endpoints migrated to `apps/api`, keep behavior tests in
-`apps/api` and use web tests only for rewrite, middleware, and security-header
-compatibility.
+`apps/web` no longer hosts API route handlers, so all endpoint behavior is
+tested in `apps/api` (see [api-testing.md](./testing/api-testing.md)). Web-side
+tests cover only routing compatibility: exact rewrites, middleware bypass, and
+security headers around proxied paths.
 
 ### Platform UI
 
@@ -277,7 +277,7 @@ Don't render components directly—use `setupPage()` which mirrors `main.ts` sta
 | CLI commands                                | [cli-testing.md](./testing/cli-testing.md)               |
 | CLI E2E (BATS)                              | [cli-e2e-testing.md](./testing/cli-e2e-testing.md)       |
 | API routes                                  | [api-testing.md](./testing/api-testing.md)               |
-| Legacy web routes and rewrite compatibility | [web-testing.md](./testing/web-testing.md)               |
+| Web rewrite/middleware compatibility        | [api-testing.md](./testing/api-testing.md)               |
 | App UI                                      | [app-testing.md](./testing/app-testing.md)               |
 | Rust crates                                 | [rust-testing.md](./testing/rust-testing.md)             |
 | Python addon                                | [mitm-addon-testing.md](./testing/mitm-addon-testing.md) |
