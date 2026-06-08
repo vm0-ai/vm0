@@ -8,6 +8,7 @@ import {
   ScheduleListResponse,
   ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
+import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import type {
   ScheduleCronCallbackPayload,
@@ -126,6 +127,48 @@ type RunScheduleNowResult =
     };
 
 type ExecuteScheduleFailure = Exclude<RunScheduleNowResult, { kind: "ok" }>;
+type ScheduleRow = typeof zeroAgentSchedules.$inferSelect;
+
+type ScheduleRunCallback = {
+  readonly url: string;
+  readonly secret: string;
+  readonly payload: unknown;
+};
+
+type DirectScheduleCreateRunInput = {
+  readonly auth: {
+    readonly orgId: string;
+    readonly orgRole: "member";
+    readonly userId: string;
+    readonly tokenType: "session";
+  };
+  readonly body: {
+    readonly prompt: string;
+    readonly agentId: string;
+    readonly modelProvider?: string;
+  };
+  readonly apiStartTime: number;
+  readonly triggerSource: "schedule";
+  readonly chatThreadId: string;
+  readonly modelProviderId?: string;
+  readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
+  readonly selectedModelOverride?: string;
+  readonly appendSystemPrompt: string;
+  readonly callbacks: readonly ScheduleRunCallback[];
+  readonly zeroRunMetadata: { readonly scheduleId: string };
+};
+
+type DirectScheduleCreateRunResult =
+  | {
+      readonly status: 201;
+      readonly body: { readonly runId: string; readonly status: string };
+    }
+  | RunCreationErrorResponse;
+
+type DirectScheduleCreateRun = (
+  input: DirectScheduleCreateRunInput,
+  signal: AbortSignal,
+) => Promise<DirectScheduleCreateRunResult>;
 
 interface ExecuteDueSchedulesResult {
   readonly executed: number;
@@ -1136,10 +1179,8 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function buildScheduleCallbacks(
-  schedule: typeof zeroAgentSchedules.$inferSelect,
-): { url: string; secret: string; payload: unknown }[] {
-  const callbacks: { url: string; secret: string; payload: unknown }[] = [];
+function buildScheduleCallbacks(schedule: ScheduleRow): ScheduleRunCallback[] {
+  const callbacks: ScheduleRunCallback[] = [];
 
   if (schedule.triggerType === "loop") {
     const payload: ScheduleLoopCallbackPayload = { scheduleId: schedule.id };
@@ -1179,9 +1220,7 @@ function buildScheduleCallbacks(
   return callbacks;
 }
 
-function buildScheduleAppendSystemPrompt(
-  schedule: typeof zeroAgentSchedules.$inferSelect,
-): string {
+function buildScheduleAppendSystemPrompt(schedule: ScheduleRow): string {
   const integrationContext = [
     buildSchedulePrompt(schedule.triggerType),
     "",
@@ -1197,33 +1236,17 @@ function buildScheduleAppendSystemPrompt(
 // from the thread pin (org default if unpinned); the session is always fresh
 // (no sessionId); the chat callback owns the summary while the reschedule
 // callback advances next_run_at (D9).
-export const runScheduleNow$ = command(
-  async (
-    { set },
+const directScheduleRunExecutor = {
+  async execute(
     args: {
-      readonly body: RunScheduleBody;
-      readonly orgId: string;
+      readonly db: Db;
+      readonly schedule: ScheduleRow;
       readonly apiStartTime: number;
+      readonly createRun: DirectScheduleCreateRun;
     },
     signal: AbortSignal,
-  ): Promise<RunScheduleNowResult> => {
-    const db = set(writeDb$);
-    const [schedule] = await db
-      .select()
-      .from(zeroAgentSchedules)
-      .where(
-        and(
-          eq(zeroAgentSchedules.id, args.body.scheduleId),
-          eq(zeroAgentSchedules.orgId, args.orgId),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!schedule) {
-      return { kind: "not_found", message: "Schedule not found" };
-    }
-
+  ): Promise<Exclude<RunScheduleNowResult, { readonly kind: "not_found" }>> {
+    const { db, schedule } = args;
     if (schedule.lastRunId) {
       const [lastRun] = await db
         .select({ status: agentRuns.status })
@@ -1272,8 +1295,7 @@ export const runScheduleNow$ = command(
       return { kind: "run_error", response: providerAdmission.error };
     }
 
-    const result = await set(
-      createZeroRun$,
+    const result = await args.createRun(
       {
         auth: {
           orgId: schedule.orgId,
@@ -1338,6 +1360,47 @@ export const runScheduleNow$ = command(
     signal.throwIfAborted();
 
     return { kind: "ok", runId: result.body.runId };
+  },
+};
+
+export const runScheduleNow$ = command(
+  async (
+    { set },
+    args: {
+      readonly body: RunScheduleBody;
+      readonly orgId: string;
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<RunScheduleNowResult> => {
+    const db = set(writeDb$);
+    const [schedule] = await db
+      .select()
+      .from(zeroAgentSchedules)
+      .where(
+        and(
+          eq(zeroAgentSchedules.id, args.body.scheduleId),
+          eq(zeroAgentSchedules.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!schedule) {
+      return { kind: "not_found", message: "Schedule not found" };
+    }
+
+    return await directScheduleRunExecutor.execute(
+      {
+        db,
+        schedule,
+        apiStartTime: args.apiStartTime,
+        createRun: async (input, runSignal) => {
+          return await set(createZeroRun$, input, runSignal);
+        },
+      },
+      signal,
+    );
   },
 );
 
