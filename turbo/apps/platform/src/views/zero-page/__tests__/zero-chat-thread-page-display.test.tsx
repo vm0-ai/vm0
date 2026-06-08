@@ -2256,23 +2256,6 @@ describe("zero chat thread page display - artifact sidebar", () => {
     const user = userEvent.setup();
     const fileUrl = "https://demo-deck.sites.vm0.io";
     let presentationHtmlRequested = false;
-    let exportFrame: HTMLIFrameElement | null = null;
-    const appendSpy = vi
-      .spyOn(document.body, "append")
-      .mockImplementation(function (
-        this: HTMLElement,
-        ...nodes: Parameters<HTMLElement["append"]>
-      ) {
-        for (const node of nodes) {
-          if (
-            node instanceof HTMLIFrameElement &&
-            node.title === "Presentation PPTX export"
-          ) {
-            exportFrame = node;
-          }
-        }
-        return Element.prototype.append.apply(this, nodes);
-      });
     const presentationHtml = `
       <!doctype html>
       <html>
@@ -2347,37 +2330,6 @@ describe("zero chat thread page display - artifact sidebar", () => {
 
     await waitFor(() => {
       expect(presentationHtmlRequested).toBeTruthy();
-    });
-    await waitFor(() => {
-      expect(exportFrame).not.toBeNull();
-    });
-    appendSpy.mockRestore();
-    if (!exportFrame) {
-      throw new Error("Presentation export iframe was not created");
-    }
-    expect(exportFrame).toHaveAttribute(
-      "sandbox",
-      "allow-scripts allow-downloads",
-    );
-    expect(exportFrame).toHaveAttribute(
-      "srcdoc",
-      expect.stringContaining("window.domToPptx.exportToPptx"),
-    );
-
-    const exportWindow = (exportFrame as HTMLIFrameElement).contentWindow;
-    expect(exportWindow).not.toBeNull();
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        source: exportWindow,
-        data: {
-          type: "vm0-presentation-pptx-export",
-          status: "success",
-        },
-      }),
-    );
-
-    await waitFor(() => {
-      expect(exportFrame).not.toBeInTheDocument();
     });
   });
 

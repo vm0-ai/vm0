@@ -276,7 +276,7 @@ async function inlineFetchableImages(
   const cache: ResourceDataUrlCache = new Map();
   await Promise.all([
     Promise.all(
-      Array.from(doc.images).map(async (image) => {
+      Array.from(doc.querySelectorAll("img")).map(async (image) => {
         await inlineImageSrc(image, baseUrl, cache, signal);
       }),
     ),
