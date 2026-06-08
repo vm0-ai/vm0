@@ -23,14 +23,15 @@ use super::ownership::OwnershipTransitions;
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::idle_pool::{
-    DestroyOutcome, IdleParkActiveParts, IdleParkRequest, IdleParkRequestParts, ParkResult,
-    ParkingGate, StorageFingerprints,
+    DestroyOutcome, IdleDestroyPayload, IdleParkActiveParts, IdleParkRequest, IdleParkRequestParts,
+    ParkResult, ParkingGate, StorageFingerprints,
 };
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogSession;
 #[cfg(test)]
 use crate::provider::CompletionAuth;
+use crate::resource_budget::BudgetLease;
 use crate::status::StatusTracker;
 use crate::workspace_image_cache::{
     WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionRequest,
@@ -119,6 +120,13 @@ pub(super) async fn finalize_sandbox_for_completion(
         test_observer,
     } = ctx;
 
+    let destroy_bookkeeping = DestroyBookkeepingContext {
+        cleanup_state: &cleanup_state,
+        #[cfg(test)]
+        run_id,
+        #[cfg(test)]
+        outer_job_panic,
+    };
     let cancelled = cancel.is_cancelled();
     let terminal_status = workspace_terminal_status(exit_code, cancelled);
     let completed_at = local_completed_at();
@@ -199,15 +207,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     },
                 )
                 .await;
-                if destroy_outcome == DestroyOutcome::Completed {
-                    cleanup_state.mark_destroy_completed();
-                }
-                #[cfg(test)]
-                maybe_panic_outer_job(
-                    outer_job_panic,
-                    OuterJobPanicPoint::DestroyCompleted,
-                    run_id,
-                );
+                record_destroy_result(destroy_outcome, destroy_bookkeeping);
                 return mark_session_affinity_refresh(
                     CompletionReady::new(
                         completion_payload,
@@ -228,18 +228,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                 session_id,
                 "job cancelled while parking, destroying VM"
             );
-            let destroy_result = destroy_idle_payload_and_wait(payload, "cancelled").await;
-            if destroy_result.outcome == DestroyOutcome::Completed {
-                cleanup_state.mark_destroy_completed();
-            }
-            #[cfg(test)]
-            maybe_panic_outer_job(
-                outer_job_panic,
-                OuterJobPanicPoint::DestroyCompleted,
-                run_id,
-            );
+            let destroy_result = destroy_active_owned_idle_payload(
+                payload,
+                budget_lease,
+                "cancelled",
+                destroy_bookkeeping,
+            )
+            .await;
             session_affinity_changed |= destroy_result.workspace_cache_promoted;
-            BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(budget_lease))
+            destroy_result.budget
         } else {
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             #[cfg(test)]
@@ -253,23 +250,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                 );
                 drop(pool);
                 let (payload, budget_lease) = candidate.into_active_destroy_parts();
-                let destroy_result = destroy_idle_payload_and_wait(payload, "cancelled").await;
-                if destroy_result.outcome == DestroyOutcome::Completed {
-                    cleanup_state.mark_destroy_completed();
-                }
-                #[cfg(test)]
-                maybe_panic_outer_job(
-                    outer_job_panic,
-                    OuterJobPanicPoint::DestroyCompleted,
-                    run_id,
-                );
+                let destroy_result = destroy_active_owned_idle_payload(
+                    payload,
+                    budget_lease,
+                    "cancelled",
+                    destroy_bookkeeping,
+                )
+                .await;
                 return mark_session_affinity_refresh(
-                    CompletionReady::new(
-                        completion_payload,
-                        BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(
-                            budget_lease,
-                        )),
-                    ),
+                    CompletionReady::new(completion_payload, destroy_result.budget),
                     destroy_result.workspace_cache_promoted,
                     false,
                 );
@@ -338,19 +327,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                     // park()ed above; destroying a parked sandbox is
                     // safe — see Replaced arm for rationale.
                     let (payload, lease) = rejected.into_active_destroy_parts();
-                    let destroy_result =
-                        destroy_idle_payload_and_wait(payload, "park_rejected").await;
-                    if destroy_result.outcome == DestroyOutcome::Completed {
-                        cleanup_state.mark_destroy_completed();
-                    }
-                    #[cfg(test)]
-                    maybe_panic_outer_job(
-                        outer_job_panic,
-                        OuterJobPanicPoint::DestroyCompleted,
-                        run_id,
-                    );
+                    let destroy_result = destroy_active_owned_idle_payload(
+                        payload,
+                        lease,
+                        "park_rejected",
+                        destroy_bookkeeping,
+                    )
+                    .await;
                     session_affinity_changed |= destroy_result.workspace_cache_promoted;
-                    BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(lease))
+                    destroy_result.budget
                 }
             }
         }
@@ -389,15 +374,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             },
         )
         .await;
-        if destroy_outcome == DestroyOutcome::Completed {
-            cleanup_state.mark_destroy_completed();
-        }
-        #[cfg(test)]
-        maybe_panic_outer_job(
-            outer_job_panic,
-            OuterJobPanicPoint::DestroyCompleted,
-            run_id,
-        );
+        record_destroy_result(destroy_outcome, destroy_bookkeeping);
         BudgetOwnership::active(active_lease)
     };
 
@@ -406,6 +383,46 @@ pub(super) async fn finalize_sandbox_for_completion(
         session_affinity_changed,
         session_affinity_refresh_sent,
     )
+}
+
+#[derive(Clone, Copy)]
+struct DestroyBookkeepingContext<'a> {
+    cleanup_state: &'a RunCleanupState,
+    #[cfg(test)]
+    run_id: RunId,
+    #[cfg(test)]
+    outer_job_panic: Option<OuterJobPanicPoint>,
+}
+
+struct ActiveOwnedIdleDestroyResult {
+    budget: BudgetOwnership,
+    workspace_cache_promoted: bool,
+}
+
+fn record_destroy_result(outcome: DestroyOutcome, context: DestroyBookkeepingContext<'_>) {
+    if outcome == DestroyOutcome::Completed {
+        context.cleanup_state.mark_destroy_completed();
+    }
+    #[cfg(test)]
+    maybe_panic_outer_job(
+        context.outer_job_panic,
+        OuterJobPanicPoint::DestroyCompleted,
+        context.run_id,
+    );
+}
+
+async fn destroy_active_owned_idle_payload(
+    payload: IdleDestroyPayload,
+    budget_lease: BudgetLease,
+    reason: &'static str,
+    bookkeeping: DestroyBookkeepingContext<'_>,
+) -> ActiveOwnedIdleDestroyResult {
+    let destroy_result = destroy_idle_payload_and_wait(payload, reason).await;
+    record_destroy_result(destroy_result.outcome, bookkeeping);
+    ActiveOwnedIdleDestroyResult {
+        budget: BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(budget_lease)),
+        workspace_cache_promoted: destroy_result.workspace_cache_promoted,
+    }
 }
 
 async fn close_network_log_session(
@@ -528,7 +545,9 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::super::idle_lifecycle::SharedIdlePool;
-    use super::super::job_lifecycle::{ActiveBudgetLease, CompletionPayload, RunCleanupState};
+    use super::super::job_lifecycle::{
+        ActiveBudgetLease, CompletionPayload, RunCleanupDisposition, RunCleanupState,
+    };
     use crate::idle_pool::{
         IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult,
         ParkedIdleCandidate, ParkingGate, SyntheticParkedIdleCandidateParts,
@@ -679,6 +698,27 @@ mod tests {
                 promotable: true,
             })
             .expect("test workspace image should be promotable")
+    }
+
+    async fn sandbox_with_overrides(
+        sandbox_id: SandboxId,
+        overrides: Arc<sandbox_mock::MockSandboxOverrides>,
+    ) -> (Arc<Box<dyn SandboxFactory>>, Box<dyn Sandbox>) {
+        let factory: Arc<Box<dyn SandboxFactory>> =
+            Arc::new(Box::new(MockSandboxFactory::with_overrides(overrides)));
+        let sandbox = factory
+            .create(sandbox::SandboxConfig {
+                id: sandbox_id,
+                resources: sandbox::ResourceLimits {
+                    cpu_count: 2,
+                    memory_mb: 4096,
+                },
+                device_rate_limits: None,
+                workspace_drive: None,
+            })
+            .await
+            .expect("create sandbox with overrides");
+        (factory, sandbox)
     }
 
     #[tokio::test]
@@ -1174,5 +1214,159 @@ mod tests {
                 .await,
             "cancelled destroyed sandbox must not retain network-log attribution",
         );
+    }
+
+    #[tokio::test]
+    async fn finalizer_destroys_candidate_when_cancelled_after_park() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cancel = CancellationToken::new();
+        let cleanup_state = RunCleanupState::new();
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let park_gate = MockLifecycleGate::new();
+        let destroy_gate = MockLifecycleGate::new();
+        overrides.set_park_lifecycle_gate(park_gate.clone());
+        overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+        let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-cancel-after-park",
+            network_log_session,
+            cancel.clone(),
+        );
+        context.factory = factory;
+        context.cleanup_state = cleanup_state.clone();
+
+        let finalize_task = tokio::spawn(finalize_sandbox_for_completion(
+            Some(sandbox),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        ));
+
+        assert_eq!(
+            park_gate
+                .wait_entered(1, Duration::from_secs(5))
+                .await
+                .expect("park should enter gate"),
+            1
+        );
+        cancel.cancel();
+        park_gate.release_one();
+        assert_eq!(
+            destroy_gate
+                .wait_entered(1, Duration::from_secs(5))
+                .await
+                .expect("cancelled parked candidate should enter destroy gate"),
+            1
+        );
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        assert!(
+            !fixture
+                .network_log_manager
+                .append_for_ip(
+                    "10.0.0.1",
+                    serde_json::json!({"type":"dns","host":"after-cancelled-park.test"})
+                )
+                .await,
+            "cancelled parked candidate must close network-log attribution before destroy",
+        );
+
+        destroy_gate.release_one();
+        let _completion_ready = finalize_task.await.expect("finalizer task should join");
+        assert_eq!(overrides.park_call_count(), 1);
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::DestroyCompleted
+        );
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn finalizer_destroys_candidate_when_cancelled_before_idle_pool_transfer() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cancel = CancellationToken::new();
+        let cleanup_state = RunCleanupState::new();
+        let observer = StartLoopTestObserver::default();
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let destroy_gate = MockLifecycleGate::new();
+        overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+        let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-cancel-before-transfer",
+            network_log_session,
+            cancel.clone(),
+        );
+        context.factory = factory;
+        context.cleanup_state = cleanup_state.clone();
+        context.test_observer = observer.clone();
+        // Hold the pool lock so cancellation lands after the observer event but
+        // before ownership can transfer into the idle pool.
+        let pool_guard = fixture.idle_pool.lock().await;
+
+        let finalize_task = tokio::spawn(finalize_sandbox_for_completion(
+            Some(sandbox),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        ));
+
+        observer
+            .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(5))
+            .await;
+        cancel.cancel();
+        assert!(
+            !fixture
+                .network_log_manager
+                .append_for_ip(
+                    "10.0.0.1",
+                    serde_json::json!({"type":"dns","host":"before-transfer-cancel.test"})
+                )
+                .await,
+            "network-log attribution must be closed before waiting for idle-pool ownership",
+        );
+        drop(pool_guard);
+        assert_eq!(
+            destroy_gate
+                .wait_entered(1, Duration::from_secs(5))
+                .await
+                .expect("cancelled candidate should enter destroy gate"),
+            1
+        );
+
+        destroy_gate.release_one();
+        let _completion_ready = finalize_task.await.expect("finalizer task should join");
+        assert_eq!(overrides.park_call_count(), 1);
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::DestroyCompleted
+        );
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
     }
 }
