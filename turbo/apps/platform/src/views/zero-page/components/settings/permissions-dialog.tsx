@@ -463,8 +463,7 @@ function PermissionExpirationControl({
   }
 
   const showSetting = !readOnly;
-  const showKeepCurrent = allowGrant !== undefined;
-  const settingValue = selected ?? (showKeepCurrent ? null : "forever");
+  const settingValue = selected ?? null;
 
   return (
     <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -472,7 +471,7 @@ function PermissionExpirationControl({
       {showSetting && (
         <PermissionGrantDurationSelect
           value={settingValue}
-          showKeepCurrent={showKeepCurrent}
+          showKeepCurrent
           onClear={() => {
             onChange(permission, null);
           }}

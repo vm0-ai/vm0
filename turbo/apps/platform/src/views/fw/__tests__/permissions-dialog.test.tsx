@@ -297,7 +297,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     const durationSelect = within(row).getByRole("combobox", {
       name: "insert_comments grant duration",
     });
-    expect(durationSelect).toHaveTextContent("Always");
+    expect(durationSelect).toHaveTextContent("Keep current");
     expect(screen.getByText("Apply")).toBeDisabled();
 
     click(durationSelect);
@@ -356,7 +356,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
       screen.getByRole("combobox", {
         name: "insert_comments grant duration",
       }),
-    ).toHaveTextContent("Always");
+    ).toHaveTextContent("Keep current");
     click(screen.getByText("Apply"));
 
     await waitFor(() => {
