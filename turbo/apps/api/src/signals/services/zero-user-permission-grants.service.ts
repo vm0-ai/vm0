@@ -160,6 +160,16 @@ function resolveGrantExpiresAt(
   }
 }
 
+function preservedActiveGrantExpiresAt(
+  expiresAt: Date | null,
+  timestamp: Date,
+): Date | null {
+  if (!expiresAt) {
+    return null;
+  }
+  return expiresAt.getTime() > timestamp.getTime() ? expiresAt : null;
+}
+
 function formatUserPermissionGrant(
   row: Pick<
     UserPermissionGrantRow,
@@ -248,35 +258,58 @@ async function upsertVisibleGrantRow(
     }
 
     const timestamp = nowDate();
-    const expiresAt = resolveGrantExpiresAt(args.grant.expiresIn, timestamp);
-    const [row] = await tx
-      .insert(userPermissionGrants)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        agentId: args.grant.agentId,
-        connectorRef: args.grant.connectorRef,
-        permission: args.grant.permission,
-        action: args.grant.action,
-        expiresAt,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      })
-      .onConflictDoUpdate({
-        target: [
-          userPermissionGrants.orgId,
-          userPermissionGrants.userId,
-          userPermissionGrants.agentId,
-          userPermissionGrants.connectorRef,
-          userPermissionGrants.permission,
-        ],
-        set: {
-          action: args.grant.action,
-          expiresAt,
-          updatedAt: timestamp,
-        },
-      })
-      .returning();
+    const [existing] = await tx
+      .select()
+      .from(userPermissionGrants)
+      .where(
+        and(
+          eq(userPermissionGrants.orgId, args.orgId),
+          eq(userPermissionGrants.userId, args.userId),
+          eq(userPermissionGrants.agentId, args.grant.agentId),
+          eq(userPermissionGrants.connectorRef, args.grant.connectorRef),
+          eq(userPermissionGrants.permission, args.grant.permission),
+        ),
+      )
+      .for("update")
+      .limit(1);
+
+    const expiresAt =
+      args.grant.expiresIn === undefined
+        ? preservedActiveGrantExpiresAt(existing?.expiresAt ?? null, timestamp)
+        : resolveGrantExpiresAt(args.grant.expiresIn, timestamp);
+
+    const [row] = existing
+      ? await tx
+          .update(userPermissionGrants)
+          .set({
+            action: args.grant.action,
+            expiresAt,
+            updatedAt: timestamp,
+          })
+          .where(
+            and(
+              eq(userPermissionGrants.orgId, args.orgId),
+              eq(userPermissionGrants.userId, args.userId),
+              eq(userPermissionGrants.agentId, args.grant.agentId),
+              eq(userPermissionGrants.connectorRef, args.grant.connectorRef),
+              eq(userPermissionGrants.permission, args.grant.permission),
+            ),
+          )
+          .returning()
+      : await tx
+          .insert(userPermissionGrants)
+          .values({
+            orgId: args.orgId,
+            userId: args.userId,
+            agentId: args.grant.agentId,
+            connectorRef: args.grant.connectorRef,
+            permission: args.grant.permission,
+            action: args.grant.action,
+            expiresAt,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          })
+          .returning();
 
     if (!row) {
       throw new Error("User permission grant upsert did not return a row");

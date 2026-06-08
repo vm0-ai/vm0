@@ -60,9 +60,15 @@ export const setPermissionGrantExpiration$ = command(
   (
     { get, set },
     permission: string,
-    expiresIn: UserPermissionGrantExpiresIn,
+    expiresIn: UserPermissionGrantExpiresIn | null,
   ) => {
     const current = get(internalGrantExpirations$);
+    if (expiresIn === null) {
+      const next = { ...current };
+      delete next[permission];
+      set(internalGrantExpirations$, next);
+      return;
+    }
     set(internalGrantExpirations$, {
       ...current,
       [permission]: expiresIn,

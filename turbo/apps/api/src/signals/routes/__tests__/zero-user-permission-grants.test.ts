@@ -455,7 +455,7 @@ describe("zero user permission grants", () => {
     expect(permissionGrantsToFirewallPolicies([])).toBeNull();
   });
 
-  it("updates action and updatedAt without changing createdAt", async () => {
+  it("updates action and preserves active expiration when expiresIn is omitted", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
@@ -475,7 +475,7 @@ describe("zero user permission grants", () => {
     );
 
     const oldTimestamp = new Date("2024-01-01T00:00:00.000Z");
-    const oldExpiresAt = new Date("2024-01-01T00:05:00.000Z");
+    const oldExpiresAt = new Date("2099-01-01T00:05:00.000Z");
     const db = store.set(writeDb$);
     await db
       .update(userPermissionGrants)
@@ -507,7 +507,7 @@ describe("zero user permission grants", () => {
       [200],
     );
     expect(second.body.action).toBe("deny");
-    expect(second.body.expiresAt).toBeNull();
+    expect(second.body.expiresAt).toBe(oldExpiresAt.toISOString());
 
     const stored = await readStoredGrant({
       orgId: fixture.orgId,
@@ -519,7 +519,84 @@ describe("zero user permission grants", () => {
     expect(stored?.action).toBe("deny");
     expect(stored?.createdAt.getTime()).toBe(oldTimestamp.getTime());
     expect(stored?.updatedAt.getTime()).toBeGreaterThan(oldTimestamp.getTime());
+    expect(stored?.expiresAt?.getTime()).toBe(oldExpiresAt.getTime());
+  });
+
+  it("clears active expiration only when expiresIn is forever", async () => {
+    const fixture = await createFixture();
+    const agentId = await seedAgent(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+
+    await accept(
+      client.upsert({
+        body: {
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          permission: SLACK_READ_PERMISSION,
+          action: "allow",
+          expiresIn: "1h",
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+
+    const cleared = await accept(
+      client.upsert({
+        body: {
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          permission: SLACK_READ_PERMISSION,
+          action: "allow",
+          expiresIn: "forever",
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    expect(cleared.body.expiresAt).toBeNull();
+
+    const stored = await readStoredGrant({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+    });
     expect(stored?.expiresAt).toBeNull();
+  });
+
+  it("revives expired grants as permanent grants when expiresIn is omitted", async () => {
+    const fixture = await createFixture();
+    const agentId = await seedAgent(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+    const db = store.set(writeDb$);
+    await db.insert(userPermissionGrants).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+      expiresAt: new Date("2000-01-01T00:00:00.000Z"),
+    });
+
+    const revived = await accept(
+      client.upsert({
+        body: {
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          permission: SLACK_READ_PERMISSION,
+          action: "deny",
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    expect(revived.body.action).toBe("deny");
+    expect(revived.body.expiresAt).toBeNull();
   });
 
   it("computes grant expiration from server-side expiresIn", async () => {

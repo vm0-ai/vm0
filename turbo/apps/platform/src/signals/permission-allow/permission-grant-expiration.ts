@@ -76,27 +76,6 @@ export function permissionGrantExpiryText(
   return `Expires in ${hours} hour${hours === 1 ? "" : "s"}`;
 }
 
-export function expiresInFromGrantExpiresAt(
-  expiresAt: string | null,
-  nowMs = Date.now(),
-): UserPermissionGrantExpiresIn {
-  if (!expiresAt) {
-    return "forever";
-  }
-  const expiresAtMs = Date.parse(expiresAt);
-  if (!Number.isFinite(expiresAtMs)) {
-    return "forever";
-  }
-  const remainingMs = expiresAtMs - nowMs;
-  if (remainingMs <= HOUR_MS) {
-    return "1h";
-  }
-  if (remainingMs <= DAY_MS) {
-    return "24h";
-  }
-  return "7d";
-}
-
 const internalPermissionGrantExpiresInByScope$ = state<
   Record<string, UserPermissionGrantExpiresIn>
 >({});

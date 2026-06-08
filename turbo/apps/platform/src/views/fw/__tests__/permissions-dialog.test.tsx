@@ -252,12 +252,15 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     await waitFor(() => {
       expect(screen.getByText("Expires in 2 hours")).toBeInTheDocument();
     });
-    click(
-      screen.getByRole("combobox", {
-        name: "insert_comments grant duration",
-      }),
-    );
+    const durationSelect = screen.getByRole("combobox", {
+      name: "insert_comments grant duration",
+    });
+    expect(durationSelect).toHaveTextContent("Keep current");
+    expect(screen.getByText("Apply")).toBeDisabled();
+
+    click(durationSelect);
     click(await screen.findByRole("option", { name: "7 days" }));
+    expect(screen.getByText("Apply")).toBeEnabled();
 
     click(screen.getByText("Apply"));
 
@@ -270,6 +273,56 @@ describe("permissions dialog - flat list connector (Notion)", () => {
       permission: "insert_comments",
       action: "deny",
       expiresIn: "7d",
+    });
+  });
+
+  it("keeps current expiration when an existing grant action changes", async () => {
+    const grantBodies: unknown[] = [];
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [
+        createMockUserPermissionGrantResponse({
+          agentId: AGENT_ID,
+          connectorRef: "notion",
+          permission: "insert_comments",
+          action: "deny",
+          expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        }),
+      ],
+    });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    expect(
+      screen.getByRole("combobox", {
+        name: "insert_comments grant duration",
+      }),
+    ).toHaveTextContent("Keep current");
+    click(getPolicyButton(row, "Allow"));
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+      permission: "insert_comments",
+      action: "allow",
+    });
+    expect(grantBodies[0]).not.toMatchObject({
+      expiresIn: expect.any(String),
     });
   });
 

@@ -94,7 +94,6 @@ import {
   upsertUserPermissionGrant$,
   userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
-import { expiresInFromGrantExpiresAt } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   allConnectorTypes$,
@@ -449,16 +448,6 @@ interface ChangedUserGrantPolicy {
   readonly expiresIn?: UserPermissionGrantExpiresIn;
 }
 
-function grantExpirationChanged(
-  grant: UserPermissionGrantResponse,
-  selected: UserPermissionGrantExpiresIn | undefined,
-): boolean {
-  if (!selected) {
-    return false;
-  }
-  return expiresInFromGrantExpiresAt(grant.expiresAt) !== selected;
-}
-
 function selectedGrantExpiresIn(
   expirationEnabled: boolean,
   expiresInByPermission: GrantExpirationSelections,
@@ -556,7 +545,7 @@ function addExpirationOnlyChanges({
       continue;
     }
     const expiresIn = expiresInByPermission[grant.permission];
-    if (!expiresIn || !grantExpirationChanged(grant, expiresIn)) {
+    if (!expiresIn) {
       continue;
     }
     const currentPolicy =
