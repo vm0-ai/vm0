@@ -15,6 +15,7 @@ import type {
 } from "@vm0/api-contracts/contracts/internal-callbacks-schedule";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import type { ChatMessageScheduleSnapshot } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
@@ -45,6 +46,21 @@ const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 const LIGHTWEIGHT_MODEL = "google/gemini-3.1-flash-lite-preview";
 const MAX_CONSECUTIVE_FAILURES = 3;
+
+type ScheduleSnapshotSource = Pick<
+  typeof zeroAgentSchedules.$inferSelect,
+  "id" | "name" | "description"
+>;
+
+function chatMessageScheduleSnapshot(
+  schedule: ScheduleSnapshotSource,
+): ChatMessageScheduleSnapshot {
+  return {
+    id: schedule.id,
+    title: schedule.name,
+    description: schedule.description ?? null,
+  };
+}
 
 async function scheduleResponse(
   schedule: typeof zeroAgentSchedules.$inferSelect,
@@ -1316,6 +1332,7 @@ export const runScheduleNow$ = command(
       appendQueueMarker: result.body.status === "queued",
       scheduleId: schedule.id,
       scheduleTitle: schedule.name,
+      scheduleSnapshot: chatMessageScheduleSnapshot(schedule),
     });
     signal.throwIfAborted();
 

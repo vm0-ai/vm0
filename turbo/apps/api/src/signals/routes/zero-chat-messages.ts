@@ -10,6 +10,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
+  type ChatMessageScheduleSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -1497,11 +1498,13 @@ async function appendAssociatedUserMessage(params: {
   // When false, the thread's in-progress draft is preserved. Scheduled posts
   // are not user-initiated typing, so they must not clear the user's draft.
   readonly clearDraft: boolean;
-  // Set when this message is posted by a firing schedule. `scheduleTitle`
-  // snapshots the schedule name at send time so the bubble keeps its label
-  // even after a rename/delete.
+  // Set when this message is posted by a firing schedule. `scheduleSnapshot`
+  // snapshots the schedule's basic display details at send time so the bubble
+  // keeps its label even after an edit/delete. `scheduleTitle` is retained for
+  // legacy fallback display.
   readonly scheduleId?: string;
   readonly scheduleTitle?: string;
+  readonly scheduleSnapshot?: ChatMessageScheduleSnapshot;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
     if (params.clearDraft) {
@@ -1524,6 +1527,7 @@ async function appendAssociatedUserMessage(params: {
         generationTemplate: params.generationTemplate,
         scheduleId: params.scheduleId,
         scheduleTitle: params.scheduleTitle,
+        scheduleSnapshot: params.scheduleSnapshot,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -2081,6 +2085,7 @@ export async function postScheduleUserMessage(params: {
   readonly appendQueueMarker: boolean;
   readonly scheduleId: string;
   readonly scheduleTitle: string;
+  readonly scheduleSnapshot: ChatMessageScheduleSnapshot;
 }): Promise<void> {
   await appendAssociatedUserMessage({
     db: params.db,
@@ -2096,6 +2101,7 @@ export async function postScheduleUserMessage(params: {
     clearDraft: false,
     scheduleId: params.scheduleId,
     scheduleTitle: params.scheduleTitle,
+    scheduleSnapshot: params.scheduleSnapshot,
   });
   await publishUserSignal(
     [params.userId],

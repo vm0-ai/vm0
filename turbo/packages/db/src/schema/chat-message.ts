@@ -52,6 +52,12 @@ export interface ChatMessageAttachFileMetadata {
 
 export type ChatMessageAttachFileMetadataList = ChatMessageAttachFileMetadata[];
 
+export interface ChatMessageScheduleSnapshot {
+  readonly id: string;
+  readonly title: string;
+  readonly description: string | null;
+}
+
 /**
  * Chat Messages table
  * Each row is a single message belonging to a chat_thread.
@@ -107,10 +113,11 @@ export const chatMessages = pgTable(
       { onDelete: "set null" },
     ),
     // Set when this user message was posted by a firing schedule rather than
-    // typed by a human. `schedule_id` links to the schedule for navigation;
-    // `schedule_title` snapshots the schedule's name at send time so the
-    // message keeps rendering its label even if the schedule is later renamed
-    // or deleted (FK is set null on delete).
+    // typed by a human. `schedule_id` links to the schedule for navigation.
+    // `schedule_snapshot` preserves the basic schedule details at send time so
+    // the message keeps rendering its label even if the schedule is later
+    // renamed, edited, or deleted (FK is set null on delete). `schedule_title`
+    // is retained for legacy rows and fallback display.
     scheduleId: uuid("schedule_id").references(
       (): AnyPgColumn => {
         return zeroAgentSchedules.id;
@@ -118,6 +125,8 @@ export const chatMessages = pgTable(
       { onDelete: "set null" },
     ),
     scheduleTitle: text("schedule_title"),
+    scheduleSnapshot:
+      jsonb("schedule_snapshot").$type<ChatMessageScheduleSnapshot>(),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     error: text("error"),

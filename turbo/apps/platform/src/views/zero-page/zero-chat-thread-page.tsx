@@ -2161,7 +2161,7 @@ function buildChatThreadDisplayEntries(
 
   for (let index = 0; index < messages.length; index++) {
     const message = messages[index]!;
-    if (message.role === "user" && message.scheduleTitle) {
+    if (isScheduleUserMessage(message)) {
       const assistantMessages: (EnrichedChatMessage & {
         role: "assistant";
       })[] = [];
@@ -4267,10 +4267,32 @@ function PagedUserGroup({
 
 type ScheduledRunStatus = "running" | "succeeded" | "failed";
 
+function isScheduleUserMessage(
+  message: EnrichedChatMessage,
+): message is EnrichedChatMessage & { role: "user" } {
+  return (
+    message.role === "user" &&
+    (message.scheduleSnapshot !== undefined ||
+      message.scheduleTitle !== undefined ||
+      message.scheduleId !== undefined)
+  );
+}
+
+function scheduleMessageLabel(
+  message: EnrichedChatMessage & { role: "user" },
+): string {
+  return (
+    message.scheduleSnapshot?.description?.trim() ||
+    message.scheduleSnapshot?.title?.trim() ||
+    message.scheduleTitle?.trim() ||
+    "Scheduled run"
+  );
+}
+
 function scheduledRunTitle(
   userMessage: EnrichedChatMessage & { role: "user" },
 ): string {
-  return userMessage.scheduleTitle?.trim() || "Scheduled run";
+  return scheduleMessageLabel(userMessage);
 }
 
 function formatScheduledRunTriggerTime(value: string): string {
@@ -4891,10 +4913,10 @@ function UserMessageGenerationTemplate({
 
 function ScheduleUserMessage({
   scheduleId,
-  scheduleTitle,
+  scheduleLabel,
 }: {
   scheduleId: string | undefined;
-  scheduleTitle: string;
+  scheduleLabel: string;
 }) {
   const cardClassName =
     "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
@@ -4902,7 +4924,7 @@ function ScheduleUserMessage({
     <>
       <IconClock size={15} className="shrink-0" />
       <span className="min-w-0 truncate font-medium text-foreground">
-        {scheduleTitle}
+        {scheduleLabel}
       </span>
     </>
   );
@@ -4916,7 +4938,7 @@ function ScheduleUserMessage({
               pathname="/schedules/:scheduleId"
               options={{ pathParams: { scheduleId } }}
               className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
-              aria-label={`Open schedule ${scheduleTitle}`}
+              aria-label={`Open schedule ${scheduleLabel}`}
             >
               {body}
             </Link>
@@ -4981,11 +5003,11 @@ function PagedUserMessage({
     );
   };
 
-  if (message.scheduleTitle) {
+  if (isScheduleUserMessage(message)) {
     return (
       <ScheduleUserMessage
         scheduleId={message.scheduleId}
-        scheduleTitle={message.scheduleTitle}
+        scheduleLabel={scheduleMessageLabel(message)}
       />
     );
   }

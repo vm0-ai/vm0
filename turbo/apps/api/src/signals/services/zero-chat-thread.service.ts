@@ -28,6 +28,7 @@ import {
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowupGenerationType,
   type ChatMessageRecommendedFollowups,
+  type ChatMessageScheduleSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -116,6 +117,7 @@ type ChatMessageRow = {
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
   readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
+  readonly scheduleSnapshot: ChatMessageScheduleSnapshot | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
   readonly scheduleId: string | null;
@@ -220,6 +222,7 @@ const messageColumns = {
   attachFileMetadata: chatMessages.attachFileMetadata,
   generationTemplate: chatMessages.generationTemplate,
   recommendedFollowups: chatMessages.recommendedFollowups,
+  scheduleSnapshot: chatMessages.scheduleSnapshot,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
   scheduleId: chatMessages.scheduleId,
@@ -645,6 +648,7 @@ function toPagedMessage(
         role: "user" as const,
         scheduleId: row.scheduleId ?? undefined,
         scheduleTitle: row.scheduleTitle ?? undefined,
+        scheduleSnapshot: row.scheduleSnapshot ?? undefined,
       };
     }
     return {

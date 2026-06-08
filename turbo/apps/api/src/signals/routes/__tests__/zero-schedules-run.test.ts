@@ -68,6 +68,7 @@ async function seedFixture(): Promise<SchedulesFixture> {
             name: "run-test",
             cronExpression: "0 9 * * *",
             prompt: "Manual run test",
+            description: "Run test description",
             appendSystemPrompt: "Use the schedule-specific context.",
             enabled: true,
           },
@@ -272,13 +273,14 @@ describe("POST /api/zero/schedules/run", () => {
     });
 
     // The prompt was posted as a user chat message bound to the run, tagged
-    // with the originating schedule's id and a snapshot of its title.
+    // with the originating schedule's id and schedule snapshot.
     const messages = await db
       .select({
         content: chatMessages.content,
         role: chatMessages.role,
         scheduleId: chatMessages.scheduleId,
         scheduleTitle: chatMessages.scheduleTitle,
+        scheduleSnapshot: chatMessages.scheduleSnapshot,
       })
       .from(chatMessages)
       .where(eq(chatMessages.runId, body.runId));
@@ -288,7 +290,10 @@ describe("POST /api/zero/schedules/run", () => {
           message.role === "user" &&
           message.content === "Manual run test" &&
           message.scheduleId === scheduleId &&
-          message.scheduleTitle === "run-test"
+          message.scheduleTitle === "run-test" &&
+          message.scheduleSnapshot?.id === scheduleId &&
+          message.scheduleSnapshot.title === "run-test" &&
+          message.scheduleSnapshot.description === "Run test description"
         );
       }),
     ).toBeTruthy();

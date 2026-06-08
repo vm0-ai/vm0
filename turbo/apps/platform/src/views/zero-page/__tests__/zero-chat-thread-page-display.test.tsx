@@ -241,6 +241,11 @@ describe("zero chat thread page display - scheduled run card", () => {
           runId: "run-scheduled-report",
           scheduleId: "schedule-report",
           scheduleTitle: "Daily report",
+          scheduleSnapshot: {
+            id: "schedule-report",
+            title: "Daily report",
+            description: "Daily revenue summary",
+          },
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
@@ -270,10 +275,10 @@ describe("zero chat thread page display - scheduled run card", () => {
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     const card = await screen.findByLabelText(
-      "Open scheduled run details for Daily report",
+      "Open scheduled run details for Daily revenue summary",
     );
     expect(card).toHaveTextContent("Triggered at");
-    expect(card).toHaveTextContent("Daily report");
+    expect(card).toHaveTextContent("Daily revenue summary");
     expect(card).toHaveTextContent("Succeeded");
     expect(card).toHaveTextContent("Revenue is up 4%.");
     expect(card).toHaveTextContent("Open issues are unchanged.");
@@ -302,6 +307,11 @@ describe("zero chat thread page display - scheduled run card", () => {
           runId: "run-scheduled-report",
           scheduleId: "schedule-report",
           scheduleTitle: "Daily report",
+          scheduleSnapshot: {
+            id: "schedule-report",
+            title: "Daily report",
+            description: "Daily revenue summary",
+          },
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
@@ -322,11 +332,13 @@ describe("zero chat thread page display - scheduled run card", () => {
     });
 
     const scheduleLink = await screen.findByLabelText(
-      "Open schedule Daily report",
+      "Open schedule Daily revenue summary",
     );
     expect(scheduleLink).toBeInTheDocument();
     expect(
-      screen.queryByLabelText("Open scheduled run details for Daily report"),
+      screen.queryByLabelText(
+        "Open scheduled run details for Daily revenue summary",
+      ),
     ).not.toBeInTheDocument();
     const assistantMessage = await screen.findByText(
       "I checked the latest numbers and prepared the report.",
