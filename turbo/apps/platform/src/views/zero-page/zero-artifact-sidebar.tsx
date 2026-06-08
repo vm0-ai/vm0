@@ -243,6 +243,7 @@ function ArtifactSidebarContent({
       <ArtifactSidebarHeader
         title={display.filename}
         kind={display.kind}
+        artifactKind={display.artifactKind}
         subtitle={display.subtitle}
         syncTarget={syncTarget}
         url={display.url}
@@ -271,6 +272,7 @@ interface ArtifactDisplay {
   kind: ArtifactKindForBody;
   filename: string;
   subtitle: string;
+  artifactKind?: ChatThreadArtifactFile["artifactKind"];
 }
 
 type ArtifactKindForBody =
@@ -330,6 +332,7 @@ function resolveArtifactDisplay(
       kind: ref.kind,
       filename: item.file.filename,
       subtitle: artifactTitleSubtitle(ref.kind, item.file),
+      artifactKind: item.file.artifactKind,
     };
   }
   return {
@@ -343,6 +346,7 @@ function resolveArtifactDisplay(
 function ArtifactSidebarHeader({
   title,
   kind,
+  artifactKind,
   subtitle,
   syncTarget,
   url,
@@ -353,6 +357,7 @@ function ArtifactSidebarHeader({
 }: {
   title: string;
   kind?: ArtifactKindForBody;
+  artifactKind?: ChatThreadArtifactFile["artifactKind"];
   subtitle: string;
   syncTarget?: ArtifactDownloadSyncTarget;
   url?: string;
@@ -387,6 +392,7 @@ function ArtifactSidebarHeader({
       </div>
       <ArtifactSidebarActions
         compactActions={compactActions}
+        artifactKind={artifactKind}
         fullscreen={fullscreen}
         kind={kind}
         onClose={onClose}
@@ -400,6 +406,7 @@ function ArtifactSidebarHeader({
 }
 
 function ArtifactSidebarActions({
+  artifactKind,
   compactActions,
   fullscreen,
   kind,
@@ -409,6 +416,7 @@ function ArtifactSidebarActions({
   title,
   url,
 }: {
+  artifactKind?: ChatThreadArtifactFile["artifactKind"];
   compactActions: boolean;
   fullscreen: boolean;
   kind?: ArtifactKindForBody;
@@ -426,6 +434,7 @@ function ArtifactSidebarActions({
           <ArtifactShareButton ariaLabel="Share artifact" url={url} />
           <ArtifactDownloadMenu
             ariaLabel="Download artifact"
+            artifactKind={artifactKind}
             filename={title}
             syncTarget={syncTarget}
             url={url}

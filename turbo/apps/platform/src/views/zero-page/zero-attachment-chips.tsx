@@ -371,6 +371,7 @@ function artifactDialogMetadataFromItem(params: {
 }): AttachmentArtifactMetadata {
   return {
     agentId: params.agentId,
+    artifactKind: params.item.file.artifactKind,
     contentType: params.item.file.contentType,
     createdAt: params.item.file.createdAt,
     fileId: params.item.file.id,
@@ -930,6 +931,7 @@ function ArtifactPreviewDialogContent({
             />
             <ArtifactDownloadMenu
               ariaLabel="Download options"
+              artifactKind={artifact?.artifactKind}
               filename={filename}
               iconSize={18}
               syncTarget={syncTarget}

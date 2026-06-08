@@ -1180,6 +1180,9 @@ function flattenArtifactRuns(
 }
 
 function artifactFileKindLabel(file: ChatThreadArtifactFile): string {
+  if (file.artifactKind === "presentation-html") {
+    return "Presentation";
+  }
   const documentKind = getArtifactDocumentPreviewKind(file);
   if (documentKind === "html") {
     return "Hosted site";

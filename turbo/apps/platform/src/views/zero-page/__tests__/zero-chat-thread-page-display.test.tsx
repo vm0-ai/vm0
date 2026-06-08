@@ -38,8 +38,15 @@ import {
   setMockSchedules,
 } from "../../../mocks/handlers/api-schedules.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
+import { downloadPresentationHtmlPptx } from "../presentation-html-pptx-download.ts";
 
 const context = testContext();
+
+vi.mock("../presentation-html-pptx-download.ts", () => {
+  return {
+    downloadPresentationHtmlPptx: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 function queryRoleByText(
   role: Parameters<typeof queryAllByRoleFast>[0],
@@ -92,6 +99,7 @@ function createMockAuthWindow() {
 }
 
 beforeEach(() => {
+  vi.mocked(downloadPresentationHtmlPptx).mockClear();
   vi.stubEnv("VITE_API_URL", "https://www.vm0.ai");
   vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
   server.use(
@@ -2192,6 +2200,125 @@ describe("zero chat thread page display - artifact sidebar", () => {
       ).toHaveAttribute("aria-disabled", "true");
     });
     await user.keyboard("{Escape}");
+  });
+
+  it("hides presentation PPTX download when the feature switch is disabled", async () => {
+    const user = userEvent.setup();
+    const fileUrl = "https://demo-deck.sites.vm0.io";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create slides",
+          runId: "run-presentation-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setMockConnectors([]);
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-presentation-artifact",
+              files: [
+                {
+                  id: fileUrl,
+                  filename: "demo-deck.html",
+                  contentType: "text/html",
+                  size: 4096,
+                  url: fileUrl,
+                  artifactKind: "presentation-html",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationHtmlPptxDownload]: false,
+      },
+    });
+
+    click(await screen.findByLabelText("Open artifacts"));
+    await user.click(
+      await screen.findByLabelText("Open artifact demo-deck.html"),
+    );
+    const downloadButton = await screen.findByLabelText("Download artifact");
+    await user.click(downloadButton);
+
+    await waitFor(() => {
+      expect(queryRoleByText("menuitem", "Download")).toBeInTheDocument();
+    });
+    expect(queryRoleByText("menuitem", "Download (.pptx)")).toBeUndefined();
+  });
+
+  it("downloads presentation HTML artifacts as PPTX when the feature switch is enabled", async () => {
+    const user = userEvent.setup();
+    const fileUrl = "https://demo-deck.sites.vm0.io";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create slides",
+          runId: "run-presentation-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setMockConnectors([]);
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-presentation-artifact",
+              files: [
+                {
+                  id: fileUrl,
+                  filename: "demo-deck.html",
+                  contentType: "text/html",
+                  size: 4096,
+                  url: fileUrl,
+                  artifactKind: "presentation-html",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
+      },
+    });
+
+    click(await screen.findByLabelText("Open artifacts"));
+    await user.click(
+      await screen.findByLabelText("Open artifact demo-deck.html"),
+    );
+    await user.click(await screen.findByLabelText("Download artifact"));
+    await user.click(await screen.findByText("Download (.pptx)"));
+
+    await waitFor(() => {
+      expect(downloadPresentationHtmlPptx).toHaveBeenCalledWith({
+        filename: "demo-deck.html",
+        signal: expect.any(AbortSignal),
+        url: fileUrl,
+      });
+    });
   });
 
   it("opens Google Drive OAuth in a new tab and syncs after the connector event", async () => {
