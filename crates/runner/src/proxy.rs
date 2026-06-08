@@ -89,6 +89,7 @@ pub const USAGE_FLUSH_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Poll interval when waiting for usage flush.
 const USAGE_FLUSH_POLL: Duration = Duration::from_millis(200);
+const USAGE_PENDING_MAX_BYTES: u64 = 64 * 1024;
 
 /// Minimum interval between repeated runner-triggered usage flush requests
 /// while the addon is not ready.
@@ -501,7 +502,7 @@ async fn read_usage_pending_file(path: &Path) -> std::io::Result<String> {
     options
         .read(true)
         .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK);
-    let mut file = options.open(path).await?;
+    let file = options.open(path).await?;
     let metadata = file.metadata().await?;
     if !metadata.is_file() {
         return Err(std::io::Error::new(
@@ -509,14 +510,33 @@ async fn read_usage_pending_file(path: &Path) -> std::io::Result<String> {
             format!("{} is not a regular usage-pending file", path.display()),
         ));
     }
+    read_usage_pending_file_content(file, path).await
+}
+
+async fn read_usage_pending_file_content(
+    file: tokio::fs::File,
+    path: &Path,
+) -> std::io::Result<String> {
+    let mut limited = file.take(USAGE_PENDING_MAX_BYTES + 1);
     let mut content = String::new();
-    file.read_to_string(&mut content).await?;
+    limited.read_to_string(&mut content).await?;
+    if content.len() as u64 > USAGE_PENDING_MAX_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "{} exceeds {} bytes",
+                path.display(),
+                USAGE_PENDING_MAX_BYTES
+            ),
+        ));
+    }
     Ok(content)
 }
 
 #[cfg(not(unix))]
 async fn read_usage_pending_file(path: &Path) -> std::io::Result<String> {
-    tokio::fs::read_to_string(path).await
+    let file = tokio::fs::File::open(path).await?;
+    read_usage_pending_file_content(file, path).await
 }
 
 fn validate_usage_pending_state(
@@ -2320,6 +2340,20 @@ while True:
                 .expect("usage-pending FIFO read should not block");
 
         assert!(result.is_err(), "usage-pending FIFO should be rejected");
+    }
+
+    #[tokio::test]
+    async fn read_usage_pending_file_rejects_large_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("usage-pending");
+        std::fs::write(&path, vec![b'x'; (USAGE_PENDING_MAX_BYTES + 1) as usize]).unwrap();
+
+        let result = read_usage_pending_file(&path).await;
+
+        assert!(
+            result.is_err(),
+            "oversized usage-pending file should be rejected"
+        );
     }
 
     #[tokio::test(start_paused = true)]
