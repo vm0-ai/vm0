@@ -1,9 +1,11 @@
 import { command, computed, state } from "ccstate";
-import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
 
-import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { scheduleTitle } from "../zero-page/schedule-title.ts";
+import {
+  automationsModeEnabled$,
+  listSchedulesVia,
+} from "../zero-page/automations-mode.ts";
 
 export interface HeaderScheduleEntry {
   readonly id: string;
@@ -30,13 +32,12 @@ export const reloadHeaderScheduleMenu$ = command(({ get, set }) => {
 export const headerScheduleMenu$ = computed(
   async (get): Promise<readonly HeaderScheduleEntry[]> => {
     get(headerScheduleMenuReload$);
-    const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await accept(
-      client.list({ fetchOptions: { cache: "no-store" } }),
-      [200],
-      { toast: false },
+    const schedules = await listSchedulesVia(
+      get(zeroClient$),
+      get(automationsModeEnabled$),
+      { cache: "no-store" },
     );
-    return result.body.schedules.map((schedule) => {
+    return schedules.map((schedule) => {
       return {
         id: schedule.id,
         name: schedule.name,

@@ -81,6 +81,7 @@ import {
 import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
 import { apiAttributionHandlers } from "./api-attribution.ts";
 import { apiSchedulesHandlers, resetMockSchedules } from "./api-schedules.ts";
+import { apiAutomationsHandlers } from "./api-automations.ts";
 import { apiInsightsHandlers } from "./api-insights.ts";
 import { apiQueuePositionHandlers } from "./api-queue-position.ts";
 import {
@@ -125,6 +126,7 @@ export const handlers = [
   ...apiRealtimeHandlers,
   ...apiUserPermissionGrantsHandlers,
   ...apiSchedulesHandlers,
+  ...apiAutomationsHandlers,
   ...apiInsightsHandlers,
   ...apiQueuePositionHandlers,
   ...apiVoiceIoHandlers,

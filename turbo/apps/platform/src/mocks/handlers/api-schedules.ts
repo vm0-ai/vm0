@@ -6,8 +6,10 @@ import {
   type ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
 import { mockApi } from "../msw-contract.ts";
-
-let mockSchedules: ScheduleResponse[] = [];
+import {
+  getMockSchedules,
+  setMockSchedules as setStore,
+} from "./schedules-store.ts";
 
 const DEFAULT_CHAT_THREAD_ID = "d0000000-0000-4000-a000-000000000001";
 
@@ -40,18 +42,12 @@ export function createMockScheduleResponse(
   };
 }
 
-export function setMockSchedules(schedules: ScheduleResponse[]): void {
-  mockSchedules = schedules;
-}
-
-export function resetMockSchedules(): void {
-  mockSchedules = [];
-}
+export { setMockSchedules, resetMockSchedules } from "./schedules-store.ts";
 
 export const apiSchedulesHandlers = [
   // GET /api/zero/schedules
   mockApi(zeroSchedulesMainContract.list, ({ respond }) =>
-    respond(200, { schedules: mockSchedules }),
+    respond(200, { schedules: getMockSchedules() }),
   ),
 
   // POST /api/zero/schedules
@@ -80,49 +76,48 @@ export const apiSchedulesHandlers = [
       createdAt: now,
       updatedAt: now,
     };
-    const existing = mockSchedules.find((s) => s.name === body.name);
+    const schedules = getMockSchedules();
+    const existing = schedules.find((s) => s.name === body.name);
     if (existing) {
-      mockSchedules = mockSchedules.map((s) =>
-        s.name === body.name ? schedule : s,
-      );
+      setStore(schedules.map((s) => (s.name === body.name ? schedule : s)));
       return respond(200, { schedule, created: false });
     }
-    mockSchedules = [...mockSchedules, schedule];
+    setStore([...schedules, schedule]);
     return respond(201, { schedule, created: true });
   }),
 
   // DELETE /api/zero/schedules/:name
   mockApi(zeroSchedulesByNameContract.delete, ({ params, respond }) => {
-    mockSchedules = mockSchedules.filter((s) => s.name !== params.name);
+    setStore(getMockSchedules().filter((s) => s.name !== params.name));
     return respond(204);
   }),
 
   // POST /api/zero/schedules/:name/enable
   mockApi(zeroSchedulesEnableContract.enable, ({ params, respond }) => {
-    const schedule = mockSchedules.find((s) => s.name === params.name);
+    const schedule = getMockSchedules().find((s) => s.name === params.name);
     if (!schedule) {
       return respond(404, {
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }
     const updated = { ...schedule, enabled: true };
-    mockSchedules = mockSchedules.map((s) =>
-      s.name === params.name ? updated : s,
+    setStore(
+      getMockSchedules().map((s) => (s.name === params.name ? updated : s)),
     );
     return respond(200, updated);
   }),
 
   // POST /api/zero/schedules/:name/disable
   mockApi(zeroSchedulesEnableContract.disable, ({ params, respond }) => {
-    const schedule = mockSchedules.find((s) => s.name === params.name);
+    const schedule = getMockSchedules().find((s) => s.name === params.name);
     if (!schedule) {
       return respond(404, {
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }
     const updated = { ...schedule, enabled: false };
-    mockSchedules = mockSchedules.map((s) =>
-      s.name === params.name ? updated : s,
+    setStore(
+      getMockSchedules().map((s) => (s.name === params.name ? updated : s)),
     );
     return respond(200, updated);
   }),
