@@ -12,6 +12,11 @@ import {
   SheetFooter,
   Button,
   cn,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
 } from "@vm0/ui";
 import {
   CONNECTOR_TYPES,
@@ -34,7 +39,6 @@ import type {
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { ConnectorIcon } from "./connector-icons.tsx";
-import { PermissionGrantDurationSelect } from "../../../components/permission-grant-duration-select.tsx";
 import { permissionGrantExpiryText } from "../../../../signals/permission-allow/permission-grant-expiration.ts";
 import type { PermissionPolicy } from "../../../../signals/zero-page/settings/permissions.ts";
 import {
@@ -60,6 +64,7 @@ import {
   IconBan,
   IconChevronRight,
   IconClock,
+  IconChevronDown,
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
@@ -160,7 +165,7 @@ function PolicyPill({
   onChange,
   disabled,
 }: {
-  policy: PermissionPolicy | "mixed";
+  policy: FirewallPolicyValue | "mixed";
   onChange?: (p: PermissionPolicy) => void;
   disabled?: boolean;
 }) {
@@ -387,15 +392,9 @@ function canApplyPermissionPolicies({
 }
 
 function UnknownEndpointsToggle({
-  policy,
-  disabled,
-  expirationControl,
-  onChange,
+  policyControl,
 }: {
-  policy: PermissionPolicy | "mixed";
-  disabled?: boolean;
-  expirationControl?: ReactNode;
-  onChange: (p: PermissionPolicy) => void;
+  policyControl: ReactNode;
 }) {
   return (
     <div className="border-t border-border/40 -mx-6 px-3 pt-3 pb-1">
@@ -408,10 +407,7 @@ function UnknownEndpointsToggle({
             API endpoints not matched by any permission above
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {expirationControl}
-          <PolicyPill policy={policy} disabled={disabled} onChange={onChange} />
-        </div>
+        <div className="flex shrink-0 items-center gap-2">{policyControl}</div>
       </div>
     </div>
   );
@@ -435,18 +431,67 @@ function GrantExpirationStatus({ expiresAt }: { expiresAt: string | null }) {
   );
 }
 
-function PermissionExpirationControl({
+const ALLOW_DURATION_MENU_OPTIONS: readonly {
+  readonly value: UserPermissionGrantExpiresIn;
+  readonly label: string;
+  readonly buttonLabel: string;
+}[] = [
+  { value: "1h", label: "Allow for 1h", buttonLabel: "1h" },
+  { value: "24h", label: "Allow for 24h", buttonLabel: "24h" },
+  { value: "7d", label: "Allow for 7d", buttonLabel: "7d" },
+  { value: "forever", label: "Allow always", buttonLabel: "Always" },
+];
+
+function allowButtonLabel(
+  selected: UserPermissionGrantExpiresIn | undefined,
+): string {
+  const option = ALLOW_DURATION_MENU_OPTIONS.find((item) => {
+    return item.value === selected;
+  });
+  return option ? `Allow · ${option.buttonLabel}` : "Allow";
+}
+
+function permissionPolicyButtonClass({
+  active,
+  disabled,
+  tone,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  tone: "allow" | "deny";
+}): string {
+  return `flex h-7 items-center gap-1 px-2.5 text-xs font-medium transition-colors ${
+    active
+      ? tone === "allow"
+        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+        : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
+      : disabled
+        ? "text-muted-foreground/50"
+        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+  } ${disabled ? "cursor-default" : "cursor-pointer"}`;
+}
+
+function MenuItemCheck({ active }: { active: boolean }) {
+  return active ? (
+    <IconCheck size={14} stroke={2.5} />
+  ) : (
+    <span className="h-3.5 w-3.5 shrink-0" />
+  );
+}
+
+function PermissionGrantPolicyControl({
   permission,
-  action,
+  policy,
   grant,
   selected,
   expirationEnabled,
   readOnly,
   saving,
   onChange,
+  onPolicyChange,
 }: {
   permission: string;
-  action: FirewallPolicyValue;
+  policy: FirewallPolicyValue;
   grant: UserPermissionGrantResponse | undefined;
   selected: UserPermissionGrantExpiresIn | undefined;
   expirationEnabled: boolean;
@@ -456,32 +501,118 @@ function PermissionExpirationControl({
     permission: string,
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => void;
+  onPolicyChange: (policy: PermissionPolicy) => void;
 }) {
   const allowGrant = grant?.action === "allow" ? grant : undefined;
-  if (!expirationEnabled || action !== "allow") {
-    return null;
-  }
-
-  const showSetting = !readOnly;
-  const settingValue = selected ?? null;
+  const showExpirationStatus = expirationEnabled && policy === "allow";
+  const showSplitPolicy = expirationEnabled && !readOnly;
 
   return (
-    <div className="flex shrink-0 flex-col items-end gap-1.5">
-      <GrantExpirationStatus expiresAt={allowGrant?.expiresAt ?? null} />
-      {showSetting && (
-        <PermissionGrantDurationSelect
-          value={settingValue}
-          showKeepCurrent
-          onClear={() => {
-            onChange(permission, null);
+    <div className="flex shrink-0 items-center gap-2">
+      {showExpirationStatus && (
+        <GrantExpirationStatus expiresAt={allowGrant?.expiresAt ?? null} />
+      )}
+      {!showSplitPolicy ? (
+        <PolicyPill
+          policy={policy}
+          disabled={readOnly}
+          onChange={(nextPolicy) => {
+            onPolicyChange(nextPolicy);
           }}
-          onValueChange={(value) => {
-            onChange(permission, value);
-          }}
-          disabled={saving}
-          ariaLabel={`${permission} grant duration`}
-          className="h-7 w-[132px] rounded-md text-[11px]"
         />
+      ) : (
+        <span className="inline-flex shrink-0 overflow-hidden rounded-md text-xs font-medium zero-border">
+          <button
+            type="button"
+            disabled={saving}
+            aria-pressed={policy === "allow"}
+            onClick={() => {
+              onPolicyChange("allow");
+            }}
+            className={permissionPolicyButtonClass({
+              active: policy === "allow",
+              disabled: saving,
+              tone: "allow",
+            })}
+          >
+            <IconCheck size={12} stroke={2.5} />
+            {allowButtonLabel(selected)}
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                disabled={saving}
+                aria-label={`${permission} allow options`}
+                className={`flex h-7 items-center border-l border-[hsl(var(--gray-400))] px-1.5 transition-colors ${
+                  policy === "allow"
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                    : saving
+                      ? "text-muted-foreground/50"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                } ${saving ? "cursor-default" : "cursor-pointer"}`}
+              >
+                <IconChevronDown size={13} stroke={2.5} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              {policy === "allow" ? (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onPolicyChange("allow");
+                    onChange(permission, null);
+                  }}
+                >
+                  <MenuItemCheck active={selected === undefined} />
+                  Keep current
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onPolicyChange("allow");
+                    onChange(permission, null);
+                  }}
+                >
+                  <MenuItemCheck active={false} />
+                  Allow
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              {ALLOW_DURATION_MENU_OPTIONS.map((option) => {
+                return (
+                  <DropdownMenuItem
+                    key={option.value}
+                    onSelect={() => {
+                      onPolicyChange("allow");
+                      onChange(permission, option.value);
+                    }}
+                  >
+                    <MenuItemCheck active={selected === option.value} />
+                    {option.label}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <button
+            type="button"
+            disabled={saving}
+            aria-pressed={policy === "deny"}
+            style={{ borderLeft: "0.7px solid hsl(var(--gray-400))" }}
+            onClick={() => {
+              onPolicyChange("deny");
+              onChange(permission, null);
+            }}
+            className={permissionPolicyButtonClass({
+              active: policy === "deny",
+              disabled: saving,
+              tone: "deny",
+            })}
+          >
+            <IconBan size={12} stroke={2.5} />
+            Deny
+          </button>
+        </span>
       )}
     </div>
   );
@@ -642,20 +773,16 @@ function PermissionRow({
             </p>
           )}
         </div>
-        <PermissionExpirationControl
+        <PermissionGrantPolicyControl
           permission={permission.name}
-          action={policy}
+          policy={policy}
           grant={explicitGrants.get(permission.name)}
           selected={expirationSelections[permission.name]}
           expirationEnabled={expirationEnabled}
           readOnly={readOnly}
           saving={saving}
           onChange={onGrantExpirationChange}
-        />
-        <PolicyPill
-          policy={policy}
-          disabled={readOnly}
-          onChange={(p) => {
+          onPolicyChange={(p) => {
             onPolicyChange(permission.name, p);
           }}
         />
@@ -858,23 +985,21 @@ export function PermissionsDrawer({
             </div>
 
             <UnknownEndpointsToggle
-              policy={unknownPolicy}
-              disabled={readOnly}
-              expirationControl={
-                <PermissionExpirationControl
+              policyControl={
+                <PermissionGrantPolicyControl
                   permission={UNKNOWN_PERMISSION_GRANT}
-                  action={unknownPolicy}
+                  policy={unknownPolicy}
                   grant={explicitGrants.get(UNKNOWN_PERMISSION_GRANT)}
                   selected={expirationSelections[UNKNOWN_PERMISSION_GRANT]}
                   expirationEnabled={expirationEnabled}
                   readOnly={readOnly}
                   saving={saving}
                   onChange={setGrantExpiration}
+                  onPolicyChange={(p) => {
+                    setUnknownPolicy(p);
+                  }}
                 />
               }
-              onChange={(p) => {
-                setUnknownPolicy(p);
-              }}
             />
           </div>
         )}

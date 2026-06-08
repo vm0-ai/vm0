@@ -172,6 +172,35 @@ function getUnknownEndpointsRow(): HTMLElement {
   return row;
 }
 
+function getAllowOptionsButton(
+  row: HTMLElement,
+  permission: string,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", row).find((el) => {
+    return el.getAttribute("aria-label") === `${permission} allow options`;
+  });
+  if (!(button instanceof HTMLElement)) {
+    throw new Error(`Allow options button not found: ${permission}`);
+  }
+  return button;
+}
+
+async function selectAllowDuration(
+  row: HTMLElement,
+  permission: string,
+  option: string,
+) {
+  click(getAllowOptionsButton(row, permission));
+  let item: HTMLElement | undefined;
+  await waitFor(() => {
+    item = queryAllByRoleFast("menuitem").find((el) => {
+      return el.textContent?.includes(option) ?? false;
+    });
+    expect(item).toBeDefined();
+  });
+  click(item!);
+}
+
 describe("permissions dialog - flat list connector (Notion)", () => {
   it("renders permission names and descriptions in flat list (FW-D-031)", async () => {
     mockAPIs({ connectorType: "notion" });
@@ -252,14 +281,13 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     await waitFor(() => {
       expect(screen.getByText("Expires in 2 hours")).toBeInTheDocument();
     });
-    const durationSelect = screen.getByRole("combobox", {
-      name: "insert_comments grant duration",
-    });
-    expect(durationSelect).toHaveTextContent("Keep current");
+    const row = getPermissionRow("insert_comments");
+    const allowButton = getPolicyButton(row, "Allow");
+    expect(allowButton).toHaveTextContent("Allow");
     expect(screen.getByText("Apply")).toBeDisabled();
 
-    click(durationSelect);
-    click(await screen.findByRole("option", { name: "7 days" }));
+    await selectAllowDuration(row, "insert_comments", "Allow for 7d");
+    expect(allowButton).toHaveTextContent("Allow · 7d");
     expect(screen.getByText("Apply")).toBeEnabled();
 
     click(screen.getByText("Apply"));
@@ -294,14 +322,12 @@ describe("permissions dialog - flat list connector (Notion)", () => {
 
     const row = getPermissionRow("insert_comments");
     expect(within(row).getAllByText("Always").length).toBeGreaterThan(0);
-    const durationSelect = within(row).getByRole("combobox", {
-      name: "insert_comments grant duration",
-    });
-    expect(durationSelect).toHaveTextContent("Keep current");
+    const allowButton = getPolicyButton(row, "Allow");
+    expect(allowButton).toHaveTextContent("Allow");
     expect(screen.getByText("Apply")).toBeDisabled();
 
-    click(durationSelect);
-    click(await screen.findByRole("option", { name: "24 hours" }));
+    await selectAllowDuration(row, "insert_comments", "Allow for 24h");
+    expect(allowButton).toHaveTextContent("Allow · 24h");
     expect(screen.getByText("Apply")).toBeEnabled();
     click(screen.getByText("Apply"));
 
@@ -346,17 +372,9 @@ describe("permissions dialog - flat list connector (Notion)", () => {
 
     const row = getPermissionRow("insert_comments");
     expect(screen.queryByText("Expires in 2 hours")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("combobox", {
-        name: "insert_comments grant duration",
-      }),
-    ).not.toBeInTheDocument();
+    expect(within(row).queryByText("Always")).not.toBeInTheDocument();
     click(getPolicyButton(row, "Allow"));
-    expect(
-      screen.getByRole("combobox", {
-        name: "insert_comments grant duration",
-      }),
-    ).toHaveTextContent("Keep current");
+    expect(getPolicyButton(row, "Allow")).toHaveTextContent("Allow");
     click(screen.getByText("Apply"));
 
     await waitFor(() => {
@@ -393,13 +411,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     await openPermissionsDrawer("Notion");
 
     const row = getPermissionRow("insert_comments");
-    click(getPolicyButton(row, "Allow"));
-    click(
-      screen.getByRole("combobox", {
-        name: "insert_comments grant duration",
-      }),
-    );
-    click(await screen.findByRole("option", { name: "24 hours" }));
+    await selectAllowDuration(row, "insert_comments", "Allow for 24h");
     click(screen.getByText("Apply"));
 
     await waitFor(() => {
@@ -431,12 +443,9 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     await openPermissionsDrawer("Notion");
 
     const row = getPermissionRow("insert_comments");
-    click(getPolicyButton(row, "Deny"));
-    expect(
-      within(row).queryByRole("combobox", {
-        name: "insert_comments grant duration",
-      }),
-    ).not.toBeInTheDocument();
+    const denyButton = getPolicyButton(row, "Deny");
+    click(denyButton);
+    expect(denyButton).toHaveAttribute("aria-pressed", "true");
     expect(within(row).queryByText("Always")).not.toBeInTheDocument();
     click(screen.getByText("Apply"));
 
