@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-
 import { command, computed, type Computed } from "ccstate";
 import {
   zeroScheduleRunContract,
@@ -8,10 +6,6 @@ import {
   ScheduleListResponse,
   ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
-import type {
-  ScheduleCronCallbackPayload,
-  ScheduleLoopCallbackPayload,
-} from "@vm0/api-contracts/contracts/internal-callbacks-schedule";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -23,12 +17,21 @@ import { and, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
-import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { isValidTimeZone, settle } from "../utils";
-import { resolveModelFirstProviderAdmission } from "./zero-model-selection.service";
+import {
+  scheduleToAutomation,
+  TimeInterpreter,
+  type Automation,
+  type AutomationInterpreter,
+  type TimeTriggerEvent,
+} from "./automations/time-interpreter";
+import {
+  resolveModelFirstProviderAdmission,
+  type ModelFirstPin,
+} from "./zero-model-selection.service";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import {
@@ -1083,73 +1086,60 @@ export const executeDueSchedules$ = command(
   },
 );
 
-function buildSchedulePrompt(triggerType: string): string {
-  return [
-    "# Current Integration",
-    "You are currently running inside: Schedule",
-    `Trigger type: ${triggerType}`,
-  ].join("\n");
-}
+type ScheduleRunModelContext =
+  | {
+      readonly ok: true;
+      readonly modelPin: ModelFirstPin;
+      readonly effectiveModelProvider: string | null | undefined;
+    }
+  | { readonly ok: false; readonly failure: ExecuteScheduleFailure };
 
-function generateCallbackSecret(): string {
-  return randomBytes(32).toString("hex");
-}
-
-function buildScheduleCallbacks(
-  schedule: typeof zeroAgentSchedules.$inferSelect,
-): { url: string; secret: string; payload: unknown }[] {
-  const callbacks: { url: string; secret: string; payload: unknown }[] = [];
-
-  if (schedule.triggerType === "loop") {
-    const payload: ScheduleLoopCallbackPayload = { scheduleId: schedule.id };
-    callbacks.push({
-      url: `${internalApiBaseUrl()}/api/internal/callbacks/schedule/loop`,
-      secret: generateCallbackSecret(),
-      payload,
-    });
-  } else if (
-    schedule.triggerType === "cron" ||
-    schedule.triggerType === "once"
-  ) {
-    const payload: ScheduleCronCallbackPayload = {
-      scheduleId: schedule.id,
-      ...(schedule.cronExpression && {
-        cronExpression: schedule.cronExpression,
-      }),
-      timezone: schedule.timezone,
+// Resolve the model context for a scheduled run: the thread model pin (org
+// default if unpinned) and the admitted provider. No user is present to receive
+// a model-config / credits error, so failures surface as run_error (normalized
+// to 400) feeding consecutiveFailures / the manual run-now response.
+async function resolveScheduleRunModelContext(args: {
+  readonly db: Db;
+  readonly schedule: typeof zeroAgentSchedules.$inferSelect;
+  readonly signal: AbortSignal;
+}): Promise<ScheduleRunModelContext> {
+  const threadModelPin = await resolveScheduleChatThreadModelPin({
+    db: args.db,
+    orgId: args.schedule.orgId,
+    userId: args.schedule.userId,
+    threadId: args.schedule.chatThreadId,
+  });
+  args.signal.throwIfAborted();
+  if ("status" in threadModelPin) {
+    return {
+      ok: false,
+      failure: {
+        kind: "run_error",
+        response: { status: 400, body: threadModelPin.body },
+      },
     };
-    callbacks.push({
-      url: `${internalApiBaseUrl()}/api/internal/callbacks/schedule/cron`,
-      secret: generateCallbackSecret(),
-      payload,
-    });
   }
 
-  // Also drive the chat callback so the run renders as a web-chat turn
-  // (summary/title/lifecycle + autoSend). The reschedule callback above is
-  // retained for next_run_at / consecutive-failure bookkeeping; only the chat
-  // callback writes the run summary (D9), so callback dispatch order is safe.
-  callbacks.push({
-    url: `${internalApiBaseUrl()}/api/internal/callbacks/chat`,
-    secret: generateCallbackSecret(),
-    payload: { threadId: schedule.chatThreadId, agentId: schedule.agentId },
+  const providerAdmission = await resolveModelFirstProviderAdmission({
+    db: args.db,
+    orgId: args.schedule.orgId,
+    userId: args.schedule.userId,
+    modelPin: threadModelPin,
+    requestedModelProvider: undefined,
   });
+  args.signal.throwIfAborted();
+  if (providerAdmission.error) {
+    return {
+      ok: false,
+      failure: { kind: "run_error", response: providerAdmission.error },
+    };
+  }
 
-  return callbacks;
-}
-
-function buildScheduleAppendSystemPrompt(
-  schedule: typeof zeroAgentSchedules.$inferSelect,
-): string {
-  const integrationContext = [
-    buildSchedulePrompt(schedule.triggerType),
-    "",
-    "This scheduled run is linked to a web chat thread. Everything you output is automatically shown to the user as a chat message in that thread.",
-  ].join("\n");
-  const baseAppendPrompt = schedule.appendSystemPrompt ?? undefined;
-  return baseAppendPrompt
-    ? `${integrationContext}\n\n${baseAppendPrompt}`
-    : integrationContext;
+  return {
+    ok: true,
+    modelPin: threadModelPin,
+    effectiveModelProvider: providerAdmission.effectiveModelProvider,
+  };
 }
 
 // Render the scheduled run as a web-chat turn in the linked thread. Model comes
@@ -1202,34 +1192,25 @@ export const runScheduleNow$ = command(
       }
     }
 
-    const threadModelPin = await resolveScheduleChatThreadModelPin({
+    const modelContext = await resolveScheduleRunModelContext({
       db,
-      orgId: schedule.orgId,
-      userId: schedule.userId,
-      threadId: schedule.chatThreadId,
+      schedule,
+      signal,
     });
-    signal.throwIfAborted();
-    if ("status" in threadModelPin) {
-      // No user is present to receive a model-config error; surface it as a
-      // run_error (normalized to 400) so it feeds consecutiveFailures / the
-      // manual run-now response.
-      return {
-        kind: "run_error",
-        response: { status: 400, body: threadModelPin.body },
-      };
+    if (!modelContext.ok) {
+      return modelContext.failure;
     }
+    const { modelPin, effectiveModelProvider } = modelContext;
 
-    const providerAdmission = await resolveModelFirstProviderAdmission({
-      db,
-      orgId: schedule.orgId,
-      userId: schedule.userId,
-      modelPin: threadModelPin,
-      requestedModelProvider: undefined,
+    // Depend on the interpreter seam (interface), keyed off the Automation's
+    // interpreterKind. Only the time-based interpreter exists today.
+    const automation: Automation = scheduleToAutomation(schedule);
+    const interpreter: AutomationInterpreter<TimeTriggerEvent> =
+      new TimeInterpreter();
+    const runInput = await interpreter.interpret(automation, {
+      scheduleId: schedule.id,
     });
     signal.throwIfAborted();
-    if (providerAdmission.error) {
-      return { kind: "run_error", response: providerAdmission.error };
-    }
 
     const result = await set(
       createZeroRun$,
@@ -1241,22 +1222,22 @@ export const runScheduleNow$ = command(
           tokenType: "session",
         },
         body: {
-          prompt: schedule.prompt,
-          agentId: schedule.agentId,
-          ...(providerAdmission.effectiveModelProvider
-            ? { modelProvider: providerAdmission.effectiveModelProvider }
+          prompt: runInput.prompt,
+          agentId: runInput.agentId,
+          ...(effectiveModelProvider
+            ? { modelProvider: effectiveModelProvider }
             : {}),
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "schedule",
-        chatThreadId: schedule.chatThreadId,
-        modelProviderId: threadModelPin.modelProviderId ?? undefined,
+        chatThreadId: runInput.chatThreadId,
+        modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:
-          threadModelPin.modelProviderCredentialScope ?? undefined,
-        selectedModelOverride: threadModelPin.selectedModel ?? undefined,
-        appendSystemPrompt: buildScheduleAppendSystemPrompt(schedule),
-        callbacks: buildScheduleCallbacks(schedule),
-        zeroRunMetadata: { scheduleId: schedule.id },
+          modelPin.modelProviderCredentialScope ?? undefined,
+        selectedModelOverride: modelPin.selectedModel ?? undefined,
+        appendSystemPrompt: runInput.appendSystemPrompt,
+        callbacks: runInput.callbacks,
+        zeroRunMetadata: runInput.zeroRunMetadata,
       },
       signal,
     );
@@ -1281,11 +1262,10 @@ export const runScheduleNow$ = command(
     await db
       .update(zeroRuns)
       .set({
-        modelProvider: providerAdmission.effectiveModelProvider,
-        modelProviderId: threadModelPin.modelProviderId,
-        modelProviderCredentialScope:
-          threadModelPin.modelProviderCredentialScope,
-        selectedModel: threadModelPin.selectedModel,
+        modelProvider: effectiveModelProvider,
+        modelProviderId: modelPin.modelProviderId,
+        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
+        selectedModel: modelPin.selectedModel,
       })
       .where(eq(zeroRuns.id, result.body.runId));
     signal.throwIfAborted();
