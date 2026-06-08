@@ -33,6 +33,7 @@ mod retry;
 mod run_resolution;
 mod runner_dirname;
 mod runtime_overrides;
+mod state_file;
 mod status;
 mod storage_cache;
 mod telemetry;
