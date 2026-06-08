@@ -175,6 +175,7 @@ const CONNECTOR_ICON_COLORFUL = {
   "meta-ads": true,
   minimax: true,
   minio: true,
+  miro: true,
   modal: true,
   monday: true,
   moss: true,
