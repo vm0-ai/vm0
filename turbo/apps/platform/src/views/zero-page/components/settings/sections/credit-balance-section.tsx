@@ -1,6 +1,9 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui";
-import { OrgUsageTab } from "../../org-manage/org-usage-tab.tsx";
+import {
+  OrgUsageTab,
+  CreditBalanceCard,
+} from "../../org-manage/org-usage-tab.tsx";
 import { PersonalUsageRecord } from "../../preferences/personal-usage-record.tsx";
 import { isOrgAdmin$ } from "../../../../../signals/org.ts";
 import { setSettingsActiveSection$ } from "../../../../../signals/zero-page/settings/settings-dialog.ts";
@@ -20,13 +23,28 @@ export function CreditBalanceSection() {
   const tab = useGet(creditBalanceTab$);
   const setTab = useSet(setCreditBalanceTab$);
 
+  const goToComparePlans = () => {
+    setActiveSection("billing");
+    setBillingSubPage(true);
+  };
+
+  // The credit balance card stays at the section level — above the Mine/Team
+  // tabs — so it's always visible regardless of the active tab.
+  const creditCard = <CreditBalanceCard onComparePlans={goToComparePlans} />;
+
   // Non-admins only have personal usage — no Team layer, so skip the tabs.
   if (!isAdmin) {
-    return <PersonalUsageRecord />;
+    return (
+      <div className="flex flex-col gap-6">
+        {creditCard}
+        <PersonalUsageRecord />
+      </div>
+    );
   }
 
   return (
     <div className="flex flex-col gap-6">
+      {creditCard}
       <Tabs
         value={tab}
         onValueChange={(value) => {
@@ -42,10 +60,8 @@ export function CreditBalanceSection() {
         <PersonalUsageRecord />
       ) : (
         <OrgUsageTab
-          onComparePlans={() => {
-            setActiveSection("billing");
-            setBillingSubPage(true);
-          }}
+          showCreditBalance={false}
+          onComparePlans={goToComparePlans}
         />
       )}
     </div>

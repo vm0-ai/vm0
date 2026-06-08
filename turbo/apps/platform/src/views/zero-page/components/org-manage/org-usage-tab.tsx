@@ -290,6 +290,46 @@ function CreditBalanceChart({
 }
 
 // ---------------------------------------------------------------------------
+// Credit balance card
+// ---------------------------------------------------------------------------
+
+/**
+ * The org credit balance summary card (total, breakdown bar, grants). Lives at
+ * the top of the Credit balance section — above the Mine/Team tabs — so it stays
+ * visible regardless of the active tab. Also reused standalone in the org-manage
+ * dialog's Credit balance page.
+ */
+export function CreditBalanceCard({
+  onComparePlans,
+}: {
+  onComparePlans?: () => void;
+}) {
+  const billingLoadable = useLoadable(billingStatusAsync$);
+  const billing =
+    billingLoadable.state === "hasData" ? billingLoadable.data : null;
+  const billingLoading = billingLoadable.state === "loading";
+
+  return (
+    <div className="overflow-hidden rounded-xl bg-card zero-border">
+      {billingLoading && !billing ? (
+        <div className="px-5 py-4 space-y-2">
+          <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
+          <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
+        </div>
+      ) : billing ? (
+        <CreditBalanceChart billing={billing} onComparePlans={onComparePlans} />
+      ) : (
+        <div className="px-5 py-4">
+          <p className="text-sm text-muted-foreground">
+            Credit balance unavailable.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
@@ -338,14 +378,19 @@ function LoadingSkeleton() {
 // Overview section
 // ---------------------------------------------------------------------------
 
-function OverviewSection({ onComparePlans }: { onComparePlans?: () => void }) {
+function OverviewSection({
+  onComparePlans,
+  showCreditBalance = true,
+}: {
+  onComparePlans?: () => void;
+  showCreditBalance?: boolean;
+}) {
   const usageLoadable = useLoadable(usageMembersAsync$);
   const membersLoadable = useLoadable(orgMembers$);
   const billingLoadable = useLoadable(billingStatusAsync$);
 
   const billing =
     billingLoadable.state === "hasData" ? billingLoadable.data : null;
-  const billingLoading = billingLoadable.state === "loading";
   const currentTier = apiTierToBillingTier(billing?.tier);
 
   const usageLoading = usageLoadable.state === "loading";
@@ -368,27 +413,11 @@ function OverviewSection({ onComparePlans }: { onComparePlans?: () => void }) {
 
   return (
     <div className="flex flex-col gap-8">
-      <section className="flex flex-col gap-3">
-        <div className="overflow-hidden rounded-xl bg-card zero-border">
-          {billingLoading && !billing ? (
-            <div className="px-5 py-4 space-y-2">
-              <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
-              <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
-            </div>
-          ) : billing ? (
-            <CreditBalanceChart
-              billing={billing}
-              onComparePlans={onComparePlans}
-            />
-          ) : (
-            <div className="px-5 py-4">
-              <p className="text-sm text-muted-foreground">
-                Credit balance unavailable.
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
+      {showCreditBalance && (
+        <section className="flex flex-col gap-3">
+          <CreditBalanceCard onComparePlans={onComparePlans} />
+        </section>
+      )}
 
       {/* Members — only for paid plans */}
       {(currentTier === "pro" || currentTier === "team") && (
@@ -494,8 +523,15 @@ function MembersTable({
 
 export function OrgUsageTab({
   onComparePlans,
+  showCreditBalance = true,
 }: {
   onComparePlans?: () => void;
+  showCreditBalance?: boolean;
 }) {
-  return <OverviewSection onComparePlans={onComparePlans} />;
+  return (
+    <OverviewSection
+      onComparePlans={onComparePlans}
+      showCreditBalance={showCreditBalance}
+    />
+  );
 }
