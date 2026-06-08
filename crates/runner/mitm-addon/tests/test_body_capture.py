@@ -380,6 +380,23 @@ class TestAddCaptureFields:
         assert entry["request_headers"]["Referer"] == "***"
         assert entry["response_headers"]["Location"] == "***"
 
+    def test_captured_content_type_values_are_sanitized(self, real_flow, headers):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_headers=headers(
+                ("Host", "api.example.com"),
+                ("Content-Type", 'application/json; profile="https://app.example/secret"'),
+            ),
+            response_headers=headers(
+                ("Content-Type", "application/x-secret-token"),
+            ),
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_headers"]["Content-Type"] == "application/json"
+        assert entry["response_headers"]["Content-Type"] == "***"
+
     def test_response_headers_redacts_sensitive(self, real_flow, headers):
         flow = real_flow(
             method="POST",
