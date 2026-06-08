@@ -461,14 +461,24 @@ function UnknownEndpointsToggle({
   );
 }
 
-function GrantExpirationStatus({ expiresAt }: { expiresAt: string | null }) {
-  const expiryText = permissionGrantExpiryText(expiresAt) ?? "Always";
+function GrantExpirationStatus({
+  expiresAt,
+  selected,
+}: {
+  expiresAt: string | null;
+  selected: UserPermissionGrantExpiresIn | undefined;
+}) {
+  const selectedStatus = allowDurationStatusLabel(selected);
+  const expiryText =
+    selectedStatus ?? permissionGrantExpiryText(expiresAt) ?? "Always";
+  const hasExpiringGrant =
+    selected === undefined ? Boolean(expiresAt) : selected !== "forever";
 
   return (
     <span
       className={cn(
         "inline-flex h-6 max-w-[150px] items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium",
-        expiresAt
+        hasExpiringGrant
           ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400"
           : "border-border bg-muted/40 text-muted-foreground",
       )}
@@ -482,21 +492,21 @@ function GrantExpirationStatus({ expiresAt }: { expiresAt: string | null }) {
 const ALLOW_DURATION_MENU_OPTIONS: readonly {
   readonly value: UserPermissionGrantExpiresIn;
   readonly label: string;
-  readonly buttonLabel: string;
+  readonly statusLabel: string;
 }[] = [
-  { value: "1h", label: "Allow for 1h", buttonLabel: "1h" },
-  { value: "24h", label: "Allow for 24h", buttonLabel: "24h" },
-  { value: "7d", label: "Allow for 7d", buttonLabel: "7d" },
-  { value: "forever", label: "Allow always", buttonLabel: "Always" },
+  { value: "1h", label: "Allow for 1h", statusLabel: "Expires in 1h" },
+  { value: "24h", label: "Allow for 24h", statusLabel: "Expires in 24h" },
+  { value: "7d", label: "Allow for 7d", statusLabel: "Expires in 7d" },
+  { value: "forever", label: "Allow always", statusLabel: "Always" },
 ];
 
-function allowButtonLabel(
+function allowDurationStatusLabel(
   selected: UserPermissionGrantExpiresIn | undefined,
-): string {
+): string | null {
   const option = ALLOW_DURATION_MENU_OPTIONS.find((item) => {
     return item.value === selected;
   });
-  return option ? `Allow · ${option.buttonLabel}` : "Allow";
+  return option?.statusLabel ?? null;
 }
 
 function permissionPolicyButtonClass({
@@ -636,7 +646,10 @@ function PermissionGrantPolicyControl({
   return (
     <div className="flex shrink-0 items-center gap-2">
       {showExpirationStatus && (
-        <GrantExpirationStatus expiresAt={expirationStatusValue} />
+        <GrantExpirationStatus
+          expiresAt={expirationStatusValue}
+          selected={selected}
+        />
       )}
       {!showSplitPolicy ? (
         <PolicyPill
@@ -662,7 +675,7 @@ function PermissionGrantPolicyControl({
             })}
           >
             <IconCheck size={12} stroke={2.5} />
-            {allowButtonLabel(selected)}
+            Allow
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
