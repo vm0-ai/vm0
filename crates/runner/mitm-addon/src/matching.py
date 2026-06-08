@@ -1,6 +1,11 @@
 """Firewall URL/host/path pattern matching functions.
 
 Pure functions with no module-level state or I/O.
+
+Firewall authority matching intentionally differs from trusted request
+authority and auth.base rewrite validation: config parsing may preserve
+malformed authority metadata so matched malformed configs can fail closed, and
+parameterized hosts are meaningful only for firewall config bases.
 """
 
 import ipaddress

@@ -72,6 +72,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://xn--bcher-kva.example/hook/sub"
 
+    def test_base_explicit_default_port_preserved_for_forwarding(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com:443/hook",
+            "/sub",
+            "",
+        )
+        assert url == "https://example.com:443/hook/sub"
+
     def test_base_unicode_path_and_query_are_encoded_for_forwarding(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook/路径?token=é",
@@ -113,6 +121,7 @@ class TestBuildRewriteUrl:
             ("https://example%2ecom/hook", "unsafe percent encoding"),
             ("https://example%2ccom/hook", "unsafe percent encoding"),
             ("https://example%3a443.com/hook", "invalid host"),
+            ("https://{tenant}.example.com/hook", "invalid host"),
             ("https://example.com/hook/%2e%2e/admin", "unsafe path"),
             ("https://example.com/hook/..;matrix=1/admin", "unsafe path"),
             ("https://example.com/hook/%252e%252e/admin", "unsafe path"),

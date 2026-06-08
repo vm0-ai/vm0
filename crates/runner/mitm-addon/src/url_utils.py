@@ -1,6 +1,12 @@
 """URL reconstruction and rewriting utilities.
 
 Pure functions with no module-level state or I/O.
+
+Trusted request authority validation and auth.base rewrite validation share
+low-level host canonicalization primitives, but they are different trust
+boundaries: Host/SNI input must not accept percent-encoded authority syntax,
+while auth.base targets reject unsafe percent-encoded host syntax before
+forwarding credential-bearing requests.
 """
 
 import ipaddress

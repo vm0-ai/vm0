@@ -599,6 +599,7 @@ def test_malformed_parameterized_base_query_or_fragment_respects_base_path_scope
         ("https://api.github.com:bad", "https://api.github.com/repos/org/repo"),
         ("https://api.github.com:99999", "https://api.github.com/repos/org/repo"),
         ("https://api%2egithub.com", "https://api.github.com/repos/org/repo"),
+        ("https://{sub}%2egithub.com", "https://api.github.com/repos/org/repo"),
         ("https://user@{sub}.github.com", "https://api.github.com/repos/org/repo"),
         ("https://user:pass@{sub}.github.com", "https://api.github.com/repos/org/repo"),
         ("https://{sub}.github.com:bad", "https://api.github.com/repos/org/repo"),

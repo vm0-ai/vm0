@@ -825,6 +825,8 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
         (8443, "", "missing_authority", "https://api.github.com:8443/repos"),
         (443, "api.github.com:bad", "invalid_authority", "https://api.github.com/repos"),
         (443, "api.github.com..", "invalid_authority", "https://api.github.com/repos"),
+        (443, "api%2egithub.com", "invalid_authority", "https://api.github.com/repos"),
+        (443, "b%C3%BCcher.example", "invalid_authority", "https://api.github.com/repos"),
         (443, "{api}.github.com", "invalid_authority", "https://api.github.com/repos"),
         (443, "xn--.com", "invalid_authority", "https://api.github.com/repos"),
         (443, "xn--a.com", "invalid_authority", "https://api.github.com/repos"),
@@ -970,6 +972,13 @@ async def test_rejects_missing_https_sni_before_firewall_auth(
             443,
             "xn--ph7c.example",
             "xn--ph7c.example",
+            "https://203.0.113.10/repos",
+        ),
+        (
+            "203.0.113.10",
+            443,
+            "api%2egithub.com",
+            "api%2egithub.com",
             "https://203.0.113.10/repos",
         ),
         (
