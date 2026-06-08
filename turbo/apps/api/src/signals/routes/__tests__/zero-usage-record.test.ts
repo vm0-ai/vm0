@@ -222,6 +222,146 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.rows[0]?.credits).toBe(120);
   });
 
+  it("keeps chat and schedule usage separate within the same thread", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+
+    const chat = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Shared thread",
+        createdAt: createdAt(30),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: chat.runId,
+        inputTokens: 10,
+        outputTokens: 10,
+        creditsCharged: 10,
+      },
+      context.signal,
+    );
+
+    const schedule = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        threadId: chat.threadId,
+        triggerSource: "schedule",
+        createdAt: createdAt(5),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: schedule.runId,
+        inputTokens: 50,
+        outputTokens: 50,
+        creditsCharged: 120,
+      },
+      context.signal,
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const allResponse = await accept(
+      apiClient().get({ query: {}, headers: authHeaders() }),
+      [200],
+    );
+    expect(allResponse.body.rows).toHaveLength(2);
+    expect(allResponse.body.pagination.total).toBe(2);
+    expect(allResponse.body.rows[0]).toMatchObject({
+      source: "schedule",
+      threadId: chat.threadId,
+      runId: null,
+      title: "Shared thread",
+      credits: 120,
+      tokens: 100,
+    });
+    expect(allResponse.body.rows[1]).toMatchObject({
+      source: "chat",
+      threadId: chat.threadId,
+      runId: null,
+      title: "Shared thread",
+      credits: 10,
+      tokens: 20,
+    });
+
+    const chatResponse = await accept(
+      apiClient().get({
+        query: { source: "chat" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(chatResponse.body.rows).toHaveLength(1);
+    expect(chatResponse.body.rows[0]?.source).toBe("chat");
+    expect(chatResponse.body.rows[0]?.credits).toBe(10);
+  });
+
+  it("normalizes unsupported trigger sources to other", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+
+    const legacyRun = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        prompt: "Legacy manual run",
+        triggerSource: "manual",
+        createdAt: createdAt(10),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: legacyRun.runId,
+        inputTokens: 25,
+        outputTokens: 5,
+        creditsCharged: 30,
+      },
+      context.signal,
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { source: "other" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.rows).toHaveLength(1);
+    expect(response.body.pagination.total).toBe(1);
+    expect(response.body.rows[0]).toMatchObject({
+      source: "other",
+      threadId: null,
+      runId: legacyRun.runId,
+      title: "Legacy manual run",
+      credits: 30,
+      tokens: 30,
+    });
+  });
+
   it("paginates by page size", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),

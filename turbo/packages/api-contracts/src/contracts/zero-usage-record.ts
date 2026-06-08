@@ -4,8 +4,9 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-// Where a run originated. `chat` is web chat (trigger_source 'web'); the rest
-// mirror zero_runs.trigger_source so each row can be attributed to its surface.
+// Where a run originated. `chat` is web chat (trigger_source 'web'); known
+// trigger sources keep their surface, and unsupported historical values are
+// grouped as `other`.
 export const usageRecordSourceSchema = z.enum([
   "chat",
   "schedule",
@@ -16,6 +17,7 @@ export const usageRecordSourceSchema = z.enum([
   "github",
   "cli",
   "agent",
+  "other",
 ]);
 
 export type UsageRecordSource = z.infer<typeof usageRecordSourceSchema>;

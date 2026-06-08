@@ -41,6 +41,7 @@ const SOURCE_META = {
   github: { label: "GitHub", Icon: IconBrandGithub },
   cli: { label: "CLI", Icon: IconTerminal2 },
   agent: { label: "Agent", Icon: IconRobot },
+  other: { label: "Other", Icon: IconRobot },
 } as const satisfies Record<
   UsageRecordSource,
   { label: string; Icon: typeof IconMessageCircle }
@@ -52,6 +53,7 @@ const FILTER_OPTIONS = [
   "schedule",
   "slack",
   "telegram",
+  "other",
 ] as const satisfies readonly UsageRecordSource[];
 
 const ROW_CLASS =

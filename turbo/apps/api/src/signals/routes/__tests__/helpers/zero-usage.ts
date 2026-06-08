@@ -91,6 +91,7 @@ interface SeedChatThreadRunArgs {
   readonly userId: string;
   readonly title?: string | null;
   readonly triggerSource?: string;
+  readonly threadId?: string;
   readonly createdAt?: Date;
 }
 
@@ -435,25 +436,29 @@ export const seedChatThreadRun$ = command(
     );
     signal.throwIfAborted();
 
-    const [thread] = await db
-      .insert(chatThreads)
-      .values({
-        userId: args.userId,
-        agentComposeId: composeId,
-        title: args.title ?? null,
-      })
-      .returning({ id: chatThreads.id });
-    signal.throwIfAborted();
-    if (!thread) {
-      throw new Error("seedChatThreadRun$: thread insert returned no row");
+    let threadId = args.threadId;
+    if (!threadId) {
+      const [thread] = await db
+        .insert(chatThreads)
+        .values({
+          userId: args.userId,
+          agentComposeId: composeId,
+          title: args.title ?? null,
+        })
+        .returning({ id: chatThreads.id });
+      signal.throwIfAborted();
+      if (!thread) {
+        throw new Error("seedChatThreadRun$: thread insert returned no row");
+      }
+      threadId = thread.id;
     }
 
     await db
       .update(zeroRuns)
-      .set({ chatThreadId: thread.id })
+      .set({ chatThreadId: threadId })
       .where(eq(zeroRuns.id, runId));
     signal.throwIfAborted();
 
-    return { runId, threadId: thread.id, composeId };
+    return { runId, threadId, composeId };
   },
 );

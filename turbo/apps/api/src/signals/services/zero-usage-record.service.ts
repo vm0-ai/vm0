@@ -15,6 +15,17 @@ const MODEL_TOKEN_CATEGORIES = [
   "tokens.cache_read",
   "tokens.cache_creation",
 ] as const;
+const THREADED_SOURCES = ["chat", "schedule"] as const;
+const PASSTHROUGH_TRIGGER_SOURCES = [
+  "schedule",
+  "slack",
+  "telegram",
+  "email",
+  "agentphone",
+  "github",
+  "cli",
+  "agent",
+] as const;
 
 interface UsageRecordArgs {
   readonly userId: string;
@@ -43,11 +54,21 @@ function tokenExpr(): string {
   return `CASE WHEN ue.kind = ${pgLit(MODEL_USAGE_KIND)} AND ue.category IN (${list}) THEN ue.quantity ELSE 0 END`;
 }
 
+function sourceExpr(triggerSource: string): string {
+  const passthroughList = PASSTHROUGH_TRIGGER_SOURCES.map(pgLit).join(", ");
+  return `
+    CASE
+      WHEN ${triggerSource} = 'web' THEN 'chat'
+      WHEN ${triggerSource} IN (${passthroughList}) THEN ${triggerSource}
+      ELSE 'other'
+    END`;
+}
+
 // Per-source usage for one user in one org. `record` is the shared CTE so the
-// row query and the count query stay in sync. Threaded sources (web chat,
-// schedule) collapse to one row per thread; everything else is one row per run.
-// `web` is surfaced as the `chat` source.
+// row query and the count query stay in sync. Threaded sources collapse to one
+// row per source/thread; everything else is one row per run.
 function recordWith(userIdLit: string, orgIdLit: string): string {
+  const threadedSourceList = THREADED_SOURCES.map(pgLit).join(", ");
   return `
     WITH usage_rows AS (
       SELECT
@@ -64,7 +85,7 @@ function recordWith(userIdLit: string, orgIdLit: string): string {
         ur.run_id,
         ur.credits,
         ur.tokens,
-        zr.trigger_source,
+        ${sourceExpr("zr.trigger_source")} AS source,
         zr.chat_thread_id,
         zr.summary,
         ar.prompt,
@@ -75,7 +96,7 @@ function recordWith(userIdLit: string, orgIdLit: string): string {
     ),
     threaded AS (
       SELECT
-        (CASE WHEN bool_or(r.trigger_source = 'schedule') THEN 'schedule' ELSE 'chat' END) AS source,
+        r.source,
         r.chat_thread_id::text AS thread_id,
         NULL::text AS run_id,
         ct.title AS title,
@@ -85,11 +106,12 @@ function recordWith(userIdLit: string, orgIdLit: string): string {
       FROM runs r
       LEFT JOIN chat_threads ct ON ct.id = r.chat_thread_id
       WHERE r.chat_thread_id IS NOT NULL
-      GROUP BY r.chat_thread_id, ct.title
+        AND r.source IN (${threadedSourceList})
+      GROUP BY r.source, r.chat_thread_id, ct.title
     ),
     unthreaded AS (
       SELECT
-        (CASE WHEN r.trigger_source = 'web' THEN 'chat' ELSE r.trigger_source END) AS source,
+        r.source,
         NULL::text AS thread_id,
         r.run_id::text AS run_id,
         LEFT(COALESCE(NULLIF(MAX(r.summary), ''), MAX(r.prompt)), 120) AS title,
@@ -98,7 +120,8 @@ function recordWith(userIdLit: string, orgIdLit: string): string {
         MAX(r.created_at) AS last_activity
       FROM runs r
       WHERE r.chat_thread_id IS NULL
-      GROUP BY r.run_id, r.trigger_source
+        OR r.source NOT IN (${threadedSourceList})
+      GROUP BY r.run_id, r.source
     ),
     record AS (
       SELECT * FROM threaded
