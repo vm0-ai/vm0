@@ -145,6 +145,7 @@ const CONNECTOR_ICON_COLORFUL = {
   granola: true,
   greenhouse: true,
   groq: true,
+  gumroad: true,
   helicone: true,
   heygen: true,
   honcho: true,
