@@ -378,6 +378,46 @@ describe("parseBodyRenderBlocks", () => {
     ]);
   });
 
+  it("does not render protocol-relative external permission links as permission action blocks", () => {
+    vi.stubEnv("VITE_API_URL", "https://app.vm0.ai");
+    const url =
+      "//evil.example/agents/b431c9a7-4f78-4977-aba1-dec4c04b212c/permissions?ref=slack&permission=chat%3Awrite&action=allow";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(
+      `[Manage Slack permissions](${url})`,
+      { previews: false },
+    );
+
+    expect(cleanContent).toBe(`[Manage Slack permissions](${url})`);
+    expect(blocks).toStrictEqual([
+      {
+        type: "markdown",
+        id: "markdown-1",
+        content: `[Manage Slack permissions](${url})`,
+      },
+    ]);
+  });
+
+  it("does not render non-http platform permission links as permission action blocks", () => {
+    vi.stubEnv("VITE_API_URL", "https://app.vm0.ai");
+    const url =
+      "javascript://app.vm0.ai/agents/b431c9a7-4f78-4977-aba1-dec4c04b212c/permissions?ref=slack&permission=chat%3Awrite&action=allow";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(
+      `[Manage Slack permissions](${url})`,
+      { previews: false },
+    );
+
+    expect(cleanContent).toBe(`[Manage Slack permissions](${url})`);
+    expect(blocks).toStrictEqual([
+      {
+        type: "markdown",
+        id: "markdown-1",
+        content: `[Manage Slack permissions](${url})`,
+      },
+    ]);
+  });
+
   it("does not render external connector authorize URLs as action blocks", () => {
     const url =
       "https://evil.example/connectors/strapi/authorize?agentId=4f189ea8-ada2-416d-83a9-9c25ddb960c9";

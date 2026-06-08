@@ -80,7 +80,7 @@ function permissionActionBaseUrl(): string | null {
 }
 
 function hasExplicitUrlOrigin(value: string): boolean {
-  return /^[a-z][a-z\d+\-.]*:\/\//i.test(value);
+  return /^(?:[a-z][a-z\d+\-.]*:)?\/\//i.test(value);
 }
 
 function isPlatformPermissionHostname(hostname: string): boolean {
@@ -94,9 +94,18 @@ function isPlatformPermissionHostname(hostname: string): boolean {
   return /(^|-)(platform|app|www|api)\./.test(hostname);
 }
 
+function isHttpUrl(url: URL): boolean {
+  return url.protocol === "http:" || url.protocol === "https:";
+}
+
 function isAllowedPermissionActionUrl(url: URL, sourceUrl: string): boolean {
+  const explicitOrigin = hasExplicitUrlOrigin(sourceUrl);
+  if (explicitOrigin && !isHttpUrl(url)) {
+    return false;
+  }
+
   return (
-    !hasExplicitUrlOrigin(sourceUrl) ||
+    !explicitOrigin ||
     permissionActionOrigins().has(url.origin) ||
     isPlatformPermissionHostname(url.hostname)
   );
