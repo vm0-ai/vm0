@@ -11,6 +11,7 @@ import { getStripeClient } from "../external/stripe-client";
 import { settle } from "../utils";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { getCampaign } from "./one-time-products";
+import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 
 const log = logger("zero-billing-redeem");
 
@@ -359,6 +360,7 @@ const createOneTimeCheckoutSession$ = command(
         orgId: args.orgId,
         campaignKey: args.campaignKey,
         purpose: "one_time_purchase",
+        ...stripePreviewMetadata(),
       },
     });
     signal.throwIfAborted();

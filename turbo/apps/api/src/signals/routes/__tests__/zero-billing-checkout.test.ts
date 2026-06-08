@@ -280,6 +280,65 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   });
 
+  it("tags preview Stripe checkout objects with the current job ref", async () => {
+    mockEnv("ENV", "preview");
+    mockOptionalEnv("VM0_PREVIEW_JOB_REF", "pr-123");
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/preview",
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/preview",
+    });
+    const expectedPreviewMetadata = {
+      vm0_environment: "preview",
+      job_ref: "pr-123",
+    };
+    expect(context.mocks.stripe.customers.create).toHaveBeenCalledWith({
+      metadata: {
+        orgId: fixture.orgId,
+        ...expectedPreviewMetadata,
+      },
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: {
+          orgId: fixture.orgId,
+          tier: "pro",
+          priceId: TEST_PRICE_PRO,
+          ...expectedPreviewMetadata,
+        },
+        subscription_data: expect.objectContaining({
+          metadata: {
+            orgId: fixture.orgId,
+            tier: "pro",
+            priceId: TEST_PRICE_PRO,
+            ...expectedPreviewMetadata,
+          },
+        }),
+      }),
+    );
+  });
+
   it("returns 400 when checkout would downgrade the current tier", async () => {
     const fixture = await trackedBillingSeed({
       stripeCustomerId: `cus_${randomUUID().slice(0, 8)}`,

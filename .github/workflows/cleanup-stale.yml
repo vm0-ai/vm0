@@ -282,6 +282,7 @@ jobs:
 
             if [ "$DRY_RUN" = "true" ]; then
               echo "[DRY-RUN] Would cleanup turbo runner pr-${PR_NUMBER}"
+              echo "[DRY-RUN] Would cleanup Stripe CLI listener pr-${PR_NUMBER}"
               echo "[DRY-RUN] Would cleanup crates runner pr-${PR_NUMBER}-test"
               CLEANED=$((CLEANED + 1))
               continue
@@ -297,6 +298,17 @@ jobs:
               -e "job_ref=pr-${PR_NUMBER}" \
               -v; then
               echo "::warning::Turbo runner cleanup failed for pr-${PR_NUMBER}"
+              PR_FAILED=1
+            fi
+
+            # Cleanup Stripe CLI listener
+            if ! ansible-playbook \
+              -i "${METAL_HOSTS}," \
+              playbooks/cleanup-stripe-listener.yml \
+              -e "ansible_user=${METAL_USER}" \
+              -e "job_ref=pr-${PR_NUMBER}" \
+              -v; then
+              echo "::warning::Stripe CLI listener cleanup failed for pr-${PR_NUMBER}"
               PR_FAILED=1
             fi
 

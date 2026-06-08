@@ -5,6 +5,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { getStripeClient } from "../external/stripe-client";
+import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 
 interface GetOrCreateStripeCustomerArgs {
   readonly orgId: string;
@@ -50,6 +51,7 @@ export const getOrCreateStripeCustomer$ = command(
           metadata[key] = value;
         }
       }
+      Object.assign(metadata, stripePreviewMetadata());
       const customer = await stripe.customers.create({ metadata });
       signal.throwIfAborted();
 

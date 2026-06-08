@@ -59,6 +59,24 @@ jobs:
             echo "::warning::Turbo runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
           fi
 
+      - name: Cleanup Stripe CLI listener on all metal hosts
+        if: steps.check.outputs.should-cleanup == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+        run: |
+          cd ansible
+          JOB_REF="pr-${PR_NUMBER}"
+          if ! ansible-playbook \
+            -i "${METAL_HOSTS}," \
+            playbooks/cleanup-stripe-listener.yml \
+            -e "ansible_user=${METAL_USER}" \
+            -e "job_ref=${JOB_REF}" \
+            -v; then
+            echo "::warning::Stripe CLI listener cleanup failed for ${JOB_REF} — stale Stripe forwarding may remain on metal hosts"
+          fi
+
       - name: Cleanup crates runner on all metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
         env:
