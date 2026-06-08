@@ -146,6 +146,14 @@ async fn create_copy_temp_file(
     host_path: &Path,
     seq: u32,
 ) -> io::Result<(PathBuf, tokio::fs::File)> {
+    create_copy_temp_file_with_validator(host_path, seq, secure_copy_temp_file).await
+}
+
+async fn create_copy_temp_file_with_validator(
+    host_path: &Path,
+    seq: u32,
+    validate: impl Fn(&tokio::fs::File, &Path) -> io::Result<()>,
+) -> io::Result<(PathBuf, tokio::fs::File)> {
     for _ in 0..COPY_TEMP_CREATE_ATTEMPTS {
         let nonce = COPY_TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
         let temp_path = copy_temp_path(host_path, std::process::id(), seq, nonce);
@@ -158,7 +166,11 @@ async fn create_copy_temp_file(
             .await
         {
             Ok(file) => {
-                secure_copy_temp_file(&file, &temp_path)?;
+                if let Err(err) = validate(&file, &temp_path) {
+                    drop(file);
+                    remove_temp_file(&temp_path).await;
+                    return Err(err);
+                }
                 return Ok((temp_path, file));
             }
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
@@ -581,6 +593,39 @@ mod tests {
         assert!(second_path.exists());
         drop(first_file);
         drop(second_file);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn create_copy_temp_file_removes_temp_when_validation_fails() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-host-copy-temp-validation-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let host_path = dir.join("system.log");
+
+        let error = create_copy_temp_file_with_validator(&host_path, 7, |_file, _path| {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "forced validation failure",
+            ))
+        })
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(std::fs::read_dir(&dir).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains("vm0tmp")
+        }));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
