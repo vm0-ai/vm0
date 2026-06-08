@@ -135,6 +135,7 @@ const CONNECTOR_ICON_COLORFUL = {
   gemini: true,
   gitlab: true,
   gmail: true,
+  gong: true,
   "google-ads": true,
   "google-calendar": true,
   "google-docs": true,
