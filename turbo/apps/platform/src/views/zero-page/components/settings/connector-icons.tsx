@@ -179,6 +179,7 @@ const CONNECTOR_ICON_COLORFUL = {
   miro: true,
   modal: true,
   monday: true,
+  msg9: true,
   n8n: true,
   neon: true,
   netdata: true,
