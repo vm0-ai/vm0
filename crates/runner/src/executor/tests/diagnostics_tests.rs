@@ -425,6 +425,40 @@ async fn copy_guest_logs_keeps_existing_logs_when_sandbox_ops_missing() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn copy_guest_logs_skips_symlink_host_log_without_writing_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let log_paths = LogPaths::new(dir.path().to_path_buf());
+    let sandbox = MockSandbox::new("test");
+    let ctx = minimal_context();
+    let system_log_path = log_paths.system_log(ctx.run_id);
+    let outside = dir.path().join("outside-system.log");
+    tokio::fs::write(&outside, b"outside\n").await.unwrap();
+    std::os::unix::fs::symlink(&outside, &system_log_path).unwrap();
+
+    sandbox.push_copy_file_result(Ok(b"{\"cpu\":0.5}\n".to_vec()));
+    sandbox.push_copy_file_result(Ok(
+        b"{\"action_type\":\"final_telemetry_upload\",\"duration_ms\":10,\"success\":true}\n"
+            .to_vec(),
+    ));
+
+    copy_guest_logs(&sandbox, &ctx, &log_paths, false).await;
+
+    assert_eq!(tokio::fs::read(&outside).await.unwrap(), b"outside\n");
+    assert!(
+        std::fs::symlink_metadata(&system_log_path)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+
+    let calls = sandbox.copy_file_calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].host_path, log_paths.metrics_log(ctx.run_id));
+    assert_eq!(calls[1].host_path, log_paths.sandbox_ops_log(ctx.run_id));
+}
+
 #[tokio::test]
 async fn copy_guest_logs_skips_on_nonzero_exit() {
     let dir = tempfile::tempdir().unwrap();

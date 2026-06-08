@@ -536,6 +536,9 @@ pub(super) async fn copy_guest_logs(
     };
 
     for (guest_path, host_path) in &files {
+        if !prepare_guest_log_copy_destination(run_id, host_path).await {
+            continue;
+        }
         let copy_result = sandbox
             .copy_file(
                 guest_path,
@@ -559,6 +562,28 @@ pub(super) async fn copy_guest_logs(
             Ok(_) => secure_copied_guest_log(run_id, host_path).await,
         }
     }
+}
+
+async fn prepare_guest_log_copy_destination(run_id: RunId, host_path: &Path) -> bool {
+    let metadata = match tokio::fs::symlink_metadata(host_path).await {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
+        Err(e) => {
+            warn!(run_id = %run_id, path = %host_path.display(), error = %e, "failed to check guest log destination");
+            return false;
+        }
+    };
+
+    if !metadata.file_type().is_file() {
+        warn!(run_id = %run_id, path = %host_path.display(), "guest log destination is not a regular file");
+        return false;
+    }
+
+    if let Err(e) = crate::log_fs::secure_log_file(host_path).await {
+        warn!(run_id = %run_id, path = %host_path.display(), error = %e, "failed to secure guest log destination");
+        return false;
+    }
+    true
 }
 
 async fn secure_copied_guest_log(run_id: RunId, host_path: &Path) {
