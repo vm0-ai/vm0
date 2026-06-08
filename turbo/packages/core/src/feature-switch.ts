@@ -349,10 +349,6 @@ function evaluateSwitch(fs: FeatureSwitch, hashes: ResolvedHashes): boolean {
   return false;
 }
 
-function isKnownFeatureSwitchKey(key: string): key is FeatureSwitchKey {
-  return key in FEATURE_SWITCHES;
-}
-
 /**
  * Evaluate all feature switches at once for the given context.
  *
@@ -391,10 +387,12 @@ export function getAllFeatureStates(
     result[key] = evaluateSwitch(FEATURE_SWITCHES[key], hashes);
   }
 
-  if (ctx?.overrides) {
-    for (const [key, value] of Object.entries(ctx.overrides)) {
-      if (isKnownFeatureSwitchKey(key) && value !== undefined) {
-        result[key as FeatureSwitchKey] = value;
+  const overrides = ctx?.overrides;
+  if (overrides) {
+    for (const key of Object.values(FeatureSwitchKey)) {
+      const value = overrides[key];
+      if (value !== undefined) {
+        result[key] = value;
       }
     }
   }
