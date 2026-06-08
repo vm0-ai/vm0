@@ -39,34 +39,92 @@ require_env() {
   fi
 }
 
-install_stripe_cli() {
-  export PATH="$HOME/.local/bin:$PATH"
-  bash e2e/scripts/ensure-stripe-cli.sh >/dev/null
+STRIPE_API_BASE_URL="${STRIPE_API_BASE_URL:-https://api.stripe.com/v1}"
+
+print_stripe_error() {
+  local response="$1"
+  local fallback="$2"
+  local error_message
+
+  error_message="$(jq -r '
+    if .error then
+      [
+        (.error.type // "unknown_error"),
+        (.error.code // empty),
+        (.error.message // "no message")
+      ]
+      | map(select(. != ""))
+      | join(": ")
+    else
+      empty
+    end
+  ' <<<"$response" 2>/dev/null || true)"
+  if [[ -n "$error_message" ]]; then
+    echo "::error::${fallback}: ${error_message}" >&2
+    return
+  fi
+
+  local object keys
+  object="$(jq -r '.object // empty' <<<"$response" 2>/dev/null || true)"
+  keys="$(jq -r 'if type == "object" then keys_unsorted | join(",") else empty end' <<<"$response" 2>/dev/null || true)"
+  if [[ -n "$object" || -n "$keys" ]]; then
+    echo "::error::${fallback}; response object=${object:-unknown}, keys=${keys:-unknown}" >&2
+  elif [[ -n "$response" ]]; then
+    echo "::error::${fallback}; Stripe returned a non-JSON response" >&2
+  else
+    echo "::error::${fallback}; Stripe returned an empty response" >&2
+  fi
 }
 
-stripe_with_retry() {
-  local attempt
-  local delay=2
-  local output
-  local status
+json_field() {
+  local response="$1"
+  local filter="$2"
+  jq -r "${filter} // \"\"" <<<"$response" 2>/dev/null || true
+}
 
-  for attempt in 1 2 3 4 5; do
-    status=0
-    output="$(stripe --api-key "$STRIPE_SECRET_KEY" "$@" 2>&1)" || status=$?
-    if [[ "$status" -eq 0 ]]; then
-      printf '%s\n' "$output"
-      return 0
-    fi
+stripe_api_request() {
+  local method="$1"
+  local path="$2"
+  shift 2
 
-    if [[ "$attempt" -eq 5 ]] || ! grep -Eiq 'rate limit|too many requests| 429\b|status=429' <<<"$output"; then
-      printf '%s\n' "$output" >&2
-      return "$status"
-    fi
+  local response_file
+  response_file="$(mktemp)"
+  local http_status=""
+  local status=0
 
-    echo "Stripe API rate limited; retrying in ${delay}s (attempt ${attempt}/5)" >&2
-    sleep "$delay"
-    delay=$((delay * 2))
-  done
+  http_status="$(
+    curl \
+      --silent \
+      --show-error \
+      --request "$method" \
+      --user "${STRIPE_SECRET_KEY}:" \
+      --retry 5 \
+      --retry-delay 2 \
+      --retry-max-time 60 \
+      --retry-all-errors \
+      --connect-timeout 10 \
+      --max-time 30 \
+      --output "$response_file" \
+      --write-out '%{http_code}' \
+      "$@" \
+      "${STRIPE_API_BASE_URL}${path}"
+  )" || status=$?
+
+  local response
+  response="$(cat "$response_file")"
+  rm -f "$response_file"
+
+  if [[ "$status" -ne 0 ]]; then
+    print_stripe_error "$response" "Stripe API ${method} ${path} failed"
+    return "$status"
+  fi
+
+  if [[ ! "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+    print_stripe_error "$response" "Stripe API ${method} ${path} failed with HTTP ${http_status:-unknown}"
+    return 1
+  fi
+
+  printf '%s\n' "$response"
 }
 
 preview_pr_number() {
@@ -80,10 +138,18 @@ list_matching_endpoint_ids() {
   local ids
 
   while true; do
+    local list_args=(
+      --get
+      --data-urlencode "limit=100"
+    )
     if [[ -n "$starting_after" ]]; then
-      response="$(stripe_with_retry webhook_endpoints list --limit 100 --starting-after "$starting_after")"
-    else
-      response="$(stripe_with_retry webhook_endpoints list --limit 100)"
+      list_args+=(--data-urlencode "starting_after=${starting_after}")
+    fi
+
+    response="$(stripe_api_request GET "/webhook_endpoints" "${list_args[@]}")"
+    if ! jq -e '.data | type == "array"' >/dev/null 2>&1 <<<"$response"; then
+      print_stripe_error "$response" "Stripe did not return a webhook endpoint list"
+      exit 1
     fi
 
     ids="$(jq -r --arg job_ref "$JOB_REF" --arg url "$webhook_url" '
@@ -95,17 +161,17 @@ list_matching_endpoint_ids() {
             or ($url != "" and .url == $url)
           )
         )
-      | .id
+      | .id // empty
     ' <<<"$response")"
     if [[ -n "$ids" ]]; then
       printf '%s\n' "$ids"
     fi
 
-    if [[ "$(jq -r '.has_more' <<<"$response")" != "true" ]]; then
+    if [[ "$(json_field "$response" '.has_more')" != "true" ]]; then
       break
     fi
 
-    starting_after="$(jq -r '.data[-1].id // ""' <<<"$response")"
+    starting_after="$(json_field "$response" '.data[-1].id')"
     if [[ -z "$starting_after" ]]; then
       break
     fi
@@ -124,7 +190,7 @@ delete_matching_endpoints() {
       continue
     fi
     echo "Deleting Stripe webhook endpoint ${endpoint_id} for ${JOB_REF}"
-    stripe_with_retry webhook_endpoints delete "$endpoint_id" --confirm >/dev/null
+    stripe_api_request DELETE "/webhook_endpoints/${endpoint_id}" >/dev/null
   done <<<"$endpoint_ids"
 }
 
@@ -156,39 +222,40 @@ upsert_endpoint() {
   delete_matching_endpoints "$webhook_url"
 
   local create_args=(
-    webhook_endpoints create
-    --confirm
-    --description "vm0 API preview webhook for ${JOB_REF}"
-    --url "$webhook_url"
-    -d "metadata[managed_by]=github-actions"
-    -d "metadata[job_ref]=${JOB_REF}"
-    -d "metadata[github_pr]=${pr_number}"
+    --header "Idempotency-Key: vm0-preview-webhook-${JOB_REF}-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}"
+    --data-urlencode "description=vm0 API preview webhook for ${JOB_REF}"
+    --data-urlencode "url=${webhook_url}"
+    --data-urlencode "metadata[managed_by]=github-actions"
+    --data-urlencode "metadata[job_ref]=${JOB_REF}"
+    --data-urlencode "metadata[github_pr]=${pr_number}"
   )
   if [[ -n "${GITHUB_REPOSITORY:-}" ]]; then
-    create_args+=(-d "metadata[github_repository]=${GITHUB_REPOSITORY}")
+    create_args+=(--data-urlencode "metadata[github_repository]=${GITHUB_REPOSITORY}")
   fi
   if [[ -n "${GITHUB_RUN_ID:-}" ]]; then
-    create_args+=(-d "metadata[github_run_id]=${GITHUB_RUN_ID}")
+    create_args+=(--data-urlencode "metadata[github_run_id]=${GITHUB_RUN_ID}")
   fi
   local event
   for event in "${EVENTS[@]}"; do
-    create_args+=(--enabled-events "$event")
+    create_args+=(--data-urlencode "enabled_events[]=${event}")
   done
 
   local endpoint
-  endpoint="$(stripe_with_retry "${create_args[@]}")"
+  endpoint="$(stripe_api_request POST "/webhook_endpoints" "${create_args[@]}")"
 
   local endpoint_id webhook_secret
-  endpoint_id="$(jq -r '.id // ""' <<<"$endpoint")"
-  webhook_secret="$(jq -r '.secret // ""' <<<"$endpoint")"
-  echo "::add-mask::${webhook_secret}"
+  endpoint_id="$(json_field "$endpoint" '.id')"
+  webhook_secret="$(json_field "$endpoint" '.secret')"
+  if [[ -n "$webhook_secret" ]]; then
+    echo "::add-mask::${webhook_secret}"
+  fi
 
   if [[ "$endpoint_id" != we_* ]]; then
-    echo "::error::Stripe did not return a webhook endpoint id" >&2
+    print_stripe_error "$endpoint" "Stripe did not return a webhook endpoint id"
     exit 1
   fi
   if [[ "$webhook_secret" != whsec_* ]]; then
-    echo "::error::Stripe did not return a webhook signing secret" >&2
+    print_stripe_error "$endpoint" "Stripe did not return a webhook signing secret"
     exit 1
   fi
 
@@ -220,7 +287,6 @@ main() {
 
   require_env STRIPE_SECRET_KEY
   require_env JOB_REF
-  install_stripe_cli
 
   case "$1" in
     upsert)

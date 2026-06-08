@@ -30,38 +30,90 @@ HOME_DIR="${TMPDIR}/home"
 FAKE_BIN="${HOME_DIR}/.local/bin"
 mkdir -p "$FAKE_BIN"
 
-cat > "${FAKE_BIN}/stripe" <<'BASH'
+cat > "${FAKE_BIN}/curl" <<'BASH'
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "${1:-}" == "--version" ]]; then
-  echo "stripe version fake"
-  exit 0
+method=""
+output_file=""
+url=""
+data=()
+headers=()
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --request)
+      method="$2"
+      shift 2
+      ;;
+    --user | --retry | --retry-delay | --retry-max-time | --connect-timeout | --max-time | --write-out)
+      shift 2
+      ;;
+    --header)
+      headers+=("$2")
+      shift 2
+      ;;
+    --output)
+      output_file="$2"
+      shift 2
+      ;;
+    --data-urlencode)
+      data+=("$2")
+      shift 2
+      ;;
+    --silent | --show-error | --retry-all-errors | --get)
+      shift
+      ;;
+    http://* | https://*)
+      url="$1"
+      shift
+      ;;
+    *)
+      echo "unexpected curl argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "$method" || -z "$output_file" || -z "$url" ]]; then
+  echo "missing fake curl method, output file, or url" >&2
+  exit 1
 fi
 
-printf '%s\n' "$*" >> "$STRIPE_ARGS_LOG"
+printf '%s %s\n' "$method" "$url" >> "$STRIPE_ARGS_LOG"
+for item in "${data[@]}"; do
+  printf 'data %s\n' "$item" >> "$STRIPE_ARGS_LOG"
+done
+for item in "${headers[@]}"; do
+  printf 'header %s\n' "$item" >> "$STRIPE_ARGS_LOG"
+done
 
-if [[ "${1:-}" == "--api-key" ]]; then
-  shift 2
-fi
+path="${url#https://api.stripe.com/v1}"
+http_status=200
+body=""
 
-case "${1:-} ${2:-}" in
-  "webhook_endpoints list")
-    cat "$FAKE_STRIPE_LIST_JSON"
+case "$method $path" in
+  "GET /webhook_endpoints")
+    body="$(cat "$FAKE_STRIPE_LIST_JSON")"
     ;;
-  "webhook_endpoints delete")
-    printf '{"id":"%s","deleted":true}\n' "$3"
+  DELETE\ /webhook_endpoints/*)
+    endpoint_id="${path##*/}"
+    body="{\"id\":\"${endpoint_id}\",\"deleted\":true}"
     ;;
-  "webhook_endpoints create")
-    printf '{"id":"we_new","secret":"whsec_new"}\n'
+  "POST /webhook_endpoints")
+    http_status="${FAKE_STRIPE_CREATE_STATUS:-200}"
+    body="${FAKE_STRIPE_CREATE_JSON:-{\"id\":\"we_new\",\"secret\":\"whsec_new\"}}"
     ;;
   *)
-    echo "unexpected stripe call: $*" >&2
+    echo "unexpected fake curl request: $method $path" >&2
     exit 1
     ;;
 esac
+
+printf '%s\n' "$body" > "$output_file"
+printf '%s' "$http_status"
 BASH
-chmod +x "${FAKE_BIN}/stripe"
+chmod +x "${FAKE_BIN}/curl"
 
 LIST_JSON="${TMPDIR}/endpoints.json"
 cat > "$LIST_JSON" <<'JSON'
@@ -112,16 +164,17 @@ HOME="$HOME_DIR" \
   JOB_REF="pr-123" \
   API_PREVIEW_URL="https://pr-123-api.vm0.test" \
   API_ENV_FILE="$API_ENV_FILE" \
-  bash "$SCRIPT" upsert >/tmp/stripe-preview-webhook-upsert.out
+  bash "$SCRIPT" upsert >"${TMPDIR}/stripe-preview-webhook-upsert.out"
 
-assert_contains "$ARGS_LOG" "webhook_endpoints delete we_managed_job --confirm"
-assert_contains "$ARGS_LOG" "webhook_endpoints delete we_managed_url --confirm"
-assert_not_contains "$ARGS_LOG" "webhook_endpoints delete we_unmanaged_job --confirm"
-assert_not_contains "$ARGS_LOG" "webhook_endpoints delete we_unmanaged_url --confirm"
-assert_contains "$ARGS_LOG" "webhook_endpoints create"
-assert_contains "$ARGS_LOG" "--url https://pr-123-api.vm0.test/api/webhooks/stripe"
-assert_contains "$ARGS_LOG" "metadata[job_ref]=pr-123"
-assert_contains "$ARGS_LOG" "--enabled-events invoice.paid"
+assert_contains "$ARGS_LOG" "DELETE https://api.stripe.com/v1/webhook_endpoints/we_managed_job"
+assert_contains "$ARGS_LOG" "DELETE https://api.stripe.com/v1/webhook_endpoints/we_managed_url"
+assert_not_contains "$ARGS_LOG" "DELETE https://api.stripe.com/v1/webhook_endpoints/we_unmanaged_job"
+assert_not_contains "$ARGS_LOG" "DELETE https://api.stripe.com/v1/webhook_endpoints/we_unmanaged_url"
+assert_contains "$ARGS_LOG" "POST https://api.stripe.com/v1/webhook_endpoints"
+assert_contains "$ARGS_LOG" "header Idempotency-Key: vm0-preview-webhook-pr-123-local-0"
+assert_contains "$ARGS_LOG" "data url=https://pr-123-api.vm0.test/api/webhooks/stripe"
+assert_contains "$ARGS_LOG" "data metadata[job_ref]=pr-123"
+assert_contains "$ARGS_LOG" "data enabled_events[]=invoice.paid"
 assert_contains "$API_ENV_FILE" "STRIPE_WEBHOOK_SECRET=whsec_new"
 
 : > "$ARGS_LOG"
@@ -131,10 +184,10 @@ HOME="$HOME_DIR" \
   FAKE_STRIPE_LIST_JSON="$LIST_JSON" \
   STRIPE_SECRET_KEY="sk_test_fake" \
   JOB_REF="pr-123" \
-  bash "$SCRIPT" cleanup >/tmp/stripe-preview-webhook-cleanup.out
+  bash "$SCRIPT" cleanup >"${TMPDIR}/stripe-preview-webhook-cleanup.out"
 
-assert_contains "$ARGS_LOG" "webhook_endpoints delete we_managed_job --confirm"
-assert_not_contains "$ARGS_LOG" "webhook_endpoints delete we_unmanaged_job --confirm"
+assert_contains "$ARGS_LOG" "DELETE https://api.stripe.com/v1/webhook_endpoints/we_managed_job"
+assert_not_contains "$ARGS_LOG" "DELETE https://api.stripe.com/v1/webhook_endpoints/we_unmanaged_job"
 
 : > "$ARGS_LOG"
 HOME="$HOME_DIR" \
@@ -144,10 +197,55 @@ HOME="$HOME_DIR" \
   STRIPE_SECRET_KEY="sk_test_fake" \
   JOB_REF="staging" \
   API_ENV_FILE="$API_ENV_FILE" \
-  bash "$SCRIPT" upsert >/tmp/stripe-preview-webhook-staging.out
+  bash "$SCRIPT" upsert >"${TMPDIR}/stripe-preview-webhook-staging.out"
 
 if [[ -s "$ARGS_LOG" ]]; then
   fail "expected non-PR upsert to skip Stripe API calls"
 fi
+
+: > "$ARGS_LOG"
+ERROR_JSON='{"error":{"type":"invalid_request_error","code":"url_invalid","message":"Invalid webhook URL"}}'
+set +e
+HOME="$HOME_DIR" \
+  PATH="${FAKE_BIN}:${PATH}" \
+  STRIPE_ARGS_LOG="$ARGS_LOG" \
+  FAKE_STRIPE_LIST_JSON="$LIST_JSON" \
+  FAKE_STRIPE_CREATE_JSON="$ERROR_JSON" \
+  FAKE_STRIPE_CREATE_STATUS=400 \
+  STRIPE_SECRET_KEY="sk_test_fake" \
+  JOB_REF="pr-123" \
+  API_PREVIEW_URL="https://pr-123-api.vm0.test" \
+  API_ENV_FILE="$API_ENV_FILE" \
+  bash "$SCRIPT" upsert >"${TMPDIR}/stripe-preview-webhook-error.out" 2>"${TMPDIR}/stripe-preview-webhook-error.err"
+status=$?
+set -e
+if [[ "$status" -eq 0 ]]; then
+  fail "expected Stripe HTTP error to fail"
+fi
+assert_contains "${TMPDIR}/stripe-preview-webhook-error.err" "Stripe API POST /webhook_endpoints failed with HTTP 400"
+assert_contains "${TMPDIR}/stripe-preview-webhook-error.err" "invalid_request_error: url_invalid: Invalid webhook URL"
+assert_not_contains "${TMPDIR}/stripe-preview-webhook-error.out" "::add-mask::"
+
+: > "$ARGS_LOG"
+UNEXPECTED_JSON='{"dry_run":{"method":"POST","url":"https://api.stripe.com/v1/webhook_endpoints"}}'
+set +e
+HOME="$HOME_DIR" \
+  PATH="${FAKE_BIN}:${PATH}" \
+  STRIPE_ARGS_LOG="$ARGS_LOG" \
+  FAKE_STRIPE_LIST_JSON="$LIST_JSON" \
+  FAKE_STRIPE_CREATE_JSON="$UNEXPECTED_JSON" \
+  STRIPE_SECRET_KEY="sk_test_fake" \
+  JOB_REF="pr-123" \
+  API_PREVIEW_URL="https://pr-123-api.vm0.test" \
+  API_ENV_FILE="$API_ENV_FILE" \
+  bash "$SCRIPT" upsert >"${TMPDIR}/stripe-preview-webhook-unexpected.out" 2>"${TMPDIR}/stripe-preview-webhook-unexpected.err"
+status=$?
+set -e
+if [[ "$status" -eq 0 ]]; then
+  fail "expected unexpected Stripe response to fail"
+fi
+assert_contains "${TMPDIR}/stripe-preview-webhook-unexpected.err" "Stripe did not return a webhook endpoint id"
+assert_contains "${TMPDIR}/stripe-preview-webhook-unexpected.err" "keys=dry_run"
+assert_not_contains "${TMPDIR}/stripe-preview-webhook-unexpected.out" "::add-mask::"
 
 echo "stripe-preview-webhook-test: ok"
