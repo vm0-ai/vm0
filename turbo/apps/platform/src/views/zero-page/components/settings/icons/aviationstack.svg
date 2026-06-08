@@ -1,0 +1,22 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="64"
+  height="64"
+  viewBox="0 0 500 500"
+  fill="none"
+>
+  <!-- Official brand asset source: https://aviationstack.com/site_images/aviationstack_icon.png -->
+  <rect width="500" height="500" fill="#536D84" />
+  <path
+    d="M139 90H229C239 90 244 96 248 105L313 245C316 251 316 256 313 262L247 390C242 399 238 403 228 403H143L212 250L139 90Z"
+    fill="white"
+  />
+  <path
+    d="M91 187L116 180C123 178 127 181 130 188L154 243C157 249 157 254 154 260L127 314C123 321 119 323 111 320L91 313C84 311 82 306 85 299L108 250L85 201C82 194 84 189 91 187Z"
+    fill="white"
+  />
+  <path
+    d="M329 177H381C389 177 392 180 396 187L428 245C431 251 431 255 428 261L394 313C390 319 386 321 378 321H331L372 250L329 177Z"
+    fill="white"
+  />
+</svg>

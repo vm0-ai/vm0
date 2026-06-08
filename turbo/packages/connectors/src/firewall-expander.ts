@@ -1,9 +1,12 @@
 import {
   type FirewallConfig,
   type ExpandedFirewallConfig,
+  UNKNOWN_PERMISSION_GRANT,
+  validateAuthBaseUrl,
   validateBaseUrl,
 } from "./firewall-types";
-import { parseSegment } from "./segment-parser";
+import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
+import { parseSegment, splitPathSegments } from "./segment-parser";
 import { fetchFirewallConfig, type FetchFn } from "./firewall-loader";
 
 export interface FirewallSelection {
@@ -32,12 +35,27 @@ function validatePathSegments(
       `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must start with "/"`,
     );
   }
+  if (hasRawWhitespace(path)) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must not contain whitespace`,
+    );
+  }
+  if (hasUnsafeUrlCodepoint(path)) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must not contain control characters or invalid Unicode`,
+    );
+  }
+  if (path.includes("\\")) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must not contain backslash`,
+    );
+  }
   if (path.includes("?") || path.includes("#")) {
     throw new Error(
       `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must not contain query string or fragment`,
     );
   }
-  const segments = path.split("/").filter(Boolean);
+  const segments = splitPathSegments(path);
   const paramNames = new Set<string>();
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;
@@ -108,6 +126,9 @@ export function collectAndValidatePermissions(
   const available = new Set<string>();
   for (const api of serviceConfig.apis) {
     validateBaseUrl(api.base, serviceConfig.name);
+    if (api.auth.base !== undefined) {
+      validateAuthBaseUrl(api.auth.base, serviceConfig.name);
+    }
     if (!api.permissions || api.permissions.length === 0) {
       // Empty permissions is a valid shape: every request under this base
       // falls through to the firewall's unknownPolicy. Auth headers are
@@ -124,9 +145,9 @@ export function collectAndValidatePermissions(
           `Firewall "${serviceConfig.name}" has a permission with empty name`,
         );
       }
-      if (perm.name === "all") {
+      if (perm.name === "all" || perm.name === UNKNOWN_PERMISSION_GRANT) {
         throw new Error(
-          `Firewall "${serviceConfig.name}" has a permission named "all", which is a reserved keyword`,
+          `Firewall "${serviceConfig.name}" has a permission named "${perm.name}", which is a reserved keyword`,
         );
       }
       if (seen.has(perm.name)) {

@@ -4,9 +4,14 @@ use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use api_contracts::generated::types::runners::storage::StorageManifest;
+use api_contracts::generated::types::runners::storage::{
+    ArtifactEntryMissingRootPolicy, StorageManifest,
+};
 
 use crate::ids::RunId;
+
+pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
+pub(crate) const SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG: &str = "sessionWorkspaceImageCache";
 
 // ---------------------------------------------------------------------------
 // Poll
@@ -50,7 +55,6 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub checkpoint_id: Option<Uuid>,
     pub sandbox_token: String,
-    pub working_dir: String,
     #[serde(default)]
     pub storage_manifest: Option<StorageManifest>,
     #[serde(default)]
@@ -220,6 +224,8 @@ pub struct GuestDownloadArtifactEntry {
     pub vas_storage_name: String,
     pub vas_storage_id: String,
     pub vas_version_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
 }
 
 impl From<&StorageManifest> for GuestDownloadManifest {
@@ -247,6 +253,7 @@ impl From<&StorageManifest> for GuestDownloadManifest {
                     vas_storage_name: artifact.vas_storage_name.clone(),
                     vas_storage_id: artifact.vas_storage_id.clone(),
                     vas_version_id: artifact.vas_version_id.clone(),
+                    missing_root_policy: artifact.missing_root_policy,
                 })
                 .collect(),
             cleanup_paths: Vec::new(),
@@ -269,6 +276,14 @@ impl ExecutionContext {
     /// guest filesystem post-execution (see `read_guest_session_id`).
     pub fn session_id(&self) -> Option<&str> {
         self.resume_session.as_ref().map(|r| r.session_id.as_str())
+    }
+
+    pub fn session_workspace_image_cache_enabled(&self) -> bool {
+        self.feature_flags
+            .as_ref()
+            .and_then(|flags| flags.get(SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG))
+            .copied()
+            .unwrap_or(false)
     }
 }
 
@@ -356,7 +371,9 @@ impl SandboxReuseResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use api_contracts::generated::types::runners::storage::{ArtifactEntry, StorageEntry};
+    use api_contracts::generated::types::runners::storage::{
+        ArtifactEntry, ArtifactEntryMissingRootPolicy, StorageEntry,
+    };
     use serde_json::json;
 
     #[test]
@@ -400,14 +417,12 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
             "sandboxToken": "tok-123",
-            "workingDir": "/home/user",
             "cliAgentType": "claude_code",
             "billableFirewalls": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.prompt, "hello");
         assert_eq!(ctx.sandbox_token, "tok-123");
-        assert_eq!(ctx.working_dir, "/home/user");
         assert_eq!(ctx.cli_agent_type, "claude_code");
         assert!(ctx.append_system_prompt.is_none());
         assert!(ctx.vars.is_none());
@@ -423,7 +438,6 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "analyze code",
             "sandboxToken": "tok-456",
-            "workingDir": "/workspace",
             "cliAgentType": "claude_code",
             "appendSystemPrompt": "be concise",
             "agentComposeVersionId": "sha256-abc",
@@ -650,7 +664,6 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
             "sandboxToken": "tok",
-            "workingDir": "/home/user",
             "cliAgentType": "claude_code",
             "billableFirewalls": []
         });
@@ -664,7 +677,6 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
             "sandboxToken": "tok",
-            "workingDir": "/home/user",
             "cliAgentType": "claude_code",
             "resumeSession": {
                 "sessionId": "sess-abc-123",
@@ -759,6 +771,7 @@ mod tests {
                 vas_storage_id: "sid-1".into(),
                 vas_version_id: "v2".into(),
                 manifest_url: Some("https://example.com/manifest.json".into()),
+                missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
             }],
         };
 
@@ -781,6 +794,10 @@ mod tests {
             guest_manifest.artifacts[0].archive_url.as_deref(),
             Some("https://example.com/artifact.tar.gz")
         );
+        assert_eq!(
+            guest_manifest.artifacts[0].missing_root_policy,
+            Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
+        );
     }
 
     #[test]
@@ -801,6 +818,7 @@ mod tests {
                 vas_storage_id: "sid-1".into(),
                 vas_version_id: "v2".into(),
                 manifest_url: Some("https://example.com/manifest.json".into()),
+                missing_root_policy: None,
             }],
         };
 
@@ -811,6 +829,7 @@ mod tests {
         assert!(value["storages"][0].get("name").is_none());
         assert_eq!(value["artifacts"][0]["cached"], false);
         assert!(value["artifacts"][0].get("manifestUrl").is_none());
+        assert!(value["artifacts"][0].get("missingRootPolicy").is_none());
     }
 
     #[test]

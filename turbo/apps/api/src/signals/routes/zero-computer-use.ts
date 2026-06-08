@@ -23,6 +23,7 @@ import {
   createComputerUseCommand$,
   deleteComputerUseHost$,
   getComputerUseCommand$,
+  getComputerUseCommandScreenshot$,
   heartbeatComputerUseHost$,
   listComputerUseAuditEvents$,
   listComputerUseHosts$,
@@ -350,6 +351,40 @@ const commandGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
+const screenshotGetParams$ = pathParamsOf(
+  zeroComputerUseCommandContract.getScreenshot,
+);
+const screenshotGetInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (!(await set(computerUseEnabled$))) {
+      return computerUseDisabled;
+    }
+    signal.throwIfAborted();
+
+    const params = get(screenshotGetParams$);
+    const screenshot = await set(
+      getComputerUseCommandScreenshot$,
+      { orgId: auth.orgId, userId: auth.userId, commandId: params.commandId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (!screenshot) {
+      return notFound("Computer-use command screenshot not found");
+    }
+
+    const headers = new Headers();
+    headers.set("Content-Type", screenshot.contentType);
+    headers.set("Content-Length", String(screenshot.buffer.length));
+    headers.set("Cache-Control", "private, no-store");
+    return new Response(new Uint8Array(screenshot.buffer), {
+      status: 200,
+      headers,
+    });
+  },
+);
+
 const commandApprovalBody$ = bodyResultOf(
   zeroComputerUseCommandApprovalContract.decide,
 );
@@ -573,6 +608,10 @@ export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerUseCommandContract.get,
     handler: authRoute(computerUseCommandAuthOptions, commandGetInner$),
+  },
+  {
+    route: zeroComputerUseCommandContract.getScreenshot,
+    handler: authRoute(computerUseCommandAuthOptions, screenshotGetInner$),
   },
   {
     route: zeroComputerUseCommandApprovalContract.decide,

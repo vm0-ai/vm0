@@ -11,8 +11,9 @@ import type {
   InitClientReturn,
 } from "@ts-rest/core";
 import { clerk$ } from "./auth.ts";
-import { apiBase$ } from "./fetch.ts";
-import { resolveApiBase } from "./api-base.ts";
+import { apiBackendEnabled$ } from "./external/feature-switch.ts";
+import { resolveApiBase, resolveApiBaseForTarget } from "./api-base.ts";
+import { resolveApiTarget } from "./api-target-policy.ts";
 import { createAuthedTsRestClient } from "./api-client-base.ts";
 
 /**
@@ -59,14 +60,19 @@ export const zeroClient$ = computed((get) => {
       getClerk: () => {
         return get(clerk$);
       },
-      resolvePath: async (path) => {
+      resolvePath: async (path, { method }) => {
         if (options?.apiBase === "api") {
           return rebaseApiPath(path, resolveApiBase(true));
         }
         if (options?.apiBase === "www") {
           return rebaseApiPath(path, resolveApiBase(false));
         }
-        return rebaseApiPath(path, await get(apiBase$));
+        const url = new URL(path, resolveApiBase(false));
+        const target = resolveApiTarget(
+          { method, pathname: url.pathname },
+          await get(apiBackendEnabled$),
+        );
+        return rebaseApiPath(path, resolveApiBaseForTarget(target));
       },
     });
   };

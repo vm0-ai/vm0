@@ -21,11 +21,13 @@ def set_cached_headers(
     query: dict | None = None,
 ) -> None:
     auth._get_auth_state(cache_key).cache = auth._FirewallHeaderCacheEntry(
-        headers=headers,
+        payload=auth._FirewallAuthPayload(
+            headers=headers,
+            resolved_secrets=resolved_secrets or [],
+            base=base,
+            query=query,
+        ),
         expires_at=expires_at,
-        resolved_secrets=resolved_secrets or [],
-        base=base,
-        query=query,
     )
 
 

@@ -522,6 +522,296 @@ describe("apiBackend routing", () => {
     expect(postHosts).toStrictEqual(["www.vm0.ai"]);
   });
 
+  it("is method-aware: routes an allowlisted GET to api but a non-allowlisted method on the same path to www", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const getHosts: string[] = [];
+    const postHosts: string[] = [];
+    server.use(
+      http.get("*/api/zero/voice-io/quota", ({ request }) => {
+        getHosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+      http.post("*/api/zero/voice-io/quota", ({ request }) => {
+        postHosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/voice-io/quota");
+    await fch("/api/zero/voice-io/quota", { method: "POST" });
+
+    // Only GET is allowlisted for this path; POST falls through to www.
+    expect(getHosts).toStrictEqual(["api.vm0.ai"]);
+    expect(postHosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
+  it("routes allowlisted dynamic :id paths to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    server.use(
+      http.get("*/api/zero/runs/:id", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/runs/00000000-0000-0000-0000-000000000001");
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes newly-migrated billing/onboarding/attribution paths to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    function capture(method: "get" | "post", pattern: string): void {
+      server.use(
+        http[method](pattern, ({ request }) => {
+          hosts.push(`${method.toUpperCase()} ${new URL(request.url).host}`);
+          return new Response(null, { status: 200 });
+        }),
+      );
+    }
+    capture("get", "*/api/zero/billing/status");
+    capture("post", "*/api/zero/billing/checkout");
+    capture("post", "*/api/zero/billing/redeem/:campaign");
+    capture("post", "*/api/zero/onboarding/setup");
+    capture("post", "*/api/zero/attribution/signup");
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/billing/status");
+    await fch("/api/zero/billing/checkout", { method: "POST" });
+    await fch("/api/zero/billing/redeem/spring", { method: "POST" });
+    await fch("/api/zero/onboarding/setup", { method: "POST" });
+    await fch("/api/zero/attribution/signup", { method: "POST" });
+
+    expect(hosts).toStrictEqual([
+      "GET api.vm0.ai",
+      "POST api.vm0.ai",
+      "POST api.vm0.ai",
+      "POST api.vm0.ai",
+      "POST api.vm0.ai",
+    ]);
+  });
+
+  it("routes connector/integration data to api but keeps connector oauth flows on www", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    function capture(method: "get" | "post" | "delete", pattern: string): void {
+      server.use(
+        http[method](pattern, ({ request }) => {
+          hosts.push(`${method.toUpperCase()} ${new URL(request.url).host}`);
+          return new Response(null, { status: 200 });
+        }),
+      );
+    }
+    capture("get", "*/api/zero/connectors");
+    capture("delete", "*/api/zero/connectors/:type");
+    capture("get", "*/api/zero/integrations/slack");
+    // OAuth flows under the connectors subtree must stay on www even though
+    // their /connectors/:type prefix is now migrated.
+    capture("post", "*/api/zero/connectors/:type/oauth/start");
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/connectors");
+    await fch("/api/zero/connectors/slack", { method: "DELETE" });
+    await fch("/api/zero/integrations/slack");
+    await fch("/api/zero/connectors/slack/oauth/start", { method: "POST" });
+
+    expect(hosts).toStrictEqual([
+      "GET api.vm0.ai",
+      "DELETE api.vm0.ai",
+      "GET api.vm0.ai",
+      "POST www.vm0.ai",
+    ]);
+  });
+
+  it("routes the recovered first-party routes (memory-activity, org-logo, voice stt/tts) to api", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    function capture(method: "get" | "post" | "delete", pattern: string): void {
+      server.use(
+        http[method](pattern, ({ request }) => {
+          hosts.push(`${method.toUpperCase()} ${new URL(request.url).host}`);
+          return new Response(null, { status: 200 });
+        }),
+      );
+    }
+    capture("get", "*/api/zero/memory/activity");
+    capture("post", "*/api/zero/org/logo");
+    capture("get", "*/api/zero/org/logo");
+    capture("post", "*/api/zero/voice-io/stt");
+    capture("post", "*/api/zero/voice-io/tts");
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/memory/activity");
+    await fch("/api/zero/org/logo", { method: "POST" });
+    await fch("/api/zero/org/logo");
+    await fch("/api/zero/voice-io/stt", { method: "POST" });
+    await fch("/api/zero/voice-io/tts", { method: "POST" });
+
+    expect(hosts).toStrictEqual([
+      "GET api.vm0.ai",
+      "POST api.vm0.ai",
+      "GET api.vm0.ai",
+      "POST api.vm0.ai",
+      "POST api.vm0.ai",
+    ]);
+  });
+
+  it("routes push-subscriptions POST to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    server.use(
+      http.post("*/api/zero/push-subscriptions", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/push-subscriptions", { method: "POST" });
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("does not let a :param template over-match a shorter parent path", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    // `/api/zero/runs/:id` is allowlisted for GET, but the bare parent
+    // `/api/zero/runs` is only allowlisted for POST. A GET to the parent must
+    // not be absorbed by the `:id` template (segment counts differ), so it
+    // falls through to www.
+    const hosts: string[] = [];
+    server.use(
+      http.get("*/api/zero/runs", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/runs");
+
+    expect(hosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted user preferences string paths to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    server.use(
+      http.get("*/api/zero/user-preferences", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/user-preferences");
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted user preferences Request inputs to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    server.use(
+      http.post("*/api/zero/user-preferences", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch(
+      new Request("/api/zero/user-preferences", {
+        method: "POST",
+        body: JSON.stringify({ sendMode: "cmd-enter" }),
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("uses RequestInit method overrides for policy allowlisted user preferences Request inputs", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    server.use(
+      http.post("*/api/zero/user-preferences", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch(new Request("/api/zero/user-preferences"), {
+      method: "POST",
+    });
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
   it("routes GET and POST to api host when apiBackend is on", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({

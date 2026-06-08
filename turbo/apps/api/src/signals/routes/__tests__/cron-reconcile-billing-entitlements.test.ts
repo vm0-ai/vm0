@@ -265,7 +265,7 @@ describe("GET /api/cron/reconcile-billing-entitlements", () => {
 
   it("downgrades canceled Stripe subscriptions as missed deleted hooks", async () => {
     const fixture = await track(
-      seedBillingOrg({ status: "past_due", currentPeriodEnd: null }),
+      seedBillingOrg({ status: "past_due", currentPeriodEnd: hoursAgo(48) }),
     );
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       stripeSubscription(fixture.subscriptionId, {
@@ -284,6 +284,7 @@ describe("GET /api/cron/reconcile-billing-entitlements", () => {
       tier: "pro-suspend",
       subscriptionStatus: "canceled",
       stripeSubscriptionId: null,
+      currentPeriodEnd: null,
     });
   });
 

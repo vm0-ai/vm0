@@ -110,6 +110,30 @@ export async function publishThreadListChanged(userId: string): Promise<void> {
   await publishUserSignal([userId], "threadListChanged");
 }
 
+/**
+ * Notify a chat thread's UI that its linked schedule set changed (created,
+ * deleted, enabled, or disabled). The chat-thread header schedule menu
+ * subscribes to this topic and refetches its thread-scoped list.
+ *
+ * Best-effort: a failed publish must not fail the schedule mutation that
+ * triggers it. Payload is intentionally empty — the client re-fetches the
+ * authoritative list on any delivery.
+ */
+export async function publishChatThreadSchedulesChangedSafely(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], `chatThreadSchedulesChanged:${threadId}`),
+    (error) => {
+      L.warn("Failed to publish chat thread schedules changed signal", {
+        threadId,
+        error,
+      });
+    },
+  );
+}
+
 export async function publishBuiltInGenerationChanged(
   userId: string,
   generationId: string,

@@ -15,16 +15,28 @@ export const base44 = {
           clientType: "public",
           clientId: "base44_cli",
         },
+        storage: {
+          secrets: ["BASE44_ACCESS_TOKEN", "BASE44_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "device-auth",
-          deviceAuthUrl: "https://app.base44.com/oauth/device/code",
-          tokenUrl: "https://app.base44.com/oauth/token",
           scopes: ["apps:read", "apps:write", "offline"],
+          outputs: {
+            accessToken: "$secrets.BASE44_ACCESS_TOKEN",
+            refreshToken: "$secrets.BASE44_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "BASE44_ACCESS_TOKEN",
-          refreshToken: "BASE44_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.BASE44_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.BASE44_ACCESS_TOKEN",
+            refreshToken: "$secrets.BASE44_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["BASE44_ACCESS_TOKEN"],
           envBindings: {
             BASE44_TOKEN: "$secrets.BASE44_ACCESS_TOKEN",
           },

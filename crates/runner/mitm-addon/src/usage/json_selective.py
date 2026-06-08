@@ -14,12 +14,17 @@ for keys such as ``includes.users`` and ``includes.tweets``.
 """
 
 import json
+import json.decoder
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, cast
 
 Path = tuple[str, ...]
 WildcardPath = tuple[str, ...]
 ScalarKind = Literal["string", "int"]
+_JsonStringScanner = Callable[[str, int, bool], tuple[str, int]]
+# `scanstring` is the stdlib JSON string scanner, but typeshed does not expose it.
+_SCAN_JSON_STRING = cast(_JsonStringScanner, vars(json.decoder)["scanstring"])
 _UNKNOWN_KEY = "\0__vm0_json_unknown_key__"
 _ARRAY_ELEMENT = "\0__vm0_json_array_element__"
 _INTERNAL_PATH_MARKERS = frozenset((_UNKNOWN_KEY, _ARRAY_ELEMENT))
@@ -105,6 +110,7 @@ class _StringState:
     max_bytes: int
     raw: bytearray | None
     escape: bool = False
+    has_escape: bool = False
     unicode_remaining: int = 0
     utf8_remaining: int = 0
     utf8_codepoint: int = 0
@@ -190,6 +196,9 @@ class JsonSelectiveExtractor:
             | self.array_count_paths
             | self.wildcard_array_count_paths
             | self.object_presence_paths
+        )
+        self._clearable_exact_observation_paths = _build_observation_clear_paths(
+            set(self.scalar_fields) | self.array_count_paths | self.object_presence_paths
         )
 
         self.values: dict[Path, object] = {}
@@ -454,25 +463,29 @@ class JsonSelectiveExtractor:
         return matches
 
     def _clear_observations_for_path(self, path: Path) -> None:
-        self.values = {
-            observed_path: value
-            for observed_path, value in self.values.items()
-            if not _is_path_prefix(path, observed_path)
-        }
-        self.array_counts = {
-            observed_path: count
-            for observed_path, count in self.array_counts.items()
-            if not _is_path_prefix(path, observed_path)
-        }
-        self.object_present = {
-            observed_path
-            for observed_path in self.object_present
-            if not _is_path_prefix(path, observed_path)
-        }
-        for pattern, counts in list(self.wildcard_array_counts.items()):
-            self._clear_wildcard_observations_for_path(pattern, counts, path)
-            if not counts:
-                self.wildcard_array_counts.pop(pattern, None)
+        can_clear_exact = path in self._clearable_exact_observation_paths
+        can_clear_wildcard = bool(self.wildcard_array_counts) and any(
+            _wildcard_observation_can_be_cleared_by_path(pattern, path)
+            for pattern in self.wildcard_array_counts
+        )
+        if not can_clear_exact and not can_clear_wildcard:
+            return
+
+        if can_clear_exact:
+            for observed_path in _find_paths_with_prefix(self.values, path) or ():
+                del self.values[observed_path]
+            for observed_path in _find_paths_with_prefix(self.array_counts, path) or ():
+                del self.array_counts[observed_path]
+            for observed_path in _find_paths_with_prefix(self.object_present, path) or ():
+                self.object_present.remove(observed_path)
+
+        if can_clear_wildcard:
+            for pattern, counts in list(self.wildcard_array_counts.items()):
+                if not _wildcard_observation_can_be_cleared_by_path(pattern, path):
+                    continue
+                self._clear_wildcard_observations_for_path(pattern, counts, path)
+                if not counts:
+                    self.wildcard_array_counts.pop(pattern, None)
 
     def _clear_wildcard_observations_for_path(
         self, pattern: WildcardPath, counts: dict[str, int], path: Path
@@ -555,6 +568,7 @@ class JsonSelectiveExtractor:
                 self._accept_string_byte(state, b)
                 if self._error:
                     return i
+                state.has_escape = True
                 state.escape = True
                 continue
 
@@ -625,9 +639,11 @@ class JsonSelectiveExtractor:
             return
         try:
             value = (
-                _UNKNOWN_KEY if state.raw is None else json.loads(b'"' + bytes(state.raw) + b'"')
+                _UNKNOWN_KEY
+                if state.raw is None
+                else _decode_json_string(state.raw, has_escape=state.has_escape)
             )
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
             self._error = "invalid string"
             return
         if state.role == "key":
@@ -789,6 +805,18 @@ def _is_hex_byte(b: int) -> bool:
     return ord("0") <= b <= ord("9") or ord("a") <= b <= ord("f") or ord("A") <= b <= ord("F")
 
 
+def _decode_json_string(raw: bytearray, *, has_escape: bool) -> str:
+    text = raw.decode("utf-8")
+    if not has_escape:
+        return text
+
+    scan_input = f'{text}"'
+    value, end = _SCAN_JSON_STRING(scan_input, 0, True)
+    if end != len(scan_input):
+        raise ValueError("json string scanner did not consume full token")
+    return value
+
+
 def _is_json_value_start(b: int) -> bool:
     return b in b'{["tfn-' or ord("0") <= b <= ord("9")
 
@@ -878,3 +906,22 @@ def _is_path_prefix(prefix: Path, path: Path) -> bool:
 
 def _build_key_collection_paths(paths: set[Path]) -> set[Path]:
     return {path[:idx] for path in paths for idx in range(len(path))}
+
+
+def _build_observation_clear_paths(paths: set[Path]) -> set[Path]:
+    return {path[:idx] for path in paths for idx in range(len(path) + 1)}
+
+
+def _wildcard_observation_can_be_cleared_by_path(pattern: WildcardPath, path: Path) -> bool:
+    return len(path) <= len(pattern) and _path_prefix_matches_pattern(pattern, path)
+
+
+def _find_paths_with_prefix(paths: Iterable[Path], prefix: Path) -> list[Path] | None:
+    matches: list[Path] | None = None
+    for observed_path in paths:
+        if not _is_path_prefix(prefix, observed_path):
+            continue
+        if matches is None:
+            matches = []
+        matches.append(observed_path)
+    return matches

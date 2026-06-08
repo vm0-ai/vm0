@@ -9,6 +9,10 @@ export const scrapeninja = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        storage: {
+          secrets: ["SCRAPENINJA_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -7,12 +7,10 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
 import {
-  toFirewallPolicies,
-  type FirewallPolicyValue,
-  type RawPermissionPolicies,
-} from "@vm0/connectors/firewall-types";
+  permissionGrantsToFirewallPolicies,
+  resolveFirewallPolicies,
+} from "@vm0/connectors/firewalls";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
@@ -28,11 +26,12 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
-import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { createAgentRun$ } from "./agent-run-create.service";
+import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 
@@ -42,6 +41,8 @@ const DISALLOWED_TOOLS = [
   "CronDelete",
   "ScheduleWakeup",
   "AskUserQuestion",
+  "Skill(loop)",
+  "Skill(loop *)",
 ] as const;
 
 const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
@@ -63,11 +64,6 @@ interface ZeroAgentRunRecord {
   readonly displayName: string | null;
   readonly description: string | null;
   readonly sound: string | null;
-  readonly permissionPolicies: RawPermissionPolicies | null;
-  readonly unknownPermissionPolicies: Record<
-    string,
-    FirewallPolicyValue
-  > | null;
   readonly customSkills: readonly string[];
   readonly modelProviderId: string | null;
   readonly selectedModel: string | null;
@@ -117,10 +113,6 @@ function forbidden(message: string) {
       },
     },
   };
-}
-
-function apiUrl(): string {
-  return env("VM0_API_URL");
 }
 
 function generateCallbackSecret(): string {
@@ -226,7 +218,6 @@ function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `zero agent edit --help`.",
     "- Manage custom skills: `zero skill --help`.",
-    "- Send a direct message to the user via web chat: `zero chat message send --help`.",
     "- Report issues to the dev team: `zero developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
   ].join("\n");
 }
@@ -328,8 +319,6 @@ async function loadZeroAgent(
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
       sound: zeroAgents.sound,
-      permissionPolicies: zeroAgents.permissionPolicies,
-      unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
       customSkills: zeroAgents.customSkills,
       modelProviderId: zeroAgents.modelProviderId,
       selectedModel: zeroAgents.selectedModel,
@@ -399,6 +388,33 @@ async function loadAllowedCustomConnectorIds(
   return rows.map((row) => {
     return row.customConnectorId;
   });
+}
+
+async function resolveZeroRunPermissionPolicies(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agent: ZeroAgentRunRecord;
+    readonly allowedConnectorTypes: readonly ConnectorType[];
+    readonly checkedAt: Date;
+  },
+  signal: AbortSignal,
+): Promise<ReturnType<typeof resolveFirewallPolicies>> {
+  const grants = await loadActiveUserPermissionGrants(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: args.agent.id,
+    },
+    args.checkedAt,
+  );
+  signal.throwIfAborted();
+
+  return resolveFirewallPolicies(permissionGrantsToFirewallPolicies(grants), [
+    ...args.allowedConnectorTypes,
+  ]);
 }
 
 async function loadUserInfo(
@@ -485,8 +501,7 @@ function createRunBody(args: {
     captureNetworkBodies: args.body.captureNetworkBodies,
     tools: args.body.tools,
     settings: args.body.settings,
-    permissionPolicies:
-      args.body.permissionPolicies ?? args.permissionPolicies ?? undefined,
+    permissionPolicies: args.permissionPolicies ?? undefined,
     triggerSource,
     appendSystemPrompt: [baseAppendSystemPrompt, args.appendSystemPrompt]
       .filter((part): part is string => {
@@ -532,7 +547,7 @@ function callbacksForTriggerAgent(triggerAgentId: string | undefined) {
   return triggerAgentId
     ? [
         {
-          url: `${apiUrl()}/api/internal/callbacks/agent`,
+          url: `${internalApiBaseUrl()}/api/internal/callbacks/agent`,
           secret: generateCallbackSecret(),
           payload: { triggerAgentId },
         },
@@ -595,12 +610,16 @@ export const createZeroIntegrationRun$ = command(
     });
     signal.throwIfAborted();
 
-    const agentPermissionPolicies = resolveFirewallPolicies(
-      toFirewallPolicies(
-        agent.permissionPolicies,
-        agent.unknownPermissionPolicies,
-      ),
-      [...allowedConnectorTypes],
+    const runPermissionPolicies = await resolveZeroRunPermissionPolicies(
+      db,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        agent,
+        allowedConnectorTypes,
+        checkedAt: new Date(args.apiStartTime),
+      },
+      signal,
     );
 
     return await set(
@@ -613,7 +632,7 @@ export const createZeroIntegrationRun$ = command(
           sessionId: args.sessionId,
           agent,
           userInfo: { ...userInfo, ...args.userInfoExtras },
-          permissionPolicies: agentPermissionPolicies,
+          permissionPolicies: runPermissionPolicies,
           triggerSource: args.triggerSource,
           appendSystemPrompt: args.appendSystemPrompt,
         }),
@@ -711,12 +730,16 @@ export const createZeroRun$ = command(
       agentId: agent.id,
     });
     signal.throwIfAborted();
-    const agentPermissionPolicies = resolveFirewallPolicies(
-      toFirewallPolicies(
-        agent.permissionPolicies,
-        agent.unknownPermissionPolicies,
-      ),
-      [...allowedConnectorTypes],
+    const runPermissionPolicies = await resolveZeroRunPermissionPolicies(
+      db,
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        agent,
+        allowedConnectorTypes,
+        checkedAt: new Date(args.apiStartTime),
+      },
+      signal,
     );
 
     return await set(
@@ -728,7 +751,7 @@ export const createZeroRun$ = command(
           body: args.body,
           agent,
           userInfo: { ...userInfo, ...args.userInfoExtras },
-          permissionPolicies: agentPermissionPolicies,
+          permissionPolicies: runPermissionPolicies,
           triggerAgentId,
           triggerSource: args.triggerSource,
           appendSystemPrompt: args.appendSystemPrompt,
@@ -741,7 +764,15 @@ export const createZeroRun$ = command(
         selectedModelOverride:
           args.selectedModelOverride ?? agent.selectedModel ?? undefined,
         chatThreadId: args.chatThreadId,
-        extraEnvironment: { ZERO_AGENT_ID: agent.id },
+        extraEnvironment: {
+          ZERO_AGENT_ID: agent.id,
+          // Chat-mode scheduled (and web) runs carry their thread id so the
+          // in-sandbox CLI can default a newly created schedule's binding to it:
+          // zero schedule setup ... (reads $ZERO_CHAT_THREAD_ID when --thread is omitted).
+          ...(args.chatThreadId
+            ? { ZERO_CHAT_THREAD_ID: args.chatThreadId }
+            : {}),
+        },
         callbacks: [
           ...(callbacksForTriggerAgent(triggerAgentId) ?? []),
           ...(args.callbacks ?? []),

@@ -1,4 +1,5 @@
 use std::io;
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Buffer size for reading stdout chunks from a child process.
@@ -23,18 +24,17 @@ pub(crate) struct BoundedDrainResult {
 /// Cancel mechanism: each iteration polls for input with a 100 ms timeout
 /// before reading from the same fd, so the cancel flag is observed at most
 /// ~100 ms after it's set even if a leaked grandchild still holds the pipe
-/// write end open. When the loop returns, the caller's drop of the underlying
-/// `ChildStdout` / `ChildStderr` closes the read end of the pipe — at which
-/// point any still-writing producer gets EPIPE / SIGPIPE on its next write.
-/// That's the property a tempfile-based capture cannot offer: a regular file
-/// is always writable, so a leaked daemon would grow tmpfs memory indefinitely.
-pub(crate) fn drain_until_eof_or_cancelled<R>(
-    pipe: R,
+/// write end open. When the loop returns, dropping the owned read end closes
+/// it, at which point any still-writing producer gets EPIPE / SIGPIPE on its
+/// next write. That's the property a tempfile-based capture cannot offer: a
+/// regular file is always writable, so a leaked daemon would grow tmpfs memory
+/// indefinitely.
+pub(crate) fn drain_until_eof_or_cancelled(
+    pipe: impl Into<OwnedFd>,
     cancel: &AtomicBool,
     mut on_chunk: impl FnMut(&[u8]),
-) where
-    R: std::os::unix::io::AsRawFd,
-{
+) {
+    let pipe = pipe.into();
     let raw_fd = pipe.as_raw_fd();
     let mut chunk = [0u8; STDOUT_CHUNK_SIZE];
     loop {
@@ -68,7 +68,7 @@ pub(crate) fn drain_until_eof_or_cancelled<R>(
             continue;
         }
 
-        // SAFETY: raw_fd belongs to `pipe`, which remains alive until the
+        // SAFETY: raw_fd belongs to the owned `pipe`, which remains alive until the
         // function returns. `chunk` is valid writable memory of the given len.
         let n = unsafe { libc::read(raw_fd, chunk.as_mut_ptr().cast(), chunk.len()) };
         if n == 0 {
@@ -90,10 +90,7 @@ pub(crate) fn drain_until_eof_or_cancelled<R>(
 
 /// Buffered variant of [`drain_until_eof_or_cancelled`]: accumulates
 /// everything read into a `Vec<u8>` and returns it.
-pub(crate) fn drain_into_vec_cancellable<R>(pipe: R, cancel: &AtomicBool) -> Vec<u8>
-where
-    R: std::os::unix::io::AsRawFd,
-{
+pub(crate) fn drain_into_vec_cancellable(pipe: impl Into<OwnedFd>, cancel: &AtomicBool) -> Vec<u8> {
     let mut buf = Vec::new();
     drain_until_eof_or_cancelled(pipe, cancel, |chunk| buf.extend_from_slice(chunk));
     buf
@@ -113,7 +110,7 @@ pub(crate) fn drain_bounded_cancellable<R>(
     mut on_stream_chunk: impl FnMut(&[u8], bool) -> bool,
 ) -> BoundedDrainResult
 where
-    R: std::os::unix::io::AsRawFd,
+    R: Into<OwnedFd>,
 {
     let mut captured =
         capture_limit_bytes.map(|limit| Vec::with_capacity(limit.min(STDOUT_CHUNK_SIZE)));
@@ -178,23 +175,73 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
     use std::os::unix::io::FromRawFd;
+    use std::path::Path;
     use std::sync::{Arc, mpsc};
     use std::thread;
     use std::time::Duration;
 
     fn pipe_pair() -> (File, File) {
         let mut fds = [0; 2];
-        // SAFETY: fds points to two valid c_int slots for pipe() to fill.
-        let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
+        // SAFETY: fds points to two valid c_int slots for pipe2() to fill.
+        let ret = unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) };
         assert_eq!(ret, 0, "pipe failed: {}", io::Error::last_os_error());
 
-        // SAFETY: pipe() initialized both fds and ownership is transferred to File.
+        // SAFETY: pipe2() initialized both fds and ownership is transferred to File.
         unsafe { (File::from_raw_fd(fds[0]), File::from_raw_fd(fds[1])) }
     }
 
+    fn fd_target(fd: i32) -> std::path::PathBuf {
+        std::fs::read_link(format!("/proc/self/fd/{fd}"))
+            .unwrap_or_else(|e| panic!("read fd target for {fd}: {e}"))
+    }
+
+    fn assert_fd_open(fd: i32, message: &str) {
+        // SAFETY: fcntl(F_GETFD) does not mutate memory and accepts any fd value.
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        assert!(flags >= 0, "{message}: {}", io::Error::last_os_error());
+    }
+
+    fn assert_no_current_process_read_end(pipe_target: &Path, writer_fd: i32) {
+        let entries = std::fs::read_dir("/proc/self/fd").expect("read /proc/self/fd");
+        for entry in entries {
+            let entry = entry.expect("read fd entry");
+            let fd_path = entry.path();
+            let Ok(target) = std::fs::read_link(&fd_path) else {
+                continue;
+            };
+            if target != pipe_target {
+                continue;
+            }
+
+            let Some(name) = fd_path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let Ok(fd) = name.parse::<i32>() else {
+                continue;
+            };
+            if fd == writer_fd {
+                continue;
+            }
+
+            // SAFETY: fcntl(F_GETFL) does not mutate memory and accepts any fd value.
+            let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+            if flags < 0 {
+                continue;
+            }
+            let access_mode = flags & libc::O_ACCMODE;
+            assert_eq!(
+                access_mode,
+                libc::O_WRONLY,
+                "owned reader should close when drain returns; fd {fd} still points to {target:?}"
+            );
+        }
+    }
+
     #[test]
-    fn drain_cancel_exits_while_writer_fd_remains_open() {
+    fn drain_cancel_closes_reader_while_writer_fd_remains_open() {
         let (reader, mut writer) = pipe_pair();
+        let pipe_target = fd_target(reader.as_raw_fd());
+        let writer_fd = writer.as_raw_fd();
         let cancel = Arc::new(AtomicBool::new(false));
         let (chunk_tx, chunk_rx) = mpsc::channel();
         let (done_tx, done_rx) = mpsc::channel();
@@ -227,6 +274,13 @@ mod tests {
         };
 
         assert_eq!(output, b"hello".to_vec());
+        // A concurrent fork can briefly inherit this pipe, so assert local fd
+        // ownership directly instead of requiring the writer to see EPIPE.
+        assert_fd_open(
+            writer_fd,
+            "writer fd should remain open after drain cancellation",
+        );
+        assert_no_current_process_read_end(&pipe_target, writer_fd);
         drop(writer);
         handle.join().unwrap();
     }

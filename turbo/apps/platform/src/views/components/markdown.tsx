@@ -375,7 +375,7 @@ export function Markdown({
     : PLAIN_MARKDOWN_COMPONENTS;
   return (
     <MarkdownPreview
-      className={`!bg-transparent !text-foreground text-sm ${className ?? ""}`}
+      className={`min-w-0 max-w-full !bg-transparent !text-foreground text-sm ${className ?? ""}`}
       style={{
         backgroundColor: "transparent",
         fontSize: "0.875rem",

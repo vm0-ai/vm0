@@ -9,10 +9,8 @@ import { zeroConnectorCommand } from "./commands/zero/connector";
 import { zeroCreditCommand } from "./commands/zero/credit";
 import { zeroDoctorCommand } from "./commands/zero/doctor";
 import { zeroPreferenceCommand } from "./commands/zero/preference";
-import { zeroRunCommand } from "./commands/zero/run";
 import { zeroScheduleCommand } from "./commands/zero/schedule";
 import { zeroSecretCommand } from "./commands/zero/secret";
-import { zeroChatCommand } from "./commands/zero/chat";
 import { zeroGithubCommand } from "./commands/zero/github";
 import { zeroSlackCommand } from "./commands/zero/slack";
 import { zeroTelegramCommand } from "./commands/zero/telegram";
@@ -28,6 +26,7 @@ import { generateCommand } from "./commands/zero/generate";
 import { zeroWebCommand } from "./commands/zero/web";
 import { zeroHostCommand } from "./commands/zero/host";
 import { zeroMapsCommand } from "./commands/zero/maps";
+import { zeroBankingCommand } from "./commands/zero/banking";
 import { zeroModelCommand } from "./commands/zero/model";
 import { zeroModelProviderCommand } from "./commands/zero/model-provider";
 import {
@@ -49,7 +48,6 @@ const COMMAND_CAPABILITY_MAP: Record<
   agent: "agent:read",
   skill: "agent:read",
   connector: "connector:read",
-  run: "agent-run:write",
   schedule: "schedule:read",
   doctor: null,
   credit: "billing:write",
@@ -57,7 +55,6 @@ const COMMAND_CAPABILITY_MAP: Record<
   "model-provider": null,
   logs: "agent-run:read",
   search: "chat-message:read",
-  chat: "chat-message:write",
   github: ["github:read", "github:write"],
   slack: "slack:write",
   telegram: ["telegram:read", "telegram:write"],
@@ -69,6 +66,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   web: null,
   host: "host:write",
   maps: "maps:read",
+  banking: "banking:read",
 };
 
 const DEFAULT_COMMANDS: Command[] = [
@@ -80,10 +78,8 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroCreditCommand,
   zeroDoctorCommand,
   zeroPreferenceCommand,
-  zeroRunCommand,
   zeroScheduleCommand,
   zeroSecretCommand,
-  zeroChatCommand,
   zeroGithubCommand,
   zeroSlackCommand,
   zeroTelegramCommand,
@@ -99,6 +95,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroWebCommand,
   zeroHostCommand,
   zeroMapsCommand,
+  zeroBankingCommand,
 ];
 
 function shouldHideCommand(
@@ -155,6 +152,9 @@ export function buildZeroHelpText(
       : [
           '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
         ]),
+    ...(shouldHideCommand("banking", payload)
+      ? []
+      : ["  Read bank data?       zero banking accounts --json"]),
     "  Check your identity?   zero whoami",
   ];
 

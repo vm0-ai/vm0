@@ -1,5 +1,6 @@
 import {
   CONNECTOR_TYPE_KEYS,
+  type ConnectorAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type {
@@ -8,7 +9,7 @@ import type {
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
-  zeroConnectorApiTokenContract,
+  zeroConnectorManualGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
@@ -42,7 +43,8 @@ function createMockOauthDeviceAuthConnector(
     externalUsername: `mock-${type}`,
     externalEmail: null,
     oauthScopes: ["read"],
-    needsReconnect: false,
+    connectionStatus: "connected",
+    tokenExpiresAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -64,16 +66,20 @@ function defaultOauthDeviceAuthSessionStartResponse(
   };
 }
 
-function createMockApiTokenConnector(type: ConnectorType): ConnectorResponse {
+function createMockManualGrantConnector(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
     type,
-    authMethod: "api-token",
+    authMethod,
     externalId: null,
     externalUsername: null,
     externalEmail: null,
     oauthScopes: null,
-    needsReconnect: false,
+    connectionStatus: "connected",
+    tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
@@ -119,7 +125,7 @@ export const apiConnectorsHandlers = [
     return respond(200, {
       connectors: mockConnectors,
       configuredTypes: [...CONNECTOR_TYPE_KEYS],
-      connectorProvidedEnvNames: [],
+      connectorProvidedBindings: [],
     });
   }),
 
@@ -141,11 +147,17 @@ export const apiConnectorsHandlers = [
     return respond(204);
   }),
 
-  mockApi(zeroConnectorApiTokenContract.connect, ({ params, respond }) => {
-    const connector = createMockApiTokenConnector(params.type);
-    upsertMockConnector(connector);
-    return respond(200, connector);
-  }),
+  mockApi(
+    zeroConnectorManualGrantContract.connect,
+    ({ body, params, respond }) => {
+      const connector = createMockManualGrantConnector(
+        params.type,
+        body.authMethod,
+      );
+      upsertMockConnector(connector);
+      return respond(200, connector);
+    },
+  ),
 
   mockApi(zeroConnectorScopeDiffContract.getScopeDiff, ({ respond }) => {
     return respond(200, {

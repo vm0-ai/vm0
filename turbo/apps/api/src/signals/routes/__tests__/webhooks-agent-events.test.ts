@@ -10,7 +10,7 @@ import { usageEvent } from "@vm0/db/schema/usage-event";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -92,33 +92,6 @@ async function postRawWebhook(
   };
 }
 
-async function forwardToApi(request: Request): Promise<Response> {
-  const url = new URL(request.url);
-  const body = await request.text();
-  const app = createApp({ signal: context.signal });
-  const response = await app.request(url.pathname, {
-    method: request.method,
-    headers: request.headers,
-    body,
-  });
-
-  return new HttpResponse(response.body, {
-    status: response.status,
-    headers: response.headers,
-  });
-}
-
-function routeInternalConsumers(): void {
-  server.use(
-    http.post(
-      "http://api.test/api/internal/event-consumers/:consumer",
-      ({ request }) => {
-        return forwardToApi(request);
-      },
-    ),
-  );
-}
-
 async function seedFixture(): Promise<AgentEventsFixture> {
   const fixture = await trackChatFixture(
     store.set(seedZeroChatThread$, {}, context.signal),
@@ -174,10 +147,8 @@ function readUsageEvents(runId: string): Promise<
 }
 
 beforeEach(() => {
-  mockEnv("VM0_API_URL", "http://api.test");
   mockOptionalEnv("AGENTPHONE_API_BASE_URL", "https://api.agentphone.to");
   mockOptionalEnv("AGENTPHONE_API_KEY", "agentphone-test-key");
-  routeInternalConsumers();
 });
 
 describe("POST /api/webhooks/agent/events", () => {
@@ -475,22 +446,21 @@ describe("POST /api/webhooks/agent/events", () => {
   it("does not dispatch optional consumers when required Axiom dispatch fails", async () => {
     const fixture = await seedFixture();
     context.mocks.axiom.ingest.mockReturnValue(false);
-    let chatAssistantCalls = 0;
-    server.use(
-      http.post(
-        "http://api.test/api/internal/event-consumers/chat-assistant",
-        () => {
-          chatAssistantCalls++;
-          return HttpResponse.json({ processed: 1 });
-        },
-      ),
-    );
 
     const response = await accept(
       webhookClient().send({
         body: {
           runId: fixture.runId,
-          events: [{ type: "assistant", sequenceNumber: 1 }],
+          events: [
+            {
+              type: "assistant",
+              sequenceNumber: 1,
+              message: {
+                id: "msg_1",
+                content: [{ type: "text", text: "Should not be persisted" }],
+              },
+            },
+          ],
         },
         headers: authHeaders(fixture),
       }),
@@ -503,7 +473,11 @@ describe("POST /api/webhooks/agent/events", () => {
         code: "INTERNAL_SERVER_ERROR",
       },
     });
-    expect(chatAssistantCalls).toBe(0);
+    // The optional chat-assistant consumer runs in-process; a required-consumer
+    // failure must short-circuit before it, so no assistant message is written.
+    await expect(readAssistantMessages(fixture.runId)).resolves.toStrictEqual(
+      [],
+    );
   });
 
   it("rejects events when Axiom flush fails", async () => {
@@ -531,23 +505,27 @@ describe("POST /api/webhooks/agent/events", () => {
 
   it("accepts events when an optional consumer fails", async () => {
     const fixture = await seedFixture();
-    server.use(
-      http.post(
-        "http://api.test/api/internal/event-consumers/chat-assistant",
-        () => {
-          return HttpResponse.json(
-            { error: "chat assistant unavailable" },
-            { status: 503 },
-          );
-        },
-      ),
+    // The chat-assistant consumer persists the assistant message then publishes
+    // a realtime signal; a rejected publish makes the in-process consumer throw.
+    // Because it is optional, the failure is swallowed and the request succeeds.
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("chat assistant publish failed"),
     );
 
     const response = await accept(
       webhookClient().send({
         body: {
           runId: fixture.runId,
-          events: [{ type: "assistant", sequenceNumber: 1 }],
+          events: [
+            {
+              type: "assistant",
+              sequenceNumber: 1,
+              message: {
+                id: "msg_1",
+                content: [{ type: "text", text: "Hello from the assistant" }],
+              },
+            },
+          ],
         },
         headers: authHeaders(fixture),
       }),

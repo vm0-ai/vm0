@@ -17,7 +17,7 @@ import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { generatePresignedPutUrl, s3ObjectExists } from "../external/s3";
 
 type CheckpointCreateBody = z.infer<
@@ -49,6 +49,14 @@ interface EnrichedVolumeVersionsSnapshot {
   readonly additionalVolumes?: readonly AdditionalVolumeSnapshot[];
 }
 
+interface CheckpointRunContext {
+  readonly agentComposeVersionId: string | null;
+  readonly additionalVolumes: typeof agentRuns.$inferSelect.additionalVolumes;
+  readonly secretNames: readonly string[] | null;
+  readonly sessionId: string;
+  readonly vars: unknown;
+}
+
 const L = logger("webhooks:agent:checkpoints");
 
 function recordOfStringsOrUndefined(
@@ -70,18 +78,21 @@ function recordOfStringsOrUndefined(
   return result;
 }
 
-function artifactSnapshotsForDb(
-  snapshots: CheckpointCreateBody["artifactSnapshots"],
-): ContextArtifact[] | null {
-  if (!snapshots || snapshots.length === 0) {
+function artifactSnapshotsForDb(args: {
+  readonly snapshots: CheckpointCreateBody["artifactSnapshots"];
+}): ContextArtifact[] | null {
+  if (!args.snapshots || args.snapshots.length === 0) {
     return null;
   }
 
-  return snapshots.map((snapshot) => {
+  return args.snapshots.map((snapshot) => {
     return {
       name: snapshot.name,
       version: snapshot.version,
       mountPath: snapshot.mountPath,
+      ...(snapshot.missingRootPolicy
+        ? { missingRootPolicy: snapshot.missingRootPolicy }
+        : {}),
     };
   });
 }
@@ -124,6 +135,31 @@ function enrichVolumeSnapshot(args: {
     versions: request.versions,
     ...(additionalVolumes ? { additionalVolumes } : {}),
   };
+}
+
+async function loadCheckpointRunContext(
+  db: Db,
+  input: CheckpointAuthInput<CheckpointCreateBody>,
+): Promise<CheckpointRunContext | undefined> {
+  const [run] = await db
+    .select({
+      agentComposeVersionId: agentRuns.agentComposeVersionId,
+      additionalVolumes: agentRuns.additionalVolumes,
+      secretNames: agentRuns.secretNames,
+      sessionId: agentRuns.sessionId,
+      vars: agentRuns.vars,
+    })
+    .from(agentRuns)
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .where(
+      and(
+        eq(agentRuns.id, input.body.runId),
+        eq(agentRuns.userId, input.auth.userId),
+      ),
+    )
+    .limit(1);
+
+  return run;
 }
 
 export const prepareCheckpointHistoryUpload$ = command(
@@ -206,22 +242,7 @@ export const createAgentCheckpoint$ = command(
     signal: AbortSignal,
   ) => {
     const db = set(writeDb$);
-    const [run] = await db
-      .select({
-        agentComposeVersionId: agentRuns.agentComposeVersionId,
-        additionalVolumes: agentRuns.additionalVolumes,
-        secretNames: agentRuns.secretNames,
-        sessionId: agentRuns.sessionId,
-        vars: agentRuns.vars,
-      })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.id, input.body.runId),
-          eq(agentRuns.userId, input.auth.userId),
-        ),
-      )
-      .limit(1);
+    const run = await loadCheckpointRunContext(db, input);
     signal.throwIfAborted();
 
     if (!run) {
@@ -276,9 +297,9 @@ export const createAgentCheckpoint$ = command(
       ...(vars ? { vars } : {}),
       ...(run.secretNames ? { secretNames: run.secretNames } : {}),
     };
-    const artifactSnapshots = artifactSnapshotsForDb(
-      input.body.artifactSnapshots,
-    );
+    const artifactSnapshots = artifactSnapshotsForDb({
+      snapshots: input.body.artifactSnapshots,
+    });
     const volumeVersionsSnapshot = enrichVolumeSnapshot({
       request: input.body.volumeVersionsSnapshot,
       additionalVolumes: run.additionalVolumes,

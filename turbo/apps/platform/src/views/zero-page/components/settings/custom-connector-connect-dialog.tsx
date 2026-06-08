@@ -71,19 +71,19 @@ export function CustomConnectorConnectDialog({
           </div>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Your credential is encrypted at rest and injected into outbound
-          requests by the firewall. It&apos;s never exposed to the agent as an
+          Your secret is encrypted at rest and injected into outbound requests
+          by the firewall. It&apos;s never exposed to the agent as an
           environment variable.
         </p>
         <div className="flex flex-col gap-2">
           <label
-            htmlFor="cc-connect-credential"
+            htmlFor="cc-connect-secret"
             className="text-sm font-medium text-foreground"
           >
-            Credential
+            Secret
           </label>
           <Input
-            id="cc-connect-credential"
+            id="cc-connect-secret"
             type="password"
             value={value}
             onChange={(e) => {

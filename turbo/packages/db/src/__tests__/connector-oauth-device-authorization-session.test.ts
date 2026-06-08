@@ -2,7 +2,23 @@ import { describe, expect, it } from "vitest";
 import { schema } from "../index";
 import { connectorOauthDeviceAuthorizationSessions } from "../schema/connector-oauth-device-authorization-session";
 
-function getExtraConfigNames(table: object): string[] {
+interface ExtraConfigColumn {
+  readonly name?: string;
+}
+
+interface ExtraConfig {
+  readonly name?: string;
+  readonly config?: {
+    readonly name?: string;
+    readonly columns?: readonly ExtraConfigColumn[];
+  };
+}
+
+function isExtraConfig(value: unknown): value is ExtraConfig {
+  return typeof value === "object" && value !== null;
+}
+
+function getExtraConfigs(table: object): ExtraConfig[] {
   const symbols = Object.getOwnPropertySymbols(table);
   const builderSymbol = symbols.find((symbol) => {
     return symbol.description === "drizzle:ExtraConfigBuilder";
@@ -20,13 +36,36 @@ function getExtraConfigNames(table: object): string[] {
     return [];
   }
 
-  return builder(columns)
-    .map((config: { name?: string; config?: { name?: string } }) => {
+  const result: unknown = builder(columns);
+  if (!Array.isArray(result)) {
+    return [];
+  }
+  return result.filter(isExtraConfig);
+}
+
+function getExtraConfigNames(table: object): string[] {
+  return getExtraConfigs(table)
+    .map((config) => {
       return config.name ?? config.config?.name;
     })
     .filter((name: string | undefined): name is string => {
       return Boolean(name);
     });
+}
+
+function getExtraConfigColumnNames(table: object, name: string): string[] {
+  const config = getExtraConfigs(table).find((item) => {
+    return (item.name ?? item.config?.name) === name;
+  });
+  return (
+    config?.config?.columns
+      ?.map((column) => {
+        return column.name;
+      })
+      .filter((columnName: string | undefined): columnName is string => {
+        return Boolean(columnName);
+      }) ?? []
+  );
 }
 
 describe("connectorOauthDeviceAuthorizationSessions schema", () => {
@@ -44,6 +83,9 @@ describe("connectorOauthDeviceAuthorizationSessions schema", () => {
     );
     expect(connectorOauthDeviceAuthorizationSessions.connectorType.name).toBe(
       "connector_type",
+    );
+    expect(connectorOauthDeviceAuthorizationSessions.authMethod.name).toBe(
+      "auth_method",
     );
     expect(connectorOauthDeviceAuthorizationSessions.status.name).toBe(
       "status",
@@ -89,12 +131,24 @@ describe("connectorOauthDeviceAuthorizationSessions schema", () => {
   it("declares token, owner, and expiration indexes", () => {
     expect(
       getExtraConfigNames(connectorOauthDeviceAuthorizationSessions),
-    ).toEqual(
+    ).toStrictEqual(
       expect.arrayContaining([
         "idx_connector_oauth_device_authorization_sessions_token",
         "idx_connector_oauth_device_authorization_sessions_owner_status",
         "idx_connector_oauth_device_authorization_sessions_expiration",
       ]),
     );
+    expect(
+      getExtraConfigColumnNames(
+        connectorOauthDeviceAuthorizationSessions,
+        "idx_connector_oauth_device_authorization_sessions_owner_status",
+      ),
+    ).toStrictEqual([
+      "org_id",
+      "user_id",
+      "connector_type",
+      "auth_method",
+      "status",
+    ]);
   });
 });

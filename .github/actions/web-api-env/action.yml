@@ -147,6 +147,7 @@ runs:
         if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
           web_url="${INPUT_WEB_URL:-https://www.vm0.ai}"
           app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
+          paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL)" "https://so.vm0.ai")"
           api_url="${INPUT_API_URL:-$(repo_var VM0_API_URL)}"
           api_backend_url="$(first_non_empty "$INPUT_API_BACKEND_URL" "$(repo_var VM0_API_BACKEND_URL)")"
           axiom_dataset_suffix="prod"
@@ -163,6 +164,13 @@ runs:
         else
           web_url="$INPUT_WEB_URL"
           app_url="$INPUT_APP_URL"
+          # Only the dedicated "staging" preview has a matching paid-onboarding
+          # origin; ad-hoc PR previews have none, so leave it unset there.
+          if [[ "$INPUT_JOB_REF" == "staging" ]]; then
+            paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL_STAGING)" "https://staging-so.vm6.ai")"
+          else
+            paid_onboarding_url=""
+          fi
           api_url="$INPUT_API_URL"
           api_backend_url="$INPUT_API_BACKEND_URL"
           axiom_dataset_suffix="dev"
@@ -246,6 +254,10 @@ runs:
           add_env E2E_TELEGRAM_MOCK_ENABLED "1"
         fi
         add_env PLAUSIBLE_SCRIPT_URL "$plausible_script_url"
+        if [[ "$INPUT_APP" == "web" && "$INPUT_ENVIRONMENT" == "production" ]]; then
+          add_var POSTHOG_KEY POSTHOG_KEY
+          add_var POSTHOG_HOST POSTHOG_HOST
+        fi
         add_secret SENTRY_DSN_WEB SENTRY_DSN_WEB
         if [[ "$INPUT_APP" == "api" ]]; then
           sentry_dsn="$(first_non_empty "$(repo_secret SENTRY_DSN_API)" "$(repo_secret SENTRY_DSN_WEB)" "$(repo_secret SENTRY_DSN)")"
@@ -301,6 +313,9 @@ runs:
         add_secret GOOGLE_ADS_DEVELOPER_TOKEN GOOGLE_ADS_DEVELOPER_TOKEN
         add_secret GOOGLE_ADS_LOGIN_CUSTOMER_ID GOOGLE_ADS_LOGIN_CUSTOMER_ID
         add_secret ZERO_MAPS_GOOGLE_MAPS_TOKEN ZERO_MAPS_GOOGLE_MAPS_TOKEN
+        add_secret FINICITY_APP_KEY FINICITY_APP_KEY
+        add_secret FINICITY_APP_SECRET FINICITY_APP_SECRET
+        add_var FINICITY_PARTNER_ID FINICITY_PARTNER_ID
         add_var VERCEL_INTEGRATION_SLUG VERCEL_INTEGRATION_SLUG
         add_var MONDAY_OAUTH_APP_ID MONDAY_OAUTH_APP_ID
         add_secret STRIPE_SECRET_KEY STRIPE_SECRET_KEY
@@ -315,6 +330,9 @@ runs:
         add_secret AGENTPHONE_WEBHOOK_SECRET AGENTPHONE_WEBHOOK_SECRET
         add_secret PLAIN_API_KEY PLAIN_API_KEY
         add_env APP_URL "$app_url"
+        if [[ -n "$paid_onboarding_url" ]]; then
+          add_env PAID_ONBOARDING_URL "$paid_onboarding_url"
+        fi
         add_secret RESEND_API_KEY RESEND_API_KEY
         add_secret RESEND_WEBHOOK_SECRET RESEND_WEBHOOK_SECRET
         add_var RESEND_FROM_DOMAIN RESEND_FROM_DOMAIN

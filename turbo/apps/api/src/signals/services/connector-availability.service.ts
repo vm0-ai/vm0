@@ -1,6 +1,6 @@
 import { computed, type Computed } from "ccstate";
 import {
-  getAvailableConnectorAuthMethods,
+  getAvailableConnectorAuthMethodIds,
   isConnectorAuthMethodAvailable,
   type AvailableConnectorAuthMethodsOptions,
 } from "@vm0/connectors/connector-utils";
@@ -49,8 +49,8 @@ function createUserConnectorAvailability(args: {
       options = USER_CONNECTOR_AUTH_METHOD_OPTIONS,
     ) {
       return (
-        getAvailableConnectorAuthMethods(type, featureStates, options).length >
-        0
+        getAvailableConnectorAuthMethodIds(type, featureStates, options)
+          .length > 0
       );
     },
   };

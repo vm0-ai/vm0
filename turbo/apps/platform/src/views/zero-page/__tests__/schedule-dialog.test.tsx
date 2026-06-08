@@ -72,7 +72,7 @@ async function openCreateDialog(
   mockCreateModeAPIs();
   detachedSetupPage({
     context,
-    path: "/schedules",
+    path: "/schedules?tab=list",
     ...(options.featureSwitches && {
       featureSwitches: options.featureSwitches,
     }),
@@ -110,7 +110,6 @@ function mockEditModeAPIs() {
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),

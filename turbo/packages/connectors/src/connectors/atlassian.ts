@@ -11,6 +11,10 @@ export const atlassian = {
         label: "API Token",
         helpText:
           "1. Log in to [Atlassian](https://id.atlassian.com/manage-profile/security/api-tokens)\n2. Click **Create API token**\n3. Give it a label and click **Create**\n4. Copy the generated token",
+        storage: {
+          secrets: ["ATLASSIAN_TOKEN"],
+          variables: ["ATLASSIAN_EMAIL", "ATLASSIAN_DOMAIN"],
+        },
         grant: {
           kind: "manual",
           fields: {

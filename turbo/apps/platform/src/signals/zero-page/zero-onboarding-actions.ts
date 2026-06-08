@@ -370,6 +370,7 @@ const onboardingContinueWeb$ = command(
               agentId: agentId,
               prompt,
               modelSelection,
+              generationTemplate: undefined,
             },
             rootSignal,
           );

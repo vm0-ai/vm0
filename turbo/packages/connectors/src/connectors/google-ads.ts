@@ -18,20 +18,35 @@ export const googleAds = {
           clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["GOOGLE_ADS_ACCESS_TOKEN", "GOOGLE_ADS_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.googleapis.com/token",
           scopes: [
             "https://www.googleapis.com/auth/adwords",
             "https://www.googleapis.com/auth/userinfo.email",
           ],
+          outputs: {
+            accessToken: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
+            refreshToken: "$secrets.GOOGLE_ADS_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
-          refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.GOOGLE_ADS_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
+            refreshToken: "$secrets.GOOGLE_ADS_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["GOOGLE_ADS_ACCESS_TOKEN"],
+          platformSecrets: ["GOOGLE_ADS_DEVELOPER_TOKEN"],
           envBindings: {
             GOOGLE_ADS_TOKEN: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
+            GOOGLE_ADS_DEVELOPER_TOKEN: "$secrets.GOOGLE_ADS_DEVELOPER_TOKEN",
           },
         },
         revoke: { kind: "none" },

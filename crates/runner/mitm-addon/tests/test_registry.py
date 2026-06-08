@@ -1,10 +1,12 @@
-"""Tests for registry loading, caching, and network logging."""
+"""Tests for registry loading and caching."""
 
 import json
-from pathlib import Path
+import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import logging_utils
+import pytest
+
 import matching
 import registry
 from tests.auth_state_helpers import (
@@ -17,13 +19,26 @@ from tests.auth_state_helpers import (
     set_cached_headers,
     set_last_force_refresh_at,
 )
-from tests.timestamp_helpers import assert_utc_millisecond_timestamp
+
+_FIXED_MTIME_NS = 1_700_000_000_000_000_000
 
 
 def _reset_cache():
     """Reset the module-level registry cache between tests."""
     registry.reset_cache_for_tests()
     clear_auth_state()
+
+
+def _write_simple_registry(path, *, run_id="run-one"):
+    data = {
+        "vms": {"10.200.0.1": {"runId": run_id}},
+        "updatedAt": 0,
+    }
+    path.write_text(json.dumps(data, sort_keys=True))
+
+
+def _pin_mtime(path):
+    os.utime(path, ns=(_FIXED_MTIME_NS, _FIXED_MTIME_NS))
 
 
 def _write_firewall_registry(path, *, rule="/items"):
@@ -69,12 +84,53 @@ class TestLoadRegistry:
         assert "10.200.0.1" in result
         assert result["10.200.0.1"]["runId"] == "run-abc-123"
 
+    def test_classifies_invalid_registered_vm_entries(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {"runId": "run-active"},
+                        "10.200.0.2": "broken",
+                        "10.200.0.3": {},
+                        "10.200.0.4": {"runId": ""},
+                        "10.200.0.5": {"runId": 123},
+                        "10.200.0.6": {"runId": "  \t"},
+                        "10.200.0.7": {"runId": " run-active "},
+                    },
+                    "updatedAt": 0,
+                }
+            )
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            state = registry.load_registry_state(str(path))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert set(state.vms) == {"10.200.0.1"}
+        assert set(state.invalid_vms) == {
+            "10.200.0.2",
+            "10.200.0.3",
+            "10.200.0.4",
+            "10.200.0.5",
+            "10.200.0.6",
+            "10.200.0.7",
+        }
+        assert state.invalid_vms["10.200.0.2"].reason == "invalid_vm_entry"
+        assert state.invalid_vms["10.200.0.3"].reason == "missing_run_id"
+        assert state.invalid_vms["10.200.0.4"].reason == "empty_run_id"
+        assert state.invalid_vms["10.200.0.5"].reason == "invalid_run_id"
+        assert state.invalid_vms["10.200.0.6"].reason == "empty_run_id"
+        assert state.invalid_vms["10.200.0.7"].reason == "invalid_run_id"
+
     def test_missing_file_returns_empty(self, tmp_path):
         missing = str(tmp_path / "nonexistent.json")
         with patch.object(registry.ctx, "log", MagicMock(), create=True):
             result = registry.load_registry(missing)
+            state = registry.load_registry_state(missing)
 
         assert result == {}
+        assert isinstance(state, registry.RegistryUnavailable)
 
     def test_cache_returns_same_on_unchanged(self, registry_file):
         result1 = registry.load_registry(str(registry_file))
@@ -94,7 +150,70 @@ class TestLoadRegistry:
         assert "10.200.0.99" in result2
         assert "10.200.0.1" not in result2
 
-    def test_non_dict_vm_entries_are_filtered_without_blocking_valid_vms(self, tmp_path):
+    def test_cache_is_scoped_to_registry_path(self, tmp_path):
+        path_a = tmp_path / "registry-a.json"
+        path_b = tmp_path / "registry-b.json"
+        _write_simple_registry(path_a, run_id="run-one")
+        _write_simple_registry(path_b, run_id="run-two")
+        _pin_mtime(path_a)
+        _pin_mtime(path_b)
+        assert path_a.stat().st_size == path_b.stat().st_size
+
+        first = registry.load_registry(str(path_a))
+        second = registry.load_registry(str(path_b))
+
+        assert first["10.200.0.1"]["runId"] == "run-one"
+        assert second["10.200.0.1"]["runId"] == "run-two"
+        assert second is not first
+
+    def test_registry_path_switch_evicts_header_cache(self, tmp_path):
+        path_a = tmp_path / "registry-a.json"
+        path_b = tmp_path / "registry-b.json"
+        _write_simple_registry(path_a, run_id="run-one")
+        _write_simple_registry(path_b, run_id="run-two")
+        registry.load_registry(str(path_a))
+        set_cached_headers(
+            ("run-one", "api-0"),
+            headers={"Authorization": "Bearer old"},
+        )
+
+        registry.load_registry(str(path_b))
+
+        assert not has_auth_state(("run-one", "api-0"))
+
+    def test_missing_different_path_does_not_return_previous_cache(self, tmp_path):
+        path_a = tmp_path / "registry-a.json"
+        missing_b = tmp_path / "registry-b.json"
+        _write_simple_registry(path_a)
+        registry.load_registry(str(path_a))
+
+        log = MagicMock()
+        with patch.object(registry.ctx, "log", log, create=True):
+            result = registry.load_registry(str(missing_b))
+
+        assert result == {}
+        assert log.warn.call_count == 1
+        assert "registry-b.json" in log.warn.call_args_list[0].args[0]
+
+    def test_atomic_replacement_reloads_same_size_same_mtime_registry(self, tmp_path):
+        path = tmp_path / "registry.json"
+        replacement = tmp_path / "registry.json.tmp"
+        _write_simple_registry(path, run_id="run-one")
+        _pin_mtime(path)
+        first = registry.load_registry(str(path))
+
+        _write_simple_registry(replacement, run_id="run-two")
+        assert replacement.stat().st_size == path.stat().st_size
+        _pin_mtime(replacement)
+        replacement.replace(path)
+
+        second = registry.load_registry(str(path))
+
+        assert first["10.200.0.1"]["runId"] == "run-one"
+        assert second["10.200.0.1"]["runId"] == "run-two"
+        assert second is not first
+
+    def test_invalid_vm_entries_do_not_block_valid_vms(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(
             json.dumps(
@@ -120,7 +239,7 @@ class TestLoadRegistry:
         assert cached is result
         assert log.warn.call_count == 1
         warning = log.warn.call_args_list[0].args[0]
-        assert "Skipped 4 malformed proxy registry VM entries" in warning
+        assert "Rejected 4 invalid proxy registry VM entries" in warning
         assert "10.200.0.2" not in warning
         assert "good-run" not in warning
 
@@ -135,19 +254,20 @@ class TestLoadRegistry:
         assert log.warn.call_count == 1
         assert "Failed to stat" in log.warn.call_args_list[0].args[0]
 
-    def test_missing_file_after_success_returns_cached_registry(self, registry_file):
-        """A transiently missing registry file should not drop the last valid cache."""
-        cached = registry.load_registry(str(registry_file))
+    def test_missing_file_after_success_marks_registry_unavailable(self, registry_file):
+        registry.load_registry(str(registry_file))
         registry_file.unlink()
 
         log = MagicMock()
         with patch.object(registry.ctx, "log", log, create=True):
             result1 = registry.load_registry(str(registry_file))
             result2 = registry.load_registry(str(registry_file))
+            state = registry.load_registry_state(str(registry_file))
 
-        assert result1 is cached
-        assert result2 is cached
-        assert result1["10.200.0.1"]["runId"] == "run-abc-123"
+        assert result1 == {}
+        assert result2 == {}
+        assert isinstance(state, registry.RegistryUnavailable)
+        assert state.reason == "stat_failed"
         assert log.warn.call_count == 1
         assert "Failed to stat" in log.warn.call_args_list[0].args[0]
 
@@ -167,9 +287,8 @@ class TestLoadRegistry:
         assert log.warn.call_count == 1
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
 
-    def test_parse_failure_after_success_returns_cached_registry(self, registry_file):
-        """A transient parse failure should preserve the last valid registry cache."""
-        cached = registry.load_registry(str(registry_file))
+    def test_parse_failure_after_success_marks_registry_unavailable(self, registry_file):
+        registry.load_registry(str(registry_file))
         registry_file.write_text("{ not valid json after success")
 
         log = MagicMock()
@@ -179,17 +298,18 @@ class TestLoadRegistry:
         ):
             result1 = registry.load_registry(str(registry_file))
             result2 = registry.load_registry(str(registry_file))
+            state = registry.load_registry_state(str(registry_file))
 
-        assert result1 is cached
-        assert result2 is cached
-        assert result1["10.200.0.1"]["runId"] == "run-abc-123"
+        assert result1 == {}
+        assert result2 == {}
+        assert isinstance(state, registry.RegistryUnavailable)
+        assert state.reason == "parse_failed"
         assert spy.call_count == 1
         assert log.warn.call_count == 1
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
 
-    def test_non_object_vms_after_success_returns_cached_registry(self, registry_file):
-        """A registry whose vms field is not an object should preserve last valid cache."""
-        cached = registry.load_registry(str(registry_file))
+    def test_non_object_vms_after_success_marks_registry_unavailable(self, registry_file):
+        registry.load_registry(str(registry_file))
         registry_file.write_text(json.dumps({"vms": ["broken"], "updatedAt": 0}))
 
         log = MagicMock()
@@ -199,13 +319,105 @@ class TestLoadRegistry:
         ):
             result1 = registry.load_registry(str(registry_file))
             result2 = registry.load_registry(str(registry_file))
+            state = registry.load_registry_state(str(registry_file))
 
-        assert result1 is cached
-        assert result2 is cached
-        assert result1["10.200.0.1"]["runId"] == "run-abc-123"
+        assert result1 == {}
+        assert result2 == {}
+        assert isinstance(state, registry.RegistryUnavailable)
+        assert state.reason == "parse_failed"
         assert spy.call_count == 1
         assert log.warn.call_count == 1
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
+
+    def test_non_object_registry_after_success_marks_registry_unavailable(self, registry_file):
+        registry.load_registry(str(registry_file))
+        registry_file.write_text(json.dumps(["broken"]))
+
+        log = MagicMock()
+        with (
+            patch.object(registry.ctx, "log", log, create=True),
+            patch.object(registry.json, "load", wraps=registry.json.load) as spy,
+        ):
+            result1 = registry.load_registry(str(registry_file))
+            result2 = registry.load_registry(str(registry_file))
+            state = registry.load_registry_state(str(registry_file))
+
+        assert result1 == {}
+        assert result2 == {}
+        assert isinstance(state, registry.RegistryUnavailable)
+        assert state.reason == "parse_failed"
+        assert spy.call_count == 1
+        assert log.warn.call_count == 1
+        assert "Failed to parse" in log.warn.call_args_list[0].args[0]
+
+    def test_new_bad_registry_key_rewarns_without_success_between_failures(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text("{ broken")
+
+        log = MagicMock()
+        with patch.object(registry.ctx, "log", log, create=True):
+            registry.load_registry(str(path))
+            assert log.warn.call_count == 1
+
+            path.write_text("{ broken again, different size")
+            registry.load_registry(str(path))
+
+        assert log.warn.call_count == 2
+        assert all("Failed to parse" in call.args[0] for call in log.warn.call_args_list)
+
+    def test_read_failure_after_stat_does_not_poison_file_key(self, registry_file):
+        registry.load_registry(str(registry_file))
+        new_registry = {"vms": {"10.200.0.99": {"runId": "new-run"}}, "updatedAt": 0}
+        registry_file.write_text(json.dumps(new_registry))
+
+        log = MagicMock()
+        with (
+            patch.object(registry.ctx, "log", log, create=True),
+            patch.object(
+                registry.json,
+                "load",
+                side_effect=[OSError("read failed"), new_registry],
+            ) as spy,
+        ):
+            failed = registry.load_registry(str(registry_file))
+            recovered = registry.load_registry(str(registry_file))
+
+        assert failed == {}
+        assert recovered == {"10.200.0.99": {"runId": "new-run"}}
+        assert spy.call_count == 2
+        assert log.warn.call_count == 1
+        assert "Failed to read" in log.warn.call_args_list[0].args[0]
+
+    def test_read_failure_clears_previous_failed_key(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text("{}")
+        first_key = SimpleNamespace(st_dev=1, st_ino=1, st_mtime_ns=100, st_size=10)
+        second_key = SimpleNamespace(st_dev=1, st_ino=1, st_mtime_ns=200, st_size=20)
+        valid_registry = {"vms": {"10.0.0.1": {"runId": "r1"}}}
+
+        log = MagicMock()
+        with (
+            patch.object(registry.ctx, "log", log, create=True),
+            patch.object(registry.Path, "stat", side_effect=[first_key, second_key, first_key]),
+            patch.object(
+                registry.json,
+                "load",
+                side_effect=[
+                    json.JSONDecodeError("broken", "", 0),
+                    OSError("read failed"),
+                    valid_registry,
+                ],
+            ) as spy,
+        ):
+            assert registry.load_registry(str(path)) == {}
+            assert registry.load_registry(str(path)) == {}
+            recovered = registry.load_registry(str(path))
+
+        assert recovered == {"10.0.0.1": {"runId": "r1"}}
+        assert spy.call_count == 3
+        assert log.warn.call_count == 2
+        assert "Failed to parse" in log.warn.call_args_list[0].args[0]
+        assert "Failed to read" in log.warn.call_args_list[1].args[0]
 
     def test_recovery_after_parse_failure_rewarns_on_next_failure(self, tmp_path):
         """Successful load clears the flag so a later failure re-warns once."""
@@ -262,8 +474,8 @@ class TestLoadRegistry:
         assert force_refresh_pending(("run-other", "api-0"))
         assert last_force_refresh_at(("run-other", "api-0")) == 200.0
 
-    def test_parse_failure_does_not_evict_header_cache(self, registry_file):
-        """Auth cache eviction only runs after a successfully parsed registry reload."""
+    def test_parse_failure_evicts_header_cache_once(self, registry_file):
+        """Unavailable registry clears auth state once when ownership is unknown."""
         registry.load_registry(str(registry_file))
 
         set_cached_headers(
@@ -273,14 +485,21 @@ class TestLoadRegistry:
         mark_force_refresh(("run-abc-123", "api-0"))
         set_last_force_refresh_at(("run-abc-123", "api-0"), 100.0)
 
-        registry_file.write_text("{ broken while preserving cache")
+        registry_file.write_text("{ broken while evicting cache")
 
-        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+        with (
+            patch.object(registry.ctx, "log", MagicMock(), create=True),
+            patch.object(
+                registry,
+                "evict_all_cache_keys",
+                wraps=registry.evict_all_cache_keys,
+            ) as evict_spy,
+        ):
+            registry.load_registry(str(registry_file))
             registry.load_registry(str(registry_file))
 
-        assert cached_headers(("run-abc-123", "api-0"))
-        assert force_refresh_pending(("run-abc-123", "api-0"))
-        assert last_force_refresh_at(("run-abc-123", "api-0")) == 100.0
+        assert evict_spy.call_count == 1
+        assert not has_auth_state(("run-abc-123", "api-0"))
 
     def test_evicts_marker_only_auth_state_on_run_removal(self, registry_file):
         """Registry eviction removes auth state even when it has no cached headers."""
@@ -296,7 +515,7 @@ class TestLoadRegistry:
         assert not has_auth_state(("run-abc-123", "api-0"))
 
     def test_registry_entries_without_run_id_do_not_keep_header_cache(self, registry_file):
-        """Registry entries with missing/empty runId are not active cache owners."""
+        """Registry entries with missing or blank runId are not active cache owners."""
         registry.load_registry(str(registry_file))
 
         set_cached_headers(("", "api-0"), headers={})
@@ -313,21 +532,88 @@ class TestLoadRegistry:
                         "10.200.0.1": {"runId": ""},
                         "10.200.0.2": {},
                         "10.200.0.3": {"runId": "run-active"},
+                        "10.200.0.4": {"runId": "  \t"},
+                        "10.200.0.5": {"runId": " run-active "},
                     },
                     "updatedAt": 0,
                 }
             )
         )
 
-        registry.load_registry(str(registry_file))
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            registry.load_registry(str(registry_file))
 
         assert not has_auth_state(("", "api-0"))
         assert cached_headers(("run-active", "api-0"))
         assert force_refresh_pending(("run-active", "api-0"))
         assert last_force_refresh_at(("run-active", "api-0")) == 200.0
 
-    def test_malformed_vm_entries_do_not_block_header_cache_eviction(self, registry_file):
-        """Malformed VM entries are not active cache owners."""
+    def test_valid_entry_becoming_invalid_evicts_context_and_cache(self, tmp_path):
+        registry_file = tmp_path / "registry.json"
+        _write_firewall_registry(registry_file)
+
+        context = registry.get_vm_context("10.200.0.1", str(registry_file))
+        assert context is not None
+        _, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        set_cached_headers(
+            ("run-abc-123", "api-0"),
+            headers={"Authorization": "Bearer tok"},
+        )
+
+        registry_file.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {"runId": ""},
+                    },
+                    "updatedAt": 0,
+                }
+            )
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            state = registry.load_registry_state(str(registry_file))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert state.vms == {}
+        assert set(state.invalid_vms) == {"10.200.0.1"}
+        assert state.compiled_firewalls == {}
+        assert state.compiled_network_policies == {}
+        assert registry.get_vm_context("10.200.0.1", str(registry_file)) is None
+        assert not has_auth_state(("run-abc-123", "api-0"))
+
+    def test_invalid_entry_can_recover_to_valid_context(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text(json.dumps({"vms": {"10.200.0.1": {"runId": ""}}, "updatedAt": 0}))
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            invalid_state = registry.load_registry_state(str(path))
+
+        assert not isinstance(invalid_state, registry.RegistryUnavailable)
+        assert invalid_state.vms == {}
+        assert set(invalid_state.invalid_vms) == {"10.200.0.1"}
+
+        path.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {"runId": "run-recovered"},
+                    },
+                    "updatedAt": 1,
+                }
+            )
+        )
+
+        recovered_state = registry.load_registry_state(str(path))
+
+        assert not isinstance(recovered_state, registry.RegistryUnavailable)
+        assert recovered_state.vms["10.200.0.1"]["runId"] == "run-recovered"
+        assert recovered_state.invalid_vms == {}
+        assert registry.get_vm_info("10.200.0.1", str(path)) == {"runId": "run-recovered"}
+
+    def test_invalid_vm_entries_do_not_block_header_cache_eviction(self, registry_file):
+        """Invalid VM entries are not active cache owners."""
         registry.load_registry(str(registry_file))
 
         set_cached_headers(("run-old", "api-0"), headers={})
@@ -374,7 +660,7 @@ class TestGetVmInfo:
 
         assert info is None
 
-    def test_malformed_entry_is_unknown_ip(self, tmp_path):
+    def test_invalid_entry_has_no_usable_vm_info(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(
             json.dumps(
@@ -393,6 +679,10 @@ class TestGetVmInfo:
             assert vm_info is not None
             assert vm_info["runId"] == "good-run"
             assert registry.get_vm_info("10.200.0.2", str(path)) is None
+            state = registry.load_registry_state(str(path))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert set(state.invalid_vms) == {"10.200.0.2"}
 
 
 class TestGetVmContext:
@@ -421,7 +711,7 @@ class TestGetVmContext:
         assert isinstance(result, matching.FirewallAllow)
         assert result.api_entry is vm_info["firewalls"][0]["apis"][0]
 
-    def test_malformed_entry_has_no_context(self, tmp_path):
+    def test_invalid_entry_has_no_context(self, tmp_path):
         path = tmp_path / "registry.json"
         path.write_text(
             json.dumps(
@@ -438,6 +728,10 @@ class TestGetVmContext:
         with patch.object(registry.ctx, "log", MagicMock(), create=True):
             assert registry.get_vm_context("10.200.0.1", str(path)) is not None
             assert registry.get_vm_context("10.200.0.2", str(path)) is None
+            state = registry.load_registry_state(str(path))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert set(state.invalid_vms) == {"10.200.0.2"}
 
     def test_compiled_context_updates_after_successful_registry_change(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -509,59 +803,77 @@ class TestGetVmContext:
         assert second_compiled is None
         assert second_compiled_policies is not first_compiled_policies
 
-    def test_parse_failure_preserves_compiled_context(self, tmp_path):
+    def test_compiled_context_is_scoped_to_registry_path(self, tmp_path):
+        path_a = tmp_path / "registry-a.json"
+        path_b = tmp_path / "registry-b.json"
+        _write_firewall_registry(path_a, rule="/items")
+        _write_firewall_registry(path_b, rule="/other")
+        _pin_mtime(path_a)
+        _pin_mtime(path_b)
+        assert path_a.stat().st_size == path_b.stat().st_size
+
+        first_context = registry.get_vm_context("10.200.0.1", str(path_a))
+        second_context = registry.get_vm_context("10.200.0.1", str(path_b))
+
+        assert first_context is not None
+        assert second_context is not None
+        first_vm_info, first_compiled, _ = first_context
+        second_vm_info, second_compiled, second_compiled_policies = second_context
+        assert first_vm_info is not second_vm_info
+        assert second_compiled is not None
+        assert second_compiled is not first_compiled
+        assert isinstance(
+            matching.match_compiled_firewall_request(
+                "https://api.example.com/items",
+                "GET",
+                second_compiled,
+                second_compiled_policies,
+            ),
+            matching.FirewallBlock,
+        )
+        assert isinstance(
+            matching.match_compiled_firewall_request(
+                "https://api.example.com/other",
+                "GET",
+                second_compiled,
+                second_compiled_policies,
+            ),
+            matching.FirewallAllow,
+        )
+
+    def test_parse_failure_returns_no_compiled_context(self, tmp_path):
         path = tmp_path / "registry.json"
         _write_firewall_registry(path)
         context = registry.get_vm_context("10.200.0.1", str(path))
         assert context is not None
-        vm_info, compiled_firewalls, compiled_network_policies = context
+        _, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
 
         path.write_text("{ broken")
         with patch.object(registry.ctx, "log", MagicMock(), create=True):
-            preserved_context = registry.get_vm_context("10.200.0.1", str(path))
+            unavailable_context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
 
-        assert preserved_context is not None
-        preserved_vm_info, preserved_compiled, preserved_compiled_policies = preserved_context
-        assert preserved_vm_info is vm_info
-        assert preserved_compiled is compiled_firewalls
-        assert preserved_compiled_policies is compiled_network_policies
-        assert isinstance(
-            matching.match_compiled_firewall_request(
-                "https://api.example.com/items",
-                "GET",
-                preserved_compiled,
-                preserved_compiled_policies,
-            ),
-            matching.FirewallAllow,
-        )
+        assert unavailable_context is None
+        assert isinstance(state, registry.RegistryUnavailable)
+        assert state.reason == "parse_failed"
 
-    def test_missing_file_preserves_compiled_context(self, tmp_path):
+    def test_missing_file_returns_no_compiled_context(self, tmp_path):
         path = tmp_path / "registry.json"
         _write_firewall_registry(path)
         context = registry.get_vm_context("10.200.0.1", str(path))
         assert context is not None
-        vm_info, compiled_firewalls, compiled_network_policies = context
+        _, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
 
         path.unlink()
         with patch.object(registry.ctx, "log", MagicMock(), create=True):
-            preserved_context = registry.get_vm_context("10.200.0.1", str(path))
+            unavailable_context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
 
-        assert preserved_context is not None
-        preserved_vm_info, preserved_compiled, preserved_compiled_policies = preserved_context
-        assert preserved_vm_info is vm_info
-        assert preserved_compiled is compiled_firewalls
-        assert preserved_compiled_policies is compiled_network_policies
-        assert isinstance(
-            matching.match_compiled_firewall_request(
-                "https://api.example.com/items",
-                "GET",
-                preserved_compiled,
-                preserved_compiled_policies,
-            ),
-            matching.FirewallAllow,
-        )
+        assert unavailable_context is None
+        assert isinstance(state, registry.RegistryUnavailable)
+        assert state.reason == "stat_failed"
 
     def test_malformed_network_policy_shape_compiles_without_load_failure(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -584,70 +896,59 @@ class TestGetVmContext:
         assert isinstance(result, matching.FirewallBlock)
         assert result.reason == "malformed_network_policy"
 
+    def test_malformed_firewall_config_compiles_without_load_failure(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_firewall_registry(path)
+        data = json.loads(path.read_text())
+        data["vms"]["10.200.0.1"]["firewalls"][0]["apis"][0]["permissions"][0]["rules"] = [
+            "GET /items/{a}literal{b}"
+        ]
+        path.write_text(json.dumps(data))
 
-class TestLogNetworkEntry:
-    def test_writes_jsonl(self, tmp_path):
-        log_path = str(tmp_path / "net.jsonl")
-        entry = {"action": "ALLOW", "host": "example.com"}
+        context = registry.get_vm_context("10.200.0.1", str(path))
 
-        with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
-            logging_utils.log_network_entry(log_path, entry)
+        assert context is not None
+        _, compiled_firewalls, compiled_network_policies = context
+        assert compiled_firewalls is not None
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            compiled_firewalls,
+            compiled_network_policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "malformed_firewall_config"
 
-        lines = Path(log_path).read_text().splitlines()
-        assert len(lines) == 1
-        parsed = json.loads(lines[0])
-        assert parsed["action"] == "ALLOW"
-        assert parsed["host"] == "example.com"
-        assert_utc_millisecond_timestamp(parsed["timestamp"])
-        assert "timestamp" not in entry
+    @pytest.mark.parametrize(
+        "firewalls",
+        [0, 1, False, True, "", {}, {"name": "example"}, "broken"],
+    )
+    def test_malformed_top_level_firewalls_shape_rejects_vm(self, tmp_path, firewalls):
+        path = tmp_path / "registry.json"
+        _write_firewall_registry(path)
+        data = json.loads(path.read_text())
+        data["vms"]["10.200.0.1"]["firewalls"] = firewalls
+        path.write_text(json.dumps(data))
 
-    def test_timestamp_is_authoritative(self, tmp_path):
-        log_path = str(tmp_path / "net.jsonl")
-        entry = {"timestamp": "caller-timestamp", "action": "ALLOW"}
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
 
-        with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
-            logging_utils.log_network_entry(log_path, entry)
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert "10.200.0.1" not in state.vms
+        assert state.invalid_vms["10.200.0.1"].reason == "invalid_firewalls"
 
-        parsed = json.loads(Path(log_path).read_text().strip())
-        assert_utc_millisecond_timestamp(parsed["timestamp"])
-        assert parsed["timestamp"] != "caller-timestamp"
-        assert entry["timestamp"] == "caller-timestamp"
+    def test_null_top_level_firewalls_shape_is_no_firewall_context(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_firewall_registry(path)
+        data = json.loads(path.read_text())
+        data["vms"]["10.200.0.1"]["firewalls"] = None
+        path.write_text(json.dumps(data))
 
-    def test_appends_multiple(self, tmp_path):
-        log_path = str(tmp_path / "net.jsonl")
+        context = registry.get_vm_context("10.200.0.1", str(path))
 
-        with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
-            logging_utils.log_network_entry(log_path, {"n": 1})
-            logging_utils.log_network_entry(log_path, {"n": 2})
-
-        lines = Path(log_path).read_text().splitlines()
-        assert len(lines) == 2
-
-    def test_no_path_is_noop(self):
-        log = MagicMock()
-
-        with patch.object(logging_utils.ctx, "log", log, create=True):
-            logging_utils.log_network_entry("", {"payload": b"binary"})
-
-        log.warn.assert_not_called()
-
-    def test_missing_parent_path_warns_and_does_not_raise(self, tmp_path):
-        log_path = tmp_path / "missing" / "net.jsonl"
-        log = MagicMock()
-
-        with patch.object(logging_utils.ctx, "log", log, create=True):
-            logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
-
-        log.warn.assert_called_once()
-        assert "Failed to write network log:" in log.warn.call_args.args[0]
-
-    def test_non_serializable_entry_warns_without_creating_file(self, tmp_path):
-        log_path = tmp_path / "net.jsonl"
-        log = MagicMock()
-
-        with patch.object(logging_utils.ctx, "log", log, create=True):
-            logging_utils.log_network_entry(str(log_path), {"payload": b"binary"})
-
-        log.warn.assert_called_once()
-        assert "Failed to write network log:" in log.warn.call_args.args[0]
-        assert not log_path.exists()
+        assert context is not None
+        _, compiled_firewalls, compiled_network_policies = context
+        assert compiled_firewalls is None
+        assert compiled_network_policies is not None

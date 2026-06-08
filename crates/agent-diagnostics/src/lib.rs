@@ -4,11 +4,6 @@ use serde::{Deserialize, Serialize};
 
 pub const FAILURE_DIAGNOSTIC_SCHEMA_VERSION: u8 = 1;
 
-#[must_use]
-pub fn failure_diagnostic_file(run_id: &str) -> String {
-    format!("/tmp/vm0-failure-diagnostic-{run_id}.json")
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FailureDiagnostic {
@@ -358,13 +353,5 @@ mod tests {
 
         assert_eq!(diagnostic.failure_detail_source, None);
         assert_eq!(diagnostic.failure_reason, None);
-    }
-
-    #[test]
-    fn failure_diagnostic_path_is_run_scoped() {
-        assert_eq!(
-            failure_diagnostic_file("run-123"),
-            "/tmp/vm0-failure-diagnostic-run-123.json"
-        );
     }
 }

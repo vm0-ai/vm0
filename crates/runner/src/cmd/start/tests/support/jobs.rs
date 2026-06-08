@@ -13,7 +13,6 @@ pub(in super::super) fn minimal_context(run_id: RunId) -> crate::types::Executio
         vars: None,
         checkpoint_id: None,
         sandbox_token: "tok".into(),
-        working_dir: "/workspace".into(),
         storage_manifest: None,
         environment: None,
         resume_session: None,
@@ -77,5 +76,17 @@ pub(in super::super) fn context_with_session(
         session_id: session_id.into(),
         session_history: String::new(),
     });
+    ctx
+}
+
+pub(in super::super) fn context_with_workspace_image_cache_enabled(
+    run_id: RunId,
+    session_id: &str,
+) -> crate::types::ExecutionContext {
+    let mut ctx = context_with_session(run_id, session_id);
+    ctx.feature_flags = Some(std::collections::HashMap::from([(
+        crate::types::SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.to_string(),
+        true,
+    )]));
     ctx
 }

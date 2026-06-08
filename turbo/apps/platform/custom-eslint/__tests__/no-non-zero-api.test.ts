@@ -46,7 +46,7 @@ ruleTester.run("no-non-zero-api", rule, {
       errors: [{ messageId: "nonZeroApi" }],
     },
     {
-      code: 'window.open("/api/connectors/github/authorize")',
+      code: 'window.open("/api/connectors/github/callback")',
       errors: [{ messageId: "nonZeroApi" }],
     },
     {

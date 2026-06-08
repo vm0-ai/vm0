@@ -693,6 +693,7 @@ mod tests {
             ppid: Some(1),
             sandbox_id: live_sandbox_id.to_string(),
             base_dir: None,
+            identity: None,
         };
 
         fixture
@@ -736,6 +737,7 @@ mod tests {
             ppid: Some(1),
             sandbox_id: "pid-1234".to_string(),
             base_dir: None,
+            identity: None,
         };
         let discovery = OrphanReapProcessDiscovery {
             firecrackers: Arc::new(vec![unresolved_firecracker]),
@@ -840,6 +842,7 @@ mod tests {
             ppid: Some(1),
             sandbox_id: "pid-1234".to_string(),
             base_dir: None,
+            identity: None,
         };
         fixture
             .reap_current_orphans_with_firecrackers(
@@ -890,6 +893,7 @@ mod tests {
             ppid: Some(1),
             sandbox_id: sandbox_id.to_string(),
             base_dir: None,
+            identity: None,
         };
         fixture
             .reap_current_orphans_with_firecrackers(
@@ -948,6 +952,7 @@ mod tests {
             ppid: Some(1),
             sandbox_id: sandbox_id.to_string(),
             base_dir: None,
+            identity: None,
         };
         fixture
             .reap_current_orphans_with_firecrackers(
@@ -994,6 +999,7 @@ mod tests {
             ppid: Some(1),
             sandbox_id: sandbox_id.to_string(),
             base_dir: None,
+            identity: None,
         };
 
         fixture

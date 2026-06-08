@@ -223,9 +223,8 @@ pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) {
 
 pub(crate) fn decode_write_file_message(
     msg: &RawMessage,
-) -> io::Result<DecodedWriteFileMessage<'_>> {
-    let (path, content, use_sudo, append) =
-        vsock_proto::decode_write_file(&msg.payload).map_err(to_io_error)?;
+) -> Result<DecodedWriteFileMessage<'_>, vsock_proto::ProtocolError> {
+    let (path, content, use_sudo, append) = vsock_proto::decode_write_file(&msg.payload)?;
     Ok(DecodedWriteFileMessage {
         path,
         content,

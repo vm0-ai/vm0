@@ -209,6 +209,7 @@ function sanitizeNetworkEvent(event: AxiomNetworkEvent): NetworkLogEntry {
     latency_ms: numberValue(event.latency_ms),
     request_size: numberValue(event.request_size),
     response_size: numberValue(event.response_size),
+    browser_user_agent: booleanValue(event.browser_user_agent),
     dns_event: stringValue(event.dns_event),
     dns_query_type: stringValue(event.dns_query_type),
     dns_result: stringValue(event.dns_result),

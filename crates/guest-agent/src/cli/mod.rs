@@ -15,6 +15,7 @@
 //! child reaping. Branch ordering and deadline reset timing in that control
 //! flow are part of the runtime contract.
 
+mod child_env;
 mod codex_setup;
 mod command;
 mod diagnostics;
@@ -40,6 +41,7 @@ use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use std::collections::HashMap;
+use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 use termination::{TerminationReason, TerminationState};
@@ -129,11 +131,14 @@ pub async fn execute_cli(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .env_remove(process_control_ipc::BOOTSTRAP_ENV)
         .process_group(0)
         // If a future setup step fails after spawn, dropping `Child` must not
         // leave a CLI process running in the VM.
         .kill_on_drop(true);
+    child_env::apply_to_tokio_command(&mut cmd);
+    // Set the child cwd explicitly at spawn time so the CLI observes the
+    // current canonical workspace mount instead of relying on inherited cwd.
+    set_cli_current_dir(&mut cmd, paths::CANONICAL_WORKING_DIR)?;
 
     match framework {
         env::Framework::ClaudeCode => {
@@ -156,6 +161,13 @@ pub async fn execute_cli(
             // it to $HOME/.codex so the login state from setup_codex
             // is visible to exec.
             cmd.env("CODEX_HOME", format!("{}/.codex", env::home_dir()));
+            // Test-only mock fixture selector; keep it explicit instead of
+            // reopening inherited env for Codex children.
+            if env::use_mock_codex()
+                && let Ok(fixture) = std::env::var("MOCK_CODEX_FIXTURE")
+            {
+                cmd.env("MOCK_CODEX_FIXTURE", fixture);
+            }
             if env::is_codex_oauth_mode() {
                 cmd.env(
                     "CODEX_REFRESH_TOKEN_URL_OVERRIDE",
@@ -167,7 +179,8 @@ pub async fn execute_cli(
 
     // Open the run log before spawning the CLI. If the run-id-scoped path is
     // invalid or unavailable, fail without starting a child process.
-    let mut log_file = tokio::fs::File::create(paths::agent_log_file()).await?;
+    let log_file = guest_runtime_paths::create_private(paths::agent_log_file())?;
+    let mut log_file = tokio::fs::File::from_std(log_file);
 
     let mut child = cmd.spawn()?;
 
@@ -280,7 +293,7 @@ pub async fn execute_cli(
                             continue;
                         }
 
-                        if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                        if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
                             last_read_event_at = Some(Instant::now());
                             // First event is the CLI init (system/init or thread.started)
                             if seq == 0 {
@@ -348,13 +361,13 @@ pub async fn execute_cli(
                                 }
                             }
                             // Capture checkpoint metadata before event payload preparation
-                            // mutates the event through masking.
+                            // consumes and masks the event.
                             events::capture_session_metadata(&event);
 
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.
                             if should_send_events {
-                                let payload = events::prepare_event(&mut event, seq, masker);
+                                let payload = events::prepare_event_payload(event, seq, masker);
                                 if event_tx
                                     .send(PreparedEvent {
                                         sequence: seq,
@@ -643,7 +656,7 @@ pub async fn execute_cli(
     };
     let masked_stderr_lines = stderr_lines
         .into_iter()
-        .map(|line| masker.mask_string(&line))
+        .map(|line| masker.mask_owned_string(line))
         .collect::<Vec<_>>();
 
     // If event loop had an error, propagate it
@@ -656,6 +669,24 @@ pub async fn execute_cli(
         claude_result,
         failure_diagnostic,
     })
+}
+
+fn set_cli_current_dir(cmd: &mut tokio::process::Command, path: &str) -> Result<(), AgentError> {
+    let path = Path::new(path);
+    let metadata = std::fs::metadata(path).map_err(|e| {
+        AgentError::Execution(format!(
+            "canonical working directory unavailable before CLI spawn: {}: {e}",
+            path.display()
+        ))
+    })?;
+    if !metadata.is_dir() {
+        return Err(AgentError::Execution(format!(
+            "canonical working directory is not a directory before CLI spawn: {}",
+            path.display()
+        )));
+    }
+    cmd.current_dir(path);
+    Ok(())
 }
 
 fn select_failure_diagnostic(
@@ -707,8 +738,56 @@ fn with_carried_failure_reason(
 
 #[cfg(test)]
 mod tests {
-    use super::{CliFailureDiagnostic, select_failure_diagnostic, with_carried_failure_reason};
+    use super::{
+        CliFailureDiagnostic, select_failure_diagnostic, set_cli_current_dir,
+        with_carried_failure_reason,
+    };
     use agent_diagnostics::{FailureDetailSource, FailureReason};
+
+    #[tokio::test]
+    async fn cli_current_dir_helper_sets_child_working_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut cmd = tokio::process::Command::new("pwd");
+        cmd.stdout(std::process::Stdio::piped());
+
+        set_cli_current_dir(&mut cmd, dir.path().to_str().expect("utf8 temp path"))
+            .expect("set cwd");
+        let output = cmd.output().await.expect("pwd");
+
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            dir.path().to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn cli_current_dir_helper_errors_for_missing_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join("missing");
+        let mut cmd = tokio::process::Command::new("pwd");
+
+        let err = set_cli_current_dir(&mut cmd, missing.to_str().expect("utf8 temp path"))
+            .expect_err("missing cwd should fail");
+
+        assert!(
+            err.to_string()
+                .contains("canonical working directory unavailable")
+        );
+    }
+
+    #[test]
+    fn cli_current_dir_helper_errors_for_non_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("workspace-file");
+        std::fs::write(&file, b"not a directory").expect("write file");
+        let mut cmd = tokio::process::Command::new("pwd");
+
+        let err = set_cli_current_dir(&mut cmd, file.to_str().expect("utf8 temp path"))
+            .expect_err("non-directory cwd should fail");
+
+        assert!(err.to_string().contains("is not a directory"));
+    }
 
     #[test]
     fn specific_codex_failure_diagnostic_survives_later_generic_event() {

@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
+import { UNKNOWN_PERMISSION_GRANT } from "../firewall-types";
 import {
-  getDefaultFirewallPolicies,
-  resolveFirewallPolicies,
   getConnectorFirewall,
+  getDefaultFirewallPolicies,
+  permissionGrantsToFirewallPolicies,
+  resolveFirewallPolicies,
 } from "../firewalls/index";
 
 describe("getDefaultFirewallPolicies", () => {
@@ -138,5 +140,50 @@ describe("resolveFirewallPolicies", () => {
     expect(resolved).not.toBeNull();
     expect(resolved!["github"]!.policies).toEqual({});
     expect(resolved!["github"]!.unknownPolicy).toBe("allow");
+  });
+});
+
+describe("permissionGrantsToFirewallPolicies", () => {
+  it("should return null for empty grant rows", () => {
+    expect(permissionGrantsToFirewallPolicies([])).toBeNull();
+  });
+
+  it("should fold permission grant rows into firewall policies", () => {
+    expect(
+      permissionGrantsToFirewallPolicies([
+        {
+          connectorRef: "slack",
+          permission: "channels:write",
+          action: "allow",
+        },
+        {
+          connectorRef: "slack",
+          permission: UNKNOWN_PERMISSION_GRANT,
+          action: "deny",
+        },
+      ]),
+    ).toStrictEqual({
+      slack: {
+        policies: { "channels:write": "allow" },
+        unknownPolicy: "deny",
+      },
+    });
+  });
+
+  it("should leave connector defaults to resolveFirewallPolicies", () => {
+    const resolved = resolveFirewallPolicies(
+      permissionGrantsToFirewallPolicies([
+        {
+          connectorRef: "slack",
+          permission: "chat:write",
+          action: "allow",
+        },
+      ]),
+      ["slack"],
+    );
+
+    expect(resolved!["slack"]!.policies["channels:read"]).toBe("allow");
+    expect(resolved!["slack"]!.policies["admin"]).toBe("deny");
+    expect(resolved!["slack"]!.policies["chat:write"]).toBe("allow");
   });
 });

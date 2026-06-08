@@ -1,12 +1,19 @@
 import { command } from "ccstate";
 import {
   webhookHeartbeatContract,
+  webhookModelUsageObservationContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
 } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
+import {
+  isSupportedRunModel,
+  normalizeRunModelId,
+} from "@vm0/api-contracts/contracts/model-providers";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -29,6 +36,7 @@ const SANDBOX_TELEMETRY_SYSTEM_DATASET = "sandbox-telemetry-system";
 const SANDBOX_TELEMETRY_METRICS_DATASET = "sandbox-telemetry-metrics";
 const SANDBOX_TELEMETRY_NETWORK_DATASET = "sandbox-telemetry-network";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
+const MODEL_USAGE_KIND = "model";
 
 const L = logger("webhooks:agent");
 
@@ -94,24 +102,50 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const db = set(writeDb$);
+  const hasModelEvents = body.events.some((event) => {
+    return event.kind === MODEL_USAGE_KIND;
+  });
+  const [runModelContext] = hasModelEvents
+    ? await db
+        .select({
+          modelProvider: zeroRuns.modelProvider,
+        })
+        .from(zeroRuns)
+        .where(eq(zeroRuns.id, body.runId))
+        .limit(1)
+    : [];
+  signal.throwIfAborted();
+
+  const modelProviderType = runModelContext?.modelProvider ?? null;
+  const usageEventValues = body.events
+    .filter((event) => {
+      return (
+        event.kind !== MODEL_USAGE_KIND ||
+        modelProviderType === null ||
+        modelProviderType === "vm0"
+      );
+    })
+    .map((event) => {
+      return {
+        runId: body.runId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+        kind: event.kind,
+        provider: event.provider,
+        category: event.category,
+        quantity: event.quantity,
+        idempotencyKey: event.idempotencyKey,
+      };
+    });
   const insertResult = await settle(
-    db
-      .insert(usageEvent)
-      .values(
-        body.events.map((event) => {
-          return {
-            runId: body.runId,
-            orgId: auth.orgId,
-            userId: auth.userId,
-            kind: event.kind,
-            provider: event.provider,
-            category: event.category,
-            quantity: event.quantity,
-            idempotencyKey: event.idempotencyKey,
-          };
-        }),
-      )
-      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] }),
+    (async () => {
+      if (usageEventValues.length > 0) {
+        await db
+          .insert(usageEvent)
+          .values(usageEventValues)
+          .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
+      }
+    })(),
   );
   signal.throwIfAborted();
   if (!insertResult.ok) {
@@ -130,6 +164,87 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
     body: { success: true },
   };
 });
+
+const modelUsageObservationBody$ = bodyResultOf(
+  webhookModelUsageObservationContract.send,
+);
+const modelUsageObservation$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const bodyResult = await get(modelUsageObservationBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const body = bodyResult.data;
+    const auth = getSandboxAuthForRun(body.runId, get(authorization$));
+    if (!auth) {
+      return unauthorizedRunMismatch;
+    }
+
+    const db = set(writeDb$);
+    const [runModelContext] = await db
+      .select({
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, body.runId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    const modelProviderType = runModelContext?.modelProvider ?? "";
+    const selectedModel = runModelContext?.selectedModel ?? null;
+    const observedAt = nowDate();
+    const observationValues = body.events.flatMap((event) => {
+      const canonicalModel = normalizeRunModelId(selectedModel ?? event.model);
+      if (!isSupportedRunModel(canonicalModel)) {
+        return [];
+      }
+      return [
+        {
+          runId: body.runId,
+          orgId: auth.orgId,
+          userId: auth.userId,
+          model: canonicalModel,
+          modelProviderType,
+          category: event.category,
+          quantity: event.quantity,
+          observedAt,
+          idempotencyKey: event.idempotencyKey,
+        },
+      ];
+    });
+    const insertResult = await settle(
+      (async () => {
+        if (observationValues.length > 0) {
+          await db
+            .insert(modelUsageObservation)
+            .values(observationValues)
+            .onConflictDoNothing({
+              target: [modelUsageObservation.idempotencyKey],
+            });
+        }
+      })(),
+    );
+    signal.throwIfAborted();
+    if (!insertResult.ok) {
+      if (isForeignKeyViolation(insertResult.error)) {
+        L.debug("Run not found for model usage observation, dropping", {
+          runId: body.runId,
+          eventCount: body.events.length,
+        });
+        return notFound("Run not found");
+      }
+      throw insertResult.error;
+    }
+
+    return {
+      status: 200 as const,
+      body: { success: true },
+    };
+  },
+);
 
 const telemetryBody$ = bodyResultOf(webhookTelemetryContract.send);
 const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
@@ -218,6 +333,7 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
         durationMs: op.duration_ms,
         success: op.success,
         runId: body.runId,
+        timestamp: op.ts,
         dimensions: {
           source: "sandbox",
           ...(op.error ? { error: op.error } : {}),
@@ -243,6 +359,10 @@ export const webhooksAgentHealthUsageTelemetryRoutes: readonly RouteEntry[] = [
   {
     route: webhookUsageEventContract.send,
     handler: usageEvent$,
+  },
+  {
+    route: webhookModelUsageObservationContract.send,
+    handler: modelUsageObservation$,
   },
   {
     route: webhookTelemetryContract.send,

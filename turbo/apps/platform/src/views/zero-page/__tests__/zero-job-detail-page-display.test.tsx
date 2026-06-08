@@ -5,6 +5,7 @@ import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -52,7 +53,6 @@ function mockAPIs() {
         displayName: "My Agent",
         sound: null,
         avatarUrl: "preset:2",
-        permissionPolicies: null,
         customSkills: [],
       });
     }),
@@ -73,7 +73,8 @@ function mockAPIsWithConnectors() {
       externalUsername: "testuser",
       externalEmail: null,
       oauthScopes: ["channels:read", "chat:write"],
-      needsReconnect: false,
+      connectionStatus: "connected",
+      tokenExpiresAt: null,
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: "2026-01-01T00:00:00Z",
     },
@@ -85,7 +86,8 @@ function mockAPIsWithConnectors() {
       externalUsername: "linearuser",
       externalEmail: null,
       oauthScopes: [],
-      needsReconnect: false,
+      connectionStatus: "connected",
+      tokenExpiresAt: null,
       createdAt: "2026-01-02T00:00:00Z",
       updatedAt: "2026-01-02T00:00:00Z",
     },
@@ -168,7 +170,6 @@ describe("zero job detail page - display", () => {
             displayName: "Zero",
             sound: null,
             avatarUrl: null,
-            permissionPolicies: null,
             customSkills: [],
             modelProviderId: null,
             selectedModel: null,
@@ -243,7 +244,7 @@ describe("zero job detail page - connector display", () => {
     ).toBeInTheDocument();
   });
 
-  it("should hide connector permission management for non-admin members", async () => {
+  it("should show connector permission management for non-admin members", async () => {
     mockAPIsWithConnectors();
     setMockOrg({ role: "member" });
     detachedSetupPage({ context, path: "/agents/my-agent" });
@@ -255,6 +256,29 @@ describe("zero job detail page - connector display", () => {
     expect(
       screen.getByRole("switch", { name: /Slack access/i }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/Manage Slack permissions/i),
+    ).toBeInTheDocument();
+  });
+
+  it("should show an error instead of permission management when user grants fail to load", async () => {
+    mockAPIsWithConnectors();
+    setMockOrg({ role: "member" });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+        return respond(404, {
+          error: { message: "Agent not found", code: "NOT_FOUND" },
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/agents/my-agent" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to load permission grants"),
+      ).toBeInTheDocument();
+    });
     expect(
       screen.queryByLabelText(/Manage Slack permissions/i),
     ).not.toBeInTheDocument();

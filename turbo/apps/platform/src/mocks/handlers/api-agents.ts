@@ -15,8 +15,10 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
+  chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatThreadArtifactsContract,
+  chatThreadGithubPrsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
 import { mockApi } from "../msw-contract.ts";
@@ -28,6 +30,7 @@ const DEFAULT_TEAM: TeamComposeItem[] = [
     description: null,
     sound: null,
     avatarUrl: null,
+    customSkills: [],
     headVersionId: "version_1",
     updatedAt: "2024-01-01T00:00:00Z",
   },
@@ -110,7 +113,6 @@ export const apiAgentsHandlers = [
       displayName: null,
       sound: null,
       avatarUrl: null,
-      permissionPolicies: null,
       customSkills: [],
       modelProviderId: null,
       selectedModel: null,
@@ -156,6 +158,11 @@ export const apiAgentsHandlers = [
     return respond(200, { runs: [] });
   }),
 
+  // GET /api/zero/chat-threads/:threadId/github-prs
+  mockApi(chatThreadGithubPrsContract.list, ({ respond }) => {
+    return respond(200, { prs: [] });
+  }),
+
   // GET /api/zero/chat-threads/:id (thread detail)
   mockApi(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
@@ -173,6 +180,11 @@ export const apiAgentsHandlers = [
 
   // PATCH /api/zero/chat-threads/:id (update draft)
   mockApi(chatThreadByIdContract.patch, ({ respond }) => {
+    return respond(204);
+  }),
+
+  // POST /api/zero/chat-threads/:id/model-selection
+  mockApi(chatThreadModelSelectionContract.update, ({ respond }) => {
     return respond(204);
   }),
 

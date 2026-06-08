@@ -11,6 +11,7 @@ import {
   onboardingStatusContract,
   onboardingSetupContract,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
@@ -87,6 +88,73 @@ describe("onboarding Pro trial checkout", () => {
 
     await waitFor(() => {
       expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
+    });
+  });
+
+  it("preserves ad attribution params through Stripe checkout URLs", async () => {
+    mockAdminOnboarding();
+    let checkoutBody: Record<string, unknown> | null = null;
+    let signupAttributionBody: Record<string, unknown> | null = null;
+    server.use(
+      mockApi(zeroAttributionContract.recordSignup, ({ body, respond }) => {
+        signupAttributionBody = body as Record<string, unknown>;
+        return respond(200, { recorded: true });
+      }),
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        checkoutBody = body as Record<string, unknown>;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?mode=trial",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?vm0_source=presentation&gclid=test-click&utm_source=google&utm_medium=cpc&utm_campaign=presentation_search_en&vm0_experiment=presentation_lp&vm0_variant=a",
+    });
+    await walkAdminToContinue();
+
+    click(screen.getByText(/Get Started/));
+
+    await waitFor(() => {
+      expect(checkoutBody).not.toBeNull();
+    });
+
+    const successUrl = new URL(String(checkoutBody!.successUrl));
+    const cancelUrl = new URL(String(checkoutBody!.cancelUrl));
+
+    expect(successUrl.searchParams.get("billing")).toBe("pro");
+    expect(successUrl.searchParams.get("billing_session_id")).toBe(
+      "{CHECKOUT_SESSION_ID}",
+    );
+    expect(cancelUrl.searchParams.get("billing")).toBe("canceled");
+
+    for (const url of [successUrl, cancelUrl]) {
+      expect(url.searchParams.get("vm0_source")).toBe("presentation");
+      expect(url.searchParams.get("gclid")).toBe("test-click");
+      expect(url.searchParams.get("utm_source")).toBe("google");
+      expect(url.searchParams.get("utm_medium")).toBe("cpc");
+      expect(url.searchParams.get("utm_campaign")).toBe(
+        "presentation_search_en",
+      );
+      expect(url.searchParams.get("vm0_experiment")).toBe("presentation_lp");
+      expect(url.searchParams.get("vm0_variant")).toBe("a");
+    }
+
+    expect(checkoutBody!.adAttribution).toStrictEqual({
+      vm0_source: "presentation",
+      utm_source: "google",
+      utm_medium: "cpc",
+      utm_campaign: "presentation_search_en",
+      vm0_experiment: "presentation_lp",
+      vm0_variant: "a",
+      gclid: "test-click",
+      gclid_present: "true",
+    });
+    await waitFor(() => {
+      expect(signupAttributionBody).toStrictEqual({
+        attribution: checkoutBody!.adAttribution,
+      });
     });
   });
 });

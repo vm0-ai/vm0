@@ -1,6 +1,6 @@
 {
   "name": "@vm0/connectors",
-  "version": "1.37.8",
+  "version": "1.50.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -68,17 +68,29 @@
       "import": "./src/auth-providers/provider-env.ts",
       "types": "./src/auth-providers/provider-env.ts"
     },
+    "./auth-providers/provider-flow-types": {
+      "import": "./src/auth-providers/provider-flow-types.ts",
+      "types": "./src/auth-providers/provider-flow-types.ts"
+    },
+    "./auth-providers/provider-error": {
+      "import": "./src/auth-providers/provider-error.ts",
+      "types": "./src/auth-providers/provider-error.ts"
+    },
     "./auth-providers/types": {
       "import": "./src/auth-providers/types.ts",
       "types": "./src/auth-providers/types.ts"
     },
+    "./auth-providers/connectors/*": {
+      "import": "./src/auth-providers/connectors/*.ts",
+      "types": "./src/auth-providers/connectors/*.ts"
+    },
+    "./auth-providers/model-providers/*": {
+      "import": "./src/auth-providers/model-providers/*.ts",
+      "types": "./src/auth-providers/model-providers/*.ts"
+    },
     "./auth-providers/oauth/*": {
       "import": "./src/auth-providers/oauth/*.ts",
       "types": "./src/auth-providers/oauth/*.ts"
-    },
-    "./auth-providers/oauth/providers/*": {
-      "import": "./src/auth-providers/oauth/providers/*.ts",
-      "types": "./src/auth-providers/oauth/providers/*.ts"
     }
   },
   "scripts": {

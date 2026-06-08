@@ -1,13 +1,17 @@
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type {
+  ConnectorAuthMethodId,
+  ConnectorType,
+} from "@vm0/connectors/connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 
 export function mockConnectors(
   connectors: {
     type: ConnectorType;
-    authMethod?: "oauth" | "api-token";
+    authMethod?: ConnectorAuthMethodId;
     externalUsername?: string;
-    needsReconnect?: boolean;
+    connectionStatus?: "connected" | "reconnect-required";
     oauthScopes?: string[];
+    tokenExpiresAt?: string | null;
   }[],
 ) {
   setMockConnectors(
@@ -20,7 +24,8 @@ export function mockConnectors(
         externalUsername: c.externalUsername ?? null,
         externalEmail: null,
         oauthScopes: c.oauthScopes ?? null,
-        needsReconnect: c.needsReconnect ?? false,
+        connectionStatus: c.connectionStatus ?? "connected",
+        tokenExpiresAt: c.tokenExpiresAt ?? null,
         createdAt: "2026-01-01T00:00:00Z",
         updatedAt: "2026-01-01T00:00:00Z",
       };

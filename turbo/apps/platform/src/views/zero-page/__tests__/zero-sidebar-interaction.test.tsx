@@ -139,7 +139,6 @@ function mockBaseAPIs(options?: {
           description: string | null;
           sound: null;
           avatarUrl: null;
-          permissionPolicies: null;
           customSkills: string[];
         }
       > = {
@@ -150,7 +149,6 @@ function mockBaseAPIs(options?: {
           description: null,
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         },
         [PINNED_AGENT_ID]: {
@@ -160,7 +158,6 @@ function mockBaseAPIs(options?: {
           description: "A pinned sub-agent",
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         },
       };

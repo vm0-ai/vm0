@@ -2,15 +2,20 @@
 
 use crate::log;
 use serde::Serialize;
-use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::LazyLock;
 use std::time::Duration;
 
 static RUN_ID: LazyLock<String> = LazyLock::new(|| std::env::var("VM0_RUN_ID").unwrap_or_default());
 
-static SANDBOX_OPS_LOG: LazyLock<String> =
-    LazyLock::new(|| format!("/tmp/vm0-sandbox-ops-{}.jsonl", &*RUN_ID));
+static SANDBOX_OPS_LOG: LazyLock<String> = LazyLock::new(|| {
+    let Ok(run_dir) = guest_runtime_paths::run_dir_from_env(&RUN_ID) else {
+        return String::new();
+    };
+    guest_runtime_paths::sandbox_ops_log_file(run_dir)
+        .to_string_lossy()
+        .into_owned()
+});
 
 /// Path to sandbox operations log file (JSONL format).
 pub fn sandbox_ops_log() -> &'static str {
@@ -29,7 +34,7 @@ struct SandboxOpEntry {
 
 /// Record a sandbox operation to the telemetry log.
 ///
-/// Writes a JSONL entry to `/tmp/vm0-sandbox-ops-{RUN_ID}.jsonl`.
+/// Writes a JSONL entry to the guest runtime sandbox operations log.
 /// Format is compatible with the TypeScript version for consistency.
 pub fn record_sandbox_op(
     action_type: &str,
@@ -45,11 +50,12 @@ pub fn record_sandbox_op(
         error: error.map(String::from),
     };
 
-    let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(sandbox_ops_log())
-    else {
+    let path = sandbox_ops_log();
+    if path.is_empty() {
+        return;
+    }
+
+    let Ok(mut file) = guest_runtime_paths::open_private_append(path) else {
         return; // Silently fail if can't open log
     };
 
@@ -68,6 +74,11 @@ mod tests {
     #[test]
     fn record_sandbox_op_writes_and_appends_jsonl() {
         // Single test because all calls share the same static log path.
+        let dir = tempfile::tempdir().unwrap();
+        let runtime_dir = dir.path().join("runtime");
+        unsafe {
+            std::env::set_var(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV, &runtime_dir);
+        }
         let log_path = sandbox_ops_log();
         let _ = std::fs::remove_file(log_path);
 
@@ -90,5 +101,8 @@ mod tests {
         assert!(!b["success"].as_bool().unwrap());
 
         let _ = std::fs::remove_file(log_path);
+        unsafe {
+            std::env::remove_var(guest_runtime_paths::GUEST_RUNTIME_DIR_ENV);
+        }
     }
 }

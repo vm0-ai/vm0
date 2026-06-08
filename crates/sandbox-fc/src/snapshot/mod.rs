@@ -23,7 +23,7 @@ use self::attempt::{
 };
 use self::cow::{
     SnapshotAttemptDirGuard, create_sparse_cow_file, snapshot_attempt_cow_file,
-    snapshot_attempt_dir, snapshot_attempt_token,
+    snapshot_attempt_dir, snapshot_attempt_token, snapshot_attempt_workspace_image_file,
 };
 use self::output::prepare_snapshot_output;
 use self::publish::FirecrackerPendingSnapshotPublish;
@@ -31,13 +31,19 @@ use self::runtime::run_snapshot_workflow;
 
 /// Create a snapshot by booting a fresh VM, configuring it, and capturing state.
 ///
+/// This helper creates an uncommitted snapshot, commits the pending publish,
+/// and returns only after the provider-specific completion marker and stable
+/// output artifacts have been published. If publishing fails, it best-effort
+/// discards the uncommitted artifacts and returns the original publish error;
+/// any discard error is intentionally suppressed.
+///
 /// This is the Rust equivalent of the TS `commands/snapshot.ts` workflow:
 ///  1. Create work directory
 ///  2. Create NBD COW device backed by the rootfs image
 ///  3. Create network namespace
 ///  4. Spawn Firecracker with `--api-sock`
 ///  5. Wait for API socket ready
-///  6. Configure VM via API (6 parallel PUT calls)
+///  6. Configure VM via API (ordered drives, then parallel remaining PUT calls)
 ///  7. Bind vsock listener
 ///  8. Start instance
 ///  9. Wait for guest vsock connection
@@ -104,10 +110,11 @@ async fn create_uncommitted_snapshot(
         .map_err(|e| SnapshotError::Setup(format!("base image metadata: {e}")))?
         .len();
 
-    // The stable `work/cow-device-bind` path is baked into the snapshot for
-    // restore, but the temporary COW backing file is not. Keep the COW under an
-    // attempt-scoped directory so a cancelled attempt's detached finalizer cannot
-    // unlink a later rebuild's COW after the outer snapshot lock has been released.
+    // The stable `work/*-device-bind` paths are baked into the snapshot for
+    // restore, but the temporary COW and workspace backing files are not. Keep
+    // them under an attempt-scoped directory so a cancelled attempt's detached
+    // finalizer cannot unlink a later rebuild's files after the outer snapshot
+    // lock has been released.
     let attempt_token = snapshot_attempt_token();
     let attempt_dir = snapshot_attempt_dir(paths.workspace(), &attempt_token);
     tokio::fs::create_dir_all(&attempt_dir)
@@ -115,6 +122,8 @@ async fn create_uncommitted_snapshot(
         .map_err(|e| SnapshotError::Setup(format!("create snapshot attempt dir: {e}")))?;
     let mut attempt_dir_guard = SnapshotAttemptDirGuard::new(attempt_dir);
     let cow_file = snapshot_attempt_cow_file(paths.workspace(), &attempt_token);
+    let workspace_image_file =
+        snapshot_attempt_workspace_image_file(paths.workspace(), &attempt_token);
     create_sparse_cow_file(&cow_file, base_size)?;
 
     let device_pool =
@@ -142,6 +151,7 @@ async fn create_uncommitted_snapshot(
         netns_pool,
         device_pool,
         cow_device,
+        workspace_image_file,
     );
     attempt_dir_guard.disarm();
     let result = run_snapshot_workflow(&config, &mut attempt).await;

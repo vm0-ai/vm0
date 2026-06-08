@@ -12,21 +12,70 @@ import {
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
-import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { search } from "../../../signals/location.ts";
 import {
-  permissionAccessRequestsCreateContract,
-  type PermissionAccessRequestResponse,
-  zeroAgentPermissionPoliciesContract,
-  zeroAgentsByIdContract,
-} from "@vm0/api-contracts/contracts/zero-agents";
+  chatMessagesContract,
+  chatThreadArtifactsContract,
+  chatThreadGithubPrsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
-import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
-import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
+import {
+  createMockUserPermissionGrantResponse,
+  setMockUserPermissionGrants,
+} from "../../../mocks/handlers/api-user-permission-grants.ts";
+import {
+  createDefaultMockGithubIntegration,
+  setMockGithubIntegration,
+} from "../../../mocks/handlers/api-integrations-github.ts";
+import {
+  createMockScheduleResponse,
+  setMockSchedules,
+} from "../../../mocks/handlers/api-schedules.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
+
+function queryRoleByText(
+  role: Parameters<typeof queryAllByRoleFast>[0],
+  text: string,
+): HTMLElement | undefined {
+  return queryAllByRoleFast(role).find((element) => {
+    return element.textContent?.trim() === text;
+  });
+}
+
+function getRoleByText(
+  role: Parameters<typeof queryAllByRoleFast>[0],
+  text: string,
+): HTMLElement {
+  const element = queryRoleByText(role, text);
+  expect(element).toBeDefined();
+  return element!;
+}
+
+function queryRoleByAriaLabel(
+  role: Parameters<typeof queryAllByRoleFast>[0],
+  label: string,
+): HTMLElement | undefined {
+  return queryAllByRoleFast(role).find((element) => {
+    return element.getAttribute("aria-label") === label;
+  });
+}
+
+function getRoleByAriaLabel(
+  role: Parameters<typeof queryAllByRoleFast>[0],
+  label: string,
+): HTMLElement {
+  const element = queryRoleByAriaLabel(role, label);
+  expect(element).toBeDefined();
+  return element!;
+}
 
 function mockConnectorOauthStart() {
   server.use(
@@ -54,406 +103,269 @@ beforeEach(() => {
   );
 });
 
-describe("zero chat thread page display - permission action card", () => {
-  function pendingPermissionRequest(
-    overrides: Partial<PermissionAccessRequestResponse> = {},
-  ): PermissionAccessRequestResponse {
-    return {
-      id: "d0000000-0000-4000-a000-000000000001",
-      agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
-      connectorRef: "vercel",
-      permission: "projects:write",
-      action: "allow",
-      method: null,
-      path: null,
-      reason: "Need access",
-      status: "pending",
-      requesterUserId: "test-user-123",
-      requesterName: "Test User",
-      resolvedBy: null,
-      resolvedAt: null,
-      createdAt: "2026-03-10T00:00:00Z",
-      ...overrides,
-    };
-  }
-
-  it("executes permission URLs as permission actions for admins", async () => {
-    let updatedPolicies: unknown;
-
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "assistant",
-          content:
-            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow",
-          runId: "run-permission-action",
-          status: "completed",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
+describe("zero chat thread page display - schedule menu", () => {
+  it("hides the schedule button when no schedules are linked to the thread", async () => {
+    const threadId = "d0000000-0000-4000-a000-000000000001";
+    let schedulesRequested = false;
+    mockChatLifecycle({ threadId });
     server.use(
-      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+      mockApi(zeroSchedulesMainContract.list, ({ respond }) => {
+        schedulesRequested = true;
         return respond(200, {
-          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
-          ownerId: "test-user-123",
-          description: null,
-          displayName: null,
-          sound: null,
-          avatarUrl: null,
-          permissionPolicies: {
-            vercel: { policies: { "projects:write": "deny" } },
-          },
-          customSkills: [],
-          modelProviderId: null,
-          selectedModel: null,
-          preferPersonalProvider: false,
+          schedules: [
+            createMockScheduleResponse({
+              id: "e0000000-0000-4000-a000-000000000002",
+              name: "other-internal-name",
+              description: "Other thread schedule",
+              chatThreadId: "d0000000-0000-4000-a000-000000000002",
+            }),
+          ],
         });
       }),
-      mockApi(
-        zeroAgentPermissionPoliciesContract.update,
-        ({ body, respond }) => {
-          updatedPolicies = body.policies;
-          return respond(200, {
-            agentId: body.agentId,
-            ownerId: "test-user-123",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            permissionPolicies: body.policies,
-            customSkills: [],
-            modelProviderId: null,
-            selectedModel: null,
-            preferPersonalProvider: false,
-          });
-        },
-      ),
     );
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    const card = await waitFor(() => {
-      return screen.getByTestId("permission-action-card");
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
     });
-    expect(within(card).getByText("Vercel permissions")).toBeInTheDocument();
-    expect(within(card).getByText("Allow projects:write")).toBeInTheDocument();
-    click(await within(card).findByText("Confirm"));
 
     await waitFor(() => {
-      expect(updatedPolicies).toStrictEqual({
-        vercel: { policies: { "projects:write": "allow" } },
-      });
+      expect(schedulesRequested).toBeTruthy();
     });
-    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Schedules")).not.toBeInTheDocument();
   });
 
-  it("offers Confirm when the requested permission has no explicit stored policy", async () => {
-    let updatedPolicies: unknown;
-
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "assistant",
-          content:
-            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=dns%3Aread&action=allow",
-          runId: "run-permission-action-defaulted",
-          status: "completed",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-    server.use(
-      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
-        return respond(200, {
-          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
-          ownerId: "test-user-123",
-          description: null,
-          displayName: null,
-          sound: null,
-          avatarUrl: null,
-          permissionPolicies: {
-            vercel: { policies: { "projects:write": "deny" } },
-          },
-          customSkills: [],
-          modelProviderId: null,
-          selectedModel: null,
-          preferPersonalProvider: false,
-        });
+  it("shows linked schedule titles instead of internal names", async () => {
+    const user = userEvent.setup();
+    const threadId = "d0000000-0000-4000-a000-000000000001";
+    mockChatLifecycle({ threadId });
+    setMockSchedules([
+      createMockScheduleResponse({
+        id: "e0000000-0000-4000-a000-000000000001",
+        name: "e0000000-0000-4000-a000-000000000001",
+        description: "Daily morning briefing",
+        chatThreadId: threadId,
       }),
-      mockApi(
-        zeroAgentPermissionPoliciesContract.update,
-        ({ body, respond }) => {
-          updatedPolicies = body.policies;
-          return respond(200, {
-            agentId: body.agentId,
-            ownerId: "test-user-123",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            permissionPolicies: body.policies,
-            customSkills: [],
-            modelProviderId: null,
-            selectedModel: null,
-            preferPersonalProvider: false,
-          });
-        },
-      ),
-    );
-
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    const card = await waitFor(() => {
-      return screen.getByTestId("permission-action-card");
-    });
-    expect(within(card).getByText("Vercel permissions")).toBeInTheDocument();
-    expect(within(card).getByText("Allow dns:read")).toBeInTheDocument();
-
-    expect(
-      within(card).queryByText("Permissions updated"),
-    ).not.toBeInTheDocument();
-    const confirm = await within(card).findByText("Confirm");
-    expect(confirm).toBeEnabled();
-    click(confirm);
-
-    await waitFor(() => {
-      expect(updatedPolicies).toStrictEqual({
-        vercel: {
-          policies: { "projects:write": "deny", "dns:read": "allow" },
-        },
-      });
-    });
-    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
-  });
-
-  it("rejects unknown permissions before updating policies", async () => {
-    let updateCalled = false;
-
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "assistant",
-          content:
-            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=unknown%3Apermission&action=allow",
-          runId: "run-unknown-permission-action",
-          status: "completed",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-    server.use(
-      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
-        return respond(200, {
-          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
-          ownerId: "test-user-123",
-          description: null,
-          displayName: null,
-          sound: null,
-          avatarUrl: null,
-          permissionPolicies: {
-            vercel: { policies: { "projects:write": "deny" } },
-          },
-          customSkills: [],
-          modelProviderId: null,
-          selectedModel: null,
-          preferPersonalProvider: false,
-        });
-      }),
-      mockApi(
-        zeroAgentPermissionPoliciesContract.update,
-        ({ body, respond }) => {
-          updateCalled = true;
-          return respond(200, {
-            agentId: body.agentId,
-            ownerId: "test-user-123",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            permissionPolicies: body.policies,
-            customSkills: [],
-            modelProviderId: null,
-            selectedModel: null,
-            preferPersonalProvider: false,
-          });
-        },
-      ),
-    );
-
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    const card = await waitFor(() => {
-      return screen.getByTestId("permission-action-card");
-    });
-    const button = queryAllByRoleFast("button", card).find((element) => {
-      return element.textContent === "Unknown permission";
-    });
-    expect(button).toBeDefined();
-    expect(button).toBeDisabled();
-
-    click(button!);
-
-    expect(updateCalled).toBeFalsy();
-  });
-
-  it("does not create duplicate requests when a member already has a request", async () => {
-    let createCalled = false;
-
-    setMockOrg({ role: "member" });
-    setMockPermissionRequests([pendingPermissionRequest()]);
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "assistant",
-          content:
-            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow",
-          runId: "run-existing-permission-request",
-          status: "completed",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-    server.use(
-      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
-        return respond(200, {
-          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
-          ownerId: "other-owner-id",
-          description: null,
-          displayName: null,
-          sound: null,
-          avatarUrl: null,
-          permissionPolicies: {
-            vercel: { policies: { "projects:write": "deny" } },
-          },
-          customSkills: [],
-          modelProviderId: null,
-          selectedModel: null,
-          preferPersonalProvider: false,
-        });
-      }),
-      mockApi(permissionAccessRequestsCreateContract.create, ({ respond }) => {
-        createCalled = true;
-        return respond(201, pendingPermissionRequest());
-      }),
-    );
-
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    const card = await waitFor(() => {
-      return screen.getByTestId("permission-action-card");
-    });
-    await waitFor(() => {
-      expect(
-        queryAllByRoleFast("button", card).some((element) => {
-          return element.textContent === "Request sent";
-        }),
-      ).toBeTruthy();
-    });
-    const button = queryAllByRoleFast("button", card).find((element) => {
-      return element.textContent === "Request sent";
-    });
-    expect(button).toBeDefined();
-    expect(button).toBeDisabled();
-
-    click(button!);
-
-    expect(createCalled).toBeFalsy();
-  });
-
-  it("refreshes a requested permission action when the Ably signal arrives", async () => {
-    let requestBody: unknown;
-    let agentPolicies: Record<
-      string,
-      { policies: Record<string, "allow" | "deny"> }
-    > = {
-      vercel: { policies: { "projects:write": "deny" } },
-    };
-    const pendingRequest = pendingPermissionRequest();
-
-    setMockOrg({ role: "member" });
-    setMockPermissionRequests([]);
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "assistant",
-          content:
-            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow",
-          runId: "run-permission-request-refresh",
-          status: "completed",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-    server.use(
-      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
-        return respond(200, {
-          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
-          ownerId: "other-owner-id",
-          description: null,
-          displayName: null,
-          sound: null,
-          avatarUrl: null,
-          permissionPolicies: agentPolicies,
-          customSkills: [],
-          modelProviderId: null,
-          selectedModel: null,
-          preferPersonalProvider: false,
-        });
-      }),
-      mockApi(
-        permissionAccessRequestsCreateContract.create,
-        ({ body, respond }) => {
-          requestBody = body;
-          setMockPermissionRequests([pendingRequest]);
-          return respond(201, pendingRequest);
-        },
-      ),
-    );
-
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    const card = await waitFor(() => {
-      return screen.getByTestId("permission-action-card");
-    });
-    expect(hasSubscription("permissionAccessRequestsChanged")).toBeFalsy();
-    click(await within(card).findByText("Request approval"));
-
-    await waitFor(() => {
-      expect(requestBody).toMatchObject({
-        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
-        connectorRef: "vercel",
-        permission: "projects:write",
-        action: "allow",
-      });
-    });
-    await waitFor(() => {
-      expect(within(card).getByText("Request sent")).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(hasSubscription("permissionAccessRequestsChanged")).toBeTruthy();
-    });
-
-    agentPolicies = {
-      vercel: { policies: { "projects:write": "allow" } },
-    };
-    setMockPermissionRequests([
-      pendingPermissionRequest({
-        id: pendingRequest.id,
-        status: "approved",
-        resolvedBy: "other-owner-id",
-        resolvedAt: "2026-03-10T00:01:00Z",
+      createMockScheduleResponse({
+        id: "e0000000-0000-4000-a000-000000000002",
+        name: "other-internal-name",
+        description: "Other thread schedule",
+        chatThreadId: "d0000000-0000-4000-a000-000000000002",
       }),
     ]);
-    triggerAblyEvent("permissionAccessRequestsChanged");
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await user.click(await screen.findByLabelText("Schedules"));
 
     await waitFor(() => {
-      expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+      expect(screen.getByText("Daily morning briefing")).toBeInTheDocument();
     });
+    expect(
+      screen.queryByText("e0000000-0000-4000-a000-000000000001"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Other thread schedule")).not.toBeInTheDocument();
+  });
+
+  it("shows linked schedule status sublines from schedule API data", async () => {
+    const user = userEvent.setup();
+    const threadId = "d0000000-0000-4000-a000-000000000001";
+    const nextRunAt = "2026-06-07T14:30:00.000Z";
+    mockChatLifecycle({ threadId });
+    setMockSchedules([
+      createMockScheduleResponse({
+        id: "e0000000-0000-4000-a000-000000000011",
+        name: "next-run-schedule",
+        description: "Daily morning briefing",
+        chatThreadId: threadId,
+        enabled: true,
+        nextRunAt,
+      }),
+      createMockScheduleResponse({
+        id: "e0000000-0000-4000-a000-000000000012",
+        name: "inactive-schedule",
+        description: "Paused sync",
+        chatThreadId: threadId,
+        enabled: false,
+        nextRunAt: "2026-06-08T09:00:00.000Z",
+      }),
+      createMockScheduleResponse({
+        id: "e0000000-0000-4000-a000-000000000013",
+        name: "no-upcoming-run-schedule",
+        description: "Manual follow-up",
+        chatThreadId: threadId,
+        enabled: true,
+        nextRunAt: null,
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await user.click(await screen.findByLabelText("Schedules"));
+
+    const menu = await screen.findByRole("menu");
+    const expectedNextRun = `Next run ${new Date(nextRunAt).toLocaleString(
+      "en-US",
+      {
+        dateStyle: "medium",
+        timeStyle: "short",
+      },
+    )}`;
+
+    expect(
+      within(menu).getByText("Daily morning briefing"),
+    ).toBeInTheDocument();
+    expect(within(menu).getByText(expectedNextRun)).toBeInTheDocument();
+    expect(within(menu).getByText("Paused sync")).toBeInTheDocument();
+    expect(within(menu).getByText("Schedule inactive")).toBeInTheDocument();
+    expect(within(menu).getByText("Manual follow-up")).toBeInTheDocument();
+    expect(within(menu).getByText("No upcoming run")).toBeInTheDocument();
   });
 });
 
-// CHAT-D-036: Attachment image previews render in ChatMessageRow
+describe("zero chat thread page display - permission action card", () => {
+  function mockPermissionAgent() {
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+    );
+  }
+
+  function mockPermissionMessage(permission = "channels:write") {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=${encodeURIComponent(permission)}&action=allow`,
+          runId: "run-user-grant-permission-action",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+  }
+
+  it("writes a current-user grant from a permission action card", async () => {
+    let grantBody: unknown;
+    mockPermissionAgent();
+    mockPermissionMessage();
+    setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+      });
+    });
+    const status = within(card).getByText("Permissions updated");
+    expect(status).toBeInTheDocument();
+    expect(status.closest("button")).toBeNull();
+  });
+
+  it("uses current-user grants for already-applied permission actions", async () => {
+    mockPermissionAgent();
+    mockPermissionMessage();
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button", card).find((element) => {
+        return element.textContent?.trim() === "Confirm";
+      }),
+    ).toBeUndefined();
+  });
+
+  it("does not write grants for unknown permission actions", async () => {
+    let grantWritten = false;
+    mockPermissionAgent();
+    mockPermissionMessage("not-a-real-permission");
+    setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantWritten = true;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    const button = await waitFor(() => {
+      const element = queryAllByRoleFast("button", card).find((candidate) => {
+        return candidate.textContent?.trim() === "Unknown permission";
+      });
+      expect(element).toBeDefined();
+      return element!;
+    });
+    expect(button).toBeDisabled();
+    expect(grantWritten).toBeFalsy();
+  });
+});
+
 describe("zero chat thread page display - attachment image preview", () => {
   it("renders image attachment preview with the correct alt text", async () => {
     mockChatLifecycle({
@@ -467,7 +379,10 @@ describe("zero chat thread page display - attachment image preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
 
     const previewLink = await waitFor(() => {
       return screen.getByLabelText("Preview photo.png");
@@ -476,6 +391,7 @@ describe("zero chat thread page display - attachment image preview", () => {
       "href",
       "https://example.com/photo.png",
     );
+    expect(previewLink).toHaveClass("w-[min(100%,400px)]", "aspect-[16/10]");
     const previewImage = within(previewLink).getByAltText("photo.png");
     expect(previewImage).toBeInTheDocument();
     expect(
@@ -492,7 +408,8 @@ describe("zero chat thread page display - attachment image preview", () => {
 });
 
 describe("zero chat thread page display - attachment audio chip", () => {
-  it("renders audio attachment as a compact download chip", async () => {
+  it("renders audio attachment as a compact preview chip", async () => {
+    const user = userEvent.setup();
     mockChatLifecycle({
       chatMessages: [
         {
@@ -512,16 +429,26 @@ describe("zero chat thread page display - attachment audio chip", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    const download = await waitFor(() => {
-      return screen.getByLabelText("Download clip.mp3");
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
     });
-    expect(download).toHaveAttribute("type", "button");
-    expect(download).not.toHaveAttribute("href");
+
+    const preview = await waitFor(() => {
+      return screen.getByLabelText("Open audio preview for clip.mp3");
+    });
+    expect(preview).toHaveAttribute("type", "button");
+    expect(preview).not.toHaveAttribute("href");
     expect(
-      within(download).getByTestId("attachment-chip-file-icon"),
+      within(preview).getByTestId("attachment-chip-file-icon"),
     ).toBeInTheDocument();
+
+    await user.click(preview);
+
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    expect(
+      within(lightbox).getByLabelText("Audio preview for clip.mp3"),
+    ).toHaveAttribute("src", "https://example.com/clip.mp3");
   });
 });
 
@@ -549,7 +476,10 @@ describe("zero chat thread page display - attachment document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
 
     await waitFor(() => {
       expect(
@@ -597,7 +527,10 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
 
     await waitFor(() => {
       expect(
@@ -631,7 +564,10 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
 
     await waitFor(() => {
       expect(screen.getByText("notes")).toBeInTheDocument();
@@ -685,7 +621,10 @@ describe("zero chat thread page display - body link document preview", () => {
         ],
       });
 
-      detachedSetupPage({ context, path: "/chats/thread-test-1" });
+      detachedSetupPage({
+        context,
+        path: "/chats/thread-test-1",
+      });
 
       const preview = await screen.findByTestId("attachment-preview-file");
       expect(
@@ -932,15 +871,9 @@ describe("zero chat thread page display - body link document preview", () => {
     expect(lightbox).toBeInTheDocument();
   });
 
-  it("renders json body links inline and supports collapse for platform file urls", async () => {
+  it("renders json body links as preview cards for platform file urls", async () => {
     const jsonUrl =
       "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/data.json";
-    server.use(
-      http.get(jsonUrl, () => {
-        return HttpResponse.text('{"status":"ok","count":2}');
-      }),
-    );
-
     mockChatLifecycle({
       chatMessages: [
         {
@@ -951,20 +884,16 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("attachment-preview-json")).toBeInTheDocument();
-      expect(screen.getByText(/"status": "ok"/)).toBeInTheDocument();
-      expect(screen.getByText(/"count": 2/)).toBeInTheDocument();
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
     });
 
-    await userEvent.click(
-      screen.getByLabelText("Collapse json preview for data.json"),
-    );
-
     await waitFor(() => {
-      expect(screen.queryByText(/"status": "ok"/)).not.toBeInTheDocument();
+      const preview = screen.getByTestId("attachment-preview-json");
+      expect(preview).toBeInTheDocument();
+      expect(preview).toHaveAttribute("href");
+      expect(within(preview).getByText("data.json")).toBeInTheDocument();
     });
   });
 
@@ -988,7 +917,10 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-pdf")).toBeInTheDocument();
@@ -1047,22 +979,9 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
-  it("renders text body links inline and supports collapse for platform file urls", async () => {
+  it("renders text body links as preview cards for platform file urls", async () => {
     const txtUrl =
       "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/readme.txt#summary";
-    let requestedUrl = "";
-    let requestedRange = "";
-    server.use(
-      http.get(
-        "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/readme.txt",
-        ({ request }) => {
-          requestedUrl = request.url;
-          requestedRange = request.headers.get("Range") ?? "";
-          return HttpResponse.text("hello from text preview");
-        },
-      ),
-    );
-
     mockChatLifecycle({
       chatMessages: [
         {
@@ -1073,55 +992,33 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
-      expect(screen.getByText("hello from text preview")).toBeInTheDocument();
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
     });
-    expect(new URL(requestedUrl).searchParams.get("raw")).toBeNull();
-    expect(requestedRange).toBe("bytes=0-65535");
-    const download = screen.getByLabelText("Download readme.txt");
-    expect(download).toHaveAttribute("type", "button");
-    expect(download).not.toHaveAttribute("href");
-
-    await userEvent.click(
-      screen.getByLabelText("Collapse text preview for readme.txt"),
-    );
 
     await waitFor(() => {
-      expect(
-        screen.queryByText("hello from text preview"),
-      ).not.toBeInTheDocument();
+      const preview = screen.getByTestId("attachment-preview-text");
+      expect(preview).toBeInTheDocument();
+      expect(preview).toHaveAttribute("href");
+      expect(within(preview).getByText("readme.txt")).toBeInTheDocument();
     });
   });
 
   it.each([
     {
       filename: "config.xml",
-      content: "<settings><enabled>true</enabled></settings>",
-      expectedText: "settings",
     },
     {
       filename: "deploy.yaml",
-      content: "enabled: true\nregion: us-east-1",
-      expectedText: "region: us-east-1",
     },
     {
       filename: "table.tsv",
-      content: "name\tvalue\nalpha\t1",
-      expectedText: "alpha",
     },
   ])(
-    "renders $filename body links as text previews for platform file urls",
-    async ({ filename, content, expectedText }) => {
+    "renders $filename body links as text preview cards for platform file urls",
+    async ({ filename }) => {
       const fileUrl = `https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/${filename}`;
-      server.use(
-        http.get(fileUrl, () => {
-          return HttpResponse.text(content);
-        }),
-      );
-
       mockChatLifecycle({
         chatMessages: [
           {
@@ -1132,16 +1029,16 @@ describe("zero chat thread page display - body link document preview", () => {
         ],
       });
 
-      detachedSetupPage({ context, path: "/chats/thread-test-1" });
+      detachedSetupPage({
+        context,
+        path: "/chats/thread-test-1",
+      });
 
       await waitFor(() => {
         const textPreview = screen.getByTestId("attachment-preview-text");
         expect(textPreview).toBeInTheDocument();
-        expect(
-          within(textPreview).getByText((content) => {
-            return content.includes(expectedText);
-          }),
-        ).toBeInTheDocument();
+        expect(textPreview).toHaveAttribute("href");
+        expect(within(textPreview).getByText(filename)).toBeInTheDocument();
       });
     },
   );
@@ -1159,7 +1056,10 @@ describe("zero chat thread page display - body link document preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
 
     await waitFor(() => {
       const preview = screen.getByTestId("attachment-preview-file");
@@ -1347,13 +1247,17 @@ describe("zero chat thread page display - attachment video preview", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
 
     const previewButton = await waitFor(() => {
       return screen.getByLabelText("Preview clip.mp4");
     });
     const posterVideo = previewButton.querySelector("video");
 
+    expect(previewButton).toHaveClass("w-[min(100%,400px)]", "aspect-[16/10]");
     expect(
       within(previewButton).getByTestId("chat-video-preview-poster"),
     ).toBeInTheDocument();
@@ -1373,11 +1277,50 @@ describe("zero chat thread page display - attachment video preview", () => {
     });
     const video = within(lightbox).getByLabelText("Video preview for clip.mp4");
 
+    expect(lightbox).toHaveClass("zero-dialog-enter-overlay");
+    expect(
+      within(lightbox).getByTestId("attachment-lightbox-panel"),
+    ).toHaveClass("zero-dialog-enter-content");
     expect(video).toHaveAttribute("src", videoUrl);
     expect(video).toHaveAttribute("controls");
     expect((video as HTMLVideoElement).autoplay).toBeTruthy();
-    expect(within(lightbox).getByLabelText("Copy link")).toBeInTheDocument();
-    expect(within(lightbox).getByLabelText("Download")).toBeInTheDocument();
+    expect(within(lightbox).getByLabelText("Share")).toBeInTheDocument();
+    expect(
+      within(lightbox).getByLabelText("Download options"),
+    ).toBeInTheDocument();
+  });
+
+  it("uses the padded artifact dialog stage for video previews", async () => {
+    const videoUrl = "https://example.com/clip.mp4";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: `[Attached file: clip.mp4](${videoUrl})\nDownload with: curl ${videoUrl}\n`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    await userEvent.click(await screen.findByLabelText("Preview clip.mp4"));
+
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    const stage = within(lightbox).getByTestId("artifact-dialog-stage");
+    const videoStage = within(lightbox).getByTestId(
+      "artifact-dialog-video-stage",
+    );
+    const video = within(videoStage).getByLabelText(
+      "Video preview for clip.mp4",
+    );
+
+    expect(stage).toHaveClass("bg-muted/30", "p-5");
+    expect(videoStage).toHaveClass("rounded-xl", "border", "bg-black");
+    expect(video).toHaveClass("aspect-video", "object-contain");
   });
 });
 
@@ -1493,53 +1436,30 @@ describe("zero chat thread page display - attachment pdf preview", () => {
   });
 });
 
-describe("zero chat thread page display - artifacts drawer", () => {
-  it("opens a drawer with uploaded files grouped by run when enabled", async () => {
+describe("zero chat thread page display - artifact sidebar", () => {
+  it("opens the artifact inbox sidebar", async () => {
     const user = userEvent.setup();
     let artifactsRequests = 0;
     mockChatLifecycle({
       chatMessages: [
         {
           role: "user",
-          content: "See attached",
-          runId: "run-artifacts-1",
+          content: "Create files",
+          runId: "run-artifact-inbox",
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
     });
     server.use(
-      http.get("https://example.com/chart.png", () => {
-        return new HttpResponse(new Blob(["img"], { type: "image/png" }), {
-          headers: { "Content-Type": "image/png" },
-        });
-      }),
-      http.get("https://example.com/data.csv", () => {
-        return new HttpResponse("label,value\nalpha,1\n", {
-          headers: { "Content-Type": "text/csv" },
-        });
-      }),
-      http.get("https://example.com/deck.pptx", () => {
-        return new HttpResponse(
-          new Blob(["ppt"], {
-            type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-          }),
-          {
-            headers: {
-              "Content-Type":
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            },
-          },
-        );
-      }),
       mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
         artifactsRequests += 1;
         return respond(200, {
           runs: [
             {
-              runId: "run-artifacts-1",
+              runId: "run-artifact-inbox",
               files: [
                 {
-                  id: "file-1",
+                  id: "file-image",
                   filename: "chart.png",
                   contentType: "image/png",
                   size: 4096,
@@ -1547,7 +1467,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
                   createdAt: "2026-03-10T00:00:00Z",
                 },
                 {
-                  id: "file-2",
+                  id: "file-data",
                   filename: "data.csv",
                   contentType: "text/csv",
                   size: 2048,
@@ -1555,12 +1475,19 @@ describe("zero chat thread page display - artifacts drawer", () => {
                   createdAt: "2026-03-10T00:00:00Z",
                 },
                 {
-                  id: "file-3",
-                  filename: "deck.pptx",
-                  contentType:
-                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                  size: 3072,
-                  url: "https://example.com/deck.pptx",
+                  id: "file-video",
+                  filename: "demo.mp4",
+                  contentType: "video/mp4",
+                  size: 16_384,
+                  url: "https://example.com/demo.mp4",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+                {
+                  id: "file-site",
+                  filename: "landing.html",
+                  contentType: "text/html",
+                  size: 8192,
+                  url: "https://preview.sites.vm7.io",
                   createdAt: "2026-03-10T00:00:00Z",
                 },
               ],
@@ -1569,16 +1496,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
         });
       }),
     );
-    const createObjectURLSpy = vi
-      .spyOn(URL, "createObjectURL")
-      .mockReturnValue("blob:artifact-download");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    let downloadedFilename = "";
-    const anchorClickSpy = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(function (this: HTMLAnchorElement) {
-        downloadedFilename = this.download;
-      });
 
     detachedSetupPage({
       context,
@@ -1589,63 +1506,250 @@ describe("zero chat thread page display - artifacts drawer", () => {
       return screen.getByLabelText("Open artifacts");
     });
     expect(artifactsRequests).toBe(0);
-    click(button);
+    await user.click(button);
 
-    await waitFor(() => {
-      expect(screen.getByText("Artifacts")).toBeInTheDocument();
-    });
+    const inbox = await screen.findByTestId("artifact-inbox");
+    expect(inbox).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Artifacts" })).toBeNull();
     expect(artifactsRequests).toBeGreaterThan(0);
-    const previewLink = screen.getByLabelText("Preview chart.png");
-    expect(previewLink).toHaveAttribute(
-      "href",
-      "https://example.com/chart.png",
-    );
+    expect(search()).toContain("artifacts=thread-test-1");
     expect(
-      document.querySelectorAll('img[src="https://example.com/chart.png"]')
-        .length,
-    ).toBeGreaterThanOrEqual(3);
-    expect(screen.getAllByLabelText("Download chart.png")).toHaveLength(1);
-    await user.click(screen.getByLabelText("More artifact actions"));
-    await user.click(screen.getByText("Download all"));
-    await waitFor(() => {
-      expect(createObjectURLSpy).toHaveBeenCalledOnce();
-      expect(anchorClickSpy).toHaveBeenCalledOnce();
-    });
-    expect(downloadedFilename).toBe("vm0-artifact-thread-test-1.zip");
-    const zipBlob = createObjectURLSpy.mock.calls[0]?.[0];
-    expect(zipBlob).toBeInstanceOf(Blob);
-    expect((zipBlob as Blob).type).toBe("application/zip");
-    const zipText = new TextDecoder().decode(
-      await (zipBlob as Blob).arrayBuffer(),
-    );
-    expect(zipText).toContain("chart.png");
-    expect(zipText).toContain("data.csv");
-    expect(screen.getAllByText("chart.png").length).toBeGreaterThan(0);
-    expect(screen.getByText("data.csv")).toBeInTheDocument();
-    const deckButton = screen.getByLabelText("Select deck.pptx");
-    expect(deckButton).toBeInTheDocument();
-    expect(within(deckButton).getByText("PPTX")).toBeInTheDocument();
+      getRoleByAriaLabel("button", "Open artifact chart.png"),
+    ).toBeInTheDocument();
+    expect(
+      getRoleByAriaLabel("button", "Open artifact data.csv"),
+    ).toBeInTheDocument();
+    expect(
+      getRoleByAriaLabel("button", "Open artifact landing.html"),
+    ).toBeInTheDocument();
+    const videoRow = getRoleByAriaLabel("button", "Open artifact demo.mp4");
+    expect(
+      within(videoRow).getByTestId("artifact-video-preview-badge"),
+    ).toHaveAttribute("src", "https://example.com/demo.mp4#t=0.001");
+    const siteRow = getRoleByAriaLabel("button", "Open artifact landing.html");
+    expect(
+      within(siteRow).getByTestId("artifact-html-preview-badge"),
+    ).toBeInTheDocument();
+    expect(within(inbox).queryByText("Live")).not.toBeInTheDocument();
 
-    await user.click(previewLink);
+    await user.click(getRoleByText("tab", "Sites"));
+    expect(
+      getRoleByAriaLabel("button", "Open artifact landing.html"),
+    ).toBeInTheDocument();
+    expect(
+      queryRoleByAriaLabel("button", "Open artifact chart.png"),
+    ).toBeUndefined();
+
+    await user.click(getRoleByText("tab", "Docs"));
+    expect(
+      getRoleByAriaLabel("button", "Open artifact data.csv"),
+    ).toBeInTheDocument();
+    expect(
+      queryRoleByAriaLabel("button", "Open artifact landing.html"),
+    ).toBeUndefined();
+
+    await user.click(getRoleByText("tab", "Media"));
+    await user.click(getRoleByAriaLabel("button", "Open artifact chart.png"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    expect(sidebar).toBeInTheDocument();
+    expect(screen.getByLabelText("Back to all artifacts")).toBeInTheDocument();
+    expect(within(sidebar).getByText("chart.png")).toBeInTheDocument();
+    expect(
+      within(sidebar).getByText(/Image · PNG · 4\.0 KB · Generated/u),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("artifact-sidebar-image-zoom-controls"),
+    ).toBeInTheDocument();
+    expect(search()).toContain(
+      "artifact=https%3A%2F%2Fexample.com%2Fchart.png",
+    );
+
+    await user.click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
+    expect(screen.getByTestId("artifact-sidebar")).toHaveClass("fixed");
+    expect(search()).toContain("artifact-fullscreen=1");
+
+    await user.click(screen.getByLabelText("Back to all artifacts"));
+    await expect(
+      screen.findByTestId("artifact-inbox"),
+    ).resolves.toBeInTheDocument();
+    expect(search()).toContain("artifacts=thread-test-1");
+    expect(search()).not.toContain("artifact=");
+    expect(search()).not.toContain("artifact-fullscreen=");
+
+    await user.click(screen.getByTestId("artifact-inbox-fullscreen-toggle"));
+    expect(screen.getByTestId("artifact-inbox")).toHaveClass("fixed");
+
+    await user.click(screen.getByLabelText("Close artifacts"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-inbox")).not.toBeInTheDocument();
+    });
+    expect(search()).not.toContain("artifacts=");
+  });
+
+  it("opens chat previews in a modal before split view", async () => {
+    const user = userEvent.setup();
+    const imageUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/chart.png";
+    server.use(
+      http.get(imageUrl, () => {
+        return new HttpResponse("png", {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-chat-preview-artifact",
+              files: [
+                {
+                  id: "file-image",
+                  filename: "chart.png",
+                  contentType: "image/png",
+                  size: 4096,
+                  url: imageUrl,
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `Generated chart:\n\n${imageUrl}`,
+          runId: "run-chat-preview-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    await user.click(await screen.findByLabelText("Preview chart.png"));
 
     const lightbox = await screen.findByTestId("attachment-lightbox");
-    await user.click(within(lightbox).getByLabelText("Close"));
+    expect(lightbox).toBeInTheDocument();
+    expect(lightbox).toHaveClass("zero-dialog-enter-overlay");
+    expect(
+      within(lightbox).getByTestId("attachment-lightbox-panel"),
+    ).toHaveClass("zero-dialog-enter-content");
+    const stage = within(lightbox).getByTestId("artifact-dialog-stage");
+    expect(stage).toHaveClass("overflow-hidden");
+    expect(stage).not.toHaveClass("p-5");
+    expect(stage.firstElementChild).toHaveClass("max-w-none");
+    expect(within(lightbox).getByTestId("artifact-dialog-card")).toHaveClass(
+      "h-full",
+      "min-h-0",
+    );
+    expect(
+      within(lightbox).getByTestId("artifact-dialog-card"),
+    ).not.toHaveClass("border");
+    expect(
+      within(lightbox).getByTestId("artifact-dialog-image-stage"),
+    ).toHaveClass("h-full", "overflow-hidden");
+    expect(screen.getByRole("dialog", { name: "chart.png preview" })).toBe(
+      lightbox,
+    );
+    expect(within(lightbox).getByText("chart.png")).toBeInTheDocument();
+    expect(
+      within(lightbox).getByText(/Image · PNG · 4\.0 KB · Generated/u),
+    ).toBeInTheDocument();
+    expect(
+      within(lightbox).queryByTestId("attachment-lightbox-file-icon"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("artifact-inbox")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    expect(search()).not.toContain("artifacts=");
+    expect(search()).not.toContain("artifact=");
 
+    await user.click(within(lightbox).getByLabelText("Zoom in"));
+    expect(within(lightbox).getByText("115%")).toBeInTheDocument();
+
+    await user.click(within(lightbox).getByLabelText("Enter fullscreen"));
+    const fullscreenLightbox = await screen.findByTestId("attachment-lightbox");
+    await waitFor(() => {
+      expect(within(fullscreenLightbox).getByText("100%")).toBeInTheDocument();
+    });
+    expect(
+      within(fullscreenLightbox).getByLabelText("Exit fullscreen"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(fullscreenLightbox).getByLabelText("Open in split view"),
+    );
+
+    await expect(
+      screen.findByTestId("artifact-sidebar"),
+    ).resolves.toBeInTheDocument();
     await waitFor(() => {
       expect(
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
     });
-    expect(screen.getByText("Artifacts")).toBeInTheDocument();
+    expect(screen.queryByTestId("artifact-inbox")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Back to all artifacts")).toBeNull();
+    expect(search()).not.toContain("artifacts=");
+    expect(search()).toContain(
+      "artifact=https%3A%2F%2Fwww.vm0.ai%2Ff%2Fuser_123%2F3a474c61-ffe4-4e56-b9e7-0185b3dba9f7%2Fchart.png",
+    );
+  });
 
-    await user.click(screen.getByLabelText("Select data.csv"));
-    await waitFor(() => {
-      const table = screen.getByRole("table");
-      expect(within(table).getByText("label")).toBeInTheDocument();
-      expect(within(table).getByText("value")).toBeInTheDocument();
-      expect(within(table).getByText("alpha")).toBeInTheDocument();
-      expect(within(table).getByText("1")).toBeInTheDocument();
+  it("only shows artifact inbox filters for existing artifact types", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create an image",
+          runId: "run-artifact-inbox-media",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
     });
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-artifact-inbox-media",
+              files: [
+                {
+                  id: "file-image",
+                  filename: "chart.png",
+                  contentType: "image/png",
+                  size: 4096,
+                  url: "https://example.com/chart.png",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    await user.click(await screen.findByLabelText("Open artifacts"));
+
+    await expect(
+      screen.findByTestId("artifact-inbox"),
+    ).resolves.toBeInTheDocument();
+    expect(getRoleByText("tab", "All")).toBeInTheDocument();
+    expect(getRoleByText("tab", "Media")).toBeInTheDocument();
+    expect(queryRoleByText("tab", "Docs")).toBeUndefined();
+    expect(queryRoleByText("tab", "Sites")).toBeUndefined();
   });
 
   it("opens artifacts from the mobile top bar icon", async () => {
@@ -1693,12 +1797,10 @@ describe("zero chat thread page display - artifacts drawer", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Artifacts")).toBeInTheDocument();
+      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
       expect(screen.getAllByText("mobile.zip").length).toBeGreaterThan(0);
     });
-    expect(screen.getByRole("dialog", { name: "Artifacts" })).toHaveClass(
-      "max-w-[100vw]",
-    );
+    expect(screen.queryByRole("dialog", { name: "Artifacts" })).toBeNull();
   });
 
   it("renders markdown artifacts through the text loader instead of an iframe", async () => {
@@ -1752,6 +1854,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
         return screen.getByLabelText("Open artifacts");
       }),
     );
+    await user.click(await screen.findByLabelText("Open artifact readme.md"));
 
     await waitFor(() => {
       expect(screen.getByText("发布说明")).toBeInTheDocument();
@@ -1762,10 +1865,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(
       document.querySelector('iframe[title="Preview readme.md"]'),
     ).not.toBeInTheDocument();
-
-    await user.click(screen.getByLabelText("Open preview for readme.md"));
-    const lightbox = await screen.findByTestId("attachment-lightbox");
-    expect(within(lightbox).getByText("发布说明")).toBeInTheDocument();
   });
 
   it("renders xml artifacts through the text loader instead of an iframe", async () => {
@@ -1815,6 +1914,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
         return screen.getByLabelText("Open artifacts");
       }),
     );
+    await user.click(await screen.findByLabelText("Open artifact config.xml"));
 
     await waitFor(() => {
       expect(screen.getByText(/<config>/)).toBeInTheDocument();
@@ -1822,10 +1922,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(
       document.querySelector('iframe[title="Preview config.xml"]'),
     ).not.toBeInTheDocument();
-
-    await user.click(screen.getByLabelText("Open preview for config.xml"));
-    const lightbox = await screen.findByTestId("attachment-lightbox");
-    expect(within(lightbox).getByText(/<config>/)).toBeInTheDocument();
   });
 
   it("renders html artifacts as document iframe previews", async () => {
@@ -1875,22 +1971,17 @@ describe("zero chat thread page display - artifacts drawer", () => {
         return screen.getByLabelText("Open artifacts");
       }),
     );
+    await user.click(await screen.findByLabelText("Open artifact report.html"));
 
     await waitFor(() => {
-      expect(
-        document.querySelector('iframe[title="Preview report.html"]'),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "title",
+        "report.html preview",
+      );
     });
-
-    await user.click(screen.getByLabelText("Open preview for report.html"));
-    const lightbox = await screen.findByTestId("attachment-lightbox");
-    expect(within(lightbox).getByTitle("report.html preview")).toHaveAttribute(
-      "src",
-      "https://example.com/report.html",
-    );
   });
 
-  it("refreshes uploaded files from the artifacts Ably signal while the drawer is open", async () => {
+  it("refreshes uploaded files from the artifacts Ably signal while the inbox is open", async () => {
     const threadId = "thread-test-1";
     let artifactsRequests = 0;
     mockChatLifecycle({
@@ -1985,7 +2076,8 @@ describe("zero chat thread page display - artifacts drawer", () => {
         externalUsername: "Drive User",
         externalEmail: "drive@example.com",
         oauthScopes: ["https://www.googleapis.com/auth/drive"],
-        needsReconnect: false,
+        connectionStatus: "connected",
+        tokenExpiresAt: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       },
@@ -2060,191 +2152,46 @@ describe("zero chat thread page display - artifacts drawer", () => {
       return screen.getByLabelText("Open artifacts");
     });
     click(button);
+    await user.click(await screen.findByLabelText("Open artifact chart.png"));
 
     await waitFor(() => {
-      expect(
-        screen.getByLabelText("Copy link for chart.png"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
     });
-    await user.click(screen.getByLabelText("Copy link for chart.png"));
+    await user.click(screen.getByLabelText("Share artifact"));
     expect(writeTextSpy).toHaveBeenCalledWith(publicFileUrl);
 
-    await user.click(screen.getByLabelText("Sync chart.png to Google Drive"));
-
-    await waitFor(() => {
-      expect(syncBodies).toStrictEqual([
-        {
-          runId: "run-artifacts-actions",
-          fileId: "file-1",
-        },
-      ]);
-    });
+    const downloadButton = screen.getByLabelText("Download artifact");
+    await user.hover(downloadButton);
     await waitFor(() => {
       expect(
-        screen.getByLabelText("chart.png is synced to Google Drive"),
+        getRoleByText("menuitem", "Upload to Google Drive"),
+      ).toBeInTheDocument();
+    });
+    fireEvent.pointerLeave(downloadButton);
+    await waitFor(() => {
+      expect(
+        queryRoleByText("menuitem", "Upload to Google Drive"),
+      ).toBeUndefined();
+    });
+
+    await user.click(downloadButton);
+    await user.click(await screen.findByText("Upload to Google Drive"));
+
+    await waitFor(() => {
+      expect(syncBodies).toStrictEqual([
+        {
+          runId: "run-artifacts-actions",
+          fileId: "file-1",
+        },
+      ]);
+    });
+    await user.click(downloadButton);
+    await waitFor(() => {
+      expect(
+        getRoleByText("menuitem", "Synced to Google Drive"),
       ).toHaveAttribute("aria-disabled", "true");
     });
-
-    await user.click(screen.getByLabelText("More artifact actions"));
-    await user.click(screen.getByText("Sync all to Google Drive"));
-
-    await waitFor(() => {
-      expect(syncBodies).toStrictEqual([
-        {
-          runId: "run-artifacts-actions",
-          fileId: "file-1",
-        },
-        {
-          runId: "run-artifacts-actions",
-          fileId: "file-2",
-        },
-      ]);
-    });
-  });
-
-  it("syncs bulk Google Drive artifacts sequentially", async () => {
-    const user = userEvent.setup();
-    const syncBodies: unknown[] = [];
-    let firstSyncFinished = false;
-    let secondSyncStartedAfterFirst = false;
-    let releaseFirstSync: () => void = () => {
-      throw new Error("First sync has not started");
-    };
-
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "user",
-          content: "See attached",
-          runId: "run-artifacts-sequential-sync",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-    setMockConnectors([
-      {
-        id: "00000000-0000-4000-8000-000000000000",
-        type: "google-drive",
-        authMethod: "oauth",
-        externalId: "drive-user",
-        externalUsername: "Drive User",
-        externalEmail: "drive@example.com",
-        oauthScopes: ["https://www.googleapis.com/auth/drive"],
-        needsReconnect: false,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-      },
-    ]);
-    server.use(
-      http.get("https://example.com/first.csv", () => {
-        return new HttpResponse("label,value\nfirst,1\n", {
-          headers: { "Content-Type": "text/csv" },
-        });
-      }),
-      http.get("https://example.com/second.csv", () => {
-        return new HttpResponse("label,value\nsecond,2\n", {
-          headers: { "Content-Type": "text/csv" },
-        });
-      }),
-      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
-        return respond(200, {
-          runs: [
-            {
-              runId: "run-artifacts-sequential-sync",
-              files: [
-                {
-                  id: "file-1",
-                  filename: "first.csv",
-                  contentType: "text/csv",
-                  size: 1024,
-                  url: "https://example.com/first.csv",
-                  createdAt: "2026-03-10T00:00:00Z",
-                  googleDriveSync: { status: "not_synced" },
-                },
-                {
-                  id: "file-2",
-                  filename: "second.csv",
-                  contentType: "text/csv",
-                  size: 2048,
-                  url: "https://example.com/second.csv",
-                  createdAt: "2026-03-10T00:00:00Z",
-                  googleDriveSync: { status: "not_synced" },
-                },
-              ],
-            },
-          ],
-        });
-      }),
-      mockApi(
-        chatThreadArtifactsContract.syncGoogleDrive,
-        ({ body, respond, deferred }) => {
-          syncBodies.push(body);
-          if (body.fileId === "file-1") {
-            const gate = deferred<void>();
-            releaseFirstSync = () => {
-              firstSyncFinished = true;
-              gate.resolve();
-            };
-            return gate.promise.then(() => {
-              return respond(200, {
-                id: `drive-${body.fileId}`,
-                name: `${body.fileId}.csv`,
-                webViewLink: `https://drive.google.com/file/d/${body.fileId}/view`,
-              });
-            });
-          }
-          if (body.fileId === "file-2") {
-            secondSyncStartedAfterFirst = firstSyncFinished;
-          }
-          return respond(200, {
-            id: `drive-${body.fileId}`,
-            name: `${body.fileId}.csv`,
-            webViewLink: `https://drive.google.com/file/d/${body.fileId}/view`,
-          });
-        },
-      ),
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-test-1",
-    });
-
-    const button = await waitFor(() => {
-      return screen.getByLabelText("Open artifacts");
-    });
-    click(button);
-
-    await waitFor(() => {
-      expect(screen.getAllByText("first.csv").length).toBeGreaterThan(0);
-    });
-    await user.click(screen.getByLabelText("More artifact actions"));
-    await user.click(screen.getByText("Sync all to Google Drive"));
-
-    await waitFor(() => {
-      expect(syncBodies).toStrictEqual([
-        {
-          runId: "run-artifacts-sequential-sync",
-          fileId: "file-1",
-        },
-      ]);
-    });
-
-    releaseFirstSync();
-
-    await waitFor(() => {
-      expect(syncBodies).toStrictEqual([
-        {
-          runId: "run-artifacts-sequential-sync",
-          fileId: "file-1",
-        },
-        {
-          runId: "run-artifacts-sequential-sync",
-          fileId: "file-2",
-        },
-      ]);
-    });
-    expect(secondSyncStartedAfterFirst).toBeTruthy();
+    await user.keyboard("{Escape}");
   });
 
   it("opens Google Drive OAuth in a new tab and syncs after the connector event", async () => {
@@ -2325,14 +2272,23 @@ describe("zero chat thread page display - artifacts drawer", () => {
       return screen.getByLabelText("Open artifacts");
     });
     click(button);
+    await user.click(
+      await screen.findByLabelText("Open artifact disconnected-chart.png"),
+    );
 
-    const syncButton = await waitFor(() => {
-      return screen.getByLabelText(
-        "Sync disconnected-chart.png to Google Drive",
-      );
+    const downloadButton = await waitFor(() => {
+      return screen.getByLabelText("Download artifact");
     });
 
-    await user.click(syncButton);
+    await user.click(downloadButton);
+    const connectGoogleDriveItem = await screen.findByText(
+      "Connect Google Drive",
+    );
+    await user.hover(connectGoogleDriveItem);
+    await expect(
+      screen.findAllByText("Connect Google Drive to upload artifacts"),
+    ).resolves.not.toHaveLength(0);
+    await user.click(connectGoogleDriveItem);
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
         "about:blank",
@@ -2355,7 +2311,8 @@ describe("zero chat thread page display - artifacts drawer", () => {
         externalUsername: "Drive User",
         externalEmail: "drive@example.com",
         oauthScopes: ["https://www.googleapis.com/auth/drive"],
-        needsReconnect: false,
+        connectionStatus: "connected",
+        tokenExpiresAt: null,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       },
@@ -2369,6 +2326,334 @@ describe("zero chat thread page display - artifacts drawer", () => {
       });
       expect(syncSawAuthorize).toBeTruthy();
     });
+  });
+});
+
+describe("zero chat thread page display - GitHub PR tracking", () => {
+  function setConnectedGithubConnector() {
+    setMockConnectors([
+      {
+        id: "00000000-0000-4000-8000-000000000010",
+        type: "github",
+        authMethod: "oauth",
+        externalId: "github-user",
+        externalUsername: "octocat",
+        externalEmail: "octocat@example.com",
+        oauthScopes: ["repo", "workflow"],
+        connectionStatus: "connected",
+        tokenExpiresAt: null,
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+  }
+
+  it("opens a docked panel with tracked GitHub PR action status when enabled and authorized", async () => {
+    const user = userEvent.setup();
+    let prsRequests = 0;
+    const sentPrompts: string[] = [];
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "Created https://github.com/vm0-ai/vm0/pull/15070 and waiting on CI.",
+          runId: "run-github-pr-tracking",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setConnectedGithubConnector();
+    setMockGithubIntegration(
+      createDefaultMockGithubIntegration({
+        labelListeners: [
+          {
+            id: "a0000000-0000-4000-a000-000000000010",
+            labelName: "pr-review-merge",
+            triggerMode: "created_by_me",
+            prompt: "review",
+            enabled: true,
+            canManage: true,
+            agent: {
+              id: "c0000000-0000-4000-a000-000000000001",
+              name: "zero",
+            },
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          },
+        ],
+      }),
+    );
+    server.use(
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: ["github"] });
+      }),
+      mockApi(chatMessagesContract.send, ({ body, respond }) => {
+        if ("prompt" in body && body.prompt) {
+          sentPrompts.push(body.prompt);
+        }
+        return respond(201, {
+          runId: null,
+          threadId: "thread-test-1",
+        });
+      }),
+      mockApi(chatThreadGithubPrsContract.list, ({ params, respond }) => {
+        prsRequests += 1;
+        expect(params.threadId).toBe("thread-test-1");
+        return respond(200, {
+          prs: [
+            {
+              repo: "vm0-ai/vm0",
+              number: 15_070,
+              title: "Add GitHub PR tracking",
+              url: "https://github.com/vm0-ai/vm0/pull/15070",
+              state: "open",
+              headSha: "abc123",
+              mergeStatus: "ready",
+              rollup: "success",
+              checks: [
+                {
+                  name: "CI",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/1",
+                  startedAt: "2026-06-02T00:00:00Z",
+                  completedAt: "2026-06-02T00:01:00Z",
+                },
+              ],
+            },
+            {
+              repo: "vm0-ai/vm0",
+              number: 15_071,
+              title: "Fix merge conflict",
+              url: "https://github.com/vm0-ai/vm0/pull/15071",
+              state: "open",
+              headSha: "def456",
+              mergeStatus: "conflicts",
+              rollup: "failure",
+              checks: [
+                {
+                  name: "Build",
+                  status: "completed",
+                  conclusion: "failure",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/2",
+                  startedAt: "2026-06-02T00:00:00Z",
+                  completedAt: "2026-06-02T00:01:00Z",
+                },
+                {
+                  name: "Deploy",
+                  status: "in_progress",
+                  conclusion: null,
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/3",
+                  startedAt: "2026-06-02T00:02:00Z",
+                  completedAt: null,
+                },
+                {
+                  name: "Lint",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/4",
+                  startedAt: "2026-06-02T00:03:00Z",
+                  completedAt: "2026-06-02T00:04:00Z",
+                },
+                {
+                  name: "Test",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/5",
+                  startedAt: "2026-06-02T00:04:00Z",
+                  completedAt: "2026-06-02T00:05:00Z",
+                },
+                {
+                  name: "Package",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/6",
+                  startedAt: "2026-06-02T00:05:00Z",
+                  completedAt: "2026-06-02T00:06:00Z",
+                },
+                {
+                  name: "Security",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/7",
+                  startedAt: "2026-06-02T00:06:00Z",
+                  completedAt: "2026-06-02T00:07:00Z",
+                },
+                {
+                  name: "E2E",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/8",
+                  startedAt: "2026-06-02T00:07:00Z",
+                  completedAt: "2026-06-02T00:08:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
+    });
+
+    const button = await waitFor(() => {
+      return screen.getByLabelText("Open GitHub PR tracking");
+    });
+    expect(prsRequests).toBe(0);
+    await user.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub PRs")).toBeInTheDocument();
+    });
+    expect(screen.getByText("vm0-ai/vm0 #15070")).toBeInTheDocument();
+    expect(screen.getByText("Add GitHub PR tracking")).toBeInTheDocument();
+    expect(screen.getByText("Ready to merge")).toBeInTheDocument();
+    expect(screen.getByText("Fix merge conflict")).toBeInTheDocument();
+    expect(screen.getByText("Conflicts")).toBeInTheDocument();
+    expect(screen.queryByText("Passing")).not.toBeInTheDocument();
+    expect(
+      screen
+        .getByText("Fix merge conflict")
+        .compareDocumentPosition(screen.getByText("Add GitHub PR tracking")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText("CI")).toBeInTheDocument();
+    expect(screen.getAllByText("Success").length).toBeGreaterThan(0);
+    expect(screen.getByText("Build")).toBeInTheDocument();
+    expect(screen.getByText("Deploy")).toBeInTheDocument();
+    expect(screen.getByText("E2E")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(
+      screen
+        .getByText("Build")
+        .compareDocumentPosition(screen.getByText("Deploy")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(queryRoleByText("link", "Open PR")).toBeUndefined();
+    expect(queryRoleByText("link", "CI")).toBeUndefined();
+    const ciRow = screen.getByText("CI").closest("details");
+    expect(ciRow).toBeInstanceOf(HTMLDetailsElement);
+    if (!(ciRow instanceof HTMLDetailsElement)) {
+      throw new Error("CI check row was not rendered");
+    }
+    expect(ciRow.open).toBeFalsy();
+    await user.click(screen.getByText("CI"));
+    expect(ciRow.open).toBeTruthy();
+    expect(within(ciRow).getByText("Started")).toBeVisible();
+    expect(within(ciRow).getByText("Completed")).toBeVisible();
+    const actionLink = queryAllByRoleFast("link", ciRow).find((link) => {
+      return link.textContent?.trim() === "Open action";
+    });
+    expect(actionLink).toBeDefined();
+    expect(actionLink).toHaveAttribute(
+      "href",
+      "https://github.com/vm0-ai/vm0/actions/runs/1",
+    );
+
+    await user.click(getRoleByText("button", "Fix conflict"));
+    expect(sentPrompts).toContain("fix pr 15071 conflict & push");
+
+    const addLabelButton = queryRoleByAriaLabel(
+      "button",
+      "Add label to PR 15070",
+    );
+    expect(addLabelButton).toBeDefined();
+    await user.click(addLabelButton!);
+    await user.click(getRoleByText("menuitem", "pr-review-merge"));
+    expect(sentPrompts).toContain('add label "pr-review-merge" to pr 15070');
+    expect(prsRequests).toBeGreaterThan(0);
+  });
+
+  it("hides add label when no GitHub integration labels are configured", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "Created https://github.com/vm0-ai/vm0/pull/15070 and waiting on CI.",
+          runId: "run-github-pr-tracking-no-labels",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setConnectedGithubConnector();
+    setMockGithubIntegration(
+      createDefaultMockGithubIntegration({ labelListeners: [] }),
+    );
+    server.use(
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: ["github"] });
+      }),
+      mockApi(chatThreadGithubPrsContract.list, ({ respond }) => {
+        return respond(200, {
+          prs: [
+            {
+              repo: "vm0-ai/vm0",
+              number: 15_070,
+              title: "Add GitHub PR tracking",
+              url: "https://github.com/vm0-ai/vm0/pull/15070",
+              state: "open",
+              headSha: "abc123",
+              mergeStatus: "ready",
+              rollup: "success",
+              checks: [],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Open GitHub PR tracking"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Add GitHub PR tracking")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Add label")).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").some((button) => {
+        return button.getAttribute("aria-label")?.startsWith("Add label to PR");
+      }),
+    ).toBeFalsy();
+  });
+
+  it("hides the GitHub PR tracking button when the agent is not authorized", async () => {
+    let authorizationRequests = 0;
+    mockChatLifecycle();
+    setConnectedGithubConnector();
+    server.use(
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        authorizationRequests += 1;
+        return respond(200, { enabledTypes: [] });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
+    });
+
+    await waitFor(() => {
+      expect(authorizationRequests).toBeGreaterThan(0);
+    });
+    expect(
+      screen.queryByLabelText("Open GitHub PR tracking"),
+    ).not.toBeInTheDocument();
   });
 });
 

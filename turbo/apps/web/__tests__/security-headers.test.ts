@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MODEL_SLUGS } from "../app/[locale]/models/data";
 import { matchesApiBackendRewritePath } from "../api-backend-rewrites.js";
 
 type PathMatchResult =
@@ -490,13 +491,6 @@ const CRON_TELEGRAM_CLEANUP_NEXT_NEGATIVE_PATHS = [
   "/api/cron/telegram-cleanup/extra",
   "/api/cron",
 ] as const;
-const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
-const CONNECTORS_AUTHORIZE_PATH = "/api/connectors/github/authorize";
-const CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
-  "/api/connectors/github/authorize/extra",
-  "/api/connectors/authorize",
-  "/api/connectors/github/authorizes",
-] as const;
 const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
 const CONNECTORS_CALLBACK_PATH = "/api/connectors/github/callback";
 const CONNECTORS_CALLBACK_NEXT_NEGATIVE_PATHS = [
@@ -762,6 +756,14 @@ const AGENT_USAGE_EVENT_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/agent/usage-event/extra",
   "/api/webhooks/agent",
 ] as const;
+const AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE =
+  "/api/webhooks/agent/model-usage-observation";
+const AGENT_MODEL_USAGE_OBSERVATION_PATH =
+  "/api/webhooks/agent/model-usage-observation";
+const AGENT_MODEL_USAGE_OBSERVATION_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/agent/model-usage-observation/extra",
+  "/api/webhooks/agent",
+] as const;
 const AGENT_STORAGES_COMMIT_REWRITE_SOURCE =
   "/api/webhooks/agent/storages/commit";
 const AGENT_STORAGES_COMMIT_PATH = "/api/webhooks/agent/storages/commit";
@@ -1022,6 +1024,13 @@ const ZERO_BILLING_REDEEM_NEXT_NEGATIVE_PATHS = [
   "/api/zero/billing/redeem/ZERO100/extra",
   "/api/zero/billing/redeems/ZERO100",
 ] as const;
+const ZERO_BILLING_RESTORE_REWRITE_SOURCE = "/api/zero/billing/restore";
+const ZERO_BILLING_RESTORE_PATH = "/api/zero/billing/restore";
+const ZERO_BILLING_RESTORE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/billing",
+  "/api/zero/billing/restore/extra",
+  "/api/zero/billing/restores",
+] as const;
 const ZERO_BILLING_STATUS_REWRITE_SOURCE = "/api/zero/billing/status";
 const ZERO_BILLING_STATUS_PATH = "/api/zero/billing/status";
 const ZERO_BILLING_STATUS_NEXT_NEGATIVE_PATHS = [
@@ -1095,12 +1104,6 @@ const ONBOARDING_SETUP_PATH = "/api/zero/onboarding/setup";
 const ONBOARDING_SETUP_NEXT_NEGATIVE_PATHS = [
   "/api/zero/onboarding/setup/extra",
   "/api/zero/onboarding",
-] as const;
-const PERMISSION_POLICIES_REWRITE_SOURCE = "/api/zero/permission-policies";
-const PERMISSION_POLICIES_PATH = "/api/zero/permission-policies";
-const PERMISSION_POLICIES_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/permission-policies/extra",
-  "/api/zero/permission-policy",
 ] as const;
 const ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/model-providers/:type";
@@ -1340,6 +1343,15 @@ const ZERO_CHAT_THREAD_MESSAGES_NEXT_NEGATIVE_PATHS = [
   "/api/zero/chat-threads/messages",
   "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/messages",
 ] as const;
+const ZERO_CHAT_THREAD_GITHUB_PRS_REWRITE_SOURCE =
+  "/api/zero/chat-threads/:threadId/github-prs";
+const ZERO_CHAT_THREAD_GITHUB_PRS_PATH =
+  "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/github-prs";
+const ZERO_CHAT_THREAD_GITHUB_PRS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/github-prs/extra",
+  "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/github-pr",
+  "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/github-prs",
+] as const;
 const ZERO_CHAT_THREAD_DETAIL_REWRITE_SOURCE = "/api/zero/chat-threads/:id";
 const ZERO_CHAT_THREAD_DETAIL_PATH =
   "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000";
@@ -1354,6 +1366,14 @@ const ZERO_CHAT_THREAD_MARK_READ_PATH =
 const ZERO_CHAT_THREAD_MARK_READ_NEXT_NEGATIVE_PATHS = [
   "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/mark-read/extra",
   "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/mark-read",
+] as const;
+const ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE =
+  "/api/zero/chat-threads/:id/model-selection";
+const ZERO_CHAT_THREAD_MODEL_SELECTION_PATH =
+  "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/model-selection";
+const ZERO_CHAT_THREAD_MODEL_SELECTION_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/model-selection/extra",
+  "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/model-selection",
 ] as const;
 const ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE = "/api/zero/chat-threads/:id/pin";
 const ZERO_CHAT_THREAD_PIN_PATH =
@@ -1386,13 +1406,6 @@ const ZERO_VARIABLE_BY_NAME_PATH = "/api/zero/variables/USER_TOKEN";
 const ZERO_VARIABLE_BY_NAME_NEXT_NEGATIVE_PATHS = [
   "/api/zero/variables/USER_TOKEN/extra",
   "/api/zero/variable/USER_TOKEN",
-] as const;
-const PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE =
-  "/api/zero/permission-access-requests";
-const PERMISSION_ACCESS_REQUESTS_PATH = "/api/zero/permission-access-requests";
-const PERMISSION_ACCESS_REQUESTS_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/permission-access-requests/extra",
-  "/api/zero/permission-access-request",
 ] as const;
 const ZERO_SECRETS_REWRITE_SOURCE = "/api/zero/secrets";
 const ZERO_SECRETS_PATH = "/api/zero/secrets";
@@ -1640,14 +1653,6 @@ const VOICE_IO_TTS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/voice-io/speech",
   "/api/zero/voice-io/stt",
 ] as const;
-const ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/authorize";
-const ZERO_CONNECTORS_AUTHORIZE_PATH = "/api/zero/connectors/github/authorize";
-const ZERO_CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/connectors/github/authorize/extra",
-  "/api/zero/connectors/authorize",
-  "/api/zero/connectors/github/callback",
-] as const;
 const ZERO_CONNECTORS_LIST_REWRITE_SOURCE = "/api/zero/connectors";
 const ZERO_CONNECTORS_LIST_PATH = "/api/zero/connectors";
 const ZERO_CONNECTORS_LIST_NEXT_NEGATIVE_PATHS = [
@@ -1670,12 +1675,13 @@ const ZERO_CONNECTORS_BY_TYPE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/connectors/github/extra",
   "/api/zero/connectors/search",
 ] as const;
-const ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/api-token";
-const ZERO_CONNECTORS_API_TOKEN_PATH = "/api/zero/connectors/github/api-token";
-const ZERO_CONNECTORS_API_TOKEN_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/connectors/github/api-token/extra",
-  "/api/zero/connectors/api-token",
+const ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/manual-grant";
+const ZERO_CONNECTORS_MANUAL_GRANT_PATH =
+  "/api/zero/connectors/github/manual-grant";
+const ZERO_CONNECTORS_MANUAL_GRANT_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/connectors/github/manual-grant/extra",
+  "/api/zero/connectors/manual-grant",
   "/api/zero/connectors/github/api",
 ] as const;
 const ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE =
@@ -1686,22 +1692,6 @@ const ZERO_CONNECTORS_SCOPE_DIFF_NEXT_NEGATIVE_PATHS = [
   "/api/zero/connectors/github/scope-diff/extra",
   "/api/zero/connectors/scope-diff",
   "/api/zero/connectors/github/scope",
-] as const;
-const ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/sessions";
-const ZERO_CONNECTORS_SESSIONS_PATH = "/api/zero/connectors/github/sessions";
-const ZERO_CONNECTORS_SESSIONS_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/connectors/github/sessions/00000000-0000-0000-0000-000000000000",
-  "/api/zero/connectors/sessions",
-  "/api/zero/connectors/github/session",
-] as const;
-const ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/sessions/:sessionId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
-const ZERO_CONNECTORS_SESSION_BY_ID_PATH = `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}`;
-const ZERO_CONNECTORS_SESSION_BY_ID_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/connectors/github/sessions/not-a-uuid",
-  `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}/extra`,
-  `/api/zero/connectors/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
 ] as const;
 const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_REWRITE_SOURCE =
   "/api/zero/connectors/:type/oauth/device/sessions";
@@ -1787,6 +1777,12 @@ interface RewriteEntry {
   readonly destination: string;
 }
 
+interface RedirectEntry {
+  readonly source: string;
+  readonly destination: string;
+  readonly permanent?: boolean;
+}
+
 async function getBeforeFileRewrites(): Promise<RewriteEntry[]> {
   const configModule = await import("../next.config.js");
   const config = configModule.default;
@@ -1800,6 +1796,17 @@ async function getBeforeFileRewrites(): Promise<RewriteEntry[]> {
     return rewrites;
   }
   return rewrites.beforeFiles ?? [];
+}
+
+async function getRedirects(): Promise<RedirectEntry[]> {
+  const configModule = await import("../next.config.js");
+  const config = configModule.default;
+
+  if (!config.redirects) {
+    throw new Error("redirects() function not found in Next.js config");
+  }
+
+  return await config.redirects();
 }
 
 function findHeader(
@@ -1895,9 +1902,59 @@ describe("Security Response Headers", () => {
   });
 });
 
+describe("Model page redirects", () => {
+  it("should redirect legacy model slugs to existing model pages", async () => {
+    const redirects = await getRedirects();
+    const modelSlugs = new Set(MODEL_SLUGS);
+    const expectedRedirects = [
+      ["kimi-k2.6", "kimi-k2-6"],
+      ["kimi-k2.5", "kimi-k2-5"],
+      ["glm-5.1", "glm-5-1"],
+      ["claude-haiku-4-5", "claude-sonnet-4-6"],
+      ["deepseek-v4-flash", "deepseek-v4-pro"],
+      ["minimax-m2.7", "minimax-m3"],
+      ["minimax-m2-7", "minimax-m3"],
+    ] as const;
+
+    for (const [from, to] of expectedRedirects) {
+      expect(modelSlugs.has(to)).toBe(true);
+      expect(redirects).toContainEqual({
+        source: `/models/${from}`,
+        destination: `/models/${to}`,
+        permanent: true,
+      });
+      expect(redirects).toContainEqual({
+        source: `/:locale/models/${from}`,
+        destination: `/:locale/models/${to}`,
+        permanent: true,
+      });
+    }
+  });
+});
+
 describe("API backend rewrites", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("should use the local API fallback when the backend URL is empty", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "");
+    vi.stubEnv("VERCEL_ENV", undefined);
+
+    const rewrites = await getBeforeFileRewrites();
+
+    expect(rewrites).toEqual(
+      expect.arrayContaining([
+        {
+          source: ZERO_FEATURE_SWITCHES_REWRITE_SOURCE,
+          destination: "http://localhost:3001/api/zero/feature-switches",
+        },
+        {
+          source: REALTIME_TOKEN_REWRITE_SOURCE,
+          destination: "http://localhost:3001/api/zero/realtime/token",
+        },
+      ]),
+    );
   });
 
   it("should proxy migrated API backend routes to apps/api", async () => {
@@ -2094,11 +2151,6 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/cron/telegram-cleanup",
         },
         {
-          source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/connectors/:type/authorize",
-        },
-        {
           source: CONNECTORS_CALLBACK_REWRITE_SOURCE,
           destination: "https://api.example.test/api/connectors/:type/callback",
         },
@@ -2239,6 +2291,11 @@ describe("API backend rewrites", () => {
           source: AGENT_USAGE_EVENT_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/webhooks/agent/usage-event",
+        },
+        {
+          source: AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/webhooks/agent/model-usage-observation",
         },
         {
           source: AGENT_STORAGES_COMMIT_REWRITE_SOURCE,
@@ -2443,6 +2500,10 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/billing/redeem/:campaign",
         },
         {
+          source: ZERO_BILLING_RESTORE_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/billing/restore",
+        },
+        {
           source: ZERO_BILLING_STATUS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/billing/status",
         },
@@ -2471,14 +2532,9 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/connectors/:type",
         },
         {
-          source: ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE,
+          source: ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE,
           destination:
-            "https://api.example.test/api/zero/connectors/:type/api-token",
-        },
-        {
-          source: ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/zero/connectors/:type/authorize",
+            "https://api.example.test/api/zero/connectors/:type/manual-grant",
         },
         {
           source: ZERO_SLACK_CHANNELS_REWRITE_SOURCE,
@@ -2547,11 +2603,6 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/integrations/phone/:path*",
         },
         {
-          source: "/api/zero/integrations/chat/message",
-          destination:
-            "https://api.example.test/api/zero/integrations/chat/message",
-        },
-        {
           source: "/api/zero/integrations/slack",
           destination: "https://api.example.test/api/zero/integrations/slack",
         },
@@ -2614,21 +2665,12 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/uploads/prepare",
         },
         {
-          source: PERMISSION_POLICIES_REWRITE_SOURCE,
-          destination: "https://api.example.test/api/zero/permission-policies",
-        },
-        {
           source: PUSH_SUBSCRIPTIONS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/push-subscriptions",
         },
         {
           source: QUEUE_POSITION_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/queue-position",
-        },
-        {
-          source: PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/zero/permission-access-requests",
         },
         {
           source: ZERO_SECRETS_REWRITE_SOURCE,
@@ -2826,6 +2868,11 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/chat-threads/:threadId/messages",
         },
         {
+          source: ZERO_CHAT_THREAD_GITHUB_PRS_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/chat-threads/:threadId/github-prs",
+        },
+        {
           source: ZERO_CHAT_THREAD_DETAIL_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/chat-threads/:id",
         },
@@ -2838,6 +2885,11 @@ describe("API backend rewrites", () => {
           source: ZERO_CHAT_THREAD_MARK_READ_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/chat-threads/:id/mark-read",
+        },
+        {
+          source: ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/chat-threads/:id/model-selection",
         },
         {
           source: ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE,
@@ -3793,31 +3845,6 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match only the connector authorize rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === CONNECTORS_AUTHORIZE_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/connectors/:type/authorize",
-    });
-
-    const matcher = getPathMatch(CONNECTORS_AUTHORIZE_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(CONNECTORS_AUTHORIZE_PATH)).toStrictEqual({
-      type: "github",
-    });
-    for (const pathname of CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
   it("should match only the connector callback rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -4236,28 +4263,28 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match only the zero connector API-token rewrite", async () => {
+  it("should match only the zero connector manual grant rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
     const rewrites = await getBeforeFileRewrites();
     const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE;
+      return entry.source === ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE;
     });
     expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE,
+      source: ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE,
       destination:
-        "https://api.example.test/api/zero/connectors/:type/api-token",
+        "https://api.example.test/api/zero/connectors/:type/manual-grant",
     });
 
-    const matcher = getPathMatch(ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE, {
+    const matcher = getPathMatch(ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE, {
       removeUnnamedParams: true,
       strict: true,
     });
 
-    expect(matcher(ZERO_CONNECTORS_API_TOKEN_PATH)).toStrictEqual({
+    expect(matcher(ZERO_CONNECTORS_MANUAL_GRANT_PATH)).toStrictEqual({
       type: "github",
     });
-    for (const pathname of ZERO_CONNECTORS_API_TOKEN_NEXT_NEGATIVE_PATHS) {
+    for (const pathname of ZERO_CONNECTORS_MANUAL_GRANT_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -4284,59 +4311,6 @@ describe("API backend rewrites", () => {
       type: "github",
     });
     for (const pathname of ZERO_CONNECTORS_SCOPE_DIFF_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the zero connector sessions rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/zero/connectors/:type/sessions",
-    });
-
-    const matcher = getPathMatch(ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(ZERO_CONNECTORS_SESSIONS_PATH)).toStrictEqual({
-      type: "github",
-    });
-    for (const pathname of ZERO_CONNECTORS_SESSIONS_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only UUID-shaped zero connector session polling rewrites", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/zero/connectors/:type/sessions/:sessionId",
-    });
-
-    const matcher = getPathMatch(ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(ZERO_CONNECTORS_SESSION_BY_ID_PATH)).toStrictEqual({
-      type: "github",
-      sessionId: ZERO_CONNECTOR_SESSION_ID,
-    });
-    for (const pathname of ZERO_CONNECTORS_SESSION_BY_ID_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -4523,32 +4497,6 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_SLACK_INTERACTIVE_PATH)).toStrictEqual({});
     for (const pathname of ZERO_SLACK_INTERACTIVE_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the zero connector authorize rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/zero/connectors/:type/authorize",
-    });
-
-    const matcher = getPathMatch(ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(ZERO_CONNECTORS_AUTHORIZE_PATH)).toStrictEqual({
-      type: "github",
-    });
-    for (const pathname of ZERO_CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -5125,6 +5073,30 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENT_USAGE_EVENT_PATH)).toStrictEqual({});
     for (const pathname of AGENT_USAGE_EVENT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent model usage observation webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/webhooks/agent/model-usage-observation",
+    });
+
+    const matcher = getPathMatch(AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_MODEL_USAGE_OBSERVATION_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_MODEL_USAGE_OBSERVATION_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -5791,30 +5763,6 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match only the exact permission access requests rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/zero/permission-access-requests",
-    });
-
-    const matcher = getPathMatch(PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(PERMISSION_ACCESS_REQUESTS_PATH)).toStrictEqual({});
-    for (const pathname of PERMISSION_ACCESS_REQUESTS_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
   it("should match only the exact user model preference rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -6282,6 +6230,32 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only one segment for the zero chat thread github-prs rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CHAT_THREAD_GITHUB_PRS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CHAT_THREAD_GITHUB_PRS_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/chat-threads/:threadId/github-prs",
+    });
+
+    const matcher = getPathMatch(ZERO_CHAT_THREAD_GITHUB_PRS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CHAT_THREAD_GITHUB_PRS_PATH)).toStrictEqual({
+      threadId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    for (const pathname of ZERO_CHAT_THREAD_GITHUB_PRS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only one segment for the zero chat thread detail rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -6329,6 +6303,35 @@ describe("API backend rewrites", () => {
       id: "550e8400-e29b-41d4-a716-446655440000",
     });
     for (const pathname of ZERO_CHAT_THREAD_MARK_READ_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only one segment for the zero chat thread model-selection rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/chat-threads/:id/model-selection",
+    });
+
+    const matcher = getPathMatch(
+      ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+
+    expect(matcher(ZERO_CHAT_THREAD_MODEL_SELECTION_PATH)).toStrictEqual({
+      id: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    for (const pathname of ZERO_CHAT_THREAD_MODEL_SELECTION_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -6830,6 +6833,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero billing restore rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_BILLING_RESTORE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_BILLING_RESTORE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/billing/restore",
+    });
+
+    const matcher = getPathMatch(ZERO_BILLING_RESTORE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_BILLING_RESTORE_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_BILLING_RESTORE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero default-agent rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -6872,29 +6898,6 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_FEATURE_SWITCHES_PATH)).toStrictEqual({});
     for (const pathname of ZERO_FEATURE_SWITCHES_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the exact permission policies rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === PERMISSION_POLICIES_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: PERMISSION_POLICIES_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/zero/permission-policies",
-    });
-
-    const matcher = getPathMatch(PERMISSION_POLICIES_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(PERMISSION_POLICIES_PATH)).toStrictEqual({});
-    for (const pathname of PERMISSION_POLICIES_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -8270,18 +8273,6 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match the zero integrations chat message route for middleware pass-through", async () => {
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/chat/message"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/chat/message/extra"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/integrations/chat")).toBe(
-      false,
-    );
-  });
-
   it("should match the zero integrations Slack message route for middleware pass-through", async () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/integrations/slack/message"),
@@ -8612,6 +8603,15 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match the zero chat thread github-prs route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_CHAT_THREAD_GITHUB_PRS_PATH)).toBe(
+      true,
+    );
+    for (const pathname of ZERO_CHAT_THREAD_GITHUB_PRS_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
   it("should match the zero chat thread detail route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath(ZERO_CHAT_THREAD_DETAIL_PATH)).toBe(
       true,
@@ -8855,6 +8855,13 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should bypass web middleware only for the exact zero billing restore path", () => {
+    expect(matchesApiBackendRewritePath(ZERO_BILLING_RESTORE_PATH)).toBe(true);
+    for (const pathname of ZERO_BILLING_RESTORE_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
   it("should bypass web middleware only for the exact zero default-agent path", () => {
     expect(matchesApiBackendRewritePath(ZERO_DEFAULT_AGENT_PATH)).toBe(true);
     for (const pathname of ZERO_DEFAULT_AGENT_NEXT_NEGATIVE_PATHS) {
@@ -8930,13 +8937,6 @@ describe("API backend rewrites", () => {
 
     expect(matchesApiBackendRewritePath(ZERO_VARIABLE_BY_NAME_PATH)).toBe(true);
     for (const pathname of ZERO_VARIABLE_BY_NAME_NEXT_NEGATIVE_PATHS) {
-      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
-    }
-  });
-
-  it("should match the permission policies route for middleware pass-through", async () => {
-    expect(matchesApiBackendRewritePath(PERMISSION_POLICIES_PATH)).toBe(true);
-    for (const pathname of PERMISSION_POLICIES_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

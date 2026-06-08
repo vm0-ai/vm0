@@ -4,6 +4,13 @@ import { Input } from "@vm0/ui/components/ui/input";
 import { Button } from "@vm0/ui/components/ui/button";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@vm0/ui/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -13,16 +20,13 @@ import {
   CONNECTOR_TYPES,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
+  type ConnectorDeviceAuthStartOptions,
+  type ConnectorDeviceAuthStartOptionsConfig,
   type ConnectorManualGrantConfig,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { ReactElement } from "react";
-import {
-  getConnectorAuthMethod,
-  isGoogleOAuthConnector,
-  hasConnectorAuthCodeGrant,
-  hasConnectorDeviceAuthGrant,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import {
   allConnectorTypes$,
   connectFlowType$,
@@ -32,13 +36,17 @@ import {
   connectConnectorOAuthDeviceAuthAndSettle$,
   openConnectorOAuthDeviceAuthVerificationPage$,
   clearConnectorOAuthDeviceAuth$,
+  connectorOAuthDeviceAuthStartOptionValuesFor$,
+  setConnectorOAuthDeviceAuthStartOptionValue$,
   runConnectorConnectSuccess$,
-  submitManualCredentials$,
-  setTokenFormValue$,
-  clearTokenForm$,
-  tokenFormValuesFor$,
+  submitManualGrant$,
+  setManualGrantFormValue$,
+  clearManualGrantForm$,
+  manualGrantFormValuesFor$,
   selectedConnectorType$,
   isStandaloneMode,
+  connectorCurrentConnectionStatus,
+  connectorExpiryCountdownText,
   type ConnectorOAuthDeviceAuthState,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
@@ -46,7 +54,8 @@ import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
-import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
+import { shouldShowGoogleSecurityWarningNotice } from "../../../../lib/google-security-warning.ts";
+import { GoogleSecurityWarningNotice } from "../../zero-directed-shared.tsx";
 import { ConnectorHelpText } from "./connector-help-text.tsx";
 
 // ---------------------------------------------------------------------------
@@ -54,11 +63,16 @@ import { ConnectorHelpText } from "./connector-help-text.tsx";
 // ---------------------------------------------------------------------------
 
 function connectedStatusText(item: ConnectorTypeWithStatus): string {
-  if (item.needsReconnect) {
+  const connectionStatus = connectorCurrentConnectionStatus(item);
+  if (connectionStatus === "reconnect-required") {
     return "Connection expired";
   }
-  if (item.scopeMismatch) {
+  if (connectionStatus === "scope-mismatch") {
     return "Permissions update available";
+  }
+  const expiryText = connectorExpiryCountdownText(item);
+  if (expiryText) {
+    return expiryText;
   }
   if (item.connector?.externalUsername) {
     return `Connected as @${item.connector.externalUsername}`;
@@ -70,22 +84,32 @@ type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
 };
 
-type SubmitManualCredentialsFn = (
+type SubmitManualGrantFn = (
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
-  inputSecrets: Record<string, string>,
+  inputValues: Record<string, string>,
   options: PostConnectOptions,
   signal: AbortSignal,
 ) => Promise<void>;
 
 type ConnectOAuthAuthCodeAndSettleFn = (
   type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
   onSuccess: () => void | Promise<void>,
   options: PostConnectOptions,
   signal: AbortSignal,
 ) => Promise<void>;
 
-type ConnectOAuthDeviceAuthAndSettleFn = ConnectOAuthAuthCodeAndSettleFn;
+type ConnectOAuthDeviceAuthAndSettleFn = (
+  args: {
+    readonly type: ConnectorType;
+    readonly authMethod: ConnectorAuthMethodId;
+    readonly onSuccess: () => void | Promise<void>;
+    readonly options: PostConnectOptions;
+    readonly startOptions?: ConnectorDeviceAuthStartOptions;
+  },
+  signal: AbortSignal,
+) => Promise<void>;
 
 type ConnectModalContentProps = {
   item: ConnectorTypeWithStatus;
@@ -98,8 +122,8 @@ type ConnectMethodContentProps = ConnectModalContentProps & {
   method: ConnectorAuthMethodConfig;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
-  submitManualCredentials: SubmitManualCredentialsFn;
-  credentialSubmitting: boolean;
+  submitManualGrant: SubmitManualGrantFn;
+  manualGrantSubmitting: boolean;
   signal: AbortSignal;
 };
 
@@ -130,11 +154,22 @@ function connectorOAuthDeviceAuthFlowIsActive(
   );
 }
 
+function connectorOAuthDeviceAuthStateForMethod(
+  state: ConnectorOAuthDeviceAuthState,
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): ConnectorOAuthDeviceAuthState | null {
+  if (state.connectorType !== type || state.status === "idle") {
+    return null;
+  }
+  return state.authMethod === authMethod ? state : null;
+}
+
 // ---------------------------------------------------------------------------
-// Manual credentials form (shown inside connect modal)
+// Manual grant form (shown inside connect modal)
 // ---------------------------------------------------------------------------
 
-function ManualCredentialForm({
+function ManualGrantForm({
   type,
   authMethod,
   method,
@@ -150,17 +185,17 @@ function ManualCredentialForm({
   grant: ConnectorManualGrantConfig;
   onSuccess: () => void | Promise<void>;
   showPermissionDialogOnConnect: boolean;
-  submit: SubmitManualCredentialsFn;
+  submit: SubmitManualGrantFn;
   submitting: boolean;
 }) {
-  const setFormValue = useSet(setTokenFormValue$);
-  const clearForm = useSet(clearTokenForm$);
+  const setFormValue = useSet(setManualGrantFormValue$);
+  const clearForm = useSet(clearManualGrantForm$);
   const pageSignal = useGet(pageSignal$);
-  const secretValues = useGet(tokenFormValuesFor$(type));
+  const fieldValues = useGet(manualGrantFormValuesFor$(type));
 
-  const secretEntries = Object.entries(grant.fields);
-  const allFilled = secretEntries.every(([name, cfg]) => {
-    return !cfg.required || hasTokenInputValue(secretValues[name]);
+  const fieldEntries = Object.entries(grant.fields);
+  const allFilled = fieldEntries.every(([name, cfg]) => {
+    return !cfg.required || hasTokenInputValue(fieldValues[name]);
   });
 
   const handleSubmit = onDomEventFn(async () => {
@@ -170,7 +205,7 @@ function ManualCredentialForm({
     await submit(
       type,
       authMethod,
-      secretValues,
+      fieldValues,
       {
         showPermissionDialog: showPermissionDialogOnConnect,
       },
@@ -183,16 +218,16 @@ function ManualCredentialForm({
   return (
     <div className="flex flex-col gap-3">
       {method.helpText && <ConnectorHelpText text={method.helpText} />}
-      {secretEntries.map(([name, secretConfig]) => {
+      {fieldEntries.map(([name, fieldConfig]) => {
         return (
           <div key={name} className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-foreground">
-              {secretConfig.label}
+              {fieldConfig.label}
             </label>
             <Input
               type="password"
-              placeholder={secretConfig.placeholder}
-              value={secretValues[name] ?? ""}
+              placeholder={fieldConfig.placeholder}
+              value={fieldValues[name] ?? ""}
               onChange={(e) => {
                 return setFormValue(type, name, e.target.value);
               }}
@@ -253,11 +288,13 @@ function getOAuthAuthCodeProgressContent({
 
 function OAuthAuthCodeConnectButton({
   item,
+  authMethod,
   onSuccess,
   showPermissionDialogOnConnect,
   connectOAuthAuthCodeAndSettle,
   signal,
 }: ConnectModalContentProps & {
+  authMethod: ConnectorAuthMethodId;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   signal: AbortSignal;
 }) {
@@ -268,6 +305,7 @@ function OAuthAuthCodeConnectButton({
         return detach(
           connectOAuthAuthCodeAndSettle(
             item.type,
+            authMethod,
             onSuccess,
             {
               showPermissionDialog: showPermissionDialogOnConnect,
@@ -288,6 +326,7 @@ function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
   return (
     <OAuthAuthCodeConnectButton
       item={props.item}
+      authMethod={props.authMethod}
       onSuccess={props.onSuccess}
       showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={props.connectOAuthAuthCodeAndSettle}
@@ -366,20 +405,173 @@ function OAuthDeviceAuthCodePanel({
   );
 }
 
+function defaultDeviceAuthStartOptionValues(
+  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined,
+): Record<string, string> {
+  if (!startOptions) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(startOptions).flatMap(([name, config]) => {
+      return config.defaultValue === undefined
+        ? []
+        : ([[name, config.defaultValue]] as const);
+    }),
+  );
+}
+
+function deviceAuthStartOptionValue(
+  values: Record<string, string>,
+  name: string,
+): string | undefined {
+  return Object.hasOwn(values, name) ? values[name] : undefined;
+}
+
+function selectedDeviceAuthStartOptions(
+  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined,
+  values: Record<string, string>,
+): ConnectorDeviceAuthStartOptions | undefined {
+  if (!startOptions) {
+    return undefined;
+  }
+  const selectedEntries = Object.entries(startOptions).flatMap(
+    ([name, config]) => {
+      const value =
+        deviceAuthStartOptionValue(values, name) ?? config.defaultValue;
+      return value === undefined ? [] : ([[name, value]] as const);
+    },
+  );
+  return selectedEntries.length === 0
+    ? undefined
+    : Object.fromEntries(selectedEntries);
+}
+
+function deviceAuthStartOptionsFilled(
+  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined,
+  values: Record<string, string>,
+): boolean {
+  if (!startOptions) {
+    return true;
+  }
+  return Object.entries(startOptions).every(([name, config]) => {
+    return (
+      !config.required ||
+      Boolean(deviceAuthStartOptionValue(values, name) ?? config.defaultValue)
+    );
+  });
+}
+
+function OAuthDeviceAuthStartOptionsForm({
+  type,
+  authMethod,
+  startOptions,
+  values,
+  setValue,
+}: {
+  type: ConnectorType;
+  authMethod: ConnectorAuthMethodId;
+  startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined;
+  values: Record<string, string>;
+  setValue: (name: string, value: string) => void;
+}) {
+  if (!startOptions) {
+    return null;
+  }
+
+  return (
+    <>
+      {Object.entries(startOptions).map(([name, config]) => {
+        const inputId = `connector-device-auth-option-${type}-${authMethod}-${name}`;
+        return (
+          <div key={name} className="flex flex-col gap-1.5">
+            <label
+              htmlFor={inputId}
+              className="text-sm font-medium text-foreground"
+            >
+              {config.label}
+            </label>
+            <Select
+              value={
+                deviceAuthStartOptionValue(values, name) ?? config.defaultValue
+              }
+              onValueChange={(value) => {
+                setValue(name, value);
+              }}
+            >
+              <SelectTrigger id={inputId} className="h-9">
+                <SelectValue placeholder={`Select ${config.label}`} />
+              </SelectTrigger>
+              <SelectContent>
+                {config.options.map((option) => {
+                  return (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   const state = useGet(connectorOAuthDeviceAuthState$);
   const openVerificationPage = useSet(
     openConnectorOAuthDeviceAuthVerificationPage$,
   );
-  const current = state.connectorType === props.item.type ? state : null;
+  const setStartOptionValueCommand = useSet(
+    setConnectorOAuthDeviceAuthStartOptionValue$,
+  );
+  const startOptions =
+    props.method.grant.kind === "device-auth"
+      ? props.method.grant.startOptions
+      : undefined;
+  const startOptionValues = useGet(
+    connectorOAuthDeviceAuthStartOptionValuesFor$(
+      props.item.type,
+      props.authMethod,
+    ),
+  );
+  const effectiveStartOptionValues = {
+    ...defaultDeviceAuthStartOptionValues(startOptions),
+    ...startOptionValues,
+  };
+  const startOptionsFilled = deviceAuthStartOptionsFilled(
+    startOptions,
+    effectiveStartOptionValues,
+  );
+  const setStartOptionValue = (name: string, value: string) => {
+    setStartOptionValueCommand({
+      type: props.item.type,
+      authMethod: props.authMethod,
+      name,
+      value,
+    });
+  };
+  const current = connectorOAuthDeviceAuthStateForMethod(
+    state,
+    props.item.type,
+    props.authMethod,
+  );
   const starting = current?.status === "starting";
 
   const start = onDomEventFn(async () => {
     await props.connectOAuthDeviceAuthAndSettle(
-      props.item.type,
-      props.onSuccess,
       {
-        showPermissionDialog: props.showPermissionDialogOnConnect,
+        type: props.item.type,
+        authMethod: props.authMethod,
+        onSuccess: props.onSuccess,
+        options: {
+          showPermissionDialog: props.showPermissionDialogOnConnect,
+        },
+        startOptions: selectedDeviceAuthStartOptions(
+          startOptions,
+          effectiveStartOptionValues,
+        ),
       },
       props.signal,
     );
@@ -396,7 +588,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
       <OAuthDeviceAuthCodePanel
         state={current}
         onOpenVerificationPage={() => {
-          openVerificationPage(props.item.type);
+          openVerificationPage(props.item.type, props.authMethod);
         }}
       />
     );
@@ -409,6 +601,13 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   ) {
     return (
       <div className="flex flex-col gap-3">
+        <OAuthDeviceAuthStartOptionsForm
+          type={props.item.type}
+          authMethod={props.authMethod}
+          startOptions={startOptions}
+          values={effectiveStartOptionValues}
+          setValue={setStartOptionValue}
+        />
         <p className="text-sm text-destructive" role="alert">
           {current.message}
         </p>
@@ -416,7 +615,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
           type="button"
           variant="outline"
           onClick={start}
-          disabled={starting}
+          disabled={starting || !startOptionsFilled}
           className="w-full"
         >
           {starting ? "Starting..." : "Try again"}
@@ -431,11 +630,18 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
         Connect to get a verification code, then use it on the provider&apos;s
         verification page to approve access.
       </p>
+      <OAuthDeviceAuthStartOptionsForm
+        type={props.item.type}
+        authMethod={props.authMethod}
+        startOptions={startOptions}
+        values={effectiveStartOptionValues}
+        setValue={setStartOptionValue}
+      />
       <Button
         type="button"
         variant="outline"
         onClick={start}
-        disabled={starting}
+        disabled={starting || !startOptionsFilled}
         className="w-full"
       >
         {starting
@@ -446,45 +652,36 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   );
 }
 
-function ManualCredentialConnectMethodContent(
-  props: ConnectMethodContentProps,
-) {
+function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
   if (props.method.grant.kind !== "manual") {
     return null;
   }
   return (
-    <ManualCredentialForm
+    <ManualGrantForm
       type={props.item.type}
       authMethod={props.authMethod}
       method={props.method}
       grant={props.method.grant}
       onSuccess={props.onSuccess}
       showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
-      submit={props.submitManualCredentials}
-      submitting={props.credentialSubmitting}
+      submit={props.submitManualGrant}
+      submitting={props.manualGrantSubmitting}
     />
   );
 }
 
 function getConnectMethodContentComponent(
-  item: ConnectorTypeWithStatus,
   method: ConnectorAuthMethodConfig,
 ): ConnectMethodContentComponent | null {
   switch (method.grant.kind) {
     case "auth-code": {
-      if (hasConnectorAuthCodeGrant(item.type)) {
-        return OAuthAuthCodeConnectMethodContent;
-      }
-      return null;
+      return OAuthAuthCodeConnectMethodContent;
     }
     case "device-auth": {
-      if (hasConnectorDeviceAuthGrant(item.type)) {
-        return OAuthDeviceAuthConnectMethodContent;
-      }
-      return null;
+      return OAuthDeviceAuthConnectMethodContent;
     }
     case "manual": {
-      return ManualCredentialConnectMethodContent;
+      return ManualGrantConnectMethodContent;
     }
     case "managed": {
       return null;
@@ -500,7 +697,7 @@ function getConnectMethodContentEntries(
     if (!method) {
       return [];
     }
-    const Content = getConnectMethodContentComponent(item, method);
+    const Content = getConnectMethodContentComponent(method);
     return Content ? [{ authMethod, method, Content }] : [];
   });
 }
@@ -569,7 +766,10 @@ function ConnectMethodsContent({
     <>
       {entries.map(({ authMethod, method, Content }, index) => {
         return (
-          <div key={authMethod} className="flex flex-col gap-3">
+          <div
+            key={`${props.item.type}:${authMethod}`}
+            className="flex flex-col gap-3"
+          >
             {index > 0 && <AuthMethodDivider />}
             <ConnectMethodHeading method={method} show={showMethodHeadings} />
             <Content {...props} authMethod={authMethod} method={method} />
@@ -586,29 +786,29 @@ function StandardConnectMethodsContent({
   showPermissionDialogOnConnect,
   connectOAuthAuthCodeAndSettle,
   connectOAuthDeviceAuthAndSettle,
-  submitManualCredentials,
-  credentialSubmitting,
+  submitManualGrant,
+  manualGrantSubmitting,
   signal,
   entries,
 }: ConnectModalContentProps & {
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
-  submitManualCredentials: SubmitManualCredentialsFn;
-  credentialSubmitting: boolean;
+  submitManualGrant: SubmitManualGrantFn;
+  manualGrantSubmitting: boolean;
   signal: AbortSignal;
   entries: readonly ConnectMethodContentEntry[];
 }) {
-  const isGoogleOAuth =
+  const showGoogleSecurityWarningNotice =
     hasAuthCodeGrant(
       item.type,
       entries.map((entry) => {
         return entry.authMethod;
       }),
-    ) && isGoogleOAuthConnector(item.type);
+    ) && shouldShowGoogleSecurityWarningNotice(item.type);
 
   return (
     <div className="flex flex-col gap-4">
-      {isGoogleOAuth && <GoogleOAuthNotice />}
+      {showGoogleSecurityWarningNotice && <GoogleSecurityWarningNotice />}
 
       <ConnectMethodsContent
         entries={entries}
@@ -619,8 +819,8 @@ function StandardConnectMethodsContent({
           showPermissionDialogOnConnect,
           connectOAuthAuthCodeAndSettle,
           connectOAuthDeviceAuthAndSettle,
-          submitManualCredentials,
-          credentialSubmitting,
+          submitManualGrant,
+          manualGrantSubmitting,
           signal,
         }}
       />
@@ -633,23 +833,23 @@ function ConnectModalContent({
   onSuccess,
   showPermissionDialogOnConnect,
 }: ConnectModalContentProps) {
-  const [settleLoadable, connectOAuthAuthCodeAndSettle] = useLoadableSet(
+  const [settleLoadable, connectOAuthAuthCodeAndSettleCommand] = useLoadableSet(
     connectConnectorOAuthAuthCodeAndSettle$,
   );
   const [, connectOAuthDeviceAuthAndSettle] = useLoadableSet(
     connectConnectorOAuthDeviceAuthAndSettle$,
   );
-  const [manualCredentialLoadable, submitManualCredentialsCommand] =
-    useLoadableSet(submitManualCredentials$);
-  const submitManualCredentials: SubmitManualCredentialsFn = async (
+  const [manualGrantLoadable, submitManualGrantCommand] =
+    useLoadableSet(submitManualGrant$);
+  const submitManualGrant: SubmitManualGrantFn = async (
     type,
     authMethod,
-    inputSecrets,
+    inputValues,
     options,
     signal,
   ) => {
-    await submitManualCredentialsCommand(
-      { type, authMethod, inputSecrets, options },
+    await submitManualGrantCommand(
+      { type, authMethod, inputValues, options },
       signal,
     );
   };
@@ -657,21 +857,44 @@ function ConnectModalContent({
   const pageSignal = useGet(pageSignal$);
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const settling = settleLoadable.state === "loading";
-  const credentialSubmitting = manualCredentialLoadable.state === "loading";
+  const manualGrantSubmitting = manualGrantLoadable.state === "loading";
   const isPolling = pollingType === item.type;
   const entries = getConnectMethodContentEntries(item);
   const onConnectSuccess = async () => {
     await runConnectSuccess(item.type, onSuccess, pageSignal);
   };
+  const connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn = async (
+    type,
+    authMethod,
+    connectSuccess,
+    options,
+    signal,
+  ) => {
+    await connectOAuthAuthCodeAndSettleCommand(
+      { type, authMethod, onSuccess: connectSuccess, options },
+      signal,
+    );
+  };
+  const connectOAuthDeviceAuthAndSettleCommandFn: ConnectOAuthDeviceAuthAndSettleFn =
+    async (args, signal) => {
+      await connectOAuthDeviceAuthAndSettle(
+        {
+          type: args.type,
+          authMethod: args.authMethod,
+          onSuccess: args.onSuccess,
+          options: args.options,
+          startOptions: args.startOptions,
+        },
+        signal,
+      );
+    };
 
-  const progressContent =
-    hasAuthCodeGrant(item.type, item.availableAuthMethods) &&
-    hasConnectorAuthCodeGrant(item.type)
-      ? getOAuthAuthCodeProgressContent({
-          isPolling,
-          settling,
-        })
-      : null;
+  const progressContent = hasAuthCodeGrant(item.type, item.availableAuthMethods)
+    ? getOAuthAuthCodeProgressContent({
+        isPolling,
+        settling,
+      })
+    : null;
   if (progressContent) {
     return progressContent;
   }
@@ -682,9 +905,9 @@ function ConnectModalContent({
       onSuccess={onConnectSuccess}
       showPermissionDialogOnConnect={showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={connectOAuthAuthCodeAndSettle}
-      connectOAuthDeviceAuthAndSettle={connectOAuthDeviceAuthAndSettle}
-      submitManualCredentials={submitManualCredentials}
-      credentialSubmitting={credentialSubmitting}
+      connectOAuthDeviceAuthAndSettle={connectOAuthDeviceAuthAndSettleCommandFn}
+      submitManualGrant={submitManualGrant}
+      manualGrantSubmitting={manualGrantSubmitting}
       signal={pageSignal}
       entries={entries}
     />

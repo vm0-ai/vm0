@@ -5,10 +5,12 @@ import { now } from "../../lib/time";
 
 export const TEST_OAUTH_CLIENT_ID = "test-oauth-client";
 export const TEST_OAUTH_CLIENT_SECRET = "test-oauth-secret";
-export const TEST_OAUTH_DEVICE_CLIENT_ID = "test-oauth-device-client";
 export const TEST_OAUTH_DEVICE_USER_CODE = "TEST-DEVICE";
 export const TEST_OAUTH_DEVICE_VERIFICATION_URI =
   "https://oauth-device.test/device";
+
+const TEST_OAUTH_DEVICE_CLIENT_ID = "test-oauth-device-client";
+const TEST_OAUTH_DEVICE_API_CLIENT_ID = "test-oauth-device-api-client";
 
 const TEST_OAUTH_SCENARIOS = [
   "success",
@@ -78,6 +80,13 @@ export function isTestEndpointAllowed(request: HeaderReader): boolean {
 
 export function testEndpointNotFoundResponse(): Response {
   return new Response("Not found", { status: 404 });
+}
+
+export function isTestOAuthDeviceClientId(clientId: string | null): boolean {
+  return (
+    clientId === TEST_OAUTH_DEVICE_CLIENT_ID ||
+    clientId === TEST_OAUTH_DEVICE_API_CLIENT_ID
+  );
 }
 
 export function parseTestOAuthScenario(

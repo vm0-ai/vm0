@@ -12,6 +12,10 @@ export const runway = {
         label: "API Key",
         helpText:
           "1. Sign up for an account in the [Runway Developer Portal](https://dev.runwayml.com/)\n2. After signing up, create a new organization\n3. Click to the **API Keys** tab\n4. Create a new key, giving it a descriptive name\n5. Copy the key immediately and store it in a safe place — it will only be shown once",
+        storage: {
+          secrets: ["RUNWAY_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

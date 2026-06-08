@@ -10,6 +10,7 @@ mod nbd;
 mod service;
 mod setup;
 mod start;
+mod workspace_image_cache;
 
 pub use benchmark::{BenchmarkArgs, run_benchmark};
 pub use build::{BuildArgs, run_build};
@@ -22,3 +23,4 @@ pub use local::{LocalArgs, run_local};
 pub use service::{ServiceArgs, run_service};
 pub use setup::run_setup;
 pub use start::{StartArgs, run_start};
+pub use workspace_image_cache::{WorkspaceImageCacheArgs, run_workspace_image_cache};

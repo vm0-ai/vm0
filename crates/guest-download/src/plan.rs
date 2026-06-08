@@ -1,6 +1,7 @@
 use crate::download::DownloadTask;
 use crate::instructions::InstructionNormalization;
 use crate::manifest::{Manifest, ManifestEntry};
+use std::path::Path;
 
 pub(crate) struct RunPlan {
     pub(crate) cleanup_paths: Vec<String>,
@@ -54,6 +55,8 @@ impl RunPlan {
             "storage",
             "storage_download",
             false,
+            false,
+            false,
         );
 
         // Artifacts: 404 is non-fatal (may not exist on first run)
@@ -62,6 +65,8 @@ impl RunPlan {
             &manifest.artifacts,
             "artifact",
             "artifact_download",
+            true,
+            true,
             true,
         );
 
@@ -85,13 +90,21 @@ fn append_download_tasks(
     label_prefix: &str,
     op_name: &'static str,
     allow_404: bool,
+    include_missing_root_policy: bool,
+    skip_cached_existing_root: bool,
 ) {
     for (idx, entry) in entries.iter().enumerate() {
-        if is_valid_url(&entry.archive_url)
+        if should_download_entry(entry, skip_cached_existing_root)
             && let Some(url) = entry.archive_url.clone()
         {
             tasks.push(DownloadTask::new(
-                format_entry_label(entry, label_prefix, idx + 1, &url),
+                format_entry_label(
+                    entry,
+                    label_prefix,
+                    idx + 1,
+                    &url,
+                    include_missing_root_policy,
+                ),
                 op_name,
                 url,
                 entry.mount_path.clone(),
@@ -101,11 +114,22 @@ fn append_download_tasks(
     }
 }
 
+fn should_download_entry(entry: &ManifestEntry, skip_cached_existing_root: bool) -> bool {
+    if !is_valid_url(&entry.archive_url) {
+        return false;
+    }
+    if !skip_cached_existing_root || !entry.cached {
+        return true;
+    }
+    !Path::new(&entry.mount_path).is_dir()
+}
+
 fn format_entry_label(
     entry: &ManifestEntry,
     label_prefix: &str,
     index: usize,
     archive_url: &str,
+    include_missing_root_policy: bool,
 ) -> String {
     let storage_name = entry.vas_storage_name.as_deref().unwrap_or("unknown");
     let version_id = entry.vas_version_id.as_deref().unwrap_or("unknown");
@@ -113,16 +137,32 @@ fn format_entry_label(
         .split_once("://")
         .map(|(scheme, _)| scheme)
         .unwrap_or("unknown");
+    let missing_root_policy = if include_missing_root_policy {
+        format!(
+            " missingRootPolicy={}",
+            entry.missing_root_policy.as_deref().unwrap_or("fail")
+        )
+    } else {
+        String::new()
+    };
 
     format!(
-        "{} {} mountPath={} vasStorageName={} vasVersionId={} urlScheme={} cached={}",
-        label_prefix, index, entry.mount_path, storage_name, version_id, url_scheme, entry.cached
+        "{} {} mountPath={} vasStorageName={} vasVersionId={} urlScheme={} cached={}{}",
+        label_prefix,
+        index,
+        entry.mount_path,
+        storage_name,
+        version_id,
+        url_scheme,
+        entry.cached,
+        missing_root_policy
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn is_valid_url_none() {
@@ -164,7 +204,8 @@ mod tests {
                     "mountPath": "/workspace/a",
                     "archiveUrl": "https://s3/a.tar.gz",
                     "vasStorageName": "workspace-a",
-                    "vasVersionId": "artifact-v1"
+                    "vasVersionId": "artifact-v1",
+                    "missingRootPolicy": "preserveParentVersion"
                 },
                 {
                     "mountPath": "/workspace/b",
@@ -194,7 +235,7 @@ mod tests {
         assert_eq!(
             plan.download_tasks[1],
             DownloadTask::new(
-                "artifact 1 mountPath=/workspace/a vasStorageName=workspace-a vasVersionId=artifact-v1 urlScheme=https cached=false".into(),
+                "artifact 1 mountPath=/workspace/a vasStorageName=workspace-a vasVersionId=artifact-v1 urlScheme=https cached=false missingRootPolicy=preserveParentVersion".into(),
                 "artifact_download",
                 "https://s3/a.tar.gz".into(),
                 "/workspace/a".into(),
@@ -204,7 +245,7 @@ mod tests {
         assert_eq!(
             plan.download_tasks[2],
             DownloadTask::new(
-                "artifact 2 mountPath=/workspace/b vasStorageName=workspace-b vasVersionId=artifact-v2 urlScheme=file cached=false".into(),
+                "artifact 2 mountPath=/workspace/b vasStorageName=workspace-b vasVersionId=artifact-v2 urlScheme=file cached=false missingRootPolicy=fail".into(),
                 "artifact_download",
                 "file:///tmp/vm0-storage-cache/b.tar.gz".into(),
                 "/workspace/b".into(),
@@ -244,6 +285,71 @@ mod tests {
         assert_eq!(
             plan.instruction_files[0],
             InstructionNormalization::new("/home/user/.codex".into(), "AGENTS.md".into())
+        );
+    }
+
+    #[test]
+    fn run_plan_skips_cached_artifact_when_mount_root_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("workspace");
+        fs::create_dir_all(&mount).unwrap();
+        let mount_path = mount.to_string_lossy().into_owned();
+        let manifest = Manifest {
+            storages: vec![],
+            artifacts: vec![ManifestEntry {
+                mount_path: mount_path.clone(),
+                archive_url: Some("https://s3/artifact.tar.gz".into()),
+                instructions_target_filename: None,
+                cached: true,
+                vas_storage_name: Some("artifact".into()),
+                vas_version_id: Some("artifact-v1".into()),
+                missing_root_policy: None,
+            }],
+            cleanup_paths: vec![],
+        };
+
+        let plan = RunPlan::from_manifest(&manifest);
+
+        assert_eq!(plan.preserved_paths, [mount_path]);
+        assert!(plan.download_tasks.is_empty());
+    }
+
+    #[test]
+    fn run_plan_downloads_cached_artifact_when_mount_root_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mount_path = dir
+            .path()
+            .join("missing-workspace")
+            .to_string_lossy()
+            .into_owned();
+        let manifest = Manifest {
+            storages: vec![],
+            artifacts: vec![ManifestEntry {
+                mount_path: mount_path.clone(),
+                archive_url: Some("https://s3/artifact.tar.gz".into()),
+                instructions_target_filename: None,
+                cached: true,
+                vas_storage_name: Some("artifact".into()),
+                vas_version_id: Some("artifact-v1".into()),
+                missing_root_policy: None,
+            }],
+            cleanup_paths: vec![],
+        };
+
+        let plan = RunPlan::from_manifest(&manifest);
+
+        assert_eq!(plan.preserved_paths, std::slice::from_ref(&mount_path));
+        assert_eq!(
+            plan.download_tasks,
+            [DownloadTask::new(
+                format!(
+                    "artifact 1 mountPath={mount_path} vasStorageName=artifact vasVersionId=artifact-v1 urlScheme=https cached=true missingRootPolicy=fail"
+                ),
+                "artifact_download",
+                "https://s3/artifact.tar.gz".into(),
+                mount_path,
+                true,
+            )],
         );
     }
 }

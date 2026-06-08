@@ -18,9 +18,12 @@ export const neon = {
           clientIdEnv: "NEON_OAUTH_CLIENT_ID",
           clientSecretEnv: "NEON_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["NEON_ACCESS_TOKEN", "NEON_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.neon.tech/oauth2/token",
           scopes: [
             "openid",
             "offline_access",
@@ -29,11 +32,21 @@ export const neon = {
             "urn:neoncloud:projects:update",
             "urn:neoncloud:projects:delete",
           ],
+          outputs: {
+            accessToken: "$secrets.NEON_ACCESS_TOKEN",
+            refreshToken: "$secrets.NEON_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "NEON_ACCESS_TOKEN",
-          refreshToken: "NEON_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.NEON_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.NEON_ACCESS_TOKEN",
+            refreshToken: "$secrets.NEON_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["NEON_ACCESS_TOKEN"],
           envBindings: {
             NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
           },
@@ -44,6 +57,10 @@ export const neon = {
         label: "API Key",
         helpText:
           "1. Log in to [Neon Console](https://console.neon.tech)\n2. Navigate to **Account settings > API keys**\n3. Click the button to create a new API key\n4. Copy and store the secret token immediately (it is only displayed once)",
+        storage: {
+          secrets: ["NEON_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

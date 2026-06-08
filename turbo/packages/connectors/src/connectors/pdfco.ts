@@ -10,6 +10,10 @@ export const pdfco = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        storage: {
+          secrets: ["PDFCO_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

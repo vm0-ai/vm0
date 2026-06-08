@@ -53,6 +53,7 @@ function defaultSchedule(
     volumeVersions: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
+    chatThreadId: "d0000000-0000-4000-a000-000000000001",
     ...overrides,
   };
 }
@@ -88,7 +89,6 @@ function mockBaseAPIs(schedules: ScheduleResponse[]) {
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),

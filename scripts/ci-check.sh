@@ -43,7 +43,7 @@ run_check "Format" "cd '$PROJECT_ROOT/turbo' && pnpm format" "✨" || exit 1
 if [ -n "$SKIP_DB_CHECK" ]; then
     echo "⏭️  Skipping database migration check (SKIP_DB_CHECK set)"
 else
-    run_check "Database Migration" "cd '$PROJECT_ROOT/turbo' && pnpm -F web db:migrate" "🗄️" || {
+    run_check "Database Migration" "cd '$PROJECT_ROOT/turbo' && pnpm -F @vm0/db db:migrate" "🗄️" || {
         echo "💡 Tip: Set SKIP_DB_CHECK=1 to skip DB checks in dev environment"
         exit 1
     }

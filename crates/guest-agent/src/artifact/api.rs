@@ -3,9 +3,10 @@ use crate::constants;
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use api_contracts::generated::types::webhooks::agent::storages::{
-    FileEntryWithHash, commit as storage_commit, prepare as storage_prepare,
+    commit as storage_commit, prepare as storage_prepare,
 };
 use guest_common::log_warn;
+use serde::Serialize;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
@@ -49,19 +50,41 @@ pub(super) struct CommitSnapshotRequest<'a> {
     pub(super) message: Option<&'a str>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PrepareSnapshotPayload<'a> {
+    run_id: &'a str,
+    storage_name: &'a str,
+    storage_type: &'a str,
+    files: &'a [FileEntry],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent_version_id: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CommitSnapshotPayload<'a> {
+    run_id: &'a str,
+    storage_name: &'a str,
+    storage_type: &'a str,
+    version_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent_version_id: Option<&'a str>,
+    files: &'a [FileEntry],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
 pub(super) async fn prepare_snapshot(
     http: &HttpClient,
     request: PrepareSnapshotRequest<'_>,
 ) -> Result<PreparedSnapshot, PrepareSnapshotError> {
-    let payload = storage_prepare::Request {
-        run_id: request.run_id.to_string(),
-        storage_name: request.storage_name.to_string(),
-        storage_type: request.storage_type.to_string(),
-        files: to_request_files(request.files),
-        parent_version_id: non_empty_string(request.parent_version_id),
-        force: None,
-        base_version: None,
-        changes: None,
+    let payload = PrepareSnapshotPayload {
+        run_id: request.run_id,
+        storage_name: request.storage_name,
+        storage_type: request.storage_type,
+        files: request.files,
+        parent_version_id: non_empty_str(request.parent_version_id),
     };
 
     let url = http
@@ -113,14 +136,14 @@ pub(super) async fn commit_snapshot(
     request: CommitSnapshotRequest<'_>,
     parse_error_log: &str,
 ) -> Result<bool, AgentError> {
-    let payload = storage_commit::Request {
-        run_id: request.run_id.to_string(),
-        storage_name: request.storage_name.to_string(),
-        storage_type: request.storage_type.to_string(),
-        version_id: request.version_id.to_string(),
-        parent_version_id: non_empty_string(request.parent_version_id),
-        files: to_request_files(request.files),
-        message: request.message.map(str::to_string),
+    let payload = CommitSnapshotPayload {
+        run_id: request.run_id,
+        storage_name: request.storage_name,
+        storage_type: request.storage_type,
+        version_id: request.version_id,
+        parent_version_id: non_empty_str(request.parent_version_id),
+        files: request.files,
+        message: request.message,
     };
 
     let url = http.storage_commit_url()?;
@@ -140,21 +163,6 @@ pub(super) async fn commit_snapshot(
         .unwrap_or(false))
 }
 
-fn non_empty_string(value: &str) -> Option<String> {
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_string())
-    }
-}
-
-fn to_request_files(files: &[FileEntry]) -> Vec<FileEntryWithHash> {
-    files
-        .iter()
-        .map(|file| FileEntryWithHash {
-            path: file.path.clone(),
-            hash: file.hash.clone(),
-            size: file.size,
-        })
-        .collect()
+fn non_empty_str(value: &str) -> Option<&str> {
+    if value.is_empty() { None } else { Some(value) }
 }

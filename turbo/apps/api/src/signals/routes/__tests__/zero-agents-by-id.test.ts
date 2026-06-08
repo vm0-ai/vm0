@@ -154,7 +154,6 @@ describe("GET /api/zero/agents/:id", () => {
       description: "Test description",
       sound: "friendly",
       avatarUrl: null,
-      permissionPolicies: null,
       customSkills: [],
       modelProviderId: null,
       selectedModel: null,

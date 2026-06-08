@@ -1,5 +1,4 @@
 import { command } from "ccstate";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 import type { Stripe } from "stripe";
@@ -12,10 +11,12 @@ import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
+  readonly tier: SubscriptionCheckoutTier;
   readonly priceId: string;
   readonly trialDays?: 7;
   readonly successUrl: string;
   readonly cancelUrl: string;
+  readonly adAttribution?: Readonly<Record<string, string | undefined>>;
 }
 
 interface CompleteCheckoutSessionArgs {
@@ -26,7 +27,12 @@ interface CompleteCheckoutSessionArgs {
 type CheckoutCompletionResult =
   | { readonly status: "completed" }
   | { readonly status: "pending" }
-  | { readonly status: "customer_mismatch" };
+  | { readonly status: "customer_mismatch" }
+  | {
+      readonly status: "tier_conflict";
+      readonly currentTier: string | null;
+      readonly targetTier: SubscriptionCheckoutTier;
+    };
 
 interface CreateCreditCheckoutSessionArgs {
   readonly orgId: string;
@@ -37,13 +43,19 @@ interface CreateCreditCheckoutSessionArgs {
 
 const CREDITS_PER_DOLLAR = 1000;
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
+export type SubscriptionCheckoutTier =
+  (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
 
 /** Returns the active (first) price ID for a given tier. */
-export function activePriceId(tier: "pro" | "team"): string | undefined {
+export function activePriceId(
+  tier: SubscriptionCheckoutTier,
+): string | undefined {
   return env("ZERO_PRICE")?.[tier]?.[0];
 }
 
-export function tierFromPriceId(priceId: string): OrgTier {
+export function tierForKnownPriceId(
+  priceId: string,
+): SubscriptionCheckoutTier | null {
   const priceMap = env("ZERO_PRICE");
   if (priceMap) {
     for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
@@ -52,11 +64,90 @@ export function tierFromPriceId(priceId: string): OrgTier {
       }
     }
   }
+  return null;
+}
+
+export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
+  const tier = tierForKnownPriceId(priceId);
+  if (tier) {
+    return tier;
+  }
   throw new Error(`Unknown Stripe price ID: ${priceId}`);
+}
+
+function billingTierRank(tier: string | null | undefined): number {
+  switch (tier) {
+    case "team": {
+      return 2;
+    }
+    case "pro": {
+      return 1;
+    }
+    case "free":
+    case "pro-suspend":
+    default: {
+      return 0;
+    }
+  }
+}
+
+function billingTierLabel(tier: string | null | undefined): string {
+  switch (tier) {
+    case "team": {
+      return "Team";
+    }
+    case "pro": {
+      return "Pro";
+    }
+    case "free": {
+      return "Free";
+    }
+    case "pro-suspend": {
+      return "Pro suspended";
+    }
+    default: {
+      return tier ?? "Pro suspended";
+    }
+  }
+}
+
+export function checkoutWouldReplaceWithSameOrLowerTier(args: {
+  readonly currentTier: string | null | undefined;
+  readonly targetTier: SubscriptionCheckoutTier;
+}): boolean {
+  return billingTierRank(args.currentTier) >= billingTierRank(args.targetTier);
+}
+
+export function checkoutTierConflictMessage(args: {
+  readonly currentTier: string | null | undefined;
+  readonly targetTier: SubscriptionCheckoutTier;
+}): string {
+  return `Cannot create ${billingTierLabel(args.targetTier)} checkout while current tier is ${billingTierLabel(args.currentTier)}; use billing management to change plans`;
 }
 
 export function activeCustomCreditPriceId(): string | undefined {
   return env("ZERO_PRICE")?.customCredits?.[0];
+}
+
+function checkoutSessionMetadata(args: {
+  readonly orgId: string;
+  readonly tier: SubscriptionCheckoutTier;
+  readonly priceId: string;
+  readonly adAttribution:
+    | Readonly<Record<string, string | undefined>>
+    | undefined;
+}): Record<string, string> {
+  const metadata: Record<string, string> = {
+    orgId: args.orgId,
+    tier: args.tier,
+    priceId: args.priceId,
+  };
+  for (const [key, value] of Object.entries(args.adAttribution ?? {})) {
+    if (value) {
+      metadata[key] = value;
+    }
+  }
+  return metadata;
 }
 
 function stripeObjectId(
@@ -68,11 +159,8 @@ function stripeObjectId(
   return value?.id ?? null;
 }
 
-function subscriptionPeriodEnd(subscription: Stripe.Subscription): Date | null {
-  const periodEndUnix = subscription.items.data[0]?.current_period_end;
-  return typeof periodEndUnix === "number"
-    ? new Date(periodEndUnix * 1000)
-    : null;
+function subscriptionWillCancel(subscription: Stripe.Subscription): boolean {
+  return subscription.cancel_at_period_end || subscription.cancel_at !== null;
 }
 
 function customUnitAmountParams(
@@ -123,9 +211,15 @@ export const createCheckoutSession$ = command(
     args: CreateCheckoutSessionArgs,
     signal: AbortSignal,
   ): Promise<string> => {
+    const metadata = checkoutSessionMetadata({
+      orgId: args.orgId,
+      tier: args.tier,
+      priceId: args.priceId,
+      adAttribution: args.adAttribution,
+    });
     const customerId = await set(
       getOrCreateStripeCustomer$,
-      args.orgId,
+      { orgId: args.orgId, metadata: args.adAttribution },
       signal,
     );
     signal.throwIfAborted();
@@ -138,8 +232,9 @@ export const createCheckoutSession$ = command(
       allow_promotion_codes: true,
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
+      metadata,
       subscription_data: {
-        metadata: { orgId: args.orgId },
+        metadata,
         ...(args.trialDays === undefined
           ? {}
           : { trial_period_days: args.trialDays }),
@@ -162,7 +257,11 @@ export const completeCheckoutSession$ = command(
   ): Promise<CheckoutCompletionResult> => {
     const db = set(writeDb$);
     const [org] = await db
-      .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
+      .select({
+        stripeCustomerId: orgMetadata.stripeCustomerId,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        tier: orgMetadata.tier,
+      })
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, args.orgId))
       .limit(1);
@@ -173,7 +272,7 @@ export const completeCheckoutSession$ = command(
     signal.throwIfAborted();
 
     const customerId = stripeObjectId(session.customer);
-    if (!customerId || customerId !== org?.stripeCustomerId) {
+    if (!org || !customerId || customerId !== org.stripeCustomerId) {
       return { status: "customer_mismatch" };
     }
 
@@ -195,17 +294,28 @@ export const completeCheckoutSession$ = command(
     }
 
     const tier = tierFromPriceId(priceId);
-    const periodEnd = subscriptionPeriodEnd(subscription);
+    if (
+      org.stripeSubscriptionId !== subscription.id &&
+      checkoutWouldReplaceWithSameOrLowerTier({
+        currentTier: org.tier,
+        targetTier: tier,
+      })
+    ) {
+      return {
+        status: "tier_conflict",
+        currentTier: org.tier,
+        targetTier: tier,
+      };
+    }
+    const alreadyPaidSubscription =
+      org.stripeSubscriptionId === subscription.id && org.tier === tier;
 
     await db
       .update(orgMetadata)
       .set({
-        tier,
         stripeSubscriptionId: subscription.id,
         subscriptionStatus: subscription.status,
-        cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        onboardingPaymentPending: false,
-        ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+        cancelAtPeriodEnd: subscriptionWillCancel(subscription),
         updatedAt: nowDate(),
       })
       .where(
@@ -216,7 +326,7 @@ export const completeCheckoutSession$ = command(
       );
     signal.throwIfAborted();
 
-    return { status: "completed" };
+    return { status: alreadyPaidSubscription ? "completed" : "pending" };
   },
 );
 
@@ -228,7 +338,7 @@ export const createCreditCheckoutSession$ = command(
   ): Promise<string> => {
     const customerId = await set(
       getOrCreateStripeCustomer$,
-      args.orgId,
+      { orgId: args.orgId },
       signal,
     );
     signal.throwIfAborted();

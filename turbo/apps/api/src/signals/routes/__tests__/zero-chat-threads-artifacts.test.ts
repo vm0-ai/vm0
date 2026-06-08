@@ -57,7 +57,7 @@ async function seedRunUploadedFile(args: RunUploadedFileSeed): Promise<void> {
     contentType: args.contentType,
     sizeBytes: args.sizeBytes,
     url: args.url,
-    metadata: args.metadata ?? {},
+    ...(args.metadata !== undefined ? { metadata: args.metadata } : {}),
     ...(args.createdAt ? { createdAt: args.createdAt } : {}),
   });
 }
@@ -340,6 +340,84 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
         contentType: "text/html",
         size: 640,
         url: siteUrl,
+        artifactKind: "hosted-site",
+      }),
+    ]);
+  });
+
+  it("only returns presentation html artifacts for presentation runs", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const threadId = await store.set(
+      seedChatThread$,
+      { userId: fixture.userId, composeId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "completed",
+        chatThreadId: threadId,
+      },
+      context.signal,
+    );
+    await seedRunUploadedFile({
+      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      externalId: "presentation-bundle",
+      filename: "presentation.zip",
+      contentType: "application/zip",
+      sizeBytes: 4096,
+      url: `http://localhost:3000/f/${fixture.userId}/presentation-bundle/presentation.zip`,
+      metadata: { artifactKind: ["presentation-html"] },
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+    });
+    const presentationUrl = "https://demo-deck.sites.example.com";
+    await seedRunUploadedFile({
+      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      externalId: presentationUrl,
+      filename: "demo-deck.html",
+      contentType: "text/html",
+      sizeBytes: 768,
+      url: presentationUrl,
+      metadata: {
+        generatedBy: "zero-official-presentation",
+        artifactKind: "presentation-html",
+      },
+      createdAt: new Date("2026-01-02T00:00:00Z"),
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadArtifactsContract);
+    const response = await accept(
+      client.list({
+        params: { threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.runs).toHaveLength(1);
+    expect(response.body.runs[0]?.files).toStrictEqual([
+      expect.objectContaining({
+        id: presentationUrl,
+        filename: "demo-deck.html",
+        contentType: "text/html",
+        size: 768,
+        url: presentationUrl,
+        artifactKind: "presentation-html",
       }),
     ]);
   });

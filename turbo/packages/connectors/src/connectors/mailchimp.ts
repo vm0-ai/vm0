@@ -18,10 +18,16 @@ export const mailchimp = {
           clientIdEnv: "MAILCHIMP_OAUTH_CLIENT_ID",
           clientSecretEnv: "MAILCHIMP_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["MAILCHIMP_ACCESS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://login.mailchimp.com/oauth2/token",
           scopes: [],
+          outputs: {
+            accessToken: "$secrets.MAILCHIMP_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",
@@ -35,6 +41,10 @@ export const mailchimp = {
         label: "API Key",
         helpText:
           "1. Log in to [Mailchimp](https://mailchimp.com)\n2. Click your **profile icon** and select **Profile**\n3. Click the **Extras** dropdown menu, then choose **API keys**\n4. In the **Your API Keys** section, click **Create A Key**\n5. Enter a descriptive name for the key\n6. Click **Generate Key**\n7. Click **Copy Key to Clipboard** and store it in a secure place (you will not be able to see or copy it again)\n8. Click **Done**",
+        storage: {
+          secrets: ["MAILCHIMP_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

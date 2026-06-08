@@ -90,7 +90,6 @@ function mockThreads(observedQueries: ListQuery[]) {
           description: null;
           sound: null;
           avatarUrl: null;
-          permissionPolicies: null;
           customSkills: string[];
         }
       > = {
@@ -101,7 +100,6 @@ function mockThreads(observedQueries: ListQuery[]) {
           description: null,
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         },
         [SUB_AGENT_ID]: {
@@ -111,7 +109,6 @@ function mockThreads(observedQueries: ListQuery[]) {
           description: null,
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         },
       };

@@ -498,6 +498,7 @@ async function buildAndDeploy(params: {
   timezone: string;
   prompt: string;
   existingEnabled: boolean | undefined;
+  chatThreadId: string | undefined;
 }): Promise<DeployResult> {
   let cronExpression: string | undefined;
   let atTimeISO: string | undefined;
@@ -531,6 +532,9 @@ async function buildAndDeploy(params: {
     prompt: params.prompt,
     ...(params.existingEnabled !== undefined && {
       enabled: params.existingEnabled,
+    }),
+    ...(params.chatThreadId !== undefined && {
+      chatThreadId: params.chatThreadId,
     }),
   });
 
@@ -751,6 +755,7 @@ Notes:
         timezone,
         prompt: promptText_,
         existingEnabled: existingSchedule?.enabled,
+        chatThreadId: process.env.ZERO_CHAT_THREAD_ID,
       });
 
       // 8. Display deployment result

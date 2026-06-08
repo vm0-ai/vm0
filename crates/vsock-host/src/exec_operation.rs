@@ -15,10 +15,10 @@ use crate::{
     operation_tracker::{NormalOperationToken, NormalOperationTransitionHandle},
 };
 use vsock_proto::{
-    ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecControlStatus,
+    BorrowedRawMessage, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecControlStatus,
     ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy,
     MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT,
-    MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED, RawMessage,
+    MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
 };
 
 pub(crate) const DEFAULT_EXEC_CAPTURE_LIMIT_BYTES: u32 = 1024 * 1024;
@@ -44,38 +44,84 @@ pub enum ExecOwnedCapturedOutput {
     /// The stream was discarded by policy and therefore has no captured bytes.
     Discarded,
     /// The stream was captured, possibly with protocol-level truncation.
-    Captured { bytes: Vec<u8>, truncated: bool },
+    Captured {
+        /// Owned stdout or stderr bytes returned in the terminal exec result.
+        bytes: Vec<u8>,
+        /// Whether the guest truncated captured bytes to satisfy the requested
+        /// capture output policy.
+        truncated: bool,
+    },
 }
 
 /// Terminal result for a host exec operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecOperationResult {
+    /// Terminal process state reported by the guest.
     pub termination: ExecTermination,
+    /// Guest-reported wall-clock duration in milliseconds.
     pub duration_ms: u32,
+    /// Stdout output state according to the requested stdout output policy.
     pub stdout: ExecOwnedCapturedOutput,
+    /// Stderr output state according to the requested stderr output policy.
     pub stderr: ExecOwnedCapturedOutput,
+    /// Guest-provided terminal diagnostic text.
+    ///
+    /// This may be empty when the guest has no additional diagnostic to
+    /// report for the terminal state.
     pub diagnostic: String,
+    /// Whether the host-side bounded stream queue overflowed.
+    ///
+    /// This is separate from guest-side capture or stream truncation. When
+    /// true, some streamed output events may have been dropped even though the
+    /// terminal result was still received.
     pub stream_overflowed: bool,
 }
 
 /// Streamed output event for a host exec operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecOutputEvent {
+    /// Output stream that produced this event.
     pub stream: ExecOutputStream,
+    /// Per-operation output sequence number validated by the host.
+    ///
+    /// The sequence orders stdout and stderr events together for the exec
+    /// operation.
     pub output_seq: u32,
+    /// Output bytes emitted for this event.
+    ///
+    /// This may be empty only when the event marks stream truncation.
     pub chunk: Vec<u8>,
+    /// Whether the guest truncated this stream to satisfy the requested stream
+    /// output policy.
+    ///
+    /// Host-side stream queue overflow is reported separately on
+    /// `ExecOperationResult::stream_overflowed`.
     pub truncated: bool,
 }
 
 /// Request parameters for starting an exec operation.
 pub struct ExecOperationRequest<'a> {
+    /// Positive guest-side process timeout in milliseconds.
+    ///
+    /// A zero timeout is rejected before the request is sent. Use supervised
+    /// exec for operations that should not have a one-shot process timeout.
     pub timeout_ms: u32,
+    /// Shell command to run in the guest.
     pub command: &'a str,
+    /// Environment variables injected into the guest shell command.
     pub env: &'a [(&'a str, &'a str)],
+    /// Whether to run the command with guest-side sudo handling.
     pub sudo: bool,
+    /// Human-readable label used for diagnostics and logs.
     pub label: &'a str,
+    /// Stdout output policy requested from the guest.
     pub stdout: ExecOutputPolicy,
+    /// Stderr output policy requested from the guest.
     pub stderr: ExecOutputPolicy,
+    /// Exit codes sent to the guest for expected-exit handling and diagnostics.
+    ///
+    /// The host still preserves the terminal state reported by the guest in
+    /// `ExecOperationResult::termination`.
     pub expected_exit_codes: &'a [i32],
     /// Optional bounded stdin payload written to the child and then closed.
     pub stdin_bytes: Option<&'a [u8]>,
@@ -90,28 +136,56 @@ pub struct ExecOperationRequest<'a> {
 
 /// Request parameters for a capture-only exec operation helper.
 pub struct ExecCaptureRequest<'a> {
+    /// Positive guest-side process timeout in milliseconds.
+    ///
+    /// A zero timeout is rejected before the request is sent.
     pub timeout_ms: u32,
+    /// Shell command to run in the guest.
     pub command: &'a str,
+    /// Environment variables injected into the guest shell command.
     pub env: &'a [(&'a str, &'a str)],
+    /// Whether to run the command with guest-side sudo handling.
     pub sudo: bool,
+    /// Human-readable label used for diagnostics and logs.
     pub label: &'a str,
+    /// Maximum stdout bytes to retain in the terminal exec result.
     pub stdout_limit_bytes: u32,
+    /// Maximum stderr bytes to retain in the terminal exec result.
     pub stderr_limit_bytes: u32,
+    /// Exit codes sent to the guest for expected-exit handling and diagnostics.
     pub expected_exit_codes: &'a [i32],
     /// Optional bounded stdin payload written to the child and then closed.
     pub stdin_bytes: Option<&'a [u8]>,
+    /// Maximum host-side wait for the terminal result after the request starts.
+    ///
+    /// This is separate from `timeout_ms`, which is the guest-side process
+    /// timeout encoded in the exec request.
     pub wait_timeout: Duration,
 }
 
 /// Request parameters for a streaming exec operation helper.
 pub struct ExecStreamRequest<'a> {
+    /// Positive guest-side process timeout in milliseconds.
+    ///
+    /// A zero timeout is rejected before the request is sent.
     pub timeout_ms: u32,
+    /// Shell command to run in the guest.
     pub command: &'a str,
+    /// Environment variables injected into the guest shell command.
     pub env: &'a [(&'a str, &'a str)],
+    /// Whether to run the command with guest-side sudo handling.
     pub sudo: bool,
+    /// Human-readable label used for diagnostics and logs.
     pub label: &'a str,
+    /// Stdout output policy requested from the guest.
+    ///
+    /// At least one of stdout or stderr must use a streaming output policy.
     pub stdout: ExecOutputPolicy,
+    /// Stderr output policy requested from the guest.
+    ///
+    /// At least one of stdout or stderr must use a streaming output policy.
     pub stderr: ExecOutputPolicy,
+    /// Exit codes sent to the guest for expected-exit handling and diagnostics.
     pub expected_exit_codes: &'a [i32],
     /// Optional bounded stdin payload written to the child and then closed.
     pub stdin_bytes: Option<&'a [u8]>,
@@ -183,26 +257,40 @@ pub struct SupervisedExecRequest<'a> {
 /// Host-side acknowledgement for a delivered exec-control request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecControlAck {
+    /// Sequence number of the supervised exec operation that received control.
     pub target_seq: u32,
+    /// Control message identifier echoed by the guest.
     pub message_id: String,
 }
 
 /// Guest-side terminal status for an exec-control request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecControlGuestStatus {
+    /// Guest-reported control status other than delivered.
     pub status: ExecControlStatus,
+    /// Guest-provided diagnostic text for the status.
+    ///
+    /// This may be empty when the guest has no additional diagnostic to
+    /// report.
     pub diagnostic: String,
 }
 
 /// Terminal guest response for an exec-control request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecControlOutcome {
+    /// The guest delivered the request to the control sink and accepted it.
     Delivered(ExecControlAck),
+    /// The guest responded with a control status other than delivered.
     GuestStatus(ExecControlGuestStatus),
+    /// The guest returned an error response for the pending control request.
     GuestError(String),
 }
 
 impl ExecControlOutcome {
+    /// Return the delivered acknowledgement or convert guest failures to an error.
+    ///
+    /// Only `ExecControlOutcome::Delivered` yields `Ok`. Guest statuses and
+    /// guest error responses become `io::Error` values.
     pub fn into_ack(self) -> io::Result<ExecControlAck> {
         match self {
             Self::Delivered(ack) => Ok(ack),
@@ -698,7 +786,9 @@ impl ExecOperationDiagnostic {
 ///
 /// Dropping the handle removes the host-side registration only. It never sends
 /// `MSG_EXEC_CANCEL`; callers that need remote cancellation must call
-/// [`ExecOperationHandle::cancel_and_wait`].
+/// [`ExecOperationHandle::cancel_and_wait`]. See the Exec Operation Lifecycle
+/// section in the [`crate`] docs for the cross-handle ownership contract.
+#[must_use = "dropping this handle does not cancel the guest; call wait or cancel_and_wait"]
 pub struct ExecOperationHandle {
     shared: Arc<Shared>,
     seq: Option<u32>,
@@ -721,7 +811,9 @@ impl ExecOperationHandle {
     /// Wait for the terminal exec result.
     ///
     /// On timeout, this removes the host-side operation registration but does
-    /// not cancel the guest-side exec operation.
+    /// not cancel the guest-side exec operation. If the request may have
+    /// reached the guest, normal operations can become unavailable on this
+    /// connection even though the connection itself may still be open.
     pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         self.wait_with_timeout(timeout, false).await
     }
@@ -729,7 +821,9 @@ impl ExecOperationHandle {
     /// Send an explicit cancel request and wait for a cancelled terminal result.
     ///
     /// If the terminal result is already available before cancel is sent, this
-    /// returns that result without sending a duplicate cancel frame.
+    /// returns that result without sending a duplicate cancel frame. If cancel
+    /// is sent but the terminal result does not arrive before `timeout`, the
+    /// connection is poisoned because guest process state is no longer known.
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         let cancel_label_log = self.diagnostic.label_log.clone();
         let registered_at = self.diagnostic.registered_at;
@@ -880,7 +974,10 @@ impl Drop for ExecOperationHandle {
 /// Dropping this handle never sends `MSG_EXEC_CANCEL` and does not remove the
 /// operation lifecycle registration. The host keeps the registration until a
 /// terminal exec result arrives, the connection closes, or a caller explicitly
-/// waits with a timeout that abandons the operation.
+/// waits with a timeout that abandons the operation. See the Exec Operation
+/// Lifecycle section in the [`crate`] docs for how supervised handles share
+/// cancellation and terminal result ownership.
+#[must_use = "dropping this handle does not cancel the guest or remove lifecycle registration"]
 pub struct SupervisedExecHandle {
     shared: Arc<Shared>,
     seq: Option<u32>,
@@ -893,6 +990,11 @@ pub struct SupervisedExecHandle {
 }
 
 /// One-shot handle that sends `MSG_EXEC_CANCEL` for a supervised exec operation.
+///
+/// Dropping this handle without calling [`SupervisedExecCancelHandle::cancel`]
+/// does not send cancellation. The paired [`SupervisedExecHandle`] owns the
+/// terminal result.
+#[must_use = "dropping this cancel handle does not send MSG_EXEC_CANCEL"]
 pub struct SupervisedExecCancelHandle {
     shared: Arc<Shared>,
     seq: u32,
@@ -903,7 +1005,9 @@ impl SupervisedExecCancelHandle {
     /// Send the cancel frame without consuming the terminal exec result.
     ///
     /// The paired [`SupervisedExecHandle`] still owns the result receiver and must
-    /// be waited or abandoned by its caller.
+    /// be waited or abandoned by its caller. If this times out before the
+    /// cancel frame write starts, the paired handle can still observe the
+    /// terminal result.
     pub async fn cancel(self, timeout: Duration) -> io::Result<()> {
         tokio::time::timeout(
             timeout,
@@ -988,8 +1092,8 @@ impl SupervisedExecHandle {
     ///
     /// On timeout, this abandons the host-side operation registration but does
     /// not send `MSG_EXEC_CANCEL`. Because the terminal proof is abandoned
-    /// after a guest write, the connection should not be reused for later
-    /// normal operations.
+    /// after a guest write, later normal operations become unavailable on this
+    /// connection.
     pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         self.wait_with_timeout(timeout, false).await
     }
@@ -997,7 +1101,9 @@ impl SupervisedExecHandle {
     /// Send `MSG_EXEC_CANCEL` and wait for the terminal exec result.
     ///
     /// If the terminal result is already available before cancel is sent, this
-    /// returns that result without sending a duplicate cancel frame.
+    /// returns that result without sending a duplicate cancel frame. If cancel
+    /// is sent but the terminal result does not arrive before `timeout`, the
+    /// connection is poisoned because guest process state is no longer known.
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         let cancel_label_log = self.diagnostic.label_log.clone();
         let registered_at = self.diagnostic.registered_at;
@@ -1136,6 +1242,16 @@ pub struct ExecControlHandle {
 
 impl ExecControlHandle {
     /// Send an exec-control request and require a delivered acknowledgement.
+    ///
+    /// `message_id` must be non-empty and fit the protocol string length
+    /// bound. `payload` must fit the exec-control payload limit. Invalid
+    /// inputs fail before the request frame is written. The timeout is encoded
+    /// for guest-side control delivery and also bounds the host wait for a
+    /// response after the request frame is written.
+    ///
+    /// Only [`ExecControlOutcome::Delivered`] is returned as an
+    /// [`ExecControlAck`]. Guest statuses and guest error responses are
+    /// converted into `io::Error` values.
     pub async fn control(
         &self,
         message_id: &str,
@@ -1153,6 +1269,11 @@ impl ExecControlHandle {
     }
 
     /// Send an exec-control request and return the raw guest outcome.
+    ///
+    /// This has the same parameter and timeout contract as
+    /// [`ExecControlHandle::control`], but returns [`ExecControlOutcome`] so
+    /// callers can distinguish delivered requests, non-delivered guest
+    /// statuses, and guest error responses.
     pub async fn control_with_write_observer(
         &self,
         message_id: &str,
@@ -1655,7 +1776,10 @@ fn owned_result(
 
 /// Returns true when exec handling consumed the frame; false lets the normal
 /// pending-response dispatcher handle it.
-pub(crate) fn dispatch_incoming_frame(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
+pub(crate) fn dispatch_incoming_frame(
+    shared: &Arc<Shared>,
+    msg: BorrowedRawMessage<'_>,
+) -> io::Result<bool> {
     match msg.msg_type {
         MSG_ERROR => dispatch_error(shared, msg),
         MSG_EXEC_OUTPUT => dispatch_output(shared, msg).map(|_| true),
@@ -1666,14 +1790,14 @@ pub(crate) fn dispatch_incoming_frame(shared: &Arc<Shared>, msg: &RawMessage) ->
     }
 }
 
-fn dispatch_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_output(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
     let mut first_output_slow = None;
     {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         if let ConnectionState::Connected { operations, .. } = &mut *guard
             && let Some(operation) = operations.get_mut(msg.seq)
         {
-            let decoded = vsock_proto::decode_exec_output(&msg.payload)
+            let decoded = vsock_proto::decode_exec_output(msg.payload)
                 .map_err(exec_operation_protocol_error)?;
             if !operation.allows_output() {
                 return Err(exec_operation_protocol_error(
@@ -1708,7 +1832,7 @@ fn dispatch_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
     Ok(())
 }
 
-fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_started(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
     let start = {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -1716,7 +1840,7 @@ fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
                 let Some(operation) = operations.get_mut(msg.seq) else {
                     return Ok(());
                 };
-                let decoded = vsock_proto::decode_exec_started(&msg.payload)
+                let decoded = vsock_proto::decode_exec_started(msg.payload)
                     .map_err(exec_operation_protocol_error)?;
                 let lifecycle =
                     std::mem::replace(&mut operation.lifecycle, ExecOperationLifecycle::OneShot);
@@ -1756,7 +1880,7 @@ fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
     Ok(())
 }
 
-fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_result(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
     let Some((
         diagnostic,
         result_tx,
@@ -1769,7 +1893,7 @@ fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
-                let decoded = vsock_proto::decode_exec_result(&msg.payload)
+                let decoded = vsock_proto::decode_exec_result(msg.payload)
                     .map_err(exec_operation_protocol_error)?;
                 let Some(operation) = operations.get_mut(msg.seq) else {
                     return Ok(());
@@ -1836,7 +1960,7 @@ fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
     Ok(())
 }
 
-fn dispatch_control_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+fn dispatch_control_result(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
     let Some(pending) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -1848,7 +1972,7 @@ fn dispatch_control_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
     }) else {
         return Ok(());
     };
-    let decoded = vsock_proto::decode_exec_control_result(&msg.payload)
+    let decoded = vsock_proto::decode_exec_control_result(msg.payload)
         .map_err(exec_operation_protocol_error)?;
 
     if decoded.control_nonce != pending.control_nonce {
@@ -1886,12 +2010,12 @@ fn dispatch_control_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result
     Ok(())
 }
 
-fn dispatch_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
+fn dispatch_error(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<bool> {
     let Some((diagnostic, result_tx, start_tx, err)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
-                let err = vsock_proto::decode_error(&msg.payload)
+                let err = vsock_proto::decode_error(msg.payload)
                     .map(|message| io::Error::other(message.to_string()))
                     .map_err(exec_operation_protocol_error)?;
                 let Some(operation) = operations.take(msg.seq) else {
@@ -1930,7 +2054,7 @@ fn dispatch_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
     Ok(true)
 }
 
-fn dispatch_control_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
+fn dispatch_control_error(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<bool> {
     let Some(pending) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -1942,7 +2066,7 @@ fn dispatch_control_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<
     }) else {
         return Ok(false);
     };
-    let message = vsock_proto::decode_error(&msg.payload)
+    let message = vsock_proto::decode_error(msg.payload)
         .map(|message| message.to_owned())
         .map_err(exec_operation_protocol_error)?;
     pending
@@ -2876,6 +3000,7 @@ mod tests {
     use tracing::{Event, Level, Subscriber};
     use tracing_subscriber::layer::{Context, Layer};
     use tracing_subscriber::prelude::*;
+    use vsock_proto::RawMessage;
 
     #[derive(Clone, Debug)]
     struct CapturedEvent {
@@ -3327,7 +3452,7 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         tracing::subscriber::with_default(subscriber, || {
             tracing::callsite::rebuild_interest_cache();
-            dispatch_result(&shared, &msg).unwrap();
+            dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
         let events = captured.events();
@@ -3489,7 +3614,7 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         tracing::subscriber::with_default(subscriber, || {
             tracing::callsite::rebuild_interest_cache();
-            dispatch_result(&shared, &msg).unwrap();
+            dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
         let events = captured.events();
@@ -3548,7 +3673,7 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         tracing::subscriber::with_default(subscriber, || {
             tracing::callsite::rebuild_interest_cache();
-            dispatch_result(&shared, &msg).unwrap();
+            dispatch_result(&shared, msg.as_borrowed()).unwrap();
         });
 
         let events = captured.events();

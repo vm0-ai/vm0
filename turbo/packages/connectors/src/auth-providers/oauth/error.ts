@@ -1,4 +1,26 @@
+import { ProviderHttpError } from "../provider-error";
+
 const MAX_BODY_LENGTH = 500;
+
+export class OAuthProviderHttpError extends ProviderHttpError {
+  readonly oauthError: string | undefined;
+
+  constructor(
+    message: string,
+    status: number,
+    oauthError: string | undefined = undefined,
+  ) {
+    super(message, status);
+    this.name = "OAuthProviderHttpError";
+    this.oauthError = oauthError;
+  }
+}
+
+export function isOAuthProviderHttpError(
+  value: unknown,
+): value is OAuthProviderHttpError {
+  return value instanceof OAuthProviderHttpError;
+}
 
 /**
  * Read the response body from a failed OAuth request and throw an error
@@ -15,6 +37,7 @@ export async function throwOAuthError(
 ): Promise<never> {
   const status = response.status;
   let detail = "";
+  let oauthError: string | undefined;
 
   const raw = await response.text();
   if (raw.length > 0) {
@@ -29,6 +52,7 @@ export async function throwOAuthError(
             ? obj["error_description"]
             : null;
         if (errorCode) {
+          oauthError = errorCode;
           detail = errorDesc ? ` ${errorCode} (${errorDesc})` : ` ${errorCode}`;
         } else {
           const truncated =
@@ -47,5 +71,9 @@ export async function throwOAuthError(
     }
   }
 
-  throw new Error(`${provider} token ${operation} failed: ${status}${detail}`);
+  throw new OAuthProviderHttpError(
+    `${provider} token ${operation} failed: ${status}${detail}`,
+    status,
+    oauthError,
+  );
 }

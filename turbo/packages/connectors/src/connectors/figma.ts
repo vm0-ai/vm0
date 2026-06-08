@@ -17,9 +17,12 @@ export const figma = {
           clientIdEnv: "FIGMA_OAUTH_CLIENT_ID",
           clientSecretEnv: "FIGMA_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["FIGMA_ACCESS_TOKEN", "FIGMA_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.figma.com/v1/oauth/token",
           scopes: [
             "current_user:read",
             "file_content:read",
@@ -31,11 +34,21 @@ export const figma = {
             "library_assets:read",
             "library_content:read",
           ],
+          outputs: {
+            accessToken: "$secrets.FIGMA_ACCESS_TOKEN",
+            refreshToken: "$secrets.FIGMA_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "FIGMA_ACCESS_TOKEN",
-          refreshToken: "FIGMA_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.FIGMA_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.FIGMA_ACCESS_TOKEN",
+            refreshToken: "$secrets.FIGMA_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["FIGMA_ACCESS_TOKEN"],
           envBindings: {
             FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
           },
@@ -46,6 +59,10 @@ export const figma = {
         label: "Personal Access Token",
         helpText:
           "1. Log in to [Figma](https://www.figma.com) and open the file browser\n2. Click the account menu in the top-left corner and select **Settings**\n3. Select the **Security** tab\n4. Scroll to the **Personal access tokens** section and click **Generate new token**\n5. Enter a name for the token, assign the desired scopes, and press Return/Enter\n6. Copy the generated token immediately — it will not be shown again",
+        storage: {
+          secrets: ["FIGMA_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

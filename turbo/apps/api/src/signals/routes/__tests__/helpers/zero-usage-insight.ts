@@ -8,10 +8,15 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { connectors } from "@vm0/db/schema/connector";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { secrets } from "@vm0/db/schema/secret";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -47,6 +52,10 @@ interface SeedRunArgs {
   readonly result?: Record<string, unknown> | null;
   readonly error?: string | null;
   readonly lastEventSequence?: number | null;
+}
+
+interface SeedRunsArgs extends SeedRunArgs {
+  readonly count: number;
 }
 
 interface SeedScheduleArgs {
@@ -146,6 +155,16 @@ export const deleteUsageInsightFixture$ = command(
     signal.throwIfAborted();
 
     await db
+      .delete(modelUsageObservation)
+      .where(
+        and(
+          eq(modelUsageObservation.orgId, orgId),
+          eq(modelUsageObservation.userId, userId),
+        ),
+      );
+    signal.throwIfAborted();
+
+    await db
       .delete(userFeatureSwitches)
       .where(
         and(
@@ -153,6 +172,31 @@ export const deleteUsageInsightFixture$ = command(
           eq(userFeatureSwitches.userId, userId),
         ),
       );
+    signal.throwIfAborted();
+
+    await db
+      .delete(userPermissionGrants)
+      .where(
+        and(
+          eq(userPermissionGrants.orgId, orgId),
+          eq(userPermissionGrants.userId, userId),
+        ),
+      );
+    signal.throwIfAborted();
+
+    await db
+      .delete(userConnectors)
+      .where(
+        and(eq(userConnectors.orgId, orgId), eq(userConnectors.userId, userId)),
+      );
+    signal.throwIfAborted();
+
+    await db
+      .delete(connectors)
+      .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)));
+    signal.throwIfAborted();
+
+    await db.delete(secrets).where(eq(secrets.orgId, orgId));
     signal.throwIfAborted();
 
     await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
@@ -356,6 +400,98 @@ export const seedRun$ = command(
   },
 );
 
+export const seedRuns$ = command(
+  async (
+    { set },
+    args: SeedRunsArgs,
+    signal: AbortSignal,
+  ): Promise<{ runIds: string[] }> => {
+    if (args.count <= 0) {
+      return { runIds: [] };
+    }
+
+    const db = set(writeDb$);
+    const versionId = randomUUID();
+    await db.insert(agentComposeVersions).values({
+      id: versionId,
+      composeId: args.composeId,
+      content: {
+        version: "1.0",
+        agents: { "test-agent": { framework: "claude-code" } },
+      },
+      createdBy: args.userId,
+    });
+    signal.throwIfAborted();
+    await db
+      .update(agentComposes)
+      .set({ headVersionId: versionId })
+      .where(eq(agentComposes.id, args.composeId));
+    signal.throwIfAborted();
+
+    const sessionRows = Array.from({ length: args.count }, () => {
+      return {
+        userId: args.userId,
+        orgId: args.orgId,
+        agentComposeId: args.composeId,
+      };
+    });
+    const sessions = await db
+      .insert(agentSessions)
+      .values(sessionRows)
+      .returning({ id: agentSessions.id });
+    signal.throwIfAborted();
+    if (sessions.length !== args.count) {
+      throw new Error("seedRuns$: session inserts returned missing rows");
+    }
+
+    const runs = await db
+      .insert(agentRuns)
+      .values(
+        sessions.map((session) => {
+          return {
+            userId: args.userId,
+            orgId: args.orgId,
+            agentComposeVersionId: versionId,
+            prompt: args.prompt ?? "test prompt",
+            status: args.status ?? "pending",
+            sessionId: session.id,
+            createdAt: args.createdAt,
+            startedAt: args.startedAt,
+            completedAt: args.completedAt,
+            continuedFromSessionId: args.continuedFromSessionId,
+            sandboxReuseResult: args.sandboxReuseResult ?? null,
+            result: args.result ?? null,
+            error: args.error ?? null,
+            lastEventSequence: args.lastEventSequence ?? null,
+          };
+        }),
+      )
+      .returning({ id: agentRuns.id });
+    signal.throwIfAborted();
+    if (runs.length !== args.count) {
+      throw new Error("seedRuns$: run inserts returned missing rows");
+    }
+
+    await db.insert(zeroRuns).values(
+      runs.map((run) => {
+        return {
+          id: run.id,
+          triggerSource: args.triggerSource ?? "cli",
+          scheduleId: args.scheduleId ?? null,
+          chatThreadId: args.chatThreadId ?? null,
+        };
+      }),
+    );
+    signal.throwIfAborted();
+
+    return {
+      runIds: runs.map((run) => {
+        return run.id;
+      }),
+    };
+  },
+);
+
 // A run whose agent_compose_version_id is null — mirrors web's
 // seedOrphanTestRun. Tests the leftJoin path where compose+agent are missing
 // (response has agentId/framework/displayName all null).
@@ -424,6 +560,14 @@ export const seedSchedule$ = command(
     signal: AbortSignal,
   ): Promise<string> => {
     const db = set(writeDb$);
+    const [thread] = await db
+      .insert(chatThreads)
+      .values({ userId: args.userId, agentComposeId: args.agentId })
+      .returning({ id: chatThreads.id });
+    signal.throwIfAborted();
+    if (!thread) {
+      throw new Error("seedSchedule$: chat thread insert returned no row");
+    }
     const [row] = await db
       .insert(zeroAgentSchedules)
       .values({
@@ -434,6 +578,7 @@ export const seedSchedule$ = command(
         description: args.description,
         cronExpression: "0 0 * * *",
         prompt: "test",
+        chatThreadId: thread.id,
       })
       .returning({ id: zeroAgentSchedules.id });
     signal.throwIfAborted();
@@ -643,6 +788,15 @@ export const seedScheduleBatch$ = command(
     });
     const results = await Promise.all(
       indices.map(async (index) => {
+        const [thread] = await db
+          .insert(chatThreads)
+          .values({ userId: args.userId, agentComposeId: args.composeId })
+          .returning({ id: chatThreads.id });
+        if (!thread) {
+          throw new Error(
+            "seedScheduleBatch$: chat thread insert returned no row",
+          );
+        }
         const [scheduleRow] = await db
           .insert(zeroAgentSchedules)
           .values({
@@ -652,6 +806,7 @@ export const seedScheduleBatch$ = command(
             name: `sched-${randomUUID().slice(0, 8)}`,
             cronExpression: "0 0 * * *",
             prompt: "test",
+            chatThreadId: thread.id,
           })
           .returning({ id: zeroAgentSchedules.id });
         if (!scheduleRow) {

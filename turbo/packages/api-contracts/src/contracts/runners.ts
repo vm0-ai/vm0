@@ -11,6 +11,15 @@ const c = initContract();
 export const MIN_EPOCH_MS_TIMESTAMP = 1_000_000_000_000;
 const apiStartTimeSchema = z.number().int().min(MIN_EPOCH_MS_TIMESTAMP);
 
+export const CANONICAL_GUEST_HOME_DIR = "/home/user";
+export const CANONICAL_WORKING_DIR = `${CANONICAL_GUEST_HOME_DIR}/workspace`;
+const CANONICAL_CLAUDE_PROJECT_NAME = CANONICAL_WORKING_DIR.replace(
+  /^\//,
+  "",
+).replace(/\//g, "-");
+export const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.claude/projects/-${CANONICAL_CLAUDE_PROJECT_NAME}/memory`;
+export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.codex/memories`;
+
 export function elapsedSinceApiStartMs(
   apiStartTimeMs: number | undefined,
   nowMs: number,
@@ -75,7 +84,7 @@ export const runnersPollContract = c.router({
     body: z.object({
       group: runnerGroupSchema,
       profiles: z.array(z.string()).optional(),
-      heldSessionStates: z.array(heldSessionStateSchema).max(100).optional(),
+      heldSessionStates: z.array(heldSessionStateSchema).max(1024).optional(),
     }),
     responses: {
       200: z.object({
@@ -104,6 +113,13 @@ export const storageEntrySchema = z.object({
 /**
  * Artifact entry in manifest
  */
+// Optional internal checkpoint behavior for a missing artifact root. Absence
+// is equivalent to "fail".
+export const artifactMissingRootPolicySchema = z.enum([
+  "fail",
+  "preserveParentVersion",
+]);
+
 export const artifactEntrySchema = z.object({
   mountPath: z.string(),
   vasStorageName: z.string(),
@@ -111,6 +127,7 @@ export const artifactEntrySchema = z.object({
   vasVersionId: z.string(),
   archiveUrl: z.string(),
   manifestUrl: z.string().optional(),
+  missingRootPolicy: artifactMissingRootPolicySchema.optional(),
 });
 
 /**
@@ -147,7 +164,6 @@ export const secretConnectorMetadataMapSchema = z.record(
  * Secrets are encrypted with AES-256-GCM before storage
  */
 export const storedExecutionContextSchema = z.object({
-  workingDir: z.string(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
@@ -189,6 +205,9 @@ export const storedExecutionContextSchema = z.object({
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
+  // Canonical model id the proxy reports for model token usage. The API uses
+  // this model id for built-in billing rows and model usage observations;
+  // billing eligibility is decided from API-owned run context.
   modelUsageProvider: z.string().optional(),
 });
 
@@ -205,8 +224,6 @@ export const executionContextSchema = z.object({
   vars: z.record(z.string(), z.string()).nullable(),
   checkpointId: z.uuid().nullable(),
   sandboxToken: z.string(),
-  // New fields for E2B parity:
-  workingDir: z.string(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
@@ -252,6 +269,9 @@ export const executionContextSchema = z.object({
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
+  // Canonical model id the proxy reports for model token usage. The API uses
+  // this model id for built-in billing rows and model usage observations;
+  // billing eligibility is decided from API-owned run context.
   modelUsageProvider: z.string().optional(),
 });
 
@@ -296,7 +316,7 @@ export const heartbeatBodySchema = z.object({
   allocatedVcpu: z.number().int().nonnegative(),
   allocatedMemoryMb: z.number().int().nonnegative(),
   runningCount: z.number().int().nonnegative(),
-  heldSessionStates: z.array(heldSessionStateSchema),
+  heldSessionStates: z.array(heldSessionStateSchema).max(1024),
   mode: z.enum(["running", "draining", "stopping"]),
 });
 

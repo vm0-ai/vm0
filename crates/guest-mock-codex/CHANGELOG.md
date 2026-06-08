@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.1...guest-mock-codex-v0.2.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* validate mock codex resume thread ids ([#15883](https://github.com/vm0-ai/vm0/issues/15883)) ([f38debe](https://github.com/vm0-ai/vm0/commit/f38debe8e6f6319795ce14cffd00a94dee792e2f))
+
 ## [0.2.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.2.0...guest-mock-codex-v0.2.1) (2026-05-25)
 
 

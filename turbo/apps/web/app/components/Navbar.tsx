@@ -23,6 +23,7 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { NavMenu, type NavMenuItem } from "./NavMenu";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { getAppUrl } from "../../src/lib/zero/url";
+import { buildSignupHref } from "../../src/lib/adAttribution";
 import { isBlogEnabled } from "../../src/env";
 
 interface NavbarProps {
@@ -305,6 +306,11 @@ export function Navbar({
   const { isSignedIn: clerkIsSignedIn, isLoaded } = useUser();
   const isSignedIn = isLoaded ? clerkIsSignedIn : initialIsSignedIn;
   const { signOut } = useClerk();
+  const [landingSearch, setLandingSearch] = useState("");
+  useEffect(() => {
+    setLandingSearch(window.location.search);
+  }, []);
+  const signupHref = buildSignupHref(landingSearch);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const desktopNavRef = useRef<HTMLDivElement | null>(null);
   const {
@@ -489,7 +495,7 @@ export function Navbar({
                   {t("contact")}
                 </a>
                 <NextLink
-                  href="/sign-up"
+                  href={signupHref}
                   className="btn-get-access nav-desktop"
                 >
                   {t("joinWaitlist")}
@@ -581,7 +587,7 @@ export function Navbar({
             </a>
             {!isSignedIn && (
               <NextLink
-                href="/sign-up"
+                href={signupHref}
                 className="mobile-menu-link mobile-menu-cta"
                 onClick={closeMobile}
               >

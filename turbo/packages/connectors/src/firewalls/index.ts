@@ -6,11 +6,12 @@
  * remote GitHub fetch.
  */
 
-import type {
-  FirewallConfig,
-  FirewallPolicy,
-  FirewallPolicies,
-  FirewallPolicyValue,
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type FirewallConfig,
+  type FirewallPolicy,
+  type FirewallPolicies,
+  type FirewallPolicyValue,
 } from "../firewall-types";
 import type { ConnectorType } from "../connectors";
 import { CONNECTOR_TYPES } from "../connectors";
@@ -37,7 +38,7 @@ import {
   vercelCategoryOrder,
   vercelFirewall,
 } from "./vercel.generated";
-import { getConnectorEnvBindings } from "../connector-utils";
+import { getConnectorEnvBindingEntries } from "../connector-utils";
 import { agentmailFirewall } from "./agentmail.generated";
 import { amplitudeFirewall } from "./amplitude.generated";
 import { amadeusFirewall } from "./amadeus.generated";
@@ -53,6 +54,7 @@ import { pikaFirewall } from "./pika.generated";
 import { dopplerFirewall } from "./doppler.generated";
 import { infisicalFirewall } from "./infisical.generated";
 import { asanaFirewall } from "./asana.generated";
+import { ashbyFirewall } from "./ashby.generated";
 import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
 import { atlascloudFirewall } from "./atlascloud.generated";
@@ -92,6 +94,7 @@ import { coingeckoFirewall } from "./coingecko.generated";
 import { coresignalFirewall } from "./coresignal.generated";
 import { cronlyticFirewall } from "./cronlytic.generated";
 import { crustdataFirewall } from "./crustdata.generated";
+import { cursorFirewall } from "./cursor.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
 import { doubaoFirewall } from "./doubao.generated";
@@ -139,6 +142,7 @@ import { groqFirewall } from "./groq.generated";
 import { gumroadFirewall } from "./gumroad.generated";
 import { heygenFirewall } from "./heygen.generated";
 import { heliconeFirewall } from "./helicone.generated";
+import { hitem3dFirewall } from "./hitem3d.generated";
 import { htmlcsstoimageFirewall } from "./htmlcsstoimage.generated";
 import { honchoFirewall } from "./honcho.generated";
 import { hubspotFirewall } from "./hubspot.generated";
@@ -252,6 +256,7 @@ import { ticketmasterFirewall } from "./ticketmaster.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { togetherFirewall } from "./together.generated";
+import { tripoFirewall } from "./tripo.generated";
 import { twentyFirewall } from "./twenty.generated";
 import { typeformFirewall } from "./typeform.generated";
 import { v0Firewall } from "./v0.generated";
@@ -312,6 +317,7 @@ const CONNECTOR_FIREWALLS = {
   pika: pikaFirewall,
   apify: apifyFirewall,
   asana: asanaFirewall,
+  ashby: ashbyFirewall,
   attio: attioFirewall,
   atlassian: atlassianFirewall,
   atlascloud: atlascloudFirewall,
@@ -346,6 +352,7 @@ const CONNECTOR_FIREWALLS = {
   coresignal: coresignalFirewall,
   cronlytic: cronlyticFirewall,
   crustdata: crustdataFirewall,
+  cursor: cursorFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,
   defillama: defillamaFirewall,
@@ -394,6 +401,7 @@ const CONNECTOR_FIREWALLS = {
   gumroad: gumroadFirewall,
   heygen: heygenFirewall,
   helicone: heliconeFirewall,
+  hitem3d: hitem3dFirewall,
   htmlcsstoimage: htmlcsstoimageFirewall,
   honcho: honchoFirewall,
   hubspot: hubspotFirewall,
@@ -501,6 +509,7 @@ const CONNECTOR_FIREWALLS = {
   tldv: tldvFirewall,
   todoist: todoistFirewall,
   together: togetherFirewall,
+  tripo: tripoFirewall,
   twenty: twentyFirewall,
   typeform: typeformFirewall,
   v0: v0Firewall,
@@ -547,9 +556,9 @@ const CONNECTOR_FIREWALLS = {
 
 /**
  * Expand firewall placeholders to cover all secret names related to the
- * connector.  For each existing placeholder key, find related names via
- * envBindings (raw OAuth secret names and sibling aliases) and assign
- * the same placeholder value.
+ * connector. For each existing placeholder key, find related names via
+ * configured env binding entries (raw storage names and sibling aliases)
+ * and assign the same placeholder value.
  */
 function expandPlaceholders(
   firewall: FirewallConfig,
@@ -557,32 +566,41 @@ function expandPlaceholders(
 ): FirewallConfig {
   if (!firewall.placeholders) return firewall;
 
-  const envBindings = getConnectorEnvBindings(connectorType);
-  if (Object.keys(envBindings).length === 0) return firewall;
+  const envBindingEntries = getConnectorEnvBindingEntries(connectorType);
+  if (envBindingEntries.length === 0) return firewall;
 
   const expanded: Record<string, string> = { ...firewall.placeholders };
 
   for (const [key, placeholderValue] of Object.entries(firewall.placeholders)) {
     // key is a mapped environment name (e.g. GITHUB_TOKEN)
     // → add the raw secret name and any sibling aliases
-    const valueRef = envBindings[key];
-    if (valueRef?.startsWith("$secrets.")) {
+    const valueRefs = envBindingEntries
+      .filter(({ envName }) => {
+        return envName === key;
+      })
+      .map(({ valueRef }) => {
+        return valueRef;
+      });
+    for (const valueRef of valueRefs) {
+      if (!valueRef.startsWith("$secrets.")) {
+        continue;
+      }
       const rawName = valueRef.slice("$secrets.".length);
       if (!expanded[rawName]) {
         expanded[rawName] = placeholderValue;
       }
-      for (const [envName, ref] of Object.entries(envBindings)) {
-        if (ref === valueRef && !expanded[envName]) {
-          expanded[envName] = placeholderValue;
+      for (const entry of envBindingEntries) {
+        if (entry.valueRef === valueRef && !expanded[entry.envName]) {
+          expanded[entry.envName] = placeholderValue;
         }
       }
     }
 
     // key is a raw secret name -> add all environment names that reference it
     const rawRef = `$secrets.${key}`;
-    for (const [envName, ref] of Object.entries(envBindings)) {
-      if (ref === rawRef && !expanded[envName]) {
-        expanded[envName] = placeholderValue;
+    for (const entry of envBindingEntries) {
+      if (entry.valueRef === rawRef && !expanded[entry.envName]) {
+        expanded[entry.envName] = placeholderValue;
       }
     }
   }
@@ -700,6 +718,8 @@ export type NonFirewallConnectorType =
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
   // Other
+  | "daytona"
+  | "modal"
   | "test-oauth-device"; // internal provider capability test connector
 
 /**
@@ -806,6 +826,36 @@ export function resolveFirewallPolicies(
     };
   }
   return resolved;
+}
+
+export type FirewallPermissionGrantAction = Extract<
+  FirewallPolicyValue,
+  "allow" | "deny"
+>;
+
+export interface FirewallPermissionGrant {
+  readonly connectorRef: string;
+  readonly permission: string;
+  readonly action: FirewallPermissionGrantAction;
+}
+
+export function permissionGrantsToFirewallPolicies(
+  grants: readonly FirewallPermissionGrant[],
+): FirewallPolicies | null {
+  const policies: FirewallPolicies = {};
+  for (const grant of grants) {
+    const current = policies[grant.connectorRef] ?? { policies: {} };
+    if (grant.permission === UNKNOWN_PERMISSION_GRANT) {
+      policies[grant.connectorRef] = {
+        ...current,
+        unknownPolicy: grant.action,
+      };
+      continue;
+    }
+    current.policies[grant.permission] = grant.action;
+    policies[grant.connectorRef] = current;
+  }
+  return Object.keys(policies).length > 0 ? policies : null;
 }
 
 /**

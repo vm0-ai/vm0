@@ -24,7 +24,7 @@ const connectedGithub = {
   externalUsername: "octocat",
   externalEmail: "octocat@github.com",
   oauthScopes: ["repo", "project", "workflow"],
-  needsReconnect: false,
+  connectionStatus: "connected",
   createdAt: "2025-01-01T00:00:00Z",
   updatedAt: "2025-01-01T00:00:00Z",
 };
@@ -49,7 +49,6 @@ function stubAgent(id: string, displayName: string | null) {
       displayName,
       sound: null,
       avatarUrl: null,
-      permissionPolicies: null,
       customSkills: [],
     });
   });
@@ -130,7 +129,9 @@ describe("zero connector list command", () => {
 
     it("renders reconnect-needed state", async () => {
       server.use(
-        stubConnectors([{ ...connectedGithub, needsReconnect: true }]),
+        stubConnectors([
+          { ...connectedGithub, connectionStatus: "reconnect-required" },
+        ]),
       );
 
       await listCommand.parseAsync(["node", "cli"]);

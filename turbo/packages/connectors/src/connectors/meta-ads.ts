@@ -18,10 +18,16 @@ export const metaAds = {
           clientIdEnv: "META_ADS_OAUTH_CLIENT_ID",
           clientSecretEnv: "META_ADS_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["META_ADS_ACCESS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
           scopes: ["ads_management", "ads_read", "business_management"],
+          outputs: {
+            accessToken: "$secrets.META_ADS_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",

@@ -64,6 +64,9 @@ function createRemoteEmptyDataSource(input: {
     patchDraft$: command(() => {
       return Promise.resolve();
     }),
+    patchModelSelection$: command(() => {
+      return Promise.resolve();
+    }),
     appendQueuedMessage$: command(() => {
       return Promise.resolve(fallbackMessage);
     }),
@@ -176,6 +179,7 @@ describe("subscribeChatThread$ pre-subscribe catch-up", () => {
       thread.sendMessage$,
       "blocked by credits",
       null,
+      undefined,
       context.signal,
     );
 

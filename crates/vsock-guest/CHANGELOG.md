@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.18.23](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.22...vsock-guest-v0.18.23) (2026-06-07)
+
+## [0.18.22](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.21...vsock-guest-v0.18.22) (2026-06-05)
+
+
+### Refactoring
+
+* model exec operation cleanup lifecycle ([#16248](https://github.com/vm0-ai/vm0/issues/16248)) ([f8817e0](https://github.com/vm0-ai/vm0/commit/f8817e056e47b6b3065ea327e02dda01264b09cc))
+
+## [0.18.21](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.20...vsock-guest-v0.18.21) (2026-06-04)
+
+
+### Documentation
+
+* document exec control registry lifecycle ([#16133](https://github.com/vm0-ai/vm0/issues/16133)) ([6e233b5](https://github.com/vm0-ai/vm0/commit/6e233b539a7f7e468a6b6db8180a6dfe193e8b81))
+
+## [0.18.20](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.19...vsock-guest-v0.18.20) (2026-06-04)
+
+## [0.18.19](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.18...vsock-guest-v0.18.19) (2026-06-02)
+
+
+### Refactoring
+
+* tighten vsock drain fd ownership ([#15910](https://github.com/vm0-ai/vm0/issues/15910)) ([271e2be](https://github.com/vm0-ai/vm0/commit/271e2bea4252867abcbee078c487e57848550d44))
+
+## [0.18.18](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.17...vsock-guest-v0.18.18) (2026-06-01)
+
+
+### Refactoring
+
+* split exec control modules ([#15692](https://github.com/vm0-ai/vm0/issues/15692)) ([2c43082](https://github.com/vm0-ai/vm0/commit/2c4308234dbf0b40683caabedf91a6bb85f43e78))
+
+## [0.18.17](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.16...vsock-guest-v0.18.17) (2026-05-31)
+
+
+### Bug Fixes
+
+* **vsock-guest:** keep connection alive on malformed payloads ([#15575](https://github.com/vm0-ai/vm0/issues/15575)) ([3cf4da2](https://github.com/vm0-ai/vm0/commit/3cf4da28664fcb258eecb743f3cd58954ee74c96))
+
+## [0.18.16](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.15...vsock-guest-v0.18.16) (2026-05-31)
+
+
+### Refactoring
+
+* name exec control sink disposition ([#15560](https://github.com/vm0-ai/vm0/issues/15560)) ([053eaa4](https://github.com/vm0-ai/vm0/commit/053eaa4810ca00339d21add482cd872a1212114a))
+
 ## [0.18.15](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.14...vsock-guest-v0.18.15) (2026-05-28)
 
 ## [0.18.14](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.13...vsock-guest-v0.18.14) (2026-05-27)

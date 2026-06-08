@@ -45,6 +45,7 @@ function buildCommentBody(args: {
 
 function buildMetadata(args: {
   readonly body: GithubUploadCompleteBody;
+  readonly s3Key: string;
   readonly sourceUrl: string;
   readonly commentId: string;
 }): Record<string, unknown> {
@@ -52,6 +53,7 @@ function buildMetadata(args: {
     repo: args.body.repo,
     issueNumber: args.body.issueNumber,
     uploadId: args.body.uploadId,
+    s3Key: args.s3Key,
     sourceUrl: args.sourceUrl,
     ...(args.body.caption ? { caption: args.body.caption } : {}),
     githubComment: { id: args.commentId },
@@ -141,7 +143,12 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
       contentType: mimetype,
       sizeBytes: object.size,
       url: fileUrl,
-      metadata: buildMetadata({ body, sourceUrl: fileUrl, commentId }),
+      metadata: buildMetadata({
+        body,
+        s3Key: object.key,
+        sourceUrl: fileUrl,
+        commentId,
+      }),
     },
     signal,
   );

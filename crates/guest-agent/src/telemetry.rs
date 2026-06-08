@@ -18,7 +18,7 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use guest_common::log_warn;
 use serde_json::{Value, json};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
@@ -31,6 +31,13 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 /// time during cleanup, so a small bounded queue is plenty.
 const COMMAND_CHANNEL_CAPACITY: usize = 8;
 
+/// Maximum bytes held for a single line-aligned telemetry read.
+const TELEMETRY_DELTA_READ_LIMIT: usize = 256 * 1024;
+
+/// Marker uploaded when a single system-log line is too large to send safely.
+const OVERSIZED_SYSTEM_LOG_LINE_MARKER: &str =
+    "[vm0 telemetry omitted oversized system log line]\n";
+
 /// Whether an upload pass should defer a trailing fragment to the next
 /// pass, or consume it as-is because no next pass is coming.
 ///
@@ -40,15 +47,126 @@ const COMMAND_CHANNEL_CAPACITY: usize = 8;
 /// pick them up once the producer completes the line.
 ///
 /// `Final` is the very last upload before agent exit. There is no next
-/// pass, so the EOF tail is consumed verbatim.
+/// pass, so the EOF tail is consumed verbatim when it fits in one bounded
+/// read after any required line-boundary resync.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum UploadMode {
     Live,
     Final,
 }
 
+struct TextDelta {
+    content: String,
+    new_pos: u64,
+    made_progress: bool,
+}
+
+impl TextDelta {
+    fn empty(pos: u64) -> Self {
+        Self {
+            content: String::new(),
+            new_pos: pos,
+            made_progress: false,
+        }
+    }
+
+    fn progressed(content: String, new_pos: u64) -> Self {
+        Self {
+            content,
+            new_pos,
+            made_progress: true,
+        }
+    }
+}
+
+struct JsonlDelta {
+    entries: Vec<Value>,
+    new_pos: u64,
+    made_progress: bool,
+}
+
+#[derive(Clone, Copy)]
+enum OversizedLineBehavior {
+    EmitSystemLogMarker,
+    Drop,
+}
+
+fn is_line_boundary(file: &mut std::fs::File, pos: u64) -> Option<bool> {
+    if pos == 0 {
+        return Some(true);
+    }
+
+    if file.seek(SeekFrom::Start(pos - 1)).is_err() {
+        return None;
+    }
+
+    let mut previous = [0u8; 1];
+    if file.read_exact(&mut previous).is_err() {
+        return None;
+    }
+
+    Some(previous[0] == b'\n')
+}
+
+fn read_from_line_boundary(
+    buf: &[u8],
+    base_pos: u64,
+    unread_len: u64,
+    mode: UploadMode,
+    oversized_line_behavior: OversizedLineBehavior,
+) -> TextDelta {
+    if mode == UploadMode::Final && unread_len <= buf.len() as u64 {
+        return TextDelta::progressed(
+            String::from_utf8_lossy(buf).into_owned(),
+            base_pos + unread_len,
+        );
+    }
+
+    match buf.iter().rposition(|&b| b == b'\n') {
+        Some(idx) => {
+            let consumed = idx + 1;
+            let new_pos = base_pos + consumed as u64;
+            // `consumed <= buf.len()` by construction (rposition returns
+            // a valid index into buf, so idx + 1 <= buf.len()), so this
+            // `get` always returns Some. The let-else exists only to
+            // satisfy `clippy::indexing_slicing = "deny"` without an
+            // explicit suppression or `expect`.
+            let Some(slice) = buf.get(..consumed) else {
+                return TextDelta::empty(base_pos);
+            };
+            TextDelta::progressed(String::from_utf8_lossy(slice).into_owned(), new_pos)
+        }
+        None if unread_len <= TELEMETRY_DELTA_READ_LIMIT as u64 => TextDelta::empty(base_pos),
+        None => {
+            let new_pos = base_pos + buf.len() as u64;
+            let content = match oversized_line_behavior {
+                OversizedLineBehavior::EmitSystemLogMarker => {
+                    OVERSIZED_SYSTEM_LOG_LINE_MARKER.to_string()
+                }
+                OversizedLineBehavior::Drop => String::new(),
+            };
+            TextDelta::progressed(content, new_pos)
+        }
+    }
+}
+
+fn read_bounded_at(file: &mut std::fs::File, file_len: u64, pos: u64) -> Option<(Vec<u8>, u64)> {
+    let unread_len = file_len.checked_sub(pos)?;
+    let to_read = unread_len.min(TELEMETRY_DELTA_READ_LIMIT as u64) as usize;
+    let mut buf = vec![0u8; to_read];
+
+    if file.seek(SeekFrom::Start(pos)).is_err() {
+        return None;
+    }
+    if file.read_exact(&mut buf).is_err() {
+        return None;
+    }
+
+    Some((buf, unread_len))
+}
+
 /// Read new bytes from `file_path` starting at the position stored in `pos_path`.
-/// Returns the new content and the updated position.
+/// Returns the new content, updated position, and whether the position advanced.
 ///
 /// In `Live` mode, the read is aligned to the last newline: any trailing
 /// bytes after the last `\n` are treated as an in-progress write by the
@@ -58,10 +176,23 @@ pub enum UploadMode {
 /// by U+FFFD and permanently lost, since the position has already advanced
 /// past it).
 ///
-/// In `Final` mode, the tail is consumed as-is — there will be no subsequent
-/// pass to pick it up. Any trailing fragment without a newline is uploaded
-/// verbatim.
-fn read_file_delta(file_path: &str, pos_path: &str, mode: UploadMode) -> (String, u64) {
+/// In `Final` mode, the tail is consumed as-is when it fits within the bounded
+/// read window after any required line-boundary resync.
+fn read_file_delta(file_path: &str, pos_path: &str, mode: UploadMode) -> TextDelta {
+    read_file_delta_with_behavior(
+        file_path,
+        pos_path,
+        mode,
+        OversizedLineBehavior::EmitSystemLogMarker,
+    )
+}
+
+fn read_file_delta_with_behavior(
+    file_path: &str,
+    pos_path: &str,
+    mode: UploadMode,
+    oversized_line_behavior: OversizedLineBehavior,
+) -> TextDelta {
     let last_pos: u64 = std::fs::read_to_string(pos_path)
         .ok()
         .and_then(|s| s.trim().parse().ok())
@@ -69,115 +200,167 @@ fn read_file_delta(file_path: &str, pos_path: &str, mode: UploadMode) -> (String
 
     let mut file = match std::fs::File::open(file_path) {
         Ok(f) => f,
-        Err(_) => return (String::new(), last_pos),
+        Err(_) => return TextDelta::empty(last_pos),
     };
 
     let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
     if file_len <= last_pos {
-        return (String::new(), last_pos);
+        return TextDelta::empty(last_pos);
     }
 
-    if file.seek(SeekFrom::Start(last_pos)).is_err() {
-        return (String::new(), last_pos);
-    }
+    let Some(at_line_boundary) = is_line_boundary(&mut file, last_pos) else {
+        return TextDelta::empty(last_pos);
+    };
 
-    let to_read = (file_len - last_pos) as usize;
-    let mut buf = vec![0u8; to_read];
-    if file.read_exact(&mut buf).is_err() {
-        return (String::new(), last_pos);
-    }
+    let Some((buf, unread_len)) = read_bounded_at(&mut file, file_len, last_pos) else {
+        return TextDelta::empty(last_pos);
+    };
 
-    if mode == UploadMode::Final {
-        return (String::from_utf8_lossy(&buf).into_owned(), file_len);
-    }
+    if !at_line_boundary {
+        let Some(idx) = buf.iter().position(|&b| b == b'\n') else {
+            return TextDelta::progressed(String::new(), last_pos + buf.len() as u64);
+        };
 
-    match buf.iter().rposition(|&b| b == b'\n') {
-        Some(idx) => {
-            let consumed = idx + 1;
-            let new_pos = last_pos + consumed as u64;
-            // `consumed <= buf.len()` by construction (rposition returns
-            // a valid index into buf, so idx + 1 <= buf.len()), so this
-            // `get` always returns Some. The let-else exists only to
-            // satisfy `clippy::indexing_slicing = "deny"` without an
-            // explicit suppression or `expect`.
-            let Some(slice) = buf.get(..consumed) else {
-                return (String::new(), last_pos);
-            };
-            (String::from_utf8_lossy(slice).into_owned(), new_pos)
+        let consumed = idx + 1;
+        let boundary_pos = last_pos + consumed as u64;
+        let remaining_unread_len = file_len - boundary_pos;
+        let remaining_len = buf.len().saturating_sub(consumed);
+
+        if remaining_unread_len == 0 {
+            return TextDelta::progressed(String::new(), boundary_pos);
         }
-        None => (String::new(), last_pos),
+
+        if remaining_unread_len <= remaining_len as u64 {
+            let Some(remaining) = buf.get(consumed..) else {
+                return TextDelta::progressed(String::new(), boundary_pos);
+            };
+
+            let delta = read_from_line_boundary(
+                remaining,
+                boundary_pos,
+                remaining_unread_len,
+                mode,
+                oversized_line_behavior,
+            );
+            return if delta.made_progress {
+                delta
+            } else {
+                TextDelta::progressed(String::new(), boundary_pos)
+            };
+        }
+
+        drop(buf);
+        let Some((boundary_buf, boundary_unread_len)) =
+            read_bounded_at(&mut file, file_len, boundary_pos)
+        else {
+            return TextDelta::empty(last_pos);
+        };
+        let delta = read_from_line_boundary(
+            &boundary_buf,
+            boundary_pos,
+            boundary_unread_len,
+            mode,
+            oversized_line_behavior,
+        );
+        return if delta.made_progress {
+            delta
+        } else {
+            TextDelta::progressed(String::new(), boundary_pos)
+        };
     }
+
+    read_from_line_boundary(&buf, last_pos, unread_len, mode, oversized_line_behavior)
 }
 
 /// Read new JSONL entries from a file, skipping invalid lines.
-fn read_jsonl_delta(file_path: &str, pos_path: &str, mode: UploadMode) -> (Vec<Value>, u64) {
-    let (content, new_pos) = read_file_delta(file_path, pos_path, mode);
-    if content.is_empty() {
-        return (Vec::new(), new_pos);
+fn read_jsonl_delta(file_path: &str, pos_path: &str, mode: UploadMode) -> JsonlDelta {
+    let delta =
+        read_file_delta_with_behavior(file_path, pos_path, mode, OversizedLineBehavior::Drop);
+    if delta.content.is_empty() {
+        return JsonlDelta {
+            entries: Vec::new(),
+            new_pos: delta.new_pos,
+            made_progress: delta.made_progress,
+        };
     }
-    let entries: Vec<Value> = content
+    let entries: Vec<Value> = delta
+        .content
         .lines()
         .filter(|l| !l.is_empty())
         .filter_map(|l| serde_json::from_str(l).ok())
         .collect();
-    (entries, new_pos)
+    JsonlDelta {
+        entries,
+        new_pos: delta.new_pos,
+        made_progress: delta.made_progress,
+    }
 }
 
 /// Persist the current read position for a file.
 fn save_position(pos_path: &str, pos: u64) {
-    if let Ok(mut f) = std::fs::File::create(pos_path) {
-        let _ = write!(f, "{pos}");
-    }
+    let _ = paths::write_private(pos_path, pos.to_string());
 }
 
 /// Perform one telemetry upload cycle.
 ///
 /// `UploadMode::Final` should be used only for the very last upload before
-/// the agent exits — any trailing fragment after the last newline is then
-/// consumed as-is, accepting a small mid-write race window in exchange for
-/// not losing the tail. Every earlier upload (periodic tick and the
-/// pre-checkpoint `flush(UploadMode::Live)`) must use `UploadMode::Live`
-/// so a later pass can safely pick up the tail once the producer
-/// completes the line.
+/// the agent exits. It consumes a trailing fragment as-is only when the
+/// fragment fits inside this pass's bounded read. Every earlier upload
+/// (periodic tick and the pre-checkpoint `flush(UploadMode::Live)`) must use
+/// `UploadMode::Live` so a later pass can safely pick up the tail once the
+/// producer completes the line.
 async fn upload_telemetry(
     http: &HttpClient,
     masker: &SecretMasker,
     mode: UploadMode,
 ) -> Result<(), AgentError> {
     // Read deltas
-    let (system_log, log_pos) = read_file_delta(
+    let system_log = read_file_delta(
         paths::system_log_file(),
         paths::telemetry_system_log_pos_file(),
         mode,
     );
-    let (metrics, metrics_pos) = read_jsonl_delta(
+    let metrics = read_jsonl_delta(
         paths::metrics_log_file(),
         paths::telemetry_metrics_pos_file(),
         mode,
     );
-    let (sandbox_ops, sandbox_ops_pos) = read_jsonl_delta(
+    let sandbox_ops = read_jsonl_delta(
         paths::sandbox_ops_file(),
         paths::telemetry_sandbox_ops_pos_file(),
         mode,
     );
+    let log_pos = system_log.new_pos;
+    let metrics_pos = metrics.new_pos;
+    let sandbox_ops_pos = sandbox_ops.new_pos;
+    let made_progress =
+        system_log.made_progress || metrics.made_progress || sandbox_ops.made_progress;
 
     // Nothing new
-    if system_log.is_empty() && metrics.is_empty() && sandbox_ops.is_empty() {
+    if system_log.content.is_empty() && metrics.entries.is_empty() && sandbox_ops.entries.is_empty()
+    {
+        if made_progress {
+            save_position(paths::telemetry_system_log_pos_file(), log_pos);
+            save_position(paths::telemetry_metrics_pos_file(), metrics_pos);
+            save_position(paths::telemetry_sandbox_ops_pos_file(), sandbox_ops_pos);
+        }
         return Ok(());
     }
 
     // Mask secrets in text content
-    let masked_log = if system_log.is_empty() {
+    let masked_log = if system_log.content.is_empty() {
         String::new()
     } else {
-        masker.mask_string(&system_log)
+        masker.mask_owned_string(system_log.content)
     };
+    let metrics_entries = metrics.entries;
+    let sandbox_ops_entries = sandbox_ops.entries;
 
     let payload = json!({
         "runId": env::run_id(),
         "systemLog": masked_log,
-        "metrics": metrics,
-        "sandboxOperations": sandbox_ops,
+        "metrics": metrics_entries,
+        "sandboxOperations": sandbox_ops_entries,
     });
 
     // Use 1 attempt for telemetry (non-critical, best-effort)
@@ -237,7 +420,8 @@ impl Telemetry {
     ///
     /// Use [`UploadMode::Live`] for any flush while the agent is still
     /// running (the producer continues writing). Use [`UploadMode::Final`]
-    /// for the very last flush before exit, which consumes the EOF tail.
+    /// for the very last flush before exit, which consumes the EOF tail when
+    /// it fits in one bounded read.
     pub async fn flush(&self, mode: UploadMode) -> Result<(), AgentError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.tx
@@ -315,6 +499,20 @@ mod tests {
     use super::*;
     use std::fs;
 
+    fn read_file_delta_parts(file_path: &str, pos_path: &str, mode: UploadMode) -> (String, u64) {
+        let delta = read_file_delta(file_path, pos_path, mode);
+        (delta.content, delta.new_pos)
+    }
+
+    fn read_jsonl_delta_parts(
+        file_path: &str,
+        pos_path: &str,
+        mode: UploadMode,
+    ) -> (Vec<Value>, u64) {
+        let delta = read_jsonl_delta(file_path, pos_path, mode);
+        (delta.entries, delta.new_pos)
+    }
+
     #[test]
     fn read_file_delta_from_start() {
         let dir = tempfile::tempdir().unwrap();
@@ -322,7 +520,7 @@ mod tests {
         let pos = dir.path().join("log.pos");
         fs::write(&file, "hello world\n").unwrap();
 
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -336,17 +534,35 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("log.txt");
         let pos = dir.path().join("log.pos");
-        fs::write(&file, "hello world\n").unwrap();
-        // Simulate having already read 6 bytes
+        fs::write(&file, "hello\nworld\n").unwrap();
+        // Simulate having already consumed the first complete line.
         fs::write(&pos, "6").unwrap();
 
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
         );
         assert_eq!(content, "world\n");
         assert_eq!(new_pos, 12);
+    }
+
+    #[test]
+    fn read_file_delta_from_middle_of_line_skips_suffix_then_resumes() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        fs::write(&file, "hello world\nnext\n").unwrap();
+        fs::write(&pos, "6").unwrap();
+
+        let delta = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Live,
+        );
+        assert_eq!(delta.content, "next\n");
+        assert_eq!(delta.new_pos, 17);
+        assert!(delta.made_progress);
     }
 
     #[test]
@@ -357,7 +573,7 @@ mod tests {
         fs::write(&file, "done").unwrap();
         fs::write(&pos, "4").unwrap();
 
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -372,7 +588,7 @@ mod tests {
         let file = dir.path().join("missing.txt");
         let pos = dir.path().join("missing.pos");
 
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -388,7 +604,7 @@ mod tests {
         let pos = dir.path().join("data.pos");
         fs::write(&file, "{\"a\":1}\n{\"b\":2}\ninvalid\n").unwrap();
 
-        let (entries, new_pos) = read_jsonl_delta(
+        let (entries, new_pos) = read_jsonl_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -417,7 +633,7 @@ mod tests {
         fs::write(&file, "short").unwrap();
         fs::write(&pos, "100").unwrap();
 
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -435,7 +651,7 @@ mod tests {
         fs::write(&file, "data\n").unwrap();
         fs::write(&pos, "notanumber").unwrap();
 
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -451,7 +667,7 @@ mod tests {
         let pos = dir.path().join("empty.pos");
         fs::write(&file, "").unwrap();
 
-        let (entries, new_pos) = read_jsonl_delta(
+        let (entries, new_pos) = read_jsonl_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -467,7 +683,7 @@ mod tests {
         let pos = dir.path().join("bad.pos");
         fs::write(&file, "bad1\nbad2\nbad3\n").unwrap();
 
-        let (entries, new_pos) = read_jsonl_delta(
+        let (entries, new_pos) = read_jsonl_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -487,7 +703,7 @@ mod tests {
         fs::write(&file, "line1\nline2\npartial").unwrap();
 
         // First pass: read up to the last newline, leave "partial" behind.
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -500,7 +716,7 @@ mod tests {
         fs::write(&pos, "12").unwrap();
 
         // Second pass: now "partial done\n" is complete.
-        let (content2, new_pos2) = read_file_delta(
+        let (content2, new_pos2) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -518,7 +734,7 @@ mod tests {
         let pos = dir.path().join("log.pos");
         fs::write(&file, "line1\npartial").unwrap();
 
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Final,
@@ -543,7 +759,7 @@ mod tests {
         fs::write(&file, &partial).unwrap();
 
         // First pass: stops at the newline, leaves the orphan 0xE4 behind.
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -559,7 +775,7 @@ mod tests {
         fs::write(&file, &complete).unwrap();
 
         // Second pass: reads the complete multibyte character.
-        let (content2, new_pos2) = read_file_delta(
+        let (content2, new_pos2) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -581,7 +797,7 @@ mod tests {
         fs::write(&file, "{\"a\":1}\n{\"b\":2").unwrap();
 
         // First pass: only {"a":1} is complete.
-        let (entries, new_pos) = read_jsonl_delta(
+        let (entries, new_pos) = read_jsonl_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -593,7 +809,7 @@ mod tests {
 
         // Producer completes the record.
         fs::write(&file, "{\"a\":1}\n{\"b\":2}\n").unwrap();
-        let (entries2, new_pos2) = read_jsonl_delta(
+        let (entries2, new_pos2) = read_jsonl_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -613,7 +829,7 @@ mod tests {
         let pos = dir.path().join("log.pos");
         fs::write(&file, "partial").unwrap();
 
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -623,13 +839,128 @@ mod tests {
 
         // Producer completes the line — the next pass picks up everything.
         fs::write(&file, "partial done\n").unwrap();
-        let (content2, new_pos2) = read_file_delta(
+        let (content2, new_pos2) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
         );
         assert_eq!(content2, "partial done\n");
         assert_eq!(new_pos2, 13);
+    }
+
+    #[test]
+    fn read_file_delta_large_unread_delta_reads_bounded_complete_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        let line = format!("{}\n", "x".repeat(1023));
+        let content = line.repeat((TELEMETRY_DELTA_READ_LIMIT / line.len()) + 2);
+        fs::write(&file, content).unwrap();
+
+        let delta = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Live,
+        );
+        assert_eq!(delta.content.len(), TELEMETRY_DELTA_READ_LIMIT);
+        assert_eq!(delta.new_pos, TELEMETRY_DELTA_READ_LIMIT as u64);
+        assert!(delta.made_progress);
+    }
+
+    #[test]
+    fn read_file_delta_oversized_no_newline_system_log_emits_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        fs::write(&file, "x".repeat(TELEMETRY_DELTA_READ_LIMIT + 1)).unwrap();
+
+        let delta = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Live,
+        );
+        assert_eq!(delta.content, OVERSIZED_SYSTEM_LOG_LINE_MARKER);
+        assert_eq!(delta.new_pos, TELEMETRY_DELTA_READ_LIMIT as u64);
+        assert!(delta.made_progress);
+    }
+
+    #[test]
+    fn read_file_delta_mid_oversized_line_skips_suffix_then_resumes() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        let content = format!("{}tail\nnext\n", "x".repeat(TELEMETRY_DELTA_READ_LIMIT));
+        fs::write(&file, content).unwrap();
+        fs::write(&pos, TELEMETRY_DELTA_READ_LIMIT.to_string()).unwrap();
+
+        let delta = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Live,
+        );
+        assert_eq!(delta.content, "next\n");
+        assert_eq!(
+            delta.new_pos,
+            (TELEMETRY_DELTA_READ_LIMIT + "tail\nnext\n".len()) as u64,
+        );
+        assert!(delta.made_progress);
+    }
+
+    #[test]
+    fn read_jsonl_delta_oversized_invalid_line_advances_without_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("data.jsonl");
+        let pos = dir.path().join("data.pos");
+        fs::write(&file, "x".repeat(TELEMETRY_DELTA_READ_LIMIT + 1)).unwrap();
+
+        let delta = read_jsonl_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Live,
+        );
+        assert!(delta.entries.is_empty());
+        assert_eq!(delta.new_pos, TELEMETRY_DELTA_READ_LIMIT as u64);
+        assert!(delta.made_progress);
+    }
+
+    #[test]
+    fn read_file_delta_final_from_middle_of_line_resumes_and_consumes_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        let content = "old suffix\nnext\ntail";
+        fs::write(&file, content).unwrap();
+        fs::write(&pos, "4").unwrap();
+
+        let delta = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Final,
+        );
+        assert_eq!(delta.content, "next\ntail");
+        assert_eq!(delta.new_pos, content.len() as u64);
+        assert!(delta.made_progress);
+    }
+
+    #[test]
+    fn read_file_delta_final_resync_reads_full_bounded_tail_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        let skipped_suffix = "x".repeat(TELEMETRY_DELTA_READ_LIMIT / 2);
+        let tail = "t".repeat(TELEMETRY_DELTA_READ_LIMIT - 8);
+        let content = format!("{skipped_suffix}\n{tail}");
+        fs::write(&file, &content).unwrap();
+        fs::write(&pos, "1").unwrap();
+
+        let delta = read_file_delta(
+            file.to_str().unwrap(),
+            pos.to_str().unwrap(),
+            UploadMode::Final,
+        );
+        assert_eq!(delta.content, tail);
+        assert_eq!(delta.new_pos, content.len() as u64);
+        assert!(delta.made_progress);
     }
 
     /// Final pass must consume the whole buffer even when the file contains
@@ -641,7 +972,7 @@ mod tests {
         let pos = dir.path().join("log.pos");
         fs::write(&file, "no_newline").unwrap();
 
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Final,
@@ -665,7 +996,7 @@ mod tests {
         fs::write(&file, &partial).unwrap();
 
         // First pass stops at \n, defers the orphan bytes.
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -680,7 +1011,7 @@ mod tests {
         complete.extend_from_slice(b"\n");
         fs::write(&file, &complete).unwrap();
 
-        let (content2, new_pos2) = read_file_delta(
+        let (content2, new_pos2) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -707,7 +1038,7 @@ mod tests {
         torn.push(0xE4);
         fs::write(&file, &torn).unwrap();
 
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Final,
@@ -733,7 +1064,7 @@ mod tests {
         fs::write(&file, &partial).unwrap();
 
         // Pre-checkpoint Live flush: newline-aligned, defers the orphan byte.
-        let (content, new_pos) = read_file_delta(
+        let (content, new_pos) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Live,
@@ -749,7 +1080,7 @@ mod tests {
         fs::write(&file, &complete).unwrap();
 
         // Catch-up final pass: consumes the rest including the no-newline tail.
-        let (content2, new_pos2) = read_file_delta(
+        let (content2, new_pos2) = read_file_delta_parts(
             file.to_str().unwrap(),
             pos.to_str().unwrap(),
             UploadMode::Final,

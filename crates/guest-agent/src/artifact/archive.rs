@@ -14,26 +14,20 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 
 /// Walk directory and compute SHA-256 for each file, skipping `.git` and `.vm0`.
 #[cfg(target_os = "linux")]
-pub(super) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
+pub(super) fn collect_file_metadata(dir_path: &str) -> Result<Vec<FileEntry>, ArchiveError> {
     let mut files = Vec::new();
-    let root = match Dir::open(Path::new(dir_path)) {
-        Ok(root) => root,
-        Err(e) => {
-            log_warn!(LOG_TAG, "Could not read artifact root {dir_path}: {e}");
-            return files;
-        }
-    };
-    walk_dir(&root, "", &mut files);
-    files
+    let root_path = Path::new(dir_path);
+    let root = open_artifact_root(root_path)?;
+    let entries = read_artifact_root(&root, root_path)?;
+    walk_entries(&root, "", entries, &mut files);
+    Ok(files)
 }
 
 #[cfg(not(target_os = "linux"))]
-pub(super) fn collect_file_metadata(dir_path: &str) -> Vec<FileEntry> {
-    log_warn!(
-        LOG_TAG,
-        "Artifact metadata collection requires Linux no-follow path opening: {dir_path}"
-    );
-    Vec::new()
+pub(super) fn collect_file_metadata(dir_path: &str) -> Result<Vec<FileEntry>, ArchiveError> {
+    Err(ArchiveError::UnsupportedRoot {
+        path: PathBuf::from(dir_path),
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -42,6 +36,11 @@ fn walk_dir(current: &Dir, relative: &str, out: &mut Vec<FileEntry>) {
         Ok(e) => e,
         Err(_) => return,
     };
+    walk_entries(current, relative, entries, out);
+}
+
+#[cfg(target_os = "linux")]
+fn walk_entries(current: &Dir, relative: &str, entries: fs::ReadDir, out: &mut Vec<FileEntry>) {
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
@@ -106,6 +105,16 @@ fn compute_file_hash_from_reader(mut reader: impl Read) -> Result<(String, u64),
 
 #[derive(Debug, Error)]
 pub(super) enum ArchiveError {
+    #[error("failed to open artifact root {}: {source}", path.display())]
+    RootOpen { path: PathBuf, source: io::Error },
+    #[error("failed to read artifact root {}: {source}", path.display())]
+    RootRead { path: PathBuf, source: io::Error },
+    #[cfg(not(target_os = "linux"))]
+    #[error(
+        "artifact root access requires Linux no-follow path opening: {}",
+        path.display()
+    )]
+    UnsupportedRoot { path: PathBuf },
     #[error("failed to create archive output {}: {source}", path.display())]
     CreateOutput { path: PathBuf, source: io::Error },
     #[error("invalid archive path {path:?}: path must be relative and stay within the artifact")]
@@ -142,6 +151,16 @@ pub(super) enum ArchiveError {
     FinishGzip { source: io::Error },
 }
 
+impl ArchiveError {
+    pub(super) fn is_root_not_found(&self) -> bool {
+        matches!(
+            self,
+            Self::RootOpen { source, .. } | Self::RootRead { source, .. }
+                if source.kind() == io::ErrorKind::NotFound
+        )
+    }
+}
+
 /// Create a tar.gz archive containing only the listed manifest files.
 ///
 /// This ensures the archive matches the manifest exactly — no symlinks or other
@@ -153,13 +172,17 @@ pub(super) fn create_archive(
     tar_path: &Path,
     files: &[FileEntry],
 ) -> Result<(), ArchiveError> {
+    let root = Path::new(dir_path);
+    if files.is_empty() {
+        ensure_readable_artifact_root(root)?;
+    }
+
     let output = File::create(tar_path).map_err(|source| ArchiveError::CreateOutput {
         path: tar_path.to_owned(),
         source,
     })?;
     let encoder = GzEncoder::new(output, Compression::default());
     let mut builder = tar::Builder::new(encoder);
-    let root = Path::new(dir_path);
 
     for file in files {
         append_archive_file(root, &mut builder, file)?;
@@ -174,11 +197,32 @@ pub(super) fn create_archive(
     Ok(())
 }
 
+/// Validate archive inputs for a deduplicated snapshot.
+///
+/// This is the deduplicated-snapshot counterpart to [`create_archive`]. When
+/// `/storages/prepare` reports an existing version, callers must run this before
+/// committing that version as HEAD because the deduplicated path does not build
+/// an archive.
+///
+/// The check reopens each listed file through the same Linux no-follow
+/// root/child path opening used for archive creation, then verifies that
+/// manifest paths are still non-empty relative paths with no root, prefix, `.`,
+/// or `..` components, entries are still regular files, and file size plus
+/// SHA-256 still match the pre-walked manifest.
+/// Empty manifests still validate readable artifact-root access through the
+/// no-follow root-opening path.
+///
+/// This validates the current artifact state before commit; it does not freeze
+/// the filesystem after validation returns.
 pub(super) fn validate_archive_inputs(
     dir_path: &str,
     files: &[FileEntry],
 ) -> Result<(), ArchiveError> {
     let root = Path::new(dir_path);
+    if files.is_empty() {
+        ensure_readable_artifact_root(root)?;
+    }
+
     for file in files {
         validate_archive_file(root, file)?;
     }
@@ -301,6 +345,36 @@ fn archive_relative_path(path: &str) -> Result<&Path, ArchiveError> {
         });
     }
     Ok(rel_path)
+}
+
+#[cfg(target_os = "linux")]
+fn ensure_readable_artifact_root(root: &Path) -> Result<(), ArchiveError> {
+    let dir = open_artifact_root(root)?;
+    read_artifact_root(&dir, root)?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn ensure_readable_artifact_root(root: &Path) -> Result<(), ArchiveError> {
+    Err(ArchiveError::UnsupportedRoot {
+        path: root.to_owned(),
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn open_artifact_root(root: &Path) -> Result<Dir, ArchiveError> {
+    Dir::open(root).map_err(|source| ArchiveError::RootOpen {
+        path: root.to_owned(),
+        source,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn read_artifact_root(root: &Dir, path: &Path) -> Result<fs::ReadDir, ArchiveError> {
+    root.read_dir().map_err(|source| ArchiveError::RootRead {
+        path: path.to_owned(),
+        source,
+    })
 }
 
 #[cfg(unix)]
@@ -448,6 +522,56 @@ mod tests {
         guest_common::log::clear_system_log_file();
     }
 
+    fn select_manifest_entries(files: &[FileEntry], expected_paths: &[&str]) -> Vec<FileEntry> {
+        let selected: Vec<FileEntry> = expected_paths
+            .iter()
+            .filter_map(|expected_path| {
+                files
+                    .iter()
+                    .find(|file| file.path == *expected_path)
+                    .cloned()
+            })
+            .collect();
+        let paths: Vec<&str> = selected.iter().map(|file| file.path.as_str()).collect();
+        assert_eq!(paths, expected_paths);
+        selected
+    }
+
+    fn assert_archive_inputs_rejected(
+        root: &Path,
+        files: &[FileEntry],
+        expected_fragments: &[&str],
+    ) -> io::Result<()> {
+        let root_str = root.to_str().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "artifact root is not UTF-8")
+        })?;
+        let validate_err = match validate_archive_inputs(root_str, files) {
+            Ok(()) => {
+                return Err(io::Error::other(
+                    "validate_archive_inputs unexpectedly succeeded",
+                ));
+            }
+            Err(error) => error,
+        };
+        assert_error_contains(&validate_err, expected_fragments);
+
+        let output_dir = tempfile::tempdir()?;
+        let tar_path = output_dir.path().join("archive.tar.gz");
+        let archive_err = match create_archive(root_str, &tar_path, files) {
+            Ok(()) => return Err(io::Error::other("create_archive unexpectedly succeeded")),
+            Err(error) => error,
+        };
+        assert_error_contains(&archive_err, expected_fragments);
+        Ok(())
+    }
+
+    fn assert_error_contains(error: &ArchiveError, expected_fragments: &[&str]) {
+        let msg = error.to_string();
+        for fragment in expected_fragments {
+            assert!(msg.contains(fragment), "got: {msg}");
+        }
+    }
+
     #[test]
     fn walk_dir_skips_symlinks() {
         let dir = tempfile::tempdir().unwrap();
@@ -467,7 +591,7 @@ mod tests {
         // Dangling symlink
         unix_fs::symlink("/nonexistent", root.join("dangling")).unwrap();
 
-        let files = collect_file_metadata(root.to_str().unwrap());
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
         let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
 
         // Regular files should be included
@@ -494,7 +618,7 @@ mod tests {
         std::fs::write(outside.join("secret.txt"), "secret").unwrap();
         unix_fs::symlink(&outside, root.join("link_dir")).unwrap();
 
-        let files = collect_file_metadata(root.to_str().unwrap());
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
         let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
 
         assert!(paths.contains(&"real.txt"));
@@ -510,7 +634,7 @@ mod tests {
         std::fs::write(root.join("real.txt"), "hello").unwrap();
         make_fifo(&root.join("pipe")).unwrap();
 
-        let files = collect_file_metadata(root.to_str().unwrap());
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
         let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
 
         assert!(paths.contains(&"real.txt"));
@@ -525,7 +649,7 @@ mod tests {
         std::fs::write(root.join("original.txt"), "content").unwrap();
         std::fs::hard_link(root.join("original.txt"), root.join("hardlink.txt")).unwrap();
 
-        let files = collect_file_metadata(root.to_str().unwrap());
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
         let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
 
         // Both original and hardlink should be recorded as independent files
@@ -554,7 +678,7 @@ mod tests {
         unix_fs::symlink("/nonexistent", root.join("dangling")).unwrap();
 
         // Collect metadata (skips symlinks)
-        let files = collect_file_metadata(root.to_str().unwrap());
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
 
         // Create archive using only manifest file list
         let tar_path = dir.path().join("archive.tar.gz");
@@ -587,7 +711,7 @@ mod tests {
         // File with newline in name
         std::fs::write(root.join("line1\nline2.txt"), "newline").unwrap();
 
-        let files = collect_file_metadata(root.to_str().unwrap());
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
 
         let tar_path = dir.path().join("archive.tar.gz");
         assert!(create_archive(root.to_str().unwrap(), &tar_path, &files).is_ok());
@@ -617,6 +741,66 @@ mod tests {
     }
 
     #[test]
+    fn archive_empty_files_requires_existing_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing");
+        let tar_path = dir.path().join("empty.tar.gz");
+
+        let err = create_archive(missing.to_str().unwrap(), &tar_path, &[]).unwrap_err();
+
+        assert!(
+            err.to_string().contains("failed to open artifact root"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn archive_empty_files_rejects_symlink_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        let link = dir.path().join("link");
+        std::fs::create_dir(&real).unwrap();
+        unix_fs::symlink(&real, &link).unwrap();
+        let tar_path = dir.path().join("empty.tar.gz");
+
+        let err = create_archive(link.to_str().unwrap(), &tar_path, &[]).unwrap_err();
+
+        assert!(
+            err.to_string().contains("failed to open artifact root"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_archive_inputs_empty_files_requires_existing_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing");
+
+        let err = validate_archive_inputs(missing.to_str().unwrap(), &[]).unwrap_err();
+
+        assert!(
+            err.to_string().contains("failed to open artifact root"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_archive_inputs_empty_files_rejects_symlink_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        let link = dir.path().join("link");
+        std::fs::create_dir(&real).unwrap();
+        unix_fs::symlink(&real, &link).unwrap();
+
+        let err = validate_archive_inputs(link.to_str().unwrap(), &[]).unwrap_err();
+
+        assert!(
+            err.to_string().contains("failed to open artifact root"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
     fn archive_hardlinks_as_independent_regular_files() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -624,7 +808,7 @@ mod tests {
         std::fs::write(root.join("original.txt"), "content").unwrap();
         std::fs::hard_link(root.join("original.txt"), root.join("hardlink.txt")).unwrap();
 
-        let files = collect_file_metadata(root.to_str().unwrap());
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
 
         let tar_path = dir.path().join("archive.tar.gz");
         assert!(create_archive(root.to_str().unwrap(), &tar_path, &files).is_ok());
@@ -652,7 +836,7 @@ mod tests {
         std::fs::write(&script, "echo ok\n").unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        let files = collect_file_metadata(root.to_str().unwrap());
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
         let tar_path = dir.path().join("archive.tar.gz");
         assert!(create_archive(root.to_str().unwrap(), &tar_path, &files).is_ok());
 
@@ -667,35 +851,27 @@ mod tests {
     }
 
     #[test]
-    fn archive_fails_if_listed_file_size_changes() {
+    fn archive_inputs_fail_if_listed_file_size_changes() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
         std::fs::write(root.join("target.txt"), "before").unwrap();
-        let files = collect_file_metadata(root.to_str().unwrap());
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
         std::fs::write(root.join("target.txt"), "after-size-change").unwrap();
 
-        let tar_path = dir.path().join("archive.tar.gz");
-        let err = create_archive(root.to_str().unwrap(), &tar_path, &files).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("target.txt"), "got: {msg}");
-        assert!(msg.contains("size changed"), "got: {msg}");
+        assert_archive_inputs_rejected(root, &files, &["target.txt", "size changed"]).unwrap();
     }
 
     #[test]
-    fn archive_fails_if_listed_file_content_changes() {
+    fn archive_inputs_fail_if_listed_file_content_changes() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
         std::fs::write(root.join("target.txt"), "before").unwrap();
-        let files = collect_file_metadata(root.to_str().unwrap());
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
         std::fs::write(root.join("target.txt"), "after!").unwrap();
 
-        let tar_path = dir.path().join("archive.tar.gz");
-        let err = create_archive(root.to_str().unwrap(), &tar_path, &files).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("target.txt"), "got: {msg}");
-        assert!(msg.contains("content changed"), "got: {msg}");
+        assert_archive_inputs_rejected(root, &files, &["target.txt", "content changed"]).unwrap();
     }
 
     #[test]
@@ -711,63 +887,36 @@ mod tests {
     }
 
     #[test]
-    fn validate_archive_inputs_fails_if_listed_file_content_changes() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-
-        std::fs::write(root.join("target.txt"), "before").unwrap();
-        let files = collect_file_metadata(root.to_str().unwrap());
-        std::fs::write(root.join("target.txt"), "after!").unwrap();
-
-        let err = validate_archive_inputs(root.to_str().unwrap(), &files).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("target.txt"), "got: {msg}");
-        assert!(msg.contains("content changed"), "got: {msg}");
-    }
-
-    #[test]
-    fn validate_archive_inputs_fails_if_listed_file_becomes_symlink() {
+    fn archive_inputs_fail_if_listed_file_becomes_symlink() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
         std::fs::write(root.join("target.txt"), "before").unwrap();
         std::fs::write(root.join("outside.txt"), "outside").unwrap();
-        let files = collect_file_metadata(root.to_str().unwrap());
-        let archive_files: Vec<FileEntry> = files
-            .iter()
-            .filter(|f| f.path == "target.txt")
-            .cloned()
-            .collect();
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
+        let archive_files = select_manifest_entries(&files, &["target.txt"]);
 
         std::fs::remove_file(root.join("target.txt")).unwrap();
         unix_fs::symlink(root.join("outside.txt"), root.join("target.txt")).unwrap();
 
-        let err = validate_archive_inputs(root.to_str().unwrap(), &archive_files).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("target.txt"), "got: {msg}");
-        assert!(msg.contains("not a regular file"), "got: {msg}");
+        assert_archive_inputs_rejected(root, &archive_files, &["target.txt", "not a regular file"])
+            .unwrap();
     }
 
     #[test]
-    fn validate_archive_inputs_fails_if_listed_file_becomes_fifo() {
+    fn archive_inputs_fail_if_listed_file_becomes_fifo() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
         std::fs::write(root.join("target.txt"), "before").unwrap();
-        let files = collect_file_metadata(root.to_str().unwrap());
-        let archive_files: Vec<FileEntry> = files
-            .iter()
-            .filter(|f| f.path == "target.txt")
-            .cloned()
-            .collect();
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
+        let archive_files = select_manifest_entries(&files, &["target.txt"]);
 
         std::fs::remove_file(root.join("target.txt")).unwrap();
         make_fifo(&root.join("target.txt")).unwrap();
 
-        let err = validate_archive_inputs(root.to_str().unwrap(), &archive_files).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("target.txt"), "got: {msg}");
-        assert!(msg.contains("not a regular file"), "got: {msg}");
+        assert_archive_inputs_rejected(root, &archive_files, &["target.txt", "not a regular file"])
+            .unwrap();
     }
 
     #[test]
@@ -817,58 +966,7 @@ mod tests {
     }
 
     #[test]
-    fn archive_fails_if_listed_file_becomes_symlink() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-
-        std::fs::write(root.join("target.txt"), "before").unwrap();
-        std::fs::write(root.join("outside.txt"), "outside").unwrap();
-        let files = collect_file_metadata(root.to_str().unwrap());
-        let archive_files: Vec<FileEntry> = files
-            .iter()
-            .filter(|f| f.path == "target.txt")
-            .cloned()
-            .collect();
-        let paths: Vec<&str> = archive_files.iter().map(|f| f.path.as_str()).collect();
-        assert_eq!(paths, vec!["target.txt"]);
-
-        std::fs::remove_file(root.join("target.txt")).unwrap();
-        unix_fs::symlink(root.join("outside.txt"), root.join("target.txt")).unwrap();
-
-        let tar_path = dir.path().join("archive.tar.gz");
-        let err = create_archive(root.to_str().unwrap(), &tar_path, &archive_files).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("target.txt"), "got: {msg}");
-        assert!(msg.contains("not a regular file"), "got: {msg}");
-    }
-
-    #[test]
-    fn archive_fails_if_listed_file_becomes_fifo() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-
-        std::fs::write(root.join("target.txt"), "before").unwrap();
-        let files = collect_file_metadata(root.to_str().unwrap());
-        let archive_files: Vec<FileEntry> = files
-            .iter()
-            .filter(|f| f.path == "target.txt")
-            .cloned()
-            .collect();
-        let paths: Vec<&str> = archive_files.iter().map(|f| f.path.as_str()).collect();
-        assert_eq!(paths, vec!["target.txt"]);
-
-        std::fs::remove_file(root.join("target.txt")).unwrap();
-        make_fifo(&root.join("target.txt")).unwrap();
-
-        let tar_path = dir.path().join("archive.tar.gz");
-        let err = create_archive(root.to_str().unwrap(), &tar_path, &archive_files).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("target.txt"), "got: {msg}");
-        assert!(msg.contains("not a regular file"), "got: {msg}");
-    }
-
-    #[test]
-    fn archive_fails_if_parent_dir_becomes_symlink() {
+    fn archive_inputs_fail_if_parent_dir_becomes_symlink() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
@@ -876,42 +974,32 @@ mod tests {
         std::fs::write(root.join("subdir/file.txt"), "before").unwrap();
         std::fs::create_dir(root.join("outside")).unwrap();
         std::fs::write(root.join("outside/file.txt"), "outside").unwrap();
-        let files = collect_file_metadata(root.to_str().unwrap());
-        let archive_files: Vec<FileEntry> = files
-            .iter()
-            .filter(|f| f.path == "subdir/file.txt")
-            .cloned()
-            .collect();
-        let paths: Vec<&str> = archive_files.iter().map(|f| f.path.as_str()).collect();
-        assert_eq!(paths, vec!["subdir/file.txt"]);
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
+        let archive_files = select_manifest_entries(&files, &["subdir/file.txt"]);
 
         std::fs::remove_dir_all(root.join("subdir")).unwrap();
         unix_fs::symlink(root.join("outside"), root.join("subdir")).unwrap();
 
-        let tar_path = dir.path().join("archive.tar.gz");
-        let err = create_archive(root.to_str().unwrap(), &tar_path, &archive_files).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("subdir/file.txt"), "got: {msg}");
-        assert!(msg.contains("failed to open"), "got: {msg}");
+        assert_archive_inputs_rejected(
+            root,
+            &archive_files,
+            &["subdir/file.txt", "failed to open"],
+        )
+        .unwrap();
     }
 
     #[test]
-    fn archive_fails_if_listed_file_disappears() {
+    fn archive_inputs_fail_if_listed_file_disappears() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
         std::fs::write(root.join("gone.txt"), "data").unwrap();
-        let files = collect_file_metadata(root.to_str().unwrap());
-        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
-        assert_eq!(paths, vec!["gone.txt"]);
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
+        let archive_files = select_manifest_entries(&files, &["gone.txt"]);
 
         std::fs::remove_file(root.join("gone.txt")).unwrap();
 
-        let tar_path = dir.path().join("archive.tar.gz");
-        let err = create_archive(root.to_str().unwrap(), &tar_path, &files).unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("gone.txt"), "got: {msg}");
-        assert!(msg.contains("metadata"), "got: {msg}");
+        assert_archive_inputs_rejected(root, &archive_files, &["gone.txt", "metadata"]).unwrap();
     }
 
     #[test]
@@ -936,7 +1024,7 @@ mod tests {
         std::fs::create_dir(root.join("src")).unwrap();
         std::fs::write(root.join("src/lib.rs"), "pub fn hello() {}").unwrap();
 
-        let files = collect_file_metadata(root.to_str().unwrap());
+        let files = collect_file_metadata(root.to_str().unwrap()).unwrap();
         let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
 
         assert!(paths.contains(&"main.rs"));
@@ -980,14 +1068,33 @@ mod tests {
     #[test]
     fn collect_file_metadata_empty_dir() {
         let dir = tempfile::tempdir().unwrap();
-        let files = collect_file_metadata(dir.path().to_str().unwrap());
+        let files = collect_file_metadata(dir.path().to_str().unwrap()).unwrap();
         assert!(files.is_empty());
     }
 
     #[test]
     fn collect_file_metadata_nonexistent_dir() {
         disable_system_log();
-        let files = collect_file_metadata("/nonexistent/path/that/does/not/exist");
-        assert!(files.is_empty());
+        let err = collect_file_metadata("/nonexistent/path/that/does/not/exist").unwrap_err();
+        assert!(
+            err.to_string().contains("failed to open artifact root"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn collect_file_metadata_rejects_symlink_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        let link = dir.path().join("link");
+        std::fs::create_dir(&real).unwrap();
+        unix_fs::symlink(&real, &link).unwrap();
+
+        let err = collect_file_metadata(link.to_str().unwrap()).unwrap_err();
+
+        assert!(
+            err.to_string().contains("failed to open artifact root"),
+            "got: {err}"
+        );
     }
 }

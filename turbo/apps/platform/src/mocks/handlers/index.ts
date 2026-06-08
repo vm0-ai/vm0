@@ -56,6 +56,12 @@ import {
   resetMockComposesList,
   resetMockTeam,
 } from "./api-agents.ts";
+import { apiSkillsHandlers, resetMockSkills } from "./api-skills.ts";
+import { apiMemoryHandlers, resetMockMemory } from "./api-memory.ts";
+import {
+  apiMemoryActivityHandlers,
+  resetMockMemoryActivity,
+} from "./api-memory-activity.ts";
 import { apiRunsHandlers } from "./api-runs.ts";
 import { apiFeatureSwitchesHandlers } from "./api-feature-switches.ts";
 import { apiRealtimeHandlers } from "./api-realtime.ts";
@@ -73,6 +79,7 @@ import {
   resetMockOnboardingStatus,
 } from "./api-onboarding.ts";
 import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
+import { apiAttributionHandlers } from "./api-attribution.ts";
 import { apiSchedulesHandlers, resetMockSchedules } from "./api-schedules.ts";
 import { apiInsightsHandlers } from "./api-insights.ts";
 import { apiQueuePositionHandlers } from "./api-queue-position.ts";
@@ -81,10 +88,9 @@ import {
   resetMockSlackConnect,
 } from "./api-integrations-slack-connect.ts";
 import {
-  apiPermissionAccessRequestsHandlers,
-  resetMockPermissionRequests,
-} from "./api-permission-access-requests.ts";
-import { apiPermissionPoliciesHandlers } from "./api-permission-policies.ts";
+  apiUserPermissionGrantsHandlers,
+  resetMockUserPermissionGrants,
+} from "./api-user-permission-grants.ts";
 import { apiVoiceIoHandlers } from "./api-voice-io.ts";
 
 export const handlers = [
@@ -105,16 +111,19 @@ export const handlers = [
   ...apiIntegrationsAgentPhoneHandlers,
   ...apiIntegrationsGithubHandlers,
   ...apiAgentsHandlers,
+  ...apiSkillsHandlers,
+  ...apiMemoryHandlers,
+  ...apiMemoryActivityHandlers,
   ...apiRunsHandlers,
   ...apiUserPreferencesHandlers,
   ...apiUserModelPreferenceHandlers,
   ...apiOnboardingHandlers,
   ...apiBillingHandlers,
+  ...apiAttributionHandlers,
   ...apiIntegrationsSlackConnectHandlers,
   ...apiFeatureSwitchesHandlers,
   ...apiRealtimeHandlers,
-  ...apiPermissionAccessRequestsHandlers,
-  ...apiPermissionPoliciesHandlers,
+  ...apiUserPermissionGrantsHandlers,
   ...apiSchedulesHandlers,
   ...apiInsightsHandlers,
   ...apiQueuePositionHandlers,
@@ -137,7 +146,7 @@ export function resetAllMockHandlers(): void {
   resetMockBilling();
   resetMockSlackConnect();
   resetAblySubscriptions();
-  resetMockPermissionRequests();
+  resetMockUserPermissionGrants();
   resetMockComposesList();
   resetMockOrg();
   resetMockOrgLogo();
@@ -146,5 +155,8 @@ export function resetAllMockHandlers(): void {
   resetMockUsageInsight();
   resetMockSchedules();
   resetMockTeam();
+  resetMockSkills();
+  resetMockMemory();
+  resetMockMemoryActivity();
   resetMockOnboardingStatus();
 }

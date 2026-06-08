@@ -13,6 +13,7 @@ import {
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 import { agentComposes } from "./agent-compose";
+import { chatThreads } from "./chat-thread";
 
 /**
  * Zero Agent Schedules table
@@ -66,6 +67,19 @@ export const zeroAgentSchedules = pgTable(
 
     volumeVersions: jsonb("volume_versions").$type<Record<string, string>>(),
 
+    // Linked chat thread: every schedule posts its runs into this thread and
+    // renders as a web-chat turn. Set at creation (supplied owned thread or a
+    // server-created one) and immutable thereafter. ON DELETE CASCADE: deleting
+    // the thread deletes all schedules linked to it.
+    chatThreadId: uuid("chat_thread_id")
+      .notNull()
+      .references(
+        () => {
+          return chatThreads.id;
+        },
+        { onDelete: "cascade" },
+      ),
+
     // State
     enabled: boolean("enabled").default(true).notNull(),
     nextRunAt: timestamp("next_run_at"),
@@ -104,6 +118,8 @@ export const zeroAgentSchedules = pgTable(
         .where(sql`enabled = true`),
       // Index for user schedule listing (listSchedules filters by userId + optional orgId)
       index("idx_zero_agent_schedules_user_org").on(table.userId, table.orgId),
+      // Index for chat-thread linkage (FK lookups + thread-scoped schedule list)
+      index("idx_zero_agent_schedules_chat_thread").on(table.chatThreadId),
     ];
   },
 );

@@ -10,7 +10,7 @@ import { discardAgentConnectorsDraft$ } from "./connectors.ts";
 
 export { agentActiveTab$, setAgentActiveTab$ } from "./agent-name.ts";
 
-export { agentDetail$, reloadAgentDetail$ } from "./detail.ts";
+export { agentDetail$ } from "./detail.ts";
 
 export {
   agentInstructions$,
@@ -39,8 +39,6 @@ export {
   deleteAgentSchedule$,
 } from "./schedule.ts";
 export type { AgentScheduleSaveParams } from "./schedule.ts";
-
-export { agentPermissionPolicies$ } from "./permissions.ts";
 
 export { deleteAgent$ } from "./delete.ts";
 

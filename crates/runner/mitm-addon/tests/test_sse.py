@@ -37,6 +37,52 @@ class _CaptureHandler:
         self.current = None
 
 
+class _FindTrackingBytes(bytes):
+    find_calls: list[tuple[bytes, int, int | None]]
+
+    def __new__(cls, value: bytes) -> "_FindTrackingBytes":
+        instance = super().__new__(cls, value)
+        instance.find_calls = []
+        return instance
+
+    def find(self, sub: bytes, start: int = 0, end: int | None = None) -> int:
+        self.find_calls.append((sub, start, end))
+        if end is None:
+            return super().find(sub, start)
+        return super().find(sub, start, end)
+
+
+@pytest.mark.parametrize(
+    ("preferred_newline", "other_newline"),
+    [
+        (b"\n", b"\r"),
+        (b"\r", b"\n"),
+    ],
+)
+def test_data_line_search_bounds_other_line_ending_before_preferred_match(
+    preferred_newline: bytes,
+    other_newline: bytes,
+) -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+    data_prefix = b"event: target" + preferred_newline + b"data: "
+    chunk = _FindTrackingBytes(
+        data_prefix + b"payload" + preferred_newline + b"data: " + b"x" * 10_000 + other_newline
+    )
+    data_start = len(data_prefix)
+    data_end = data_start + len(b"payload")
+
+    scanner.feed(chunk)
+
+    assert handler.started == ["target"]
+    assert handler.events == []
+    assert handler.discarded == []
+    assert chunk.find_calls[:2] == [
+        (preferred_newline, data_start, None),
+        (other_newline, data_start, data_end),
+    ]
+
+
 def test_streams_target_multi_data_with_newline_injection() -> None:
     handler = _CaptureHandler({"target"})
     scanner = SseUsageScanner(handler)
@@ -172,6 +218,69 @@ def test_supports_sse_line_endings(newline: bytes) -> None:
     scanner.feed(b"event: target" + newline + b"data: payload" + newline + newline)
 
     assert handler.events == [("target", b"payload")]
+
+
+@pytest.mark.parametrize(
+    ("hint_newline", "data_newline", "later_newline"),
+    [
+        (b"\n", b"\r", b"\n"),
+        (b"\r", b"\n", b"\r"),
+    ],
+)
+def test_data_line_uses_earliest_line_ending_when_hint_prefers_later_match(
+    hint_newline: bytes,
+    data_newline: bytes,
+    later_newline: bytes,
+) -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(
+        b"event: target"
+        + hint_newline
+        + b"data: payload"
+        + data_newline
+        + b"ignored"
+        + later_newline
+        + later_newline
+    )
+
+    assert handler.events == [("target", b"payload")]
+    assert handler.discarded == []
+
+
+@pytest.mark.parametrize("newline", [b"\n", b"\r"])
+def test_streams_many_data_lines_in_one_chunk(newline: bytes) -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+    payloads = [f"line-{i}".encode() for i in range(1000)]
+
+    scanner.feed(
+        b"event: target"
+        + newline
+        + b"".join(b"data: " + payload + newline for payload in payloads)
+        + newline
+    )
+
+    assert handler.events == [("target", b"\n".join(payloads))]
+    assert handler.discarded == []
+
+
+def test_discards_many_cr_only_data_lines_and_recovers_in_same_chunk() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(
+        b"event: ignored\r"
+        + (b"data: ignored\r" * 1000)
+        + b"\r"
+        + b"event: target\r"
+        + b"data: ok\r"
+        + b"\r"
+    )
+
+    assert handler.events == [("target", b"ok")]
+    assert handler.discarded == []
 
 
 def test_skips_large_ignored_event_and_recovers_in_same_chunk() -> None:

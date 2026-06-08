@@ -11,6 +11,10 @@ export const cloudflare = {
         label: "API Token",
         helpText:
           "1. Log in to the [Cloudflare Dashboard](https://dash.cloudflare.com)\n2. Go to **My Profile** → **API Tokens**\n3. Click **Create Token** and configure the required permissions\n4. Copy the generated token",
+        storage: {
+          secrets: ["CLOUDFLARE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

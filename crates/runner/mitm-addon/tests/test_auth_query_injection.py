@@ -100,7 +100,8 @@ class TestAuthQueryInjection:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
         assert "auth_url_rewrite" not in flow.metadata
         assert flow.request.query["api_key"] == "resolved-key-123"
         assert flow.request.query["empty_auth"] == ""

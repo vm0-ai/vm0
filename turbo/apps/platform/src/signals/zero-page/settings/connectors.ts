@@ -5,24 +5,26 @@ import { accept } from "../../../lib/accept.ts";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
+  connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
+  type ConnectorDeviceAuthStartOptions,
   type ConnectorType,
   type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
 import {
+  getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
-  getConfiguredConnectorAuthMethods,
+  getConfiguredConnectorAuthMethodIds,
   getConnectorTags,
   hasRequiredConnectorAuthMethodScopes,
-  isGoogleOAuthConnector,
-  hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
 } from "@vm0/connectors/connector-utils";
+import { shouldShowGoogleSecurityWarningNotice } from "../../../lib/google-security-warning.ts";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
-  zeroConnectorApiTokenContract,
+  zeroConnectorManualGrantContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import type {
@@ -56,6 +58,11 @@ const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
 type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
 };
+export type ConnectorConnectionStatus =
+  | "not-connected"
+  | "connected"
+  | "scope-mismatch"
+  | "reconnect-required";
 
 // ---------------------------------------------------------------------------
 // Derived state
@@ -80,9 +87,16 @@ export interface ConnectorTypeWithStatus {
   usedByAgent?: boolean;
   /** True if stored grant scopes don't cover all currently required scopes. */
   scopeMismatch: boolean;
-  /** True if OAuth token refresh failed and user needs to reconnect. */
-  needsReconnect: boolean;
+  /** User-facing connection state derived from API state and scope coverage. */
+  connectionStatus: ConnectorConnectionStatus;
+  /** Stored credential expiry returned by the API. */
+  tokenExpiresAt: string | null;
+  /** True when the selected auth method can refresh runtime access. */
+  authMethodSupportsRefresh: boolean;
 }
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 type ConnectorConnectLaunchMode = "oauth-auth-code" | "modal";
 
@@ -93,7 +107,7 @@ function getAvailableConnectorConnectAuthMethods(
     readonly includeManagedForTypes: readonly ConnectorType[];
   },
 ): ConnectorAuthMethodId[] {
-  return getConfiguredConnectorAuthMethods(type).filter((authMethod) => {
+  return getConfiguredConnectorAuthMethodIds(type).filter((authMethod) => {
     const method = getConnectorAuthMethod(type, authMethod);
     switch (method?.grant.kind) {
       case "managed": {
@@ -118,25 +132,122 @@ function getAvailableConnectorConnectAuthMethods(
 export function getConnectorConnectLaunchMode({
   type,
   availableAuthMethods,
-  preferModalForGoogleOAuth = false,
+  preferModalForGoogleSecurityWarning = false,
 }: {
   readonly type: ConnectorType;
   readonly availableAuthMethods: readonly ConnectorAuthMethodId[];
-  readonly preferModalForGoogleOAuth?: boolean;
+  readonly preferModalForGoogleSecurityWarning?: boolean;
 }): ConnectorConnectLaunchMode {
-  const hasAuthCodeGrant = availableAuthMethods.some((authMethod) => {
-    return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code";
-  });
-  if (!hasAuthCodeGrant) {
+  const [authMethod] = availableAuthMethods;
+  if (availableAuthMethods.length !== 1 || !authMethod) {
     return "modal";
   }
-  if (!hasConnectorAuthCodeGrant(type)) {
+  if (getConnectorAuthMethod(type, authMethod)?.grant.kind !== "auth-code") {
     return "modal";
   }
-  if (preferModalForGoogleOAuth && isGoogleOAuthConnector(type)) {
+  if (
+    preferModalForGoogleSecurityWarning &&
+    shouldShowGoogleSecurityWarningNotice(type)
+  ) {
     return "modal";
   }
   return "oauth-auth-code";
+}
+
+export function getAvailableAuthCodeAuthMethod(
+  type: ConnectorType,
+  availableAuthMethods: readonly ConnectorAuthMethodId[],
+  authMethod: string,
+): ConnectorAuthMethodId | null {
+  const authMethodResult = connectorAuthMethodIdSchema.safeParse(authMethod);
+  if (!authMethodResult.success) {
+    return null;
+  }
+  if (!availableAuthMethods.includes(authMethodResult.data)) {
+    return null;
+  }
+  if (
+    getConnectorAuthMethod(type, authMethodResult.data)?.grant.kind !==
+    "auth-code"
+  ) {
+    return null;
+  }
+  return authMethodResult.data;
+}
+
+export function getOnlyAvailableAuthCodeAuthMethod(
+  type: ConnectorType,
+  availableAuthMethods: readonly ConnectorAuthMethodId[],
+): ConnectorAuthMethodId | null {
+  const [authMethod] = availableAuthMethods;
+  if (availableAuthMethods.length !== 1 || !authMethod) {
+    return null;
+  }
+  return getAvailableAuthCodeAuthMethod(type, availableAuthMethods, authMethod);
+}
+
+function connectorAuthMethodSupportsRefresh(
+  type: ConnectorType,
+  authMethod: string,
+): boolean {
+  return (
+    getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
+    "refresh-token"
+  );
+}
+
+function connectorTokenExpiresAtMs(
+  connector: ConnectorTypeWithStatus,
+): number | null {
+  if (!connector.tokenExpiresAt) {
+    return null;
+  }
+  const value = Date.parse(connector.tokenExpiresAt);
+  return Number.isFinite(value) ? value : null;
+}
+
+export function connectorCurrentConnectionStatus(
+  connector: ConnectorTypeWithStatus,
+  nowMs = Date.now(),
+): ConnectorConnectionStatus {
+  if (connector.connectionStatus === "not-connected") {
+    return "not-connected";
+  }
+  if (!connector.authMethodSupportsRefresh) {
+    const tokenExpiresAtMs = connectorTokenExpiresAtMs(connector);
+    if (tokenExpiresAtMs !== null && tokenExpiresAtMs <= nowMs) {
+      return "reconnect-required";
+    }
+  }
+  return connector.connectionStatus;
+}
+
+function formatExpiryCountdown(value: number, unit: "day" | "hour"): string {
+  return `Expires in ${value} ${unit}${value === 1 ? "" : "s"}`;
+}
+
+export function connectorExpiryCountdownText(
+  connector: ConnectorTypeWithStatus,
+  nowMs = Date.now(),
+): string | null {
+  if (
+    connectorCurrentConnectionStatus(connector, nowMs) !== "connected" ||
+    connector.authMethodSupportsRefresh
+  ) {
+    return null;
+  }
+  const tokenExpiresAtMs = connectorTokenExpiresAtMs(connector);
+  if (tokenExpiresAtMs === null) {
+    return null;
+  }
+  const remainingMs = tokenExpiresAtMs - nowMs;
+  if (remainingMs >= DAY_MS) {
+    return formatExpiryCountdown(Math.ceil(remainingMs / DAY_MS), "day");
+  }
+  if (remainingMs < HOUR_MS) {
+    return "Expires in less than 1 hour";
+  }
+  return formatExpiryCountdown(Math.ceil(remainingMs / HOUR_MS), "hour");
 }
 
 function buildConnectorTypeStatus(params: {
@@ -152,7 +263,7 @@ function buildConnectorTypeStatus(params: {
       includeManagedForTypes: [],
     },
   );
-  const hasManualCredentialGrant = availableAuthMethods.some((authMethod) => {
+  const hasManualGrant = availableAuthMethods.some((authMethod) => {
     return (
       getConnectorAuthMethod(params.type, authMethod)?.grant.kind === "manual"
     );
@@ -162,6 +273,13 @@ function buildConnectorTypeStatus(params: {
     return !!method?.featureFlag && method.showExperimentalLabel !== false;
   });
   const connected = params.connector !== null;
+  const apiConnectionStatus = params.connector?.connectionStatus ?? null;
+  const authMethodSupportsRefresh =
+    params.connector !== null &&
+    connectorAuthMethodSupportsRefresh(
+      params.type,
+      params.connector.authMethod,
+    );
   const scopeMismatch =
     params.connector !== null &&
     !hasRequiredConnectorAuthMethodScopes(
@@ -169,11 +287,20 @@ function buildConnectorTypeStatus(params: {
       params.connector.authMethod,
       params.connector.oauthScopes,
     );
+  let connectionStatus: ConnectorConnectionStatus = "not-connected";
+  if (params.connector !== null) {
+    connectionStatus = "connected";
+    if (apiConnectionStatus === "reconnect-required") {
+      connectionStatus = "reconnect-required";
+    } else if (scopeMismatch) {
+      connectionStatus = "scope-mismatch";
+    }
+  }
 
   return {
     type: params.type,
     label:
-      showExperimentalLabel && !hasManualCredentialGrant
+      showExperimentalLabel && !hasManualGrant
         ? `[Experimental] ${config.label}`
         : config.label,
     helpText: config.helpText,
@@ -183,7 +310,9 @@ function buildConnectorTypeStatus(params: {
     connector: params.connector,
     availableAuthMethods,
     scopeMismatch,
-    needsReconnect: params.connector?.needsReconnect ?? false,
+    connectionStatus,
+    tokenExpiresAt: params.connector?.tokenExpiresAt ?? null,
+    authMethodSupportsRefresh,
   };
 }
 
@@ -259,6 +388,131 @@ export const allConnectorTypes$ = computed(async (get) => {
 });
 
 // ---------------------------------------------------------------------------
+// Onboarding connector curation
+//
+// The onboarding picker used to render the entire connector catalog (200+),
+// which buries the handful of tools real teams actually use. We curate it to
+// two sources: connectors external teams have actually connected (from a
+// masked production snapshot) plus a short list of famous tools. The full
+// catalog stays available from the connectors page after onboarding.
+// ---------------------------------------------------------------------------
+
+/**
+ * Connector types external (non-vm0) teams have actually connected, ordered by
+ * adoption (distinct external orgs). Generated from a masked production
+ * snapshot on 2026-05-30; refresh periodically against mask-db.
+ */
+const EXTERNAL_ADOPTED_ONBOARDING_TYPES: readonly string[] = [
+  "github",
+  "gmail",
+  "notion",
+  "x",
+  "slack",
+  "google-drive",
+  "google-calendar",
+  "google-sheets",
+  "agentmail",
+  "openai",
+  "cloudflare",
+  "deepseek",
+  "discord",
+  "intervals-icu",
+  "lark",
+  "google-docs",
+  "linear",
+  "serpapi",
+  "strava",
+  "tavily",
+  "vercel",
+  "discord-webhook",
+  "e2b",
+  "exa",
+  "figma",
+  "groq",
+  "hugging-face",
+  "minimax",
+  "apify",
+  "base44",
+  "browser-use",
+  "browserless",
+  "clickup",
+  "db9",
+  "drive9",
+  "dropbox",
+  "elevenlabs",
+  "fal",
+  "firecrawl",
+  "google-ads",
+  "google-meet",
+  "heygen",
+  "hubspot",
+  "jira",
+  "luma",
+  "luma-ai",
+  "mem0",
+  "neon",
+  "openweather",
+  "pdf4me",
+  "perplexity",
+  "railway",
+  "runway",
+  "sentry",
+  "slack-webhook",
+  "supabase",
+  "supadata",
+  "todoist",
+  "youtube",
+];
+
+/**
+ * Recognizable, commonly-used connectors we always surface during onboarding
+ * even when external adoption is still low.
+ */
+const FEATURED_ONBOARDING_TYPES: readonly string[] = [
+  "google-sheets",
+  "google-meet",
+  "dropbox",
+  "discord",
+  "zoom",
+  "calendly",
+  "asana",
+  "clickup",
+  "gitlab",
+  "salesforce",
+  "shopify",
+  "canva",
+  "perplexity",
+  "x",
+];
+
+/**
+ * Connector list shown in the onboarding picker: curated to external adoption
+ * plus famous tools, most-adopted first. Unknown ids are ignored because this
+ * intersects with the live catalog from {@link allConnectorTypes$}.
+ */
+export const onboardingConnectorTypes$ = computed(async (get) => {
+  const all = await get(allConnectorTypes$);
+  const onboardingTypes = new Set<string>([
+    ...EXTERNAL_ADOPTED_ONBOARDING_TYPES,
+    ...FEATURED_ONBOARDING_TYPES,
+  ]);
+  const adoptionRank = new Map<string, number>(
+    EXTERNAL_ADOPTED_ONBOARDING_TYPES.map((type, index) => {
+      return [type, index];
+    }),
+  );
+  return all
+    .filter((connector) => {
+      return onboardingTypes.has(connector.type);
+    })
+    .sort((a, b) => {
+      const ra = adoptionRank.get(a.type) ?? Number.MAX_SAFE_INTEGER;
+      const rb = adoptionRank.get(b.type) ?? Number.MAX_SAFE_INTEGER;
+      return ra - rb;
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Hidden connector types (removed from list by user; persisted in localStorage)
 // ---------------------------------------------------------------------------
 
@@ -290,6 +544,7 @@ const internalSelectedConnectorType$ = state<ConnectorType | null>(null);
 
 type ActiveConnectorOAuthDeviceAuthState = {
   readonly connectorType: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly requestId: string;
   readonly sessionId: string;
   readonly sessionToken: string;
@@ -310,6 +565,7 @@ export type ConnectorOAuthDeviceAuthState =
   | {
       readonly status: "starting";
       readonly connectorType: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
       readonly requestId: string;
     }
   | (ActiveConnectorOAuthDeviceAuthState & {
@@ -317,7 +573,8 @@ export type ConnectorOAuthDeviceAuthState =
     })
   | {
       readonly status: "denied" | "expired" | "error";
-      readonly connectorType: ConnectorType | null;
+      readonly connectorType: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
       readonly message: string;
     };
 
@@ -337,6 +594,9 @@ const internalConnectorOAuthDeviceAuthState$ =
     createIdleConnectorOAuthDeviceAuthState(),
   );
 const resetConnectorOAuthDeviceAuthFlowSignal$ = resetSignal();
+const connectorOAuthDeviceAuthStartOptionValues$ = state<
+  Record<string, Record<string, string>>
+>({});
 
 export const selectedConnectorType$ = computed((get) => {
   return get(internalSelectedConnectorType$);
@@ -358,6 +618,51 @@ export const setSelectedConnectorType$ = command(
 export const connectorOAuthDeviceAuthState$ = computed((get) => {
   return get(internalConnectorOAuthDeviceAuthState$);
 });
+
+function connectorOAuthDeviceAuthStartOptionsKey(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): string {
+  return `${type}:${authMethod}`;
+}
+
+export const connectorOAuthDeviceAuthStartOptionValuesFor$ = (
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+) => {
+  return computed((get) => {
+    return (
+      get(connectorOAuthDeviceAuthStartOptionValues$)[
+        connectorOAuthDeviceAuthStartOptionsKey(type, authMethod)
+      ] ?? {}
+    );
+  });
+};
+
+export const setConnectorOAuthDeviceAuthStartOptionValue$ = command(
+  (
+    { get, set },
+    args: {
+      readonly type: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+      readonly name: string;
+      readonly value: string;
+    },
+  ) => {
+    const key = connectorOAuthDeviceAuthStartOptionsKey(
+      args.type,
+      args.authMethod,
+    );
+    const current = get(connectorOAuthDeviceAuthStartOptionValues$);
+    set(connectorOAuthDeviceAuthStartOptionValues$, {
+      ...current,
+      [key]: {
+        ...current[key],
+        [args.name]: args.value,
+      },
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Scope review modal state
@@ -386,41 +691,43 @@ export const setScopeReviewType$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Token form state (used by add-connection dialog)
+// Manual grant form state (used by connector connection dialogs)
 // ---------------------------------------------------------------------------
 
-const tokenFormValues$ = state<Record<string, Record<string, string>>>({});
-export const tokenFormSubmitting$ = computed((get) => {
-  return get(internalTokenFormSubmitting$);
+const manualGrantFormValues$ = state<Record<string, Record<string, string>>>(
+  {},
+);
+export const manualGrantFormSubmitting$ = computed((get) => {
+  return get(internalManualGrantFormSubmitting$);
 });
-const internalTokenFormSubmitting$ = state<string | null>(null);
+const internalManualGrantFormSubmitting$ = state<string | null>(null);
 
-export const setTokenFormValue$ = command(
+export const setManualGrantFormValue$ = command(
   ({ get, set }, type: string, name: string, value: string) => {
-    const current = get(tokenFormValues$);
-    set(tokenFormValues$, {
+    const current = get(manualGrantFormValues$);
+    set(manualGrantFormValues$, {
       ...current,
       [type]: { ...current[type], [name]: value },
     });
   },
 );
 
-export const clearTokenForm$ = command(({ get, set }, type: string) => {
-  const current = get(tokenFormValues$);
+export const clearManualGrantForm$ = command(({ get, set }, type: string) => {
+  const current = get(manualGrantFormValues$);
   const updated = { ...current };
   delete updated[type];
-  set(tokenFormValues$, updated);
+  set(manualGrantFormValues$, updated);
 });
 
-export const tokenFormValuesFor$ = (type: string) => {
+export const manualGrantFormValuesFor$ = (type: string) => {
   return computed((get) => {
-    return get(tokenFormValues$)[type] ?? {};
+    return get(manualGrantFormValues$)[type] ?? {};
   });
 };
 
-export const setTokenFormSubmitting$ = command(
+export const setManualGrantFormSubmitting$ = command(
   ({ set }, value: string | null) => {
-    set(internalTokenFormSubmitting$, value);
+    set(internalManualGrantFormSubmitting$, value);
   },
 );
 
@@ -466,20 +773,20 @@ const finishConnectorConnection$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Submit manual connector credentials command
+// Submit manual connector grant command
 // ---------------------------------------------------------------------------
 
-type SubmitManualCredentialsParams = {
+type SubmitManualGrantParams = {
   readonly type: ConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
-  readonly inputSecrets: Record<string, string>;
+  readonly inputValues: Record<string, string>;
   readonly options: PostConnectOptions;
 };
 
-export const submitManualCredentials$ = command(
+export const submitManualGrant$ = command(
   async (
     { get, set },
-    { type, authMethod, inputSecrets, options }: SubmitManualCredentialsParams,
+    { type, authMethod, inputValues, options }: SubmitManualGrantParams,
     signal: AbortSignal,
   ) => {
     const flow = createConnectorConnectFlowState(type);
@@ -487,14 +794,14 @@ export const submitManualCredentials$ = command(
     return await withCleanup(
       (async () => {
         const createClient = get(zeroClient$);
-        if (authMethod !== "api-token") {
-          throw new Error(`${type} ${authMethod} does not use API-token auth`);
-        }
-        const connectorClient = createClient(zeroConnectorApiTokenContract);
+        const connectorClient = createClient(zeroConnectorManualGrantContract);
         await accept(
           connectorClient.connect({
             params: { type },
-            body: { values: sanitizeTokenInputRecord(inputSecrets) },
+            body: {
+              authMethod,
+              values: sanitizeTokenInputRecord(inputValues),
+            },
             fetchOptions: { signal },
           }),
           [200],
@@ -641,9 +948,17 @@ const OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS = IN_VITEST ? 10 : 1000;
 
 type PollConnectorOAuthDeviceAuthArgs = {
   readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly requestId: string;
   readonly createClient: ZeroClientFactory;
   readonly options: PostConnectOptions;
+};
+
+type ConnectConnectorOAuthDeviceAuthParams = {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly options: PostConnectOptions;
+  readonly startOptions?: ConnectorDeviceAuthStartOptions;
 };
 
 function createConnectorOAuthDeviceAuthRequestId(type: ConnectorType): string {
@@ -679,6 +994,7 @@ function getOAuthDeviceAuthTerminalMessage(
 function isCurrentConnectorOAuthDeviceAuthRequest(
   state: ConnectorOAuthDeviceAuthState,
   type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
   requestId: string,
 ): state is ActiveConnectorOAuthDeviceAuthState & {
   readonly status: "pending" | "polling";
@@ -686,6 +1002,7 @@ function isCurrentConnectorOAuthDeviceAuthRequest(
   return (
     (state.status === "pending" || state.status === "polling") &&
     state.connectorType === type &&
+    state.authMethod === authMethod &&
     state.requestId === requestId
   );
 }
@@ -699,11 +1016,16 @@ export const clearConnectorOAuthDeviceAuth$ = command(({ set }) => {
 });
 
 export const openConnectorOAuthDeviceAuthVerificationPage$ = command(
-  ({ get, set }, type: ConnectorType): boolean => {
+  (
+    { get, set },
+    type: ConnectorType,
+    authMethod: ConnectorAuthMethodId,
+  ): boolean => {
     const current = get(internalConnectorOAuthDeviceAuthState$);
     if (
       (current.status !== "pending" && current.status !== "polling") ||
-      current.connectorType !== type
+      current.connectorType !== type ||
+      current.authMethod !== authMethod
     ) {
       return false;
     }
@@ -735,6 +1057,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
     { get, set },
     {
       type,
+      authMethod,
       requestId,
       createClient,
       options,
@@ -742,15 +1065,21 @@ const pollConnectorOAuthDeviceAuth$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const client = createClient(zeroConnectorOauthDeviceAuthSessionContract);
+    const isCurrentRequest = (state: ConnectorOAuthDeviceAuthState) => {
+      return isCurrentConnectorOAuthDeviceAuthRequest(
+        state,
+        type,
+        authMethod,
+        requestId,
+      );
+    };
     let completed = false;
     let expired = false;
 
     await setLoop(
       async (sig) => {
         const current = get(internalConnectorOAuthDeviceAuthState$);
-        if (
-          !isCurrentConnectorOAuthDeviceAuthRequest(current, type, requestId)
-        ) {
+        if (!isCurrentRequest(current)) {
           return true;
         }
 
@@ -794,9 +1123,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
             };
 
         const latest = get(internalConnectorOAuthDeviceAuthState$);
-        if (
-          !isCurrentConnectorOAuthDeviceAuthRequest(latest, type, requestId)
-        ) {
+        if (!isCurrentRequest(latest)) {
           return true;
         }
 
@@ -817,6 +1144,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
           set(internalConnectorOAuthDeviceAuthState$, {
             status: pollResult.status,
             connectorType: type,
+            authMethod,
             message: getOAuthDeviceAuthTerminalMessage(pollResult),
           });
           return true;
@@ -847,13 +1175,11 @@ const pollConnectorOAuthDeviceAuth$ = command(
     );
 
     const latest = get(internalConnectorOAuthDeviceAuthState$);
-    if (
-      expired &&
-      isCurrentConnectorOAuthDeviceAuthRequest(latest, type, requestId)
-    ) {
+    if (expired && isCurrentRequest(latest)) {
       set(internalConnectorOAuthDeviceAuthState$, {
         status: "expired",
         connectorType: type,
+        authMethod,
         message: "Connection session expired. Start again to retry.",
       });
     }
@@ -864,13 +1190,14 @@ const pollConnectorOAuthDeviceAuth$ = command(
 export const connectConnectorOAuthDeviceAuth$ = command(
   async (
     { get, set },
-    type: ConnectorType,
-    options: PostConnectOptions,
+    args: ConnectConnectorOAuthDeviceAuthParams,
     signal: AbortSignal,
   ): Promise<boolean> => {
+    const { type, authMethod, options, startOptions } = args;
     if (!hasConnectorDeviceAuthGrant(type)) {
       throw new Error(`${type} does not use device authorization OAuth`);
     }
+    assertConnectorUsesDeviceAuthMethod(type, authMethod);
 
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
@@ -885,6 +1212,7 @@ export const connectConnectorOAuthDeviceAuth$ = command(
         set(internalConnectorOAuthDeviceAuthState$, {
           status: "starting",
           connectorType: type,
+          authMethod,
           requestId,
         });
 
@@ -892,11 +1220,18 @@ export const connectConnectorOAuthDeviceAuth$ = command(
         const client = createClient(
           zeroConnectorOauthDeviceAuthSessionContract,
         );
+        const startOptionEntries = Object.entries(startOptions ?? {});
         const startSettled = await settle(
           accept(
             client.create({
               params: { type },
-              body: {},
+              body:
+                startOptionEntries.length > 0
+                  ? {
+                      authMethod,
+                      options: Object.fromEntries(startOptionEntries),
+                    }
+                  : { authMethod },
               fetchOptions: { signal: flowSignal },
             }),
             [200],
@@ -912,6 +1247,7 @@ export const connectConnectorOAuthDeviceAuth$ = command(
           set(internalConnectorOAuthDeviceAuthState$, {
             status: "error",
             connectorType: type,
+            authMethod,
             message: oauthDeviceAuthErrorMessage(startSettled.error),
           });
         }
@@ -923,6 +1259,7 @@ export const connectConnectorOAuthDeviceAuth$ = command(
         set(internalConnectorOAuthDeviceAuthState$, {
           status: "pending",
           connectorType: type,
+          authMethod,
           requestId,
           sessionId: startResult.sessionId,
           sessionToken: startResult.sessionToken,
@@ -943,6 +1280,7 @@ export const connectConnectorOAuthDeviceAuth$ = command(
           pollConnectorOAuthDeviceAuth$,
           {
             type,
+            authMethod,
             requestId,
             createClient,
             options,
@@ -962,6 +1300,7 @@ export const connectConnectorOAuthDeviceAuth$ = command(
             (current.status !== "starting" &&
               current.status !== "pending" &&
               current.status !== "polling") ||
+            current.authMethod !== authMethod ||
             current.requestId !== requestId
           ) {
             return current;
@@ -976,19 +1315,27 @@ export const connectConnectorOAuthDeviceAuth$ = command(
 export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
   async (
     { set },
-    type: ConnectorType,
-    onSuccess: () => void | Promise<void>,
-    options: PostConnectOptions,
+    args: {
+      readonly type: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+      readonly onSuccess: () => void | Promise<void>;
+      readonly options: PostConnectOptions;
+      readonly startOptions?: ConnectorDeviceAuthStartOptions;
+    },
     signal: AbortSignal,
   ): Promise<void> => {
     const connected = await set(
       connectConnectorOAuthDeviceAuth$,
-      type,
-      options,
+      {
+        type: args.type,
+        authMethod: args.authMethod,
+        options: args.options,
+        startOptions: args.startOptions,
+      },
       signal,
     );
     if (connected) {
-      await onSuccess();
+      await args.onSuccess();
     }
   },
 );
@@ -1070,15 +1417,48 @@ const resetOAuthAuthCodeConnectorPopupSignal$ = resetSignal();
 // Connect command
 // ---------------------------------------------------------------------------
 
-function assertConnectorUsesOAuthAuthCode(type: ConnectorType): void {
-  if (!hasConnectorAuthCodeGrant(type)) {
-    throw new Error(`${type} does not use an auth-code grant`);
+function assertConnectorUsesAuthCodeMethod(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): void {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    throw new Error(`${type} does not have ${authMethod} auth method`);
+  }
+  if (method.grant.kind !== "auth-code") {
+    throw new Error(`${type} ${authMethod} does not use an auth-code grant`);
   }
 }
 
+function assertConnectorUsesDeviceAuthMethod(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): void {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    throw new Error(`${type} does not have ${authMethod} auth method`);
+  }
+  if (method.grant.kind !== "device-auth") {
+    throw new Error(`${type} ${authMethod} does not use a device-auth grant`);
+  }
+}
+
+function connectorMatchesAuthMethod(
+  connector: ConnectorResponse,
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): boolean {
+  return connector.type === type && connector.authMethod === authMethod;
+}
+
 const openConnectorOAuthAuthCodeWindow$ = command(
-  async ({ get }, type: ConnectorType, signal: AbortSignal) => {
-    assertConnectorUsesOAuthAuthCode(type);
+  async (
+    { get },
+    type: ConnectorType,
+    authMethod: ConnectorAuthMethodId,
+    signal: AbortSignal,
+  ) => {
+    assertConnectorUsesAuthCodeMethod(type, authMethod);
 
     const standalone = isStandaloneMode();
 
@@ -1097,7 +1477,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     const startResult = await accept(
       startClient.start({
         params: { type },
-        body: {},
+        body: { authMethod },
         fetchOptions: { signal },
       }),
       [200],
@@ -1118,10 +1498,11 @@ export const connectConnectorOAuthAuthCode$ = command(
   async (
     { get, set },
     type: ConnectorType,
+    authMethod: ConnectorAuthMethodId,
     options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
-    assertConnectorUsesOAuthAuthCode(type);
+    assertConnectorUsesAuthCodeMethod(type, authMethod);
 
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
@@ -1132,6 +1513,7 @@ export const connectConnectorOAuthAuthCode$ = command(
         const authWindow = await set(
           openConnectorOAuthAuthCodeWindow$,
           type,
+          authMethod,
           signal,
         );
         signal.throwIfAborted();
@@ -1154,7 +1536,7 @@ export const connectConnectorOAuthAuthCode$ = command(
             );
             const polled = (result.body as ConnectorListResponse).connectors;
             const current = polled.find((c) => {
-              return c.type === type;
+              return connectorMatchesAuthMethod(c, type, authMethod);
             });
 
             if (initialUpdatedAt === undefined) {
@@ -1239,7 +1621,7 @@ export const connectConnectorOAuthAuthCode$ = command(
         // Mark as optimistically connected before clearing polling so the UI
         // transitions directly from "Connecting…" to "Connected" without flash.
         const isConnected = connectors.some((c) => {
-          return c.type === type;
+          return connectorMatchesAuthMethod(c, type, authMethod);
         });
         if (isConnected) {
           set(finishConnectorConnection$, type, {
@@ -1270,19 +1652,23 @@ export const connectConnectorOAuthAuthCode$ = command(
 export const connectConnectorOAuthAuthCodeAndSettle$ = command(
   async (
     { set },
-    type: ConnectorType,
-    onSuccess: () => void | Promise<void>,
-    options: PostConnectOptions,
+    args: {
+      readonly type: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+      readonly onSuccess: () => void | Promise<void>;
+      readonly options: PostConnectOptions;
+    },
     signal: AbortSignal,
   ): Promise<void> => {
     const connected = await set(
       connectConnectorOAuthAuthCode$,
-      type,
-      options,
+      args.type,
+      args.authMethod,
+      args.options,
       signal,
     );
     if (connected) {
-      await onSuccess();
+      await args.onSuccess();
     }
   },
 );

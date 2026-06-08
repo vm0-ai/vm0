@@ -4,9 +4,10 @@ import {
   type ConnectorAccessConfig,
   type ConnectorAuthMethodConfig,
   type ConnectorConfig,
+  type ConnectorEnvBindingValue,
   type ConnectorType,
 } from "./connectors";
-import { getConnectorEnvBindings } from "./connector-utils";
+import { getConnectorEnvBindingEntries } from "./connector-utils";
 
 /**
  * Result of a connector search hit, one per matched connector type.
@@ -48,7 +49,7 @@ function tokenize(input: string): Set<string> {
 
 function connectorAccessEnvBindings(
   access: ConnectorAccessConfig,
-): Record<string, string> {
+): Record<string, ConnectorEnvBindingValue> {
   switch (access.kind) {
     case "static":
     case "refresh-token":
@@ -64,6 +65,10 @@ function getManualGrantFields(
   return method.grant.kind === "manual" ? method.grant.fields : undefined;
 }
 
+function connectorEnvBindingValueRef(value: ConnectorEnvBindingValue): string {
+  return typeof value === "string" ? value : value.valueRef;
+}
+
 function listSecretNames(config: ConnectorConfig): string[] {
   const names: string[] = [];
   for (const method of Object.values(config.authMethods)) {
@@ -73,8 +78,9 @@ function listSecretNames(config: ConnectorConfig): string[] {
     for (const valueRef of Object.values(
       connectorAccessEnvBindings(method.access),
     )) {
-      if (valueRef.startsWith("$secrets.")) {
-        names.push(valueRef.slice("$secrets.".length));
+      const ref = connectorEnvBindingValueRef(valueRef);
+      if (ref.startsWith("$secrets.")) {
+        names.push(ref.slice("$secrets.".length));
       }
     }
   }
@@ -82,6 +88,16 @@ function listSecretNames(config: ConnectorConfig): string[] {
 }
 
 type ScoreHit = { score: number; matchedField: string };
+
+function listEnvNames(type: ConnectorType): string[] {
+  return [
+    ...new Set(
+      getConnectorEnvBindingEntries(type).map(({ envName }) => {
+        return envName;
+      }),
+    ),
+  ];
+}
 
 function findExactMatch(
   keywordLower: string,
@@ -91,7 +107,7 @@ function findExactMatch(
   if (type.toLowerCase() === keywordLower) {
     return { score: 100, matchedField: "type" };
   }
-  for (const envName of Object.keys(getConnectorEnvBindings(type))) {
+  for (const envName of listEnvNames(type)) {
     if (envName.toLowerCase() === keywordLower) {
       return { score: 90, matchedField: `env:${envName}` };
     }
@@ -119,7 +135,7 @@ function findSubstringMatch(
   if (config.label.toLowerCase().includes(keywordLower)) {
     return { score: 50, matchedField: "label" };
   }
-  for (const envName of Object.keys(getConnectorEnvBindings(type))) {
+  for (const envName of listEnvNames(type)) {
     if (envName.toLowerCase().includes(keywordLower)) {
       return { score: 40, matchedField: `env:${envName}` };
     }
@@ -146,7 +162,7 @@ function collectCandidateTokens(
   const sources = [
     type,
     config.label,
-    ...Object.keys(getConnectorEnvBindings(type)),
+    ...listEnvNames(type),
     ...listSecretNames(config),
     ...(config.tags ?? []),
   ];

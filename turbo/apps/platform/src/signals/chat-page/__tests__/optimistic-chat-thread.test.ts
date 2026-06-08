@@ -8,6 +8,7 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   chatMessagesContract,
+  type GenerationTemplateRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { createDeferredPromise, detach, Reason } from "../../utils.ts";
 import { currentLeftThread$ } from "../chat-thread-panes.ts";
@@ -226,10 +227,19 @@ describe("optimistic chat thread (local mode)", () => {
     setupBaseHandlers();
     let createdThreadId = "";
     let clientMessageId = "msg-no-credit-user";
+    let capturedGenerationTemplate: GenerationTemplateRequest | undefined;
+    const generationTemplate: GenerationTemplateRequest = {
+      type: "presentation",
+      selection: {
+        designSystemId: "design-system-test",
+        templateId: "template:html-ppt-pitch-deck",
+      },
+    };
     server.use(
       mockApi(chatMessagesContract.send, ({ body, respond }) => {
         createdThreadId = body.clientThreadId ?? "fallback-thread-id";
         clientMessageId = body.clientMessageId ?? clientMessageId;
+        capturedGenerationTemplate = body.generationTemplate;
         return respond(201, {
           runId: null,
           threadId: createdThreadId,
@@ -243,6 +253,7 @@ describe("optimistic chat thread (local mode)", () => {
               id: clientMessageId,
               role: "user",
               content: "blocked by credits",
+              generationTemplate,
               error: "insufficient_credits",
               createdAt: "2026-04-13T00:00:00Z",
             },
@@ -285,11 +296,13 @@ describe("optimistic chat thread (local mode)", () => {
         agentId: AGENT_ID,
         prompt: "blocked by credits",
         modelSelection: null,
+        generationTemplate,
       },
       context.signal,
     );
 
     expect(createdThreadId).not.toBe("");
+    expect(capturedGenerationTemplate).toStrictEqual(generationTemplate);
     await expect
       .poll(() => {
         return context.store.get(optimisticChatThread$);
@@ -305,6 +318,14 @@ describe("optimistic chat thread (local mode)", () => {
     const thread = context.store.get(currentLeftThread$);
     expect(thread).not.toBeNull();
     const groups = await context.store.get(thread!.groupedChatMessages$);
+    const userMessage = groups
+      .flatMap((group) => {
+        return group.messages;
+      })
+      .find((message) => {
+        return message.role === "user";
+      });
+    expect(userMessage?.generationTemplate).toStrictEqual(generationTemplate);
     expect(
       groups.flatMap((group) => {
         return group.messages.map((message) => {

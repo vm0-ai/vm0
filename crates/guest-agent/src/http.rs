@@ -23,6 +23,10 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
 
+fn format_reqwest_error(error: reqwest::Error) -> String {
+    error.without_url().to_string()
+}
+
 /// Shared guest-agent HTTP client.
 ///
 /// API-enabled runs build this during initialization and pass cheap clones to
@@ -261,10 +265,11 @@ where
                     "HTTP {label} failed (attempt {attempt}/{max_retries}): HTTP {status}",
                 );
             }
-            Err(e) => {
+            Err(error) => {
+                let error = format_reqwest_error(error);
                 log_warn!(
                     LOG_TAG,
-                    "HTTP {label} failed (attempt {attempt}/{max_retries}): {e}"
+                    "HTTP {label} failed (attempt {attempt}/{max_retries}): {error}"
                 );
             }
         }
@@ -340,7 +345,7 @@ impl HttpClient {
         let text = resp
             .text()
             .await
-            .map_err(|e| AgentError::Http(e.to_string()))?;
+            .map_err(|error| AgentError::Http(format_reqwest_error(error)))?;
         if text.is_empty() {
             return Ok(None);
         }

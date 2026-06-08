@@ -6,9 +6,10 @@
  */
 
 import { command, state } from "ccstate";
-import { clerk$ } from "../signals/auth.ts";
-import { apiBase$ } from "../signals/fetch.ts";
+import { fetch$ } from "../signals/fetch.ts";
 import { bestEffort } from "../signals/utils.ts";
+
+type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 
 const swRegistration$ = state<ServiceWorkerRegistration | null>(null);
 const subscribing$ = state(false);
@@ -60,10 +61,8 @@ export const ensurePushSubscription$ = command(
     // TODO: The try-catch block here needs to be cleaned up. confirmed by ethan@vm0.ai
     // eslint-disable-next-line no-restricted-syntax
     try {
-      const clerkPromise = get(clerk$);
-      const apiBase = await get(apiBase$);
-      signal.throwIfAborted();
-      await doSubscribe(registration, clerkPromise, apiBase, signal);
+      const fetchFn = get(fetch$);
+      await doSubscribe(registration, fetchFn, signal);
       signal.throwIfAborted();
     } finally {
       set(subscribing$, false);
@@ -73,10 +72,7 @@ export const ensurePushSubscription$ = command(
 
 async function doSubscribe(
   registration: ServiceWorkerRegistration,
-  clerkPromise: Promise<{
-    session?: { getToken(): Promise<string | null> } | null;
-  }>,
-  apiBase: string,
+  fetchFn: FetchFn,
   signal: AbortSignal,
 ): Promise<void> {
   const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as
@@ -114,17 +110,12 @@ async function doSubscribe(
   });
   signal.throwIfAborted();
 
-  // Send subscription to backend
-  const clerk = await clerkPromise;
-  signal.throwIfAborted();
-  const token = await clerk.session?.getToken();
-  signal.throwIfAborted();
-
-  await fetch(`${apiBase}/api/zero/push-subscriptions`, {
+  // Send subscription to the backend. fetch$ injects the auth token and
+  // applies the api-target routing policy.
+  await fetchFn("/api/zero/push-subscriptions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
       endpoint: subscription.endpoint,

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+import type { HostedArtifactKind } from "@vm0/api-contracts/contracts/zero-host";
 import { completeHostedSite, prepareHostedSite } from "../api";
 import { scanStaticSite } from "./static-site";
 
@@ -21,6 +22,8 @@ interface PublishStaticSiteResult {
 interface PublishStaticSiteOptions {
   readonly dir: string;
   readonly site: string;
+  readonly slugSuffix?: string;
+  readonly artifactKind?: HostedArtifactKind;
   readonly spaFallback?: boolean;
   readonly onProgress?: (progress: PublishStaticSiteProgress) => void;
 }
@@ -40,6 +43,8 @@ export async function publishStaticSite(
 
   const prepared = await prepareHostedSite({
     site: options.site,
+    ...(options.slugSuffix !== undefined && { slugSuffix: options.slugSuffix }),
+    artifactKind: options.artifactKind ?? "hosted-site",
     spaFallback: Boolean(options.spaFallback),
     files: scan.files.map((file) => {
       return {

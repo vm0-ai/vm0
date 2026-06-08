@@ -12,6 +12,10 @@ export const snowflake = {
         label: "Programmatic Access Token",
         helpText:
           "1. In Snowflake, generate a programmatic access token for the user or service user that should own the connection\n2. Copy the generated token secret when Snowflake displays it\n3. Enter your Snowflake account identifier, for example `myorganization-myaccount` from `https://myorganization-myaccount.snowflakecomputing.com`",
+        storage: {
+          secrets: ["SNOWFLAKE_PAT"],
+          variables: ["SNOWFLAKE_ACCOUNT"],
+        },
         grant: {
           kind: "manual",
           fields: {

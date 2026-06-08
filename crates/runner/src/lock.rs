@@ -6,6 +6,8 @@ use nix::fcntl::{Flock, FlockArg};
 
 use crate::error::{RunnerError, RunnerResult};
 
+const LOCK_BUSY_ERROR: &str = "lock is already held by another process";
+
 /// Open (or create) the lock file, creating parent directories as needed.
 pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
     if let Some(parent) = path.parent() {
@@ -33,7 +35,7 @@ fn is_current_inode(lock: &Flock<File>, path: &Path) -> bool {
     let Ok(path_meta) = std::fs::metadata(path) else {
         return false;
     };
-    lock_meta.ino() == path_meta.ino()
+    lock_meta.dev() == path_meta.dev() && lock_meta.ino() == path_meta.ino()
 }
 
 #[derive(Clone, Copy)]
@@ -53,27 +55,48 @@ impl LockMode {
     }
 
     fn map_error(self, path: &Path, e: nix::errno::Errno) -> RunnerError {
-        if matches!(self, Self::TryExclusive) && e == nix::errno::Errno::EWOULDBLOCK {
-            RunnerError::Config("lock is already held by another process".into())
-        } else {
-            RunnerError::Internal(format!("flock {}: {e}", path.display()))
-        }
+        RunnerError::Internal(format!("flock {}: {e}", path.display()))
     }
 }
 
-async fn acquire_with(path: PathBuf, mode: LockMode) -> RunnerResult<Flock<File>> {
+pub(crate) enum TryLock {
+    Acquired(Flock<File>),
+    Busy,
+}
+
+enum LockAcquire {
+    Acquired(Flock<File>),
+    Busy,
+}
+
+async fn acquire_result_with(path: PathBuf, mode: LockMode) -> RunnerResult<LockAcquire> {
     tokio::task::spawn_blocking(move || {
         loop {
             let file = open_lock_file(&path)?;
-            let lock =
-                Flock::lock(file, mode.arg()).map_err(|(_file, e)| mode.map_error(&path, e))?;
+            let lock = match Flock::lock(file, mode.arg()) {
+                Ok(lock) => lock,
+                Err((_file, e))
+                    if matches!(mode, LockMode::TryExclusive)
+                        && e == nix::errno::Errno::EWOULDBLOCK =>
+                {
+                    return Ok(LockAcquire::Busy);
+                }
+                Err((_file, e)) => return Err(mode.map_error(&path, e)),
+            };
             if is_current_inode(&lock, &path) {
-                return Ok(lock);
+                return Ok(LockAcquire::Acquired(lock));
             }
         }
     })
     .await
     .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
+}
+
+async fn acquire_with(path: PathBuf, mode: LockMode) -> RunnerResult<Flock<File>> {
+    match acquire_result_with(path, mode).await? {
+        LockAcquire::Acquired(lock) => Ok(lock),
+        LockAcquire::Busy => Err(RunnerError::Config(LOCK_BUSY_ERROR.into())),
+    }
 }
 
 /// Acquire an exclusive flock on the given path, blocking until available.
@@ -96,6 +119,13 @@ pub async fn acquire_shared(path: PathBuf) -> RunnerResult<Flock<File>> {
 /// The returned guard holds the lock until dropped.
 pub async fn try_acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
     acquire_with(path, LockMode::TryExclusive).await
+}
+
+pub async fn try_acquire_or_busy(path: PathBuf) -> RunnerResult<TryLock> {
+    match acquire_result_with(path, LockMode::TryExclusive).await? {
+        LockAcquire::Acquired(lock) => Ok(TryLock::Acquired(lock)),
+        LockAcquire::Busy => Ok(TryLock::Busy),
+    }
 }
 
 #[cfg(test)]
@@ -175,6 +205,26 @@ mod tests {
         let guard = try_acquire(path.clone()).await.unwrap();
         assert!(path.exists());
         drop(guard);
+    }
+
+    #[tokio::test]
+    async fn try_acquire_or_busy_reports_busy_when_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let _guard = acquire(path.clone()).await.unwrap();
+
+        let result = try_acquire_or_busy(path).await.unwrap();
+
+        assert!(matches!(result, TryLock::Busy));
+    }
+
+    #[tokio::test]
+    async fn try_acquire_or_busy_propagates_lock_path_errors() {
+        let path = PathBuf::from("/dev/null/impossible/test.lock");
+
+        let result = try_acquire_or_busy(path).await;
+
+        assert!(result.is_err());
     }
 
     #[tokio::test]

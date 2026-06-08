@@ -221,6 +221,29 @@ describe("PUT /api/zero/user-model-preference", () => {
     });
   });
 
+  it("returns 400 for removed model preferences", async () => {
+    const fixture = await seedFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const app = createApp({ signal: context.signal });
+
+    const response = await app.request("/api/zero/user-model-preference", {
+      method: "PUT",
+      headers: {
+        ...authHeaders(),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ selectedModel: "claude-haiku-4-5" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: expect.stringContaining("selectedModel: Invalid option"),
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
   it("creates and returns a configured selected model preference", async () => {
     const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);

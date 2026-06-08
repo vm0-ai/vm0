@@ -24,6 +24,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "deepseek/deepseek-v4-pro": "DeepSeek V4 Pro",
   "deepseek/deepseek-v4-flash": "DeepSeek V4 Flash",
   // MiniMax
+  "MiniMax-M3": "MiniMax M3",
   "MiniMax-M2.7": "MiniMax M2.7",
   "MiniMax-M2.1": "MiniMax M2.1",
   "minimax/minimax-m2.5": "MiniMax M2.5",

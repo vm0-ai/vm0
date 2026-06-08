@@ -1,4 +1,4 @@
-import { command } from "ccstate";
+import { command, type Command } from "ccstate";
 import { createElement } from "react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
@@ -9,6 +9,7 @@ import {
   detachedNavigateTo$,
   setupAuthPageWrapper,
   pathParams$,
+  pathname$,
 } from "./route.ts";
 import { registerServiceWorker$ } from "../lib/push-notifications.ts";
 import { onDomEventFn } from "./utils.ts";
@@ -28,6 +29,8 @@ import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-s
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
 import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
+import { setupSkillsPage$ } from "./skills-page/skills-page-setup.ts";
+import { setupMemoryPage$ } from "./memory-page/memory-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
@@ -64,6 +67,7 @@ import {
   markCompletedBillingCheckout$,
   reloadBillingStatus$,
 } from "./zero-page/billing.ts";
+import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
 
 const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(NotFoundPage));
@@ -96,19 +100,39 @@ function redirectWithId(target: RoutePath, targetParam: string) {
   });
 }
 
+function setupSettingsParamAfterStableRoute(
+  setupPage: Command<Promise<void> | void, [AbortSignal]>,
+) {
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const initialPathname = get(pathname$);
+    await set(setupPage, signal);
+    signal.throwIfAborted();
+    if (get(pathname$) !== initialPathname) {
+      return;
+    }
+    await set(checkUnifiedSettingsParam$, signal);
+  });
+}
+
+function setupAuthSidebarPageWrapper(
+  setupPage: Command<Promise<void> | void, [AbortSignal]>,
+) {
+  return setupAuthPageWrapper(setupSettingsParamAfterStableRoute(setupPage));
+}
+
 const ROUTE_CONFIG = [
   // --- New routes ---
   {
     path: ROUTES.insights,
-    setup: setupAuthPageWrapper(setupNetworkInsightsPage$),
+    setup: setupAuthSidebarPageWrapper(setupNetworkInsightsPage$),
   },
   {
     path: ROUTES.chat,
-    setup: setupAuthPageWrapper(setupChatPage$),
+    setup: setupAuthSidebarPageWrapper(setupChatPage$),
   },
   {
     path: ROUTES.ideas,
-    setup: setupAuthPageWrapper(setupIdeationPage$),
+    setup: setupAuthSidebarPageWrapper(setupIdeationPage$),
   },
   {
     path: ROUTES.directedAuthorize,
@@ -120,11 +144,11 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.connectors,
-    setup: setupAuthPageWrapper(setupConnectorsPage$),
+    setup: setupAuthSidebarPageWrapper(setupConnectorsPage$),
   },
   {
     path: ROUTES.agentIdeas,
-    setup: setupAuthPageWrapper(setupIdeationPage$),
+    setup: setupAuthSidebarPageWrapper(setupIdeationPage$),
   },
   {
     path: ROUTES.agentChat,
@@ -140,23 +164,31 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.agentDetail,
-    setup: setupAuthPageWrapper(setupAgentDetailPage$),
+    setup: setupAuthSidebarPageWrapper(setupAgentDetailPage$),
   },
   {
     path: ROUTES.agents,
-    setup: setupAuthPageWrapper(setupAgentsPage$),
+    setup: setupAuthSidebarPageWrapper(setupAgentsPage$),
+  },
+  {
+    path: ROUTES.skills,
+    setup: setupAuthSidebarPageWrapper(setupSkillsPage$),
+  },
+  {
+    path: ROUTES.memory,
+    setup: setupAuthSidebarPageWrapper(setupMemoryPage$),
   },
   {
     path: ROUTES.settingsSlack,
-    setup: setupAuthPageWrapper(setupSlackConnectPage$),
+    setup: setupAuthSidebarPageWrapper(setupSlackConnectPage$),
   },
   {
     path: ROUTES.settingsGithub,
-    setup: setupAuthPageWrapper(setupGithubSettingsPage$),
+    setup: setupAuthSidebarPageWrapper(setupGithubSettingsPage$),
   },
   {
     path: ROUTES.settingsTelegram,
-    setup: setupAuthPageWrapper(setupTelegramSettingsPage$),
+    setup: setupAuthSidebarPageWrapper(setupTelegramSettingsPage$),
   },
   {
     path: ROUTES.githubConnect,
@@ -172,47 +204,47 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.activityInspect,
-    setup: setupAuthPageWrapper(setupActivityInspectPage$),
+    setup: setupAuthSidebarPageWrapper(setupActivityInspectPage$),
   },
   {
     path: ROUTES.activityDetail,
-    setup: setupAuthPageWrapper(setupActivityDetailPage$),
+    setup: setupAuthSidebarPageWrapper(setupActivityDetailPage$),
   },
   {
     path: ROUTES.activities,
-    setup: setupAuthPageWrapper(setupActivityPage$),
+    setup: setupAuthSidebarPageWrapper(setupActivityPage$),
   },
   {
     path: ROUTES.works,
-    setup: setupAuthPageWrapper(setupWorksPage$),
+    setup: setupAuthSidebarPageWrapper(setupWorksPage$),
   },
   {
     path: ROUTES.settings,
-    setup: setupAuthPageWrapper(setupPreferencesPage$),
+    setup: setupAuthSidebarPageWrapper(setupPreferencesPage$),
   },
   {
     path: ROUTES.settingsApiKeys,
-    setup: setupAuthPageWrapper(setupApiKeysPage$),
+    setup: setupAuthSidebarPageWrapper(setupApiKeysPage$),
   },
   {
     path: ROUTES.deviceBb0,
-    setup: setupAuthPageWrapper(setupBb0DevicePage$),
+    setup: setupAuthSidebarPageWrapper(setupBb0DevicePage$),
   },
   {
     path: ROUTES.scheduleDetail,
-    setup: setupAuthPageWrapper(setupScheduleDetailPage$),
+    setup: setupAuthSidebarPageWrapper(setupScheduleDetailPage$),
   },
   {
     path: ROUTES.schedules,
-    setup: setupAuthPageWrapper(setupSchedulePage$),
+    setup: setupAuthSidebarPageWrapper(setupSchedulePage$),
   },
   {
     path: ROUTES.lab,
-    setup: setupAuthPageWrapper(setupLabPage$),
+    setup: setupAuthSidebarPageWrapper(setupLabPage$),
   },
   {
     path: ROUTES.usage,
-    setup: setupAuthPageWrapper(setupUsagePage$),
+    setup: setupAuthSidebarPageWrapper(setupUsagePage$),
   },
   {
     path: ROUTES.onboarding,
@@ -333,7 +365,7 @@ const handleBillingRedirect$ = command(({ set }) => {
 
     const label = billing === "pro" ? "Pro" : "Team";
     showSuccessToastAfterMount(
-      `Upgraded to ${label}! Your credits have been added.`,
+      `${label} checkout completed. Credits will be added after the invoice is paid.`,
     );
     set(markCompletedBillingCheckout$, billing, transactionId);
     set(reloadBillingStatus$);

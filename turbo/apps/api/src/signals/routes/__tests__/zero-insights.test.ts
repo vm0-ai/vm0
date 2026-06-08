@@ -4,10 +4,12 @@ import {
   zeroInsightsContract,
   zeroInsightsRangeContract,
 } from "@vm0/api-contracts/contracts/zero-insights";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { nowDate } from "../../../lib/time";
+import { writeDb$ } from "../../external/db";
 import {
   deleteInsightsForFixture$,
   seedInsightsDaily$,
@@ -70,6 +72,42 @@ function defaultInsightData(
     ],
     ...overrides,
   };
+}
+
+async function seedCachedOrgMember(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(orgMembersCache).values({
+    orgId,
+    userId,
+    role: "member",
+    cachedAt: nowDate(),
+  });
+}
+
+function mockCurrentOrgMembers(
+  orgId: string,
+  userIds: readonly string[],
+): void {
+  context.mocks.clerk.organizations.getOrganizationMembershipList.mockImplementation(
+    (args: unknown) => {
+      const input = args as {
+        readonly organizationId?: string;
+        readonly limit?: number;
+        readonly offset?: number;
+      };
+      const members = input.organizationId === orgId ? userIds : [];
+      const offset = input.offset ?? 0;
+      const limit = input.limit ?? members.length;
+      return Promise.resolve({
+        data: members.slice(offset, offset + limit).map((userId) => {
+          return { publicUserData: { userId } };
+        }),
+      });
+    },
+  );
 }
 
 describe("GET /api/zero/insights", () => {
@@ -151,6 +189,62 @@ describe("GET /api/zero/insights", () => {
     expect(
       Number.isNaN(new Date(response.body.lastUpdated ?? "").getTime()),
     ).toBeFalsy();
+  });
+
+  it("filters stale team usage entries for users no longer in the org", async () => {
+    const fixture = await track(
+      store.set(seedInsightsFixture$, undefined, context.signal),
+    );
+    const removedUserId = `user_${randomUUID()}`;
+    const cachedOtherUserId = `user_${randomUUID()}`;
+    const yesterday = daysAgo(1);
+    await seedCachedOrgMember(fixture.orgId, cachedOtherUserId);
+    mockCurrentOrgMembers(fixture.orgId, [fixture.userId, cachedOtherUserId]);
+    await store.set(
+      seedInsightsDaily$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: yesterday,
+        data: defaultInsightData({
+          creditsUsed: 1000,
+          teamUsage: [
+            {
+              userId: fixture.userId,
+              name: "active",
+              credits: 100,
+              agentNames: ["Test Agent"],
+              agentCredits: { "Test Agent": 100 },
+            },
+            {
+              userId: removedUserId,
+              name: "removed",
+              credits: 900,
+              agentNames: ["Old Agent"],
+              agentCredits: { "Old Agent": 900 },
+            },
+          ],
+        }),
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({ query: {}, headers: authHeaders() }),
+      [200],
+    );
+
+    const day = response.body.days[0];
+    expect(day?.creditsUsed).toBe(100);
+    expect(day?.teamUsage).toHaveLength(1);
+    expect(day?.teamUsage[0]).toMatchObject({
+      name: "active",
+      credits: 100,
+      agentNames: ["Test Agent"],
+      agentCredits: { "Test Agent": 100 },
+    });
+    expect(response.body.totalCredits).toBe(100);
   });
 
   it("normalizes sparse insight rows to the full day shape", async () => {

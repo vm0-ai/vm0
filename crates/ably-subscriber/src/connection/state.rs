@@ -131,7 +131,7 @@ pub(super) fn retry_delay(initial_timeout: Duration, retry_attempt: u32) -> Dura
     // Mirrors ably-js Utils.getRetryTime(): base * min((attempt + 2) / 3, 2)
     // with jitter in [0.8, 1.0). Use wall-clock subsecond nanos as a cheap
     // process-local jitter source; cryptographic randomness is unnecessary.
-    let backoff_num = (retry_attempt + 2).min(6) as u128;
+    let backoff_num = retry_attempt.saturating_add(2).min(6) as u128;
     let base_ms = initial_timeout.as_millis();
     let upper_ms = base_ms.saturating_mul(backoff_num) / 3;
     let nanos = std::time::SystemTime::now()
@@ -489,6 +489,14 @@ mod tests {
         let delay = retry_delay(Duration::MAX, 1);
 
         assert_eq!(delay, Duration::from_millis(u64::MAX));
+    }
+
+    #[test]
+    fn retry_delay_keeps_capped_backoff_at_max_retry_attempt() {
+        let delay = retry_delay(Duration::from_millis(300), u32::MAX);
+
+        assert!(delay >= Duration::from_millis(480));
+        assert!(delay < Duration::from_millis(600));
     }
 
     #[test]

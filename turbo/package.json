@@ -4,7 +4,7 @@
   "scripts": {
     "postinstall": "pnpm -F @vm0/firewalls-generator generate",
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --filter=!@vm0/desktop",
     "dev:auth": "bash ../scripts/dev-auth.sh",
     "desktop:dev": "VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev:packaged",
     "desktop:dev:forge": "VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev",
@@ -21,7 +21,7 @@
     "knip": "knip",
     "knip:fix": "knip --fix --allow-remove-files",
     "knip:production": "knip --production --strict",
-    "e2b:cli:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-cli/build.ts",
+    "e2b:cli:build": "dotenv -e apps/api/.env.local -- npx tsx scripts/e2b/vm0-cli/build.ts",
     "dev:status": "bash scripts/dev-server-check.sh",
     "runner": "bash ../scripts/dev-runner.sh deploy",
     "runner:local": "bash ../scripts/dev-runner.sh deploy-local",
@@ -39,7 +39,7 @@
     "knip": "^5.63.1",
     "prettier": "^3.6.2",
     "tsx": "^4.21.0",
-    "turbo": "^2.9.14",
+    "turbo": "^2.9.16",
     "typescript": "5.9.3",
     "vitest": "^4.1.7"
   },

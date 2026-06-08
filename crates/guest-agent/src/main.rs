@@ -44,23 +44,8 @@ async fn run() -> i32 {
     // Record API-to-agent E2E time (as early as possible)
     guest_agent::timing::record_e2e_from_api("api_to_agent_start");
 
-    // Validate required env vars
-    if env::working_dir().is_empty() {
-        log_error!(LOG_TAG, "Fatal: VM0_WORKING_DIR is required but not set");
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let telemetry = match HttpClient::for_current_env() {
-            Ok(http) => Some(Telemetry::spawn(masker, http)),
-            Err(e) => {
-                log_error!(LOG_TAG, "Final telemetry unavailable: {e}");
-                None
-            }
-        };
-        log_info!(LOG_TAG, "▷ Cleanup");
-        if let Some(telemetry) = telemetry {
-            final_telemetry(&telemetry).await;
-            telemetry.shutdown().await;
-        }
-        log_info!(LOG_TAG, "Background processes stopped");
+    if let Err(e) = env::init_user_env() {
+        log_error!(LOG_TAG, "Fatal: {e}");
         log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
         return 1;
     }
@@ -85,7 +70,11 @@ async fn run() -> i32 {
     let control_handle = control::ControlHandle::spawn(shutdown.clone());
     let start = Instant::now();
 
-    log_info!(LOG_TAG, "Working directory: {}", env::working_dir());
+    log_info!(
+        LOG_TAG,
+        "Working directory: {}",
+        paths::CANONICAL_WORKING_DIR
+    );
 
     let t = Instant::now();
     let heartbeat_handle = tokio::spawn({
@@ -157,9 +146,7 @@ async fn execute(
 
     // Working directory setup
     let wd_start = Instant::now();
-    if let Err(e) = std::fs::create_dir_all(env::working_dir())
-        .and_then(|()| std::env::set_current_dir(env::working_dir()))
-    {
+    if let Err(e) = setup_working_dir(paths::CANONICAL_WORKING_DIR) {
         let msg = format!("Working dir setup failed: {e}");
         log_error!(LOG_TAG, "{msg}");
         write_guest_error_file(&msg);
@@ -172,7 +159,7 @@ async fn execute(
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
     // Codex setup: best-effort `codex login`. Failure is non-fatal —
-    // `codex exec` reads `OPENAI_API_KEY` directly from the env.
+    // `codex exec` also receives `OPENAI_API_KEY` through the curated CLI env.
     if matches!(env::Framework::from_env(), env::Framework::Codex)
         && let Err(e) = cli::setup_codex()
     {
@@ -362,8 +349,13 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::InvalidApiKey);
     }
-    if matches!(framework, AgentFramework::Codex)
-        && (normalized.contains("usage limit") || normalized.contains("session limit"))
+    // Subscription/usage limits are an expected quota state for both Codex
+    // (ChatGPT plan "usage limit") and Claude Code (Max plan "session limit" /
+    // "weekly limit"), so classify them regardless of framework. This lets the
+    // runner log these expected outcomes at info instead of error.
+    if normalized.contains("usage limit")
+        || normalized.contains("session limit")
+        || normalized.contains("weekly limit")
     {
         return Some(FailureReason::UsageLimit);
     }
@@ -417,7 +409,7 @@ fn write_guest_error_file(message: &str) {
         return;
     }
 
-    if let Err(e) = std::fs::write(paths::checkpoint_error_file(), message) {
+    if let Err(e) = paths::write_private(paths::checkpoint_error_file(), message) {
         log_warn!(LOG_TAG, "Failed to write guest error file: {e}");
     }
 }
@@ -431,7 +423,7 @@ fn write_guest_failure_diagnostic(diagnostic: &FailureDiagnostic) {
         }
     };
 
-    if let Err(e) = std::fs::write(paths::failure_diagnostic_file(), bytes) {
+    if let Err(e) = paths::write_private(paths::failure_diagnostic_file(), bytes) {
         log_warn!(
             LOG_TAG,
             "Failed to write guest failure diagnostic file: {e}"
@@ -692,6 +684,12 @@ fn should_create_success_checkpoint(cli_exit_code: i32, exit_code: i32) -> bool 
     cli_exit_code == 0 && exit_code == 0
 }
 
+fn setup_working_dir(path: impl AsRef<Path>) -> std::io::Result<()> {
+    let path = path.as_ref();
+    std::fs::create_dir_all(path)?;
+    std::env::set_current_dir(path)
+}
+
 /// Final telemetry upload — best-effort and logs on failure.
 /// The complete API is called by the runner after VM exits, not by guest-agent.
 async fn final_telemetry(telemetry: &Telemetry) {
@@ -719,6 +717,27 @@ mod tests {
 
     fn test_http_client(server: &MockServer) -> HttpClient {
         HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO).unwrap()
+    }
+
+    fn test_runtime_dir() -> std::path::PathBuf {
+        std::env::temp_dir()
+            .join(format!("vm0-guest-agent-main-tests-{}", std::process::id()))
+            .join("main-recovery-checkpoint")
+    }
+
+    unsafe fn set_test_env(server: &MockServer, prompt: Option<&str>) {
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var(
+                guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                test_runtime_dir(),
+            );
+            if let Some(prompt) = prompt {
+                std::env::set_var("VM0_PROMPT", prompt);
+            }
+        }
     }
 
     struct SystemLogOverrideGuard;
@@ -1091,23 +1110,33 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_reason_ignores_non_codex_usage_limit() {
+    fn cli_failure_reason_classifies_claude_usage_limit() {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
             "Claude usage limit reached. Visit https://claude.ai/settings/usage.",
         );
 
-        assert_eq!(reason, None);
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
     }
 
     #[test]
-    fn cli_failure_reason_ignores_non_codex_session_limit() {
+    fn cli_failure_reason_classifies_claude_session_limit() {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
-            "You've hit your session limit. Visit https://chatgpt.com/codex/settings/usage.",
+            "You've hit your session limit · resets 12:50pm (Asia/Shanghai)",
         );
 
-        assert_eq!(reason, None);
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_weekly_limit() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "You've hit your weekly limit · resets 10am (Asia/Shanghai)",
+        );
+
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
     }
 
     #[test]
@@ -1249,9 +1278,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            set_test_env(server, None);
         }
 
         let tmp = tempfile::tempdir().unwrap();
@@ -1359,11 +1386,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "/event-upload-failure");
+            set_test_env(server, Some("/event-upload-failure"));
         }
 
         let cleanup_paths = [
@@ -1380,7 +1403,7 @@ mod tests {
         for path in &cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
-        std::fs::write(paths::event_error_flag(), "").unwrap();
+        paths::write_private(paths::event_error_flag(), "").unwrap();
 
         let telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
@@ -1433,11 +1456,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "/checkpoint-failure");
+            set_test_env(server, Some("/checkpoint-failure"));
         }
 
         let cleanup_paths = [
@@ -1504,11 +1523,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "plain prompt");
+            set_test_env(server, Some("plain prompt"));
         }
 
         let cleanup_paths = [
@@ -1525,7 +1540,7 @@ mod tests {
         for path in &cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
-        std::fs::write(paths::event_error_flag(), "").unwrap();
+        paths::write_private(paths::event_error_flag(), "").unwrap();
 
         let telemetry_mock = server.mock(|when, then| {
             when.method(POST).path("/api/webhooks/agent/telemetry");
@@ -1581,11 +1596,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "/help");
+            set_test_env(server, Some("/help"));
         }
 
         let cleanup_paths = [
@@ -1666,11 +1677,7 @@ mod tests {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
-            std::env::set_var("VM0_API_URL", server.base_url());
-            std::env::set_var("VM0_API_TOKEN", "test-token");
-            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
-            std::env::set_var("VM0_PROMPT", "plain prompt");
+            set_test_env(server, Some("plain prompt"));
         }
 
         let cleanup_paths = [
@@ -1692,8 +1699,8 @@ mod tests {
         let history_path = dir.path().join("history.jsonl");
         let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"# + "\n";
         std::fs::write(&history_path, &history).unwrap();
-        std::fs::write(paths::session_id_file(), "recovery-session-from-main").unwrap();
-        std::fs::write(
+        paths::write_private(paths::session_id_file(), "recovery-session-from-main").unwrap();
+        paths::write_private(
             paths::session_history_path_file(),
             history_path.to_string_lossy().as_ref(),
         )

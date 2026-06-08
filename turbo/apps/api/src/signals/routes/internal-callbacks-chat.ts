@@ -10,7 +10,11 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
+  type ChatMessageGenerationTemplate,
+  type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -32,9 +36,9 @@ import {
 } from "../../lib/callback-route/callback-route";
 import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
-import { env } from "../../lib/env";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
-import { now } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route";
 import { waitUntil } from "../context/wait-until";
 import { getDatasetName, queryAxiomDirect } from "../external/axiom";
@@ -56,10 +60,13 @@ import {
 import { sendUserPushNotifications } from "../services/zero-push-notifications.service";
 import {
   generateAndPersistChatThreadTitleFromCallback,
+  generateChatThreadRecommendedFollowups,
   generateChatNotificationSummary,
 } from "../services/zero-chat-title.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { settle, tapError } from "../utils";
+import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -123,6 +130,7 @@ interface QueuedUserMessage {
   readonly content: string | null;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
+  readonly generationTemplate: ChatMessageGenerationTemplate | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
@@ -137,6 +145,7 @@ interface AgentForAutoSend {
 interface ChatThreadForRunRow {
   readonly chatThreadId: string;
   readonly userId: string;
+  readonly orgId: string;
 }
 
 interface ChatRunInfo {
@@ -161,7 +170,10 @@ function generateCallbackSecret(): string {
 }
 
 function chatCallbackUrl(): string {
-  return new URL("/api/internal/callbacks/chat", env("VM0_API_URL")).toString();
+  return new URL(
+    "/api/internal/callbacks/chat",
+    internalApiBaseUrl(),
+  ).toString();
 }
 
 function parseModelProviderCredentialScope(
@@ -385,23 +397,33 @@ async function insertAssistantErrorMessage(args: {
   readonly userId: string;
   readonly lifecycleEvent: "failed" | "cancelled";
   readonly getFormattedError: () => Promise<string>;
-}): Promise<void> {
+}): Promise<boolean> {
   const displayErrorMessage = await args.getFormattedError();
-  await args.db
-    .insert(chatMessages)
-    .values({
-      chatThreadId: args.threadId,
-      role: "assistant",
-      content: displayErrorMessage,
-      runId: args.runId,
-      error: displayErrorMessage,
-      runLifecycleEvent: args.lifecycleEvent,
-    })
-    .onConflictDoNothing({
-      target: chatMessages.runId,
-      where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
-    });
-  await touchChatThreadLastMessageAt(args.db, args.threadId);
+  const inserted = await args.db.transaction(async (tx) => {
+    const message = await tx
+      .insert(chatMessages)
+      .values({
+        chatThreadId: args.threadId,
+        role: "assistant",
+        content: displayErrorMessage,
+        runId: args.runId,
+        error: displayErrorMessage,
+        runLifecycleEvent: args.lifecycleEvent,
+      })
+      .onConflictDoNothing({
+        target: chatMessages.runId,
+        where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
+      })
+      .returning({ id: chatMessages.id });
+    if (message.length === 0) {
+      return false;
+    }
+    await touchChatThreadLastMessageAt(tx, args.threadId);
+    return true;
+  });
+  if (!inserted) {
+    return false;
+  }
 
   await publishUserSignal(
     [args.userId],
@@ -417,6 +439,7 @@ async function insertAssistantErrorMessage(args: {
       url: `/chats/${args.threadId}`,
     },
   });
+  return true;
 }
 
 async function insertRunLifecycleMarker(args: {
@@ -425,31 +448,85 @@ async function insertRunLifecycleMarker(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly event: "completed" | "cancelled";
+  readonly recommendedFollowups?: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
-  const inserted = await args.db
-    .insert(chatMessages)
-    .values({
-      chatThreadId: args.threadId,
-      role: "assistant",
-      content: null,
-      runId: args.runId,
-      runLifecycleEvent: args.event,
-    })
-    .onConflictDoNothing({
-      target: chatMessages.runId,
-      where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
-    })
-    .returning({ id: chatMessages.id });
-  if (inserted.length === 0) {
+  const markerCreatedAt = nowDate();
+  const recommendedFollowupsCreatedAt = new Date(markerCreatedAt.getTime() + 1);
+  const inserted = await args.db.transaction(async (tx) => {
+    const marker = await tx
+      .insert(chatMessages)
+      .values({
+        chatThreadId: args.threadId,
+        role: "assistant",
+        content: null,
+        runId: args.runId,
+        runLifecycleEvent: args.event,
+        createdAt: markerCreatedAt,
+      })
+      .onConflictDoNothing({
+        target: chatMessages.runId,
+        where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
+      })
+      .returning({ id: chatMessages.id });
+    if (marker.length === 0) {
+      return false;
+    }
+    if (
+      args.event === "completed" &&
+      args.recommendedFollowups &&
+      args.recommendedFollowups.length > 0
+    ) {
+      await tx.insert(chatMessages).values({
+        chatThreadId: args.threadId,
+        role: "assistant",
+        content: null,
+        runId: args.runId,
+        recommendedFollowups: args.recommendedFollowups,
+        createdAt: recommendedFollowupsCreatedAt,
+      });
+    }
+    await touchChatThreadLastMessageAt(tx, args.threadId);
+    return true;
+  });
+  if (!inserted) {
     return false;
   }
-  await touchChatThreadLastMessageAt(args.db, args.threadId);
   await publishUserSignal(
     [args.userId],
     `chatThreadMessageCreated:${args.threadId}`,
   );
   await publishThreadListChanged(args.userId);
   return true;
+}
+
+async function generateRecommendedFollowupsForCompletedRun(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+}): Promise<ChatMessageRecommendedFollowups | undefined> {
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    args.db,
+    args.orgId,
+    args.userId,
+  );
+  args.signal.throwIfAborted();
+  if (
+    !isFeatureEnabled(
+      FeatureSwitchKey.ChatRecommendedFollowups,
+      featureSwitchContext,
+    )
+  ) {
+    return undefined;
+  }
+
+  const suggestions = await generateChatThreadRecommendedFollowups({
+    db: args.db,
+    threadId: args.threadId,
+  });
+  args.signal.throwIfAborted();
+  return suggestions.length > 0 ? suggestions : undefined;
 }
 
 async function handleCompletedChatCallback(args: {
@@ -517,12 +594,23 @@ async function handleCompletedChatCallback(args: {
   });
   args.signal.throwIfAborted();
 
+  const recommendedFollowups =
+    await generateRecommendedFollowupsForCompletedRun({
+      db: args.db,
+      threadId: args.chatThread.chatThreadId,
+      orgId: args.chatThread.orgId,
+      userId: args.chatThread.userId,
+      signal: args.signal,
+    });
+  args.signal.throwIfAborted();
+
   await insertRunLifecycleMarker({
     db: args.db,
     runId: args.runId,
     threadId: args.chatThread.chatThreadId,
     userId: args.chatThread.userId,
     event: "completed",
+    recommendedFollowups,
   });
   args.signal.throwIfAborted();
 
@@ -597,8 +685,11 @@ function buildWebAttachFilesPrompt(
     .join("\n");
 }
 
-function buildAppendSystemPrompt(incompleteContext: string): string {
-  return [buildWebChatPrompt(), incompleteContext]
+function buildAppendSystemPrompt(
+  incompleteContext: string,
+  generationTemplatePrompt: string,
+): string {
+  return [buildWebChatPrompt(), incompleteContext, generationTemplatePrompt]
     .filter((part) => {
       return part.length > 0;
     })
@@ -807,6 +898,7 @@ async function nextQueuedUserMessage(
       content: chatMessages.content,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
+      generationTemplate: chatMessages.generationTemplate,
       modelProviderId: sql<null>`NULL`,
       modelProviderType: sql<null>`NULL`,
       modelProviderCredentialScope: sql<null>`NULL`,
@@ -882,8 +974,10 @@ async function chatThreadForRunFromDb(
     .select({
       chatThreadId: zeroRuns.chatThreadId,
       userId: chatThreads.userId,
+      orgId: agentRuns.orgId,
     })
     .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
     .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
     .where(eq(zeroRuns.id, runId))
     .limit(1);
@@ -891,7 +985,11 @@ async function chatThreadForRunFromDb(
   if (!row?.chatThreadId) {
     return null;
   }
-  return { chatThreadId: row.chatThreadId, userId: row.userId };
+  return {
+    chatThreadId: row.chatThreadId,
+    userId: row.userId,
+    orgId: row.orgId,
+  };
 }
 
 function hasAgentSessionId(
@@ -914,7 +1012,15 @@ async function latestSessionIdForThreadFromDb(
     .select({ result: agentRuns.result })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(eq(zeroRuns.chatThreadId, threadId))
+    // D7 session-continuity exclusion (see latestSessionIdForThread in
+    // zero-chat-messages.ts): only web-source runs join the chain, so an
+    // autoSend follow-up resumes the latest web session, not a scheduled one.
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        eq(zeroRuns.triggerSource, "web"),
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(5);
 
@@ -1029,6 +1135,9 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     attachFiles.length === 0
       ? content
       : `${content}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
+  const generationTemplatePrompt = buildGenerationTemplatePrompt(
+    resolvedQueuedMessage.generationTemplate,
+  );
 
   const run = await args.createRun({
     orgId: agent.orgId,
@@ -1036,7 +1145,12 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     agentId: agent.id,
     prompt: fullPrompt,
     sessionId,
-    appendSystemPrompt: buildAppendSystemPrompt(incompleteContext),
+    appendSystemPrompt: buildAppendSystemPrompt(
+      incompleteContext,
+      generationTemplatePrompt.status === "resolved"
+        ? generationTemplatePrompt.prompt
+        : "",
+    ),
     threadId,
     queuedMessage: resolvedQueuedMessage,
   });
@@ -1057,6 +1171,7 @@ async function autoSendQueuedMessageOnRunComplete(args: {
       attachFileMetadata: queuedMessage.attachFileMetadata
         ? [...queuedMessage.attachFileMetadata]
         : null,
+      generationTemplate: queuedMessage.generationTemplate,
       revokesMessageId: queuedMessage.id,
     })
     .onConflictDoNothing({ target: chatMessages.revokesMessageId })
@@ -1074,8 +1189,6 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     });
     return;
   }
-
-  await touchChatThreadLastMessageAt(args.db, threadId);
 
   await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
   await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);

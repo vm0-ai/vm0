@@ -11,6 +11,10 @@ export const ticketmaster = {
         label: "Discovery API Key",
         helpText:
           "1. Log in to the [Ticketmaster Developer Portal](https://developer.ticketmaster.com)\n2. Open your application in **My Apps**\n3. Copy the **Consumer Key** for the Discovery API\n4. Use it as the `apikey` query parameter for Discovery API requests",
+        storage: {
+          secrets: ["TICKETMASTER_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

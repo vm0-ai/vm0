@@ -59,7 +59,9 @@ use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
+use crate::workspace_image_cache::SessionWorkspaceCache;
 
+mod active_sessions;
 mod factory_lifecycle;
 mod heartbeat;
 mod identity;
@@ -73,8 +75,12 @@ mod ownership;
 mod sandbox_finalization;
 mod signals;
 
+use active_sessions::new_active_sessions;
 use factory_lifecycle::{shutdown_factories, start_factories};
-use heartbeat::{HEARTBEAT_PERIOD, HeartbeatContext, collect_heartbeat_state, send_heartbeat};
+use heartbeat::{
+    HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, collect_heartbeat_state,
+    send_heartbeat,
+};
 use identity::load_or_generate_runner_id;
 use idle_lifecycle::{
     SharedIdlePool, cleanup_expired_idle_entries, destroy_idle_jobs_and_wait, drain_idle_pool,
@@ -485,6 +491,11 @@ pub async fn run_start(
         network_log_manager,
         network_log_drain,
         home: home.clone(),
+        workspace_cache: Some(SessionWorkspaceCache::shared(
+            paths.clone(),
+            &home,
+            &group_name,
+        )),
     });
 
     let config = RunConfig {
@@ -943,7 +954,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
     // destroys at shutdown, preventing factory Arc leaks that cause
     // "factory still referenced" warnings from Arc::try_unwrap.
-    let mut destroy_tasks: JoinSet<()> = JoinSet::new();
+    let mut destroy_tasks: JoinSet<bool> = JoinSet::new();
 
     shared.status.write_initial().await;
     info!(
@@ -1013,26 +1024,30 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Main loop
     // -----------------------------------------------------------------------
     // Notification channel: spawned jobs signal the main loop to send an
-    // immediate heartbeat after parking a VM, so the server learns about the
-    // new heldSession without waiting for the next 10-second tick.
+    // immediate heartbeat after session affinity state changes, so the server
+    // learns about a held session VM or workspace image cache without waiting
+    // for the next 10-second tick.
     let park_notify = Arc::new(tokio::sync::Notify::new());
     let (usage_flush_tx, mut usage_flush_rx) = tokio::sync::mpsc::channel(1);
     let orphaned_active_runs = OrphanedActiveRuns::new();
+    let active_sessions = new_active_sessions();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
         Duration::from_secs(10),
     );
     orphan_reap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    let hb_ctx = HeartbeatContext::new(
-        &shared.idle_pool,
-        &runner.id,
-        &runner.name,
-        &runner.group,
-        &runner.profiles,
-        &capacity.budget,
-        &*provider_state.provider,
-    );
+    let hb_ctx = HeartbeatContext::new(HeartbeatContextInit {
+        idle_pool: &shared.idle_pool,
+        runner_id: &runner.id,
+        name: &runner.name,
+        group: &runner.group,
+        profiles: &runner.profiles,
+        budget: &capacity.budget,
+        provider: &*provider_state.provider,
+        workspace_cache: exec_config.workspace_cache.clone(),
+        active_sessions: &active_sessions,
+    });
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
@@ -1051,6 +1066,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         parking_gate: shared.parking_gate.clone(),
         park_notify: Arc::clone(&park_notify),
         usage_flush_tx,
+        active_sessions: active_sessions.clone(),
         device_rate_limits: capacity.device_rate_limits.clone(),
         #[cfg(test)]
         outer_job_panic: test_hooks.outer_job_panic,
@@ -1113,7 +1129,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         count = expired.len(),
                         "reclaiming expired idle VMs for resource pressure"
                     );
-                    destroy_idle_jobs_and_wait(expired, "budget_pressure_expired").await;
+                    if destroy_idle_jobs_and_wait(expired, "budget_pressure_expired").await {
+                        park_notify.notify_one();
+                    }
                     continue;
                 }
 
@@ -1133,7 +1151,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     );
                     // Wait for the destroy task so the idle VM's lease is
                     // dropped before the loop re-checks can_afford().
-                    destroy_idle_jobs_and_wait(vec![evicted], "budget_pressure_oldest").await;
+                    if destroy_idle_jobs_and_wait(vec![evicted], "budget_pressure_oldest").await {
+                        park_notify.notify_one();
+                    }
                     continue;
                 }
             }
@@ -1220,8 +1240,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             // Reap completed destroy tasks
             Some(result) = destroy_tasks.join_next(), if !destroy_tasks.is_empty() => {
-                if let Err(e) = result {
-                    warn!(error = %e, "destroy task panicked");
+                match result {
+                    Ok(true) => park_notify.notify_one(),
+                    Ok(false) => {}
+                    Err(e) => warn!(error = %e, "destroy task panicked"),
                 }
             }
             // Mitmproxy crash detection
@@ -1252,11 +1274,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             _ = heartbeat_tick.tick() => {
                 send_heartbeat(&hb_ctx, current_mode).await;
             }
-            // Immediate heartbeat after a VM is parked — eliminates the
-            // up-to-10s blind spot for session affinity routing.
+            // Immediate heartbeat after session affinity state changes —
+            // eliminates the up-to-10s blind spot for affinity routing.
             _ = park_notify.notified(), if matches!(mode, RunnerMode::Running) => {
                 let source = if can_discover { "main" } else { "budget_exhausted" };
-                info!(source, "park triggered immediate heartbeat");
+                info!(source, "session affinity state triggered immediate heartbeat");
                 send_heartbeat(&hb_ctx, current_mode).await;
             }
         }
@@ -1337,8 +1359,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     mitm.request_usage_flush();
                 }
                 Some(result) = destroy_tasks.join_next() => {
-                    if let Err(e) = result {
-                        warn!(error = %e, "destroy task panicked");
+                    match result {
+                        Ok(_) => {}
+                        Err(e) => warn!(error = %e, "destroy task panicked"),
                     }
                 }
                 _ = mitm_crash_rx.recv() => {
@@ -1370,8 +1393,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // shutdown_factories calls Arc::try_unwrap.
     let phase = teardown.phase_start("destroy_tasks_drain");
     while let Some(result) = destroy_tasks.join_next().await {
-        if let Err(e) = result {
-            warn!(error = %e, "destroy task panicked during shutdown");
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                warn!(error = %e, "destroy task panicked during shutdown");
+            }
         }
     }
     teardown.phase_complete("destroy_tasks_drain", phase);

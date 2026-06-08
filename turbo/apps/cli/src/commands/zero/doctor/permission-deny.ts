@@ -78,7 +78,7 @@ Notes:
         });
         console.log(`This is covered by the "${permission}" permission.`);
         console.log(
-          `To request this permission, run: zero doctor permission-change ${connectorRef} --permission ${permission} --enable --reason "why this is needed"`,
+          `To allow this permission, run: zero doctor permission-change ${connectorRef} --permission ${permission} --enable`,
         );
       },
     ),

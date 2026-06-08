@@ -1735,6 +1735,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "github",
+            authMethod: "oauth",
             accessToken: "github-access-token",
           },
         }),
@@ -1763,7 +1764,7 @@ describe("CLI auth routes", () => {
         400,
       );
       expect(missingFields.body).toStrictEqual({
-        error: "connectorName and accessToken are required",
+        error: "connectorName, authMethod, and accessToken are required",
       });
 
       const emptyRefreshToken = await acceptResponse<{
@@ -1773,6 +1774,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "github",
+            authMethod: "oauth",
             accessToken: "github-access-token",
             refreshToken: "",
           },
@@ -1780,7 +1782,7 @@ describe("CLI auth routes", () => {
         400,
       );
       expect(emptyRefreshToken.body).toStrictEqual({
-        error: "connectorName and accessToken are required",
+        error: "connectorName, authMethod, and accessToken are required",
       });
     });
 
@@ -1792,6 +1794,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "unknown-connector",
+            authMethod: "oauth",
             accessToken: "unknown-access-token",
           },
         }),
@@ -1814,6 +1817,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "github",
+            authMethod: "oauth",
             accessToken: "github-access-token",
           },
         }),
@@ -1837,6 +1841,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "cloudinary",
+            authMethod: "api-token",
             accessToken: "cloudinary-access-token",
           },
         }),
@@ -1845,7 +1850,7 @@ describe("CLI auth routes", () => {
 
       expect(response.body).toStrictEqual({
         error:
-          "cloudinary connector does not use an auth-code or device-auth grant",
+          "cloudinary connector auth method api-token does not use an auth-code or device-auth grant",
       });
       await expect(
         readConnectorState({ orgId, userId, type: "cloudinary" }),
@@ -1859,7 +1864,34 @@ describe("CLI auth routes", () => {
       ).resolves.toBeUndefined();
     });
 
-    it("seeds OAuth connector token state for the test user org", async () => {
+    it("rejects auth methods that are not configured for the connector type", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({ orgId, userId, slug: "connector-auth-method" });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestConnectorContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.create({
+          query: {},
+          body: {
+            connectorName: "github",
+            authMethod: "api-token",
+            accessToken: "github-access-token",
+          },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "github connector does not configure auth method api-token",
+      });
+      await expect(
+        readConnectorState({ orgId, userId, type: "github" }),
+      ).resolves.toBeNull();
+    });
+
+    it("seeds connector token state for the test user org", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
       await seedOrgMembership({ orgId, userId, slug: "connector-org" });
@@ -1871,6 +1903,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "test-oauth",
+            authMethod: "oauth",
             accessToken: "test-oauth-access-token",
             refreshToken: "test-oauth-refresh-token",
             expiresIn: -60,
@@ -1918,6 +1951,64 @@ describe("CLI auth routes", () => {
       ).resolves.toBe("test-oauth-refresh-token");
     });
 
+    it("maps legacy test token fields to method-specific grant outputs", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({
+        orgId,
+        userId,
+        slug: "connector-method-output",
+      });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestConnectorContract);
+
+      const response = await acceptResponse<TestConnectorResponseBody>(
+        client.create({
+          query: {},
+          body: {
+            connectorName: "test-oauth",
+            authMethod: "api",
+            accessToken: "test-oauth-api-access-token",
+            refreshToken: "test-oauth-api-refresh-token",
+          },
+        }),
+        200,
+      );
+
+      expect(response.body).toStrictEqual({
+        ok: true,
+        connectorType: "test-oauth",
+        orgId,
+      });
+      await expect(
+        readConnectorState({ orgId, userId, type: "test-oauth" }),
+      ).resolves.toMatchObject({
+        authMethod: "api",
+        needsReconnect: false,
+      });
+      await expect(
+        findConnectorSecret({
+          orgId,
+          userId,
+          name: "TEST_OAUTH_API_ACCESS_TOKEN",
+        }),
+      ).resolves.toBe("test-oauth-api-access-token");
+      await expect(
+        findConnectorSecret({
+          orgId,
+          userId,
+          name: "TEST_OAUTH_API_REFRESH_TOKEN",
+        }),
+      ).resolves.toBe("test-oauth-api-refresh-token");
+      await expect(
+        findConnectorSecret({
+          orgId,
+          userId,
+          name: "TEST_OAUTH_ACCESS_TOKEN",
+        }),
+      ).resolves.toBeUndefined();
+    });
+
     it("resolves a custom test user email through Clerk", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
@@ -1934,6 +2025,7 @@ describe("CLI auth routes", () => {
           query: { email: "custom@test.com" },
           body: {
             connectorName: "github",
+            authMethod: "oauth",
             accessToken: "github-access-token",
           },
         }),

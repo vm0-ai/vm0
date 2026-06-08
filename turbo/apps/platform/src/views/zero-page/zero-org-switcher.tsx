@@ -69,10 +69,12 @@ function InvitationRow({
 }: {
   invitation: {
     id: string;
-    publicOrganizationData: { name: string; imageUrl: string };
+    publicOrganizationData: { id?: string; name: string; imageUrl: string };
     accept: () => Promise<unknown>;
   };
 }) {
+  const clerkLoadable = useLastLoadable(clerk$);
+  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const acceptingId = useGet(acceptingInvitationId$);
   const setAcceptingId = useSet(setAcceptingInvitationId$);
   const refreshInvitations = useSet(refreshUserInvitations$);
@@ -83,6 +85,10 @@ function InvitationRow({
     await bestEffort(
       (async () => {
         await invitation.accept();
+        const orgId = invitation.publicOrganizationData.id;
+        if (orgId) {
+          await clerk?.setActive({ organization: orgId });
+        }
         refreshInvitations();
       })(),
     );

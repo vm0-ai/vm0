@@ -46,6 +46,7 @@ export interface ApiTestMocks {
     readonly users: {
       readonly getUserList: AsyncMock;
       readonly getOrganizationMembershipList: AsyncMock;
+      readonly updateUser: AsyncMock;
     };
     readonly signInTokens: {
       readonly createSignInToken: AsyncMock;
@@ -116,9 +117,15 @@ export interface ApiTestMocks {
       readonly create: AsyncMock;
     };
     readonly subscriptions: {
+      readonly list: AsyncMock;
       readonly retrieve: AsyncMock;
       readonly update: AsyncMock;
       readonly cancel: AsyncMock;
+    };
+    readonly subscriptionSchedules: {
+      readonly create: AsyncMock;
+      readonly update: AsyncMock;
+      readonly release: AsyncMock;
     };
     readonly webhooks: {
       readonly constructEvent: UnknownMock;
@@ -203,6 +210,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       getUserList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getOrganizationMembershipList:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      updateUser: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     signInTokens: {
       createSignInToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -260,9 +268,15 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     subscriptions: {
+      list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       cancel: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    subscriptionSchedules: {
+      create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      release: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     webhooks: {
       constructEvent: vi.fn<(...args: unknown[]) => unknown>(),
@@ -547,9 +561,15 @@ vi.mock("stripe", async (importOriginal) => {
           create: apiTestMocks.stripe.customers.create,
         },
         subscriptions: {
+          list: apiTestMocks.stripe.subscriptions.list,
           retrieve: apiTestMocks.stripe.subscriptions.retrieve,
           update: apiTestMocks.stripe.subscriptions.update,
           cancel: apiTestMocks.stripe.subscriptions.cancel,
+        },
+        subscriptionSchedules: {
+          create: apiTestMocks.stripe.subscriptionSchedules.create,
+          update: apiTestMocks.stripe.subscriptionSchedules.update,
+          release: apiTestMocks.stripe.subscriptionSchedules.release,
         },
         webhooks: {
           constructEvent: apiTestMocks.stripe.webhooks.constructEvent,
@@ -740,6 +760,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.updateOrganizationLogo.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
+  apiTestMocks.clerk.users.updateUser.mockReset();
   apiTestMocks.clerk.signInTokens.createSignInToken.mockReset();
   apiTestMocks.s3.send.mockReset();
   apiTestMocks.s3.getSignedUrl.mockReset();
@@ -773,9 +794,14 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.invoiceItems.create.mockReset();
   apiTestMocks.stripe.customers.retrieve.mockReset();
   apiTestMocks.stripe.customers.create.mockReset();
+  apiTestMocks.stripe.subscriptions.list.mockReset();
+  apiTestMocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
   apiTestMocks.stripe.subscriptions.retrieve.mockReset();
   apiTestMocks.stripe.subscriptions.update.mockReset();
   apiTestMocks.stripe.subscriptions.cancel.mockReset();
+  apiTestMocks.stripe.subscriptionSchedules.create.mockReset();
+  apiTestMocks.stripe.subscriptionSchedules.update.mockReset();
+  apiTestMocks.stripe.subscriptionSchedules.release.mockReset();
   apiTestMocks.stripe.webhooks.constructEvent.mockReset();
   apiTestMocks.stripe.checkout.sessions.create.mockReset();
   apiTestMocks.stripe.checkout.sessions.retrieve.mockReset();

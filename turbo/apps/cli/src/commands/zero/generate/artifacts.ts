@@ -16,7 +16,7 @@ export const reportCommand = createArtifactGenerateCommand({
   description: "Generate an HTML report from a prompt",
   usageCommand: "zero generate report",
   examples: `  Generate report:      zero generate report --prompt "A Q2 usage report for the API team"
-  Stable hosted slug:    zero generate report --site-slug api-usage-q2 --prompt "A Q2 usage report"
+  Custom site slug:      zero generate report --site-slug api-usage-q2 --prompt "A Q2 usage report"
   Show choices:          zero generate report`,
   details: standardDetails("report"),
   artifactRules: [
@@ -34,7 +34,7 @@ export const docsDesignCommand = createArtifactGenerateCommand({
   description: "Generate a documentation design from a prompt",
   usageCommand: "zero generate docs-design",
   examples: `  Generate docs design: zero generate docs-design --prompt "Docs for adding artifact targets"
-  Stable hosted slug:    zero generate docs-design --site-slug artifact-target-docs --prompt "Artifact target docs"
+  Custom site slug:      zero generate docs-design --site-slug artifact-target-docs --prompt "Artifact target docs"
   Show choices:          zero generate docs-design`,
   details: standardDetails("docs-design"),
   artifactRules: [
@@ -52,7 +52,7 @@ export const posterCommand = createArtifactGenerateCommand({
   description: "Generate an HTML poster from a prompt",
   usageCommand: "zero generate poster",
   examples: `  Generate poster:      zero generate poster --prompt "A launch poster for artifact targets"
-  Stable hosted slug:    zero generate poster --site-slug artifact-poster --prompt "A launch poster"
+  Custom site slug:      zero generate poster --site-slug artifact-poster --prompt "A launch poster"
   Show choices:          zero generate poster`,
   details: standardDetails("poster"),
   artifactRules: [
@@ -70,7 +70,7 @@ export const dashboardDesignCommand = createArtifactGenerateCommand({
   description: "Generate a dashboard design from a prompt",
   usageCommand: "zero generate dashboard-design",
   examples: `  Generate dash design: zero generate dashboard-design --prompt "An ops dashboard for generation runs"
-  Stable hosted slug:    zero generate dashboard-design --site-slug generation-ops --prompt "A generation ops dashboard"
+  Custom site slug:      zero generate dashboard-design --site-slug generation-ops --prompt "A generation ops dashboard"
   Show choices:          zero generate dashboard-design`,
   details: standardDetails("dashboard-design"),
   artifactRules: [
@@ -88,7 +88,7 @@ export const mobileAppDesignCommand = createArtifactGenerateCommand({
   description: "Generate a mobile app design prototype from a prompt",
   usageCommand: "zero generate mobile-app-design",
   examples: `  Generate mobile UI:   zero generate mobile-app-design --prompt "A mobile review screen for generation artifacts"
-  Stable hosted slug:    zero generate mobile-app-design --site-slug generation-mobile-review --prompt "A mobile review screen"
+  Custom site slug:      zero generate mobile-app-design --site-slug generation-mobile-review --prompt "A mobile review screen"
   Show choices:          zero generate mobile-app-design`,
   details: standardDetails("mobile-app-design"),
   artifactRules: [

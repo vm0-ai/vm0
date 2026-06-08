@@ -15,6 +15,7 @@ import type {
 } from "@vm0/api-contracts/contracts/internal-callbacks-schedule";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -22,19 +23,22 @@ import { Cron } from "croner";
 import { and, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
 
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { isValidTimeZone, settle } from "../utils";
 import { decryptStoredSecretsMap } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import {
-  resolveDefaultModelFirstPin,
-  resolveModelFirstProviderAdmission,
-} from "./zero-model-selection.service";
+import { resolveModelFirstProviderAdmission } from "./zero-model-selection.service";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import {
+  postScheduleUserMessage,
+  resolveScheduleChatThreadModelPin,
+} from "../routes/zero-chat-messages";
+import { publishChatThreadSchedulesChangedSafely } from "../external/realtime";
 
 const log = logger("api:zero:schedules");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -73,6 +77,7 @@ async function scheduleResponse(
     lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
     retryStartedAt: schedule.retryStartedAt?.toISOString() ?? null,
     consecutiveFailures: schedule.consecutiveFailures,
+    chatThreadId: schedule.chatThreadId,
     createdAt: schedule.createdAt.toISOString(),
     updatedAt: schedule.updatedAt.toISOString(),
   };
@@ -416,6 +421,85 @@ async function findExistingSchedule(
   return existing ?? null;
 }
 
+/**
+ * A chat thread may be linked to a schedule only if it exists, is owned by the
+ * same user, and belongs to the same agent. (No cross-org sharing; chat threads
+ * carry only a userId, so org isolation is enforced via the user.)
+ */
+async function isChatThreadLinkable(
+  db: Db,
+  args: {
+    readonly chatThreadId: string;
+    readonly userId: string;
+    readonly agentId: string;
+  },
+): Promise<boolean> {
+  const [thread] = await db
+    .select({
+      userId: chatThreads.userId,
+      agentComposeId: chatThreads.agentComposeId,
+    })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, args.chatThreadId))
+    .limit(1);
+  return (
+    thread !== undefined &&
+    thread.userId === args.userId &&
+    thread.agentComposeId === args.agentId
+  );
+}
+
+type ChatThreadLinkResult =
+  | {
+      readonly ok: true;
+      readonly chatThreadId: string | null;
+      readonly createChatThread: boolean;
+    }
+  | { readonly ok: false; readonly error: DeployScheduleResult };
+
+/**
+ * Resolve the chat-thread link for a deploy: link a NEW schedule to either the
+ * supplied owned chat thread or a server-created thread. The chatThreadId is
+ * honored only on creation; on update of an existing schedule it is ignored and
+ * the schedule keeps its original link.
+ */
+async function resolveScheduleChatThreadLink(args: {
+  readonly db: Db;
+  readonly chatThreadId: string | undefined;
+  readonly agentId: string;
+  readonly userId: string;
+  readonly existing: boolean;
+  readonly signal: AbortSignal;
+}): Promise<ChatThreadLinkResult> {
+  if (args.existing) {
+    return { ok: true, chatThreadId: null, createChatThread: false };
+  }
+  if (args.chatThreadId !== undefined) {
+    const linkable = await isChatThreadLinkable(args.db, {
+      chatThreadId: args.chatThreadId,
+      userId: args.userId,
+      agentId: args.agentId,
+    });
+    args.signal.throwIfAborted();
+    if (!linkable) {
+      return {
+        ok: false,
+        error: {
+          kind: "bad_request",
+          message:
+            "Chat thread not found, not owned by this user, or belongs to a different agent",
+        },
+      };
+    }
+    return {
+      ok: true,
+      chatThreadId: args.chatThreadId,
+      createChatThread: false,
+    };
+  }
+  return { ok: true, chatThreadId: null, createChatThread: true };
+}
+
 async function updateExistingSchedule(
   db: Db,
   args: {
@@ -462,33 +546,68 @@ async function insertNewSchedule(
     readonly triggerType: "cron" | "once" | "loop";
     readonly nextRunAt: Date | null;
     readonly currentTime: Date;
+    // Resolved chat-thread link. Null only when createChatThread is true (the
+    // thread is created inside the transaction below). Computed in
+    // deploySchedule$ after the ownership check — NOT read from the request body.
+    readonly chatThreadId: string | null;
+    readonly createChatThread: boolean;
   },
 ): Promise<typeof zeroAgentSchedules.$inferSelect> {
-  const [created] = await db
-    .insert(zeroAgentSchedules)
-    .values({
-      agentId: args.request.agentId,
-      userId: args.userId,
-      orgId: args.orgId,
-      name: args.request.name,
-      triggerType: args.triggerType,
-      cronExpression: args.request.cronExpression ?? null,
-      atTime: args.request.atTime ? new Date(args.request.atTime) : null,
-      intervalSeconds: args.request.intervalSeconds ?? null,
-      timezone: args.request.timezone,
-      prompt: args.request.prompt,
-      description: args.request.description ?? null,
-      appendSystemPrompt: args.request.appendSystemPrompt ?? null,
-      vars: null,
-      encryptedSecrets: null,
-      volumeVersions: args.request.volumeVersions ?? null,
-      enabled: args.request.enabled ?? false,
-      nextRunAt: args.nextRunAt,
-      consecutiveFailures: 0,
-      createdAt: args.currentTime,
-      updatedAt: args.currentTime,
-    })
-    .returning();
+  const created = await db.transaction(async (tx) => {
+    let chatThreadId = args.chatThreadId;
+    if (args.createChatThread) {
+      const [thread] = await tx
+        .insert(chatThreads)
+        .values({
+          userId: args.userId,
+          agentComposeId: args.request.agentId,
+          title: args.request.description ?? args.request.name,
+          lastMessageAt: args.currentTime,
+          createdAt: args.currentTime,
+          updatedAt: args.currentTime,
+        })
+        .returning({ id: chatThreads.id });
+      if (!thread) {
+        throw new Error("Failed to create chat thread");
+      }
+      chatThreadId = thread.id;
+    }
+    if (chatThreadId === null) {
+      // Invariant: a new schedule either supplies a linkable thread
+      // (createChatThread false) or has one created above (createChatThread
+      // true). The link is never null at insert time.
+      throw new Error("insertNewSchedule: resolved chat thread id is null");
+    }
+
+    const [schedule] = await tx
+      .insert(zeroAgentSchedules)
+      .values({
+        agentId: args.request.agentId,
+        userId: args.userId,
+        orgId: args.orgId,
+        name: args.request.name,
+        triggerType: args.triggerType,
+        cronExpression: args.request.cronExpression ?? null,
+        atTime: args.request.atTime ? new Date(args.request.atTime) : null,
+        intervalSeconds: args.request.intervalSeconds ?? null,
+        timezone: args.request.timezone,
+        prompt: args.request.prompt,
+        description: args.request.description ?? null,
+        appendSystemPrompt: args.request.appendSystemPrompt ?? null,
+        vars: null,
+        encryptedSecrets: null,
+        volumeVersions: args.request.volumeVersions ?? null,
+        chatThreadId,
+        enabled: args.request.enabled ?? false,
+        nextRunAt: args.nextRunAt,
+        consecutiveFailures: 0,
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
+      })
+      .returning();
+
+    return schedule;
+  });
 
   if (!created) {
     throw new Error(`Failed to create schedule ${args.request.name}`);
@@ -538,6 +657,22 @@ export const deploySchedule$ = command(
     });
     signal.throwIfAborted();
 
+    // Chat-mode linkage: a NEW schedule is linked to either an owned supplied
+    // thread or a server-created web chat thread. The link is create-only /
+    // immutable.
+    const chatLink = await resolveScheduleChatThreadLink({
+      db,
+      chatThreadId: args.body.chatThreadId,
+      agentId: args.body.agentId,
+      userId: args.userId,
+      existing: existing !== null,
+      signal,
+    });
+    if (!chatLink.ok) {
+      return chatLink.error;
+    }
+    const chatThreadIdToLink = chatLink.chatThreadId;
+
     const effectiveBody =
       existing && args.body.enabled === undefined
         ? { ...args.body, enabled: existing.enabled }
@@ -573,7 +708,17 @@ export const deploySchedule$ = command(
           triggerType,
           nextRunAt,
           currentTime,
+          chatThreadId: chatThreadIdToLink,
+          createChatThread: chatLink.createChatThread,
         });
+    signal.throwIfAborted();
+
+    // Notify the linked chat thread so its header schedule menu refreshes the
+    // thread-scoped list in real time.
+    await publishChatThreadSchedulesChangedSafely(
+      args.userId,
+      schedule.chatThreadId,
+    );
     signal.throwIfAborted();
 
     const featureSwitchOverrides = await get(
@@ -628,6 +773,12 @@ export const disableSchedule$ = command(
       return { kind: "not_found" };
     }
 
+    await publishChatThreadSchedulesChangedSafely(
+      args.userId,
+      updated.chatThreadId,
+    );
+    signal.throwIfAborted();
+
     const featureSwitchOverrides = await get(
       userFeatureSwitchOverrides(args.orgId, args.userId),
     );
@@ -662,6 +813,7 @@ export const deleteSchedule$ = command(
       return { kind: "not_found" };
     }
 
+    const chatThreadId = ownership.schedule.chatThreadId;
     const [deleted] = await db
       .delete(zeroAgentSchedules)
       .where(eq(zeroAgentSchedules.id, ownership.schedule.id))
@@ -670,6 +822,11 @@ export const deleteSchedule$ = command(
     if (!deleted) {
       return { kind: "not_found" };
     }
+
+    // Notify the linked chat thread so its header schedule menu drops the
+    // deleted entry in real time.
+    await publishChatThreadSchedulesChangedSafely(args.userId, chatThreadId);
+    signal.throwIfAborted();
 
     return { kind: "ok" };
   },
@@ -728,6 +885,12 @@ export const enableSchedule$ = command(
     if (!updated) {
       return { kind: "not_found" };
     }
+
+    await publishChatThreadSchedulesChangedSafely(
+      args.userId,
+      updated.chatThreadId,
+    );
+    signal.throwIfAborted();
 
     const featureSwitchOverrides = await get(
       userFeatureSwitchOverrides(args.orgId, args.userId),
@@ -969,29 +1132,26 @@ function buildSchedulePrompt(triggerType: string): string {
   ].join("\n");
 }
 
-function apiUrl(): string {
-  return env("VM0_API_URL");
-}
-
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
 function buildScheduleCallbacks(
   schedule: typeof zeroAgentSchedules.$inferSelect,
-) {
+): { url: string; secret: string; payload: unknown }[] {
+  const callbacks: { url: string; secret: string; payload: unknown }[] = [];
+
   if (schedule.triggerType === "loop") {
     const payload: ScheduleLoopCallbackPayload = { scheduleId: schedule.id };
-    return [
-      {
-        url: `${apiUrl()}/api/internal/callbacks/schedule/loop`,
-        secret: generateCallbackSecret(),
-        payload,
-      },
-    ];
-  }
-
-  if (schedule.triggerType === "cron" || schedule.triggerType === "once") {
+    callbacks.push({
+      url: `${internalApiBaseUrl()}/api/internal/callbacks/schedule/loop`,
+      secret: generateCallbackSecret(),
+      payload,
+    });
+  } else if (
+    schedule.triggerType === "cron" ||
+    schedule.triggerType === "once"
+  ) {
     const payload: ScheduleCronCallbackPayload = {
       scheduleId: schedule.id,
       ...(schedule.cronExpression && {
@@ -999,28 +1159,44 @@ function buildScheduleCallbacks(
       }),
       timezone: schedule.timezone,
     };
-    return [
-      {
-        url: `${apiUrl()}/api/internal/callbacks/schedule/cron`,
-        secret: generateCallbackSecret(),
-        payload,
-      },
-    ];
+    callbacks.push({
+      url: `${internalApiBaseUrl()}/api/internal/callbacks/schedule/cron`,
+      secret: generateCallbackSecret(),
+      payload,
+    });
   }
 
-  return [];
+  // Also drive the chat callback so the run renders as a web-chat turn
+  // (summary/title/lifecycle + autoSend). The reschedule callback above is
+  // retained for next_run_at / consecutive-failure bookkeeping; only the chat
+  // callback writes the run summary (D9), so callback dispatch order is safe.
+  callbacks.push({
+    url: `${internalApiBaseUrl()}/api/internal/callbacks/chat`,
+    secret: generateCallbackSecret(),
+    payload: { threadId: schedule.chatThreadId, agentId: schedule.agentId },
+  });
+
+  return callbacks;
 }
 
 function buildScheduleAppendSystemPrompt(
   schedule: typeof zeroAgentSchedules.$inferSelect,
 ): string {
-  const integrationContext = buildSchedulePrompt(schedule.triggerType);
+  const integrationContext = [
+    buildSchedulePrompt(schedule.triggerType),
+    "",
+    "This scheduled run is linked to a web chat thread. Everything you output is automatically shown to the user as a chat message in that thread.",
+  ].join("\n");
   const baseAppendPrompt = schedule.appendSystemPrompt ?? undefined;
   return baseAppendPrompt
     ? `${integrationContext}\n\n${baseAppendPrompt}`
     : integrationContext;
 }
 
+// Render the scheduled run as a web-chat turn in the linked thread. Model comes
+// from the thread pin (org default if unpinned); the session is always fresh
+// (no sessionId); the chat callback owns the summary while the reschedule
+// callback advances next_run_at (D9).
 export const runScheduleNow$ = command(
   async (
     { set },
@@ -1067,17 +1243,28 @@ export const runScheduleNow$ = command(
       }
     }
 
-    const modelPin = await resolveDefaultModelFirstPin(
+    const threadModelPin = await resolveScheduleChatThreadModelPin({
       db,
-      schedule.orgId,
-      schedule.userId,
-    );
+      orgId: schedule.orgId,
+      userId: schedule.userId,
+      threadId: schedule.chatThreadId,
+    });
     signal.throwIfAborted();
+    if ("status" in threadModelPin) {
+      // No user is present to receive a model-config error; surface it as a
+      // run_error (normalized to 400) so it feeds consecutiveFailures / the
+      // manual run-now response.
+      return {
+        kind: "run_error",
+        response: { status: 400, body: threadModelPin.body },
+      };
+    }
+
     const providerAdmission = await resolveModelFirstProviderAdmission({
       db,
       orgId: schedule.orgId,
       userId: schedule.userId,
-      modelPin,
+      modelPin: threadModelPin,
       requestedModelProvider: undefined,
     });
     signal.throwIfAborted();
@@ -1103,10 +1290,11 @@ export const runScheduleNow$ = command(
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "schedule",
-        modelProviderId: modelPin.modelProviderId ?? undefined,
+        chatThreadId: schedule.chatThreadId,
+        modelProviderId: threadModelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:
-          modelPin.modelProviderCredentialScope ?? undefined,
-        selectedModelOverride: modelPin.selectedModel ?? undefined,
+          threadModelPin.modelProviderCredentialScope ?? undefined,
+        selectedModelOverride: threadModelPin.selectedModel ?? undefined,
         appendSystemPrompt: buildScheduleAppendSystemPrompt(schedule),
         callbacks: buildScheduleCallbacks(schedule),
         zeroRunMetadata: { scheduleId: schedule.id },
@@ -1119,13 +1307,26 @@ export const runScheduleNow$ = command(
       return { kind: "run_error", response: result };
     }
 
+    await postScheduleUserMessage({
+      db,
+      threadId: schedule.chatThreadId,
+      userId: schedule.userId,
+      runId: result.body.runId,
+      prompt: schedule.prompt,
+      appendQueueMarker: result.body.status === "queued",
+      scheduleId: schedule.id,
+      scheduleTitle: schedule.name,
+    });
+    signal.throwIfAborted();
+
     await db
       .update(zeroRuns)
       .set({
         modelProvider: providerAdmission.effectiveModelProvider,
-        modelProviderId: modelPin.modelProviderId,
-        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
-        selectedModel: modelPin.selectedModel,
+        modelProviderId: threadModelPin.modelProviderId,
+        modelProviderCredentialScope:
+          threadModelPin.modelProviderCredentialScope,
+        selectedModel: threadModelPin.selectedModel,
       })
       .where(eq(zeroRuns.id, result.body.runId));
     signal.throwIfAborted();

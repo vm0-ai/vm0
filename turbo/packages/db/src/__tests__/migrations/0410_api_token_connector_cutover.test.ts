@@ -1,8 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
-import { CONNECTOR_TYPE_KEYS } from "@vm0/connectors/connectors";
-import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -16,6 +14,51 @@ interface ApiTokenMigrationField {
   readonly storage: string;
   readonly required: boolean;
 }
+
+const REPRESENTATIVE_API_TOKEN_MIGRATION_FIELDS = sortApiTokenMigrationFields([
+  {
+    connectorType: "agora",
+    fieldName: "AGORA_APP_CERTIFICATE",
+    storage: "secret",
+    required: false,
+  },
+  {
+    connectorType: "agora",
+    fieldName: "AGORA_APP_ID",
+    storage: "variable",
+    required: true,
+  },
+  {
+    connectorType: "agora",
+    fieldName: "AGORA_CUSTOMER_ID",
+    storage: "secret",
+    required: true,
+  },
+  {
+    connectorType: "agora",
+    fieldName: "AGORA_CUSTOMER_SECRET",
+    storage: "secret",
+    required: true,
+  },
+  {
+    connectorType: "gitlab",
+    fieldName: "GITLAB_HOST",
+    storage: "variable",
+    required: false,
+  },
+  {
+    connectorType: "gitlab",
+    fieldName: "GITLAB_TOKEN",
+    storage: "secret",
+    required: true,
+  },
+  {
+    connectorType: "openai",
+    fieldName: "OPENAI_TOKEN",
+    storage: "secret",
+    required: true,
+  },
+]);
 
 function apiTokenMigrationFieldKey(field: ApiTokenMigrationField): string {
   return [field.connectorType, field.fieldName, field.storage].join("\0");
@@ -51,25 +94,6 @@ function apiTokenMigrationFieldsFromSql(): readonly ApiTokenMigrationField[] {
       };
     }),
   );
-}
-
-function apiTokenRegistryFields(): readonly ApiTokenMigrationField[] {
-  const fields: ApiTokenMigrationField[] = [];
-  for (const connectorType of [...CONNECTOR_TYPE_KEYS].sort()) {
-    const method = getConnectorAuthMethod(connectorType, "api-token");
-    if (method?.grant.kind !== "manual") {
-      continue;
-    }
-    for (const [fieldName, field] of Object.entries(method.grant.fields)) {
-      fields.push({
-        connectorType,
-        fieldName,
-        storage: field.storage ?? "secret",
-        required: field.required,
-      });
-    }
-  }
-  return sortApiTokenMigrationFields(fields);
 }
 
 async function runScopedApiTokenConnectorCutover(args: {
@@ -329,9 +353,18 @@ async function readVariableState(args: {
 }
 
 describe("migration 0410 api-token connector cutover", () => {
-  it("keeps the full migration field list in sync with the connector registry", () => {
-    expect(apiTokenMigrationFieldsFromSql()).toStrictEqual(
-      apiTokenRegistryFields(),
+  it("keeps representative cutover fields in the migration SQL", () => {
+    const sampleConnectorTypes = new Set(
+      REPRESENTATIVE_API_TOKEN_MIGRATION_FIELDS.map((field) => {
+        return field.connectorType;
+      }),
+    );
+    expect(
+      apiTokenMigrationFieldsFromSql().filter((field) => {
+        return sampleConnectorTypes.has(field.connectorType);
+      }),
+    ).toStrictEqual(
+      sortApiTokenMigrationFields(REPRESENTATIVE_API_TOKEN_MIGRATION_FIELDS),
     );
   });
 

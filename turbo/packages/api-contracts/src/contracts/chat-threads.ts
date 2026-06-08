@@ -1,13 +1,17 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import {
+  isSupportedRunModel,
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
 } from "./model-providers";
 
 const c = initContract();
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
 
 /**
  * File attachment metadata stored alongside user messages.
@@ -43,12 +47,34 @@ const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
 
 const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
   createdAt: z.string(),
+  artifactKind: hostedArtifactKindSchema.optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });
 
 const chatThreadArtifactRunSchema = z.object({
   runId: z.string(),
   files: z.array(chatThreadArtifactFileSchema),
+});
+
+const chatThreadGithubPrCheckRunSchema = z.object({
+  name: z.string(),
+  status: z.string(),
+  conclusion: z.string().nullable(),
+  url: z.string().nullable(),
+  startedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+});
+
+const chatThreadGithubPrSchema = z.object({
+  repo: z.string(),
+  number: z.number().int(),
+  title: z.string(),
+  url: z.string(),
+  state: z.enum(["open", "closed", "merged"]),
+  headSha: z.string(),
+  mergeStatus: z.enum(["ready", "conflicts", "blocked", "draft"]).nullable(),
+  rollup: z.enum(["success", "failure", "pending", "none", "unknown"]),
+  checks: z.array(chatThreadGithubPrCheckRunSchema),
 });
 
 /**
@@ -96,6 +122,12 @@ const chatThreadListItemSchema = z.object({
    */
   hasDraft: z.boolean().optional(),
   /**
+   * Number of schedules linked to this chat thread. Drives the stronger delete
+   * confirmation copy before removing a scheduled chat thread. Optional for
+   * back-compat with fixtures predating the field.
+   */
+  scheduleCount: z.number().int().nonnegative().optional(),
+  /**
    * ISO timestamp at which the user pinned this thread. Null/undefined means
    * unpinned. Pinned threads sort above unpinned in the sidebar; both groups
    * keep recency order. Optional for back-compat with fixtures that predate
@@ -127,6 +159,18 @@ const summaryEntrySchema = z.union([
   textSummaryEntrySchema,
 ]);
 
+const presentationGenerationTemplateRequestSchema = z.object({
+  type: z.literal("presentation"),
+  selection: z.object({
+    designSystemId: z.string().min(1),
+    templateId: z.string().min(1),
+  }),
+});
+
+const generationTemplateRequestSchema = z.discriminatedUnion("type", [
+  presentationGenerationTemplateRequestSchema,
+]);
+
 const pagedChatMessageBaseSchema = z.object({
   id: z.string(),
   content: z.string().nullable(),
@@ -135,8 +179,32 @@ const pagedChatMessageBaseSchema = z.object({
   interruptsRunId: z.string().optional(),
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
+  generationTemplate: generationTemplateRequestSchema.optional(),
+  // Present on user messages posted by a firing schedule. `scheduleId` links to
+  // the schedule detail page; `scheduleTitle` is the schedule name snapshot
+  // rendered in place of the prompt text.
+  scheduleId: z.string().optional(),
+  scheduleTitle: z.string().optional(),
   createdAt: z.string(),
 });
+
+const chatMessageRecommendedFollowupSchema = z.object({
+  prompt: z.string(),
+  kind: z.enum(["talk", "generate"]),
+  generationType: z
+    .enum(["image", "video", "presentation", "website"])
+    .optional(),
+});
+
+const chatMessageRecommendedFollowupsSchema = z.preprocess((value) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    const parsed = chatMessageRecommendedFollowupSchema.safeParse(item);
+    return parsed.success ? [parsed.data] : [];
+  });
+}, z.array(chatMessageRecommendedFollowupSchema));
 
 const pagedChatMessageSchema = z.discriminatedUnion("role", [
   pagedChatMessageBaseSchema
@@ -148,6 +216,7 @@ const pagedChatMessageSchema = z.discriminatedUnion("role", [
     role: z.literal("assistant"),
     status: z.string().optional(),
     runLifecycleEvent: z.enum(["completed", "failed", "cancelled"]).optional(),
+    recommendedFollowups: chatMessageRecommendedFollowupsSchema.optional(),
   }),
 ]);
 
@@ -207,10 +276,23 @@ const chatThreadDetailSchema = z.object({
  * the object is present; pass `null` to clear the thread's override and fall
  * back to the agent/org default; omit to leave the thread's override unchanged.
  */
-const modelSelectionRequestSchema = z.object({
-  modelProviderId: z.string().uuid(),
-  selectedModel: z.string().min(1),
-});
+const modelSelectionRequestSchema = z
+  .object({
+    modelProviderId: z.string().uuid(),
+    selectedModel: z.string().min(1),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.modelProviderId === MODEL_FIRST_SELECTION_PROVIDER_ID &&
+      !isSupportedRunModel(value.selectedModel)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["selectedModel"],
+        message: "Invalid model selection",
+      });
+    }
+  });
 
 /**
  * Chat threads list route contract (/api/chat-threads)
@@ -293,14 +375,20 @@ export const chatThreadsContract = c.router({
 /**
  * Chat thread by ID route contract (/api/chat-threads/[id])
  */
+const chatThreadIdPathParamsSchema = z.object({ id: z.string().uuid() });
+const chatThreadThreadIdPathParamsSchema = z.object({
+  threadId: z.string().uuid(),
+});
+
 export const chatThreadByIdContract = c.router({
   get: {
     method: "GET",
     path: "/api/zero/chat-threads/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     responses: {
       200: chatThreadDetailSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -310,7 +398,7 @@ export const chatThreadByIdContract = c.router({
     method: "PATCH",
     path: "/api/zero/chat-threads/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     body: z.object({
       draftContent: z.string().nullable().optional(),
       draftAttachments: z
@@ -320,6 +408,7 @@ export const chatThreadByIdContract = c.router({
     }),
     responses: {
       204: c.noBody(),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -329,9 +418,10 @@ export const chatThreadByIdContract = c.router({
     method: "DELETE",
     path: "/api/zero/chat-threads/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     responses: {
       204: c.noBody(),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -349,13 +439,14 @@ export const chatThreadMarkReadContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads/:id/mark-read",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     body: c.noBody(),
     responses: {
       200: z.object({
         lastReadMessageId: z.string().nullable(),
         changed: z.boolean(),
       }),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -377,10 +468,11 @@ export const chatThreadPinContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads/:id/pin",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     body: c.noBody(),
     responses: {
       204: c.noBody(),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -393,10 +485,11 @@ export const chatThreadUnpinContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads/:id/unpin",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     body: c.noBody(),
     responses: {
       204: c.noBody(),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -418,14 +511,38 @@ export const chatThreadRenameContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads/:id/rename",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     body: z.object({ title: z.string().min(1) }),
     responses: {
       204: c.noBody(),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Rename a chat thread (suppresses automated title generation)",
+  },
+});
+
+/**
+ * Update a chat thread's model pin. Kept separate from
+ * `chatThreadByIdContract.patch`, which intentionally remains draft-only.
+ */
+export const chatThreadModelSelectionContract = c.router({
+  update: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/model-selection",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: z.object({
+      modelSelection: modelSelectionRequestSchema.nullable(),
+    }),
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update a chat thread model selection",
   },
 });
 
@@ -452,6 +569,7 @@ export const chatMessagesContract = c.router({
          * thread override and fall back to agent/org defaults.
          */
         modelSelection: modelSelectionRequestSchema.nullable().optional(),
+        generationTemplate: generationTemplateRequestSchema.optional(),
         // Optional for backward compatibility: older clients that omit this field
         // still trigger title generation (server guards with !== false, not === true).
         hasTextContent: z.boolean().optional(),
@@ -478,7 +596,7 @@ export const chatMessagesContract = c.router({
         // entry path end-to-end.
         debugNoMockClaude: z.boolean().optional(),
         debugNoMockCodex: z.boolean().optional(),
-        revokesMessageId: z.undefined().optional(),
+        revokesMessageId: z.string().min(1).optional(),
         interruptsRunId: z.undefined().optional(),
       }),
       z.object({
@@ -490,6 +608,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
+        generationTemplate: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
         debugNoMockClaude: z.undefined().optional(),
@@ -506,6 +625,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
+        generationTemplate: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
         debugNoMockClaude: z.undefined().optional(),
@@ -526,6 +646,7 @@ export const chatMessagesContract = c.router({
       402: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       422: apiErrorSchema,
     },
     summary: "Send a chat message (create thread + run + association)",
@@ -614,7 +735,7 @@ export const chatThreadMessagesContract = c.router({
     method: "GET",
     path: "/api/zero/chat-threads/:threadId/messages",
     headers: authHeadersSchema,
-    pathParams: z.object({ threadId: z.string() }),
+    pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
       sinceId: z.string().uuid().optional(),
       beforeId: z.string().uuid().optional(),
@@ -625,6 +746,7 @@ export const chatThreadMessagesContract = c.router({
         messages: z.array(pagedChatMessageSchema),
         hasHistoryBefore: z.boolean().optional(),
       }),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -637,11 +759,12 @@ export const chatThreadArtifactsContract = c.router({
     method: "GET",
     path: "/api/zero/chat-threads/:threadId/artifacts",
     headers: authHeadersSchema,
-    pathParams: z.object({ threadId: z.string() }),
+    pathParams: chatThreadThreadIdPathParamsSchema,
     responses: {
       200: z.object({
         runs: z.array(chatThreadArtifactRunSchema),
       }),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -652,7 +775,7 @@ export const chatThreadArtifactsContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/artifacts",
     headers: authHeadersSchema,
-    pathParams: z.object({ threadId: z.string() }),
+    pathParams: chatThreadThreadIdPathParamsSchema,
     body: z.object({
       runId: z.string(),
       fileId: z.string(),
@@ -673,15 +796,38 @@ export const chatThreadArtifactsContract = c.router({
   },
 });
 
+export const chatThreadGithubPrsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/github-prs",
+    headers: authHeadersSchema,
+    pathParams: z.object({ threadId: z.string() }),
+    responses: {
+      200: z.object({
+        prs: z.array(chatThreadGithubPrSchema),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary:
+      "List GitHub pull requests mentioned in a chat thread with their current check-run status.",
+  },
+});
+
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
+export type ChatThreadModelSelectionContract =
+  typeof chatThreadModelSelectionContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
+export type ChatThreadGithubPrsContract = typeof chatThreadGithubPrsContract;
 export type ChatSearchContract = typeof chatSearchContract;
 export type ChatSearchResponse = z.infer<typeof chatSearchResponseSchema>;
 export type ChatSearchResult = z.infer<typeof chatSearchResultSchema>;
@@ -691,6 +837,8 @@ export {
   chatThreadListItemSchema,
   chatThreadDetailSchema,
   modelSelectionRequestSchema,
+  generationTemplateRequestSchema,
+  presentationGenerationTemplateRequestSchema,
   pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
@@ -699,9 +847,17 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
+  chatThreadGithubPrCheckRunSchema,
+  chatThreadGithubPrSchema,
 };
 
 export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
+export type GenerationTemplateRequest = z.infer<
+  typeof generationTemplateRequestSchema
+>;
+export type PresentationGenerationTemplateRequest = z.infer<
+  typeof presentationGenerationTemplateRequestSchema
+>;
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
@@ -717,3 +873,7 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
   typeof chatThreadArtifactGoogleDriveSyncSchema
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
+export type ChatThreadGithubPrCheckRun = z.infer<
+  typeof chatThreadGithubPrCheckRunSchema
+>;
+export type ChatThreadGithubPr = z.infer<typeof chatThreadGithubPrSchema>;

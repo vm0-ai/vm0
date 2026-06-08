@@ -60,7 +60,7 @@ function isArtifactGoogleDriveSyncFailure(
   return !result.ok;
 }
 
-export async function syncArtifactFilesToGoogleDrive(
+async function syncArtifactFilesToGoogleDrive(
   params: ArtifactGoogleDriveSyncFilesParams & {
     readonly createClient: ZeroClientFactory;
     readonly signal?: AbortSignal;
@@ -181,7 +181,10 @@ export const waitForGoogleDriveAndSyncArtifacts$ = command(
         const { connectors } = await get(connectors$);
         sig.throwIfAborted();
         const connected = connectors.some((connector) => {
-          return connector.type === "google-drive" && !connector.needsReconnect;
+          return (
+            connector.type === "google-drive" &&
+            connector.connectionStatus === "connected"
+          );
         });
         if (!connected) {
           return false;

@@ -253,7 +253,7 @@ export function ZeroSettingsTab({
                 aria-label={`How ${resolvedAgentName} sounds`}
               >
                 <div
-                  className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4"
+                  className="grid w-full grid-cols-2 gap-2"
                   role="group"
                   aria-label="Tone"
                 >

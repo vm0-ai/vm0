@@ -1283,13 +1283,14 @@ describe("AgentPhone migrated API routes", () => {
     const orgId = uniqueId("org");
     const phoneHandle = uniquePhone();
     const uploadId = randomUUID();
+    const s3Key = `artifacts/${userId}/${uploadId}/photo.png`;
     await seedOrgMembership({ orgId, userId });
     const run = await seedRun({ userId, orgId });
     await seedAgentPhoneLink({ phoneHandle, userId, orgId });
     mocks.s3.listObjects([
       {
         bucket: "test-user-artifacts",
-        key: `artifacts/${userId}/${uploadId}/photo.png`,
+        key: s3Key,
         size: 456,
       },
     ]);
@@ -1336,6 +1337,33 @@ describe("AgentPhone migrated API routes", () => {
     ).resolves.toMatchObject({
       direction: "outbound",
       mediaUrl: response.body.url,
+    });
+    const [uploadedFile] = await writeDb
+      .select({
+        runId: runUploadedFiles.runId,
+        source: runUploadedFiles.source,
+        externalId: runUploadedFiles.externalId,
+        url: runUploadedFiles.url,
+        metadata: runUploadedFiles.metadata,
+      })
+      .from(runUploadedFiles)
+      .where(
+        and(
+          eq(runUploadedFiles.runId, run.runId),
+          eq(runUploadedFiles.externalId, response.body.messageId),
+        ),
+      )
+      .limit(1);
+    expect(uploadedFile).toMatchObject({
+      runId: run.runId,
+      source: "agentphone",
+      externalId: response.body.messageId,
+      url: response.body.url,
+      metadata: {
+        uploadId,
+        s3Key,
+        sourceUrl: response.body.url,
+      },
     });
   });
 

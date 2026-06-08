@@ -6,7 +6,6 @@ import {
 } from "@vm0/connectors/firewalls";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
-import { resolveAgentRole } from "./resolve-role";
 
 function findPermissionInConfig(ref: string, permissionName: string): boolean {
   if (!isFirewallConnectorType(ref)) return false;
@@ -20,49 +19,16 @@ function findPermissionInConfig(ref: string, permissionName: string): boolean {
   return false;
 }
 
-/**
- * Core logic for outputting a permission change message.
- * Shared by both `permission-change` and `permission-deny` commands.
- */
-const REASON_MAX_LENGTH = 500;
-
-async function outputPermissionChangeMessage(
+type PermissionAction = "enable" | "disable";
+function printSensitivePermissionGuidance(
   connectorRef: string,
   permission: string,
-  action: "enable" | "disable",
-  reason?: string,
-): Promise<void> {
-  const { label } =
-    CONNECTOR_TYPES[connectorRef as keyof typeof CONNECTOR_TYPES];
-
-  const platformOrigin = await getPlatformOrigin();
-  const agentId = process.env.ZERO_AGENT_ID;
-  const role = agentId ? await resolveAgentRole(agentId) : "unknown";
-
-  const urlParams = new URLSearchParams({
-    ref: connectorRef,
-    permission,
-    action: action === "enable" ? "allow" : "deny",
-  });
-
-  // Only include reason for member role (admin/owner can change directly)
-  if (role === "member" && reason) {
-    const truncated =
-      reason.length > REASON_MAX_LENGTH
-        ? reason.slice(0, REASON_MAX_LENGTH)
-        : reason;
-    urlParams.set("reason", truncated);
-  }
-
-  const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
-  const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
+  action: PermissionAction,
+): void {
+  if (action !== "enable") return;
 
   // Slack chat:write: strongly recommend bot-based messaging over user identity
-  if (
-    connectorRef === "slack" &&
-    permission === "chat:write" &&
-    action === "enable"
-  ) {
+  if (connectorRef === "slack" && permission === "chat:write") {
     console.log("");
     console.log(
       "IMPORTANT: Granting chat:write allows sending messages AS THE USER's identity, not as a bot.",
@@ -71,17 +37,13 @@ async function outputPermissionChangeMessage(
       "Use `zero slack message send -c <channel> -t <text>` to send messages as the bot instead — this is the recommended approach for most use cases.",
     );
     console.log(
-      "Only request user approval below if acting as the user is specifically required.",
+      "Only allow this permission below if acting as the user is specifically required.",
     );
     console.log("");
   }
 
   // Gmail gmail.send: strongly recommend draft-based workflow over direct send
-  if (
-    connectorRef === "gmail" &&
-    permission === "gmail.send" &&
-    action === "enable"
-  ) {
+  if (connectorRef === "gmail" && permission === "gmail.send") {
     console.log("");
     console.log(
       "IMPORTANT: Granting gmail.send allows the agent to send emails directly as the user.",
@@ -90,39 +52,56 @@ async function outputPermissionChangeMessage(
       "Consider keeping gmail.send disabled and using gmail.compose instead — the agent can create drafts for the user to review and send manually.",
     );
     console.log(
-      "Only request user approval below if direct sending is specifically required.",
+      "Only allow this permission below if direct sending is specifically required.",
     );
     console.log("");
   }
+}
 
-  if (role === "admin" || role === "owner") {
-    console.log(
-      `You can ${action} the "${permission}" permission directly: [Manage ${label} permissions](${url})`,
-    );
-  } else if (role === "member") {
-    if (!reason) {
-      console.log(
-        `IMPORTANT: Re-run with \`--reason "one sentence why this is needed"\` so the admin can review your request faster.`,
-      );
-    } else if (action === "enable") {
-      console.log(
-        `Permission changes require admin approval. Request access at: [Request ${label} access](${url})`,
-      );
-    } else {
-      console.log(
-        `Permission changes require admin approval. Contact an org admin to disable this permission: [View ${label} permissions](${url})`,
-      );
-    }
-  } else {
-    console.log(
-      `To ${action} the "${permission}" permission for ${label}: [Manage ${label} permissions](${url})`,
-    );
-  }
+function printPermissionActionMessage(args: {
+  readonly action: PermissionAction;
+  readonly permission: string;
+  readonly label: string;
+  readonly url: string;
+}): void {
+  const grantAction = args.action === "enable" ? "allow" : "deny";
+  console.log(
+    `You can ${grantAction} the "${args.permission}" permission for your connector access: [Manage ${args.label} permissions](${args.url})`,
+  );
+}
+
+async function outputPermissionChangeMessage(
+  connectorRef: string,
+  permission: string,
+  action: PermissionAction,
+): Promise<void> {
+  const { label } =
+    CONNECTOR_TYPES[connectorRef as keyof typeof CONNECTOR_TYPES];
+
+  const platformOrigin = await getPlatformOrigin();
+  const agentId = process.env.ZERO_AGENT_ID;
+
+  const urlParams = new URLSearchParams({
+    ref: connectorRef,
+    permission,
+    action: action === "enable" ? "allow" : "deny",
+  });
+
+  const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
+  const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
+
+  printSensitivePermissionGuidance(connectorRef, permission, action);
+  printPermissionActionMessage({
+    action,
+    permission,
+    label,
+    url,
+  });
 }
 
 export const permissionChangeCommand = new Command()
   .name("permission-change")
-  .description("Request a permission change (enable or disable)")
+  .description("Change or request a permission (enable or disable)")
   .argument("<connector-ref>", "The connector type (e.g. github)")
   .addOption(
     new Option(
@@ -131,20 +110,19 @@ export const permissionChangeCommand = new Command()
     ).makeOptionMandatory(),
   )
   .addOption(
-    new Option("--enable", "Request to enable the permission").conflicts(
-      "disable",
-    ),
-  )
-  .addOption(
-    new Option("--disable", "Request to disable the permission").conflicts(
-      "enable",
-    ),
+    new Option(
+      "--enable",
+      "Enable or request enabling the permission",
+    ).conflicts("disable"),
   )
   .addOption(
     new Option(
-      "--reason <text>",
-      "Brief reason why the permission is needed (max 500 chars)",
-    ),
+      "--disable",
+      "Disable or request disabling the permission",
+    ).conflicts("enable"),
+  )
+  .addOption(
+    new Option("--reason <text>", "Brief reason for the permission change"),
   )
   .addHelpText(
     "after",
@@ -155,7 +133,7 @@ Examples:
 
 Notes:
   - Outputs a platform URL for the user to adjust the permission
-  - Admins can change permissions directly; members must request approval`,
+  - Permission changes update the current user's connector grants`,
   )
   .action(
     withErrorHandler(
@@ -187,7 +165,6 @@ Notes:
           connectorRef,
           opts.permission,
           action,
-          opts.reason,
         );
       },
     ),

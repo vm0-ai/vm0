@@ -9,7 +9,10 @@ import {
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import {
+  chatMessages,
+  type ChatMessageGenerationTemplate,
+} from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
@@ -17,8 +20,11 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
 import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
@@ -219,6 +225,14 @@ async function deleteFixture(fixture: ChatCallbackFixture): Promise<void> {
   await db
     .delete(pushSubscriptions)
     .where(eq(pushSubscriptions.userId, fixture.userId));
+  await db
+    .delete(userFeatureSwitches)
+    .where(
+      and(
+        eq(userFeatureSwitches.orgId, fixture.orgId),
+        eq(userFeatureSwitches.userId, fixture.userId),
+      ),
+    );
   await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   await db.delete(zeroAgents).where(eq(zeroAgents.id, fixture.agentId));
@@ -283,6 +297,18 @@ async function listMessages(threadId: string) {
     .from(chatMessages)
     .where(eq(chatMessages.chatThreadId, threadId))
     .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+}
+
+async function readThreadLastMessageAt(threadId: string): Promise<Date> {
+  const [thread] = await store
+    .set(writeDb$)
+    .select({ lastMessageAt: chatThreads.lastMessageAt })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId));
+  if (!thread) {
+    throw new Error("thread row missing");
+  }
+  return thread.lastMessageAt;
 }
 
 async function seedAdditionalRun(
@@ -394,6 +420,7 @@ async function insertQueuedMessage(
     readonly content: string | null;
     readonly attachFiles?: readonly string[];
     readonly interruptsRunId?: string;
+    readonly generationTemplate?: ChatMessageGenerationTemplate;
   },
 ): Promise<string> {
   const [message] = await store
@@ -406,6 +433,7 @@ async function insertQueuedMessage(
       runId: null,
       attachFiles: args.attachFiles ? [...args.attachFiles] : null,
       interruptsRunId: args.interruptsRunId,
+      generationTemplate: args.generationTemplate,
     })
     .returning({ id: chatMessages.id });
   if (!message) {
@@ -518,6 +546,19 @@ function mockOpenRouter(
   );
 }
 
+async function enableRecommendedFollowups(
+  fixture: ChatCallbackFixture,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(userFeatureSwitches)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: { [FeatureSwitchKey.ChatRecommendedFollowups]: true },
+    });
+}
+
 describe("POST /api/internal/callbacks/chat", () => {
   it("returns 200 for progress status without querying Axiom", async () => {
     const fixture = await track(seedChatCallbackFixture());
@@ -621,6 +662,135 @@ describe("POST /api/internal/callbacks/chat", () => {
         );
       }),
     ).toBeTruthy();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${fixture.threadId}`,
+      null,
+    );
+    await clearAllDetached();
+  });
+
+  it("advances last_message_at to run-end time on completed callbacks", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedAssistantOutput("final answer");
+
+    // The sidebar orders threads by last_message_at, and it must advance only
+    // when a run reaches a terminal state — not when the user message was first
+    // inserted or while the assistant streams. Backdate the column and a raw
+    // streamed assistant event so the run-end bump is the only thing that can
+    // move it forward.
+    const stale = new Date("2020-01-01T00:00:00.000Z");
+    await store
+      .set(writeDb$)
+      .update(chatThreads)
+      .set({ lastMessageAt: stale })
+      .where(eq(chatThreads.id, fixture.threadId));
+    await insertAssistantEventMessages(fixture, fixture.runId, [
+      { sequenceNumber: 0, content: "streaming chunk" },
+    ]);
+
+    const [beforeThread] = await store
+      .set(writeDb$)
+      .select({ lastMessageAt: chatThreads.lastMessageAt })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, fixture.threadId));
+    if (!beforeThread) {
+      throw new Error("thread row missing before callback");
+    }
+    expect(beforeThread.lastMessageAt.getTime()).toBe(stale.getTime());
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+    expect(response.status).toBe(200);
+
+    const [afterThread] = await store
+      .set(writeDb$)
+      .select({ lastMessageAt: chatThreads.lastMessageAt })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, fixture.threadId));
+    if (!afterThread) {
+      throw new Error("thread row missing after callback");
+    }
+    expect(afterThread.lastMessageAt.getTime()).toBeGreaterThan(
+      stale.getTime(),
+    );
+    await clearAllDetached();
+  });
+
+  it("persists recommended follow-ups as an immutable assistant message when enabled", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await enableRecommendedFollowups(fixture);
+    completedAssistantOutput("final answer");
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    mockOpenRouter((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Completed Thread";
+      }
+      if (
+        systemContent.includes("Generate up to three concise follow-up prompts")
+      ) {
+        expect(systemContent).toContain(
+          "Make each prompt specific to the latest assistant reply",
+        );
+        return JSON.stringify([
+          {
+            prompt: "Turn this into a checklist",
+            kind: "talk",
+          },
+          {
+            prompt: "Generate a landing page for this plan",
+            kind: "generate",
+            generationType: "website",
+          },
+        ]);
+      }
+      return "Generated summary";
+    });
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const messages = await listMessages(fixture.threadId);
+    const marker = messages.find((message) => {
+      return (
+        message.role === "assistant" &&
+        message.runId === fixture.runId &&
+        message.runLifecycleEvent === "completed"
+      );
+    });
+    const recommender = messages.find((message) => {
+      return (
+        message.role === "assistant" &&
+        message.runId === fixture.runId &&
+        message.runLifecycleEvent === null &&
+        (message.recommendedFollowups?.length ?? 0) > 0
+      );
+    });
+    expect(marker?.recommendedFollowups).toBeNull();
+    expect(recommender?.content).toBeNull();
+    expect(recommender?.createdAt.getTime()).toBeGreaterThan(
+      marker?.createdAt.getTime() ?? 0,
+    );
+    expect(recommender?.recommendedFollowups).toStrictEqual([
+      {
+        prompt: "Turn this into a checklist",
+        kind: "talk",
+      },
+      {
+        prompt: "Generate a landing page for this plan",
+        kind: "generate",
+        generationType: "website",
+      },
+    ]);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${fixture.threadId}`,
       null,
@@ -1078,12 +1248,10 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 
-  it("renders ChatGPT Codex usage limit errors with VM0 guidance", async () => {
+  it("shows Codex usage limit errors verbatim on failed callbacks", async () => {
     const fixture = await track(seedChatCallbackFixture());
     const codexUsageLimitError =
       "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 6:17 AM.";
-    const expectedDisplayError =
-      "ChatGPT Codex usage limit reached. This limit resets at 6:17 AM. View details in [ChatGPT Codex usage settings](https://chatgpt.com/codex/settings/usage), or switch to another model to continue now.";
 
     const response = await postSignedCallback({
       callbackId: fixture.callbackId,
@@ -1100,9 +1268,37 @@ describe("POST /api/internal/callbacks/chat", () => {
     const errorMessage = messages.find((message) => {
       return message.role === "assistant" && message.runId === fixture.runId;
     });
-    expect(errorMessage?.error).toBe(expectedDisplayError);
-    expect(errorMessage?.content).toBe(expectedDisplayError);
-    expect(errorMessage?.error).not.toBe(codexUsageLimitError);
+    expect(errorMessage?.error).toBe(codexUsageLimitError);
+    expect(errorMessage?.content).toBe(codexUsageLimitError);
+    expect(errorMessage?.error).not.toContain("switch to another model");
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("shows Claude session limit errors verbatim on failed callbacks", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    const sessionLimitError =
+      "You've hit your session limit · resets 12:50pm (Asia/Shanghai)";
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: sessionLimitError,
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+
+    const messages = await listMessages(fixture.threadId);
+    const errorMessage = messages.find((message) => {
+      return message.role === "assistant" && message.runId === fixture.runId;
+    });
+    expect(errorMessage?.error).toBe(sessionLimitError);
+    expect(errorMessage?.content).toBe(sessionLimitError);
+    expect(errorMessage?.error).not.toBe(
+      "Oops, something went wrong. Please try again later.",
+    );
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 
@@ -1126,6 +1322,68 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(errorMessage?.error).toBe("Run cancelled");
     expect(errorMessage?.content).toBe("Run cancelled");
   });
+
+  it.each([
+    {
+      scenario: "failed",
+      error: "Cannot continue session from checkpoint",
+      lifecycleEvent: "failed",
+    },
+    {
+      scenario: "cancelled",
+      error: "Run cancelled",
+      lifecycleEvent: "cancelled",
+    },
+  ] as const)(
+    "does not advance last_message_at when $scenario callbacks are replayed",
+    async ({ error, lifecycleEvent }) => {
+      const fixture = await track(seedChatCallbackFixture());
+
+      const first = await postSignedCallback({
+        callbackId: fixture.callbackId,
+        runId: fixture.runId,
+        status: "failed",
+        error,
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      });
+      expect(first.status).toBe(200);
+
+      const stale = new Date("2020-01-01T00:00:00.000Z");
+      await store
+        .set(writeDb$)
+        .update(chatThreads)
+        .set({ lastMessageAt: stale })
+        .where(eq(chatThreads.id, fixture.threadId));
+      context.mocks.ably.publish.mockClear();
+
+      const replay = await postSignedCallback({
+        callbackId: fixture.callbackId,
+        runId: fixture.runId,
+        status: "failed",
+        error,
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      });
+
+      expect(replay.status).toBe(200);
+      await expect(
+        readThreadLastMessageAt(fixture.threadId),
+      ).resolves.toStrictEqual(stale);
+      const lifecycleMessages = (await listMessages(fixture.threadId)).filter(
+        (message) => {
+          return (
+            message.role === "assistant" &&
+            message.runId === fixture.runId &&
+            message.runLifecycleEvent === lifecycleEvent
+          );
+        },
+      );
+      expect(lifecycleMessages).toHaveLength(1);
+      expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+        `chatThreadMessageCreated:${fixture.threadId}`,
+        null,
+      );
+    },
+  );
 
   it("publishes message-created signals only for terminal callbacks with a mapped thread", async () => {
     const fixture = await track(seedChatCallbackFixture());
@@ -1163,6 +1421,14 @@ describe("POST /api/internal/callbacks/chat", () => {
     const fixture = await track(seedChatCallbackFixture());
     const db = store.set(writeDb$);
     const selectedModel = "claude-sonnet-4-6";
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const generationTemplate = {
+      type: "presentation",
+      selection: {
+        designSystemId: item.designSystemId,
+        templateId: item.templateId,
+      },
+    } satisfies ChatMessageGenerationTemplate;
     const [secret] = await db
       .insert(secrets)
       .values({
@@ -1210,6 +1476,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         role: "user",
         content: "queued next turn",
         runId: null,
+        generationTemplate,
       })
       .returning({ id: chatMessages.id });
     if (!queued) {
@@ -1233,6 +1500,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         runId: chatMessages.runId,
         revokesMessageId: chatMessages.revokesMessageId,
         content: chatMessages.content,
+        generationTemplate: chatMessages.generationTemplate,
       })
       .from(chatMessages)
       .where(
@@ -1245,6 +1513,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       .limit(1);
     expect(claimed).toMatchObject({
       content: "queued next turn",
+      generationTemplate,
       revokesMessageId: queued.id,
     });
     expect(claimed?.runId).toBeTruthy();
@@ -1263,6 +1532,20 @@ describe("POST /api/internal/callbacks/chat", () => {
       threadId: fixture.threadId,
       agentId: fixture.agentId,
     });
+
+    const [run] = await db
+      .select({ appendSystemPrompt: agentRuns.appendSystemPrompt })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, claimed!.runId!))
+      .limit(1);
+    expect(run?.appendSystemPrompt).toContain("# Generation Template");
+    expect(run?.appendSystemPrompt).toContain("Type: presentation");
+    expect(run?.appendSystemPrompt).toContain(
+      `Design system ID: ${item.designSystemId}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `Template ID: ${item.templateId}`,
+    );
 
     const [zeroRun] = await db
       .select({

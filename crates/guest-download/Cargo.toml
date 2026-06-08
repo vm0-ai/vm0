@@ -1,6 +1,6 @@
 [package]
 name = "guest-download"
-version = "0.20.16"
+version = "0.20.20"
 edition.workspace = true
 
 [dependencies]
@@ -12,6 +12,7 @@ ureq = { workspace = true, features = ["platform-verifier"] }
 guest-common.workspace = true
 
 [dev-dependencies]
+guest-runtime-paths.workspace = true
 httpmock.workspace = true
 tempfile.workspace = true
 

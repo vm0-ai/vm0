@@ -14,6 +14,9 @@ const SCHEMA = {
   FAL_KEY: z.string().min(1).optional(),
   BYTEPLUS_API_KEY: z.string().min(1).optional(),
   ZERO_MAPS_GOOGLE_MAPS_TOKEN: z.string().min(1).optional(),
+  FINICITY_APP_KEY: z.string().min(1).optional(),
+  FINICITY_APP_SECRET: z.string().min(1).optional(),
+  FINICITY_PARTNER_ID: z.string().min(1).optional(),
   SENTRY_DSN: z.url().optional(),
   GIT_COMMIT_SHA: z.string(),
   ENV: z.enum(["production", "preview", "development"]),
@@ -21,6 +24,12 @@ const SCHEMA = {
   VM0_DEBUG: z.string().default(""),
   VERCEL_AUTOMATION_BYPASS_SECRET: z.string().min(1).optional(),
   VM0_API_URL: z.url(),
+  // Direct origin of the API backend for self-dispatched internal callbacks
+  // (`/api/internal/**`). Shared with the apps/web rewrite target, which reads
+  // the same var. Optional; when unset, production defaults to the API backend
+  // origin and other environments fall back to VM0_API_URL — so internal
+  // callbacks do not hop through the web rewrite layer at www.
+  VM0_API_BACKEND_URL: z.url().optional(),
   VM0_WEB_URL: z.url(),
   APP_URL: z.url(),
   RESEND_API_KEY: z.string().min(1).optional(),

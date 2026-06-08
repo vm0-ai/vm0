@@ -43,7 +43,6 @@ agents:
       MOCK_CODEX_FIXTURE: "\${{ vars.MOCK_CODEX_FIXTURE }}"
     volumes:
       - codex-files:/home/user/.codex
-    working_dir: /home/user/workspace
 volumes:
   codex-files:
     name: $VOLUME_NAME

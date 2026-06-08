@@ -263,6 +263,30 @@ describe("/api/test/oauth-provider/*", () => {
       });
     });
 
+    it("starts a device authorization session for the API device client", async () => {
+      mockEnv("ENV", "development");
+
+      const response = await requestApp(
+        DEVICE_AUTHORIZATION_ROUTE,
+        tokenRequest({
+          client_id: "test-oauth-device-api-client",
+          scope: "read",
+          mode: "live",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      await expect(readJson<DeviceAuthBody>(response)).resolves.toStrictEqual({
+        device_code: "test-device:test-oauth-device-api-client:read:live",
+        user_code: "TEST-DEVICE",
+        verification_uri: "https://oauth-device.test/device",
+        verification_uri_complete:
+          "https://oauth-device.test/device?user_code=TEST-DEVICE",
+        expires_in: 600,
+        interval: 0,
+      });
+    });
+
     it("requires the preview bypass secret", async () => {
       mockEnv("ENV", "preview");
       mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
@@ -685,6 +709,37 @@ describe("/api/test/oauth-provider/*", () => {
       await expect(readJson<TokenBody>(response)).resolves.toStrictEqual({
         access_token:
           "test-device-access:test-oauth-device-client:test-device:test-oauth-device-client:read",
+        token_type: "Bearer",
+        expires_in: 3600,
+        scope: "read",
+      });
+    });
+
+    it("exchanges an API client device code for an access token", async () => {
+      mockEnv("ENV", "development");
+
+      const device = await requestApp(
+        DEVICE_AUTHORIZATION_ROUTE,
+        tokenRequest({
+          client_id: "test-oauth-device-api-client",
+          scope: "read",
+          mode: "test",
+        }),
+      );
+      const deviceBody = await readJson<DeviceAuthBody>(device);
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: "test-oauth-device-api-client",
+          device_code: deviceBody.device_code,
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      await expect(readJson<TokenBody>(response)).resolves.toStrictEqual({
+        access_token:
+          "test-device-access:test-oauth-device-api-client:test-device:test-oauth-device-api-client:read:test",
         token_type: "Bearer",
         expires_in: 3600,
         scope: "read",

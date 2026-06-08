@@ -10,7 +10,7 @@ const context = testContext();
 const mockApi = createMockApi(context);
 
 describe("custom-connectors", () => {
-  it("strips whitespace from custom connector credentials before upload", async () => {
+  it("strips whitespace from custom connector secrets before upload", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     let submittedValue: string | null = null;
@@ -26,11 +26,11 @@ describe("custom-connectors", () => {
       setCustomConnectorSecret$,
       {
         id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
-        value: " custom\n credential ",
+        value: " custom\n secret ",
       },
       context.signal,
     );
 
-    expect(submittedValue).toBe("customcredential");
+    expect(submittedValue).toBe("customsecret");
   });
 });

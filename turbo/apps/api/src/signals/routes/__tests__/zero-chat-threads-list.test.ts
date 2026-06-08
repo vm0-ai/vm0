@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 
@@ -658,6 +659,71 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
     );
 
     expect(allListedThreads(response.body)[0]!.hasDraft).toBeFalsy();
+  });
+
+  it("reports the number of schedules linked to each thread", async () => {
+    const fixture = await track(
+      store.set(
+        seedZeroChatThread$,
+        { title: "Scheduled chat" },
+        context.signal,
+      ),
+    );
+    const unlinkedFixture = await track(
+      store.set(
+        seedZeroChatThread$,
+        {
+          userId: fixture.userId,
+          orgId: fixture.orgId,
+          title: "Unscheduled chat",
+        },
+        context.signal,
+      ),
+    );
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(zeroAgentSchedules).values([
+      {
+        agentId: fixture.composeId,
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        name: "morning",
+        triggerType: "cron",
+        cronExpression: "0 9 * * *",
+        prompt: "Morning update",
+        timezone: "UTC",
+        chatThreadId: fixture.threadId,
+      },
+      {
+        agentId: fixture.composeId,
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        name: "evening",
+        triggerType: "cron",
+        cronExpression: "0 18 * * *",
+        prompt: "Evening update",
+        timezone: "UTC",
+        chatThreadId: fixture.threadId,
+      },
+    ]);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadsContract);
+    const response = await accept(
+      client.list({
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const scheduled = allListedThreads(response.body).find((thread) => {
+      return thread.id === fixture.threadId;
+    });
+    const unscheduled = allListedThreads(response.body).find((thread) => {
+      return thread.id === unlinkedFixture.threadId;
+    });
+    expect(scheduled?.scheduleCount).toBe(2);
+    expect(unscheduled?.scheduleCount).toBe(0);
   });
 
   it("reports running=true when any run is non-terminal even with a terminal sibling", async () => {

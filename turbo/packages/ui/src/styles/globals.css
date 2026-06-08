@@ -396,6 +396,41 @@
     background-color: rgba(128, 128, 128, 0.5);
   }
 
+  .zero-dialog-overlay[data-state="open"] {
+    animation: zero-dialog-overlay-in 180ms ease;
+  }
+
+  .zero-dialog-overlay[data-state="closed"] {
+    animation: zero-dialog-overlay-out 180ms ease;
+  }
+
+  .zero-dialog-content[data-state="open"] {
+    animation: zero-dialog-content-in 180ms ease;
+  }
+
+  .zero-dialog-content[data-state="closed"] {
+    animation: zero-dialog-content-out 180ms ease;
+  }
+
+  .zero-dialog-enter-overlay {
+    animation: zero-dialog-overlay-in 180ms ease;
+  }
+
+  .zero-dialog-enter-content {
+    animation: zero-dialog-content-in 180ms ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .zero-dialog-overlay[data-state="open"],
+    .zero-dialog-overlay[data-state="closed"],
+    .zero-dialog-content[data-state="open"],
+    .zero-dialog-content[data-state="closed"],
+    .zero-dialog-enter-overlay,
+    .zero-dialog-enter-content {
+      animation: none;
+    }
+  }
+
   /* Running indicator — breathing dot for "in progress" state. */
   .running-indicator {
     position: relative;
@@ -421,6 +456,42 @@
     border: 1px solid currentColor;
     transform-origin: center;
     animation: running-indicator-ripple 2400ms ease-out infinite;
+  }
+}
+
+@keyframes zero-dialog-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes zero-dialog-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes zero-dialog-content-in {
+  from {
+    transform: translateY(8px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes zero-dialog-content-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(8px);
   }
 }
 

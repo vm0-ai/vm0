@@ -37,7 +37,6 @@ agents:
   $AGENT_NAME:
     description: "Orphan pipe drain deadline test"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# Step 1: Compose agent..."

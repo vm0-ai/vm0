@@ -8,13 +8,14 @@ import {
 } from "../../lib/api/config";
 import {
   listZeroConnectors,
-  getZeroAgent,
   getZeroAgentUserConnectors,
+  listZeroUserPermissionGrants,
 } from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
 import {
   isFirewallConnectorType,
   getConnectorFirewall,
+  permissionGrantsToFirewallPolicies,
   resolveFirewallPolicies,
 } from "@vm0/connectors/firewalls";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
@@ -32,7 +33,7 @@ function isInsideSandbox(): boolean {
 function formatConnectorIdentity(connector: {
   externalUsername: string | null;
   externalEmail: string | null;
-  needsReconnect: boolean;
+  connectionStatus: "connected" | "reconnect-required";
 }): string {
   let identity = "";
   if (connector.externalUsername && connector.externalEmail) {
@@ -42,7 +43,7 @@ function formatConnectorIdentity(connector: {
   } else if (connector.externalEmail) {
     identity = connector.externalEmail;
   }
-  if (connector.needsReconnect) {
+  if (connector.connectionStatus === "reconnect-required") {
     identity += ` ${chalk.yellow("(needs reconnect)")}`;
   }
   return identity;
@@ -112,11 +113,11 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
   // Connected Services section
   try {
     if (showPermissions) {
-      // Full mode: fetch all 3 APIs for permission details
-      const [connectorsResult, agentResult, enabledResult] =
+      // Full mode: fetch connector identities, current-user grants, and agent connector access.
+      const [connectorsResult, grantsResult, enabledResult] =
         await Promise.allSettled([
           listZeroConnectors(),
-          getZeroAgent(agentId!),
+          listZeroUserPermissionGrants(agentId!),
           getZeroAgentUserConnectors(agentId!),
         ]);
 
@@ -130,11 +131,11 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
 
       let resolvedPolicies: FirewallPolicies | null = null;
       const permissionDataAvailable =
-        agentResult.status === "fulfilled" &&
+        grantsResult.status === "fulfilled" &&
         enabledResult.status === "fulfilled";
       if (permissionDataAvailable) {
         resolvedPolicies = resolveFirewallPolicies(
-          agentResult.value.permissionPolicies,
+          permissionGrantsToFirewallPolicies(grantsResult.value),
           enabledResult.value,
         );
       }

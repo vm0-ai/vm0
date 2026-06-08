@@ -91,7 +91,6 @@ describe("create agent dialog - avatar", () => {
           displayName: body.displayName ?? null,
           sound: null,
           avatarUrl: body.avatarUrl ?? null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),
@@ -103,7 +102,6 @@ describe("create agent dialog - avatar", () => {
           displayName: null,
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),
@@ -146,7 +144,6 @@ describe("create agent dialog - avatar", () => {
           displayName: null,
           sound: null,
           avatarUrl: body.avatarUrl ?? null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),
@@ -158,7 +155,6 @@ describe("create agent dialog - avatar", () => {
           displayName: null,
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),

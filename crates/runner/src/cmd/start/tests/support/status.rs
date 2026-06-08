@@ -13,6 +13,12 @@ struct StatusModeSnapshot {
     mode: Option<String>,
 }
 
+enum StatusModeRead {
+    FileMissing,
+    ModeMissing,
+    Mode(String),
+}
+
 #[derive(serde::Deserialize)]
 struct ActiveRunSnapshot {
     run_id: String,
@@ -47,14 +53,17 @@ pub(in super::super) async fn status_idle_sessions(status_path: &std::path::Path
     status_idle_sessions_and_active_runs(status_path).await.0
 }
 
-async fn status_mode_if_exists(status_path: &std::path::Path) -> Option<Option<String>> {
+async fn read_status_mode_if_exists(status_path: &std::path::Path) -> StatusModeRead {
     match tokio::fs::try_exists(status_path).await {
         Ok(true) => {
             let raw = tokio::fs::read_to_string(status_path).await.unwrap();
             let status: StatusModeSnapshot = serde_json::from_str(&raw).unwrap();
-            Some(status.mode)
+            match status.mode {
+                Some(mode) => StatusModeRead::Mode(mode),
+                None => StatusModeRead::ModeMissing,
+            }
         }
-        Ok(false) => None,
+        Ok(false) => StatusModeRead::FileMissing,
         Err(err) => panic!(
             "failed to check status file {}: {err}",
             status_path.display()
@@ -68,16 +77,16 @@ pub(in super::super) async fn wait_status_mode(
     timeout: Duration,
 ) {
     wait_for_probe(timeout, || async {
-        match status_mode_if_exists(status_path).await {
-            Some(Some(mode)) if mode == expected => WaitProbe::Ready(()),
-            Some(Some(mode)) => WaitProbe::Pending(format!(
+        match read_status_mode_if_exists(status_path).await {
+            StatusModeRead::Mode(mode) if mode == expected => WaitProbe::Ready(()),
+            StatusModeRead::Mode(mode) => WaitProbe::Pending(format!(
                 "status mode did not reach {expected:?} within {timeout:?} (actual: {mode:?})",
             )),
-            Some(None) => WaitProbe::Pending(format!(
+            StatusModeRead::ModeMissing => WaitProbe::Pending(format!(
                 "status file {} did not contain mode within {timeout:?}",
                 status_path.display(),
             )),
-            None => WaitProbe::Pending(format!(
+            StatusModeRead::FileMissing => WaitProbe::Pending(format!(
                 "status file {} was not written within {timeout:?}",
                 status_path.display(),
             )),

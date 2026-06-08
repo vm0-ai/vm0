@@ -37,7 +37,6 @@ agents:
   $AGENT_NAME:
     description: "Cancel test agent"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# Step 1: Compose agent..."

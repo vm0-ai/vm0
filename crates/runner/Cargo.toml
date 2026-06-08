@@ -1,12 +1,13 @@
 [package]
 name = "runner"
-version = "0.105.6"
+version = "0.108.13"
 edition.workspace = true
 
 [dependencies]
 ably-subscriber = { workspace = true }
 agent-diagnostics.workspace = true
 api-contracts.workspace = true
+guest-runtime-paths.workspace = true
 sandbox = { workspace = true }
 nbd-cow = { workspace = true }
 sandbox-fc = { workspace = true }
@@ -31,6 +32,7 @@ flate2 = { workspace = true }
 futures-util = { workspace = true }
 reqwest = { workspace = true }
 hex = { workspace = true }
+libc = { workspace = true }
 sha2 = { workspace = true }
 tar = { workspace = true }
 tempfile = { workspace = true }

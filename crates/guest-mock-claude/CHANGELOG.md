@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.18.8](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.7...guest-mock-claude-v0.18.8) (2026-06-07)
+
+
+### Refactoring
+
+* **guest-mock-claude:** split mock cli modules ([#16408](https://github.com/vm0-ai/vm0/issues/16408)) ([cf6d87e](https://github.com/vm0-ai/vm0/commit/cf6d87eceedab5bff7f959d2c04a54a2d31a38d6))
+
+## [0.18.7](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.6...guest-mock-claude-v0.18.7) (2026-06-05)
+
+
+### Bug Fixes
+
+* **runner:** split guest-agent bootstrap env ([#16295](https://github.com/vm0-ai/vm0/issues/16295)) ([b77e7c7](https://github.com/vm0-ai/vm0/commit/b77e7c7c2dfd54e7c97596fee8ca371654e7c7b7))
+
+## [0.18.6](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.5...guest-mock-claude-v0.18.6) (2026-06-05)
+
+## [0.18.5](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.4...guest-mock-claude-v0.18.5) (2026-06-04)
+
+
+### Refactoring
+
+* share mock Claude JSONL transcript ([#16077](https://github.com/vm0-ai/vm0/issues/16077)) ([6531014](https://github.com/vm0-ai/vm0/commit/653101427baff326d2b63da8b5cae0b1e8f18f70))
+
+## [0.18.4](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.3...guest-mock-claude-v0.18.4) (2026-06-03)
+
+## [0.18.3](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.2...guest-mock-claude-v0.18.3) (2026-06-03)
+
+## [0.18.2](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.1...guest-mock-claude-v0.18.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* validate mock claude echo session ids ([#15862](https://github.com/vm0-ai/vm0/issues/15862)) ([1b9c2df](https://github.com/vm0-ai/vm0/commit/1b9c2dfaca34e649e656a3d96a007cdf1fe483f0))
+
+## [0.18.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.0...guest-mock-claude-v0.18.1) (2026-06-01)
+
+
+### Refactoring
+
+* hardcode runner working directory ([#15606](https://github.com/vm0-ai/vm0/issues/15606)) ([132296d](https://github.com/vm0-ai/vm0/commit/132296da082953e4cdeb796c8a4432e07cd38c20))
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.7...guest-mock-claude-v0.18.0) (2026-05-29)
 
 

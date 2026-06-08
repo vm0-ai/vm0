@@ -4,22 +4,22 @@ import json
 import time
 import uuid
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map
-from tests.usage_helpers import set_stream_buffer, usage_event_events_from_calls
+from tests.usage_helpers import set_stream_buffer
 
 
 class TestUsageReportingIdempotency:
     """Tests for duplicate-reporting guards and stable usage sources."""
 
     def test_response_then_error_does_not_enqueue_model_usage_twice(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """If mitmproxy fires both hooks for one flow, model usage reports once."""
         flow = real_flow(with_response=False, host="api.openai.com")
@@ -42,20 +42,17 @@ class TestUsageReportingIdempotency:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
+            assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
             flow.error = Error("connection reset after response")
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         assert [event["category"] for event in events] == ["tokens.output"]
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
         if proxy_log.exists():
@@ -66,7 +63,7 @@ class TestUsageReportingIdempotency:
             )
 
     def test_empty_model_usage_does_not_block_later_error_usage(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """A no-event response pass must not mark the flow reported."""
         flow = real_flow(with_response=False, host="api.openai.com")
@@ -84,15 +81,10 @@ class TestUsageReportingIdempotency:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
-            mock_opener.open.assert_not_called()
+            assert webhook.request_count == 0
 
             flow.metadata["model_provider_usage"]["tokens.output"] = 20
             flow.error = Error("connection reset after response")
@@ -100,11 +92,11 @@ class TestUsageReportingIdempotency:
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         assert [event["category"] for event in events] == ["tokens.output"]
 
     def test_uses_flow_id_when_message_id_missing(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
         """Missing message_id in model_provider_usage falls back to flow.id.
 
@@ -130,25 +122,34 @@ class TestUsageReportingIdempotency:
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
-        with (
-            mitm_ctx(api_url="https://api.vm0.ai"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
-        req = mock_opener.open.call_args[0][0]
-        body = json.loads(req.data)
+        assert webhook.request_count == 2
+        requests_by_path = {request.path: request for request in webhook.requests}
+        assert set(requests_by_path) == {
+            "/api/webhooks/agent/usage-event",
+            "/api/webhooks/agent/model-usage-observation",
+        }
+        body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
+        observation_body = requests_by_path[
+            "/api/webhooks/agent/model-usage-observation"
+        ].json_body()
         assert body["events"][0]["quantity"] == 10
-        uuid.UUID(body["events"][0]["idempotencyKey"])
+        assert observation_body["events"][0]["quantity"] == 10
+        assert body["events"][0]["provider"] == "claude-sonnet-4-6"
+        assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
+        billing_key = body["events"][0]["idempotencyKey"]
+        observation_key = observation_body["events"][0]["idempotencyKey"]
+        uuid.UUID(billing_key)
+        uuid.UUID(observation_key)
+        assert observation_key != billing_key
 
     def test_preserves_message_id_from_response(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
         """When model_provider_usage already has a message_id, flow.id fallback
         must not override it."""
@@ -170,19 +171,28 @@ class TestUsageReportingIdempotency:
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
-        with (
-            mitm_ctx(api_url="https://api.vm0.ai"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
-        req = mock_opener.open.call_args[0][0]
-        body = json.loads(req.data)
+        assert webhook.request_count == 2
+        requests_by_path = {request.path: request for request in webhook.requests}
+        assert set(requests_by_path) == {
+            "/api/webhooks/agent/usage-event",
+            "/api/webhooks/agent/model-usage-observation",
+        }
+        body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
+        observation_body = requests_by_path[
+            "/api/webhooks/agent/model-usage-observation"
+        ].json_body()
         assert body["events"][0]["quantity"] == 10
-        uuid.UUID(body["events"][0]["idempotencyKey"])
+        assert observation_body["events"][0]["quantity"] == 10
+        assert body["events"][0]["provider"] == "claude-sonnet-4-6"
+        assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
+        billing_key = body["events"][0]["idempotencyKey"]
+        observation_key = observation_body["events"][0]["idempotencyKey"]
+        uuid.UUID(billing_key)
+        uuid.UUID(observation_key)
+        assert observation_key != billing_key

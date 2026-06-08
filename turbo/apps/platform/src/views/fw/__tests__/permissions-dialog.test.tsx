@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroAgentPermissionPoliciesContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  type UserPermissionGrantResponse,
+  zeroUserPermissionGrantsContract,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -18,21 +21,27 @@ import {
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import {
+  createMockUserPermissionGrantResponse,
+  setMockUserPermissionGrants,
+} from "../../../mocks/handlers/api-user-permission-grants.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
+const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 
 function mockAPIs({
   connectorType = "slack" as ConnectorType,
   connectorTypes,
   ownerId = "test-user-123",
-  permissionPolicies = null as FirewallPolicies | null,
+  userPermissionGrants = [],
 }: {
   connectorType?: ConnectorType;
   connectorTypes?: readonly ConnectorType[];
   ownerId?: string;
-  permissionPolicies?: FirewallPolicies | null;
+  userPermissionGrants?: UserPermissionGrantResponse[];
 } = {}) {
+  setMockUserPermissionGrants(userPermissionGrants);
   const enabledTypes = [...(connectorTypes ?? [connectorType])];
   setMockTeam([
     {
@@ -57,13 +66,12 @@ function mockAPIs({
   server.use(
     mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
       return respond(200, {
-        agentId: "e0000000-0000-4000-a000-000000000010",
+        agentId: AGENT_ID,
         ownerId,
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        permissionPolicies,
         customSkills: [],
       });
     }),
@@ -84,26 +92,26 @@ function mockAPIs({
         externalUsername: "testuser",
         externalEmail: null,
         oauthScopes: [],
-        needsReconnect: false,
+        connectionStatus: "connected",
+        tokenExpiresAt: null,
         createdAt: "2026-01-01T00:00:00Z",
         updatedAt: "2026-01-01T00:00:00Z",
       };
     }),
   );
-  server.use(
-    mockApi(zeroAgentPermissionPoliciesContract.update, ({ body, respond }) => {
-      return respond(200, {
-        agentId: "e0000000-0000-4000-a000-000000000010",
-        ownerId,
-        description: "A helpful agent",
-        displayName: "My Agent",
-        sound: null,
-        avatarUrl: null,
-        permissionPolicies: body.policies,
-        customSkills: [],
-      });
-    }),
-  );
+}
+
+function mockGrant(
+  connectorRef: ConnectorType,
+  permission: string,
+  action: UserPermissionGrantResponse["action"],
+): UserPermissionGrantResponse {
+  return createMockUserPermissionGrantResponse({
+    agentId: AGENT_ID,
+    connectorRef,
+    permission,
+    action,
+  });
 }
 
 async function openPermissionsDrawer(connectorLabel: string) {
@@ -154,13 +162,13 @@ function getPolicyButton(row: HTMLElement, label: string): HTMLElement {
   return button;
 }
 
-function requireSavedPolicies(
-  savedPolicies: FirewallPolicies | null,
-): FirewallPolicies {
-  if (savedPolicies === null) {
-    throw new Error("Permission policies were not saved");
+function getUnknownEndpointsRow(): HTMLElement {
+  const label = screen.getByText("Other endpoints");
+  const row = label.closest(".flex.items-center.justify-between");
+  if (!(row instanceof HTMLElement)) {
+    throw new Error("Unknown endpoints row not found");
   }
-  return savedPolicies;
+  return row;
 }
 
 describe("permissions dialog - flat list connector (Notion)", () => {
@@ -178,9 +186,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
   it("shows policy status for each permission (FW-D-033)", async () => {
     mockAPIs({
       connectorType: "notion",
-      permissionPolicies: {
-        notion: { policies: { insert_comments: "deny" } },
-      },
+      userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
     });
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
@@ -217,39 +223,22 @@ describe("permissions dialog - flat list connector (Notion)", () => {
 });
 
 describe("permissions dialog - grouped connector (Slack)", () => {
-  it("reinitializes connector policies and preserves untouched connectors on save", async () => {
-    let savedPolicies: FirewallPolicies | null = null;
-    const permissionPolicies: FirewallPolicies = {
-      slack: {
-        policies: { "channels:read": "deny" },
-        unknownPolicy: "deny",
-      },
-      notion: {
-        policies: { insert_comments: "deny" },
-        unknownPolicy: "deny",
-      },
-    };
+  it("reinitializes grant policies and only writes changed connector grants", async () => {
+    const grantBodies: unknown[] = [];
     mockAPIs({
       connectorTypes: ["slack", "notion"],
-      permissionPolicies,
+      userPermissionGrants: [
+        mockGrant("slack", "channels:read", "deny"),
+        mockGrant("slack", UNKNOWN_PERMISSION_GRANT, "deny"),
+        mockGrant("notion", "insert_comments", "deny"),
+        mockGrant("notion", UNKNOWN_PERMISSION_GRANT, "deny"),
+      ],
     });
     server.use(
-      mockApi(
-        zeroAgentPermissionPoliciesContract.update,
-        ({ body, respond }) => {
-          savedPolicies = body.policies;
-          return respond(200, {
-            agentId: "e0000000-0000-4000-a000-000000000010",
-            ownerId: "test-user-123",
-            description: "A helpful agent",
-            displayName: "My Agent",
-            sound: null,
-            avatarUrl: null,
-            permissionPolicies: body.policies,
-            customSkills: [],
-          });
-        },
-      ),
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
     );
     detachedSetupPage({ context, path: "/agents/my-agent" });
 
@@ -269,17 +258,19 @@ describe("permissions dialog - grouped connector (Slack)", () => {
       );
       expect(denyButton).toHaveAttribute("aria-pressed", "true");
     });
+    click(getPolicyButton(getPermissionRow("insert_comments"), "Allow"));
 
     click(screen.getByText("Apply"));
 
     await waitFor(() => {
-      return expect(savedPolicies).not.toBeNull();
+      return expect(grantBodies).toHaveLength(1);
     });
-    const appliedPolicies = requireSavedPolicies(savedPolicies);
-    expect(appliedPolicies.slack?.policies["channels:read"]).toBe("deny");
-    expect(appliedPolicies.slack?.unknownPolicy).toBe("deny");
-    expect(appliedPolicies.notion?.policies.insert_comments).toBe("deny");
-    expect(appliedPolicies.notion?.unknownPolicy).toBe("deny");
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+      permission: "insert_comments",
+      action: "allow",
+    });
   });
 
   it("renders group categories with permission counts (FW-D-032)", async () => {
@@ -316,37 +307,56 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     });
   });
 
-  it("saves policies and closes drawer when Apply is clicked (FW-D-036)", async () => {
-    let putCalled = false;
+  it("saves changed grants and closes drawer when Apply is clicked (FW-D-036)", async () => {
+    const grantBodies: unknown[] = [];
     mockAPIs({ connectorType: "slack" });
     server.use(
-      mockApi(zeroAgentPermissionPoliciesContract.update, ({ respond }) => {
-        putCalled = true;
-        return respond(200, {
-          agentId: "e0000000-0000-4000-a000-000000000010",
-          ownerId: "test-user-123",
-          description: "A helpful agent",
-          displayName: "My Agent",
-          sound: null,
-          avatarUrl: null,
-          permissionPolicies: {},
-          customSkills: [],
-        });
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
       }),
     );
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Slack");
 
+    click(screen.getByText(/Read \(\d+\)/i));
+    click(getPolicyButton(getPermissionRow("channels:read"), "Deny"));
     click(screen.getByText("Apply"));
 
     await waitFor(() => {
-      return expect(putCalled).toBeTruthy();
+      return expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "slack",
+      permission: "channels:read",
+      action: "deny",
     });
     await waitFor(() => {
       return expect(
         screen.queryByRole("heading", { name: /Slack permissions/i }),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("enables Apply only when permission policies changed", async () => {
+    mockAPIs({ connectorType: "slack" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
+    await openPermissionsDrawer("Slack");
+
+    const applyButton = screen.getByText("Apply");
+    expect(applyButton).toBeDisabled();
+
+    click(screen.getByText(/Read \(\d+\)/i));
+    const channelsReadRow = getPermissionRow("channels:read");
+    click(getPolicyButton(channelsReadRow, "Deny"));
+    expect(applyButton).toBeEnabled();
+
+    click(getPolicyButton(channelsReadRow, "Allow"));
+    expect(applyButton).toBeDisabled();
+
+    click(getPolicyButton(getUnknownEndpointsRow(), "Deny"));
+    expect(applyButton).toBeEnabled();
   });
 
   it("allows org admins to manage permissions for agents owned by another user (FW-V-001)", async () => {

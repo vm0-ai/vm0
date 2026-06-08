@@ -4,14 +4,27 @@ import {
   agentComposeContentSchema,
   artifactConfigSchema,
   artifactsArraySchema,
+  expandMountPath,
   MOUNT_PATH_TEMPLATE,
   ZERO_CAPABILITIES,
   ZERO_CAPABILITY_META,
 } from "../composes";
+import { CANONICAL_WORKING_DIR } from "../runners";
 
 const baseAgent = {
   framework: "claude-code",
 };
+
+describe("expandMountPath", () => {
+  it("expands omitted and template mount paths to canonical working dir", () => {
+    expect(expandMountPath(undefined)).toBe(CANONICAL_WORKING_DIR);
+    expect(expandMountPath(MOUNT_PATH_TEMPLATE)).toBe(CANONICAL_WORKING_DIR);
+  });
+
+  it("preserves explicit mount paths", () => {
+    expect(expandMountPath("/custom/path")).toBe("/custom/path");
+  });
+});
 
 describe("agentDefinitionSchema strips unknown experimental_capabilities", () => {
   it("silently strips experimental_capabilities from input", () => {
@@ -80,6 +93,10 @@ describe("ZERO_CAPABILITIES", () => {
     expect(ZERO_CAPABILITIES).toContain("billing:read");
     expect(ZERO_CAPABILITIES).toContain("billing:write");
   });
+
+  it("should include banking read capability", () => {
+    expect(ZERO_CAPABILITIES).toContain("banking:read");
+  });
 });
 
 describe("ZERO_CAPABILITY_META", () => {
@@ -102,7 +119,7 @@ describe("artifactConfigSchema", () => {
     expect(r.success).toBe(true);
   });
 
-  it("accepts the ${{ working_dir }} template", () => {
+  it("accepts the working_dir template", () => {
     const r = artifactConfigSchema.safeParse({
       name: "a",
       mount_path: MOUNT_PATH_TEMPLATE,
@@ -179,7 +196,7 @@ describe("agentComposeContentSchema.artifacts", () => {
       ...baseCompose,
       artifacts: [
         { name: "a", mount_path: "/custom/path" },
-        { name: "b", mount_path: MOUNT_PATH_TEMPLATE },
+        { name: "b", mount_path: "/another/path" },
         { name: "c" },
       ],
     });

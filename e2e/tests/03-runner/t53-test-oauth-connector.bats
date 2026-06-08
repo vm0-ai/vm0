@@ -13,7 +13,8 @@
 # 2. Connect test-oauth through the real authorization-code OAuth flow.
 # 3. Enable the connector for the compose via /api/cli/auth/test-enable-connector
 #    so the zero run flow passes it in allowedConnectorTypes.
-# 4. Zero-run an agent that curls the echo endpoint. The firewall rule
+# 4. Create a zero run through the API for an agent that curls the echo endpoint.
+#    The firewall rule
 #    matches any `{pr}.vm6.ai` subdomain; mitm-addon intercepts, the webhook
 #    detects expiry, hits the fake provider's refresh grant, injects a fresh
 #    Bearer. Echo returns 200 only if the injected token parses as unexpired.
@@ -107,6 +108,53 @@ EOF
     fi
 }
 
+run_zero_agent_via_api() {
+    local agent_id="$1"
+    local prompt="$2"
+    local expected_log="${3:-ECHO_STATUS=}"
+    local payload body run_id logs status_value start timeout
+
+    payload=$(jq -nc \
+        --arg agentId "$agent_id" \
+        --arg prompt "$prompt" \
+        '{agentId: $agentId, prompt: $prompt}')
+
+    body=$(zero_curl "/api/zero/runs" -X POST -d "$payload") || {
+        echo "# Failed to create zero run"
+        return 1
+    }
+
+    run_id=$(printf '%s' "$body" | jq -r '.runId // ""')
+    [ -n "$run_id" ] || {
+        echo "# Failed to extract runId from zero run response"
+        echo "# Response: $body"
+        return 1
+    }
+
+    echo "Run ID:   $run_id"
+    wait_for_zero_run_completed "$run_id" || return 1
+    echo "Run completed successfully"
+
+    timeout="${ZERO_RUN_LOG_TIMEOUT:-30}"
+    start=$SECONDS
+    logs=""
+    status_value=1
+    while (( SECONDS - start < timeout )); do
+        logs="$($VM0_CLI logs "$run_id" --all 2>&1)"
+        status_value=$?
+        if [[ "$status_value" -eq 0 && ( -z "$expected_log" || "$logs" == *"$expected_log"* ) ]]; then
+            echo "$logs"
+            return 0
+        fi
+        sleep 2
+    done
+
+    echo "# Timed out (${timeout}s) waiting for run logs containing: $expected_log"
+    echo "# Last logs command status: $status_value"
+    echo "$logs"
+    return 1
+}
+
 seed_test_oauth_connector() {
     local access_token="$1"
     local refresh_token="$2"
@@ -122,6 +170,7 @@ seed_test_oauth_connector() {
         --argjson expiresIn "$expires_in" \
         '{
             connectorName: "test-oauth",
+            authMethod: "oauth",
             accessToken: $accessToken,
             refreshToken: $refreshToken,
             expiresIn: $expiresIn
@@ -163,7 +212,7 @@ connect_test_oauth_via_authorization_code() {
     enable_test_oauth_feature_switch || return 1
 
     local start_body
-    start_body=$(zero_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{}')
+    start_body=$(zero_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{"authMethod":"oauth"}')
     local authorization_url
     authorization_url=$(printf '%s' "$start_body" | jq -r '.authorizationUrl // empty')
     [ -n "$authorization_url" ] || {
@@ -236,7 +285,6 @@ agents:
   ${AGENT_NAME}-refresh:
     description: "test-oauth mid-run refresh"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF
@@ -263,7 +311,7 @@ EOF
     # so this test continues to exercise sandbox firewall/mitm token refresh
     # without depending on Next external rewrites to preserve preview guard
     # headers. The web-to-api rewrite is covered by web rewrite tests.
-    run $ZERO_CLI run "$COMPOSE_ID" \
+    run run_zero_agent_via_api "$COMPOSE_ID" \
         "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
 
     echo "$output"
@@ -318,7 +366,6 @@ agents:
   ${AGENT_NAME}-stale:
     description: "test-oauth stale access token (DB drift)"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF
@@ -338,7 +385,7 @@ EOF
     echo "$output"
     assert_success
 
-    run $ZERO_CLI run "$COMPOSE_ID" \
+    run run_zero_agent_via_api "$COMPOSE_ID" \
         "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
 
     echo "$output"

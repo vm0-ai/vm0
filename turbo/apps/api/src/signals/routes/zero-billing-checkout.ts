@@ -3,7 +3,8 @@ import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-b
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
+import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -12,6 +13,8 @@ import { db$ } from "../external/db";
 import {
   activePriceId,
   completeCheckoutSession$,
+  checkoutTierConflictMessage,
+  checkoutWouldReplaceWithSameOrLowerTier,
   createCheckoutSession$,
 } from "../services/zero-billing-checkout.service";
 import type { RouteEntry } from "../route";
@@ -40,12 +43,12 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  const { tier, successUrl, cancelUrl, trialDays } = bodyResult.data;
+  const { tier, successUrl, cancelUrl, trialDays, adAttribution } =
+    bodyResult.data;
 
-  const appOrigin = new URL(env("APP_URL")).origin;
   if (
-    new URL(successUrl).origin !== appOrigin ||
-    new URL(cancelUrl).origin !== appOrigin
+    !billingRedirectAllowed(successUrl) ||
+    !billingRedirectAllowed(cancelUrl)
   ) {
     return badRequestMessage(
       "successUrl and cancelUrl must match the platform origin",
@@ -57,19 +60,35 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage(`Price not configured for ${tier} tier`);
   }
 
+  const db = get(db$);
+  const [metadata] = await db
+    .select({
+      onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+      tier: orgMetadata.tier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, auth.orgId))
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (
+    checkoutWouldReplaceWithSameOrLowerTier({
+      currentTier: metadata?.tier,
+      targetTier: tier,
+    })
+  ) {
+    return badRequestMessage(
+      checkoutTierConflictMessage({
+        currentTier: metadata?.tier,
+        targetTier: tier,
+      }),
+    );
+  }
+
   if (trialDays !== undefined) {
     if (tier !== "pro") {
       return badRequestMessage("Trial checkout is only available for Pro tier");
     }
-    const db = get(db$);
-    const [metadata] = await db
-      .select({
-        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, auth.orgId))
-      .limit(1);
-    signal.throwIfAborted();
     if (metadata?.onboardingPaymentPending !== true) {
       return badRequestMessage(
         "Pro trial checkout is only available during onboarding",
@@ -79,7 +98,15 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const url = await set(
     createCheckoutSession$,
-    { orgId: auth.orgId, priceId, trialDays, successUrl, cancelUrl },
+    {
+      orgId: auth.orgId,
+      tier,
+      priceId,
+      trialDays,
+      successUrl,
+      cancelUrl,
+      adAttribution,
+    },
     signal,
   );
   signal.throwIfAborted();
@@ -126,6 +153,14 @@ const checkoutCompleteAuthed$ = command(
     if (result.status === "customer_mismatch") {
       return badRequestMessage(
         "Checkout session does not belong to current organization",
+      );
+    }
+    if (result.status === "tier_conflict") {
+      return badRequestMessage(
+        checkoutTierConflictMessage({
+          currentTier: result.currentTier,
+          targetTier: result.targetTier,
+        }),
       );
     }
 

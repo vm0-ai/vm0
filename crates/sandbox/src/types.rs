@@ -233,6 +233,8 @@ type GuestProcessControlFn =
 /// Acknowledgement returned by an operation-bound process-control sink.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ProcessControlAck {
+    /// Message id acknowledged by the provider for the submitted control
+    /// payload.
     pub message_id: String,
 }
 
@@ -243,6 +245,11 @@ pub struct GuestProcessControlHandle {
 }
 
 impl GuestProcessControlHandle {
+    /// Construct a process-control handle from provider-owned send logic.
+    ///
+    /// The `sandbox` crate treats control payloads as opaque bytes. The
+    /// provider and guest process define the payload schema and acknowledgement
+    /// semantics for a given started process.
     pub fn new<F>(control: F) -> Self
     where
         F: Fn(String, Vec<u8>, Duration) -> GuestProcessControlFuture + Send + Sync + 'static,
@@ -252,6 +259,11 @@ impl GuestProcessControlHandle {
         }
     }
 
+    /// Send an opaque control payload to the live guest process.
+    ///
+    /// `message_id` identifies the control message for provider
+    /// acknowledgement. `timeout` bounds how long the provider should wait for
+    /// the control sink to acknowledge the payload.
     pub async fn control(
         &self,
         message_id: &str,
@@ -358,21 +370,55 @@ impl Drop for GuestProcessHandle {
     }
 }
 
+/// Output handling mode for a process started with
+/// [`Sandbox::start_process`](crate::Sandbox::start_process).
+///
+/// Buffered mode returns captured output in [`ProcessExit`]. Stream mode
+/// requests real-time stdout delivery through
+/// [`GuestProcessHandle::take_stdout_receiver`] when the provider returns a
+/// receiver. Callers must handle providers that return no receiver and must
+/// drain a returned receiver while the process runs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessOutputMode {
+    /// Capture stdout and stderr into the final [`ProcessExit`].
     Buffered {
+        /// Capture limits for stdout and stderr bytes retained in
+        /// [`ProcessExit`].
         output_limits: ExecOutputLimits,
     },
+    /// Request real-time stdout delivery through a bounded host receiver.
+    ///
+    /// This mode requests stdout streaming only. Provider-specific stderr
+    /// handling may differ; the current Firecracker-backed provider discards
+    /// stderr in stream mode instead of streaming or capturing it.
     Stream {
+        /// Maximum stdout bytes the guest should emit as stream chunks.
+        ///
+        /// This is a guest-side stream budget. It is separate from captured
+        /// output truncation and from host queue overflow.
         stream_limit_bytes: u32,
+        /// Maximum bytes in a single stdout stream chunk.
         chunk_limit_bytes: u32,
+        /// Capacity of the host-side stdout delivery queue.
+        ///
+        /// This bounds host buffering for delivered chunks. It is not a
+        /// guarantee that a slow caller applies backpressure to the guest; host
+        /// delivery overflow is reported through [`ProcessExit::stream_overflowed`].
         queue_capacity: usize,
     },
 }
 
+/// Process-control mode for a process started with
+/// [`Sandbox::start_process`](crate::Sandbox::start_process).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessControlMode {
+    /// Do not request a process-control sink.
     None,
+    /// Request a provider-backed process-control sink.
+    ///
+    /// Providers may still return a process handle without a control handle.
+    /// Callers must check [`GuestProcessHandle::control_handle`] on the returned
+    /// process handle before sending control messages.
     Enabled,
 }
 
@@ -384,10 +430,16 @@ impl ProcessOutputMode {
     /// Default bounded host queue capacity for process stdout chunks.
     pub const DEFAULT_QUEUE_CAPACITY: usize = 8192;
 
+    /// Return buffered output mode with the supplied capture limits.
     pub const fn buffered(output_limits: ExecOutputLimits) -> Self {
         Self::Buffered { output_limits }
     }
 
+    /// Return stdout stream mode with bounded defaults.
+    ///
+    /// The defaults are [`DEFAULT_STREAM_LIMIT_BYTES`](Self::DEFAULT_STREAM_LIMIT_BYTES),
+    /// [`DEFAULT_CHUNK_LIMIT_BYTES`](Self::DEFAULT_CHUNK_LIMIT_BYTES), and
+    /// [`DEFAULT_QUEUE_CAPACITY`](Self::DEFAULT_QUEUE_CAPACITY).
     pub const fn stream() -> Self {
         Self::Stream {
             stream_limit_bytes: Self::DEFAULT_STREAM_LIMIT_BYTES,
@@ -396,23 +448,56 @@ impl ProcessOutputMode {
         }
     }
 
+    /// Return whether this mode requests stdout streaming.
+    ///
+    /// A `true` return value does not guarantee the provider will return a
+    /// receiver. Callers should inspect
+    /// [`GuestProcessHandle::take_stdout_receiver`] on the started process
+    /// handle.
     pub fn streams_stdout(self) -> bool {
         matches!(self, Self::Stream { .. })
     }
 }
 
+/// Terminal status and output metadata for a started guest process.
 pub struct ProcessExit {
+    /// Guest process id reported by the provider.
     pub pid: u32,
+    /// Process exit code, or a provider-synthesized code for timeout, cancel,
+    /// start, or wait failures.
     pub exit_code: i32,
+    /// Captured stdout bytes.
+    ///
+    /// In stream mode, callers should read streamed stdout from
+    /// [`GuestProcessHandle::take_stdout_receiver`] when a receiver is
+    /// available instead of treating this field as a complete copy of stdout.
     pub stdout: Vec<u8>,
+    /// Captured stderr bytes.
+    ///
+    /// Providers may include synthesized error text here for timeout, cancel,
+    /// start, or wait failures.
     pub stderr: Vec<u8>,
+    /// True when captured stdout exceeded the requested capture limit.
     pub stdout_truncated: bool,
+    /// True when captured stderr exceeded the requested capture limit.
     pub stderr_truncated: bool,
+    /// Provider or supervision diagnostic text.
+    ///
+    /// This is separate from ordinary process stderr.
     pub diagnostic: String,
+    /// True when streamed output overflowed the host delivery queue.
+    ///
+    /// This is separate from captured-output truncation and from the
+    /// per-chunk `truncated` flag on [`ProcessOutputChunk`].
     pub stream_overflowed: bool,
 }
 
 impl ProcessExit {
+    /// Construct a process exit result with no truncation or stream metadata.
+    ///
+    /// The returned value sets `stdout_truncated` and `stderr_truncated` to
+    /// `false`, `diagnostic` to an empty string, and `stream_overflowed` to
+    /// `false`.
     pub fn new(pid: u32, exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self {
             pid,

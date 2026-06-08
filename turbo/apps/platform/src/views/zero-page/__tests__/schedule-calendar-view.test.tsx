@@ -25,6 +25,7 @@ function mockScheduleBase() {
     consecutiveFailures: 0,
     nextRunAt: null,
     lastRunAt: null,
+    chatThreadId: "d0000000-0000-4000-a000-000000000001",
   };
 }
 
@@ -153,15 +154,26 @@ function mockScheduleAPI(schedules: ScheduleResponse[]) {
 }
 
 async function switchToCalendarView() {
-  // Wait for the page to finish loading (schedule list or empty state is visible)
+  // Wait for the page to finish loading. /schedules now defaults to calendar,
+  // but this helper still supports explicit switching from another view.
+  await waitFor(() => {
+    expect(
+      queryAllByRoleFast("tab").find((el) => {
+        return /Calendar/i.test(el.textContent ?? "");
+      }),
+    ).toBeDefined();
+  });
+
+  if (screen.queryByRole("heading", { name: "Week view" })) {
+    return;
+  }
+
+  // If a test starts from list view, wait until list or empty state is visible.
   await waitFor(() => {
     const hasScheduled =
       screen.queryAllByLabelText(/More actions for/i).length > 0;
     const hasEmpty = screen.queryByText("No runs scheduled") !== null;
-    const hasTab = queryAllByRoleFast("tab").some((el) => {
-      return /Calendar/i.test(el.textContent ?? "");
-    });
-    if (!hasTab || (!hasScheduled && !hasEmpty)) {
+    if (!hasScheduled && !hasEmpty) {
       throw new Error("page not loaded");
     }
   });

@@ -17,14 +17,12 @@ describe("zero CLI program", () => {
       "model",
       "model-provider",
       "agent",
-      "chat",
       "connector",
       "credit",
       "doctor",
       "logs",
       "search",
       "preference",
-      "run",
       "schedule",
       "secret",
       "skill",
@@ -40,6 +38,7 @@ describe("zero CLI program", () => {
       "web",
       "host",
       "maps",
+      "banking",
     ];
     for (const name of expectedCommands) {
       expect(commandNames).toContain(name);
@@ -52,6 +51,7 @@ describe("zero CLI program", () => {
       "compose",
       "volume",
       "artifact",
+      "run",
 
       "init",
       "upgrade",
@@ -62,7 +62,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 27 commands", () => {
-    expect(commandNames).toHaveLength(27);
+  it("should have exactly 26 commands", () => {
+    expect(commandNames).toHaveLength(26);
   });
 });

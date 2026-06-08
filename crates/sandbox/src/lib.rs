@@ -28,9 +28,9 @@ mod types;
 
 pub use config::{
     BlockRateLimits, DeviceRateLimits, FactoryConfig, NetworkRateLimits, ResourceLimits,
-    RuntimeConfig, SandboxConfig, SandboxId, SnapshotRef,
+    RuntimeConfig, SandboxConfig, SandboxId, SnapshotRef, WorkspaceDriveConfig,
 };
-pub use control::{RemoteExecResult, SandboxControl, SandboxControlError};
+pub use control::{RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError};
 pub use error::{
     Result, SandboxError, SandboxIdleTransition, SandboxInitializationPhase,
     SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,

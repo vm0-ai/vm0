@@ -184,6 +184,9 @@ ${formatRegistryListing(templates, "presentation templates")}`;
             "Use one section per slide and keep repeated elements in consistent positions.",
             "Make keyboard navigation work with ArrowLeft, ArrowRight, Home, and End.",
             "Keep slide text readable from across a room; avoid memo-like walls of text.",
+            "Before laying out slides, establish the deck's arc: the opening problem or question, how it develops, and what conclusion lands; every slide should serve a clear narrative role in that arc.",
+            "Vary slide forms across the deck — full-bleed statement, evidence with data, pull quote, section break, summary — and avoid defaulting every slide to title-plus-bullets.",
+            "Each slide carries one idea; prefer a single strong statement over a list, and never exceed three bullets on any slide.",
           ],
         });
 

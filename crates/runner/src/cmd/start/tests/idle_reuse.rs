@@ -1,10 +1,10 @@
 use super::super::*;
 use super::support::{
-    assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
-    mock_run_config_with_overrides, publish_idle_status, push_job, seed_idle_pool,
-    seed_idle_pool_with_overrides, shutdown, status_idle_sessions, test_profiles, two_profiles,
-    wait_budget_count, wait_cancel_token, wait_discover_entered, wait_idle_pool_len,
-    wait_idle_pool_session_states, wait_idle_pool_sessions, wait_parking_state,
+    assert_run_exits_within, context_with_session, context_with_workspace_image_cache_enabled,
+    minimal_context, mock_run_config, mock_run_config_with_overrides, publish_idle_status,
+    push_job, seed_idle_pool, seed_idle_pool_with_overrides, shutdown, status_idle_sessions,
+    test_profiles, two_profiles, wait_budget_count, wait_cancel_token, wait_discover_entered,
+    wait_idle_pool_len, wait_idle_pool_session_states, wait_idle_pool_sessions, wait_parking_state,
     wait_sandbox_lifecycle_counts, wait_status_idle_empty_with_active_run,
     wait_status_idle_sessions_and_active_runs,
 };
@@ -223,6 +223,93 @@ async fn park_triggers_immediate_heartbeat() {
             .wait_heartbeat_past(before, Duration::from_secs(5))
             .await,
         "park should trigger at least one heartbeat after baseline={before}",
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.push_wait_process_exit(sandbox::ProcessExit::new(1, 1, Vec::new(), Vec::new()));
+
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) =
+        mock_run_config_with_overrides(profiles, 8, 32768, 4, Arc::clone(&overrides));
+    let runner_paths = crate::paths::RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = crate::workspace_image_cache::SessionWorkspaceCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    let before = env.handle.heartbeat_count();
+
+    let run_id = RunId::new_v4();
+    let session_id = "sess-cache-heartbeat";
+    let ctx = context_with_workspace_image_cache_enabled(run_id, session_id);
+    push_job(&env, run_id, "vm0/default", Some(ctx));
+
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("wait_process should enter before test writes active workspace image");
+    let sandbox_id = overrides
+        .create_configs()
+        .into_iter()
+        .next()
+        .expect("sandbox create config should be recorded before wait_process entry")
+        .id;
+    let active_image = runner_paths.active_workspace_image(&sandbox_id);
+    tokio::fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    let file = tokio::fs::File::create(&active_image).await.unwrap();
+    file.set_len(16 * 1024 * 1024).await.unwrap();
+    drop(file);
+
+    overrides.clear_wait_process_lifecycle_gate();
+    wait_gate.release_one();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await;
+    let completion = completion.expect("job should complete");
+    assert_eq!(completion.exit_code, 1);
+    assert_eq!(
+        env.idle_pool.lock().await.len(),
+        0,
+        "nonzero job should not park a VM",
+    );
+
+    assert!(
+        env.handle
+            .wait_heartbeat_past(before, Duration::from_secs(5))
+            .await,
+        "workspace cache promotion should trigger an immediate heartbeat after baseline={before}",
+    );
+    let heartbeats = env
+        .handle
+        .heartbeats
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    assert!(
+        heartbeats[before..].iter().any(|state| {
+            state
+                .held_session_states
+                .iter()
+                .any(|state| state.session_id == session_id)
+        }),
+        "immediate heartbeat should advertise the promoted workspace cache session",
     );
 
     shutdown(&env, run_handle).await;
@@ -1077,7 +1164,7 @@ async fn sequential_same_session_reuse_cycle() {
 async fn park_evicts_via_guest_session_id() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
-        pattern: "cat /tmp/vm0-session-".into(),
+        pattern: "/.vm0/guest-agent/runs/".into(),
         exit_code: 0,
         stdout: b"sess-evict".to_vec(),
         stderr: Vec::new(),

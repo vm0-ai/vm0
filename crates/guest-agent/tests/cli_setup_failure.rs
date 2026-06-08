@@ -3,6 +3,8 @@
 //! This test lives in its own binary because `guest_agent::env` and
 //! `guest_agent::paths` cache values in process-wide `LazyLock`s.
 
+mod common;
+
 use guest_agent::error::AgentError;
 use std::io::ErrorKind;
 use std::time::Duration;
@@ -11,13 +13,18 @@ use std::time::Duration;
 async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn std::error::Error>>
 {
     let tmp = tempfile::tempdir()?;
-    let run_prefix = format!("cli-log-parent-file-{}", std::process::id());
-    let parent_file = std::env::temp_dir().join(format!("vm0-agent-{run_prefix}"));
-    std::fs::write(&parent_file, b"not a directory")?;
+    let run_id = format!("cli-log-parent-file-{}", std::process::id());
+    let runtime_dir = tmp.path().join("guest-runtime");
+    let log_parent = runtime_dir.join("logs");
+    std::fs::create_dir_all(&runtime_dir)?;
+    std::fs::write(&log_parent, b"not a directory")?;
 
     unsafe {
-        std::env::set_var("VM0_RUN_ID", format!("{run_prefix}/child"));
-        std::env::set_var("VM0_WORKING_DIR", tmp.path());
+        std::env::set_var("VM0_RUN_ID", &run_id);
+        std::env::set_var(
+            guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            runtime_dir.as_os_str(),
+        );
         std::env::set_var("VM0_PROMPT", "@exit-after-result");
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
@@ -28,6 +35,7 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
         );
         std::env::set_var("HOME", tmp.path());
     }
+    common::ensure_canonical_workspace_for_test()?;
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = tokio::spawn(async { Ok(()) });
@@ -44,11 +52,16 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
     .expect("log setup failure should return promptly");
 
     match result {
-        Err(AgentError::Io(err)) => assert_eq!(err.kind(), ErrorKind::NotADirectory),
+        Err(AgentError::Io(err)) => assert!(
+            matches!(
+                err.kind(),
+                ErrorKind::AlreadyExists | ErrorKind::NotADirectory
+            ),
+            "unexpected IO error: {err:?}",
+        ),
         Err(err) => return Err(format!("expected IO error from agent log setup, got {err}").into()),
         Ok(_) => return Err("expected execute_cli to fail before spawning CLI".into()),
     }
 
-    let _ = std::fs::remove_file(parent_file);
     Ok(())
 }

@@ -5,19 +5,20 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorEnvBindings,
-  getConnectorTypeForSecretName,
+  getConnectorEnvBindingEntries,
+  getDiagnosticConnectorTypeForRuntimeEnvName,
 } from "@vm0/connectors/connector-utils";
-import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
+import {
+  type FirewallBaseUrlMatch,
+  findMatchingPermissions,
+  matchFirewallBaseUrl,
+} from "@vm0/connectors/firewall-rule-matcher";
 import { extractSecretNamesFromApis } from "@vm0/connectors/firewall-types";
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import type {
-  FirewallConfig,
-  NetworkPolicies,
-} from "@vm0/connectors/firewall-types";
+import type { NetworkPolicies } from "@vm0/connectors/firewall-types";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { getApiUrl } from "../../../lib/api/config";
 import {
@@ -75,25 +76,20 @@ async function connectorTypeIsAvailable(type: string): Promise<boolean> {
 function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
   const allTypes = CONNECTOR_TYPE_KEYS;
 
-  // Normalize: strip trailing slash for comparison
-  const normalized = url.endsWith("/") ? url.slice(0, -1) : url;
-
   let bestMatch: {
     connectorType: string;
-    base: string;
-    config: FirewallConfig;
+    match: FirewallBaseUrlMatch;
   } | null = null;
 
   for (const type of allTypes) {
     if (!isFirewallConnectorType(type)) continue;
     const config = getConnectorFirewall(type);
     for (const api of config.apis) {
-      const base = api.base.endsWith("/") ? api.base.slice(0, -1) : api.base;
-      // URL must match the base exactly or have the base as a prefix followed by /
-      if (normalized === base || normalized.startsWith(base + "/")) {
+      const match = matchFirewallBaseUrl(url, api.base);
+      if (match !== null) {
         // Pick the longest (most specific) base URL match
-        if (!bestMatch || base.length > bestMatch.base.length) {
-          bestMatch = { connectorType: type, base, config };
+        if (!bestMatch || match.score > bestMatch.match.score) {
+          bestMatch = { connectorType: type, match };
         }
       }
     }
@@ -101,23 +97,18 @@ function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
 
   if (!bestMatch) return null;
 
-  // Derive the environment name from the connector's env bindings.
-  const envBindings = getConnectorEnvBindings(
+  // Derive the environment name from the connector's configured env bindings.
+  const envBindingEntries = getConnectorEnvBindingEntries(
     bestMatch.connectorType as ConnectorType,
   );
-  const envName = Object.keys(envBindings)[0];
+  const envName = envBindingEntries[0]?.envName;
   if (!envName) return null;
-
-  const relativePath =
-    normalized === bestMatch.base
-      ? "/"
-      : normalized.slice(bestMatch.base.length);
 
   return {
     connectorType: bestMatch.connectorType,
     envName,
-    matchedBase: bestMatch.base,
-    relativePath,
+    matchedBase: bestMatch.match.displayBase,
+    relativePath: bestMatch.match.relativePath,
   };
 }
 
@@ -161,7 +152,7 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   ]);
 
   const isConnected = connector !== null;
-  const isExpired = connector?.needsReconnect === true;
+  const isExpired = connector?.connectionStatus === "reconnect-required";
   const hasPermission =
     enabledTypes !== null && enabledTypes.includes(ctx.connectorType);
 
@@ -393,6 +384,7 @@ function resolvePermissionFromUrl(
     method,
     relativePath,
     config,
+    { apiBase: matchedBase },
   );
 
   if (matchedPermissions.length === 0) {
@@ -524,14 +516,15 @@ How connectors work:
         console.log(`  Relative path:    ${urlLookup.relativePath}`);
         console.log(`  Environment name:  ${envName}`);
       } else {
-        connectorType = getConnectorTypeForSecretName(
-          (envName = opts.envName!),
-        )!;
-        if (!connectorType) {
+        envName = opts.envName!;
+        const resolvedConnectorType =
+          getDiagnosticConnectorTypeForRuntimeEnvName(envName);
+        if (!resolvedConnectorType) {
           throw new Error(
             `Unknown environment name: ${envName} — not managed by any connector`,
           );
         }
+        connectorType = resolvedConnectorType;
         console.log(
           `${envName} is managed by the ${CONNECTOR_TYPES[connectorType as ConnectorType].label} connector (type: ${connectorType}).`,
         );

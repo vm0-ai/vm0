@@ -9,8 +9,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from mitmproxy.flow import Error
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
+import registry
 import usage
+import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
@@ -250,6 +253,52 @@ class TestRunnerUsageFlushSignal:
         assert "RuntimeError" in message
         assert "secret-token" not in message
 
+    def test_runner_flush_failure_snapshot_includes_retryable_buffered_usage(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "usage-flush-request"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                }
+            )
+        )
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [
+                {
+                    "idempotencyKey": "source-1",
+                    "kind": "model",
+                    "provider": "claude-sonnet-4-6",
+                    "category": "tokens.input",
+                    "quantity": 1,
+                }
+            ],
+            str(tmp_path / "proxy.jsonl"),
+        )
+
+        try:
+            with (
+                patch.object(usage_buffer, "_enqueue_webhook", side_effect=OSError("no threads")),
+                patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            ):
+                mitm_addon._flush_usage_for_runner_request()
+
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=1,
+                reports=0,
+                flush_request_id="request-1",
+            )
+        finally:
+            usage.set_pending_path("")
+
     def test_signal_during_active_flush_runs_follow_up_flush(self):
         reset_runner_usage_flush_state()
         first_flush_started = threading.Event()
@@ -343,6 +392,28 @@ class TestTlsClienthello:
         # All registered VMs use MITM — should NOT set ignore_connection
         assert data.ignore_connection is False
 
+    def test_invalid_registered_vm_allows_mitm(self, tmp_path, make_tls_data, mitm_ctx):
+        registry_file = tmp_path / "registry.json"
+        registry_file.write_text(json.dumps({"vms": {"10.200.0.9": "broken"}, "updatedAt": 0}))
+        data = make_tls_data(client_ip="10.200.0.9", sni="anything.com")
+
+        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+            mitm_addon.tls_clienthello(data)
+
+        assert data.ignore_connection is False
+
+    def test_registry_unavailable_does_not_ignore_connection(
+        self, registry_file, make_tls_data, mitm_ctx
+    ):
+        registry.load_registry(str(registry_file))
+        registry_file.unlink()
+        data = make_tls_data(client_ip="10.200.0.1", sni="anything.com")
+
+        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+            mitm_addon.tls_clienthello(data)
+
+        assert data.ignore_connection is False
+
 
 class TestTcpStart:
     def test_sets_metadata_for_registered_vm(self, registry_file, mitm_ctx, real_tcp_flow):
@@ -355,7 +426,7 @@ class TestTcpStart:
 
         assert flow.metadata["vm_run_id"] == "run-abc-123"
         assert "vm_network_log_path" in flow.metadata
-        assert "tcp_start_time" in flow.metadata
+        assert metadata_keys.TCP_START_MONOTONIC in flow.metadata
 
     def test_skips_when_no_client_ip(self, registry_file, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow()
@@ -378,6 +449,32 @@ class TestTcpStart:
 
         assert "vm_run_id" not in flow.metadata
 
+    def test_registry_unavailable_kills_flow(self, registry_file, mitm_ctx, real_tcp_flow):
+        registry.load_registry(str(registry_file))
+        registry_file.unlink()
+        flow = real_tcp_flow(client_ip="10.200.0.1")
+
+        with mitm_ctx(registry_path=str(registry_file)):
+            mitm_addon.tcp_start(flow)
+
+        assert flow.error is not None
+        assert flow.error.msg == Error.KILLED_MESSAGE
+        assert not flow.live
+        assert "vm_run_id" not in flow.metadata
+
+    def test_invalid_registered_vm_kills_flow(self, tmp_path, mitm_ctx, real_tcp_flow):
+        registry_file = tmp_path / "registry.json"
+        registry_file.write_text(json.dumps({"vms": {"10.200.0.9": {"runId": ""}}, "updatedAt": 0}))
+        flow = real_tcp_flow(client_ip="10.200.0.9")
+
+        with mitm_ctx(registry_path=str(registry_file)):
+            mitm_addon.tcp_start(flow)
+
+        assert flow.error is not None
+        assert flow.error.msg == Error.KILLED_MESSAGE
+        assert not flow.live
+        assert "vm_run_id" not in flow.metadata
+
 
 class TestTcpLog:
     def test_logs_tcp_connection(self, registry_file, tmp_path, mitm_ctx, real_tcp_flow):
@@ -385,7 +482,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["tcp_start_time"] = time.time() - 0.05
+        flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic() - 0.05
 
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
@@ -407,7 +504,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["tcp_start_time"] = time.time()
+        flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
         flow.error = Error("connection reset by peer")
 
         with mitm_ctx():
@@ -433,7 +530,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["tcp_start_time"] = time.time()
+        flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
         flow.server_conn = None
 
         with mitm_ctx():

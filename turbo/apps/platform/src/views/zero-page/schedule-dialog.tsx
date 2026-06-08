@@ -149,11 +149,11 @@ function ConfirmCloseOverlay({
       aria-describedby="confirm-close-desc"
     >
       <div
-        className="fixed inset-0 bg-black/50 dark:bg-black/70"
+        className="zero-dialog-enter-overlay fixed inset-0 bg-black/50 dark:bg-black/70"
         onClick={onContinue}
         role="presentation"
       />
-      <div className="relative z-10 mx-4 max-w-sm rounded-lg border border-border bg-card p-6 shadow-xl">
+      <div className="zero-dialog-enter-content relative z-10 mx-4 max-w-sm rounded-lg border border-border bg-card p-6 shadow-xl">
         <p
           id="confirm-close-title"
           className="text-sm font-medium text-foreground mb-1"

@@ -49,3 +49,10 @@ export function getSkillStorageName(fullPath: string): string {
 export function getCustomSkillStorageName(skillName: string): string {
   return `custom-skill@${skillName}`;
 }
+
+/**
+ * Reserved name of the per-user "memory" artifact that Zero auto-injects into
+ * every agent run. Stored as an artifact (type='artifact') scoped per user,
+ * and mounted into the sandbox at a framework-specific path.
+ */
+export const MEMORY_ARTIFACT_NAME = "memory";

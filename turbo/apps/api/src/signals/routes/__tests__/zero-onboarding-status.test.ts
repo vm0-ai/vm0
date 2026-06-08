@@ -145,6 +145,42 @@ describe("GET /api/zero/onboarding/status", () => {
     });
   });
 
+  it.each(["pro", "team"] as const)(
+    "ignores stale pending onboarding payment for %s orgs",
+    async (tier) => {
+      const fixture = await track(
+        store.set(
+          seedOnboardingStatusOrg$,
+          {
+            defaultAgent: {},
+            onboardingPaymentPending: true,
+            tier,
+          },
+          context.signal,
+        ),
+      );
+      mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+      const client = setupApp({ context })(onboardingStatusContract);
+
+      const response = await accept(
+        client.getStatus({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body).toStrictEqual({
+        needsOnboarding: false,
+        isAdmin: true,
+        hasOrg: true,
+        hasDefaultAgent: true,
+        defaultAgentId: fixture.composeId,
+        defaultAgentMetadata: null,
+      });
+    },
+  );
+
   it("returns default agent metadata when the compose has metadata", async () => {
     const fixture = await track(
       store.set(

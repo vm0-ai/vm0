@@ -49,7 +49,7 @@ function renderSchedulePage() {
 }
 
 describe("zero schedule page - view tabs (post run-history removal)", () => {
-  it("should only show List and Calendar tabs (SCHED-TABS-001)", async () => {
+  it("should only show Calendar and List tabs in that order (SCHED-TABS-001)", async () => {
     mockScheduleAPI();
     renderSchedulePage();
 
@@ -65,6 +65,10 @@ describe("zero schedule page - view tabs (post run-history removal)", () => {
         return /calendar/i.test(el.textContent ?? "");
       }),
     ).toBeInTheDocument();
+
+    const tabs = queryAllByRoleFast("tab");
+    expect(tabs[0]?.textContent).toMatch(/calendar/i);
+    expect(tabs[1]?.textContent).toMatch(/list/i);
   });
 
   it("should NOT show a History tab (SCHED-TABS-002)", async () => {
@@ -163,6 +167,16 @@ describe("zero schedule page - display after refactor", () => {
     renderSchedulePage();
 
     await waitFor(() => {
+      expect(screen.getByText("Week view")).toBeInTheDocument();
+    });
+
+    click(
+      queryAllByRoleFast("tab").find((el) => {
+        return /list/i.test(el.textContent ?? "");
+      })!,
+    );
+
+    await waitFor(() => {
       expect(screen.getAllByText("morning-briefing").length).toBeGreaterThan(0);
     });
     expect(
@@ -175,18 +189,11 @@ describe("zero schedule page - display after refactor", () => {
     renderSchedulePage();
 
     await waitFor(() => {
-      expect(screen.getAllByText("morning-briefing").length).toBeGreaterThan(0);
-    });
-
-    click(
-      queryAllByRoleFast("tab").find((el) => {
-        return /calendar/i.test(el.textContent ?? "");
-      })!,
-    );
-
-    await waitFor(() => {
       expect(screen.getByText("Week view")).toBeInTheDocument();
     });
+    expect(
+      screen.getAllByText("Summarize yesterday's threads").length,
+    ).toBeGreaterThan(0);
   });
 
   it("should show skeleton while loading (SCHED-DISP-004)", async () => {
@@ -201,7 +208,9 @@ describe("zero schedule page - display after refactor", () => {
     detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
-      expect(screen.getByTestId("schedule-list-skeleton")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("schedule-calendar-skeleton"),
+      ).toBeInTheDocument();
     });
 
     hangDeferred.resolve();
@@ -210,7 +219,7 @@ describe("zero schedule page - display after refactor", () => {
     // async re-renders from triggering ErrorBoundary during afterEach cleanup.
     await waitFor(() => {
       expect(
-        screen.queryByTestId("schedule-list-skeleton"),
+        screen.queryByTestId("schedule-calendar-skeleton"),
       ).not.toBeInTheDocument();
     });
   });

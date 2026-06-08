@@ -139,6 +139,19 @@ async function withRewriteProxy<T>(
 }
 
 describe("API backend rewrite proxy behavior", () => {
+  it("matches only the legacy file rewrite path", () => {
+    expect(matchesApiBackendRewritePath("/f/user_alice/file-id/doc.pdf")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/f/user_alice/file-id")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/f/user_alice/file-id/doc.pdf/extra"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/f/user_alice/file-id/doc.pdf"),
+    ).toBe(false);
+  });
+
   it("matches only one segment for agent checkpoint rewrites", () => {
     expect(
       matchesApiBackendRewritePath("/api/agent/checkpoints/checkpoint_123"),
@@ -663,10 +676,10 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
   });
 
-  it("matches the connector authorize rewrite path exactly", () => {
+  it("does not match removed connector authorize rewrite paths", () => {
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize/extra"),
     ).toBe(false);
@@ -693,18 +706,15 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches the zero connector authorize rewrite path exactly", () => {
+  it("does not match removed zero connector authorize rewrite paths", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/authorize"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/connectors/github/authorize/extra",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/connectors/authorize")).toBe(
-      true,
-    );
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/callback"),
     ).toBe(false);
@@ -751,17 +761,17 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
-  it("matches the zero connector API-token rewrite path exactly", () => {
+  it("matches the zero connector manual grant rewrite path exactly", () => {
     expect(
-      matchesApiBackendRewritePath("/api/zero/connectors/github/api-token"),
+      matchesApiBackendRewritePath("/api/zero/connectors/github/manual-grant"),
     ).toBe(true);
     expect(
       matchesApiBackendRewritePath(
-        "/api/zero/connectors/github/api-token/extra",
+        "/api/zero/connectors/github/manual-grant/extra",
       ),
     ).toBe(false);
     expect(
-      matchesApiBackendRewritePath("/api/zero/connector/github/api-token"),
+      matchesApiBackendRewritePath("/api/zero/connector/github/manual-grant"),
     ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/api"),
@@ -782,21 +792,6 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(true);
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/scope"),
-    ).toBe(false);
-  });
-
-  it("matches the zero integrations chat message rewrite path exactly", () => {
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/chat/message"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/chat/message/extra"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/integrations/chat")).toBe(
-      false,
-    );
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/telegram"),
     ).toBe(false);
   });
 
@@ -849,29 +844,26 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches the zero connector sessions rewrite path exactly", () => {
+  it("does not match removed zero connector session rewrite paths", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/sessions"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/connectors/github/sessions/not-a-uuid",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/connectors/sessions")).toBe(
-      true,
-    );
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/session"),
     ).toBe(false);
   });
 
-  it("matches the zero connector session polling rewrite path only for UUID session IDs", () => {
+  it("does not match removed zero connector session polling rewrite paths", () => {
     expect(
       matchesApiBackendRewritePath(
         `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/connectors/github/sessions/not-a-uuid",
@@ -1742,6 +1734,20 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks/agent")).toBe(false);
   });
 
+  it("matches the agent model usage observation webhook rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/agent/model-usage-observation",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/agent/model-usage-observation/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/webhooks/agent")).toBe(false);
+  });
+
   it("matches the agent storages commit webhook rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/webhooks/agent/storages/commit"),
@@ -1917,6 +1923,19 @@ describe("API backend rewrite proxy behavior", () => {
     );
     expect(matchesApiBackendRewritePath("/api/zero/billing")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/billing/portals")).toBe(
+      false,
+    );
+  });
+
+  it("matches the zero billing restore rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/billing/restore")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/restore/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing/restores")).toBe(
       false,
     );
   });
@@ -2376,6 +2395,29 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero chat thread github-prs rewrite path with one dynamic segment", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/github-prs",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/github-prs/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/github-pr",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/github-prs",
+      ),
+    ).toBe(false);
+  });
+
   it("matches the zero chat thread mark-read rewrite path with one dynamic segment", () => {
     expect(
       matchesApiBackendRewritePath(
@@ -2390,6 +2432,24 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/mark-read",
+      ),
+    ).toBe(false);
+  });
+
+  it("matches the zero chat thread model-selection rewrite path with one dynamic segment", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/model-selection",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/model-selection/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/model-selection",
       ),
     ).toBe(false);
   });
@@ -2790,20 +2850,6 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/teams")).toBe(false);
   });
 
-  it("matches the permission access requests rewrite path exactly", () => {
-    expect(
-      matchesApiBackendRewritePath("/api/zero/permission-access-requests"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath(
-        "/api/zero/permission-access-requests/extra",
-      ),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/permission-access-request"),
-    ).toBe(false);
-  });
-
   it("matches the zero secrets root rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/secrets")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/secret")).toBe(false);
@@ -2914,18 +2960,6 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/zero/secrets/DELETE_ME/extra"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/secret/DELETE_ME")).toBe(
-      false,
-    );
-  });
-
-  it("matches the permission policies rewrite path exactly", () => {
-    expect(matchesApiBackendRewritePath("/api/zero/permission-policies")).toBe(
-      true,
-    );
-    expect(
-      matchesApiBackendRewritePath("/api/zero/permission-policies/extra"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/permission-policy")).toBe(
       false,
     );
   });
@@ -3738,6 +3772,52 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.method).toBe("POST");
         expect(payload.url).toBe(
           "/api/webhooks/agent/usage-event?from=usage-event",
+        );
+        expect(payload.headers.authorization).toBe("Bearer sandbox-token");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards agent model usage observation webhook POST bodies and sandbox auth", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          runId: "run_model_usage_observation_1",
+          events: [
+            {
+              idempotencyKey: "550e8400-e29b-41d4-a716-446655440000",
+              model: "claude-sonnet-4-6",
+              category: "tokens.input",
+              quantity: 5,
+            },
+          ],
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/agent/model-usage-observation?from=model-usage-observation`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer sandbox-token",
+              "content-type": "application/json",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe(
+          "/api/webhooks/agent/model-usage-observation?from=model-usage-observation",
         );
         expect(payload.headers.authorization).toBe("Bearer sandbox-token");
         expect(payload.headers["content-type"]).toContain("application/json");

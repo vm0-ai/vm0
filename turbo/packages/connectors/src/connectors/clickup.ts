@@ -11,6 +11,10 @@ export const clickup = {
         label: "API Token",
         helpText:
           "1. Log in to [ClickUp](https://app.clickup.com)\n2. Click your avatar in the upper-right corner and select **Settings**\n3. In the sidebar, click **Apps** (or visit [app.clickup.com/settings/apps](https://app.clickup.com/settings/apps))\n4. Under the **API Token** section, click **Generate** (or **Regenerate** if you already have one)\n5. Click **Copy** to copy the personal token (tokens start with `pk_` and never expire)",
+        storage: {
+          secrets: ["CLICKUP_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -12,6 +12,14 @@ export const agora = {
         label: "REST credentials",
         helpText:
           "1. In [Agora Console](https://console.agora.io), open **Developer Toolkit > RESTful API**\n2. Click **Add a secret** to create a Customer ID and Customer Secret, then download and store the secret securely\n3. Copy your project **App ID** from Agora Console\n4. Optionally copy your **App Certificate** if you need to generate RTC or RTM tokens",
+        storage: {
+          secrets: [
+            "AGORA_CUSTOMER_ID",
+            "AGORA_CUSTOMER_SECRET",
+            "AGORA_APP_CERTIFICATE",
+          ],
+          variables: ["AGORA_APP_ID"],
+        },
         grant: {
           kind: "manual",
           fields: {
@@ -44,7 +52,10 @@ export const agora = {
             AGORA_CUSTOMER_ID: "$secrets.AGORA_CUSTOMER_ID",
             AGORA_CUSTOMER_SECRET: "$secrets.AGORA_CUSTOMER_SECRET",
             AGORA_APP_ID: "$vars.AGORA_APP_ID",
-            AGORA_APP_CERTIFICATE: "$secrets.AGORA_APP_CERTIFICATE",
+            AGORA_APP_CERTIFICATE: {
+              valueRef: "$secrets.AGORA_APP_CERTIFICATE",
+              optional: true,
+            },
           },
         },
         revoke: { kind: "none" },

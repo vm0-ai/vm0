@@ -29,6 +29,7 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     connectorType: varchar("connector_type", { length: 50 }).notNull(),
+    authMethod: varchar("auth_method", { length: 50 }).notNull(),
     status: connectorOauthDeviceAuthorizationSessionStatusEnum("status")
       .default("awaiting_user_authorization")
       .notNull(),
@@ -52,7 +53,13 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
       ),
       index(
         "idx_connector_oauth_device_authorization_sessions_owner_status",
-      ).on(table.orgId, table.userId, table.connectorType, table.status),
+      ).on(
+        table.orgId,
+        table.userId,
+        table.connectorType,
+        table.authMethod,
+        table.status,
+      ),
       index("idx_connector_oauth_device_authorization_sessions_expiration").on(
         table.status,
         table.expiresAt,

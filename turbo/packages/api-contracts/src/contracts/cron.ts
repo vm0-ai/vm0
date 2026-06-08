@@ -68,6 +68,10 @@ const cronTelegramCleanupResponseSchema = z.object({
   deleted: z.number(),
 });
 
+const cronComputerUseScreenshotCleanupResponseSchema = z.object({
+  cleaned: z.number(),
+});
+
 const cronDrainEmailOutboxResponseSchema = z.object({
   success: z.literal(true),
   drained: z.number(),
@@ -104,6 +108,19 @@ const cronAggregateInsightsAggregatedResponseSchema = z.object({
 const cronAggregateInsightsResponseSchema = z.union([
   cronAggregateInsightsSkippedResponseSchema,
   cronAggregateInsightsAggregatedResponseSchema,
+]);
+
+const cronSummarizeMemorySkippedResponseSchema = z.object({
+  skipped: z.literal(true),
+});
+
+const cronSummarizeMemorySummarizedResponseSchema = z.object({
+  summarized: z.number(),
+});
+
+const cronSummarizeMemoryResponseSchema = z.union([
+  cronSummarizeMemorySkippedResponseSchema,
+  cronSummarizeMemorySummarizedResponseSchema,
 ]);
 
 export const cronAggregateUsageContract = c.router({
@@ -155,6 +172,19 @@ export const cronTelegramCleanupContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Delete expired Telegram messages",
+  },
+});
+
+export const cronComputerUseScreenshotCleanupContract = c.router({
+  cleanup: {
+    method: "GET",
+    path: "/api/cron/computer-use-screenshot-cleanup",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronComputerUseScreenshotCleanupResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Delete expired desktop computer-use screenshots",
   },
 });
 
@@ -210,6 +240,19 @@ export const cronAggregateInsightsContract = c.router({
   },
 });
 
+export const cronSummarizeMemoryContract = c.router({
+  summarize: {
+    method: "GET",
+    path: "/api/cron/summarize-memory",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronSummarizeMemoryResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Summarize daily memory changes per user",
+  },
+});
+
 export type CronAggregateUsageContract = typeof cronAggregateUsageContract;
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
@@ -217,7 +260,10 @@ export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
 export type CronAggregateInsightsContract =
   typeof cronAggregateInsightsContract;
+export type CronSummarizeMemoryContract = typeof cronSummarizeMemoryContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
+export type CronComputerUseScreenshotCleanupContract =
+  typeof cronComputerUseScreenshotCleanupContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
 export type CronExecuteSchedulesContract = typeof cronExecuteSchedulesContract;
@@ -230,8 +276,10 @@ export {
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
+  cronComputerUseScreenshotCleanupResponseSchema,
   cronDrainEmailOutboxResponseSchema,
   cronSyncSkillsResponseSchema,
   cronExecuteSchedulesResponseSchema,
   cronAggregateInsightsResponseSchema,
+  cronSummarizeMemoryResponseSchema,
 };

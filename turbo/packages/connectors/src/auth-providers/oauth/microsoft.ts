@@ -1,8 +1,13 @@
-import type { AuthCodeGrantConnectorType } from "@vm0/connectors/connectors";
+import type {
+  AuthCodeGrantConnectorType,
+  ConnectorAuthCodeGrantConfig,
+} from "@vm0/connectors/connectors";
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "./grant-config";
 import { throwOAuthError } from "./error";
+
+const MICROSOFT_TOKEN_URL =
+  "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 
 const MICROSOFT_AUTHORIZATION_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
@@ -39,12 +44,12 @@ interface MicrosoftRefreshResult {
  * Requests offline access to obtain a refresh token.
  */
 export function buildMicrosoftAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   connectorType: MicrosoftOAuthConnectorType,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -62,14 +67,14 @@ export function buildMicrosoftAuthorizationUrl(
  * Uses the Microsoft Graph /me endpoint to identify the user.
  */
 export async function exchangeMicrosoftOAuthCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   connectorType: MicrosoftOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<MicrosoftTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(MICROSOFT_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -128,9 +133,10 @@ export async function refreshMicrosoftToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<MicrosoftRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(MICROSOFT_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

@@ -2,16 +2,19 @@
 
 import asyncio
 import json
+import threading
 import time
-from unittest.mock import patch
+import urllib.error
 
 import pytest
 
 import auth
 import registry as registry_cache
+from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.auth_state_helpers import (
     cached_headers,
     has_auth_state,
+    require_cached_headers,
     set_cached_headers,
 )
 
@@ -19,111 +22,115 @@ from tests.auth_state_helpers import (
 class TestFirewallHeaderCache:
     """Tests for get_firewall_headers caching and concurrency protection."""
 
-    async def test_concurrent_fetches_coalesce(self, headers):
+    async def test_concurrent_fetches_coalesce(self, mitm_ctx):
         """Multiple concurrent get_firewall_headers calls should make only one HTTP request."""
-        fetch_count = 0
-
-        def counting_fetch(*args, **kwargs):
-            nonlocal fetch_count
-            fetch_count += 1
-            return {
+        endpoint = FakeAuthEndpoint()
+        release_response = threading.Event()
+        endpoint.queue_json_response(
+            {
                 "headers": {"Authorization": "Bearer token"},
                 "expiresAt": time.time() + 3600,
-            }
+            },
+            release_event=release_response,
+        )
 
-        with (
-            patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
-            patch.object(auth, "_fetch_firewall_headers_sync", side_effect=counting_fetch),
-        ):
-            results = await asyncio.gather(
-                auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
-                auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
-                auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
-            )
+        with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+            started = [asyncio.Event() for _ in range(3)]
 
-        assert fetch_count == 1
-        assert all(r["headers"] == {"Authorization": "Bearer token"} for r in results)
-        assert all(r["cache_hit"] is False or r["cache_hit"] is True for r in results)
+            async def fetch_headers(started_event: asyncio.Event) -> dict:
+                started_event.set()
+                return await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
-    async def test_different_keys_fetch_independently(self, headers):
+            tasks = [asyncio.create_task(fetch_headers(started_event)) for started_event in started]
+            try:
+                await asyncio.gather(*(started_event.wait() for started_event in started))
+                assert await asyncio.to_thread(endpoint.wait_for_request_count, 1)
+                assert endpoint.request_count == 1
+                release_response.set()
+                results = await asyncio.gather(*tasks)
+            finally:
+                release_response.set()
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert endpoint.request_count == 1
+        assert endpoint.requests[0].path == "/api/webhooks/agent/firewall/auth"
+        for result in results:
+            assert result["headers"] == {"Authorization": "Bearer token"}
+            assert "cache_hit" in result
+            assert type(result["cache_hit"]) is bool
+        cache_hit_flags = [result["cache_hit"] for result in results]
+        assert sum(flag is False for flag in cache_hit_flags) == 1
+        assert sum(flag is True for flag in cache_hit_flags) == 2
+        assert require_cached_headers(("run-1", "api-1")).payload.headers == {
+            "Authorization": "Bearer token"
+        }
+
+    async def test_different_keys_fetch_independently(self, mitm_ctx):
         """Different (run_id, api_id) pairs should fetch independently."""
-        fetch_count = 0
-
-        def counting_fetch(*args, **kwargs):
-            nonlocal fetch_count
-            fetch_count += 1
-            return {
-                "headers": {"Authorization": f"Bearer token-{fetch_count}"},
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response(
+            {
+                "headers": {"Authorization": "Bearer token-1"},
                 "expiresAt": time.time() + 3600,
             }
+        )
+        endpoint.queue_json_response(
+            {
+                "headers": {"Authorization": "Bearer token-2"},
+                "expiresAt": time.time() + 3600,
+            }
+        )
 
-        with (
-            patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
-            patch.object(auth, "_fetch_firewall_headers_sync", side_effect=counting_fetch),
-        ):
-            await asyncio.gather(
+        with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+            first, second = await asyncio.gather(
                 auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
                 auth.get_firewall_headers("run-1", "api-2", "enc", {}, "tok"),
             )
 
-        assert fetch_count == 2
+        assert endpoint.request_count == 2
+        assert first["cache_hit"] is False
+        assert second["cache_hit"] is False
+        cached_tokens = {
+            require_cached_headers(cache_key).payload.headers["Authorization"]
+            for cache_key in (("run-1", "api-1"), ("run-1", "api-2"))
+        }
+        assert cached_tokens == {"Bearer token-1", "Bearer token-2"}
 
-    async def test_cache_hit_skips_fetch(self, headers):
-        """Cached entry should be returned without fetching."""
-        set_cached_headers(
-            ("run-1", "api-1"),
-            headers={"Authorization": "Bearer cached"},
-            expires_at=time.time() + 3600,
-        )
-
-        with patch.object(auth, "_fetch_firewall_headers_sync") as mock_fetch:
-            result = await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
-
-        mock_fetch.assert_not_called()
-        assert result["headers"] == {"Authorization": "Bearer cached"}
-        assert result["cache_hit"] is True
-        assert "refreshed_connectors" not in result
-        assert "refreshed_secrets" not in result
-
-    async def test_expired_cache_triggers_fetch(self, headers):
-        """Expired cache entry should trigger a new fetch."""
-        set_cached_headers(
-            ("run-1", "api-1"),
-            headers={"Authorization": "Bearer old"},
-            expires_at=time.time() - 10,
-        )
-
-        def fresh_fetch(*args, **kwargs):
-            return {
-                "headers": {"Authorization": "Bearer fresh"},
+    async def test_fetch_failure_does_not_cache(self, mitm_ctx):
+        """Failed fetch should not populate cache; next caller retries independently."""
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_response(500, body=b"not-json")
+        endpoint.queue_json_response(
+            {
+                "headers": {"Authorization": "Bearer retry"},
                 "expiresAt": time.time() + 3600,
             }
+        )
 
-        with (
-            patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
-            patch.object(auth, "_fetch_firewall_headers_sync", side_effect=fresh_fetch),
-        ):
-            result = await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+        with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+            with pytest.raises(urllib.error.HTTPError):
+                await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
-        assert result["headers"] == {"Authorization": "Bearer fresh"}
-        assert result["cache_hit"] is False
+            assert endpoint.request_count == 1
+            assert cached_headers(("run-1", "api-1")) is None
 
-    async def test_fetch_failure_does_not_cache(self):
-        """Failed fetch should not populate cache; next caller retries independently."""
+            retry = await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+            assert retry["headers"] == {"Authorization": "Bearer retry"}
+            assert retry["cache_hit"] is False
+            assert endpoint.request_count == 2
+            assert require_cached_headers(("run-1", "api-1")).payload.headers == {
+                "Authorization": "Bearer retry"
+            }
 
-        def failing_fetch(*args, **kwargs):
-            raise ConnectionError("server unreachable")
+            cached = await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+            assert cached["headers"] == {"Authorization": "Bearer retry"}
+            assert cached["cache_hit"] is True
+            assert endpoint.request_count == 2
 
-        with (
-            patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
-            patch.object(auth, "_fetch_firewall_headers_sync", side_effect=failing_fetch),
-            pytest.raises(ConnectionError),
-        ):
-            await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
-
-        assert cached_headers(("run-1", "api-1")) is None
-
-    def test_registry_eviction_cleans_locks(self, tmp_path, mitm_ctx, headers):
+    def test_registry_eviction_cleans_locks(self, tmp_path, mitm_ctx):
         """When a run is evicted from registry, its locks should be cleaned up too."""
         cache_key = ("run-old", "api-1")
         set_cached_headers(cache_key, headers={}, expires_at=None)

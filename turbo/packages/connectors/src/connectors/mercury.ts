@@ -18,15 +18,28 @@ export const mercury = {
           clientIdEnv: "MERCURY_OAUTH_CLIENT_ID",
           clientSecretEnv: "MERCURY_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["MERCURY_ACCESS_TOKEN", "MERCURY_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.mercury.com/oauth2/token",
           scopes: ["offline_access"],
+          outputs: {
+            accessToken: "$secrets.MERCURY_ACCESS_TOKEN",
+            refreshToken: "$secrets.MERCURY_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "MERCURY_ACCESS_TOKEN",
-          refreshToken: "MERCURY_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.MERCURY_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.MERCURY_ACCESS_TOKEN",
+            refreshToken: "$secrets.MERCURY_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["MERCURY_ACCESS_TOKEN"],
           envBindings: {
             MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
           },
@@ -37,6 +50,10 @@ export const mercury = {
         label: "API Token",
         helpText:
           "1. Log in to your [Mercury Dashboard](https://mercury.com)\n2. Go to **Settings → Tokens**\n3. Generate a new API token\n4. Copy the token",
+        storage: {
+          secrets: ["MERCURY_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

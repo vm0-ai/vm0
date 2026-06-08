@@ -16,8 +16,8 @@ const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
 // Pinned to the web backend: feature switches must load before
 // `apiBackendEnabled$` is known, so the transport that fetches them cannot
 // itself depend on it. Going through `zeroClient$` (which routes via
-// `apiBase$` → `apiBackendEnabled$` → `featureSwitch$`) creates a static
-// import cycle even though the runtime read is now sync from localStorage.
+// `apiBackendEnabled$` → `featureSwitch$`) creates a static import cycle even
+// though the runtime read is now sync from localStorage.
 const webFeatureSwitchClient$ = computed((get) => {
   return createAuthedTsRestClient(zeroFeatureSwitchesContract, {
     baseUrl: resolveApiBase(false),

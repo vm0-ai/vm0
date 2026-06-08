@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
+  chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatMessagesContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -18,6 +19,7 @@ import type {
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   MarkReadArgs,
+  PatchModelSelectionArgs,
   PatchDraftArgs,
   RecallMessageArgs,
   SubscribeRealtimeArgs,
@@ -43,6 +45,24 @@ const patchDraft$ = command(
   },
 );
 
+const patchModelSelection$ = command(
+  async (
+    { get },
+    { threadId, modelSelection }: PatchModelSelectionArgs,
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(chatThreadModelSelectionContract);
+    await accept(
+      client.update({
+        params: { id: threadId },
+        body: { modelSelection },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+  },
+);
+
 const appendQueuedMessage$ = command(
   async (
     { get },
@@ -54,6 +74,7 @@ const appendQueuedMessage$ = command(
       clientMessageId,
       hasTextContent,
       modelSelection,
+      generationTemplate,
       forceNewSession,
     }: AppendQueuedMessageArgs,
     signal: AbortSignal,
@@ -68,6 +89,7 @@ const appendQueuedMessage$ = command(
           hasTextContent,
           clientMessageId,
           modelSelection,
+          generationTemplate,
           attachFiles: attachments ?? undefined,
           ...(forceNewSession ? { forceNewSession: true } : {}),
         },
@@ -81,6 +103,7 @@ const appendQueuedMessage$ = command(
       role: "user" as const,
       content,
       attachFiles: attachments ?? undefined,
+      generationTemplate,
       createdAt: result.body.createdAt ?? new Date().toISOString(),
     };
   },
@@ -256,6 +279,12 @@ const subscribeRealtime$ = command(
         handlers.onRunChanged$,
         signal,
       ),
+      set(
+        setAblyLoop$,
+        `chatThreadSchedulesChanged:${threadId}`,
+        handlers.onSchedulesChanged$,
+        signal,
+      ),
     ]);
     signal.throwIfAborted();
   },
@@ -330,6 +359,7 @@ export function createRemoteChatThreadDataSource(
     reloadThread$,
     initialPage$,
     patchDraft$,
+    patchModelSelection$,
     appendQueuedMessage$,
     recallMessage$,
     listMessagesAfter$,

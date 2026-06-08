@@ -21,7 +21,6 @@ function buildCommands(): Command[] {
     new Command("credit"),
     new Command("logs"),
     new Command("preference"),
-    new Command("run"),
     new Command("schedule"),
     new Command("secret"),
     new Command("github"),
@@ -34,6 +33,7 @@ function buildCommands(): Command[] {
     new Command("web"),
     new Command("host"),
     new Command("maps"),
+    new Command("banking"),
   ];
 }
 
@@ -155,7 +155,6 @@ describe("registerZeroCommands", () => {
       "credit",
       "logs",
       "preference",
-      "run",
       "secret",
       "github",
       "slack",
@@ -164,6 +163,7 @@ describe("registerZeroCommands", () => {
       "variable",
       "host",
       "maps",
+      "banking",
     ]);
   });
 
@@ -399,6 +399,31 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("maps");
   });
 
+  it("should show banking when banking:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["banking:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("banking");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide banking when banking:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("banking");
+  });
+
   it("should show credit when billing:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -465,6 +490,28 @@ describe("registerZeroCommands", () => {
 
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Get directions?",
+    );
+  });
+
+  it("should show the banking help example when banking:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["banking:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Read bank data?",
+    );
+  });
+
+  it("should hide the banking help example when banking:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Read bank data?",
     );
   });
 
@@ -540,19 +587,6 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("phone");
   });
 
-  it("should show run when agent-run:write capability is present", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["agent-run:write"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(visibleCommandNames(prog)).toContain("run");
-    expect(visibleCommandNames(prog)).toContain("whoami");
-  });
-
   it("should show logs when agent-run:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -576,18 +610,6 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("logs");
-  });
-
-  it("should hide run when agent-run:write capability is missing", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["agent:read"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(hiddenCommandNames(prog)).toContain("run");
   });
 
   it("should hide agent when agent:read capability is missing", () => {

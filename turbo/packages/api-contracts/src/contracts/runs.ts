@@ -457,6 +457,7 @@ const networkLogEntrySchema = z.object({
   latency_ms: z.number().optional(),
   request_size: z.number().optional(),
   response_size: z.number().optional(),
+  browser_user_agent: z.boolean().optional(),
   dns_event: z.string().optional(),
   dns_query_type: z.string().optional(),
   dns_result: z.string().optional(),

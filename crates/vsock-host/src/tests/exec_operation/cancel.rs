@@ -40,13 +40,7 @@ async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
         tokio::spawn(async move { start_capture_operation(&host, "blocked").await })
     };
 
-    tokio::time::timeout(Duration::from_secs(5), async {
-        while operation_count(&host) == 0 {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    wait_for_operation_count(&host, 1).await;
     task.abort();
     let _ = task.await;
     assert_eq!(operation_count(&host), 0);
@@ -100,13 +94,7 @@ async fn exec_write_observer_does_not_fire_before_frame_write() {
         })
     };
 
-    tokio::time::timeout(Duration::from_secs(5), async {
-        while operation_count(&host) == 0 {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    wait_for_operation_count(&host, 1).await;
 
     task.abort();
     let _ = task.await;
@@ -142,13 +130,7 @@ async fn exec_write_observer_fires_at_frame_write_boundary() {
         })
     };
 
-    tokio::time::timeout(Duration::from_secs(5), async {
-        while operation_count(&host) == 0 {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    wait_for_operation_count(&host, 1).await;
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
 
     drop(writer_guard);

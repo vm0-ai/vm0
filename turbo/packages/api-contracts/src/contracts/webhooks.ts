@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { secretConnectorMetadataMapSchema } from "./runners";
+import {
+  artifactMissingRootPolicySchema,
+  secretConnectorMetadataMapSchema,
+} from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
 import {
   storageTypeSchema,
@@ -149,15 +152,17 @@ const agentEventSchema = z
   .passthrough();
 
 /**
- * Artifact snapshots schema — canonical `Array<{name, version, mountPath}>`
- * form. Legacy `Record<name, version>` support was removed in #10913 after
- * the DB migration and guest-agent writer flip completed.
+ * Artifact snapshots schema — canonical
+ * `Array<{name, version, mountPath, missingRootPolicy?}>` form. Legacy
+ * `Record<name, version>` support was removed in #10913 after the DB
+ * migration and guest-agent writer flip completed.
  */
 const artifactSnapshotsSchema = z.array(
   z.object({
     name: z.string(),
     version: z.string(),
     mountPath: z.string(),
+    missingRootPolicy: artifactMissingRootPolicySchema.optional(),
   }),
 );
 
@@ -173,6 +178,9 @@ const firewallAuthErrorSchema = z.object({
     message: z.string(),
     code: z.string(),
     connectors: z.array(z.string()).optional(),
+    failureReason: z
+      .enum(["upstream_provider", "reconnect_required"])
+      .optional(),
   }),
 });
 
@@ -663,8 +671,8 @@ export type WebhookStoragesCommitContract =
 /**
  * Webhook usage event contract for /api/webhooks/agent/usage-event
  *
- * Receives billable usage records from the sandbox for persistence in the
- * `usage_event` table. Reporters send `{ runId, events }` batches.
+ * Receives billing usage records from the sandbox for persistence in the
+ * `usage_event` ledger. Reporters send `{ runId, events }` batches.
  */
 const webhookUsageEventItemSchema = z
   .object({
@@ -696,8 +704,57 @@ export const webhookUsageEventContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Receive usage event data from sandbox",
+    summary: "Receive billing usage event data from sandbox",
+  },
+});
+
+/**
+ * Webhook model usage observation contract for
+ * /api/webhooks/agent/model-usage-observation
+ *
+ * Receives model token observations from the sandbox for model usage statistics.
+ * This endpoint is not a billing ledger input.
+ */
+const modelUsageObservationCategorySchema = z.enum([
+  "tokens.input",
+  "tokens.output",
+  "tokens.cache_read",
+  "tokens.cache_creation",
+]);
+
+const webhookModelUsageObservationItemSchema = z
+  .object({
+    idempotencyKey: z.uuid(),
+    model: z.string().min(1).max(255),
+    category: modelUsageObservationCategorySchema,
+    quantity: z.number().int().min(1),
+  })
+  .strict();
+
+export const webhookModelUsageObservationContract = c.router({
+  send: {
+    method: "POST",
+    path: "/api/webhooks/agent/model-usage-observation",
+    headers: authHeadersSchema,
+    body: z
+      .object({
+        runId: z.string().min(1, "runId is required"),
+        events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
+      })
+      .strict(),
+    responses: {
+      200: z.object({
+        success: z.boolean(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Receive model usage observation data from sandbox",
   },
 });
 
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
+export type WebhookModelUsageObservationContract =
+  typeof webhookModelUsageObservationContract;

@@ -18,9 +18,12 @@ export const spotify = {
           clientIdEnv: "SPOTIFY_OAUTH_CLIENT_ID",
           clientSecretEnv: "SPOTIFY_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["SPOTIFY_ACCESS_TOKEN", "SPOTIFY_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://accounts.spotify.com/api/token",
           scopes: [
             "ugc-image-upload",
             "user-read-playback-state",
@@ -42,11 +45,21 @@ export const spotify = {
             "user-read-email",
             "user-read-private",
           ],
+          outputs: {
+            accessToken: "$secrets.SPOTIFY_ACCESS_TOKEN",
+            refreshToken: "$secrets.SPOTIFY_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "SPOTIFY_ACCESS_TOKEN",
-          refreshToken: "SPOTIFY_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.SPOTIFY_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.SPOTIFY_ACCESS_TOKEN",
+            refreshToken: "$secrets.SPOTIFY_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["SPOTIFY_ACCESS_TOKEN"],
           envBindings: {
             SPOTIFY_TOKEN: "$secrets.SPOTIFY_ACCESS_TOKEN",
           },

@@ -133,7 +133,6 @@ function mockAPIsWithSubagents({
         ownerId: "test-user-123",
         description: null,
         sound: null,
-        permissionPolicies: null,
         customSkills: [],
         modelProviderId: null,
         selectedModel: null,

@@ -71,6 +71,7 @@ jobs:
           set -euo pipefail
           CHANGES_JSON=$(./scripts/changed.sh "$BASE_REF")
           web_changed=$(echo "$CHANGES_JSON" | jq -r '."web" // false')
+          api_changed=$(echo "$CHANGES_JSON" | jq -r '."api" // false')
           cli_changed=$(echo "$CHANGES_JSON" | jq -r '."@vm0/cli" // false')
 
           if git diff --name-only "$BASE_REF" HEAD | grep -q "^crates/"; then
@@ -93,6 +94,7 @@ jobs:
 
           EVENT_NAME="${{ github.event_name }}" \
           WEB_CHANGED="$web_changed" \
+          API_CHANGED="$api_changed" \
           CLI_CHANGED="$cli_changed" \
           CRATES_CHANGED="$crates_changed" \
           CI_CHANGED="$ci_changed" \

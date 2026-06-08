@@ -11,6 +11,10 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  type HostedArtifactKind,
+  hostedArtifactKindSchema,
+} from "@vm0/api-contracts/contracts/zero-host";
+import {
   formatRunErrorForExternalSurface,
   isActionableRunError,
   isGenericRunErrorForDisplay,
@@ -21,10 +25,14 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
+  type ChatMessageGenerationTemplate,
+  type ChatMessageRecommendedFollowupGenerationType,
+  type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   and,
@@ -34,6 +42,7 @@ import {
   gt,
   gte,
   ilike,
+  inArray,
   isNotNull,
   isNull,
   lt,
@@ -55,6 +64,7 @@ import {
 } from "../external/realtime";
 import { listS3Objects } from "../external/s3";
 import { safeJsonParse } from "../utils";
+import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
 
@@ -104,8 +114,12 @@ type ChatMessageRow = {
   readonly runError: string | null;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
+  readonly generationTemplate: ChatMessageGenerationTemplate | null;
+  readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
+  readonly scheduleId: string | null;
+  readonly scheduleTitle: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -149,8 +163,15 @@ function effectiveChatMessageRunId() {
 /**
  * Advances chat_threads.last_message_at to NOW(), but only forward — GREATEST
  * guards against an out-of-order write rewinding the column and silently
- * pulling a thread back down the sidebar. Call inside the same transaction as
- * the chat_messages insert so the recency index stays accurate.
+ * pulling a thread back down the sidebar.
+ *
+ * The sidebar orders threads by this column, and we deliberately bump it ONLY
+ * when a run reaches a terminal state (completed / failed / cancelled) — not on
+ * user sends or mid-stream assistant events. So a thread surfaces to the top
+ * when its run finishes, not the moment you hit send. Call inside the same
+ * transaction as the terminal run-lifecycle marker insert so the recency index
+ * stays accurate. Despite the historical column name, this now tracks
+ * last-run-finished time.
  */
 export async function touchChatThreadLastMessageAt(
   tx: Pick<Db, "update">,
@@ -174,6 +195,8 @@ export function visibleChatMessageCondition() {
       ${chatMessages.role} = 'user'
       AND ${chatMessages.runId} IS NULL
       AND ${chatMessages.revokesMessageId} IS NOT NULL
+      AND ${chatMessages.content} IS NULL
+      AND ${chatMessages.error} IS NULL
     )
     AND NOT (
       ${chatMessages.role} = 'user'
@@ -195,8 +218,12 @@ const messageColumns = {
   runError: agentRuns.error,
   attachFiles: chatMessages.attachFiles,
   attachFileMetadata: chatMessages.attachFileMetadata,
+  generationTemplate: chatMessages.generationTemplate,
+  recommendedFollowups: chatMessages.recommendedFollowups,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
+  scheduleId: chatMessages.scheduleId,
+  scheduleTitle: chatMessages.scheduleTitle,
 } as const;
 
 const searchMessageColumns = {
@@ -221,6 +248,22 @@ function inferMimetype(filename: string): string {
   return ext
     ? (EXT_MIMETYPE_MAP[ext] ?? "application/octet-stream")
     : "application/octet-stream";
+}
+
+function parseHostedArtifactKind(
+  value: unknown,
+): HostedArtifactKind | undefined {
+  const parsed = hostedArtifactKindSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function parseHostedArtifactKindFromMetadata(
+  metadata: unknown,
+): HostedArtifactKind | undefined {
+  if (!isRecord(metadata)) {
+    return undefined;
+  }
+  return parseHostedArtifactKind(metadata.artifactKind);
 }
 
 function hasAgentSessionId(
@@ -503,6 +546,59 @@ function lifecycleEventOrUndefined(
   return undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRecommendedFollowupGenerationType(
+  value: unknown,
+): value is ChatMessageRecommendedFollowupGenerationType {
+  return (
+    value === "image" ||
+    value === "video" ||
+    value === "presentation" ||
+    value === "website"
+  );
+}
+
+function normalizeRecommendedFollowups(
+  value: unknown,
+): ChatMessageRecommendedFollowups | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const seen = new Set<string>();
+  const followups: ChatMessageRecommendedFollowups = [];
+  for (const item of value) {
+    const prompt =
+      typeof item === "string"
+        ? item.trim()
+        : isRecord(item) && typeof item.prompt === "string"
+          ? item.prompt.trim()
+          : "";
+    if (prompt.length === 0 || seen.has(prompt)) {
+      continue;
+    }
+    seen.add(prompt);
+
+    if (!isRecord(item) || item.kind !== "generate") {
+      followups.push({ prompt, kind: "talk" });
+      continue;
+    }
+
+    followups.push({
+      prompt,
+      kind: "generate",
+      ...(isRecommendedFollowupGenerationType(item.generationType)
+        ? { generationType: item.generationType }
+        : {}),
+    });
+  }
+
+  return followups.length > 0 ? followups : undefined;
+}
+
 function toPagedMessage(
   threadId: string,
   userId: string,
@@ -540,12 +636,15 @@ function toPagedMessage(
       interruptsRunId: row.interruptsRunId ?? undefined,
       error: effectiveError,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
+      generationTemplate: row.generationTemplate ?? undefined,
       createdAt: row.createdAt.toISOString(),
     };
     if (role !== "assistant") {
       return {
         ...message,
         role: "user" as const,
+        scheduleId: row.scheduleId ?? undefined,
+        scheduleTitle: row.scheduleTitle ?? undefined,
       };
     }
     return {
@@ -553,6 +652,9 @@ function toPagedMessage(
       role: "assistant" as const,
       status: chatMessageStatus(row),
       runLifecycleEvent: lifecycleEventOrUndefined(row.runLifecycleEvent),
+      recommendedFollowups: normalizeRecommendedFollowups(
+        row.recommendedFollowups,
+      ),
     };
   });
 }
@@ -771,6 +873,11 @@ function chatThreadListProjection(lastMessage: LastMessageSubquery) {
         AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
       )
     )`,
+    scheduleCount: sql<number>`(
+      SELECT COUNT(*)::int
+      FROM ${zeroAgentSchedules}
+      WHERE ${zeroAgentSchedules.chatThreadId} = ${chatThreads.id}
+    )`,
   } as const;
 }
 
@@ -787,6 +894,7 @@ type ChatThreadListRow = {
   readonly isRead: boolean;
   readonly running: boolean;
   readonly hasDraft: boolean;
+  readonly scheduleCount: number;
 };
 
 function rowToChatThreadListItem(
@@ -804,6 +912,7 @@ function rowToChatThreadListItem(
     isRead: thread.isRead,
     running: thread.running,
     hasDraft: thread.hasDraft,
+    scheduleCount: thread.scheduleCount,
     pinnedAt: thread.pinnedAt?.toISOString() ?? null,
     renamedAt: thread.renamedAt?.toISOString() ?? null,
   };
@@ -895,26 +1004,6 @@ export function zeroChatThreadList(args: {
   });
 }
 
-export function ownedChatThreadById(args: {
-  readonly threadId: string;
-  readonly userId: string;
-}): Computed<Promise<{ readonly id: string } | null>> {
-  return computed(async (get): Promise<{ readonly id: string } | null> => {
-    const [thread] = await get(db$)
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(
-        and(
-          eq(chatThreads.id, args.threadId),
-          eq(chatThreads.userId, args.userId),
-        ),
-      )
-      .limit(1);
-
-    return thread ?? null;
-  });
-}
-
 export function zeroChatThreadArtifacts(args: {
   readonly threadId: string;
   readonly userId: string;
@@ -956,19 +1045,21 @@ export function zeroChatThreadArtifacts(args: {
         )
         .orderBy(asc(agentRuns.createdAt), asc(runUploadedFiles.createdAt));
 
-      const hostedSiteRunIds = new Set(
+      const hostedArtifactRunIds = new Set(
         rows
           .filter((row) => {
-            return row.metadata.artifactKind === "hosted-site";
+            return (
+              parseHostedArtifactKindFromMetadata(row.metadata) !== undefined
+            );
           })
           .map((row) => {
             return row.runId;
           }),
       );
       const visibleRows = rows.filter((row) => {
+        const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
         return (
-          !hostedSiteRunIds.has(row.runId) ||
-          row.metadata.artifactKind === "hosted-site"
+          !hostedArtifactRunIds.has(row.runId) || artifactKind !== undefined
         );
       });
 
@@ -991,12 +1082,14 @@ export function zeroChatThreadArtifacts(args: {
           runId: row.runId,
           files: [],
         };
+        const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
         existing.files.push({
           id: row.externalId,
           filename,
           contentType: row.contentType ?? inferMimetype(filename),
           size: row.sizeBytes ?? 0,
           url: row.url,
+          ...(artifactKind ? { artifactKind } : {}),
           createdAt: row.createdAt.toISOString(),
         });
         byRun.set(row.runId, existing);
@@ -1265,48 +1358,6 @@ export const createChatThread$ = command(
   },
 );
 
-export const insertIntegrationChatMessage$ = command(
-  async (
-    { set },
-    args: {
-      readonly chatThreadId: string;
-      readonly userId: string;
-      readonly content: string;
-    },
-    signal: AbortSignal,
-  ): Promise<{ readonly id: string; readonly createdAt: Date }> => {
-    const writeDb = set(writeDb$);
-    const [message] = await writeDb
-      .insert(chatMessages)
-      .values({
-        chatThreadId: args.chatThreadId,
-        role: "assistant",
-        content: args.content,
-        runId: null,
-      })
-      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
-    signal.throwIfAborted();
-
-    if (!message) {
-      throw new Error("Failed to insert chat message");
-    }
-
-    await touchChatThreadLastMessageAt(writeDb, args.chatThreadId);
-    signal.throwIfAborted();
-
-    await publishUserSignal(
-      [args.userId],
-      `chatThreadMessageCreated:${args.chatThreadId}`,
-    );
-    signal.throwIfAborted();
-
-    await publishThreadListChanged(args.userId);
-    signal.throwIfAborted();
-
-    return message;
-  },
-);
-
 export function chatThreadForRun(
   runId: string,
 ): Computed<
@@ -1372,9 +1423,6 @@ export const insertAssistantEventMessages$ = command(
     signal.throwIfAborted();
 
     if (rows.length > 0) {
-      await touchChatThreadLastMessageAt(writeDb, args.threadId);
-      signal.throwIfAborted();
-
       await publishUserSignal(
         [args.userId],
         `chatThreadMessageCreated:${args.threadId}`,
@@ -1389,24 +1437,94 @@ export const insertAssistantEventMessages$ = command(
   },
 );
 
+const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
+
+/**
+ * Delete a chat thread after winding down everything attached to it. Deleting a
+ * thread on its own leaves the linked schedules firing and any in-flight runs
+ * executing: `zero_runs.chatThreadId` is `ON DELETE SET NULL`, so a running run
+ * simply loses its thread reference and keeps consuming credits. We therefore
+ * follow the order: stop related schedules, cancel related active runs, then
+ * delete the thread.
+ *
+ * Run cancellation has side effects that cannot participate in the thread's
+ * delete transaction (`cancelRun$` opens its own transaction and the runner
+ * must be notified), so ownership is verified up front and the cancelled-run
+ * results are returned for the caller to dispatch the post-cancel side effects.
+ */
 export const deleteChatThread$ = command(
   async (
     { set },
     args: { readonly threadId: string; readonly userId: string },
     signal: AbortSignal,
-  ): Promise<{ deleted: boolean }> => {
+  ): Promise<{
+    readonly deleted: boolean;
+    readonly cancelledRuns: readonly CancelRunResult[];
+  }> => {
     const writeDb = set(writeDb$);
-    const deleted = await writeDb
-      .delete(chatThreads)
+
+    const [ownedThread] = await writeDb
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
       .where(
         and(
           eq(chatThreads.id, args.threadId),
           eq(chatThreads.userId, args.userId),
         ),
       )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!ownedThread) {
+      return { deleted: false, cancelledRuns: [] };
+    }
+
+    // Stop related schedules first so none of them can spawn a fresh run while
+    // we are cancelling the in-flight ones.
+    await writeDb
+      .delete(zeroAgentSchedules)
+      .where(eq(zeroAgentSchedules.chatThreadId, ownedThread.id));
+    signal.throwIfAborted();
+
+    // Cancel related active runs. Terminal runs (completed/failed/cancelled)
+    // are left untouched; only queued/pending/running runs need stopping.
+    const activeRuns = await writeDb
+      .select({ runId: agentRuns.id, orgId: agentRuns.orgId })
+      .from(zeroRuns)
+      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+      .where(
+        and(
+          eq(zeroRuns.chatThreadId, ownedThread.id),
+          eq(agentRuns.userId, args.userId),
+          inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
+        ),
+      );
+    signal.throwIfAborted();
+
+    const cancelledRuns: CancelRunResult[] = [];
+    for (const run of activeRuns) {
+      const result = await set(
+        cancelRun$,
+        { runId: run.runId, userId: args.userId, orgId: run.orgId },
+        signal,
+      );
+      signal.throwIfAborted();
+      // Pre-filtered to active runs, but a concurrent transition can still race
+      // a run to a terminal status; cancelRun$ then returns a frozen error
+      // response (no `alreadyCancelled` field), which we skip.
+      if ("alreadyCancelled" in result) {
+        cancelledRuns.push(result);
+      }
+    }
+
+    // Delete the thread last. Cascades chat_messages; the now-cancelled runs
+    // have their zero_runs.chatThreadId set to NULL.
+    const [deletedThread] = await writeDb
+      .delete(chatThreads)
+      .where(eq(chatThreads.id, ownedThread.id))
       .returning({ id: chatThreads.id });
     signal.throwIfAborted();
-    return { deleted: deleted.length > 0 };
+
+    return { deleted: Boolean(deletedThread), cancelledRuns };
   },
 );
 

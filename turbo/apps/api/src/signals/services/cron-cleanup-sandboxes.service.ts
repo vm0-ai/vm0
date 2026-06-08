@@ -1,4 +1,4 @@
-import { command, type Command, type Computed } from "ccstate";
+import { command } from "ccstate";
 import {
   agentComposeVersions,
   agentComposes,
@@ -60,12 +60,6 @@ interface CleanupCutoffs {
   readonly pending: Date;
 }
 
-type ComputedGetter = <T>(source: Computed<T>) => T;
-type CommandSetter = <T, TArgs extends unknown[]>(
-  command: Command<T, TArgs>,
-  ...args: TArgs
-) => T;
-
 function staleRunCutoff(run: StaleRun, cutoffs: CleanupCutoffs): Date {
   if (run.status === "pending") {
     return cutoffs.pending;
@@ -80,174 +74,178 @@ function isExpiredRun(run: StaleRun, cutoffs: CleanupCutoffs): boolean {
   return referenceTime < staleRunCutoff(run, cutoffs);
 }
 
-async function cleanupExportJobs(
-  get: ComputedGetter,
-  db: Db,
-  signal: AbortSignal,
-): Promise<{
-  readonly exportJobsCleaned: number;
-  readonly exportJobsStuck: number;
-}> {
-  let exportJobsCleaned = 0;
-  let exportJobsStuck = 0;
-  const currentTime = nowDate();
+const cleanupExportJobs$ = command(
+  async (
+    { get },
+    db: Db,
+    signal: AbortSignal,
+  ): Promise<{
+    readonly exportJobsCleaned: number;
+    readonly exportJobsStuck: number;
+  }> => {
+    let exportJobsCleaned = 0;
+    let exportJobsStuck = 0;
+    const currentTime = nowDate();
 
-  const expiredExports = await db
-    .select({ id: exportJobs.id, s3Key: exportJobs.s3Key })
-    .from(exportJobs)
-    .where(
-      and(
-        eq(exportJobs.status, "completed"),
-        isNotNull(exportJobs.expiresAt),
-        lt(exportJobs.expiresAt, currentTime),
-      ),
-    );
-  signal.throwIfAborted();
-
-  if (expiredExports.length > 0) {
-    const s3Keys = expiredExports
-      .map((entry) => {
-        return entry.s3Key;
-      })
-      .filter((key): key is string => {
-        return key !== null;
-      });
-    if (s3Keys.length > 0) {
-      await get(deleteS3Objects(env("R2_USER_STORAGES_BUCKET_NAME"), s3Keys));
-      signal.throwIfAborted();
-    }
-
-    await db.delete(exportJobs).where(
-      inArray(
-        exportJobs.id,
-        expiredExports.map((entry) => {
-          return entry.id;
-        }),
-      ),
-    );
-    signal.throwIfAborted();
-
-    exportJobsCleaned = expiredExports.length;
-    L.debug("Cleaned up expired export jobs", { count: exportJobsCleaned });
-  }
-
-  const stuckCutoffTime = new Date(now() - EXPORT_JOB_TIMEOUT_MS);
-  const stuckExportJobs = await db
-    .select({ id: exportJobs.id })
-    .from(exportJobs)
-    .where(
-      and(
-        inArray(exportJobs.status, ["pending", "running"]),
-        lt(exportJobs.createdAt, stuckCutoffTime),
-      ),
-    );
-  signal.throwIfAborted();
-
-  for (const job of stuckExportJobs) {
-    await db
-      .update(exportJobs)
-      .set({
-        status: "failed",
-        completedAt: currentTime,
-        error: "Export job timed out",
-      })
+    const expiredExports = await db
+      .select({ id: exportJobs.id, s3Key: exportJobs.s3Key })
+      .from(exportJobs)
       .where(
         and(
-          eq(exportJobs.id, job.id),
-          inArray(exportJobs.status, ["pending", "running"]),
+          eq(exportJobs.status, "completed"),
+          isNotNull(exportJobs.expiresAt),
+          lt(exportJobs.expiresAt, currentTime),
         ),
       );
     signal.throwIfAborted();
-    exportJobsStuck++;
-  }
 
-  if (exportJobsStuck > 0) {
-    L.debug("Failed stuck export jobs", { count: exportJobsStuck });
-  }
+    if (expiredExports.length > 0) {
+      const s3Keys = expiredExports
+        .map((entry) => {
+          return entry.s3Key;
+        })
+        .filter((key): key is string => {
+          return key !== null;
+        });
+      if (s3Keys.length > 0) {
+        await get(deleteS3Objects(env("R2_USER_STORAGES_BUCKET_NAME"), s3Keys));
+        signal.throwIfAborted();
+      }
 
-  return { exportJobsCleaned, exportJobsStuck };
-}
+      await db.delete(exportJobs).where(
+        inArray(
+          exportJobs.id,
+          expiredExports.map((entry) => {
+            return entry.id;
+          }),
+        ),
+      );
+      signal.throwIfAborted();
 
-async function cleanupSingleRun(
-  set: CommandSetter,
-  db: Db,
-  run: StaleRun,
-  cutoffs: CleanupCutoffs,
-  signal: AbortSignal,
-): Promise<CleanupResult | undefined> {
-  const timeoutReason =
-    run.status === "pending"
-      ? "Run timed out while pending (never started)"
-      : "Run timed out (no heartbeat)";
-  const cutoff = staleRunCutoff(run, cutoffs);
+      exportJobsCleaned = expiredExports.length;
+      L.debug("Cleaned up expired export jobs", { count: exportJobsCleaned });
+    }
 
-  const updated = await db.transaction(async (tx) => {
-    const [updatedRun] = await tx
-      .update(agentRuns)
-      .set({
-        status: "timeout",
-        completedAt: nowDate(),
-        error: timeoutReason,
-      })
+    const stuckCutoffTime = new Date(now() - EXPORT_JOB_TIMEOUT_MS);
+    const stuckExportJobs = await db
+      .select({ id: exportJobs.id })
+      .from(exportJobs)
       .where(
         and(
-          eq(agentRuns.id, run.id),
-          eq(agentRuns.status, run.status),
-          sql`COALESCE(${agentRuns.lastHeartbeatAt}, ${agentRuns.createdAt}) < ${sql.param(
-            cutoff,
-            agentRuns.createdAt,
-          )}`,
+          inArray(exportJobs.status, ["pending", "running"]),
+          lt(exportJobs.createdAt, stuckCutoffTime),
         ),
-      )
-      .returning({ id: agentRuns.id });
+      );
     signal.throwIfAborted();
 
-    if (!updatedRun) {
+    for (const job of stuckExportJobs) {
+      await db
+        .update(exportJobs)
+        .set({
+          status: "failed",
+          completedAt: currentTime,
+          error: "Export job timed out",
+        })
+        .where(
+          and(
+            eq(exportJobs.id, job.id),
+            inArray(exportJobs.status, ["pending", "running"]),
+          ),
+        );
+      signal.throwIfAborted();
+      exportJobsStuck++;
+    }
+
+    if (exportJobsStuck > 0) {
+      L.debug("Failed stuck export jobs", { count: exportJobsStuck });
+    }
+
+    return { exportJobsCleaned, exportJobsStuck };
+  },
+);
+
+const cleanupSingleRun$ = command(
+  async (
+    { set },
+    db: Db,
+    run: StaleRun,
+    cutoffs: CleanupCutoffs,
+    signal: AbortSignal,
+  ): Promise<CleanupResult | undefined> => {
+    const timeoutReason =
+      run.status === "pending"
+        ? "Run timed out while pending (never started)"
+        : "Run timed out (no heartbeat)";
+    const cutoff = staleRunCutoff(run, cutoffs);
+
+    const updated = await db.transaction(async (tx) => {
+      const [updatedRun] = await tx
+        .update(agentRuns)
+        .set({
+          status: "timeout",
+          completedAt: nowDate(),
+          error: timeoutReason,
+        })
+        .where(
+          and(
+            eq(agentRuns.id, run.id),
+            eq(agentRuns.status, run.status),
+            sql`COALESCE(${agentRuns.lastHeartbeatAt}, ${agentRuns.createdAt}) < ${sql.param(
+              cutoff,
+              agentRuns.createdAt,
+            )}`,
+          ),
+        )
+        .returning({ id: agentRuns.id });
+      signal.throwIfAborted();
+
+      if (!updatedRun) {
+        return undefined;
+      }
+
+      await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, run.id));
+      signal.throwIfAborted();
+
+      return updatedRun;
+    });
+    signal.throwIfAborted();
+
+    if (!updated) {
+      L.debug("Run already transitioned, skipping timeout", { runId: run.id });
       return undefined;
     }
 
-    await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, run.id));
+    await set(
+      dispatchCompleteSideEffects$,
+      {
+        runId: run.id,
+        orgId: run.orgId,
+        status: "failed",
+        error: timeoutReason,
+      },
+      signal,
+    );
     signal.throwIfAborted();
 
-    return updatedRun;
-  });
-  signal.throwIfAborted();
-
-  if (!updated) {
-    L.debug("Run already transitioned, skipping timeout", { runId: run.id });
-    return undefined;
-  }
-
-  await set(
-    dispatchCompleteSideEffects$,
-    {
+    const isDebug = run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;
+    const referenceTime = run.lastHeartbeatAt ?? run.createdAt;
+    L.debug("Cleaned up expired run", {
       runId: run.id,
-      orgId: run.orgId,
-      status: "failed",
-      error: timeoutReason,
-    },
-    signal,
-  );
-  signal.throwIfAborted();
+      status: run.status,
+      sandboxId: run.sandboxId,
+      composeName: run.composeName,
+      isDebug,
+      referenceTime: referenceTime.toISOString(),
+    });
 
-  const isDebug = run.composeName?.startsWith(DEBUG_COMPOSE_PREFIX) ?? false;
-  const referenceTime = run.lastHeartbeatAt ?? run.createdAt;
-  L.debug("Cleaned up expired run", {
-    runId: run.id,
-    status: run.status,
-    sandboxId: run.sandboxId,
-    composeName: run.composeName,
-    isDebug,
-    referenceTime: referenceTime.toISOString(),
-  });
-
-  return {
-    runId: run.id,
-    sandboxId: run.sandboxId,
-    status: "cleaned",
-    reason: timeoutReason,
-  };
-}
+    return {
+      runId: run.id,
+      sandboxId: run.sandboxId,
+      status: "cleaned",
+      reason: timeoutReason,
+    };
+  },
+);
 
 async function cleanupExpiredRunnerJobs(
   db: Db,
@@ -269,10 +267,7 @@ async function cleanupExpiredRunnerJobs(
 }
 
 export const cleanupSandboxes$ = command(
-  async (
-    { get, set },
-    signal: AbortSignal,
-  ): Promise<CleanupSandboxesResult> => {
+  async ({ set }, signal: AbortSignal): Promise<CleanupSandboxesResult> => {
     const db = set(writeDb$);
     const currentTime = now();
     const cutoffs = {
@@ -342,7 +337,7 @@ export const cleanupSandboxes$ = command(
 
     for (const run of expiredRuns) {
       const cleanupResult = await settle(
-        cleanupSingleRun(set, db, run, cutoffs, signal),
+        set(cleanupSingleRun$, db, run, cutoffs, signal),
       );
       signal.throwIfAborted();
 
@@ -368,8 +363,8 @@ export const cleanupSandboxes$ = command(
       }
     }
 
-    const { exportJobsCleaned, exportJobsStuck } = await cleanupExportJobs(
-      get,
+    const { exportJobsCleaned, exportJobsStuck } = await set(
+      cleanupExportJobs$,
       db,
       signal,
     );

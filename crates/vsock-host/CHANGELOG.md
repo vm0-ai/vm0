@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.17.22](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.21...vsock-host-v0.17.22) (2026-06-07)
+
+
+### Refactoring
+
+* split vsock-host file operations ([#16404](https://github.com/vm0-ai/vm0/issues/16404)) ([91fd804](https://github.com/vm0-ai/vm0/commit/91fd804ed41145edac21f8d08549eae18eb01a15))
+
+## [0.17.21](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.20...vsock-host-v0.17.21) (2026-06-04)
+
+
+### Documentation
+
+* document vsock exec lifecycle handles ([#16189](https://github.com/vm0-ai/vm0/issues/16189)) ([dca9ebf](https://github.com/vm0-ai/vm0/commit/dca9ebf211808185ba5b1c25d896ad7a70d50061))
+
+
+### Refactoring
+
+* centralize vsock-host mock guest scripting ([#16170](https://github.com/vm0-ai/vm0/issues/16170)) ([8d9bedf](https://github.com/vm0-ai/vm0/commit/8d9bedf68eb50df7d6a7352b880c03702d4831b9))
+
+## [0.17.20](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.19...vsock-host-v0.17.20) (2026-06-04)
+
+
+### Performance Improvements
+
+* avoid exec output payload copy ([#16081](https://github.com/vm0-ai/vm0/issues/16081)) ([3611818](https://github.com/vm0-ai/vm0/commit/3611818fcd7d15583dde5113ace28918395858cb))
+
+## [0.17.19](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.18...vsock-host-v0.17.19) (2026-06-03)
+
+
+### Bug Fixes
+
+* **vsock-host:** guard connection timeout overflow ([#16022](https://github.com/vm0-ai/vm0/issues/16022)) ([f0fcb67](https://github.com/vm0-ai/vm0/commit/f0fcb672d9add32f298806b702d78c27aed8e2d3))
+
+## [0.17.18](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.17...vsock-host-v0.17.18) (2026-06-03)
+
+
+### Documentation
+
+* document vsock exec operation API ([#15954](https://github.com/vm0-ai/vm0/issues/15954)) ([dce4119](https://github.com/vm0-ai/vm0/commit/dce41199e9e642ada2a4c05ef2036fd3148721d5))
+
 ## [0.17.17](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.16...vsock-host-v0.17.17) (2026-05-28)
 
 ## [0.17.16](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.15...vsock-host-v0.17.16) (2026-05-27)

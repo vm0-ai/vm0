@@ -2,7 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { zeroConnectorOauthDeviceAuthSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { testOauthDeviceProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-device-provider";
+import { slockProvider } from "@vm0/connectors/auth-providers/connectors/slock/provider";
+import {
+  testOauthDeviceApiProvider,
+  testOauthDeviceProvider,
+} from "@vm0/connectors/auth-providers/connectors/test-oauth-device/provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { secrets } from "@vm0/db/schema/secret";
@@ -32,11 +36,17 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const originalStartDeviceAuth = testOauthDeviceProvider.grant.startDeviceAuth;
+const originalApiStartDeviceAuth =
+  testOauthDeviceApiProvider.grant.startDeviceAuth;
 const originalPollDeviceAuth = testOauthDeviceProvider.grant.pollDeviceAuth;
+const originalSlockPollDeviceAuth = slockProvider.grant.pollDeviceAuth;
 const TEST_OAUTH_DEVICE_CODE_URL =
   "http://localhost:3000/api/test/oauth-provider/device/code";
 const TEST_OAUTH_TOKEN_URL =
   "http://localhost:3000/api/test/oauth-provider/token";
+const TEST_OAUTH_DEVICE_CLIENT_ID = "test-oauth-device-client";
+const TEST_OAUTH_DEVICE_API_CLIENT_ID = "test-oauth-device-api-client";
 const BASE44_DEVICE_CODE_URL = "https://app.base44.com/oauth/device/code";
 const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
 const BASE44_USERINFO_URL = "https://app.base44.com/oauth/userinfo";
@@ -44,6 +54,11 @@ const SLOCK_DEVICE_CODE_URL = "https://api.slock.ai/api/auth/device/authorize";
 const SLOCK_TOKEN_URL = "https://api.slock.ai/api/auth/device/token";
 const SLOCK_USERINFO_URL = "https://api.slock.ai/api/auth/me";
 const SLOCK_SERVERS_URL = "https://api.slock.ai/api/servers";
+const STRIPE_CLI_AUTH_URL = "https://dashboard.stripe.com/stripecli/auth";
+const STRIPE_CLI_BROWSER_URL =
+  "https://dashboard.stripe.com/stripecli/confirm_auth?code=STRIPE-CLI";
+const STRIPE_CLI_TEST_SECRET = "rk_test_api123";
+const STRIPE_CLI_LIVE_SECRET = "rk_live_api456";
 const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
@@ -110,13 +125,15 @@ async function cleanupUser(userId: string, orgId: string) {
 }
 
 async function encryptedProviderState(args: {
-  readonly connectorType?: "test-oauth-device" | "slock";
+  readonly connectorType?: "test-oauth-device" | "slock" | "stripe";
   readonly deviceCode: string;
+  readonly pollState?: string;
 }): Promise<string> {
   return await encryptPersistentSecretValue(
     JSON.stringify({
       connectorType: args.connectorType ?? "test-oauth-device",
       deviceCode: args.deviceCode,
+      ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
     }),
     {},
   );
@@ -126,8 +143,9 @@ function mockTestOAuthDeviceProvider(): void {
   server.use(
     http.post(TEST_OAUTH_DEVICE_CODE_URL, async ({ request }) => {
       const body = new URLSearchParams(await request.text());
+      const modeSuffix = body.get("mode") ? `:${body.get("mode")}` : "";
       return HttpResponse.json({
-        device_code: `test-device:${body.get("client_id")}:${body.get("scope")}`,
+        device_code: `test-device:${body.get("client_id")}:${body.get("scope")}${modeSuffix}`,
         user_code: "TEST-DEVICE",
         verification_uri: "https://oauth-device.test/device",
         verification_uri_complete:
@@ -182,7 +200,14 @@ function mockTestOAuthDeviceProvider(): void {
           { status: 400 },
         );
       }
-      if (!deviceCode?.startsWith("test-device:test-oauth-device-client:")) {
+      if (
+        !deviceCode?.startsWith(
+          `test-device:${TEST_OAUTH_DEVICE_CLIENT_ID}:`,
+        ) &&
+        !deviceCode?.startsWith(
+          `test-device:${TEST_OAUTH_DEVICE_API_CLIENT_ID}:`,
+        )
+      ) {
         return HttpResponse.json(
           {
             error: "invalid_grant",
@@ -309,13 +334,76 @@ function mockSlockOAuthProvider(): { readonly accessToken: string } {
   return { accessToken };
 }
 
+function mockStripeCliDashboardProvider(args?: {
+  readonly pollToken?: string;
+}): { readonly startBodies: URLSearchParams[] } {
+  const startBodies: URLSearchParams[] = [];
+  server.use(
+    http.post(STRIPE_CLI_AUTH_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      startBodies.push(body);
+      return HttpResponse.json({
+        browser_url: STRIPE_CLI_BROWSER_URL,
+        poll_url: `${STRIPE_CLI_AUTH_URL}?poll_token=${args?.pollToken ?? "test-complete"}`,
+        verification_code: "STRIPE-CLI",
+      });
+    }),
+    http.get(STRIPE_CLI_AUTH_URL, ({ request }) => {
+      const pollToken = new URL(request.url).searchParams.get("poll_token");
+      if (pollToken === "pending") {
+        return HttpResponse.json({
+          redeemed: false,
+          account_id: null,
+          account_display_name: null,
+          testmode_key_secret: null,
+          testmode_key_publishable: null,
+          livemode_key_secret: null,
+          livemode_key_publishable: null,
+        });
+      }
+      if (pollToken === "live-complete") {
+        return HttpResponse.json({
+          redeemed: true,
+          account_id: "acct_live",
+          account_display_name: "Live Stripe Account",
+          testmode_key_secret: STRIPE_CLI_TEST_SECRET,
+          livemode_key_secret: STRIPE_CLI_LIVE_SECRET,
+        });
+      }
+      if (pollToken === "missing-test-key") {
+        return HttpResponse.json({
+          redeemed: true,
+          account_id: "acct_missing",
+          livemode_key_secret: STRIPE_CLI_LIVE_SECRET,
+        });
+      }
+      if (pollToken === "malformed") {
+        return HttpResponse.text(
+          `not json ${STRIPE_CLI_AUTH_URL}?poll_token=secret-poll ${STRIPE_CLI_TEST_SECRET}`,
+        );
+      }
+      expect(pollToken).toBe("test-complete");
+      return HttpResponse.json({
+        redeemed: true,
+        account_id: "acct_test",
+        account_display_name: "Test Stripe Account",
+        testmode_key_secret: STRIPE_CLI_TEST_SECRET,
+        livemode_key_secret: STRIPE_CLI_LIVE_SECRET,
+      });
+    }),
+  );
+  return { startBodies };
+}
+
 async function createSession(args: {
   readonly userId: string;
   readonly orgId: string;
-  readonly connectorType?: "test-oauth-device" | "slock";
+  readonly connectorType?: "test-oauth-device" | "slock" | "stripe";
+  readonly authMethod?: string;
   readonly deviceCode: string;
   readonly status?: "awaiting_user_authorization" | "polling";
   readonly intervalSeconds?: number;
+  readonly pollState?: string;
   readonly updatedAt?: Date;
   readonly expiresAt?: Date;
 }): Promise<{ readonly id: string; readonly sessionToken: string }> {
@@ -329,11 +417,13 @@ async function createSession(args: {
       orgId: args.orgId,
       userId: args.userId,
       connectorType: args.connectorType ?? "test-oauth-device",
+      authMethod: args.authMethod ?? "oauth",
       status: args.status ?? "awaiting_user_authorization",
       sessionTokenHash: sessionTokenHash(sessionToken),
       encryptedProviderState: await encryptedProviderState({
         connectorType: args.connectorType ?? "test-oauth-device",
         deviceCode: args.deviceCode,
+        ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
       }),
       userCode: "TEST-DEVICE",
       verificationUri: "https://oauth-device.test/device",
@@ -404,7 +494,11 @@ describe("OAuth device authorization connector routes", () => {
   afterEach(async () => {
     clearMockedEnv();
     resetSecretKmsClientForTests();
+    testOauthDeviceProvider.grant.startDeviceAuth = originalStartDeviceAuth;
+    testOauthDeviceApiProvider.grant.startDeviceAuth =
+      originalApiStartDeviceAuth;
     testOauthDeviceProvider.grant.pollDeviceAuth = originalPollDeviceAuth;
+    slockProvider.grant.pollDeviceAuth = originalSlockPollDeviceAuth;
     while (users.length > 0) {
       const user = users.pop();
       if (user) {
@@ -423,6 +517,14 @@ describe("OAuth device authorization connector routes", () => {
     return { userId, orgId };
   }
 
+  function setupStripeUser() {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    users.push({ userId, orgId });
+    mocks.clerk.session(userId, orgId);
+    return { userId, orgId };
+  }
+
   it("starts a session and stores only encrypted provider state plus a token hash", async () => {
     const { userId, orgId } = await setupUser();
     const kms = fakeKmsClient();
@@ -435,7 +537,7 @@ describe("OAuth device authorization connector routes", () => {
     const response = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -456,6 +558,7 @@ describe("OAuth device authorization connector routes", () => {
     const session = await onlySession(response.body.sessionId);
     expect(session.orgId).toBe(orgId);
     expect(session.userId).toBe(userId);
+    expect(session.authMethod).toBe("oauth");
     expect(session.status).toBe("awaiting_user_authorization");
     expect(session.sessionTokenHash).toBe(
       sessionTokenHash(response.body.sessionToken),
@@ -476,6 +579,115 @@ describe("OAuth device authorization connector routes", () => {
     expect(kms.calls).toHaveLength(2);
   });
 
+  it("stores provider poll state encrypted without exposing it in the start response", async () => {
+    const { userId, orgId } = await setupUser();
+    const pollState = "secret-provider-poll-state";
+    testOauthDeviceProvider.grant.startDeviceAuth = async (args) => {
+      return { ...(await originalStartDeviceAuth(args)), pollState };
+    };
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "oauth" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(JSON.stringify(response.body)).not.toContain(pollState);
+    const session = await onlySession(response.body.sessionId);
+    expect(session.encryptedProviderState).not.toContain(pollState);
+    const decryptedProviderState = await decryptPersistentSecretValue(
+      session.encryptedProviderState,
+      { orgId, userId },
+    );
+    const parsedProviderState = z
+      .object({ pollState: z.string() })
+      .parse(JSON.parse(decryptedProviderState) as unknown);
+    expect(parsedProviderState.pollState).toBe(pollState);
+  });
+
+  it("accepts provider poll state at the byte limit", async () => {
+    const { orgId, userId } = await setupUser();
+    const pollState = "x".repeat(4096);
+    testOauthDeviceProvider.grant.startDeviceAuth = async (args) => {
+      return { ...(await originalStartDeviceAuth(args)), pollState };
+    };
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "oauth" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const session = await onlySession(response.body.sessionId);
+    const decryptedProviderState = await decryptPersistentSecretValue(
+      session.encryptedProviderState,
+      { orgId, userId },
+    );
+    const parsedProviderState = z
+      .object({ pollState: z.string() })
+      .parse(JSON.parse(decryptedProviderState) as unknown);
+    expect(parsedProviderState.pollState).toBe(pollState);
+  });
+
+  it.each([
+    {
+      caseName: "ascii",
+      pollState: "x".repeat(4097),
+    },
+    {
+      caseName: "multibyte",
+      pollState: `${"x".repeat(4095)}\u00e9`,
+    },
+  ])(
+    "rejects oversized $caseName provider poll state before creating a session",
+    async ({ pollState }) => {
+      const { userId, orgId } = await setupUser();
+      testOauthDeviceProvider.grant.startDeviceAuth = async (args) => {
+        return {
+          ...(await originalStartDeviceAuth(args)),
+          pollState,
+        };
+      };
+      const client = setupApp({ context })(
+        zeroConnectorOauthDeviceAuthSessionContract,
+      );
+
+      const response = await accept(
+        client.create({
+          params: { type: "test-oauth-device" },
+          body: { authMethod: "oauth" },
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [500],
+      );
+
+      expect(response.body).toStrictEqual({ error: "Internal server error" });
+      const sessions = await store
+        .set(writeDb$)
+        .select({ id: connectorOauthDeviceAuthorizationSessions.id })
+        .from(connectorOauthDeviceAuthorizationSessions)
+        .where(
+          and(
+            eq(connectorOauthDeviceAuthorizationSessions.orgId, orgId),
+            eq(connectorOauthDeviceAuthorizationSessions.userId, userId),
+          ),
+        );
+      expect(sessions).toStrictEqual([]);
+    },
+  );
+
   it("marks the previous active session as superseded when a new session starts", async () => {
     const { userId, orgId } = await setupUser();
     const client = setupApp({ context })(
@@ -485,7 +697,7 @@ describe("OAuth device authorization connector routes", () => {
     const first = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -493,7 +705,7 @@ describe("OAuth device authorization connector routes", () => {
     const second = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -530,6 +742,488 @@ describe("OAuth device authorization connector routes", () => {
     });
   });
 
+  it("does not supersede active sessions for a different auth method", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const oauthSession = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "oauth" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const apiSession = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await expect(
+      onlySession(oauthSession.body.sessionId),
+    ).resolves.toMatchObject({
+      orgId,
+      userId,
+      authMethod: "oauth",
+      status: "awaiting_user_authorization",
+    });
+    await expect(onlySession(apiSession.body.sessionId)).resolves.toMatchObject(
+      {
+        orgId,
+        userId,
+        authMethod: "api",
+        status: "awaiting_user_authorization",
+      },
+    );
+  });
+
+  it("applies default start options for an options-capable device auth method", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const session = await onlySession(response.body.sessionId);
+    const decryptedProviderState = await decryptPersistentSecretValue(
+      session.encryptedProviderState,
+      { orgId, userId },
+    );
+    expect(decryptedProviderState).toContain(
+      "test-device:test-oauth-device-api-client:read:test",
+    );
+  });
+
+  it("passes valid start options to the selected device auth provider", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api", options: { mode: "live" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const session = await onlySession(response.body.sessionId);
+    const decryptedProviderState = await decryptPersistentSecretValue(
+      session.encryptedProviderState,
+      { orgId, userId },
+    );
+    expect(decryptedProviderState).toContain(
+      "test-device:test-oauth-device-api-client:read:live",
+    );
+  });
+
+  it("rejects start options for no-options device auth methods before provider start", async () => {
+    await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let startCalled = false;
+    testOauthDeviceProvider.grant.startDeviceAuth = async (args) => {
+      startCalled = true;
+      return await originalStartDeviceAuth(args);
+    };
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "oauth", options: { mode: "live" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "test-oauth-device oauth device-auth start options are not supported: mode",
+    );
+    expect(startCalled).toBeFalsy();
+  });
+
+  it("rejects invalid start option values before provider start", async () => {
+    await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let startCalled = false;
+    testOauthDeviceApiProvider.grant.startDeviceAuth = async (args) => {
+      startCalled = true;
+      return await originalApiStartDeviceAuth(args);
+    };
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api", options: { mode: "production" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "test-oauth-device api device-auth start option mode must be one of: test, live",
+    );
+    expect(startCalled).toBeFalsy();
+  });
+
+  it("rejects unexpected start option keys before provider start", async () => {
+    await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let startCalled = false;
+    testOauthDeviceApiProvider.grant.startDeviceAuth = async (args) => {
+      startCalled = true;
+      return await originalApiStartDeviceAuth(args);
+    };
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api", options: { region: "us" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "test-oauth-device api device-auth start option region is not supported",
+    );
+    expect(startCalled).toBeFalsy();
+  });
+
+  it("rejects start option keys that collide with object prototype names before provider start", async () => {
+    await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let startCalled = false;
+    testOauthDeviceApiProvider.grant.startDeviceAuth = async (args) => {
+      startCalled = true;
+      return await originalApiStartDeviceAuth(args);
+    };
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: {
+          authMethod: "api",
+          options: Object.fromEntries([["toString", "live"]]),
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "test-oauth-device api device-auth start option toString is not supported",
+    );
+    expect(startCalled).toBeFalsy();
+  });
+
+  it("starts a Stripe CLI session without exposing the Dashboard poll URL", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    const stripeMock = mockStripeCliDashboardProvider();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "test" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(stripeMock.startBodies).toHaveLength(1);
+    expect(stripeMock.startBodies[0]?.get("client_version")).toBeTruthy();
+    expect(stripeMock.startBodies[0]?.get("device_name")).toBe(
+      "vm0-stripe-connector",
+    );
+    expect(response.body).toMatchObject({
+      type: "stripe",
+      status: "pending",
+      userCode: "STRIPE-CLI",
+      verificationUri: STRIPE_CLI_BROWSER_URL,
+      verificationUriComplete: STRIPE_CLI_BROWSER_URL,
+      expiresIn: 600,
+      interval: 1,
+    });
+    expect(JSON.stringify(response.body)).not.toContain("poll_token");
+
+    const session = await onlySession(response.body.sessionId);
+    expect(session.orgId).toBe(orgId);
+    expect(session.userId).toBe(userId);
+    expect(session.authMethod).toBe("cli");
+    expect(session.encryptedProviderState).not.toContain("poll_token");
+    const decryptedProviderState = await decryptPersistentSecretValue(
+      session.encryptedProviderState,
+      { orgId, userId },
+    );
+    const providerState = z
+      .object({
+        connectorType: z.literal("stripe"),
+        deviceCode: z.literal("stripe-cli-dashboard-auth"),
+        pollState: z.string(),
+      })
+      .parse(JSON.parse(decryptedProviderState) as unknown);
+    expect(providerState.pollState).toContain("test-complete");
+    expect(providerState.pollState).toContain('"mode":"test"');
+  });
+
+  it("rejects invalid Stripe CLI mode before provider start", async () => {
+    await setupStripeUser();
+    const stripeMock = mockStripeCliDashboardProvider();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "production" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "stripe cli device-auth start option mode must be one of: test, live",
+    );
+    expect(stripeMock.startBodies).toStrictEqual([]);
+  });
+
+  it("polls a pending Stripe CLI session without persisting a connector", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    mockStripeCliDashboardProvider({ pollToken: "pending" });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "test" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await makeSessionPollable(start.body.sessionId);
+
+    const response = await accept(
+      client.poll({
+        params: { type: "stripe", sessionId: start.body.sessionId },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ status: "pending", interval: 1 });
+    await expect(
+      connectorSecretValue(userId, orgId, "STRIPE_TOKEN"),
+    ).resolves.toBeNull();
+    await expect(onlySession(start.body.sessionId)).resolves.toMatchObject({
+      status: "awaiting_user_authorization",
+      intervalSeconds: 1,
+    });
+  });
+
+  it("completes a Stripe CLI test session and stores STRIPE_TOKEN plus expiry", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    mockStripeCliDashboardProvider({ pollToken: "test-complete" });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "test" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await makeSessionPollable(start.body.sessionId);
+
+    const response = await accept(
+      client.poll({
+        params: { type: "stripe", sessionId: start.body.sessionId },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("complete");
+    expect(JSON.stringify(response.body)).not.toContain(STRIPE_CLI_TEST_SECRET);
+    await expect(
+      connectorSecretValue(userId, orgId, "STRIPE_TOKEN"),
+    ).resolves.toBe(STRIPE_CLI_TEST_SECRET);
+
+    const stored = await store
+      .set(writeDb$)
+      .select({
+        authMethod: connectors.authMethod,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+        tokenExpiresAt: connectors.tokenExpiresAt,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.userId, userId),
+          eq(connectors.orgId, orgId),
+          eq(connectors.type, "stripe"),
+        ),
+      );
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      authMethod: "cli",
+      externalId: "acct_test",
+      externalUsername: "Test Stripe Account",
+      externalEmail: null,
+      oauthScopes: JSON.stringify([]),
+    });
+    const tokenExpiresAt = stored[0]?.tokenExpiresAt;
+    if (!tokenExpiresAt) {
+      throw new Error("Expected Stripe CLI token expiry to be stored");
+    }
+    expect(tokenExpiresAt.getTime()).toBeGreaterThan(
+      nowDate().getTime() + 89 * 24 * 60 * 60 * 1000,
+    );
+    expect(tokenExpiresAt.getTime()).toBeLessThanOrEqual(
+      nowDate().getTime() + 90 * 24 * 60 * 60 * 1000,
+    );
+  });
+
+  it("completes a Stripe CLI live session with the live key", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    mockStripeCliDashboardProvider({ pollToken: "live-complete" });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "live" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await makeSessionPollable(start.body.sessionId);
+
+    const response = await accept(
+      client.poll({
+        params: { type: "stripe", sessionId: start.body.sessionId },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("complete");
+    await expect(
+      connectorSecretValue(userId, orgId, "STRIPE_TOKEN"),
+    ).resolves.toBe(STRIPE_CLI_LIVE_SECRET);
+  });
+
+  it("returns a terminal Stripe CLI error when the selected key is missing", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    mockStripeCliDashboardProvider({ pollToken: "missing-test-key" });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "test" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await makeSessionPollable(start.body.sessionId);
+
+    const response = await accept(
+      client.poll({
+        params: { type: "stripe", sessionId: start.body.sessionId },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      status: "error",
+      errorCode: "stripe_cli_auth_error",
+      errorMessage: "Stripe CLI auth did not return a test mode key",
+    });
+    await expect(
+      connectorSecretValue(userId, orgId, "STRIPE_TOKEN"),
+    ).resolves.toBeNull();
+    await expect(onlySession(start.body.sessionId)).resolves.toMatchObject({
+      status: "error",
+      errorCode: "stripe_cli_auth_error",
+    });
+  });
+
+  it("redacts malformed Stripe CLI poll responses", async () => {
+    const { userId, orgId } = await setupStripeUser();
+    mockStripeCliDashboardProvider({ pollToken: "malformed" });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "stripe" },
+        body: { authMethod: "cli", options: { mode: "test" } },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await makeSessionPollable(start.body.sessionId);
+
+    const response = await accept(
+      client.poll({
+        params: { type: "stripe", sessionId: start.body.sessionId },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("error");
+    if (response.body.status !== "error") {
+      throw new Error("Expected Stripe CLI malformed poll to return an error");
+    }
+    expect(response.body.errorMessage).not.toContain("secret-poll");
+    expect(response.body.errorMessage).not.toContain(STRIPE_CLI_TEST_SECRET);
+    await expect(
+      connectorSecretValue(userId, orgId, "STRIPE_TOKEN"),
+    ).resolves.toBeNull();
+  });
+
   it("does not persist a superseded session that completes after a new session starts", async () => {
     const { userId, orgId } = await setupUser();
     const client = setupApp({ context })(
@@ -538,7 +1232,7 @@ describe("OAuth device authorization connector routes", () => {
     const first = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -568,7 +1262,7 @@ describe("OAuth device authorization connector routes", () => {
     const second = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -600,7 +1294,7 @@ describe("OAuth device authorization connector routes", () => {
     const response = await accept(
       client.create({
         params: { type: "github" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -620,7 +1314,7 @@ describe("OAuth device authorization connector routes", () => {
     const response = await accept(
       client.create({
         params: { type: "cloudinary" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -643,7 +1337,7 @@ describe("OAuth device authorization connector routes", () => {
     const response = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [403],
@@ -652,6 +1346,190 @@ describe("OAuth device authorization connector routes", () => {
     expect(response.body.error.message).toBe(
       "OAuth device authorization is not enabled for this connector",
     );
+  });
+
+  it("rejects selected auth methods that are not device-auth methods", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api-token" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "test-oauth-device connector does not have api-token auth method",
+    );
+    await expect(connectorAccessToken(userId, orgId)).resolves.toBeNull();
+  });
+
+  it("polls with the auth method stored on the session", async () => {
+    const { userId, orgId } = await setupUser();
+    const session = await createSession({
+      userId,
+      orgId,
+      authMethod: "api-token",
+      deviceCode: "pending",
+    });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.poll({
+        params: { type: "test-oauth-device", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [500],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Invalid OAuth device authorization session",
+    );
+  });
+
+  it("rejects polls when the stored auth method is no longer available", async () => {
+    const { userId, orgId } = await setupUser();
+    const session = await createSession({
+      userId,
+      orgId,
+      deviceCode: "pending",
+    });
+    await store
+      .set(writeDb$)
+      .delete(userFeatureSwitches)
+      .where(
+        and(
+          eq(userFeatureSwitches.userId, userId),
+          eq(userFeatureSwitches.orgId, orgId),
+        ),
+      );
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.poll({
+        params: { type: "test-oauth-device", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toBe(
+      "OAuth device authorization is not enabled for this connector",
+    );
+  });
+
+  it("passes encrypted provider poll state back to the provider during poll", async () => {
+    const { userId, orgId } = await setupUser();
+    const pollState = "secret-provider-poll-state";
+    const session = await createSession({
+      userId,
+      orgId,
+      deviceCode: "pending",
+      pollState,
+    });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let observedPollState: string | undefined;
+    testOauthDeviceProvider.grant.pollDeviceAuth = (args) => {
+      observedPollState = args.pollState;
+      return Promise.resolve({ status: "pending" });
+    };
+
+    const response = await accept(
+      client.poll({
+        params: { type: "test-oauth-device", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ status: "pending", interval: 5 });
+    expect(JSON.stringify(response.body)).not.toContain(pollState);
+    expect(observedPollState).toBe(pollState);
+  });
+
+  it("polls existing provider state that omits poll state", async () => {
+    const { userId, orgId } = await setupUser();
+    const session = await createSession({
+      userId,
+      orgId,
+      deviceCode: "pending",
+    });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let pollCalled = false;
+    let observedPollState: string | undefined;
+    testOauthDeviceProvider.grant.pollDeviceAuth = (args) => {
+      pollCalled = true;
+      observedPollState = args.pollState;
+      return Promise.resolve({ status: "pending" });
+    };
+
+    const response = await accept(
+      client.poll({
+        params: { type: "test-oauth-device", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ status: "pending", interval: 5 });
+    expect(pollCalled).toBeTruthy();
+    expect(observedPollState).toBeUndefined();
+  });
+
+  it("fails safely for malformed encrypted provider state", async () => {
+    const { userId, orgId } = await setupUser();
+    const session = await createSession({
+      userId,
+      orgId,
+      deviceCode: "pending",
+    });
+    await store
+      .set(writeDb$)
+      .update(connectorOauthDeviceAuthorizationSessions)
+      .set({
+        encryptedProviderState: await encryptPersistentSecretValue(
+          JSON.stringify({ connectorType: "test-oauth-device" }),
+          {},
+        ),
+      })
+      .where(eq(connectorOauthDeviceAuthorizationSessions.id, session.id));
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    let pollCalled = false;
+    testOauthDeviceProvider.grant.pollDeviceAuth = () => {
+      pollCalled = true;
+      return Promise.resolve({ status: "pending" });
+    };
+
+    const response = await accept(
+      client.poll({
+        params: { type: "test-oauth-device", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(pollCalled).toBeFalsy();
   });
 
   it("polls pending and restores the session to awaiting authorization", async () => {
@@ -706,7 +1584,7 @@ describe("OAuth device authorization connector routes", () => {
     expect((await onlySession(session.id)).intervalSeconds).toBe(10);
   });
 
-  it("completes a session through OAuth connector persistence without leaking tokens", async () => {
+  it("completes a session through connector token persistence without leaking tokens", async () => {
     const { userId, orgId } = await setupUser();
     const client = setupApp({ context })(
       zeroConnectorOauthDeviceAuthSessionContract,
@@ -714,7 +1592,7 @@ describe("OAuth device authorization connector routes", () => {
     const start = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -762,6 +1640,55 @@ describe("OAuth device authorization connector routes", () => {
     expect((await onlySession(start.body.sessionId)).status).toBe("complete");
   });
 
+  it("completes a session with the stored non-default auth method", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const response = await accept(
+      client.poll({
+        params: {
+          type: "test-oauth-device",
+          sessionId: start.body.sessionId,
+        },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("complete");
+    expect(JSON.stringify(response.body)).not.toContain("test-device-access");
+    await expect(connectorAccessToken(userId, orgId)).resolves.toBeNull();
+    await expect(
+      connectorSecretValue(userId, orgId, "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN"),
+    ).resolves.toBe(
+      "test-device-access:test-oauth-device-api-client:test-device:test-oauth-device-api-client:read:test",
+    );
+
+    const stored = await store
+      .set(writeDb$)
+      .select({
+        authMethod: connectors.authMethod,
+        oauthScopes: connectors.oauthScopes,
+      })
+      .from(connectors)
+      .where(and(eq(connectors.userId, userId), eq(connectors.orgId, orgId)));
+    expect(stored).toStrictEqual([
+      { authMethod: "api", oauthScopes: JSON.stringify(["read"]) },
+    ]);
+    expect((await onlySession(start.body.sessionId)).status).toBe("complete");
+  });
+
   it.each<{
     readonly caseName: string;
     readonly extraConnectorSecrets: Readonly<Record<string, string>>;
@@ -788,7 +1715,7 @@ describe("OAuth device authorization connector routes", () => {
       const start = await accept(
         client.create({
           params: { type: "test-oauth-device" },
-          body: {},
+          body: { authMethod: "oauth" },
           headers: { authorization: "Bearer clerk-session" },
         }),
         [200],
@@ -834,7 +1761,7 @@ describe("OAuth device authorization connector routes", () => {
     const start = await accept(
       client.create({
         params: { type: "base44" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -914,7 +1841,7 @@ describe("OAuth device authorization connector routes", () => {
     const start = await accept(
       client.create({
         params: { type: "slock" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -994,6 +1921,72 @@ describe("OAuth device authorization connector routes", () => {
     expect(tokenExpiresAt.getTime()).toBeLessThanOrEqual(
       nowDate().getTime() + SLOCK_ACCESS_TOKEN_TTL_SECONDS * 1000,
     );
+  });
+
+  it("rejects complete Slock sessions missing required runtime secrets", async () => {
+    mockSlockOAuthProvider();
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    users.push({ userId, orgId });
+    mocks.clerk.session(userId, orgId);
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    slockProvider.grant.pollDeviceAuth = async (args) => {
+      const result = await originalSlockPollDeviceAuth(args);
+      if (result.status !== "complete") {
+        return result;
+      }
+      return {
+        ...result,
+        token: {
+          ...result.token,
+          extraConnectorSecrets: {},
+        },
+      };
+    };
+
+    const start = await accept(
+      client.create({
+        params: { type: "slock" },
+        body: { authMethod: "oauth" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const response = await client.poll({
+      params: {
+        type: "slock",
+        sessionId: start.body.sessionId,
+      },
+      body: { sessionToken: start.body.sessionToken },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(500);
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_ACCESS_TOKEN"),
+    ).resolves.toBeNull();
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_REFRESH_TOKEN"),
+    ).resolves.toBeNull();
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_SERVER_ID"),
+    ).resolves.toBeNull();
+
+    const stored = await store
+      .set(writeDb$)
+      .select({ id: connectors.id })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.userId, userId),
+          eq(connectors.orgId, orgId),
+          eq(connectors.type, "slock"),
+        ),
+      );
+    expect(stored).toStrictEqual([]);
   });
 
   it("marks Slock post-token lookup failures as terminal errors", async () => {
@@ -1115,7 +2108,11 @@ describe("OAuth device authorization connector routes", () => {
     testOauthDeviceProvider.grant.pollDeviceAuth = () => {
       pollCount += 1;
       return originalPollDeviceAuth({
-        clientId: "test-oauth-device-client",
+        authClient: {
+          clientRegistration: "static",
+          clientType: "public",
+          clientId: "test-oauth-device-client",
+        },
         deviceCode: "test-device:test-oauth-device-client:read",
       });
     };

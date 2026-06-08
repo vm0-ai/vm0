@@ -11,6 +11,10 @@ export const wix = {
         label: "API Key",
         helpText:
           "1. Log in to your [Wix](https://www.wix.com) account (account owner or co-owner access required)\n2. Go to the [API Keys Manager](https://manage.wix.com/account/api-keys)\n3. Create a new API key and assign the required permissions\n4. Copy the generated API key and store it securely",
+        storage: {
+          secrets: ["WIX_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { firewallPoliciesSchema } from "@vm0/connectors/firewall-types";
 
 const c = initContract();
 
@@ -29,7 +28,6 @@ export const zeroAgentResponseSchema = z.object({
   displayName: z.string().nullable(),
   sound: z.string().nullable(),
   avatarUrl: z.string().nullable(),
-  permissionPolicies: firewallPoliciesSchema.nullable(),
   customSkills: z.array(z.string()).default([]),
   modelProviderId: z.string().uuid().nullable().default(null),
   selectedModel: z.string().nullable().default(null),
@@ -177,34 +175,6 @@ export const zeroAgentsByIdContract = c.router({
 });
 
 /**
- * Update permission policies request schema
- */
-export const zeroAgentPermissionPoliciesRequestSchema = z.object({
-  agentId: z.string().uuid(),
-  policies: firewallPoliciesSchema,
-});
-
-/**
- * Contract for PUT /api/zero/permission-policies
- */
-export const zeroAgentPermissionPoliciesContract = c.router({
-  update: {
-    method: "PUT",
-    path: "/api/zero/permission-policies",
-    headers: authHeadersSchema,
-    body: zeroAgentPermissionPoliciesRequestSchema,
-    responses: {
-      200: zeroAgentResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Update zero agent permission policies (owner only)",
-  },
-});
-
-/**
  * Contract for GET/PUT /api/zero/agents/:id/instructions
  */
 export const zeroAgentInstructionsContract = c.router({
@@ -336,6 +306,14 @@ export const zeroAgentSkillContentResponseSchema = z.object({
 });
 
 /**
+ * Skill detail response schema (get with every file's content)
+ */
+export const zeroAgentSkillDetailResponseSchema =
+  zeroAgentSkillContentResponseSchema.extend({
+    fileContents: z.array(skillFileEntrySchema).nullable(),
+  });
+
+/**
  * Skill list response schema
  */
 export const zeroAgentSkillListResponseSchema = z.array(
@@ -387,7 +365,7 @@ export const zeroSkillsDetailContract = c.router({
     headers: authHeadersSchema,
     pathParams: z.object({ name: zeroAgentCustomSkillNameSchema }),
     responses: {
-      200: zeroAgentSkillContentResponseSchema,
+      200: zeroAgentSkillDetailResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -425,124 +403,6 @@ export const zeroSkillsDetailContract = c.router({
   },
 });
 
-/**
- * Permission access request status
- */
-export const permissionAccessRequestStatusSchema = z.enum([
-  "pending",
-  "approved",
-  "rejected",
-]);
-
-/**
- * Permission access request response schema
- */
-const permissionAccessRequestActionSchema = z.enum(["allow", "deny"]);
-
-export const permissionAccessRequestResponseSchema = z.object({
-  id: z.string().uuid(),
-  agentId: z.string().uuid(),
-  connectorRef: z.string(),
-  permission: z.string(),
-  action: permissionAccessRequestActionSchema,
-  method: z.string().nullable(),
-  path: z.string().nullable(),
-  reason: z.string().nullable(),
-  status: permissionAccessRequestStatusSchema,
-  requesterUserId: z.string(),
-  requesterName: z.string().nullable(),
-  resolvedBy: z.string().nullable(),
-  resolvedAt: z.string().nullable(),
-  createdAt: z.string(),
-});
-
-/**
- * Create permission access request body
- */
-export const createPermissionAccessRequestSchema = z.object({
-  agentId: z.string().uuid(),
-  connectorRef: z.string(),
-  permission: z.string(),
-  action: permissionAccessRequestActionSchema.optional().default("allow"),
-  method: z.string().optional(),
-  path: z.string().optional(),
-  reason: z.string().optional(),
-});
-
-/**
- * Resolve permission access request body
- */
-export const resolvePermissionAccessRequestSchema = z.object({
-  requestId: z.string().uuid(),
-  action: z.enum(["approve", "reject"]),
-});
-
-/**
- * Contract for POST /api/zero/permission-access-requests (create)
- */
-export const permissionAccessRequestsCreateContract = c.router({
-  create: {
-    method: "POST",
-    path: "/api/zero/permission-access-requests",
-    headers: authHeadersSchema,
-    body: createPermissionAccessRequestSchema,
-    responses: {
-      201: permissionAccessRequestResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Create permission access request",
-  },
-});
-
-/**
- * Contract for GET /api/zero/permission-access-requests (list)
- */
-const permissionAccessRequestsListQuerySchema = z.object({
-  agentId: z.string().optional(),
-  requestId: z.string().optional(),
-  status: z.string().optional(),
-});
-
-export const permissionAccessRequestsListContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/zero/permission-access-requests",
-    headers: authHeadersSchema,
-    query: permissionAccessRequestsListQuerySchema,
-    responses: {
-      200: z.array(permissionAccessRequestResponseSchema),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary: "List permission access requests for an agent",
-  },
-});
-
-/**
- * Contract for PUT /api/zero/permission-access-requests (resolve)
- */
-export const permissionAccessRequestsResolveContract = c.router({
-  resolve: {
-    method: "PUT",
-    path: "/api/zero/permission-access-requests",
-    headers: authHeadersSchema,
-    body: resolvePermissionAccessRequestSchema,
-    responses: {
-      200: permissionAccessRequestResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary:
-      "Resolve (approve/reject) a permission access request (owner only)",
-  },
-});
-
 // Export types
 export type ZeroAgentResponse = z.infer<typeof zeroAgentResponseSchema>;
 export type ZeroAgentRequest = z.infer<typeof zeroAgentRequestSchema>;
@@ -555,16 +415,11 @@ export type ZeroAgentInstructionsResponse = z.infer<
 export type ZeroAgentInstructionsRequest = z.infer<
   typeof zeroAgentInstructionsRequestSchema
 >;
-export type ZeroAgentPermissionPoliciesRequest = z.infer<
-  typeof zeroAgentPermissionPoliciesRequestSchema
->;
 
 export type ZeroAgentsMainContract = typeof zeroAgentsMainContract;
 export type ZeroAgentsByIdContract = typeof zeroAgentsByIdContract;
 export type ZeroAgentInstructionsContract =
   typeof zeroAgentInstructionsContract;
-export type ZeroAgentPermissionPoliciesContract =
-  typeof zeroAgentPermissionPoliciesContract;
 export type ZeroAgentCustomSkill = z.infer<typeof zeroAgentCustomSkillSchema>;
 export type SkillFileEntry = z.infer<typeof skillFileEntrySchema>;
 export type SkillFileMetadata = z.infer<typeof skillFileMetadataSchema>;
@@ -574,20 +429,8 @@ export type ZeroAgentSkillFilesRequest = z.infer<
 export type ZeroAgentSkillContentResponse = z.infer<
   typeof zeroAgentSkillContentResponseSchema
 >;
+export type ZeroAgentSkillDetailResponse = z.infer<
+  typeof zeroAgentSkillDetailResponseSchema
+>;
 export type ZeroSkillsCollectionContract = typeof zeroSkillsCollectionContract;
 export type ZeroSkillsDetailContract = typeof zeroSkillsDetailContract;
-export type PermissionAccessRequestResponse = z.infer<
-  typeof permissionAccessRequestResponseSchema
->;
-export type CreatePermissionAccessRequest = z.infer<
-  typeof createPermissionAccessRequestSchema
->;
-export type ResolvePermissionAccessRequest = z.infer<
-  typeof resolvePermissionAccessRequestSchema
->;
-export type PermissionAccessRequestsCreateContract =
-  typeof permissionAccessRequestsCreateContract;
-export type PermissionAccessRequestsListContract =
-  typeof permissionAccessRequestsListContract;
-export type PermissionAccessRequestsResolveContract =
-  typeof permissionAccessRequestsResolveContract;

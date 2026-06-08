@@ -15,8 +15,8 @@ Fixtures here exist for two reasons:
 
 import contextlib
 import json
-from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable, Iterator
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -25,10 +25,12 @@ from mitmproxy import http, tcp
 from mitmproxy.test import tflow, tutils
 
 import auth
+import auth_base_forwarder
 import mitm_addon
 import registry
 import usage
 from tests.auth_state_helpers import clear_auth_state
+from tests.usage_helpers import UsageWebhookServer
 from usage.providers import connectors as _usage_connectors
 
 
@@ -38,20 +40,22 @@ def _reset_module_state() -> Iterator[None]:
 
     ``registry`` and ``auth`` cache registry data and firewall header
     lookups in module-level dicts.  Without a reset, earlier tests leak
-    entries that change later tests' behaviour (e.g. a request from IP X
-    in test A primes ``_request_start_times`` seen by test B).
+    entries that change later tests' behaviour.
 
     The usage buffer owns a background timer in production, so tests reset
     it before and after each case to avoid cross-test callbacks.
     """
-    mitm_addon._request_start_times.clear()
+    auth_base_forwarder.reset_forward_request_state_for_tests()
     registry.reset_cache_for_tests()
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
     usage.counters.reset_for_tests()
+    usage.webhook.reset_delivery_capacity_for_tests()
     usage.reset_usage_buffer_for_tests()
     yield
+    auth_base_forwarder.reset_forward_request_state_for_tests()
     usage.reset_usage_buffer_for_tests()
+    usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
 
 
@@ -297,28 +301,77 @@ def fake_firewall_headers():
 
 
 @pytest.fixture
+def usage_webhook_server() -> Iterator[UsageWebhookServer]:
+    server = UsageWebhookServer()
+    with server.run():
+        yield server
+
+
+@pytest.fixture
+def usage_webhook_api(mitm_ctx):
+    @contextlib.contextmanager
+    def _api() -> Iterator[UsageWebhookServer]:
+        server = UsageWebhookServer()
+        with server.run(), mitm_ctx(api_url=server.api_url):
+            yield server
+
+    return _api
+
+
+@pytest.fixture
 def sync_usage_executor():
     """Swap ``usage.webhook.usage_executor`` for a synchronous stub.
 
-    Tests that mock ``usage._opener`` and want the webhook payloads to
-    appear on the mock by the time they inspect it need submission to
-    happen inline rather than on a background thread — otherwise they
-    have to thread ``fresh_usage_executor`` + ``shutdown(wait=True)``
-    boilerplate through every caller.  The stub's ``submit`` just runs
-    the function synchronously; the original executor is restored on
-    teardown.
+    Tests that want webhook side effects to complete before inline
+    assertions can use this instead of a background thread plus explicit
+    ``fresh_usage_executor`` + ``shutdown(wait=True)`` boilerplate.  The
+    inline executor returns real ``Future`` objects while still running the
+    function synchronously; the original executor is restored on teardown.
     """
 
-    class _SyncExecutor:
-        def submit(self, fn, *args, **kwargs):
-            fn(*args, **kwargs)
+    class _InlineExecutor:
+        def __init__(self) -> None:
+            self._futures: list[Future[Any]] = []
+            self._shutdown = False
+
+        def submit(
+            self,
+            fn: Callable[..., Any],
+            *args: Any,
+            **kwargs: Any,
+        ) -> Future[Any]:
+            if self._shutdown:
+                raise RuntimeError("cannot schedule new futures after shutdown")
+
+            future: Future[Any] = Future()
+            self._futures.append(future)
+            try:
+                result = fn(*args, **kwargs)
+            except Exception as error:
+                future.set_exception(error)
+            else:
+                future.set_result(result)
+            return future
+
+        def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+            self._shutdown = True
+            if not wait:
+                return
+            futures = self._futures
+            self._futures = []
+            for future in futures:
+                future.result()
 
     original = usage.webhook.usage_executor
-    usage.webhook.usage_executor = _SyncExecutor()
+    executor = _InlineExecutor()
+    usage.webhook.usage_executor = executor
     try:
-        yield usage.webhook.usage_executor
+        yield executor
     finally:
-        usage.webhook.usage_executor = original
+        try:
+            executor.shutdown(wait=True)
+        finally:
+            usage.webhook.usage_executor = original
 
 
 @pytest.fixture

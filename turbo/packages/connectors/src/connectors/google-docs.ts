@@ -15,18 +15,31 @@ export const googleDocs = {
           clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["GOOGLE_DOCS_ACCESS_TOKEN", "GOOGLE_DOCS_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.googleapis.com/token",
           scopes: [
             "https://www.googleapis.com/auth/documents",
             "https://www.googleapis.com/auth/userinfo.email",
           ],
+          outputs: {
+            accessToken: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
+            refreshToken: "$secrets.GOOGLE_DOCS_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "GOOGLE_DOCS_ACCESS_TOKEN",
-          refreshToken: "GOOGLE_DOCS_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.GOOGLE_DOCS_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
+            refreshToken: "$secrets.GOOGLE_DOCS_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["GOOGLE_DOCS_ACCESS_TOKEN"],
           envBindings: {
             GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
           },

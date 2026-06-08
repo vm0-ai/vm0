@@ -11,6 +11,10 @@ export const serpapi = {
         label: "API Key",
         helpText:
           "1. Go to [SerpApi](https://serpapi.com) and sign up for an account (free plan available with 250 searches/month)\n2. Log in and go to your [Dashboard](https://serpapi.com/dashboard)\n3. Your API key is displayed on the dashboard\n4. Copy the API key",
+        storage: {
+          secrets: ["SERPAPI_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -1,7 +1,7 @@
 import { command } from "ccstate";
-import { sql } from "drizzle-orm";
+import { lt, sql } from "drizzle-orm";
 import { modelStat } from "@vm0/db/schema/model-stat";
-import { usageEvent } from "@vm0/db/schema/usage-event";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import {
   VM0_MODEL_ALIAS_TO_MODEL,
   VM0_MODEL_TO_PROVIDER,
@@ -14,7 +14,6 @@ const HOUR_MS = 60 * 60_000;
 export const DEFAULT_MODEL_STATS_REPROCESS_HOURS = 24;
 export const MAX_MODEL_STATS_REPROCESS_HOURS = 24 * 32;
 export const MODEL_RANKING_PERIODS = ["today", "week", "month"] as const;
-const MODEL_USAGE_KIND = "model";
 const TOKEN_CATEGORY_INPUT = "tokens.input";
 const TOKEN_CATEGORY_OUTPUT = "tokens.output";
 const TOKEN_CATEGORY_CACHE_READ = "tokens.cache_read";
@@ -129,14 +128,14 @@ function parseModelRankingPeriod(
   return "week";
 }
 
-function usageEventModelExpression() {
-  const providerColumn = sql.raw('"usage_event"."provider"');
+function modelUsageObservationModelExpression() {
+  const modelColumn = sql.raw('"model_usage_observation"."model"');
   return sql<string>`CASE ${sql.join(
     getModelAliasEntries().map(([alias, model]) => {
-      return sql`WHEN ${providerColumn} = ${alias} THEN ${model}`;
+      return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
     }),
     sql` `,
-  )} ELSE ${providerColumn} END`;
+  )} ELSE ${modelColumn} END`;
 }
 
 function modelStatModelExpression() {
@@ -154,7 +153,7 @@ async function replaceModelStats(
   windowStart: Date,
   windowEnd: Date,
 ): Promise<number> {
-  const usageEventModelExpr = usageEventModelExpression();
+  const observationModelExpr = modelUsageObservationModelExpression();
   const modelStatsModelIdSql = getModelStatsModelIdSql();
 
   const result = await db.transaction(async (tx) => {
@@ -168,25 +167,31 @@ async function replaceModelStats(
     return tx.execute(sql`
       WITH usage_rows AS (
         SELECT
-          date_trunc('hour', ${usageEvent.createdAt})::timestamp AS hour_start,
-          ${usageEventModelExpr} AS model,
-          ${usageEvent.orgId} AS org_id,
-          ${usageEvent.userId} AS user_id,
-          COALESCE(${usageEvent.runId}::text, ${usageEvent.idempotencyKey}::text) AS request_key,
-          CASE WHEN ${usageEvent.category} = ${TOKEN_CATEGORY_INPUT}
-            THEN ${usageEvent.quantity} ELSE 0 END::bigint AS input_tokens,
-          CASE WHEN ${usageEvent.category} = ${TOKEN_CATEGORY_OUTPUT}
-            THEN ${usageEvent.quantity} ELSE 0 END::bigint AS output_tokens,
-          CASE WHEN ${usageEvent.category} = ${TOKEN_CATEGORY_CACHE_READ}
-            THEN ${usageEvent.quantity} ELSE 0 END::bigint AS cache_read_input_tokens,
-          CASE WHEN ${usageEvent.category} = ${TOKEN_CATEGORY_CACHE_CREATION}
-            THEN ${usageEvent.quantity} ELSE 0 END::bigint AS cache_creation_input_tokens,
-          COALESCE(${usageEvent.creditsCharged}, 0)::bigint AS credits_charged
-        FROM ${usageEvent}
-        WHERE ${usageEvent.createdAt} >= ${windowStart}
-          AND ${usageEvent.createdAt} < ${windowEnd}
-          AND ${usageEvent.kind} = ${MODEL_USAGE_KIND}
-          AND ${usageEvent.provider} IN (${modelStatsModelIdSql})
+          date_trunc('hour', ${modelUsageObservation.observedAt})::timestamp AS hour_start,
+          ${observationModelExpr} AS model,
+          ${modelUsageObservation.orgId} AS org_id,
+          ${modelUsageObservation.userId} AS user_id,
+          COALESCE(${modelUsageObservation.runId}::text, ${modelUsageObservation.idempotencyKey}::text) AS request_key,
+          CASE WHEN ${modelUsageObservation.category} = ${TOKEN_CATEGORY_INPUT}
+            THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS input_tokens,
+          CASE WHEN ${modelUsageObservation.category} = ${TOKEN_CATEGORY_OUTPUT}
+            THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS output_tokens,
+          CASE WHEN ${modelUsageObservation.category} = ${TOKEN_CATEGORY_CACHE_READ}
+            THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS cache_read_input_tokens,
+          CASE WHEN ${modelUsageObservation.category} = ${TOKEN_CATEGORY_CACHE_CREATION}
+            THEN ${modelUsageObservation.quantity} ELSE 0 END::bigint AS cache_creation_input_tokens,
+          0::bigint AS credits_charged
+        FROM ${modelUsageObservation}
+        WHERE ${modelUsageObservation.observedAt} >= ${windowStart}
+          AND ${modelUsageObservation.observedAt} < ${windowEnd}
+          AND ${modelUsageObservation.model} IN (${modelStatsModelIdSql})
+          AND ${modelUsageObservation.category} IN (
+            ${TOKEN_CATEGORY_INPUT},
+            ${TOKEN_CATEGORY_OUTPUT},
+            ${TOKEN_CATEGORY_CACHE_READ},
+            ${TOKEN_CATEGORY_CACHE_CREATION}
+          )
+          AND ${modelUsageObservation.quantity} > 0
       ),
       aggregated AS (
         SELECT
@@ -254,6 +259,15 @@ async function replaceModelStats(
   });
 
   return result.rowCount ?? 0;
+}
+
+async function deleteExpiredModelUsageObservations(
+  db: Db,
+  retentionStart: Date,
+): Promise<void> {
+  await db
+    .delete(modelUsageObservation)
+    .where(lt(modelUsageObservation.observedAt, retentionStart));
 }
 
 async function selectModelRankings(
@@ -334,9 +348,14 @@ export const aggregateModelStats$ = command(
     const db = set(writeDb$);
     const windowEnd = utcHourStart(nowDate());
     const windowStart = new Date(windowEnd.getTime() - hours * HOUR_MS);
+    const retentionStart = new Date(
+      windowEnd.getTime() - MAX_MODEL_STATS_REPROCESS_HOURS * HOUR_MS,
+    );
 
     signal.throwIfAborted();
     const aggregated = await replaceModelStats(db, windowStart, windowEnd);
+    signal.throwIfAborted();
+    await deleteExpiredModelUsageObservations(db, retentionStart);
     signal.throwIfAborted();
 
     return {

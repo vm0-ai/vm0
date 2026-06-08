@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { http, HttpResponse } from "msw";
 import {
   zeroBillingCheckoutContract,
@@ -55,6 +54,7 @@ function paidBillingStatus(credits: number): BillingStatusResponse {
     subscriptionStatus: "active",
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
+    scheduledChange: null,
     hasSubscription: true,
     autoRecharge: { enabled: false, threshold: null, amount: null },
     creditExpiry: {
@@ -436,7 +436,10 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
     await waitFor(() => {
       expect(screen.getByAltText("photo.png")).toBeInTheDocument();
@@ -484,7 +487,10 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
     const imageLink = await waitFor(() => {
       return screen.getByLabelText("Preview photo.png");
@@ -492,10 +498,8 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
     expect(imageLink).toHaveAttribute("href", imageUrl);
     click(imageLink);
 
-    const downloadButton = await waitFor(() => {
-      return screen.getByLabelText("Download");
-    });
-    click(downloadButton);
+    await userEvent.click(await screen.findByLabelText("Download options"));
+    click(screen.getByText("Download"));
 
     await waitFor(() => {
       expect(createObjectURLSpy).toHaveBeenCalledOnce();
@@ -528,7 +532,10 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
     const previewButton = await waitFor(() => {
       return screen.getByLabelText("Open html preview for report");
@@ -542,26 +549,10 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
       const iframe = screen.getByTitle("report preview");
       expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
       expect(iframe).toHaveAttribute("scrolling", "yes");
-      expect(iframe).toHaveClass(
-        "relative",
-        "z-10",
-        "h-[min(78vh,900px)]",
-        "max-w-full",
-        "overflow-x-hidden",
-        "overscroll-contain",
-      );
-      expect(iframe.parentElement).toHaveClass(
-        "max-w-full",
-        "overflow-hidden",
-        "overscroll-contain",
-      );
-      expect(iframe.parentElement).not.toHaveClass(
-        "h-[min(78vh,900px)]",
-        "overflow-y-auto",
-      );
+      expect(iframe).toHaveClass("block", "h-full", "w-full");
     });
 
-    await userEvent.click(screen.getByLabelText("Copy link"));
+    await userEvent.click(screen.getByLabelText("Share"));
     expect(writeTextSpy).toHaveBeenCalledWith(publicHtmlUrl);
   });
 });
@@ -602,59 +593,6 @@ describe("zero chat thread page - copy message button", () => {
 
     // The message should still be visible after copying (page remains stable)
     expect(screen.getAllByLabelText("Copy message").length).toBeGreaterThan(0);
-  });
-
-  it("keeps the scroll-to-message-start button hidden when the feature switch is off", async () => {
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "assistant",
-          content: "A long assistant message",
-          runId: "run-legacy-1",
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    await waitFor(() => {
-      expect(screen.getByText("A long assistant message")).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByLabelText("Scroll to message start"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("scrolls to the assistant message group start when the feature switch is on", async () => {
-    const scrollIntoView = vi
-      .spyOn(Element.prototype, "scrollIntoView")
-      .mockImplementation(() => {});
-
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "assistant",
-          content: "Another long assistant message",
-          runId: "run-legacy-2",
-          createdAt: "2026-03-10T00:00:01Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatMessageStartButton]: true },
-    });
-
-    const button = await screen.findByLabelText("Scroll to message start");
-    click(button);
-
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      block: "start",
-      behavior: "smooth",
-    });
   });
 });
 

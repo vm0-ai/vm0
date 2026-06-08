@@ -55,6 +55,7 @@ function mockAPIs({
           description: null,
           sound: null,
           avatarUrl: null,
+          customSkills: [],
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
         },
@@ -71,7 +72,6 @@ function mockAPIs({
         description: null,
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),
@@ -127,5 +127,33 @@ describe("zero sidebar", () => {
       expect(screen.getByText("Agents")).toBeInTheDocument();
     });
     expect(screen.getByText("Activity logs")).toBeInTheDocument();
+  });
+
+  it("should hide Skills when SkillsViewer switch is off", async () => {
+    mockAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.SkillsViewer]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Skills")).not.toBeInTheDocument();
+  });
+
+  it("should show Skills when SkillsViewer switch is on", async () => {
+    mockAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.SkillsViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Skills")).toBeInTheDocument();
   });
 });

@@ -100,7 +100,8 @@ function createGithubConnector(): ConnectorResponse {
     externalUsername: "testuser",
     externalEmail: "test@example.com",
     oauthScopes: ["repo", "project", "workflow"],
-    needsReconnect: false,
+    connectionStatus: "connected",
+    tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   };

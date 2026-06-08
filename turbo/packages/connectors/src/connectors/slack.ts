@@ -16,9 +16,12 @@ export const slack = {
           clientIdEnv: "SLACK_OAUTH_CLIENT_ID",
           clientSecretEnv: "SLACK_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["SLACK_ACCESS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://slack.com/api/oauth.v2.access",
           scopes: [
             // Channels
             "channels:read",
@@ -54,6 +57,9 @@ export const slack = {
             // Custom emoji (low priority)
             "emoji:read",
           ],
+          outputs: {
+            accessToken: "$secrets.SLACK_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",
@@ -61,7 +67,12 @@ export const slack = {
             SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
           },
         },
-        revoke: { kind: "token-revoke" },
+        revoke: {
+          kind: "token-revoke",
+          inputs: {
+            accessToken: "$secrets.SLACK_ACCESS_TOKEN",
+          },
+        },
       },
     },
     defaultAuthMethod: "oauth",

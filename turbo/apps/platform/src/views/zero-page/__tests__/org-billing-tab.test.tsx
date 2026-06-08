@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server.ts";
@@ -9,8 +9,11 @@ import {
   click,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { pathname, search } from "../../../signals/location.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { reloadBillingStatus$ } from "../../../signals/zero-page/billing.ts";
+import { setSelectedTarget$ } from "../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   zeroBillingStatusContract,
@@ -19,11 +22,26 @@ import {
   zeroBillingCreditCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingDowngradeContract,
+  zeroBillingRestoreContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
+vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
+  const actual =
+    (await importOriginal()) as typeof import("@vm0/ui/components/ui/sonner");
+  return {
+    ...actual,
+    toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
+  };
+});
+
 const context = testContext();
 const mockApi = createMockApi(context);
+
+beforeEach(() => {
+  vi.mocked(toast.error).mockClear();
+  vi.mocked(toast.success).mockClear();
+});
 
 async function openBillingTab() {
   detachedSetupPage({ context, path: "/?settings=billing" });
@@ -32,7 +50,87 @@ async function openBillingTab() {
   });
 }
 
+function findButtonByText(
+  container: HTMLElement,
+  text: string | RegExp,
+): HTMLElement | undefined {
+  return queryAllByRoleFast("button", container).find((el) => {
+    const buttonText = el.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    return typeof text === "string"
+      ? buttonText === text
+      : text.test(buttonText);
+  });
+}
+
 describe("org billing tab - plan display", () => {
+  it("opens workspace billing from an agent chat settings URL for admins", async () => {
+    const agentId = "d80ad561-0801-4082-a3fe-e34470cee304";
+    setMockTeam([
+      {
+        id: agentId,
+        displayName: "Billing Test Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        customSkills: [],
+        headVersionId: "version_1",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat?settings=billing`,
+    });
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Workspace settings" });
+    });
+
+    expect(within(dialog).getByText("Billing & pricing")).toBeInTheDocument();
+    expect(within(dialog).getByText("Free plan")).toBeInTheDocument();
+    expect(search()).toBe("?settings=billing");
+  });
+
+  it("opens workspace billing from a primary app route settings URL", async () => {
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
+
+    detachedSetupPage({
+      context,
+      path: "/agents?settings=billing",
+    });
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Workspace settings" });
+    });
+
+    expect(pathname()).toBe("/agents");
+    expect(within(dialog).getByText("Billing & pricing")).toBeInTheDocument();
+    expect(within(dialog).getByText("Free plan")).toBeInTheDocument();
+    expect(search()).toBe("?settings=billing");
+  });
+
+  it("keeps billing settings through a chat route switch", async () => {
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
+
+    detachedSetupPage({
+      context,
+      path: "/agents/not-in-team/chat?settings=billing",
+    });
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Workspace settings" });
+    });
+
+    expect(pathname()).toBe(
+      "/agents/c0000000-0000-4000-a000-000000000001/chat",
+    );
+    expect(within(dialog).getByText("Billing & pricing")).toBeInTheDocument();
+    expect(within(dialog).getByText("Free plan")).toBeInTheDocument();
+    expect(search()).toBe("?settings=billing");
+  });
+
   it("should show Free plan for free tier", async () => {
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
@@ -125,6 +223,8 @@ describe("org billing tab - pricing sub-page navigation", () => {
     expect(screen.queryByText("Free")).not.toBeInTheDocument();
     expect(screen.getByText("Pro")).toBeInTheDocument();
     expect(screen.getByText("Team")).toBeInTheDocument();
+    const planGrid = screen.getByText("Pro").closest(".grid");
+    expect(planGrid?.className).not.toContain("-mx-");
   });
 
   it("should navigate to pricing page when clicking Compare all plans", async () => {
@@ -287,9 +387,7 @@ describe("org billing tab - buy credits section", () => {
   });
 
   it("shows range toast without starting checkout for invalid custom amounts", async () => {
-    const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => {
-      return "" as ReturnType<typeof toast.error>;
-    });
+    const errorSpy = vi.mocked(toast.error);
     let capturedBody: unknown = null;
     server.use(
       mockApi(zeroBillingCreditCheckoutContract.create, ({ body, respond }) => {
@@ -326,7 +424,6 @@ describe("org billing tab - buy credits section", () => {
       expect(errorSpy).toHaveBeenCalledWith("Enter between $1 and $10,000");
     });
     expect(capturedBody).toBeNull();
-    errorSpy.mockRestore();
   });
 });
 
@@ -650,6 +747,7 @@ describe("org billing tab - auto-recharge section", () => {
           subscriptionStatus: "active",
           currentPeriodEnd: null,
           cancelAtPeriodEnd: false,
+          scheduledChange: null,
           hasSubscription: true,
           autoRecharge: { enabled, threshold: 2000, amount: 10_000 },
           creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
@@ -795,6 +893,128 @@ describe("org billing tab - cancellation pending", () => {
     ).toHaveLength(0);
   });
 
+  it("should show Restore plan button when cancellation is pending", async () => {
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: true,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    expect(
+      queryAllByRoleFast("button").find((el) => {
+        return el.textContent?.trim() === "Restore plan";
+      }),
+    ).toBeDefined();
+  });
+
+  it("should confirm before calling restore API and reloading billing status", async () => {
+    let restoreCalled = false;
+    server.use(
+      mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
+        restoreCalled = true;
+        setMockBillingStatus({ cancelAtPeriodEnd: false });
+        return respond(200, { success: true });
+      }),
+    );
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: true,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    const restoreButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Restore plan";
+    });
+    expect(restoreButton).toBeDefined();
+    click(restoreButton!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Restore Pro plan?" });
+    });
+    expect(restoreCalled).toBeFalsy();
+    expect(
+      within(confirmDialog).getByText(/undo the scheduled cancellation/),
+    ).toBeInTheDocument();
+
+    const confirmRestoreButton = findButtonByText(
+      confirmDialog,
+      "Restore plan",
+    );
+    expect(confirmRestoreButton).toBeDefined();
+    click(confirmRestoreButton!);
+
+    await waitFor(() => {
+      expect(restoreCalled).toBeTruthy();
+      expect(screen.getByText(/Renews/)).toBeInTheDocument();
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        "Plan restored. Your subscription will renew normally.",
+      );
+    });
+    expect(screen.queryByText(/has been cancelled/)).not.toBeInTheDocument();
+  });
+
+  it("should close restore confirmation without calling API", async () => {
+    let restoreCalled = false;
+    server.use(
+      mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
+        restoreCalled = true;
+        return respond(200, { success: true });
+      }),
+    );
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: true,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    const restoreButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Restore plan";
+    });
+    expect(restoreButton).toBeDefined();
+    click(restoreButton!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Restore Pro plan?" });
+    });
+    const cancelButton = findButtonByText(confirmDialog, "Cancel");
+    expect(cancelButton).toBeDefined();
+    click(cancelButton!);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Restore Pro plan?" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(restoreCalled).toBeFalsy();
+  });
+
   it("should show Manage button when cancellation is pending", async () => {
     setMockBillingStatus({
       tier: "pro",
@@ -841,6 +1061,73 @@ describe("org billing tab - cancellation pending", () => {
     ).toBeDefined();
 
     expect(screen.queryByText(/has been cancelled/)).not.toBeInTheDocument();
+  });
+
+  it("should show restore action when team downgrade to pro is scheduled", async () => {
+    const periodEnd = "2026-07-04T00:00:00.000Z";
+    let restoreCalled = false;
+    server.use(
+      mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
+        restoreCalled = true;
+        setMockBillingStatus({ scheduledChange: null });
+        return respond(200, { success: true });
+      }),
+    );
+    setMockBillingStatus({
+      tier: "team",
+      credits: 120_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: false,
+      scheduledChange: {
+        type: "downgrade",
+        targetTier: "pro",
+        effectiveDate: periodEnd,
+      },
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Downgrades to Pro on/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/will downgrade\s+to Pro on/),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      queryAllByRoleFast("button").filter((el) => {
+        return el.textContent?.trim() === "Downgrade";
+      }),
+    ).toHaveLength(0);
+
+    const restoreButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Restore plan";
+    });
+    expect(restoreButton).toBeDefined();
+    click(restoreButton!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Restore Team plan?" });
+    });
+    expect(
+      within(confirmDialog).getByText(/cancel the scheduled downgrade to Pro/),
+    ).toBeInTheDocument();
+
+    const confirmRestoreButton = findButtonByText(
+      confirmDialog,
+      "Restore plan",
+    );
+    expect(confirmRestoreButton).toBeDefined();
+    click(confirmRestoreButton!);
+
+    await waitFor(() => {
+      expect(restoreCalled).toBeTruthy();
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        "Plan restored. Your subscription will renew normally.",
+      );
+    });
   });
 });
 
@@ -916,6 +1203,236 @@ describe("org billing tab - plan card details", () => {
       screen.queryByText("Voice input (10/month)"),
     ).not.toBeInTheDocument();
   });
+
+  it("should show expiry and restore action on the cancelling current plan card", async () => {
+    const periodEnd = "2026-07-04T00:00:00.000Z";
+    let restoreCalled = false;
+    server.use(
+      mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
+        restoreCalled = true;
+        setMockBillingStatus({ cancelAtPeriodEnd: false });
+        return respond(200, { success: true });
+      }),
+    );
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: true,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Compare all plans"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+
+    const proCard = screen.getByText("Pro").closest("div");
+    expect(proCard).not.toBeNull();
+    expect(
+      within(proCard!).getByText(
+        `Ends on ${new Date(periodEnd).toLocaleDateString("en-US")}`,
+      ),
+    ).toBeInTheDocument();
+
+    const restoreButton = queryAllByRoleFast("button", proCard!).find((el) => {
+      return el.textContent?.trim() === "Restore plan";
+    });
+    expect(restoreButton).toBeDefined();
+    click(restoreButton!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Restore Pro plan?" });
+    });
+    expect(restoreCalled).toBeFalsy();
+    const confirmRestoreButton = findButtonByText(
+      confirmDialog,
+      "Restore plan",
+    );
+    expect(confirmRestoreButton).toBeDefined();
+    click(confirmRestoreButton!);
+
+    await waitFor(() => {
+      expect(restoreCalled).toBeTruthy();
+    });
+  });
+
+  it("should show scheduled downgrade details and restore action on plan cards", async () => {
+    const periodEnd = "2026-07-04T00:00:00.000Z";
+    let restoreCalled = false;
+    server.use(
+      mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
+        restoreCalled = true;
+        setMockBillingStatus({ scheduledChange: null });
+        return respond(200, { success: true });
+      }),
+    );
+    setMockBillingStatus({
+      tier: "team",
+      credits: 120_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: false,
+      scheduledChange: {
+        type: "downgrade",
+        targetTier: "pro",
+        effectiveDate: periodEnd,
+      },
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Team plan")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Compare all plans"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+
+    const dateText = new Date(periodEnd).toLocaleDateString("en-US");
+    const teamCard = screen.getByText("Team").closest("div");
+    const proCard = screen.getByText("Pro").closest("div");
+    expect(teamCard).not.toBeNull();
+    expect(proCard).not.toBeNull();
+
+    expect(
+      within(teamCard!).getByText(`Downgrades to Pro on ${dateText}`),
+    ).toBeInTheDocument();
+    expect(
+      within(proCard!).getByText(`Downgrades to Pro on ${dateText}`),
+    ).toBeInTheDocument();
+    const manageButton = queryAllByRoleFast("button", proCard!).find((el) => {
+      return el.textContent?.trim() === "Manage";
+    });
+    expect(manageButton).toBeDefined();
+    expect(manageButton).not.toBeDisabled();
+    expect(
+      queryAllByRoleFast("button", proCard!).find((el) => {
+        return el.textContent?.trim() === "Restore plan";
+      }),
+    ).toBeUndefined();
+
+    const restoreButton = queryAllByRoleFast("button", teamCard!).find((el) => {
+      return el.textContent?.trim() === "Restore plan";
+    });
+    expect(restoreButton).toBeDefined();
+    click(restoreButton!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Restore Team plan?" });
+    });
+    const confirmRestoreButton = findButtonByText(
+      confirmDialog,
+      "Restore plan",
+    );
+    expect(confirmRestoreButton).toBeDefined();
+    click(confirmRestoreButton!);
+
+    await waitFor(() => {
+      expect(restoreCalled).toBeTruthy();
+    });
+  });
+
+  it("should show direct downgrade to pro when team cancellation is scheduled", async () => {
+    const periodEnd = "2026-07-04T00:00:00.000Z";
+    setMockBillingStatus({
+      tier: "team",
+      credits: 120_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: true,
+      scheduledChange: {
+        type: "cancel",
+        targetTier: "pro-suspend",
+        effectiveDate: periodEnd,
+      },
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Team plan")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Compare all plans"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+
+    const proCard = screen.getByText("Pro").closest("div");
+    expect(proCard).not.toBeNull();
+
+    const downgradeToPro = queryAllByRoleFast("button", proCard!).find((el) => {
+      return el.textContent?.trim() === "Downgrade to Pro";
+    });
+    expect(downgradeToPro).toBeDefined();
+    expect(downgradeToPro).not.toBeDisabled();
+    click(downgradeToPro!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Downgrade plan" });
+    });
+    expect(
+      within(confirmDialog).getByText("Downgrade to Pro?"),
+    ).toBeInTheDocument();
+    expect(
+      within(confirmDialog).queryByText("Choose which plan to downgrade to."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should show manage CTA for lower plans on pricing page", async () => {
+    setMockBillingStatus({
+      tier: "team",
+      credits: 120_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Team plan")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Compare all plans"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Manage subscription")).not.toBeInTheDocument();
+
+    const manageButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Manage";
+    });
+    expect(manageButton).toBeDefined();
+    click(manageButton!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Downgrade plan" });
+    });
+    expect(
+      within(confirmDialog).getByText("Choose which plan to downgrade to."),
+    ).toBeInTheDocument();
+    expect(findButtonByText(confirmDialog, /Pro\s*\$20\/month/)).toBeDefined();
+    expect(
+      findButtonByText(confirmDialog, /No plan\s*\$0\/month/),
+    ).toBeDefined();
+  });
 });
 
 describe("org billing tab - renewal date display", () => {
@@ -935,6 +1452,28 @@ describe("org billing tab - renewal date display", () => {
     await waitFor(() => {
       expect(screen.getByText(/Renews/)).toBeInTheDocument();
     });
+  });
+
+  it("should not show stale renewal date when there is no active plan", async () => {
+    const staleDate = new Date(Date.now() + 30 * 86_400 * 1000).toISOString();
+    setMockBillingStatus({
+      tier: "pro-suspend",
+      credits: 0,
+      subscriptionStatus: "canceled",
+      currentPeriodEnd: staleDate,
+      cancelAtPeriodEnd: false,
+      hasSubscription: false,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("No active subscription")).toBeInTheDocument();
+    expect(screen.queryByText(/Renews/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ends on/)).not.toBeInTheDocument();
   });
 });
 
@@ -1210,6 +1749,56 @@ describe("org billing tab - downgrade flow", () => {
     const cancelSubscriptionBtn = queryAllByRoleFast("button").find((el) => {
       return /Cancel subscription/i.test(el.textContent ?? "");
     });
+    expect(cancelSubscriptionBtn).toBeDefined();
+    click(cancelSubscriptionBtn!);
+
+    await waitFor(() => {
+      expect(capturedBody).toStrictEqual({ targetTier: "pro-suspend" });
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        "Cancellation scheduled. Your current plan stays active until the billing period ends.",
+      );
+    });
+  });
+
+  it("should ignore stale pro target when current plan is pro", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      mockApi(zeroBillingDowngradeContract.create, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, { success: true, effectiveDate: null });
+      }),
+    );
+    context.store.set(setSelectedTarget$, "pro");
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    const downgradeButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Downgrade";
+    });
+    expect(downgradeButton).toBeDefined();
+    click(downgradeButton!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Downgrade plan" });
+    });
+    expect(
+      within(confirmDialog).queryByText("Downgrade to Pro"),
+    ).not.toBeInTheDocument();
+
+    const cancelSubscriptionBtn = findButtonByText(
+      confirmDialog,
+      "Cancel subscription",
+    );
     expect(cancelSubscriptionBtn).toBeDefined();
     click(cancelSubscriptionBtn!);
 

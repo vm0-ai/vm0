@@ -110,7 +110,6 @@ function mockAgent(config: AgentModelConfig) {
         description: null,
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [] as string[],
         modelProviderId: config.modelProviderId,
         selectedModel: config.selectedModel,

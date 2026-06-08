@@ -2,8 +2,8 @@ import type {
   CSSProperties,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
-  ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   useGet,
   useSet,
@@ -16,6 +16,8 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   IconAlertCircle,
+  IconArrowsDiagonal,
+  IconArrowsDiagonalMinimize2,
   IconHandStop,
   IconPhoto,
   IconChartLine,
@@ -24,26 +26,25 @@ import {
   IconVideo,
   IconCopy,
   IconCheck,
-  IconDots,
   IconVolume2,
-  IconArrowBarToUp,
   IconArrowDown,
-  IconBrandGoogleDrive,
-  IconDownload,
-  IconFile,
+  IconArrowUpRight,
+  IconChevronRight,
+  IconGitBranch,
   IconLink,
   IconLoader2,
+  IconMessageCircle,
   IconPackage,
+  IconPresentation,
+  IconSearch,
+  IconTag,
+  IconX,
+  IconClock,
 } from "@tabler/icons-react";
 import {
   cn,
   isEditableTarget,
   matchShortcut,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
   Skeleton,
   DropdownMenu,
   DropdownMenuContent,
@@ -55,13 +56,19 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import type {
+  ChatThreadArtifactFile,
+  GenerationTemplateRequest,
+  ChatThreadGithubPr,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { IN_VITEST } from "../../env.ts";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import { hasConnectorAuthCodeGrant } from "@vm0/connectors/connector-utils";
+import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
@@ -69,29 +76,19 @@ import {
   toggleAutoRead$,
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
+import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
 import {
-  detach,
-  jsonParseOr,
-  Reason,
-  onDomEventFn,
-} from "../../signals/utils.ts";
-import {
-  type ZeroClientFactory,
-  zeroClient$,
-} from "../../signals/api-client.ts";
-import { accept } from "../../lib/accept.ts";
+  captureRecommendedFollowupSelected,
+  captureRecommendedFollowupsShown,
+} from "../../lib/posthog.ts";
 import {
   AttachmentLightbox,
-  CsvPreviewTable,
-  downloadAttachmentUrl,
   FileAttachmentChip,
-  getAttachmentRawUrl,
-  parseCsvRows,
+  PreviewableAudioAttachmentChip,
   PreviewableFileAttachmentChip,
   publicAttachmentUrl,
-  TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
-import { ArtifactSidebarSlot } from "./zero-artifact-sidebar.tsx";
+import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
@@ -112,22 +109,45 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
-  chatArtifactSidebarEnabled$,
+  artifactFullscreen$,
+  artifactInboxQuery$,
+  artifactInboxSearchOpen$,
+  artifactInboxSection$,
+  backToArtifactInbox$,
+  type ArtifactInboxSection,
+  type ArtifactRef,
+  closeArtifact$,
+  currentArtifactInboxThreadId$,
   currentArtifactRef$,
-  openDocumentLightboxOrArtifact$ as openAttachmentDocumentLightbox$,
+  openArtifactFromInbox$,
+  openArtifactInbox$,
+  setArtifactInboxQuery$,
+  setArtifactInboxSection$,
   openImageLightboxOrArtifact$ as openAttachmentImageLightbox$,
   openVideoLightboxOrArtifact$ as openAttachmentVideoLightbox$,
+  toggleArtifactFullscreen$,
+  toggleArtifactInboxSearch$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
-import {
-  writeToClipboard,
-  type ChatClipboardAttachment,
-} from "../../signals/zero-page/clipboard.ts";
-import { connectors$ } from "../../signals/external/connectors.ts";
+import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   chatShortcutHelpOpen$,
   setChatShortcutHelpOpen$,
 } from "../../signals/chat-page/chat-shortcut-help.ts";
+import {
+  agentGithubPrTrackingAvailable$,
+  githubPrTrackingOpenThreadId$,
+  chatThreadGithubPrs$,
+  githubPrTrackingLabelOptions$,
+  setGithubPrTrackingOpenThreadId$,
+} from "../../signals/chat-page/github-pr-tracking.ts";
+import {
+  headerScheduleMenu$,
+  reloadHeaderScheduleMenu$,
+  schedulesForThread,
+  type HeaderScheduleEntry,
+} from "../../signals/chat-page/header-schedule-menu.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 
@@ -143,9 +163,12 @@ import {
   ZeroChatComposer,
   type QueuedComposerItem,
 } from "./zero-chat-composer.tsx";
+import {
+  setThreadGenerationTemplate$,
+  threadGenerationTemplate$,
+} from "../../signals/zero-page/zero-chat-composer.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
-import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
 import {
   resolveChatComposerSubmitBlocker,
   usePersonalOauthConfigurationAction,
@@ -161,10 +184,9 @@ import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agentById } from "../../signals/agent.ts";
 import {
   extractPermissions,
-  permissionExistingRequestByAction,
-  saveAdminFocusedPolicy$,
-  subscribePermissionAccessRequestsChanged$,
-  submitAccessRequest$,
+  resolveUserPermissionGrantPolicy,
+  upsertUserPermissionGrant$,
+  userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
   billingStatusAsync$,
@@ -187,20 +209,13 @@ import {
   setChatKeyboardScrollRoot$,
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import {
-  type ArtifactGoogleDriveSyncFile,
-  syncArtifactFilesToGoogleDrive,
-  syncArtifactFileToGoogleDrive,
-  waitForGoogleDriveAndSyncArtifacts$,
-} from "../../signals/chat-page/artifact-google-drive-sync.ts";
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { createZipBlob } from "../../lib/zip.ts";
 import { PersonalProviderDialog } from "./components/settings/personal-provider-dialog.tsx";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
-const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
-  "Connect Google Drive to upload artifacts";
+type RecommendedFollowup = NonNullable<
+  Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
+>[number];
 
 const CHAT_SHORTCUT_SECTIONS = [
   {
@@ -234,8 +249,10 @@ function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
-  const open = useGet(thread.artifactsDrawerOpen$);
-  const setOpen = useSet(thread.setArtifactsDrawerOpen$);
+  const inboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const reloadArtifacts = useSet(thread.reloadArtifacts$);
+  const openInbox = useSet(openArtifactInbox$);
+  const open = inboxThreadId === thread.threadId;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -244,7 +261,8 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
           <button
             type="button"
             onClick={() => {
-              setOpen(true);
+              reloadArtifacts();
+              openInbox(thread.threadId);
             }}
             className={cn(
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
@@ -264,12 +282,760 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
+function githubPrRollupLabel(rollup: ChatThreadGithubPr["rollup"]): string {
+  switch (rollup) {
+    case "success": {
+      return "Success";
+    }
+    case "failure": {
+      return "Failed";
+    }
+    case "pending": {
+      return "Pending";
+    }
+    case "none": {
+      return "No actions";
+    }
+    case "unknown": {
+      return "Unknown";
+    }
+  }
+}
+
+function githubPrRollupClassName(rollup: ChatThreadGithubPr["rollup"]): string {
+  switch (rollup) {
+    case "success": {
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+    }
+    case "failure": {
+      return "bg-destructive/10 text-destructive";
+    }
+    case "pending": {
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+    }
+    case "none": {
+      return "bg-muted text-muted-foreground";
+    }
+    case "unknown": {
+      return "bg-muted text-muted-foreground";
+    }
+  }
+}
+
+function githubPrMergeStatusLabel(
+  mergeStatus: NonNullable<ChatThreadGithubPr["mergeStatus"]>,
+): string {
+  switch (mergeStatus) {
+    case "ready": {
+      return "Ready to merge";
+    }
+    case "conflicts": {
+      return "Conflicts";
+    }
+    case "blocked": {
+      return "Blocked";
+    }
+    case "draft": {
+      return "Draft";
+    }
+  }
+}
+
+function githubPrMergeStatusClassName(
+  mergeStatus: NonNullable<ChatThreadGithubPr["mergeStatus"]>,
+): string {
+  switch (mergeStatus) {
+    case "ready": {
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+    }
+    case "conflicts": {
+      return "bg-destructive/10 text-destructive";
+    }
+    case "blocked": {
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+    }
+    case "draft": {
+      return "bg-muted text-muted-foreground";
+    }
+  }
+}
+
+function githubPrStatusLabel(pr: ChatThreadGithubPr): string {
+  if (pr.mergeStatus === "conflicts" || pr.mergeStatus === "draft") {
+    return githubPrMergeStatusLabel(pr.mergeStatus);
+  }
+  if (pr.rollup === "failure" || pr.rollup === "pending") {
+    return githubPrRollupLabel(pr.rollup);
+  }
+  if (pr.mergeStatus) {
+    return githubPrMergeStatusLabel(pr.mergeStatus);
+  }
+  return githubPrRollupLabel(pr.rollup);
+}
+
+function githubPrStatusClassName(pr: ChatThreadGithubPr): string {
+  if (pr.mergeStatus === "conflicts" || pr.mergeStatus === "draft") {
+    return githubPrMergeStatusClassName(pr.mergeStatus);
+  }
+  if (pr.rollup === "failure" || pr.rollup === "pending") {
+    return githubPrRollupClassName(pr.rollup);
+  }
+  if (pr.mergeStatus) {
+    return githubPrMergeStatusClassName(pr.mergeStatus);
+  }
+  return githubPrRollupClassName(pr.rollup);
+}
+
+function githubPrStatusSortPriority(pr: ChatThreadGithubPr): number {
+  if (pr.mergeStatus === "conflicts" || pr.rollup === "failure") {
+    return 0;
+  }
+  if (pr.rollup === "pending" || pr.mergeStatus === "blocked") {
+    return 1;
+  }
+  if (pr.mergeStatus === "draft") {
+    return 2;
+  }
+  if (pr.rollup === "success" || pr.mergeStatus === "ready") {
+    return 3;
+  }
+  return 4;
+}
+
+function sortGithubPrsByStatus(
+  prs: readonly ChatThreadGithubPr[],
+): readonly ChatThreadGithubPr[] {
+  return prs
+    .map((pr, index) => {
+      return { pr, index };
+    })
+    .sort((left, right) => {
+      const priorityDiff =
+        githubPrStatusSortPriority(left.pr) -
+        githubPrStatusSortPriority(right.pr);
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+      return left.index - right.index;
+    })
+    .map((entry) => {
+      return entry.pr;
+    });
+}
+
+function githubCheckResult(
+  check: ChatThreadGithubPr["checks"][number],
+): "success" | "failed" | "pending" {
+  if (check.status !== "completed") {
+    return "pending";
+  }
+
+  if (check.conclusion === "success") {
+    return "success";
+  }
+
+  const failureConclusions = new Set([
+    "failure",
+    "timed_out",
+    "action_required",
+    "cancelled",
+    "startup_failure",
+    "stale",
+  ]);
+  if (check.conclusion && failureConclusions.has(check.conclusion)) {
+    return "failed";
+  }
+
+  return "success";
+}
+
+function githubCheckResultLabel(
+  result: ReturnType<typeof githubCheckResult>,
+): string {
+  switch (result) {
+    case "success": {
+      return "Success";
+    }
+    case "failed": {
+      return "Failed";
+    }
+    case "pending": {
+      return "Pending";
+    }
+  }
+}
+
+function githubCheckResultClassName(
+  result: ReturnType<typeof githubCheckResult>,
+): string {
+  switch (result) {
+    case "success": {
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+    }
+    case "failed": {
+      return "bg-destructive/10 text-destructive";
+    }
+    case "pending": {
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+    }
+  }
+}
+
+function githubCheckResultSortPriority(
+  result: ReturnType<typeof githubCheckResult>,
+): number {
+  switch (result) {
+    case "failed": {
+      return 0;
+    }
+    case "pending": {
+      return 1;
+    }
+    case "success": {
+      return 2;
+    }
+  }
+}
+
+function sortGithubChecksByStatus(
+  checks: readonly ChatThreadGithubPr["checks"][number][],
+): readonly ChatThreadGithubPr["checks"][number][] {
+  return checks
+    .map((check, index) => {
+      return { check, index };
+    })
+    .sort((left, right) => {
+      const priorityDiff =
+        githubCheckResultSortPriority(githubCheckResult(left.check)) -
+        githubCheckResultSortPriority(githubCheckResult(right.check));
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+      return left.index - right.index;
+    })
+    .map((entry) => {
+      return entry.check;
+    });
+}
+
+function githubCheckStatusText(
+  check: ChatThreadGithubPr["checks"][number],
+): string {
+  if (check.status === "completed") {
+    return check.conclusion ?? "completed";
+  }
+  return check.status;
+}
+
+function githubCheckTimeText(value: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function githubCheckRunKey(
+  check: ChatThreadGithubPr["checks"][number],
+): string {
+  return [
+    check.name,
+    check.status,
+    check.conclusion ?? "",
+    check.url ?? "",
+    check.startedAt ?? "",
+    check.completedAt ?? "",
+  ].join("|");
+}
+
+function GithubPrCheckRunRow({
+  check,
+}: {
+  check: ChatThreadGithubPr["checks"][number];
+}) {
+  const statusText = githubCheckStatusText(check);
+  const result = githubCheckResult(check);
+
+  return (
+    <details
+      className="group rounded-md bg-muted/40 text-xs"
+      title={check.name}
+    >
+      <summary className="flex w-full cursor-pointer list-none items-center gap-2 px-2 py-1.5 text-left [&::-webkit-details-marker]:hidden">
+        <IconChevronRight
+          size={13}
+          className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+        />
+        <span className="min-w-0 flex-1 truncate text-foreground">
+          {check.name}
+        </span>
+        <span
+          className={cn(
+            "shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 font-medium",
+            githubCheckResultClassName(result),
+          )}
+        >
+          {githubCheckResultLabel(result)}
+        </span>
+      </summary>
+      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 border-t border-border/60 px-2 py-2 text-muted-foreground">
+        <dt className="whitespace-nowrap">Status</dt>
+        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
+          {statusText}
+        </dd>
+        <dt className="whitespace-nowrap">Conclusion</dt>
+        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
+          {check.conclusion ?? "-"}
+        </dd>
+        <dt className="whitespace-nowrap">Started</dt>
+        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
+          {githubCheckTimeText(check.startedAt)}
+        </dd>
+        <dt className="whitespace-nowrap">Completed</dt>
+        <dd className="min-w-0 truncate whitespace-nowrap text-right text-foreground">
+          {githubCheckTimeText(check.completedAt)}
+        </dd>
+        {check.url && (
+          <>
+            <dt className="whitespace-nowrap">Link</dt>
+            <dd className="min-w-0 text-right">
+              <a
+                href={check.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-end gap-1 text-primary hover:underline"
+              >
+                <IconLink size={12} />
+                Open action
+              </a>
+            </dd>
+          </>
+        )}
+      </dl>
+    </details>
+  );
+}
+
+function GithubPrActions({
+  pr,
+  labelOptions,
+  disabled,
+  onPrompt,
+}: {
+  pr: ChatThreadGithubPr;
+  labelOptions: readonly string[];
+  disabled: boolean;
+  onPrompt: (prompt: string) => void;
+}) {
+  const showFixConflict = pr.mergeStatus === "conflicts";
+  const showLabels = labelOptions.length > 0;
+
+  if (!showFixConflict && !showLabels) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      {showFixConflict && (
+        <button
+          type="button"
+          disabled={disabled}
+          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-destructive/20 bg-destructive/5 px-2 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-60"
+          onClick={() => {
+            onPrompt(`fix pr ${pr.number} conflict & push`);
+          }}
+        >
+          <IconGitBranch size={13} />
+          Fix conflict
+        </button>
+      )}
+      {showLabels && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              disabled={disabled}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
+              aria-label={`Add label to PR ${pr.number}`}
+            >
+              <IconTag size={13} />
+              Add label
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            className="max-h-64 overflow-y-auto"
+          >
+            {labelOptions.map((labelName) => {
+              return (
+                <DropdownMenuItem
+                  key={labelName}
+                  onSelect={() => {
+                    onPrompt(`add label "${labelName}" to pr ${pr.number}`);
+                  }}
+                >
+                  {labelName}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  );
+}
+
+function GithubPrTrackingSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading GitHub PR status"
+      className="flex flex-col gap-3"
+    >
+      {[0, 1].map((cardIndex) => {
+        return (
+          <div
+            key={cardIndex}
+            className="rounded-md border border-border bg-background p-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-3 w-28 rounded" />
+                <Skeleton className="h-4 w-[72%] rounded" />
+              </div>
+              <Skeleton className="h-5 w-20 shrink-0 rounded-full" />
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Skeleton className="h-7 w-24 rounded-md" />
+              <Skeleton className="h-7 w-20 rounded-md" />
+            </div>
+            <div className="mt-3 flex flex-col gap-2">
+              {[0, 1, 2].map((rowIndex) => {
+                return (
+                  <Skeleton key={rowIndex} className="h-8 w-full rounded-md" />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GithubPrTrackingContent({ thread }: { thread: ChatThreadSignals }) {
+  const githubPrs$ = chatThreadGithubPrs$(thread.threadId);
+  const loadable = useLoadable(githubPrs$);
+  const lastResolvedPrs = useLastResolved(githubPrs$);
+  const labelsLoadable = useLastLoadable(githubPrTrackingLabelOptions$);
+  const modelSelection = useLastResolved(thread.modelSelection$);
+  const [sendActionLoadable, sendAction] = useLoadableSet(thread.sendMessage$);
+  const rootSignal = useGet(rootSignal$);
+  const labelOptions =
+    labelsLoadable.state === "hasData" ? labelsLoadable.data : [];
+  const actionDisabled =
+    sendActionLoadable.state === "loading" || modelSelection === undefined;
+  const sendPrompt = (prompt: string) => {
+    if (modelSelection === undefined) {
+      return;
+    }
+    detach(
+      sendAction(prompt, modelSelection, undefined, rootSignal),
+      Reason.DomCallback,
+    );
+  };
+  const prs = loadable.state === "hasData" ? loadable.data : lastResolvedPrs;
+
+  if (loadable.state === "loading" && prs === undefined) {
+    return <GithubPrTrackingSkeleton />;
+  }
+
+  if (loadable.state === "hasError" && prs === undefined) {
+    return (
+      <div className="flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+        <IconAlertCircle size={16} className="mt-0.5 shrink-0" />
+        Failed to load GitHub PR status.
+      </div>
+    );
+  }
+
+  if (prs === undefined) {
+    return null;
+  }
+
+  if (prs.length === 0) {
+    return (
+      <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+        No GitHub PRs found in this chat.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {sortGithubPrsByStatus(prs).map((pr) => {
+        const sortedChecks = sortGithubChecksByStatus(pr.checks);
+        return (
+          <div
+            key={`${pr.repo}#${pr.number}`}
+            className="rounded-md border border-border bg-background p-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-muted-foreground">
+                  {pr.repo} #{pr.number}
+                </div>
+                <a
+                  href={pr.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 line-clamp-2 text-sm font-medium text-foreground hover:underline"
+                >
+                  {pr.title}
+                </a>
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
+                  githubPrStatusClassName(pr),
+                )}
+              >
+                {githubPrStatusLabel(pr)}
+              </span>
+            </div>
+            <GithubPrActions
+              pr={pr}
+              labelOptions={labelOptions}
+              disabled={actionDisabled}
+              onPrompt={sendPrompt}
+            />
+            <div className="mt-3 flex flex-col gap-2">
+              {sortedChecks.length === 0 ? (
+                <div className="text-xs text-muted-foreground">
+                  No GitHub Actions checks.
+                </div>
+              ) : (
+                <div className="flex max-h-72 flex-col gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                  {sortedChecks.map((check) => {
+                    return (
+                      <GithubPrCheckRunRow
+                        key={githubCheckRunKey(check)}
+                        check={check}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GithubPrTrackingButton({
+  thread,
+  agentId,
+}: {
+  thread: ChatThreadSignals;
+  agentId: string;
+}) {
+  const availableLoadable = useLastLoadable(
+    agentGithubPrTrackingAvailable$(agentId),
+  );
+  const openThreadId = useGet(githubPrTrackingOpenThreadId$);
+  const setOpenThreadId = useSet(setGithubPrTrackingOpenThreadId$);
+  const pageSignal = useGet(pageSignal$);
+  const open = openThreadId === thread.threadId;
+
+  if (
+    availableLoadable.state !== "hasData" ||
+    availableLoadable.data !== true
+  ) {
+    return null;
+  }
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => {
+              if (open) {
+                setOpenThreadId(null);
+                return;
+              }
+              setOpenThreadId(thread.threadId, pageSignal);
+            }}
+            className={cn(
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+              open
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+            )}
+            aria-label="Open GitHub PR tracking"
+            aria-pressed={open}
+          >
+            <IconGitBranch size={18} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Track GitHub PRs</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// Second line shown under each schedule in the header menu: the next scheduled
+// run time, or a note that the schedule is inactive when it has been disabled.
+function scheduleMenuSubline(schedule: HeaderScheduleEntry): string {
+  if (!schedule.enabled) {
+    return "Schedule inactive";
+  }
+  if (!schedule.nextRunAt) {
+    return "No upcoming run";
+  }
+  const nextRun = new Date(schedule.nextRunAt).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  return `Next run ${nextRun}`;
+}
+
+// Loads schedules and only renders once this thread has at least one linked
+// schedule.
+export function ScheduleMenuButton({
+  threadId,
+  ariaLabel = "Schedules",
+}: {
+  threadId: string;
+  ariaLabel?: string;
+}) {
+  const navigate = useSet(detachedNavigateTo$);
+  const reloadSchedules = useSet(reloadHeaderScheduleMenu$);
+  const schedulesLoadable = useLastLoadable(headerScheduleMenu$);
+  const lastResolvedSchedules = useLastResolved(headerScheduleMenu$);
+  const allSchedules =
+    schedulesLoadable.state === "hasData"
+      ? schedulesLoadable.data
+      : (lastResolvedSchedules ?? []);
+  const schedules = schedulesForThread(allSchedules, threadId);
+
+  if (schedules.length === 0) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (open) {
+          reloadSchedules();
+        }
+      }}
+    >
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
+          aria-label={ariaLabel}
+        >
+          <IconClock size={18} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        {schedules.map((schedule) => {
+          return (
+            <DropdownMenuItem
+              key={schedule.id}
+              onClick={() => {
+                navigate("/schedules/:scheduleId", {
+                  pathParams: { scheduleId: schedule.id },
+                });
+              }}
+              className="items-start gap-2"
+            >
+              <IconClock
+                size={15}
+                className="mt-0.5 shrink-0 text-muted-foreground"
+              />
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate">{schedule.title}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {scheduleMenuSubline(schedule)}
+                </span>
+              </div>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function GithubPrTrackingDock({ thread }: { thread: ChatThreadSignals }) {
+  const setOpenThreadId = useSet(setGithubPrTrackingOpenThreadId$);
+
+  return (
+    <aside
+      aria-label="GitHub PR tracking"
+      className="pointer-events-none absolute inset-y-0 right-0 z-20 flex px-3 pt-3"
+      style={{
+        width: `var(--github-pr-tracking-dock-width, ${GITHUB_PR_TRACKING_DOCK_WIDTH})`,
+        paddingBottom: "calc(max(0.5rem, var(--sab)) + 0.5rem)",
+      }}
+    >
+      <div className="pointer-events-auto flex min-h-0 w-full flex-col rounded-lg border border-border bg-background shadow-sm">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-foreground">
+              GitHub PRs
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Pull requests mentioned in this chat thread.
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close GitHub PR tracking"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            onClick={() => {
+              setOpenThreadId(null);
+            }}
+          >
+            <IconX size={16} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          <GithubPrTrackingContent thread={thread} />
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
   const features = useLastResolved(featureSwitch$);
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
+  const githubPrTrackingEnabled =
+    features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
+  const agentId =
+    threadDataLoadable.state === "hasData"
+      ? (threadDataLoadable.data?.agentId ?? null)
+      : null;
   const threadTitle =
     threadDataLoadable.state === "hasData"
       ? (threadDataLoadable.data?.title?.trim() ?? "")
@@ -287,7 +1053,11 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
+        <ScheduleMenuButton threadId={thread.threadId} />
         <ArtifactsButton thread={thread} />
+        {githubPrTrackingEnabled && agentId && (
+          <GithubPrTrackingButton thread={thread} agentId={agentId} />
+        )}
         {audioOutputEnabled && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
@@ -352,6 +1122,18 @@ type ChatArtifactItem = {
 
 type ArtifactPreviewKind = "image" | "video" | "audio" | "document" | "file";
 
+const ARTIFACT_INBOX_SECTIONS = [
+  { key: "all", label: "All" },
+  { key: "media", label: "Media" },
+  { key: "docs", label: "Docs" },
+  { key: "sites", label: "Sites" },
+] as const satisfies readonly {
+  key: ArtifactInboxSection;
+  label: string;
+}[];
+
+type ArtifactInboxSectionEntry = (typeof ARTIFACT_INBOX_SECTIONS)[number];
+
 function artifactItemKey(item: ChatArtifactItem): string {
   return `${item.runId}:${item.file.id}:${item.file.url}`;
 }
@@ -397,6 +1179,104 @@ function flattenArtifactRuns(
   });
 }
 
+function artifactFileKindLabel(file: ChatThreadArtifactFile): string {
+  const documentKind = getArtifactDocumentPreviewKind(file);
+  if (documentKind === "html") {
+    return "Hosted site";
+  }
+  if (documentKind === "pdf") {
+    return "PDF";
+  }
+  if (documentKind === "markdown") {
+    return "Markdown";
+  }
+  if (documentKind === "json") {
+    return "JSON";
+  }
+  if (documentKind === "csv") {
+    return "Data";
+  }
+  if (documentKind === "text") {
+    return "Text";
+  }
+
+  const previewKind = getArtifactPreviewKind(file);
+  switch (previewKind) {
+    case "image": {
+      return "Image";
+    }
+    case "video": {
+      return "Video";
+    }
+    case "audio": {
+      return "Audio";
+    }
+    case "document": {
+      return "Document";
+    }
+    case "file": {
+      return "File";
+    }
+  }
+}
+
+function artifactMatchesInboxSection(
+  item: ChatArtifactItem,
+  section: ArtifactInboxSection,
+): boolean {
+  if (section === "all") {
+    return true;
+  }
+
+  const documentKind = getArtifactDocumentPreviewKind(item.file);
+  if (section === "sites") {
+    return documentKind === "html";
+  }
+  if (section === "docs") {
+    return documentKind !== null && documentKind !== "html";
+  }
+
+  const previewKind = getArtifactPreviewKind(item.file);
+  return (
+    previewKind === "image" ||
+    previewKind === "video" ||
+    previewKind === "audio"
+  );
+}
+
+function artifactInboxSectionsForItems(
+  items: readonly ChatArtifactItem[],
+): readonly ArtifactInboxSectionEntry[] {
+  return ARTIFACT_INBOX_SECTIONS.filter((entry) => {
+    return (
+      entry.key === "all" ||
+      items.some((item) => {
+        return artifactMatchesInboxSection(item, entry.key);
+      })
+    );
+  });
+}
+
+function resolveVisibleArtifactInboxSection(
+  section: ArtifactInboxSection,
+  sections: readonly ArtifactInboxSectionEntry[],
+): ArtifactInboxSection {
+  return sections.some((entry) => {
+    return entry.key === section;
+  })
+    ? section
+    : "all";
+}
+
+function artifactMatchesSearch(item: ChatArtifactItem, query: string): boolean {
+  if (query.length === 0) {
+    return true;
+  }
+  const haystack =
+    `${item.file.filename} ${item.file.contentType}`.toLowerCase();
+  return haystack.includes(query);
+}
+
 function ArtifactFileIcon({
   file,
   size = "sm",
@@ -415,14 +1295,54 @@ function ArtifactFileIcon({
 }
 
 function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
-  if (getArtifactPreviewKind(file) === "image") {
+  const previewKind = getArtifactPreviewKind(file);
+  const publicUrl = publicAttachmentUrl(file.url);
+
+  if (previewKind === "image") {
     return (
       <img
-        src={file.url}
+        src={publicUrl}
         alt=""
         aria-hidden="true"
         className="h-full w-full object-cover"
       />
+    );
+  }
+
+  if (previewKind === "video") {
+    return (
+      <video
+        src={videoPosterFrameUrl(publicUrl)}
+        preload="metadata"
+        muted
+        playsInline
+        aria-hidden="true"
+        className="h-full w-full object-cover"
+        data-testid="artifact-video-preview-badge"
+      />
+    );
+  }
+
+  if (getArtifactDocumentPreviewKind(file) === "html") {
+    return (
+      <span
+        className="relative block h-full w-full overflow-hidden bg-background"
+        aria-hidden="true"
+        data-testid="artifact-html-preview-badge"
+      >
+        <iframe
+          src={IN_VITEST ? undefined : publicUrl}
+          srcDoc={
+            IN_VITEST ? "<!doctype html><html><body></body></html>" : undefined
+          }
+          title={`${file.filename} artifact thumbnail`}
+          sandbox="allow-scripts"
+          tabIndex={-1}
+          loading="lazy"
+          scrolling="no"
+          className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25] border-0 bg-background"
+        />
+      </span>
     );
   }
 
@@ -457,17 +1377,6 @@ function getArtifactTextPreviewKind(
   return null;
 }
 
-function formatArtifactTextPreview(
-  kind: Exclude<ArtifactTextPreviewKind, "markdown">,
-  text: string,
-): string {
-  if (kind === "json") {
-    const parsed = jsonParseOr<unknown>(text, null);
-    return parsed === null ? text : JSON.stringify(parsed, null, 2);
-  }
-  return text;
-}
-
 function getArtifactDocumentPreviewKind(
   file: ChatThreadArtifactFile,
 ): ArtifactDocumentPreviewKind | null {
@@ -492,573 +1401,6 @@ function getArtifactDocumentPreviewKind(
   return null;
 }
 
-function ArtifactTextDocumentPreviewFrame({
-  file,
-  kind,
-}: {
-  file: ChatThreadArtifactFile;
-  kind: ArtifactTextPreviewKind;
-}) {
-  const pageSignal = useGet(pageSignal$);
-
-  return (
-    <TextPreviewLoader url={file.url} signal={pageSignal}>
-      {({ status, text }) => {
-        if (status === "loading") {
-          return (
-            <div className="flex h-full w-full items-center justify-center bg-muted/40 text-muted-foreground">
-              <IconLoader2 size={18} className="animate-spin" />
-            </div>
-          );
-        }
-
-        if (status === "error") {
-          return (
-            <div className="flex h-full w-full items-center justify-center bg-muted/40 px-6 text-center text-sm text-muted-foreground">
-              {kind === "markdown"
-                ? "Markdown"
-                : kind === "json"
-                  ? "JSON"
-                  : kind === "csv"
-                    ? "CSV"
-                    : "Text"}{" "}
-              preview unavailable.
-            </div>
-          );
-        }
-
-        if (kind === "csv") {
-          const rows = parseCsvRows(text);
-          if (rows.length === 0) {
-            return (
-              <div className="flex h-full w-full items-center justify-center bg-muted/40 px-6 text-center text-sm text-muted-foreground">
-                CSV preview unavailable.
-              </div>
-            );
-          }
-
-          return (
-            <div className="h-full w-full overflow-auto bg-background p-4">
-              <CsvPreviewTable rows={rows} />
-            </div>
-          );
-        }
-
-        if (kind !== "markdown") {
-          const display = formatArtifactTextPreview(kind, text);
-          return (
-            <div className="h-full w-full overflow-auto bg-background p-4">
-              <pre className="whitespace-pre-wrap break-words text-xs text-foreground">
-                {display.length > 16_000
-                  ? `${display.slice(0, 16_000)}\n\n…`
-                  : display}
-              </pre>
-            </div>
-          );
-        }
-
-        return (
-          <div className="h-full w-full overflow-auto bg-background p-4 text-sm">
-            <Markdown source={text} />
-          </div>
-        );
-      }}
-    </TextPreviewLoader>
-  );
-}
-
-function ArtifactPreviewOpenOverlay({
-  children,
-  filename,
-  onOpen,
-}: {
-  children: ReactNode;
-  filename: string;
-  onOpen: () => void;
-}) {
-  const lightboxOpen = useGet(attachmentLightboxUrl$) !== null;
-
-  return (
-    <div className="group/artifact-preview relative h-full w-full">
-      {children}
-      <button
-        type="button"
-        onClick={(event) => {
-          event.currentTarget.blur();
-          onOpen();
-        }}
-        disabled={lightboxOpen}
-        aria-label={`Open preview for ${filename}`}
-        className={cn(
-          "absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/80",
-          lightboxOpen
-            ? "pointer-events-none"
-            : "group-hover/artifact-preview:bg-black/30 group-hover/artifact-preview:opacity-100 group-focus-within/artifact-preview:bg-black/30 group-focus-within/artifact-preview:opacity-100",
-        )}
-      >
-        <span className="flex h-16 w-16 items-center justify-center rounded-lg text-white">
-          <IconFile
-            size={24}
-            stroke={1.8}
-            className="drop-shadow transition-opacity"
-          />
-        </span>
-      </button>
-    </div>
-  );
-}
-
-async function copyArtifactLinkToClipboard(
-  file: ChatThreadArtifactFile,
-): Promise<void> {
-  const copied = await writeToClipboard(publicAttachmentUrl(file.url));
-  if (copied) {
-    toast.success("Link copied");
-    return;
-  }
-  toast.error("Failed to copy link");
-}
-
-async function downloadArtifactItemsAsZip(params: {
-  readonly items: readonly ChatArtifactItem[];
-  readonly signal: AbortSignal;
-  readonly threadId: string;
-}): Promise<void> {
-  const toastId = toast.loading(`Preparing ${params.items.length} files...`);
-  // eslint-disable-next-line no-restricted-syntax -- zip download must replace the loading toast on success or failure
-  try {
-    const entries = await Promise.all(
-      params.items.map((item) => {
-        return fetchArtifactZipEntry(item, params.signal);
-      }),
-    );
-    const zip = createZipBlob(entries);
-    triggerArtifactZipDownload(zip, `vm0-artifact-${params.threadId}.zip`);
-    toast.success("Downloaded artifacts", { id: toastId });
-  } catch (error) {
-    params.signal.throwIfAborted();
-    toast.error(
-      error instanceof Error
-        ? error.message
-        : "Failed to prepare artifact download",
-      { id: toastId },
-    );
-  }
-}
-
-async function fetchArtifactZipEntry(
-  item: ChatArtifactItem,
-  signal: AbortSignal,
-): Promise<{
-  readonly filename: string;
-  readonly data: ArrayBuffer;
-  readonly modifiedAt: Date;
-}> {
-  const response = await fetch(getAttachmentRawUrl(item.file.url), {
-    mode: "cors",
-    signal,
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to download ${item.file.filename}`);
-  }
-  const data = await response.arrayBuffer();
-  return {
-    filename: item.file.filename,
-    data,
-    modifiedAt: new Date(item.file.createdAt),
-  };
-}
-
-function triggerArtifactZipDownload(blob: Blob, filename: string): void {
-  const blobUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = blobUrl;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(blobUrl);
-}
-
-function artifactItemsToGoogleDriveFiles(
-  items: readonly ChatArtifactItem[],
-): ArtifactGoogleDriveSyncFile[] {
-  return items.map((item) => {
-    return {
-      runId: item.runId,
-      fileId: item.file.id,
-      filename: item.file.filename,
-    };
-  });
-}
-
-function isArtifactSyncedToGoogleDrive(item: ChatArtifactItem): boolean {
-  return item.file.googleDriveSync?.status === "synced";
-}
-
-type WaitForGoogleDriveAndSyncArtifactsFn = (
-  params: {
-    readonly agentId: string;
-    readonly threadId: string;
-    readonly files: readonly ArtifactGoogleDriveSyncFile[];
-  },
-  signal: AbortSignal,
-) => Promise<unknown>;
-
-function startGoogleDriveConnectAndSync(params: {
-  agentId: string | null | undefined;
-  createClient: ZeroClientFactory;
-  files: readonly ArtifactGoogleDriveSyncFile[];
-  pageSignal: AbortSignal;
-  threadId: string;
-  waitForGoogleDriveAndSyncArtifacts: WaitForGoogleDriveAndSyncArtifactsFn;
-  onSyncComplete: () => void;
-}): void {
-  if (params.files.length === 0) {
-    return;
-  }
-  if (!params.agentId) {
-    toast.error("Agent is still loading");
-    return;
-  }
-  if (!hasConnectorAuthCodeGrant("google-drive")) {
-    toast.error("Google Drive connection is not available");
-    return;
-  }
-  const authWindow = window.open(
-    "about:blank",
-    "_blank",
-    "width=600,height=700",
-  );
-  if (!authWindow) {
-    toast.error("Failed to open Google Drive connection page");
-    return;
-  }
-  const agentId = params.agentId;
-  detach(
-    (async () => {
-      const client = params.createClient(zeroConnectorOauthStartContract, {
-        apiBase: "www",
-      });
-      const result = await accept(
-        client.start({
-          params: { type: "google-drive" },
-          body: {},
-          fetchOptions: { signal: params.pageSignal },
-        }),
-        [200],
-      );
-      params.pageSignal.throwIfAborted();
-      authWindow.location.href = result.body.authorizationUrl;
-    })(),
-    Reason.DomCallback,
-    "artifact google drive oauth start",
-  );
-  detach(
-    (async () => {
-      await params.waitForGoogleDriveAndSyncArtifacts(
-        {
-          agentId,
-          threadId: params.threadId,
-          files: params.files,
-        },
-        params.pageSignal,
-      );
-      params.onSyncComplete();
-    })(),
-    Reason.DomCallback,
-    "artifact google drive connect sync",
-  );
-}
-
-function syncArtifactFilesAndRefresh(params: {
-  sync: Promise<boolean>;
-  onSyncSuccess: () => void;
-  reason: string;
-}): void {
-  detach(
-    (async () => {
-      const success = await params.sync;
-      if (success) {
-        params.onSyncSuccess();
-      }
-    })(),
-    Reason.DomCallback,
-    params.reason,
-  );
-}
-
-function ArtifactGoogleDriveConnectMenuItem({
-  agentId,
-  files,
-  label,
-  onSyncComplete,
-  threadId,
-}: {
-  agentId: string | null | undefined;
-  files: readonly ArtifactGoogleDriveSyncFile[];
-  label: string;
-  onSyncComplete: () => void;
-  threadId: string;
-}) {
-  const waitForGoogleDriveAndSyncArtifacts = useSet(
-    waitForGoogleDriveAndSyncArtifacts$,
-  );
-  const createClient = useGet(zeroClient$);
-  const pageSignal = useGet(pageSignal$);
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuItem
-            className="text-muted-foreground"
-            title={CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP}
-            onClick={() => {
-              startGoogleDriveConnectAndSync({
-                agentId,
-                createClient,
-                files,
-                pageSignal,
-                threadId,
-                waitForGoogleDriveAndSyncArtifacts,
-                onSyncComplete,
-              });
-            }}
-          >
-            <IconBrandGoogleDrive size={14} stroke={1.5} />
-            {label}
-          </DropdownMenuItem>
-        </TooltipTrigger>
-        <TooltipContent side="left">
-          {CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function ArtifactPreviewIconButton({
-  ariaLabel,
-  children,
-  disabled = false,
-  onClick,
-  tooltip,
-}: {
-  ariaLabel: string;
-  children: ReactNode;
-  disabled?: boolean;
-  onClick: () => void;
-  tooltip: string;
-}) {
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-disabled={disabled}
-            aria-label={ariaLabel}
-            onClick={() => {
-              if (!disabled) {
-                onClick();
-              }
-            }}
-            className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-              disabled &&
-                "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-muted-foreground",
-            )}
-          >
-            {children}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="top">
-          <p className="text-xs">{tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function ArtifactPreviewActions({
-  item,
-  googleDriveConnected,
-  agentId,
-  threadId,
-  onSyncSuccess,
-}: {
-  item: ChatArtifactItem;
-  googleDriveConnected: boolean;
-  agentId: string | null | undefined;
-  threadId: string;
-  onSyncSuccess: () => void;
-}) {
-  const createClient = useGet(zeroClient$);
-  const waitForGoogleDriveAndSyncArtifacts = useSet(
-    waitForGoogleDriveAndSyncArtifacts$,
-  );
-  const pageSignal = useGet(pageSignal$);
-  const { file } = item;
-  const synced = isArtifactSyncedToGoogleDrive(item);
-  const syncTooltip = synced
-    ? "Synced to Google Drive"
-    : googleDriveConnected
-      ? "Sync to Google Drive"
-      : CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP;
-  const syncAriaLabel = synced
-    ? `${file.filename} is synced to Google Drive`
-    : `Sync ${file.filename} to Google Drive`;
-
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      <ArtifactPreviewIconButton
-        ariaLabel={`Copy link for ${file.filename}`}
-        tooltip="Copy link"
-        onClick={() => {
-          detach(
-            copyArtifactLinkToClipboard(file),
-            Reason.DomCallback,
-            "artifact copy link",
-          );
-        }}
-      >
-        <IconLink size={16} stroke={1.5} />
-      </ArtifactPreviewIconButton>
-      <ArtifactPreviewIconButton
-        ariaLabel={`Download ${file.filename}`}
-        tooltip="Download"
-        onClick={() => {
-          detach(
-            downloadAttachmentUrl(file.url, pageSignal, file.filename),
-            Reason.DomCallback,
-            "artifact download",
-          );
-        }}
-      >
-        <IconDownload size={16} stroke={1.5} />
-      </ArtifactPreviewIconButton>
-      <ArtifactPreviewIconButton
-        ariaLabel={syncAriaLabel}
-        disabled={synced}
-        tooltip={syncTooltip}
-        onClick={() => {
-          if (googleDriveConnected) {
-            syncArtifactFilesAndRefresh({
-              sync: syncArtifactFileToGoogleDrive({
-                createClient,
-                threadId,
-                runId: item.runId,
-                fileId: item.file.id,
-                filename: item.file.filename,
-                signal: pageSignal,
-              }),
-              onSyncSuccess,
-              reason: "artifact google drive sync",
-            });
-            return;
-          }
-          startGoogleDriveConnectAndSync({
-            agentId,
-            createClient,
-            files: artifactItemsToGoogleDriveFiles([item]),
-            pageSignal,
-            threadId,
-            waitForGoogleDriveAndSyncArtifacts,
-            onSyncComplete: onSyncSuccess,
-          });
-        }}
-      >
-        <IconBrandGoogleDrive size={16} stroke={1.5} />
-      </ArtifactPreviewIconButton>
-    </div>
-  );
-}
-
-function ArtifactBulkActionsMenu({
-  items,
-  googleDriveConnected,
-  agentId,
-  onSyncSuccess,
-  threadId,
-}: {
-  items: readonly ChatArtifactItem[];
-  googleDriveConnected: boolean;
-  agentId: string | null | undefined;
-  onSyncSuccess: () => void;
-  threadId: string;
-}) {
-  const createClient = useGet(zeroClient$);
-  const pageSignal = useGet(pageSignal$);
-  const syncableItems = items.filter((item) => {
-    return !isArtifactSyncedToGoogleDrive(item);
-  });
-  const files = artifactItemsToGoogleDriveFiles(syncableItems);
-  const allSynced = items.length > 0 && files.length === 0;
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          aria-label="More artifact actions"
-        >
-          <IconDots size={15} stroke={1.5} />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuItem
-          onClick={() => {
-            detach(
-              downloadArtifactItemsAsZip({
-                items,
-                signal: pageSignal,
-                threadId,
-              }),
-              Reason.DomCallback,
-              "artifact download all",
-            );
-          }}
-        >
-          <IconDownload size={14} stroke={1.5} />
-          Download all
-        </DropdownMenuItem>
-        {googleDriveConnected ? (
-          <DropdownMenuItem
-            disabled={allSynced}
-            onClick={() => {
-              syncArtifactFilesAndRefresh({
-                sync: syncArtifactFilesToGoogleDrive({
-                  createClient,
-                  threadId,
-                  files,
-                  signal: pageSignal,
-                }),
-                onSyncSuccess,
-                reason: "artifact google drive sync all",
-              });
-            }}
-          >
-            <IconBrandGoogleDrive size={14} stroke={1.5} />
-            {allSynced
-              ? "Synced all to Google Drive"
-              : "Sync all to Google Drive"}
-          </DropdownMenuItem>
-        ) : (
-          <ArtifactGoogleDriveConnectMenuItem
-            agentId={agentId}
-            files={files}
-            label="Sync all to Google Drive"
-            onSyncComplete={onSyncSuccess}
-            threadId={threadId}
-          />
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 type ChatImagePreviewLinkProps = {
   alt: string;
   ariaLabel: string;
@@ -1068,6 +1410,9 @@ type ChatImagePreviewLinkProps = {
   placeholderClassName: string;
   url: string;
 };
+
+const CHAT_INLINE_MEDIA_PREVIEW_CLASS =
+  "inline-flex aspect-[16/10] w-[min(100%,400px)] items-center justify-center rounded-lg border border-foreground/10 shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
 
 function ChatImagePreviewLink({
   alt,
@@ -1219,293 +1564,198 @@ function ChatVideoPreviewButton({
   );
 }
 
-function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
-  const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openDocumentLightbox = useSet(openAttachmentDocumentLightbox$);
-  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
-  const previewKind = getArtifactPreviewKind(file);
-
-  if (previewKind === "image") {
-    return (
-      <ChatImagePreviewLink
-        alt={`Preview ${file.filename}`}
-        ariaLabel={`Preview ${file.filename}`}
-        imageClassName="h-full w-full object-contain"
-        linkClassName="flex h-full w-full items-center justify-center bg-muted"
-        onPreview={() => {
-          openImageLightbox(file.url);
-        }}
-        placeholderClassName="h-full w-full"
-        url={file.url}
-      />
-    );
-  }
-
-  if (previewKind === "video") {
-    return (
-      <ChatVideoPreviewButton
-        ariaLabel={`Preview ${file.filename}`}
-        buttonClassName="flex h-full w-full items-center justify-center"
-        filename={file.filename}
-        onPreview={() => {
-          openVideoLightbox({
-            url: file.url,
-            filename: file.filename,
-          });
-        }}
-        posterClassName="h-full w-full"
-        url={file.url}
-        videoClassName="h-full w-full object-contain"
-      />
-    );
-  }
-
-  if (previewKind === "audio") {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-muted/40 px-8">
-        <audio
-          src={file.url}
-          controls
-          preload="metadata"
-          className="w-full max-w-[480px]"
-          aria-label={`Audio preview for ${file.filename}`}
-        />
-      </div>
-    );
-  }
-
-  if (previewKind === "document") {
-    const documentPreviewKind = getArtifactDocumentPreviewKind(file);
-    if (!documentPreviewKind) {
-      return (
-        <div className="flex h-full w-full items-center justify-center bg-muted/40">
-          <ArtifactFileIcon file={file} size="md" />
-        </div>
-      );
-    }
-
-    const openPreview = () => {
-      openDocumentLightbox({
-        kind: documentPreviewKind,
-        url: file.url,
-        filename: file.filename,
-      });
-    };
-
-    if (documentPreviewKind !== "pdf" && documentPreviewKind !== "html") {
-      return (
-        <ArtifactPreviewOpenOverlay
-          filename={file.filename}
-          onOpen={openPreview}
-        >
-          <ArtifactTextDocumentPreviewFrame
-            file={file}
-            kind={documentPreviewKind}
-          />
-        </ArtifactPreviewOpenOverlay>
-      );
-    }
-
-    return (
-      <ArtifactPreviewOpenOverlay filename={file.filename} onOpen={openPreview}>
-        <iframe
-          src={file.url}
-          title={`Preview ${file.filename}`}
-          className="h-full w-full bg-background"
-        />
-      </ArtifactPreviewOpenOverlay>
-    );
-  }
-
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-muted/40 p-8 text-center">
-      <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground shadow-sm">
-        <ArtifactFileIcon file={file} size="md" />
-      </span>
-      <div className="min-w-0">
-        <p className="max-w-[260px] truncate text-sm text-foreground">
-          {file.filename}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function ArtifactPreviewPanel({
-  item,
-  googleDriveConnected,
-  agentId,
-  onSyncSuccess,
-  threadId,
+function ChatArtifactInboxHeader({
+  count,
+  fullscreen,
+  searchOpen,
+  onClose,
+  onToggleSearch,
+  onToggleFullscreen,
 }: {
-  item: ChatArtifactItem;
-  googleDriveConnected: boolean;
-  agentId: string | null | undefined;
-  onSyncSuccess: () => void;
-  threadId: string;
+  count: number | null;
+  fullscreen: boolean;
+  searchOpen: boolean;
+  onClose: () => void;
+  onToggleSearch: () => void;
+  onToggleFullscreen: () => void;
 }) {
-  const { file } = item;
-
   return (
-    <div className="min-w-0 overflow-hidden rounded-lg border border-border/70 bg-background shadow-sm">
-      <div className="h-[260px] border-b border-border/60 bg-muted/30">
-        <ArtifactPreviewFrame file={file} />
-      </div>
-      <div className="flex items-start gap-3 px-3 py-3">
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground">
-          <ArtifactPreviewBadge file={file} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">
-            {file.filename}
-          </p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span>{formatBytes(file.size)}</span>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <ArtifactPreviewActions
-            item={item}
-            googleDriveConnected={googleDriveConnected}
-            agentId={agentId}
-            threadId={threadId}
-            onSyncSuccess={onSyncSuccess}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ArtifactThumbnail({
-  file,
-  selected,
-}: {
-  file: ChatThreadArtifactFile;
-  selected: boolean;
-}) {
-  const previewKind = getArtifactPreviewKind(file);
-
-  return (
-    <div
-      className={cn(
-        "relative flex h-14 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/60 transition-colors",
-        selected
-          ? "border-primary/60 ring-2 ring-primary/15"
-          : "border-border/70 hover:border-foreground/25",
-      )}
-      aria-hidden="true"
-    >
-      {previewKind === "image" ? (
-        <ArtifactThumbnailImage url={file.url} />
-      ) : (
-        <ArtifactFileIcon file={file} />
-      )}
-    </div>
-  );
-}
-
-function ArtifactThumbnailImage({ url }: { url: string }) {
-  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
-  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
-  const setImageLoadStatus = useSet(setImageLoadStatus$);
-  const imageLoadKey = `artifact-thumbnail:${url}`;
-  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
-
-  const showPlaceholder = imageStatus !== "loaded";
-
-  return (
-    <>
-      {showPlaceholder && (
-        <span className="flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground">
-          {imageStatus === "loading" ? (
-            <IconLoader2 size={14} stroke={1.8} className="animate-spin" />
-          ) : (
-            <IconPhoto size={14} stroke={1.5} />
-          )}
-        </span>
-      )}
-      <img
-        key={imageLoadKey}
-        ref={imageLoadStatusRef}
-        src={url}
-        alt=""
-        data-image-load-key={imageLoadKey}
-        loading="lazy"
-        onLoad={() => {
-          setImageLoadStatus(imageLoadKey, "loaded");
-        }}
-        onError={() => {
-          setImageLoadStatus(imageLoadKey, "error");
-        }}
-        className={cn(
-          "h-full w-full object-cover",
-          showPlaceholder && "absolute inset-0 opacity-0",
+    <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <h2 className="truncate text-sm font-medium text-foreground">
+          Artifacts
+        </h2>
+        {count !== null && (
+          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            {count}
+          </span>
         )}
-        aria-hidden="true"
-      />
-    </>
-  );
-}
-
-function ArtifactFileRow({
-  item,
-  selected,
-  onPreview,
-}: {
-  item: ChatArtifactItem;
-  selected: boolean;
-  onPreview: () => void;
-}) {
-  const { file } = item;
-
-  return (
-    <div
-      className={cn(
-        "flex rounded-lg border transition-colors",
-        selected
-          ? "border-primary/40 bg-primary/5"
-          : "border-border/60 bg-background/70 hover:bg-muted/25",
-      )}
-    >
+      </div>
       <button
         type="button"
-        onClick={onPreview}
-        className="flex min-w-0 flex-1 items-start gap-3 rounded-lg px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        aria-label={`Select ${file.filename}`}
+        onClick={onToggleSearch}
+        aria-label="Search artifacts"
+        aria-pressed={searchOpen}
+        className={cn(
+          "inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
+          searchOpen && "bg-muted/60 text-foreground",
+        )}
       >
-        <ArtifactThumbnail file={file} selected={selected} />
-        <div className="min-w-0 flex-1">
-          <span
-            className="block max-w-full truncate text-sm font-medium text-foreground"
-            title={file.filename}
-          >
-            {file.filename}
-          </span>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span>{formatBytes(file.size)}</span>
-            <span aria-hidden>·</span>
-            <span>{formatArtifactTime(file.createdAt)}</span>
-          </div>
-        </div>
+        <IconSearch size={16} />
+      </button>
+      <button
+        type="button"
+        onClick={onToggleFullscreen}
+        aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+        data-testid="artifact-inbox-fullscreen-toggle"
+        className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground xl:inline-flex"
+      >
+        {fullscreen ? (
+          <IconArrowsDiagonalMinimize2 size={16} />
+        ) : (
+          <IconArrowsDiagonal size={16} />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close artifacts"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+      >
+        <IconX size={16} />
       </button>
     </div>
   );
 }
 
-function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
+function ArtifactInboxTabs({
+  section,
+  sections,
+  setSection,
+}: {
+  section: ArtifactInboxSection;
+  sections: readonly ArtifactInboxSectionEntry[];
+  setSection: (value: ArtifactInboxSection) => void;
+}) {
+  return (
+    <div
+      className="grid rounded-lg bg-muted/70 p-1"
+      style={{
+        gridTemplateColumns: `repeat(${sections.length}, minmax(0, 1fr))`,
+      }}
+      role="tablist"
+      aria-label="Artifact sections"
+    >
+      {sections.map((entry) => {
+        const selected = section === entry.key;
+        return (
+          <button
+            key={entry.key}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => {
+              setSection(entry.key);
+            }}
+            className={cn(
+              "h-8 rounded-md px-2 text-xs font-medium transition-colors",
+              selected
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {entry.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ArtifactInboxSearch({
+  query,
+  setQuery,
+}: {
+  query: string;
+  setQuery: (value: string) => void;
+}) {
+  return (
+    <label className="relative block">
+      <span className="sr-only">Search artifacts</span>
+      <IconSearch
+        size={15}
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+      />
+      <input
+        value={query}
+        onChange={(event) => {
+          setQuery(event.currentTarget.value);
+        }}
+        className="h-9 w-full rounded-lg border border-border/70 bg-background pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring"
+        placeholder="Search"
+        autoComplete="off"
+        autoFocus
+      />
+    </label>
+  );
+}
+
+function ArtifactInboxRow({
+  item,
+  onOpen,
+}: {
+  item: ChatArtifactItem;
+  onOpen: () => void;
+}) {
+  const { file } = item;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Open artifact ${file.filename}`}
+      className="group flex w-full min-w-0 items-center gap-3 rounded-lg border border-border/60 bg-background/80 p-3 text-left shadow-sm transition-colors hover:border-foreground/20 hover:bg-muted/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-muted-foreground">
+        <ArtifactPreviewBadge file={file} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate text-sm font-medium text-foreground"
+          title={file.filename}
+        >
+          {file.filename}
+        </span>
+        <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span>{artifactFileKindLabel(file)}</span>
+          <span aria-hidden>·</span>
+          <span>{formatBytes(file.size)}</span>
+          <span aria-hidden>·</span>
+          <span>{formatArtifactTime(file.createdAt)}</span>
+        </span>
+      </span>
+      <IconChevronRight
+        size={16}
+        className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+      />
+    </button>
+  );
+}
+
+function ChatArtifactInboxBody({ thread }: { thread: ChatThreadSignals }) {
   const loadable = useLastLoadable(thread.artifacts$);
-  const connectorList = useLastResolved(connectors$);
-  const agentId = useLastResolved(thread.agentId$);
-  const selectedArtifactKey = useGet(thread.artifactPreviewKey$);
-  const setSelectedArtifactKey = useSet(thread.setArtifactPreviewKey$);
-  const reloadArtifacts = useSet(thread.setArtifactsDrawerOpen$);
+  const section = useGet(artifactInboxSection$);
+  const query = useGet(artifactInboxQuery$);
+  const searchOpen = useGet(artifactInboxSearchOpen$);
+  const setSection = useSet(setArtifactInboxSection$);
+  const setQuery = useSet(setArtifactInboxQuery$);
+  const openArtifact = useSet(openArtifactFromInbox$);
 
   if (loadable.state === "loading") {
     return (
       <div className="flex flex-col gap-3">
-        {Array.from({ length: 4 }, (_, i) => {
-          return <Skeleton key={i} className="h-16 rounded-lg" />;
+        {Array.from({ length: 5 }, (_, i) => {
+          return <Skeleton key={i} className="h-[74px] rounded-lg" />;
         })}
       </div>
     );
@@ -1523,19 +1773,10 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
     return null;
   }
 
-  const runs = loadable.data;
-  const items = flattenArtifactRuns(runs);
-  const selectedItem =
-    items.find((item) => {
-      return artifactItemKey(item) === selectedArtifactKey;
-    }) ?? items[0];
-  const totalFiles = runs.reduce((sum, run) => {
-    return sum + run.files.length;
-  }, 0);
-
-  if (totalFiles === 0) {
+  const items = flattenArtifactRuns(loadable.data);
+  if (items.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/70 p-8 text-center">
+      <div className="flex h-full min-h-[360px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/70 p-8 text-center">
         <img
           src={emptyArtifactImg}
           alt=""
@@ -1550,103 +1791,131 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
     );
   }
 
-  const selectedKey = selectedItem ? artifactItemKey(selectedItem) : null;
-  const googleDriveConnected =
-    connectorList?.connectors.some((connector) => {
-      return connector.type === "google-drive" && !connector.needsReconnect;
-    }) ?? false;
-  const refreshArtifactSyncStatus = () => {
-    reloadArtifacts(true);
-  };
+  const normalizedQuery = query.trim().toLowerCase();
+  const sections = artifactInboxSectionsForItems(items);
+  const activeSection = resolveVisibleArtifactInboxSection(section, sections);
+  const visibleItems = items.filter((item) => {
+    return (
+      artifactMatchesInboxSection(item, activeSection) &&
+      artifactMatchesSearch(item, normalizedQuery)
+    );
+  });
 
   return (
-    <div className="flex min-w-0 flex-col gap-5">
-      {selectedItem && (
-        <ArtifactPreviewPanel
-          item={selectedItem}
-          googleDriveConnected={googleDriveConnected}
-          agentId={agentId}
-          onSyncSuccess={refreshArtifactSyncStatus}
-          threadId={thread.threadId}
-        />
+    <div className="flex min-h-full flex-col gap-4">
+      <ArtifactInboxTabs
+        section={activeSection}
+        sections={sections}
+        setSection={setSection}
+      />
+      {(searchOpen || query.length > 0) && (
+        <ArtifactInboxSearch query={query} setQuery={setQuery} />
       )}
-      <div className="flex items-center justify-between border-b border-border/60 pb-3 text-xs text-muted-foreground">
-        <span>
-          {totalFiles} file{totalFiles === 1 ? "" : "s"}
-        </span>
-        <ArtifactBulkActionsMenu
-          items={items}
-          googleDriveConnected={googleDriveConnected}
-          agentId={agentId}
-          onSyncSuccess={refreshArtifactSyncStatus}
-          threadId={thread.threadId}
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        {items.map((item) => {
-          const itemKey = artifactItemKey(item);
-          return (
-            <ArtifactFileRow
-              key={itemKey}
-              item={item}
-              selected={selectedKey === itemKey}
-              onPreview={() => {
-                setSelectedArtifactKey(itemKey);
-              }}
-            />
-          );
-        })}
-      </div>
+      {visibleItems.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
+          No artifacts match this view.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {visibleItems.map((item) => {
+            return (
+              <ArtifactInboxRow
+                key={artifactItemKey(item)}
+                item={item}
+                onOpen={() => {
+                  openArtifact({
+                    threadId: thread.threadId,
+                    url: item.file.url,
+                  });
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
-  const open = useGet(thread.artifactsDrawerOpen$);
-  const setOpen = useSet(thread.setArtifactsDrawerOpen$);
+function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
+  const loadable = useLastLoadable(thread.artifacts$);
   const setArtifactsRealtimeRef = useSet(thread.setArtifactsRealtimeRef$);
-  const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const fullscreen = useGet(artifactFullscreen$);
+  const searchOpen = useGet(artifactInboxSearchOpen$);
+  const toggleFullscreen = useSet(toggleArtifactFullscreen$);
+  const toggleSearch = useSet(toggleArtifactInboxSearch$);
+  const close = useSet(closeArtifact$);
+  const count =
+    loadable.state === "hasData"
+      ? flattenArtifactRuns(loadable.data).length
+      : null;
 
-  return (
-    <Sheet
-      open={open}
-      onOpenChange={(value) => {
-        setOpen(value);
-      }}
+  const inbox = (
+    <div
+      className={cn(
+        fullscreen
+          ? "fixed inset-0 z-[100] flex flex-col bg-background"
+          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background",
+        "animate-in fade-in duration-[180ms] ease",
+      )}
+      data-testid="artifact-inbox"
     >
-      <SheetContent
-        side="right"
-        className="flex w-[420px] max-w-[100vw] flex-col"
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-        }}
-        onEscapeKeyDown={(event) => {
-          if (lightboxUrl) {
-            event.preventDefault();
-          }
-        }}
-        onInteractOutside={(event) => {
-          if (lightboxUrl) {
-            event.preventDefault();
-          }
-        }}
+      <ChatArtifactInboxHeader
+        count={count}
+        fullscreen={fullscreen}
+        searchOpen={searchOpen}
+        onToggleSearch={toggleSearch}
+        onToggleFullscreen={toggleFullscreen}
+        onClose={close}
+      />
+      <div
+        ref={setArtifactsRealtimeRef}
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
       >
-        <SheetHeader className="shrink-0">
-          <SheetTitle>Artifacts</SheetTitle>
-          <SheetDescription>
-            Uploaded files from runs in this chat thread.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6 -mb-6 pb-6">
-          {open && (
-            <div ref={setArtifactsRealtimeRef}>
-              <ChatArtifactsDrawerContent thread={thread} />
-            </div>
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
+        <ChatArtifactInboxBody thread={thread} />
+      </div>
+    </div>
   );
+  return fullscreen && typeof document !== "undefined"
+    ? createPortal(inbox, document.body)
+    : inbox;
+}
+
+function ChatArtifactInboxSlot({
+  artifactRef,
+  leftThread,
+  rightThread,
+}: {
+  artifactRef: ArtifactRef | null;
+  leftThread: ChatThreadSignals | null;
+  rightThread: ChatThreadSignals | null;
+}) {
+  const inboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const backToInbox = useSet(backToArtifactInbox$);
+  const close = useSet(closeArtifact$);
+  const thread =
+    [leftThread, rightThread].find((candidate) => {
+      return candidate?.threadId === inboxThreadId;
+    }) ??
+    leftThread ??
+    rightThread;
+
+  if (artifactRef) {
+    return (
+      <ArtifactSidebar
+        artifactRef={artifactRef}
+        thread={thread ?? undefined}
+        onBack={inboxThreadId ? backToInbox : undefined}
+        onClose={close}
+      />
+    );
+  }
+
+  if (!thread || !inboxThreadId) {
+    return null;
+  }
+
+  return <ChatArtifactInboxList thread={thread} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -1680,9 +1949,10 @@ export function ZeroChatThreadPage() {
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
-  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
   const artifactRef = useGet(currentArtifactRef$);
-  const artifactSidebarOpen = sidebarEnabled && artifactRef !== null;
+  const artifactInboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const artifactPanelOpen =
+    artifactRef !== null || artifactInboxThreadId !== null;
   // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
   // snapshot survives keyed ChatThread remounts during thread navigation.
   // Otherwise a second mod+shift+arrow press lands on a freshly mounted
@@ -1727,25 +1997,31 @@ export function ZeroChatThreadPage() {
       <div className="flex flex-1 min-h-0 bg-transparent">
         <div
           className={
-            artifactSidebarOpen
-              ? "hidden xl:flex flex-1 basis-0 min-w-0 min-h-0"
-              : "flex flex-1 min-w-0 min-h-0"
+            artifactPanelOpen
+              ? "hidden xl:flex flex-1 basis-0 min-w-0 min-h-0 transition-[flex-basis,width] duration-[240ms] ease"
+              : "flex flex-1 min-w-0 min-h-0 transition-[flex-basis,width] duration-[240ms] ease"
           }
         >
           {threadArea}
         </div>
-        {artifactSidebarOpen && (
-          <div className="flex flex-1 basis-0 min-w-0 min-h-0">
-            <ArtifactSidebarSlot />
-          </div>
-        )}
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 overflow-hidden transition-[flex-basis,width] duration-[240ms] ease",
+            artifactPanelOpen
+              ? "flex-1 basis-0 xl:w-[min(760px,48vw)] xl:flex-none xl:basis-[min(760px,48vw)]"
+              : "pointer-events-none w-0 flex-none basis-0",
+          )}
+          aria-hidden={!artifactPanelOpen}
+        >
+          {artifactPanelOpen && (
+            <ChatArtifactInboxSlot
+              artifactRef={artifactRef}
+              leftThread={leftThread}
+              rightThread={rightThread}
+            />
+          )}
+        </div>
       </div>
-      {!sidebarEnabled && leftThread && (
-        <ChatArtifactsDrawer thread={leftThread} />
-      )}
-      {!sidebarEnabled && rightThread && (
-        <ChatArtifactsDrawer key={rightThread.threadId} thread={rightThread} />
-      )}
       {lightboxUrl && <AttachmentLightbox />}
       <ShortcutHelpDialog
         open={shortcutHelpOpen}
@@ -1784,6 +2060,156 @@ function resolveSessionError(
     return "Chat not found";
   }
   return null;
+}
+
+type GithubPrTrackingLayoutStyle = CSSProperties &
+  Record<
+    "--github-pr-tracking-dock-width" | "--github-pr-tracking-content-inset",
+    string
+  >;
+
+const CHAT_THREAD_CONTENT_MAIN_CLASS =
+  "items-center py-4 pl-4 pr-[calc(var(--github-pr-tracking-content-inset)_+_1rem)] sm:pl-6 sm:pr-[calc(var(--github-pr-tracking-content-inset)_+_1.5rem)] @container";
+const GITHUB_PR_TRACKING_DOCK_WIDTH =
+  "min(400px, max(280px, calc(100% - 760px)))";
+
+function githubPrTrackingLayoutStyle(
+  githubPrTrackingOpen: boolean,
+): GithubPrTrackingLayoutStyle {
+  return {
+    "--github-pr-tracking-dock-width": GITHUB_PR_TRACKING_DOCK_WIDTH,
+    "--github-pr-tracking-content-inset": githubPrTrackingOpen
+      ? "calc(var(--github-pr-tracking-dock-width) + 0.75rem)"
+      : "0px",
+  };
+}
+
+function useGithubPrTrackingOpen(
+  thread: ChatThreadSignals,
+  threadDataLoadable: LoadableValue<ChatThread | null>,
+): boolean {
+  const openGithubPrTrackingThreadId = useGet(githubPrTrackingOpenThreadId$);
+  const features = useLastResolved(featureSwitch$);
+  const githubPrTrackingEnabled =
+    features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
+  const agentId =
+    threadDataLoadable.state === "hasData"
+      ? (threadDataLoadable.data?.agentId ?? null)
+      : null;
+
+  return (
+    githubPrTrackingEnabled &&
+    openGithubPrTrackingThreadId === thread.threadId &&
+    agentId !== null
+  );
+}
+
+function ChatThreadMessagesMain({
+  thread,
+  groups,
+  activeGroups,
+  sessionError,
+  skeletonVisible,
+  hasOlderHistory,
+  loadingHistory,
+  messagesLoading,
+  onLoadHistory,
+}: {
+  thread: ChatThreadSignals;
+  groups: GroupedChatMessageGroup[];
+  activeGroups: GroupedChatMessageGroup[];
+  sessionError: string | null;
+  skeletonVisible: boolean;
+  hasOlderHistory: boolean;
+  loadingHistory: boolean;
+  messagesLoading: boolean;
+  onLoadHistory: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+}) {
+  const showEmptyState =
+    !sessionError &&
+    groups.length === 0 &&
+    !messagesLoading &&
+    !skeletonVisible;
+
+  return (
+    <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
+      <div
+        data-message-container
+        className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
+        style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
+      >
+        {!sessionError && !skeletonVisible && hasOlderHistory && (
+          <div className="flex justify-center">
+            <button
+              type="button"
+              disabled={loadingHistory}
+              onClick={onLoadHistory}
+              className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Load history
+            </button>
+          </div>
+        )}
+        {sessionError && (
+          <div className="flex-1 flex items-center justify-center py-16">
+            <div className="flex items-center gap-2 text-destructive">
+              <IconAlertCircle size={16} />
+              <p className="text-sm">{sessionError}</p>
+            </div>
+          </div>
+        )}
+        {showEmptyState && (
+          <div className="flex-1 flex flex-col items-center justify-center py-16 gap-3">
+            <img
+              src={emptyChatImg}
+              alt=""
+              role="presentation"
+              loading="lazy"
+              className="h-24 w-24 object-contain opacity-80"
+            />
+            <p className="text-sm text-muted-foreground">
+              Send a message to start the conversation
+            </p>
+          </div>
+        )}
+        {activeGroups.map((group) => {
+          return (
+            <PagedGroupRow
+              key={group.beginMessageId}
+              group={group}
+              thread={thread}
+            />
+          );
+        })}
+        <ThinkingIndicator thread={thread} groups={activeGroups} />
+      </div>
+    </main>
+  );
+}
+
+function ChatThreadSkeletonOverlay({
+  sessionError,
+  skeletonVisible,
+}: {
+  sessionError: string | null;
+  skeletonVisible: boolean;
+}) {
+  if (!skeletonVisible || sessionError) {
+    return null;
+  }
+
+  return (
+    <div
+      data-chat-skeleton
+      className="absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
+    >
+      <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
+        <div className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
+          <ChatSkeleton />
+        </div>
+      </main>
+    </div>
+  );
 }
 
 // Lifted to ZeroChatThreadPage so the useLastResolved(sidebarChatThreads$)
@@ -1860,118 +2286,243 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const awayFromBottom = useGet(thread.awayFromBottom$);
-  const scrollToBottom = useSet(thread.scrollToBottom$);
-  const features = useLastResolved(featureSwitch$);
-  const scrollToBottomButtonEnabled =
-    features?.[FeatureSwitchKey.ChatScrollToBottomButton] ?? false;
-  const showScrollToBottomButton =
-    scrollToBottomButtonEnabled &&
-    awayFromBottom &&
-    !skeletonVisible &&
-    !sessionError;
   const loadingHistory = loadHistoryLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
   const onLoadHistory = onDomEventFn(() => {
     return loadHistory(pageSignal);
   });
+  const githubPrTrackingOpen = useGithubPrTrackingOpen(
+    thread,
+    threadDataLoadable,
+  );
 
   return (
     <>
       <ChatThreadHeader thread={thread} />
 
-      <div className="flex-1 min-h-0 relative isolate">
-        <div
-          ref={setScrollContainer}
-          data-scroll-container
-          tabIndex={-1}
-          className="absolute inset-0 overflow-y-auto focus:outline-none [scrollbar-gutter:stable]"
-        >
-          <main className="px-4 sm:px-6 py-4 items-center @container">
+      <div
+        className="relative min-h-0 flex-1"
+        style={githubPrTrackingLayoutStyle(githubPrTrackingOpen)}
+      >
+        <div className="flex h-full min-w-0 flex-col">
+          <div className="flex-1 min-h-0 relative isolate">
             <div
-              data-message-container
-              className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
-              style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
+              ref={setScrollContainer}
+              data-scroll-container
+              tabIndex={-1}
+              className="absolute inset-0 overflow-y-auto focus:outline-none [scrollbar-gutter:stable]"
             >
-              {!sessionError && !skeletonVisible && hasOlderHistory && (
-                <div className="flex justify-center">
-                  <button
-                    type="button"
-                    disabled={loadingHistory}
-                    onClick={onLoadHistory}
-                    className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Load history
-                  </button>
-                </div>
-              )}
-              {sessionError && (
-                <div className="flex-1 flex items-center justify-center py-16">
-                  <div className="flex items-center gap-2 text-destructive">
-                    <IconAlertCircle size={16} />
-                    <p className="text-sm">{sessionError}</p>
-                  </div>
-                </div>
-              )}
-              {!sessionError &&
-                groups.length === 0 &&
-                !messagesLoading &&
-                !skeletonVisible && (
-                  <div className="flex-1 flex flex-col items-center justify-center py-16 gap-3">
-                    <img
-                      src={emptyChatImg}
-                      alt=""
-                      role="presentation"
-                      loading="lazy"
-                      className="h-24 w-24 object-contain opacity-80"
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      Send a message to start the conversation
-                    </p>
-                  </div>
-                )}
-              {activeGroups.map((group) => {
-                return (
-                  <PagedGroupRow
-                    key={group.beginMessageId}
-                    group={group}
-                    thread={thread}
-                  />
-                );
-              })}
-              <ThinkingIndicator thread={thread} groups={activeGroups} />
+              <ChatThreadMessagesMain
+                thread={thread}
+                groups={groups}
+                activeGroups={activeGroups}
+                sessionError={sessionError}
+                skeletonVisible={skeletonVisible}
+                hasOlderHistory={hasOlderHistory}
+                loadingHistory={loadingHistory}
+                messagesLoading={messagesLoading}
+                onLoadHistory={onLoadHistory}
+              />
             </div>
-          </main>
-        </div>
-        {skeletonVisible && !sessionError && (
-          <div
-            data-chat-skeleton
-            className="absolute inset-0 z-10 overflow-hidden pointer-events-none bg-background"
-          >
-            <main className="px-4 sm:px-6 py-4 items-center @container">
-              <div className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4">
-                <ChatSkeleton />
-              </div>
-            </main>
+            <ChatThreadSkeletonOverlay
+              sessionError={sessionError}
+              skeletonVisible={skeletonVisible}
+            />
+            <ScrollToBottomButton
+              thread={thread}
+              skeletonVisible={skeletonVisible}
+              sessionError={sessionError}
+            />
           </div>
-        )}
-        {showScrollToBottomButton && (
-          <button
-            type="button"
-            data-scroll-to-bottom
-            aria-label="Scroll to bottom"
-            onClick={() => {
-              scrollToBottom();
-            }}
-            className="absolute bottom-4 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <IconArrowDown size={18} />
-          </button>
-        )}
-      </div>
 
-      <ChatThreadComposer thread={thread} />
+          <ChatThreadComposer thread={thread} />
+        </div>
+
+        {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
+      </div>
     </>
+  );
+}
+
+function ScrollToBottomButton({
+  thread,
+  skeletonVisible,
+  sessionError,
+}: {
+  thread: ChatThreadSignals;
+  skeletonVisible: boolean;
+  sessionError: string | null;
+}) {
+  const awayFromBottom = useGet(thread.awayFromBottom$);
+  const scrollToBottom = useSet(thread.scrollToBottom$);
+
+  if (!awayFromBottom || skeletonVisible || sessionError) {
+    return null;
+  }
+
+  return (
+    <button
+      type="button"
+      data-scroll-to-bottom
+      aria-label="Scroll to bottom"
+      onClick={() => {
+        scrollToBottom();
+      }}
+      className="absolute bottom-4 right-[calc(var(--github-pr-tracking-content-inset,0px)_+_1rem)] z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
+    >
+      <IconArrowDown size={18} />
+    </button>
+  );
+}
+
+interface RecommendedFollowupSource {
+  readonly messageId: string;
+  readonly followups: readonly RecommendedFollowup[];
+}
+
+function latestRecommendedFollowups(
+  groups: readonly GroupedChatMessageGroup[],
+): RecommendedFollowupSource | null {
+  const lastGroup = groups[groups.length - 1];
+  if (lastGroup?.role !== "assistant") {
+    return null;
+  }
+  const lastMessage = lastGroup.messages[lastGroup.messages.length - 1];
+  if (!lastMessage || lastMessage.role !== "assistant") {
+    return null;
+  }
+  if (lastMessage.runLifecycleEvent !== undefined) {
+    return null;
+  }
+  const followups = lastMessage.recommendedFollowups ?? [];
+  if (followups.length === 0) {
+    return null;
+  }
+  return { messageId: lastMessage.id, followups };
+}
+
+function RecommendedFollowupIcon({
+  followup,
+}: {
+  followup: RecommendedFollowup;
+}) {
+  if (followup.kind !== "generate") {
+    return <IconMessageCircle size={14} stroke={1.8} />;
+  }
+
+  if (followup.generationType === "image") {
+    return <IconPhoto size={14} stroke={1.8} />;
+  }
+  if (followup.generationType === "video") {
+    return <IconVideo size={14} stroke={1.8} />;
+  }
+  if (followup.generationType === "presentation") {
+    return <IconChartLine size={14} stroke={1.8} />;
+  }
+  if (followup.generationType === "website") {
+    return <IconLink size={14} stroke={1.8} />;
+  }
+  return <IconPackage size={14} stroke={1.8} />;
+}
+
+function recommendedFollowupShownKey(
+  source: RecommendedFollowupSource,
+): string {
+  return [
+    source.messageId,
+    source.followups.length,
+    ...source.followups.map((followup) => {
+      return `${followup.kind}:${followup.generationType ?? ""}`;
+    }),
+  ].join("|");
+}
+
+function reportRecommendedFollowupsShown(
+  element: HTMLDivElement | null,
+  source: RecommendedFollowupSource,
+): void {
+  if (!element) {
+    return;
+  }
+
+  const shownKey = recommendedFollowupShownKey(source);
+  if (element.dataset.recommendedFollowupsShownKey === shownKey) {
+    return;
+  }
+  element.dataset.recommendedFollowupsShownKey = shownKey;
+
+  captureRecommendedFollowupsShown({
+    messageId: source.messageId,
+    followups: source.followups,
+  });
+}
+
+function RecommendedFollowupList({
+  thread,
+  source,
+}: {
+  thread: ChatThreadSignals;
+  source: RecommendedFollowupSource;
+}) {
+  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
+  const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
+  const rootSignal = useGet(rootSignal$);
+  const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
+    reportRecommendedFollowupsShown(element, source);
+  };
+
+  const handleSelect = (
+    followup: RecommendedFollowup,
+    followupIndex: number,
+  ) => {
+    captureRecommendedFollowupSelected({
+      messageId: source.messageId,
+      followupIndex,
+      followupCount: source.followups.length,
+      followup,
+    });
+    detach(
+      sendMessage(
+        followup.prompt,
+        modelSelection,
+        {
+          revokesMessageId: source.messageId,
+          includeDraftAttachments: false,
+        },
+        rootSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div ref={handleRecommendedFollowupsRef} className="-mx-2">
+      {source.followups.map((followup, followupIndex) => {
+        return (
+          <button
+            key={followup.prompt}
+            type="button"
+            title={followup.prompt}
+            className="group flex min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/40"
+            onClick={() => {
+              handleSelect(followup, followupIndex);
+            }}
+          >
+            <span className="shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground">
+              <RecommendedFollowupIcon followup={followup} />
+            </span>
+            <span className="min-w-0 flex-1 break-words text-xs font-medium leading-5 text-muted-foreground group-hover:text-foreground">
+              {followup.prompt}
+            </span>
+            <IconArrowUpRight
+              size={14}
+              stroke={1.8}
+              className="shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100"
+            />
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -2126,21 +2677,13 @@ function useChatComposerModel(
   const modelSelection = modelSelectionResolved ?? null;
   const defaultModelSelection = defaultModelSelectionResolved ?? null;
   const setModelSelection = useSet(thread.setModelSelection$);
-  const updateUserModelPreference = useSet(updateUserModelPreference$);
   const modelFirstOauthState = useLastResolved(modelFirstPersonalOauthState$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
   const handleModelSelectionChange = (
     selection: ModelProviderSelection | null,
   ): void => {
-    setModelSelection(selection);
-    const selectedModel = selection?.selectedModel;
-    if (isSupportedRunModel(selectedModel)) {
-      detach(
-        updateUserModelPreference({ selectedModel }, pageSignal),
-        Reason.DomCallback,
-      );
-    }
+    detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
   };
 
   const modelPicker = resolveChatComposerModelPicker({
@@ -2169,6 +2712,76 @@ function useChatComposerModel(
   };
 }
 
+function useChatThreadComposerSendState({
+  thread,
+  modelSelection,
+  setInput,
+}: {
+  thread: ChatThreadSignals;
+  modelSelection: ModelProviderSelection | null;
+  setInput: (text: string) => void;
+}) {
+  const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
+  const [, queueMessage] = useLoadableSet(thread.queueMessage$);
+  const rootSignal = useGet(rootSignal$);
+  const generationTemplateState = useGet(threadGenerationTemplate$);
+  const generationTemplate =
+    generationTemplateState?.threadId === thread.threadId
+      ? generationTemplateState.value
+      : undefined;
+  const setGenerationTemplate = useSet(setThreadGenerationTemplate$);
+  const clearGenerationTemplate = () => {
+    setGenerationTemplate(thread.threadId, undefined);
+  };
+
+  const handleSend = (
+    text: string,
+    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
+  ) => {
+    setInput("");
+    clearGenerationTemplate();
+    detach(
+      (async () => {
+        await send(
+          text,
+          modelSelection,
+          selectedGenerationTemplate
+            ? { generationTemplate: selectedGenerationTemplate }
+            : undefined,
+          rootSignal,
+        );
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  const handleQueue = (
+    text: string,
+    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
+  ) => {
+    setInput("");
+    clearGenerationTemplate();
+    detach(
+      (async () => {
+        await queueMessage(text, selectedGenerationTemplate, rootSignal);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return {
+    handleSend,
+    handleQueue,
+    sendLoading: sendLoadable.state === "loading",
+    templatePicker: {
+      value: generationTemplate,
+      onChange: (value: GenerationTemplateRequest | undefined) => {
+        setGenerationTemplate(thread.threadId, value);
+      },
+    },
+  };
+}
+
 function ChatThreadComposer({
   thread,
   autoFocus: autoFocusProp = true,
@@ -2188,17 +2801,12 @@ function ChatThreadComposer({
   const allFinishedResolvedValue = useLastResolved(thread.allFinished$);
   const allFinishedResolved = allFinishedResolvedValue !== undefined;
   const allFinished = allFinishedResolvedValue ?? false;
-  const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
-  const [, queueMessage] = useLoadableSet(thread.queueMessage$);
-  const sending =
-    (allFinishedResolved && !allFinished) || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
   const pageSignal = useGet(pageSignal$);
-  const rootSignal = useGet(rootSignal$);
 
   const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
     thread,
@@ -2210,6 +2818,13 @@ function ChatThreadComposer({
     submitBlockerProps,
     modelSelection,
   } = useChatComposerModel(thread, pageSignal);
+  const { handleSend, handleQueue, sendLoading, templatePicker } =
+    useChatThreadComposerSendState({
+      thread,
+      modelSelection,
+      setInput,
+    });
+  const sending = (allFinishedResolved && !allFinished) || sendLoading;
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const lastGroup = groups[groups.length - 1];
   const lastIsAssistant = lastGroup?.role === "assistant";
@@ -2233,18 +2848,6 @@ function ChatThreadComposer({
     detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
   };
 
-  const handleSend = (text: string) => {
-    setInput("");
-    // Use rootSignal so in-run page navigation (e.g. IPA internal nav) doesn't
-    // cancel the pending send.
-    detach(send(text, modelSelection, rootSignal), Reason.DomCallback);
-  };
-
-  const handleQueue = (text: string) => {
-    setInput("");
-    detach(queueMessage(text, rootSignal), Reason.DomCallback);
-  };
-
   return (
     <footer
       data-chat-composer
@@ -2252,7 +2855,7 @@ function ChatThreadComposer({
       style={{ paddingBottom: "max(0.5rem, var(--sab))" }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
-      <div className="overflow-y-auto [scrollbar-gutter:stable] px-4 sm:px-6 pt-3 pb-2">
+      <div className="overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-[calc(var(--github-pr-tracking-content-inset,0px)_+_1rem)] pt-3 sm:pl-6 sm:pr-[calc(var(--github-pr-tracking-content-inset,0px)_+_1.5rem)]">
         <div className="mx-auto max-w-[900px]">
           <ZeroChatComposer
             className="w-full min-w-0"
@@ -2281,6 +2884,7 @@ function ChatThreadComposer({
             setInputRef={setInputRef}
             actionsLoading={skeletonVisible}
             modelPicker={modelPicker}
+            templatePicker={templatePicker}
             modelPickerLoading={modelPickerLoading || !messagesResolved}
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}
@@ -2395,6 +2999,95 @@ function ThinkingLabel({
   return <p className="zero-shimmer-text text-xs truncate">{rotatingLabel}</p>;
 }
 
+function InlineThinkingRow({
+  blockStyle,
+  isQueued,
+  rotatingLabel,
+}: {
+  blockStyle: CSSProperties;
+  isQueued: boolean;
+  rotatingLabel: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 h-5">
+      <span className="zero-blocks shrink-0" style={blockStyle}>
+        <span />
+        <span />
+        <span />
+      </span>
+      <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
+    </div>
+  );
+}
+
+function FinishedRunRow({
+  thread,
+  label,
+  source,
+}: {
+  thread: ChatThreadSignals;
+  label: string;
+  source: RecommendedFollowupSource | null;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex h-5 flex-col justify-center gap-1.5">
+        <div className="h-px w-full bg-border/40" />
+        <div className="flex items-center gap-2">
+          <p className="text-[11px] italic text-muted-foreground/40 font-serif shrink-0">
+            {label}
+          </p>
+          <div className="h-px flex-1 bg-border/40" />
+        </div>
+      </div>
+      {source ? (
+        <RecommendedFollowupList thread={thread} source={source} />
+      ) : null}
+    </div>
+  );
+}
+
+function WaitingForAssistantResponse({
+  thread,
+  blockStyle,
+  isQueued,
+  rotatingLabel,
+}: {
+  thread: ChatThreadSignals;
+  blockStyle: CSSProperties;
+  isQueued: boolean;
+  rotatingLabel: string;
+}) {
+  return (
+    <div
+      data-thinking-indicator
+      data-role="assistant"
+      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+    >
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <AssistantBubbleAvatar thread={thread} />
+        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="zero-blocks shrink-0" style={blockStyle}>
+              <span />
+              <span />
+              <span />
+            </span>
+            <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
+          </div>
+        </div>
+      </div>
+      <div
+        aria-hidden
+        className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
+      >
+        <div className="hidden @[900px]:block" />
+        <div className="flex items-center py-2 gap-1 -ml-1" />
+      </div>
+    </div>
+  );
+}
+
 function ThinkingIndicator({
   thread,
   groups,
@@ -2434,6 +3127,13 @@ function ThinkingIndicator({
   const donePhrase = useGet(thread.donePhrase$);
   const latestRunStatus = useLastResolved(thread.latestRunStatus$);
   const isQueued = latestRunStatus === "queued";
+  const features = useLastResolved(featureSwitch$);
+  const recommendedFollowupsEnabled =
+    features?.[FeatureSwitchKey.ChatRecommendedFollowups] ?? false;
+  const recommendedFollowupSource = recommendedFollowupsEnabled
+    ? latestRecommendedFollowups(groups)
+    : null;
+  const doneLabel = recommendedFollowupSource ? "Keep going" : donePhrase;
 
   if (
     !shouldRenderThinkingIndicator({
@@ -2457,27 +3157,17 @@ function ThinkingIndicator({
         <div className="hidden @[900px]:block" />
         <div className="min-w-0">
           {running ? (
-            <div className="flex items-center gap-2 h-5">
-              <span className="zero-blocks shrink-0" style={blockStyle}>
-                <span />
-                <span />
-                <span />
-              </span>
-              <ThinkingLabel
-                isQueued={isQueued}
-                rotatingLabel={rotatingLabel}
-              />
-            </div>
+            <InlineThinkingRow
+              blockStyle={blockStyle}
+              isQueued={isQueued}
+              rotatingLabel={rotatingLabel}
+            />
           ) : (
-            <div className="flex flex-col gap-1.5 h-5 justify-center">
-              <div className="h-px w-full bg-border/40" />
-              <div className="flex items-center gap-2">
-                <p className="text-[11px] italic text-muted-foreground/40 font-serif shrink-0">
-                  {donePhrase}
-                </p>
-                <div className="h-px flex-1 bg-border/40" />
-              </div>
-            </div>
+            <FinishedRunRow
+              thread={thread}
+              label={doneLabel}
+              source={recommendedFollowupSource}
+            />
           )}
         </div>
       </div>
@@ -2486,32 +3176,12 @@ function ThinkingIndicator({
 
   // Waiting for first assistant response — show bubble with avatar
   return (
-    <div
-      data-thinking-indicator
-      data-role="assistant"
-      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
-    >
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <AssistantBubbleAvatar thread={thread} />
-        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="zero-blocks shrink-0" style={blockStyle}>
-              <span />
-              <span />
-              <span />
-            </span>
-            <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
-          </div>
-        </div>
-      </div>
-      <div
-        aria-hidden
-        className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
-      >
-        <div className="hidden @[900px]:block" />
-        <div className="flex items-center py-2 gap-1 -ml-1" />
-      </div>
-    </div>
+    <WaitingForAssistantResponse
+      thread={thread}
+      blockStyle={blockStyle}
+      isQueued={isQueued}
+      rotatingLabel={rotatingLabel}
+    />
   );
 }
 
@@ -2578,12 +3248,12 @@ function BodyContentBlocks({
               key={block.id}
               alt={block.preview.filename}
               ariaLabel={`Preview ${block.preview.filename}`}
-              imageClassName="max-h-48 max-w-full object-contain"
-              linkClassName="w-fit max-w-full rounded-lg border border-foreground/10"
+              imageClassName="h-full w-full object-contain"
+              linkClassName={`${CHAT_INLINE_MEDIA_PREVIEW_CLASS} bg-muted/30`}
               onPreview={() => {
                 openLightbox(block.preview.url);
               }}
-              placeholderClassName="h-48 w-64 max-w-full"
+              placeholderClassName="h-full w-full"
               url={block.preview.url}
             />
           );
@@ -2594,7 +3264,7 @@ function BodyContentBlocks({
             <ChatVideoPreviewButton
               key={block.id}
               ariaLabel={`Preview ${block.preview.filename}`}
-              buttonClassName="w-fit max-w-full rounded-lg border border-foreground/10"
+              buttonClassName={CHAT_INLINE_MEDIA_PREVIEW_CLASS}
               filename={block.preview.filename}
               onPreview={() => {
                 openVideoLightbox({
@@ -2602,7 +3272,7 @@ function BodyContentBlocks({
                   filename: block.preview.filename,
                 });
               }}
-              posterClassName="h-48 w-64 max-w-full"
+              posterClassName="h-full w-full"
               url={block.preview.url}
               videoClassName="h-full w-full object-contain"
             />
@@ -2674,43 +3344,55 @@ interface PermissionActionButtonState {
   hasAgent: boolean;
   hasPermission: boolean;
   loading: boolean;
+  loadError: boolean;
   saving: boolean;
   saveDone: boolean;
-  submitDone: boolean;
   alreadyApplied: boolean;
-  canManagePermissions: boolean;
-  existingRequestStatus: "pending" | "approved" | "rejected" | null;
+}
+
+type PermissionAction = "allow" | "deny";
+
+type PermissionActionUserGrant = UserPermissionGrantResponse;
+
+interface LoadableLike<T> {
+  state: string;
+  data?: T;
+}
+
+type UpsertUserPermissionGrantFn = (
+  params: {
+    agentId: string;
+    connectorRef: string;
+    permission: string;
+    action: PermissionAction;
+  },
+  signal: AbortSignal,
+) => Promise<void>;
+
+function loadableData<T>(loadable: LoadableLike<T>): T | undefined {
+  return loadable.state === "hasData" ? loadable.data : undefined;
+}
+
+function permissionActionVerb(action: PermissionAction): string {
+  return action === "allow" ? "Allow" : "Deny";
 }
 
 function permissionActionButtonLabel(
   state: PermissionActionButtonState,
-  action: "allow" | "deny",
 ): string {
   if (state.loading) {
     return "Checking permissions";
   }
+  if (state.loadError) {
+    return "Failed to load permissions";
+  }
   if (!state.hasPermission) {
     return "Unknown permission";
   }
-  if (state.saveDone || state.alreadyApplied) {
-    return action === "allow" ? "Permissions updated" : "Permission denied";
-  }
-  if (state.existingRequestStatus === "pending") {
-    return "Request sent";
-  }
-  if (state.existingRequestStatus === "approved") {
-    return "Permissions updated";
-  }
-  if (state.existingRequestStatus === "rejected") {
-    return "Request denied";
-  }
-  if (state.submitDone) {
-    return "Request sent";
-  }
   if (state.saving) {
-    return state.canManagePermissions ? "Saving..." : "Requesting...";
+    return "Saving...";
   }
-  return state.canManagePermissions ? "Confirm" : "Request approval";
+  return "Confirm";
 }
 
 function permissionActionButtonDisabled(
@@ -2718,14 +3400,23 @@ function permissionActionButtonDisabled(
 ): boolean {
   return (
     state.loading ||
+    state.loadError ||
     state.saving ||
-    state.alreadyApplied ||
-    state.saveDone ||
-    state.submitDone ||
     !state.hasAgent ||
-    !state.hasPermission ||
-    Boolean(state.existingRequestStatus)
+    !state.hasPermission
   );
+}
+
+function permissionActionStatusText(
+  state: PermissionActionButtonState,
+  action: "allow" | "deny",
+): { label: string; className: string } | null {
+  if (state.saveDone || state.alreadyApplied) {
+    return action === "allow"
+      ? { label: "Permissions updated", className: "text-green-600" }
+      : { label: "Permission denied", className: "text-destructive" };
+  }
+  return null;
 }
 
 function PermissionActionButton({
@@ -2737,6 +3428,15 @@ function PermissionActionButton({
   action: "allow" | "deny";
   onClick: () => void;
 }) {
+  const status = permissionActionStatusText(state, action);
+  if (status) {
+    return (
+      <span className={`shrink-0 text-sm font-medium ${status.className}`}>
+        {status.label}
+      </span>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -2745,116 +3445,220 @@ function PermissionActionButton({
       className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
     >
       {state.saving && <IconLoader2 size={15} className="animate-spin" />}
-      {permissionActionButtonLabel(state, action)}
+      {permissionActionButtonLabel(state)}
     </button>
   );
 }
 
-function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
-  const pageSignal = useGet(pageSignal$);
-  const config = CONNECTOR_TYPES[block.connectorRef];
-  const agentLoadable = useLastLoadable(agentById(block.agentId));
-  const adminLoadable = useLoadable(isOrgAdmin$);
-  const [saveLoadable, savePolicy] = useLoadableSet(saveAdminFocusedPolicy$);
-  const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
-  const subscribeRequests = useSet(subscribePermissionAccessRequestsChanged$);
-  const canManagePermissions =
-    adminLoadable.state === "hasData" && adminLoadable.data;
-  const existingRequestLoadable = useLoadable(
-    permissionExistingRequestByAction({
-      agentId: block.agentId,
-      connectorRef: block.connectorRef,
-      permission: block.permission,
-      action: block.action,
-      enabled: adminLoadable.state === "hasData" && !canManagePermissions,
-    }),
-  );
-  const focusedPermission = extractPermissions(block.connectorRef).find((p) => {
-    return p.name === block.permission;
+function isPermissionActionLoading(params: {
+  agentLoading: boolean;
+  userGrantsLoading: boolean;
+}): boolean {
+  return params.agentLoading || params.userGrantsLoading;
+}
+
+function isPermissionActionSaving(params: { grantLoading: boolean }): boolean {
+  return params.grantLoading;
+}
+
+function isPermissionActionLoadError(params: {
+  agentError: boolean;
+  userGrantsError: boolean;
+}): boolean {
+  return params.agentError || params.userGrantsError;
+}
+
+function isPermissionActionAlreadyApplied(params: {
+  hasAgent: boolean;
+  userGrantPolicy: FirewallPolicyValue | undefined;
+  action: "allow" | "deny";
+}): boolean {
+  if (!params.hasAgent) {
+    return false;
+  }
+  return params.userGrantPolicy === params.action;
+}
+
+function findPermissionActionPermission(block: PermissionActionBlock) {
+  return extractPermissions(block.connectorRef).find((permission) => {
+    return permission.name === block.permission;
   });
-  const actionLabel = block.action === "allow" ? "Allow" : "Deny";
-  const loading =
-    agentLoadable.state === "loading" ||
-    adminLoadable.state === "loading" ||
-    existingRequestLoadable.state === "loading";
-  const saving =
-    saveLoadable.state === "loading" || submitLoadable.state === "loading";
-  const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
-  const existingRequest =
-    existingRequestLoadable.state === "hasData"
-      ? existingRequestLoadable.data
-      : null;
-  const storedPolicy =
-    agent?.permissionPolicies?.[block.connectorRef]?.policies?.[
-      block.permission
-    ];
-  const alreadyApplied = Boolean(agent) && storedPolicy === block.action;
-  const finished =
-    saveLoadable.state === "hasData" || submitLoadable.state === "hasData";
-  const buttonState: PermissionActionButtonState = {
-    hasAgent: Boolean(agent),
-    hasPermission: Boolean(focusedPermission),
+}
+
+function permissionActionUserGrantPolicy(
+  loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
+  block: PermissionActionBlock,
+): FirewallPolicyValue | undefined {
+  const grants = loadableData(loadable);
+  if (!grants) {
+    return undefined;
+  }
+  return resolveUserPermissionGrantPolicy(
+    grants,
+    block.connectorRef,
+    block.permission,
+  );
+}
+
+function createPermissionActionButtonState(params: {
+  hasAgent: boolean;
+  hasPermission: boolean;
+  loading: boolean;
+  loadError: boolean;
+  saving: boolean;
+  alreadyApplied: boolean;
+  saveDone: boolean;
+}): PermissionActionButtonState {
+  return {
+    hasAgent: params.hasAgent,
+    hasPermission: params.hasPermission,
+    loading: params.loading,
+    loadError: params.loadError,
+    saving: params.saving,
+    saveDone: params.saveDone,
+    alreadyApplied: params.alreadyApplied,
+  };
+}
+
+function createPermissionActionCardButtonState(params: {
+  hasAgent: boolean;
+  focusedPermission: { name: string } | undefined;
+  loading: boolean;
+  loadError: boolean;
+  saving: boolean;
+  saveDone: boolean;
+  alreadyApplied: boolean;
+}): PermissionActionButtonState {
+  return createPermissionActionButtonState({
+    hasAgent: params.hasAgent,
+    hasPermission: Boolean(params.focusedPermission),
+    loading: params.loading,
+    loadError: params.loadError,
+    saving: params.saving,
+    saveDone: params.saveDone,
+    alreadyApplied: params.alreadyApplied,
+  });
+}
+
+function createPermissionActionCardViewState(params: {
+  block: PermissionActionBlock;
+  hasAgent: boolean;
+  agentLoadableState: string;
+  userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
+  grantLoadableState: string;
+}) {
+  const focusedPermission = findPermissionActionPermission(params.block);
+  const actionLabel = permissionActionVerb(params.block.action);
+  const loading = isPermissionActionLoading({
+    agentLoading: params.agentLoadableState === "loading",
+    userGrantsLoading: params.userGrantsLoadable.state === "loading",
+  });
+  const loadError = isPermissionActionLoadError({
+    agentError: params.agentLoadableState === "hasError",
+    userGrantsError: params.userGrantsLoadable.state === "hasError",
+  });
+  const saving = isPermissionActionSaving({
+    grantLoading: params.grantLoadableState === "loading",
+  });
+  const userGrantPolicy = permissionActionUserGrantPolicy(
+    params.userGrantsLoadable,
+    params.block,
+  );
+  const alreadyApplied = isPermissionActionAlreadyApplied({
+    hasAgent: params.hasAgent,
+    userGrantPolicy,
+    action: params.block.action,
+  });
+  const saveDone = params.grantLoadableState === "hasData";
+  const buttonState = createPermissionActionCardButtonState({
+    hasAgent: params.hasAgent,
+    focusedPermission,
     loading,
+    loadError,
     saving,
-    saveDone: saveLoadable.state === "hasData",
-    submitDone: submitLoadable.state === "hasData",
+    saveDone,
     alreadyApplied,
-    canManagePermissions,
-    existingRequestStatus: existingRequest?.status ?? null,
+  });
+  return {
+    actionLabel,
+    buttonState,
+    focusedPermission,
+    finished: saveDone,
   };
+}
 
-  const handlePermissionAction = () => {
-    if (
-      !agent ||
-      !focusedPermission ||
-      existingRequest ||
-      loading ||
-      saving ||
-      alreadyApplied ||
-      finished
-    ) {
-      return;
-    }
+function runPermissionAction(params: {
+  hasAgent: boolean;
+  focusedPermission: { name: string } | undefined;
+  state: PermissionActionButtonState;
+  finished: boolean;
+  runUserGrant: () => void;
+}): void {
+  if (
+    !params.hasAgent ||
+    !params.focusedPermission ||
+    params.state.loading ||
+    params.state.loadError ||
+    params.state.saving ||
+    params.state.alreadyApplied ||
+    params.finished
+  ) {
+    return;
+  }
 
-    if (canManagePermissions) {
-      detach(
-        savePolicy(
-          {
-            agentId: block.agentId,
-            ref: block.connectorRef,
-            permissionName: focusedPermission.name,
-            action: block.action,
-            agentFirewallPolicies: agent.permissionPolicies,
-          },
-          pageSignal,
-        ),
-        Reason.DomCallback,
-      );
-      return;
-    }
+  params.runUserGrant();
+}
 
-    detach(
-      subscribeRequests(pageSignal),
-      Reason.Daemon,
-      "permission access request realtime subscription",
-    );
-    detach(
-      submitRequest(
-        {
-          agentId: block.agentId,
-          connectorRef: block.connectorRef,
-          permission: focusedPermission.name,
-          action: block.action,
-          method: block.method ?? undefined,
-          path: block.path ?? undefined,
-          reason: block.reason ?? undefined,
-        },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
+function createPermissionActionHandler(params: {
+  block: PermissionActionBlock;
+  pageSignal: AbortSignal;
+  hasAgent: boolean;
+  focusedPermission: { name: string } | undefined;
+  state: PermissionActionButtonState;
+  finished: boolean;
+  upsertGrant: UpsertUserPermissionGrantFn;
+}): () => void {
+  return () => {
+    const permissionName =
+      params.focusedPermission?.name ?? params.block.permission;
+    runPermissionAction({
+      hasAgent: params.hasAgent,
+      focusedPermission: params.focusedPermission,
+      state: params.state,
+      finished: params.finished,
+      runUserGrant: () => {
+        detach(
+          params.upsertGrant(
+            {
+              agentId: params.block.agentId,
+              connectorRef: params.block.connectorRef,
+              permission: permissionName,
+              action: params.block.action,
+            },
+            params.pageSignal,
+          ),
+          Reason.DomCallback,
+        );
+      },
+    });
   };
+}
 
+function PermissionActionCardContent({
+  block,
+  connectorLabel,
+  actionLabel,
+  permissionName,
+  buttonState,
+  onClick,
+}: {
+  block: PermissionActionBlock;
+  connectorLabel: string;
+  actionLabel: string;
+  permissionName: string;
+  buttonState: PermissionActionButtonState;
+  onClick: () => void;
+}) {
   return (
     <div
       data-testid="permission-action-card"
@@ -2866,19 +3670,61 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
         </div>
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-foreground">
-            {config.label} permissions
+            {connectorLabel} permissions
           </div>
           <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
-            {actionLabel} {focusedPermission?.name ?? block.permission}
+            {actionLabel} {permissionName}
           </div>
         </div>
       </div>
       <PermissionActionButton
         state={buttonState}
         action={block.action}
-        onClick={handlePermissionAction}
+        onClick={onClick}
       />
     </div>
+  );
+}
+
+function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
+  const pageSignal = useGet(pageSignal$);
+  const config = CONNECTOR_TYPES[block.connectorRef];
+  const agentLoadable = useLastLoadable(agentById(block.agentId));
+  const [grantLoadable, upsertGrant] = useLoadableSet(
+    upsertUserPermissionGrant$,
+  );
+  const userGrantsLoadable = useLoadable(
+    userPermissionGrantsByAgent({
+      agentId: block.agentId,
+    }),
+  );
+  const hasAgent =
+    agentLoadable.state === "hasData" && Boolean(agentLoadable.data);
+  const actionState = createPermissionActionCardViewState({
+    block,
+    hasAgent,
+    agentLoadableState: agentLoadable.state,
+    userGrantsLoadable,
+    grantLoadableState: grantLoadable.state,
+  });
+
+  return (
+    <PermissionActionCardContent
+      block={block}
+      connectorLabel={config.label}
+      actionLabel={actionState.actionLabel}
+      permissionName={actionState.focusedPermission?.name ?? block.permission}
+      buttonState={actionState.buttonState}
+      onClick={createPermissionActionHandler({
+        block,
+        pageSignal,
+        hasAgent,
+        focusedPermission: actionState.focusedPermission,
+        state: actionState.buttonState,
+        finished: actionState.finished,
+        upsertGrant,
+      })}
+    />
   );
 }
 
@@ -3512,12 +4358,12 @@ function UserMessageAttachments({
               key={a.url}
               alt={a.filename}
               ariaLabel={`Preview ${a.filename}`}
-              imageClassName="h-9 max-w-[72px] object-cover"
-              linkClassName="rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
+              imageClassName="h-full w-full object-contain"
+              linkClassName={`${CHAT_INLINE_MEDIA_PREVIEW_CLASS} bg-muted/30`}
               onPreview={() => {
                 onImageClick(a.url);
               }}
-              placeholderClassName="h-9 w-[72px]"
+              placeholderClassName="h-full w-full"
               url={a.url}
             />
           );
@@ -3527,7 +4373,7 @@ function UserMessageAttachments({
             <ChatVideoPreviewButton
               key={a.url}
               ariaLabel={`Preview ${a.filename}`}
-              buttonClassName="rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
+              buttonClassName={CHAT_INLINE_MEDIA_PREVIEW_CLASS}
               filename={a.filename}
               onPreview={() => {
                 openVideoLightbox({
@@ -3535,9 +4381,9 @@ function UserMessageAttachments({
                   filename: a.filename,
                 });
               }}
-              posterClassName="h-9 w-[72px]"
+              posterClassName="h-full w-full"
               url={a.url}
-              videoClassName="h-full w-full object-cover"
+              videoClassName="h-full w-full object-contain"
             />
           );
         }
@@ -3555,6 +4401,16 @@ function UserMessageAttachments({
               filename={a.filename}
               url={a.url}
               kind={a.kind}
+            />
+          );
+        }
+        if (a.kind === "audio") {
+          return (
+            <PreviewableAudioAttachmentChip
+              key={a.url}
+              filename={a.filename}
+              url={a.url}
+              contentType={a.contentType}
             />
           );
         }
@@ -3597,6 +4453,108 @@ function UserMessageActions({
           <IconCopy size={18} stroke={1.5} />
         )}
       </button>
+    </div>
+  );
+}
+
+function formatTemplateIdLabel(templateId: string): string {
+  const label = templateId
+    .replace(/^template:/, "")
+    .replace(/^html-ppt-/, "")
+    .replace(/-/g, " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function generationTemplateLabel(
+  value: GenerationTemplateRequest | undefined,
+): string | null {
+  if (!value) {
+    return null;
+  }
+  const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
+    return (
+      candidate.designSystemId === value.selection.designSystemId &&
+      candidate.templateId === value.selection.templateId
+    );
+  });
+  return item?.title ?? formatTemplateIdLabel(value.selection.templateId);
+}
+
+function generationTemplateTypeLabel(
+  value: GenerationTemplateRequest | undefined,
+): string | null {
+  if (!value) {
+    return null;
+  }
+  return "Slides";
+}
+
+function UserMessageGenerationTemplate({
+  generationTemplate,
+}: {
+  generationTemplate: GenerationTemplateRequest | undefined;
+}) {
+  const features = useLastResolved(featureSwitch$);
+  const templateLabelEnabled =
+    features?.[FeatureSwitchKey.ChatTemplatePicker] ?? false;
+  if (!templateLabelEnabled) {
+    return null;
+  }
+  const label = generationTemplateLabel(generationTemplate);
+  const typeLabel = generationTemplateTypeLabel(generationTemplate);
+  if (!label || !typeLabel) {
+    return null;
+  }
+  return (
+    <div
+      aria-label={`Message template ${label}`}
+      className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
+      title={`${typeLabel} · ${label}`}
+    >
+      <IconPresentation size={15} stroke={1.8} className="shrink-0" />
+      <span className="shrink-0">{typeLabel}</span>
+      <span className="shrink-0">·</span>
+      <span className="min-w-0 truncate">{label}</span>
+    </div>
+  );
+}
+
+function ScheduleUserMessage({
+  scheduleId,
+  scheduleTitle,
+}: {
+  scheduleId: string | undefined;
+  scheduleTitle: string;
+}) {
+  const cardClassName =
+    "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
+  const body = (
+    <>
+      <IconClock size={15} className="shrink-0" />
+      <span className="min-w-0 truncate font-medium text-foreground">
+        {scheduleTitle}
+      </span>
+    </>
+  );
+  return (
+    <div data-role="user" className="group">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
+        <div className="flex flex-col items-end w-full">
+          {scheduleId ? (
+            <Link
+              pathname="/schedules/:scheduleId"
+              options={{ pathParams: { scheduleId } }}
+              className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
+              aria-label={`Open schedule ${scheduleTitle}`}
+            >
+              {body}
+            </Link>
+          ) : (
+            <div className={cardClassName}>{body}</div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -3653,11 +4611,25 @@ function PagedUserMessage({
     );
   };
 
+  // Schedule-posted user messages don't show the prompt — they render the
+  // schedule's title behind a clock icon and link to the schedule detail page.
+  if (message.scheduleTitle) {
+    return (
+      <ScheduleUserMessage
+        scheduleId={message.scheduleId}
+        scheduleTitle={message.scheduleTitle}
+      />
+    );
+  }
+
   return (
     <div data-role="user" className="group">
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
+          <UserMessageGenerationTemplate
+            generationTemplate={message.generationTemplate}
+          />
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
@@ -3713,17 +4685,7 @@ function PagedAssistantGroup({
           })}
         </div>
       </div>
-      <PagedGroupActions
-        group={group}
-        content={fullContent}
-        thread={thread}
-        onScrollToMessageStart={() => {
-          document.getElementById(groupElementId)?.scrollIntoView({
-            block: "start",
-            behavior: "smooth",
-          });
-        }}
-      />
+      <PagedGroupActions group={group} content={fullContent} thread={thread} />
     </div>
   );
 }
@@ -3852,36 +4814,14 @@ function PagedGroupPrimaryActions({
   );
 }
 
-function MessageStartButton({ onClick }: { onClick: () => void }) {
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={onClick}
-            className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-            aria-label="Scroll to message start"
-          >
-            <IconArrowBarToUp size={18} stroke={1.5} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Scroll to start</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 function PagedGroupActions({
   group,
   content,
   thread,
-  onScrollToMessageStart,
 }: {
   group: GroupedChatMessageGroup;
   content: string;
   thread: ChatThreadSignals;
-  onScrollToMessageStart: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const copiedId = useGet(thread.copiedMessageId$);
@@ -3890,8 +4830,6 @@ function PagedGroupActions({
 
   const features = useLastResolved(featureSwitch$);
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
-  const messageStartButtonEnabled =
-    features?.[FeatureSwitchKey.ChatMessageStartButton] ?? false;
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
@@ -3942,9 +4880,6 @@ function PagedGroupActions({
           onCopy={handleCopy}
           onTts={handleTts}
         />
-        {messageStartButtonEnabled && (
-          <MessageStartButton onClick={onScrollToMessageStart} />
-        )}
       </div>
     </div>
   );

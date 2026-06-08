@@ -17,19 +17,32 @@ export const dropbox = {
           clientIdEnv: "DROPBOX_OAUTH_CLIENT_ID",
           clientSecretEnv: "DROPBOX_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["DROPBOX_ACCESS_TOKEN", "DROPBOX_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.dropboxapi.com/oauth2/token",
           scopes: [
             "account_info.read",
             "files.metadata.read",
             "files.content.read",
           ],
+          outputs: {
+            accessToken: "$secrets.DROPBOX_ACCESS_TOKEN",
+            refreshToken: "$secrets.DROPBOX_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "DROPBOX_ACCESS_TOKEN",
-          refreshToken: "DROPBOX_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.DROPBOX_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.DROPBOX_ACCESS_TOKEN",
+            refreshToken: "$secrets.DROPBOX_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["DROPBOX_ACCESS_TOKEN"],
           envBindings: {
             DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
           },
@@ -40,6 +53,10 @@ export const dropbox = {
         label: "Access Token",
         helpText:
           "1. Go to the [Dropbox App Console](https://www.dropbox.com/developers/apps)\n2. Select your app (or create a new one)\n3. Click the button to generate an access token for your own account\n4. Copy the generated OAuth 2 access token",
+        storage: {
+          secrets: ["DROPBOX_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

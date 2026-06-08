@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import {
   chatMessagesContract,
   type AttachFile,
+  type GenerationTemplateRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
@@ -37,9 +38,15 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { now, nowDate } from "../external/time";
-import { badRequestMessage, notFound, providerDeleted } from "../../lib/error";
+import {
+  badRequestMessage,
+  conflict,
+  notFound,
+  providerDeleted,
+} from "../../lib/error";
 import { env } from "../../lib/env";
-import { buildArtifactKey } from "../../lib/file-url";
+import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import {
@@ -60,13 +67,11 @@ import {
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
 } from "../services/zero-model-selection.service";
-import {
-  touchChatThreadLastMessageAt,
-  visibleChatMessageCondition,
-} from "../services/zero-chat-thread.service";
+import { visibleChatMessageCondition } from "../services/zero-chat-thread.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import { bestEffort } from "../utils";
 import type { RouteEntry } from "../route";
+import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
 
@@ -80,12 +85,14 @@ interface NormalSendBody {
     readonly modelProviderId: string;
     readonly selectedModel: string;
   } | null;
+  readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
   readonly clientMessageId?: string;
   readonly forceNewSession?: boolean;
   readonly debugNoMockClaude?: boolean;
   readonly debugNoMockCodex?: boolean;
+  readonly revokesMessageId?: string;
 }
 
 interface RecallSendBody {
@@ -116,6 +123,7 @@ interface ResolvedThread {
   readonly sessionId: string | undefined;
   readonly incompleteContext: string;
   readonly isNewThread: boolean;
+  readonly isClientThreadRetry: boolean;
 }
 
 interface WebChatPriorRunMessage {
@@ -152,6 +160,7 @@ interface IncompleteRoundRow extends WebChatIncompleteRoundMessage {
 }
 
 type IncomingModelSelection = NormalSendBody["modelSelection"];
+type IncomingGenerationTemplate = NormalSendBody["generationTemplate"];
 type OrganizationAuthContext = AuthContext & { readonly orgId: string };
 
 interface NormalSendArgs {
@@ -168,6 +177,7 @@ interface PreparedNormalSend {
   readonly forceNewSession: boolean;
   readonly thread: ResolvedThread;
   readonly priorContext: string;
+  readonly generationTemplatePrompt: string;
   readonly persistedExplicitSelection: boolean;
 }
 
@@ -175,6 +185,7 @@ type NormalSendFailure =
   | ReturnType<typeof notFound>
   | ReturnType<typeof providerDeleted>
   | ReturnType<typeof forbidden>
+  | ReturnType<typeof conflict>
   | ReturnType<typeof badRequestMessage>;
 
 interface CreatedChatMessageResponse {
@@ -187,6 +198,17 @@ interface CreatedChatMessageResponse {
   };
 }
 
+type ClientSendResolution =
+  | CreatedChatMessageResponse
+  | ReturnType<typeof conflict>;
+
+type CreateChatThreadResult =
+  | {
+      readonly id: string;
+      readonly clientThreadAlreadyExisted: boolean;
+    }
+  | ReturnType<typeof notFound>;
+
 type AppendMessageResult =
   | {
       readonly ok: true;
@@ -196,6 +218,39 @@ type AppendMessageResult =
       readonly ok: false;
       readonly message: string;
     };
+
+type ClientMessageIdResolution =
+  | {
+      readonly kind: "available";
+    }
+  | {
+      readonly kind: "queued";
+      readonly createdAt: Date;
+      readonly inserted: boolean;
+    }
+  | {
+      readonly kind: "associated";
+      readonly runId: string;
+      readonly status: string;
+      readonly createdAt: Date;
+    }
+  | {
+      readonly kind: "conflict";
+    };
+
+interface ExistingClientMessageIdRow {
+  readonly chatThreadId: string;
+  readonly threadUserId: string;
+  readonly role: string;
+  readonly content: string | null;
+  readonly runId: string | null;
+  readonly revokesMessageId: string | null;
+  readonly interruptsRunId: string | null;
+  readonly error: string | null;
+  readonly messageCreatedAt: Date;
+  readonly runStatus: string | null;
+  readonly runCreatedAt: Date | null;
+}
 
 const sendBody$ = bodyResultOf(chatMessagesContract.send);
 // Existing web chat threads carry a small recent-run window in the system
@@ -212,6 +267,118 @@ function forbidden(message: string) {
   };
 }
 
+function duplicateClientMessageIdResponse() {
+  return conflict("clientMessageId is already in use");
+}
+
+function resolveExistingClientMessageIdRow(
+  row: ExistingClientMessageIdRow | undefined,
+  params: {
+    readonly threadId: string;
+    readonly userId: string;
+  },
+): ClientMessageIdResolution {
+  if (!row) {
+    return { kind: "available" };
+  }
+  if (
+    row.chatThreadId !== params.threadId ||
+    row.threadUserId !== params.userId ||
+    row.role !== "user" ||
+    row.interruptsRunId !== null
+  ) {
+    return { kind: "conflict" };
+  }
+  if (
+    row.revokesMessageId !== null &&
+    row.runId === null &&
+    row.content === null &&
+    row.error === null
+  ) {
+    return { kind: "conflict" };
+  }
+  if (row.runId === null) {
+    return {
+      kind: "queued",
+      createdAt: row.messageCreatedAt,
+      inserted: false,
+    };
+  }
+  if (!row.runCreatedAt || !row.runStatus) {
+    return { kind: "conflict" };
+  }
+  return {
+    kind: "associated",
+    runId: row.runId,
+    status: row.runStatus,
+    createdAt: row.runCreatedAt,
+  };
+}
+
+async function resolveClientMessageId(
+  db: Db,
+  params: {
+    readonly clientMessageId: string;
+    readonly threadId: string;
+    readonly userId: string;
+  },
+): Promise<ClientMessageIdResolution> {
+  const [message] = await db
+    .select({
+      chatThreadId: chatMessages.chatThreadId,
+      threadUserId: chatThreads.userId,
+      role: chatMessages.role,
+      content: chatMessages.content,
+      runId: chatMessages.runId,
+      revokesMessageId: chatMessages.revokesMessageId,
+      interruptsRunId: chatMessages.interruptsRunId,
+      error: chatMessages.error,
+      messageCreatedAt: chatMessages.createdAt,
+      runStatus: agentRuns.status,
+      runCreatedAt: agentRuns.createdAt,
+    })
+    .from(chatMessages)
+    .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .where(eq(chatMessages.id, params.clientMessageId))
+    .limit(1);
+  return resolveExistingClientMessageIdRow(message, params);
+}
+
+function clientMessageIdResolutionResponse(
+  resolution: ClientMessageIdResolution,
+  threadId: string,
+):
+  | CreatedChatMessageResponse
+  | ReturnType<typeof duplicateClientMessageIdResponse>
+  | undefined {
+  if (resolution.kind === "available") {
+    return undefined;
+  }
+  if (resolution.kind === "conflict") {
+    return duplicateClientMessageIdResponse();
+  }
+  if (resolution.kind === "associated") {
+    return {
+      status: 201,
+      body: {
+        runId: resolution.runId,
+        threadId,
+        status: resolution.status,
+        createdAt: resolution.createdAt.toISOString(),
+      },
+    };
+  }
+  return {
+    status: 201,
+    body: {
+      runId: null,
+      threadId,
+      createdAt: resolution.createdAt.toISOString(),
+    },
+  };
+}
+
 function isCancelResult(value: unknown): value is CancelRunResult {
   return (
     typeof value === "object" && value !== null && "alreadyCancelled" in value
@@ -219,7 +386,11 @@ function isCancelResult(value: unknown): value is CancelRunResult {
 }
 
 function isRecallSendBody(body: SendBody): body is RecallSendBody {
-  return "revokesMessageId" in body && body.revokesMessageId !== undefined;
+  return (
+    "revokesMessageId" in body &&
+    body.revokesMessageId !== undefined &&
+    !("prompt" in body && body.prompt !== undefined)
+  );
 }
 
 function isInterruptSendBody(body: SendBody): body is InterruptSendBody {
@@ -247,7 +418,10 @@ function generateCallbackSecret(): string {
 }
 
 function chatCallbackUrl(): string {
-  return new URL("/api/internal/callbacks/chat", env("VM0_API_URL")).toString();
+  return new URL(
+    "/api/internal/callbacks/chat",
+    internalApiBaseUrl(),
+  ).toString();
 }
 
 function buildWebChatPrompt(): string {
@@ -274,8 +448,14 @@ function buildWebAttachFilesPrompt(
 function buildAppendSystemPrompt(
   incompleteContext: string,
   priorContext: string,
+  generationTemplatePrompt: string,
 ): string {
-  return [buildWebChatPrompt(), priorContext, incompleteContext]
+  return [
+    buildWebChatPrompt(),
+    priorContext,
+    incompleteContext,
+    generationTemplatePrompt,
+  ]
     .filter((part) => {
       return part.length > 0;
     })
@@ -306,12 +486,13 @@ function attachFileMetadata(
   attachFiles: readonly AttachFile[] | undefined,
 ): ChatMessageAttachFileMetadata[] | null {
   const metadata = attachFiles?.map((file) => {
+    const sanitized = sanitizeArtifactFilename(file.filename);
     return {
       id: file.id,
       filename: file.filename,
       contentType: file.contentType,
       size: file.size,
-      objectKey: buildArtifactKey(userId, file.id, file.filename),
+      objectKey: buildArtifactKey(userId, file.id, sanitized),
     };
   });
   return metadata && metadata.length > 0 ? metadata : null;
@@ -517,7 +698,19 @@ async function latestSessionIdForThread(
     .select({ result: agentRuns.result })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(eq(zeroRuns.chatThreadId, threadId))
+    // D7: only web-source runs join the thread's session-continuity chain, so a
+    // chat-mode scheduled run (triggerSource "schedule") never resumes a web
+    // session and a later web turn never resumes a scheduled one. The 'web'
+    // filter (before .limit) is mirrored in latestSessionIdForThreadFromDb
+    // (internal-callbacks-chat.ts) and latestSessionIdForThread
+    // (chat-thread-v1-send.service.ts) — keep them in sync. This is a
+    // continuity filter ONLY; it must NOT be copied into activeRunExistsForThread.
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        eq(zeroRuns.triggerSource, "web"),
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(5);
 
@@ -706,6 +899,53 @@ async function activeRunExistsForThread(
   return run !== undefined;
 }
 
+async function resolveClientMessageSend(params: {
+  readonly db: Db;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly clientMessageId: string | undefined;
+}): Promise<ClientSendResolution | undefined> {
+  if (!params.clientMessageId) {
+    return undefined;
+  }
+  const resolution = await resolveClientMessageId(params.db, {
+    clientMessageId: params.clientMessageId,
+    threadId: params.threadId,
+    userId: params.userId,
+  });
+  return clientMessageIdResolutionResponse(resolution, params.threadId);
+}
+
+async function resolveClientThreadRetryRun(
+  db: Db,
+  threadId: string,
+): Promise<CreatedChatMessageResponse | undefined> {
+  const [run] = await db
+    .select({
+      runId: agentRuns.id,
+      status: agentRuns.status,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(eq(zeroRuns.chatThreadId, threadId))
+    .orderBy(asc(agentRuns.createdAt))
+    .limit(1);
+  if (!run) {
+    return undefined;
+  }
+
+  return {
+    status: 201,
+    body: {
+      runId: run.runId,
+      threadId,
+      status: run.status,
+      createdAt: run.createdAt.toISOString(),
+    },
+  };
+}
+
 async function getStoredThreadModelPin(
   db: Db,
   threadId: string,
@@ -803,6 +1043,38 @@ async function resolveStoredModelFirstPin(params: {
   });
 }
 
+/**
+ * Resolve the model pin for a chat-mode scheduled run from its linked thread:
+ * the thread's stored pin, else its first-run pin, else the org default. This
+ * is deliberately decoupled from session state (a scheduled run is always
+ * fresh) — do NOT route schedules through `resolveRunModelPin`, which falls
+ * back to the org default whenever the session is fresh.
+ */
+export async function resolveScheduleChatThreadModelPin(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly threadId: string;
+}): Promise<
+  | ThreadModelPin
+  | ReturnType<typeof providerDeleted>
+  | ReturnType<typeof badRequestMessage>
+> {
+  const existing = await existingModelFirstThreadPin(
+    params.db,
+    params.threadId,
+  );
+  if (existing) {
+    return resolveStoredModelFirstPin({
+      db: params.db,
+      orgId: params.orgId,
+      userId: params.userId,
+      pin: existing,
+    });
+  }
+  return resolveDefaultModelFirstPin(params.db, params.orgId, params.userId);
+}
+
 async function persistThreadPinIfUnset(
   db: Db,
   threadId: string,
@@ -872,18 +1144,15 @@ async function validateModelSelection(params: {
   readonly modelSelection: IncomingModelSelection;
   readonly forceNewSession: boolean;
 }): Promise<ReturnType<typeof badRequestMessage> | undefined> {
-  if (
-    params.modelSelection &&
-    params.modelSelection.modelProviderId !== MODEL_FIRST_SELECTION_PROVIDER_ID
-  ) {
-    const available = await modelProviderPinAvailable({
+  if (params.modelSelection) {
+    const pin = await resolveModelSelectionPin({
       db: params.db,
       orgId: params.orgId,
       userId: params.userId,
-      modelProviderId: params.modelSelection.modelProviderId,
+      modelSelection: params.modelSelection,
     });
-    if (!available) {
-      return badRequestMessage("Unknown model provider for this workspace");
+    if ("status" in pin) {
+      return pin;
     }
   }
 
@@ -972,11 +1241,46 @@ async function createChatThread(
     readonly clientThreadId: string | undefined;
     readonly pin: ThreadModelPin;
   },
-): Promise<{ readonly id: string }> {
+): Promise<CreateChatThreadResult> {
+  if (args.clientThreadId) {
+    const [thread] = await db
+      .insert(chatThreads)
+      .values({
+        id: args.clientThreadId,
+        userId: args.userId,
+        agentComposeId: args.agentId,
+        title: null,
+        modelProviderId: null,
+        modelProviderType: null,
+        modelProviderCredentialScope: null,
+        selectedModel: args.pin.selectedModel,
+      })
+      .onConflictDoNothing({ target: chatThreads.id })
+      .returning({ id: chatThreads.id });
+    if (thread) {
+      return { id: thread.id, clientThreadAlreadyExisted: false };
+    }
+
+    const [existingThread] = await db
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.id, args.clientThreadId),
+          eq(chatThreads.userId, args.userId),
+          eq(chatThreads.agentComposeId, args.agentId),
+        ),
+      )
+      .limit(1);
+    if (!existingThread) {
+      return notFound("Chat thread not found");
+    }
+    return { id: existingThread.id, clientThreadAlreadyExisted: true };
+  }
+
   const [thread] = await db
     .insert(chatThreads)
     .values({
-      ...(args.clientThreadId ? { id: args.clientThreadId } : {}),
       userId: args.userId,
       agentComposeId: args.agentId,
       title: null,
@@ -989,7 +1293,7 @@ async function createChatThread(
   if (!thread) {
     throw new Error("Failed to create chat thread");
   }
-  return thread;
+  return { id: thread.id, clientThreadAlreadyExisted: false };
 }
 
 async function resolveThread(params: {
@@ -1008,11 +1312,15 @@ async function resolveThread(params: {
       clientThreadId: params.clientThreadId,
       pin: params.initialPin,
     });
+    if ("status" in thread) {
+      return thread;
+    }
     return {
       threadId: thread.id,
       sessionId: undefined,
       incompleteContext: "",
-      isNewThread: true,
+      isNewThread: !thread.clientThreadAlreadyExisted,
+      isClientThreadRetry: thread.clientThreadAlreadyExisted,
     };
   }
 
@@ -1045,6 +1353,7 @@ async function resolveThread(params: {
           groupIncompleteRoundsByRunId(incompleteRows),
         ),
     isNewThread: false,
+    isClientThreadRetry: false,
   };
 }
 
@@ -1100,7 +1409,8 @@ function appendUnassociatedUserMessage(params: {
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
-}): Promise<{ readonly createdAt: Date }> {
+  readonly generationTemplate: IncomingGenerationTemplate;
+}): Promise<ClientMessageIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
@@ -1125,35 +1435,52 @@ function appendUnassociatedUserMessage(params: {
         runId: null,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
+        generationTemplate: params.generationTemplate,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
-      await touchChatThreadLastMessageAt(tx, params.threadId);
-      return inserted;
+      return { kind: "queued", createdAt: inserted.createdAt, inserted: true };
     }
     if (!explicitId) {
       throw new Error("Failed to insert unassociated user message");
     }
     const [existing] = await tx
-      .select({ createdAt: chatMessages.createdAt })
+      .select({
+        chatThreadId: chatMessages.chatThreadId,
+        threadUserId: chatThreads.userId,
+        role: chatMessages.role,
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+        revokesMessageId: chatMessages.revokesMessageId,
+        interruptsRunId: chatMessages.interruptsRunId,
+        error: chatMessages.error,
+        messageCreatedAt: chatMessages.createdAt,
+        runStatus: agentRuns.status,
+        runCreatedAt: agentRuns.createdAt,
+      })
       .from(chatMessages)
       .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-      .where(
-        and(
-          eq(chatMessages.id, explicitId),
-          eq(chatMessages.chatThreadId, params.threadId),
-          eq(chatThreads.userId, params.userId),
-          eq(chatMessages.role, "user"),
-          isNull(chatMessages.runId),
-        ),
-      )
+      .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+      .where(eq(chatMessages.id, explicitId))
       .limit(1);
-    if (!existing) {
-      throw new Error("Failed to resolve unassociated user message");
-    }
-    return existing;
+    const resolution = resolveExistingClientMessageIdRow(existing, {
+      threadId: params.threadId,
+      userId: params.userId,
+    });
+    return resolution.kind === "available" ? { kind: "conflict" } : resolution;
   });
+}
+
+async function clearThreadDraft(
+  tx: Pick<Db, "update">,
+  threadId: string,
+  userId: string,
+): Promise<void> {
+  await tx
+    .update(chatThreads)
+    .set({ draftContent: null, draftAttachments: null })
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
 }
 
 async function appendAssociatedUserMessage(params: {
@@ -1164,18 +1491,22 @@ async function appendAssociatedUserMessage(params: {
   readonly runId: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
+  readonly revokesMessageId: string | undefined;
+  readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
+  // When false, the thread's in-progress draft is preserved. Scheduled posts
+  // are not user-initiated typing, so they must not clear the user's draft.
+  readonly clearDraft: boolean;
+  // Set when this message is posted by a firing schedule. `scheduleTitle`
+  // snapshots the schedule name at send time so the bubble keeps its label
+  // even after a rename/delete.
+  readonly scheduleId?: string;
+  readonly scheduleTitle?: string;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
-    await tx
-      .update(chatThreads)
-      .set({ draftContent: null, draftAttachments: null })
-      .where(
-        and(
-          eq(chatThreads.id, params.threadId),
-          eq(chatThreads.userId, params.userId),
-        ),
-      );
+    if (params.clearDraft) {
+      await clearThreadDraft(tx, params.threadId, params.userId);
+    }
     const explicitId = params.clientMessageId ?? undefined;
     const fileIds = attachFileIds(params.attachFiles);
     const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
@@ -1187,8 +1518,12 @@ async function appendAssociatedUserMessage(params: {
         role: "user",
         content: params.prompt,
         runId: params.runId,
+        revokesMessageId: params.revokesMessageId,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
+        generationTemplate: params.generationTemplate,
+        scheduleId: params.scheduleId,
+        scheduleTitle: params.scheduleTitle,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -1199,7 +1534,6 @@ async function appendAssociatedUserMessage(params: {
         createdAfter: inserted?.createdAt ?? nowDate(),
       });
     }
-    await touchChatThreadLastMessageAt(tx, params.threadId);
   });
 }
 
@@ -1268,7 +1602,6 @@ function appendRecallUserMessage(params: {
       .onConflictDoNothing()
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
-      await touchChatThreadLastMessageAt(tx, params.threadId);
       return { ok: true, createdAt: inserted.createdAt };
     }
     const [resolved] = await tx
@@ -1288,6 +1621,49 @@ function appendRecallUserMessage(params: {
     }
     return { ok: true, createdAt: resolved.createdAt };
   });
+}
+
+async function validateNormalRevocationTarget(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly revokesMessageId: string | undefined;
+}): Promise<NormalSendFailure | undefined> {
+  if (!params.revokesMessageId) {
+    return undefined;
+  }
+
+  const [target] = await params.db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.id, params.revokesMessageId),
+        eq(chatMessages.chatThreadId, params.threadId),
+        eq(chatMessages.role, "assistant"),
+        isNull(chatMessages.runLifecycleEvent),
+        isNotNull(chatMessages.recommendedFollowups),
+      ),
+    )
+    .limit(1);
+  if (!target) {
+    return badRequestMessage("Recommended follow-up is no longer available");
+  }
+
+  const [existingRevoker] = await params.db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, params.threadId),
+        eq(chatMessages.revokesMessageId, params.revokesMessageId),
+      ),
+    )
+    .limit(1);
+  if (existingRevoker) {
+    return conflict("Recommended follow-up has already been used");
+  }
+
+  return undefined;
 }
 
 function appendInterruptUserMessage(params: {
@@ -1357,7 +1733,6 @@ function appendInterruptUserMessage(params: {
       .onConflictDoNothing()
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
-      await touchChatThreadLastMessageAt(tx, params.threadId);
       return { ok: true, createdAt: inserted.createdAt };
     }
     const [resolved] = await tx
@@ -1538,6 +1913,12 @@ const prepareNormalSend$ = command(
     if (modelError) {
       return modelError;
     }
+    const generationTemplatePrompt = buildGenerationTemplatePrompt(
+      args.body.generationTemplate,
+    );
+    if (generationTemplatePrompt.status === "invalid") {
+      return badRequestMessage(generationTemplatePrompt.message);
+    }
 
     const thread = await resolveThread({
       db,
@@ -1585,6 +1966,7 @@ const prepareNormalSend$ = command(
       forceNewSession,
       thread,
       priorContext,
+      generationTemplatePrompt: generationTemplatePrompt.prompt,
       persistedExplicitSelection,
     };
   },
@@ -1594,7 +1976,10 @@ async function queueUnassociatedNormalMessage(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: NormalSendBody;
   readonly userId: string;
-}): Promise<CreatedChatMessageResponse> {
+}): Promise<
+  | CreatedChatMessageResponse
+  | ReturnType<typeof duplicateClientMessageIdResponse>
+> {
   const message = await appendUnassociatedUserMessage({
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
@@ -1602,19 +1987,22 @@ async function queueUnassociatedNormalMessage(params: {
     prompt: params.body.prompt,
     attachFiles: params.body.attachFiles,
     clientMessageId: params.body.clientMessageId,
+    generationTemplate: params.body.generationTemplate,
   });
-  await publishChatMessageCreated(
-    params.userId,
+  if (message.kind === "queued" && message.inserted) {
+    await publishChatMessageCreated(
+      params.userId,
+      params.prepared.thread.threadId,
+    );
+  }
+  const response = clientMessageIdResolutionResponse(
+    message,
     params.prepared.thread.threadId,
   );
-  return {
-    status: 201,
-    body: {
-      runId: null,
-      threadId: params.prepared.thread.threadId,
-      createdAt: message.createdAt.toISOString(),
-    },
-  };
+  if (!response) {
+    return duplicateClientMessageIdResponse();
+  }
+  return response;
 }
 
 function scheduleChatTitleGeneration(params: {
@@ -1659,7 +2047,10 @@ function scheduleAssociatedUserMessage(params: {
         runId: params.runId,
         attachFiles: params.body.attachFiles,
         clientMessageId: params.body.clientMessageId,
+        revokesMessageId: params.body.revokesMessageId,
+        generationTemplate: params.body.generationTemplate,
         appendQueueMarker: params.appendQueueMarker,
+        clearDraft: true,
       });
       await publishUserSignal(
         [params.userId],
@@ -1672,6 +2063,49 @@ function scheduleAssociatedUserMessage(params: {
       await publishThreadListChanged(params.userId);
     })(),
   );
+}
+
+/**
+ * Post a scheduled run's prompt as a user chat message into its linked thread
+ * and publish the realtime signals so the client surfaces the run. Mirrors the
+ * web user-message path but (a) preserves the thread draft (the post is not
+ * user-initiated typing, per the chat-mode schedule design) and (b) is awaited
+ * rather than fire-and-forget, so cron/run-now sees the message persisted.
+ */
+export async function postScheduleUserMessage(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly runId: string;
+  readonly prompt: string;
+  readonly appendQueueMarker: boolean;
+  readonly scheduleId: string;
+  readonly scheduleTitle: string;
+}): Promise<void> {
+  await appendAssociatedUserMessage({
+    db: params.db,
+    threadId: params.threadId,
+    userId: params.userId,
+    prompt: params.prompt,
+    runId: params.runId,
+    attachFiles: undefined,
+    clientMessageId: undefined,
+    revokesMessageId: undefined,
+    generationTemplate: undefined,
+    appendQueueMarker: params.appendQueueMarker,
+    clearDraft: false,
+    scheduleId: params.scheduleId,
+    scheduleTitle: params.scheduleTitle,
+  });
+  await publishUserSignal(
+    [params.userId],
+    `chatThreadMessageCreated:${params.threadId}`,
+  );
+  await publishUserSignal(
+    [params.userId],
+    `chatThreadRunCreated:${params.threadId}`,
+  );
+  await publishThreadListChanged(params.userId);
 }
 
 function scheduleCreatedChatRunSideEffects(params: {
@@ -1761,6 +2195,7 @@ async function appendInsufficientCreditsMessages(params: {
         role: "user",
         content: params.body.prompt,
         runId: null,
+        revokesMessageId: params.body.revokesMessageId,
         error: INSUFFICIENT_CREDITS_MARKER,
         sequenceNumber: 0,
         createdAt: userCreatedAt,
@@ -1879,6 +2314,7 @@ const createNormalChatRun$ = command(
         appendSystemPrompt: buildAppendSystemPrompt(
           prepared.thread.incompleteContext,
           prepared.priorContext,
+          prepared.generationTemplatePrompt,
         ),
       },
       signal,
@@ -1938,7 +2374,48 @@ const sendNormalMessage$ = command(
       return prepared;
     }
 
-    if (await activeRunExistsForThread(prepared.db, prepared.thread.threadId)) {
+    const clientMessageResolution = await resolveClientMessageSend({
+      db: prepared.db,
+      userId: args.userId,
+      threadId: prepared.thread.threadId,
+      clientMessageId: args.body.clientMessageId,
+    });
+    signal.throwIfAborted();
+    if (clientMessageResolution) {
+      return clientMessageResolution;
+    }
+
+    const revocationError = await validateNormalRevocationTarget({
+      db: prepared.db,
+      threadId: prepared.thread.threadId,
+      revokesMessageId: args.body.revokesMessageId,
+    });
+    signal.throwIfAborted();
+    if (revocationError) {
+      return revocationError;
+    }
+
+    if (prepared.thread.isClientThreadRetry) {
+      const existingRun = await resolveClientThreadRetryRun(
+        prepared.db,
+        prepared.thread.threadId,
+      );
+      signal.throwIfAborted();
+      if (existingRun) {
+        return existingRun;
+      }
+      return badRequestMessage("Client thread id is already in use");
+    }
+
+    const hasActiveRun = await activeRunExistsForThread(
+      prepared.db,
+      prepared.thread.threadId,
+    );
+    signal.throwIfAborted();
+    if (hasActiveRun) {
+      if (args.body.revokesMessageId) {
+        return badRequestMessage("Recommended follow-up cannot be queued");
+      }
       const response = await queueUnassociatedNormalMessage({
         prepared,
         body: args.body,

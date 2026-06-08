@@ -5,9 +5,58 @@ import NextLink from "next/link";
 import { useUser } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
 import { getAppUrl } from "../../src/lib/zero/url";
+import {
+  buildHomepageAttributionProperties,
+  buildSignupHref,
+  currentLandingAttributionContext,
+  hasAdAttributionParams,
+} from "../../src/lib/adAttribution";
 import { Footer } from "./Footer";
 import Image from "next/image";
 import { AvatarCustomizer } from "./AvatarCustomizer";
+import { capturePostHogEvent } from "./PostHogProvider";
+
+type PlausibleEvent = (
+  eventName: string,
+  options?: { props?: Record<string, unknown> },
+) => void;
+
+function capturePlausibleEvent(
+  eventName: string,
+  properties: Record<string, unknown>,
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const plausible = (window as unknown as { plausible?: PlausibleEvent })
+    .plausible;
+  plausible?.(eventName, { props: properties });
+}
+
+function captureHomepagePaidFunnelEvent(
+  eventName: "LP Viewed" | "LP CTA Clicked",
+  landingSearch: string,
+  properties: Record<string, unknown> = {},
+): void {
+  if (!hasAdAttributionParams(landingSearch)) {
+    return;
+  }
+
+  const eventProperties = {
+    ...buildHomepageAttributionProperties(
+      landingSearch,
+      currentLandingAttributionContext(),
+    ),
+    route_path:
+      typeof window === "undefined" ? undefined : window.location.pathname,
+    surface: "homepage",
+    ...properties,
+  };
+
+  capturePostHogEvent(eventName, eventProperties);
+  capturePlausibleEvent(eventName, eventProperties);
+}
 
 function useScrollReveal() {
   const ref = useRef<HTMLDivElement>(null);
@@ -83,11 +132,13 @@ function CtaButton({
   isSignedIn,
   ctaText,
   ctaHref,
+  onClick,
   className,
 }: {
   isSignedIn: boolean;
   ctaText: string;
   ctaHref: string;
+  onClick?: () => void;
   className?: string;
 }) {
   const baseClassName = `inline-flex items-center justify-center whitespace-nowrap rounded-xl px-8 py-3.5 text-base font-medium transition-all hover:bg-[#ff6a1f] sm:px-14 ${className ?? ""}`;
@@ -105,6 +156,7 @@ function CtaButton({
         rel="noopener noreferrer"
         className={baseClassName}
         style={style}
+        onClick={onClick}
       >
         {ctaText}
       </a>
@@ -112,7 +164,12 @@ function CtaButton({
   }
 
   return (
-    <NextLink href={ctaHref} className={baseClassName} style={style}>
+    <NextLink
+      href={ctaHref}
+      className={baseClassName}
+      style={style}
+      onClick={onClick}
+    >
       {ctaText}
     </NextLink>
   );
@@ -826,8 +883,17 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
   const revealRef = useScrollReveal();
   const t = useTranslations("landing");
 
+  const appUrl = getAppUrl();
+  const [landingSearch, setLandingSearch] = useState("");
+  useEffect(() => {
+    const search = window.location.search;
+    setLandingSearch(search);
+    captureHomepagePaidFunnelEvent("LP Viewed", search);
+  }, []);
+
   const ctaText = isSignedIn ? t("hero.ctaOpenApp") : t("hero.ctaGetStarted");
-  const ctaHref = isSignedIn ? getAppUrl() : "/sign-up";
+  const ctaHref = isSignedIn ? appUrl : buildSignupHref(landingSearch);
+  const ctaDestination = isSignedIn ? "app" : "signup";
 
   return (
     <div
@@ -939,6 +1005,14 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
                 isSignedIn={isSignedIn ?? false}
                 ctaText={ctaText}
                 ctaHref={ctaHref}
+                onClick={() => {
+                  const search = landingSearch || window.location.search;
+                  captureHomepagePaidFunnelEvent("LP CTA Clicked", search, {
+                    cta_destination: ctaDestination,
+                    cta_href: ctaHref,
+                    cta_label: ctaText,
+                  });
+                }}
               />
               <AddToSlackButton />
             </div>

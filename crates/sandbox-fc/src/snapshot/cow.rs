@@ -96,9 +96,19 @@ pub(super) fn destroy_snapshot_cow_and_cleanup_attempt_dir(
 ) -> SnapshotCowCleanupFinalizer {
     let cow_file = cow_device.cow_file().to_path_buf();
     SnapshotCowCleanupFinalizer::new(tokio::spawn(async move {
-        cow_device
-            .destroy_with_retries(cow_destroy_retry_policy())
-            .await?;
+        match cow_device
+            .destroy_with_retries_detailed(cow_destroy_retry_policy())
+            .await
+        {
+            Ok(()) => {}
+            Err(e) if e.backing_files_safe_to_delete() => {
+                tracing::warn!(
+                    error = %e,
+                    "snapshot COW device released but file cleanup failed; continuing attempt-dir cleanup"
+                );
+            }
+            Err(e) => return Err(e.into_inner()),
+        }
         cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
         Ok(())
     }))
@@ -135,6 +145,10 @@ pub(super) fn snapshot_attempt_dir(work_dir: &Path, token: &str) -> PathBuf {
 
 pub(super) fn snapshot_attempt_cow_file(work_dir: &Path, token: &str) -> PathBuf {
     snapshot_attempt_dir(work_dir, token).join("cow.img")
+}
+
+pub(super) fn snapshot_attempt_workspace_image_file(work_dir: &Path, token: &str) -> PathBuf {
+    snapshot_attempt_dir(work_dir, token).join("workspace.ext4")
 }
 
 pub(super) struct SnapshotAttemptDirGuard {
@@ -207,6 +221,22 @@ mod tests {
         assert_ne!(
             snapshot_attempt_cow_file(work, "abc123ef"),
             work.join("cow.img")
+        );
+    }
+
+    #[test]
+    fn snapshot_attempt_workspace_image_file_is_attempt_scoped() {
+        let work = std::path::Path::new("/tmp/snapshot-work");
+
+        assert_eq!(
+            snapshot_attempt_workspace_image_file(work, "abc123ef"),
+            work.join("attempts")
+                .join("abc123ef")
+                .join("workspace.ext4")
+        );
+        assert_ne!(
+            snapshot_attempt_workspace_image_file(work, "abc123ef"),
+            work.join("workspace.ext4")
         );
     }
 

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { modelStat } from "@vm0/db/schema/model-stat";
-import { usageEvent } from "@vm0/db/schema/usage-event";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 
 import { mockEnv } from "../../../lib/env";
 import { mockNow } from "../../../lib/time";
@@ -38,7 +38,7 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
     });
   });
 
-  it("aggregates hourly model usage and excludes connector usage", async () => {
+  it("aggregates hourly model usage observations by canonical model", async () => {
     const db = store.set(writeDb$);
     const model = "claude-sonnet-4-6";
     const modelAlias = "anthropic/claude-sonnet-4.6";
@@ -48,7 +48,7 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
     const connectorProvider = `x-${randomUUID()}`;
     const hourSeed = Number.parseInt(randomUUID().slice(0, 8), 16);
     const expectedHourStart = new Date(
-      Date.UTC(2100, 0, 1) + (hourSeed % (24 * 365)) * HOUR_MS,
+      Date.UTC(2001, 0, 1) + (hourSeed % (24 * 365)) * HOUR_MS,
     );
     const expectedWindowEnd = new Date(expectedHourStart.getTime() + HOUR_MS);
     const expectedWindowStart = new Date(
@@ -56,74 +56,96 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
     );
     const createdAt = new Date(expectedHourStart.getTime() + 10 * 60_000);
     mockNow(new Date(expectedWindowEnd.getTime() + 30 * 60_000));
-    const connectorEventId = randomUUID();
     const outputEventId = randomUUID();
+    const expiredObservationId = randomUUID();
+    const retainedObservationId = randomUUID();
+    const expiredObservedAt = new Date(
+      expectedWindowEnd.getTime() - 33 * 24 * HOUR_MS,
+    );
+    const retainedObservedAt = new Date(
+      expectedWindowEnd.getTime() - 31 * 24 * HOUR_MS,
+    );
 
-    await db.insert(usageEvent).values([
+    await db.insert(modelUsageObservation).values([
       {
         idempotencyKey: randomUUID(),
         orgId,
         userId,
-        kind: "model",
-        provider: model,
+        model,
+        modelProviderType: "vm0",
         category: "tokens.input",
         quantity: 300,
-        creditsCharged: 3,
-        status: "processed",
-        createdAt,
-        processedAt: createdAt,
+        observedAt: createdAt,
       },
       {
         idempotencyKey: outputEventId,
         orgId,
         userId,
-        kind: "model",
-        provider: model,
+        model,
+        modelProviderType: "anthropic-api-key",
         category: "tokens.output",
         quantity: 200,
-        creditsCharged: 4,
-        status: "processed",
-        createdAt,
-        processedAt: createdAt,
-      },
-      {
-        idempotencyKey: connectorEventId,
-        orgId,
-        userId,
-        kind: "connector",
-        provider: connectorProvider,
-        category: "tweet.read",
-        quantity: 999_999,
-        creditsCharged: 999,
-        status: "processed",
-        createdAt,
-        processedAt: createdAt,
+        observedAt: createdAt,
       },
       {
         idempotencyKey: randomUUID(),
         orgId,
         userId,
-        kind: "model",
-        provider: modelAlias,
+        model: modelAlias,
+        modelProviderType: "openrouter-api-key",
         category: "tokens.input",
         quantity: 25,
-        creditsCharged: 1,
-        status: "processed",
-        createdAt,
-        processedAt: createdAt,
+        observedAt: createdAt,
       },
       {
         idempotencyKey: randomUUID(),
         orgId,
         userId,
-        kind: "model",
-        provider: unknownModel,
+        model,
+        modelProviderType: "vm0",
+        category: "tokens.total",
+        quantity: 1000,
+        observedAt: createdAt,
+      },
+      {
+        idempotencyKey: randomUUID(),
+        orgId,
+        userId,
+        model,
+        modelProviderType: "vm0",
+        category: "tokens.input",
+        quantity: 0,
+        observedAt: createdAt,
+      },
+      {
+        idempotencyKey: randomUUID(),
+        orgId,
+        userId,
+        model: unknownModel,
+        modelProviderType: "custom",
         category: "tokens.input",
         quantity: 300_000,
-        creditsCharged: 3000,
-        status: "processed",
-        createdAt,
-        processedAt: createdAt,
+        observedAt: createdAt,
+      },
+      {
+        idempotencyKey: expiredObservationId,
+        orgId,
+        userId,
+        model,
+        modelProviderType: "vm0",
+        category: "tokens.input",
+        quantity: 1,
+        observedAt: expiredObservedAt,
+      },
+      {
+        idempotencyKey: retainedObservationId,
+        orgId,
+        userId,
+        model,
+        modelProviderType: "vm0",
+        category: "tokens.input",
+        quantity: 1,
+        observedAt: retainedObservedAt,
       },
     ]);
 
@@ -136,6 +158,18 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
 
     expect(response.body.windowStart).toBe(expectedWindowStart.toISOString());
     expect(response.body.windowEnd).toBe(expectedWindowEnd.toISOString());
+    await expect(
+      db
+        .select({ idempotencyKey: modelUsageObservation.idempotencyKey })
+        .from(modelUsageObservation)
+        .where(eq(modelUsageObservation.idempotencyKey, expiredObservationId)),
+    ).resolves.toStrictEqual([]);
+    await expect(
+      db
+        .select({ idempotencyKey: modelUsageObservation.idempotencyKey })
+        .from(modelUsageObservation)
+        .where(eq(modelUsageObservation.idempotencyKey, retainedObservationId)),
+    ).resolves.toStrictEqual([{ idempotencyKey: retainedObservationId }]);
 
     const [row] = await db
       .select()
@@ -156,19 +190,19 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
       cacheReadInputTokens: 0,
       cacheCreationInputTokens: 0,
       totalTokens: 525,
-      creditsCharged: 8,
+      creditsCharged: 0,
       requestCount: 3,
       orgCount: 1,
       userCount: 1,
     });
 
     await db
-      .update(usageEvent)
-      .set({ creditsCharged: 8 })
+      .update(modelUsageObservation)
+      .set({ quantity: 250 })
       .where(
         and(
-          eq(usageEvent.idempotencyKey, outputEventId),
-          eq(usageEvent.kind, "model"),
+          eq(modelUsageObservation.idempotencyKey, outputEventId),
+          eq(modelUsageObservation.model, model),
         ),
       );
 
@@ -190,7 +224,8 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
       )
       .limit(1);
 
-    expect(updatedRow?.creditsCharged).toBe(12);
+    expect(updatedRow?.outputTokens).toBe(250);
+    expect(updatedRow?.totalTokens).toBe(575);
 
     const [connectorRow] = await db
       .select()

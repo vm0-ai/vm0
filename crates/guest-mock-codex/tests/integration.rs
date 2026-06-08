@@ -16,6 +16,7 @@ const BIN: &str = env!("CARGO_BIN_EXE_guest-mock-codex");
 struct RunOutput {
     events: Vec<Value>,
     status: i32,
+    stderr: String,
 }
 
 fn run(codex_home: &Path, args: &[&str]) -> std::io::Result<RunOutput> {
@@ -36,6 +37,8 @@ fn run_with_env(
 
     let stdout = String::from_utf8(output.stdout)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let stderr = String::from_utf8(output.stderr)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     let mut events = Vec::new();
     for line in stdout.lines() {
         if line.is_empty() {
@@ -49,6 +52,7 @@ fn run_with_env(
     Ok(RunOutput {
         events,
         status: output.status.code().unwrap_or(-1),
+        stderr,
     })
 }
 
@@ -67,13 +71,55 @@ fn read_session_file(path: &Path) -> std::io::Result<Vec<Value>> {
 }
 
 fn find_session_file(codex_home: &Path) -> Option<PathBuf> {
-    let mut found = None;
-    walk(&codex_home.join("sessions"), &mut |p| {
-        if p.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-            found = Some(p.to_path_buf());
-        }
+    session_files(codex_home).into_iter().next()
+}
+
+fn session_files(codex_home: &Path) -> Vec<PathBuf> {
+    session_artifacts(codex_home)
+        .into_iter()
+        .filter(|p| p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("jsonl"))
+        .collect()
+}
+
+fn session_artifacts(codex_home: &Path) -> Vec<PathBuf> {
+    let root = codex_home.join("sessions");
+    let mut found = Vec::new();
+    if !root.exists() {
+        return found;
+    }
+    found.push(root.clone());
+    walk(&root, &mut |p| {
+        found.push(p.to_path_buf());
     });
+    found.sort();
     found
+}
+
+fn assert_invalid_resume_rejected(codex_home: &Path, out: &RunOutput) {
+    assert_ne!(out.status, 0, "invalid resume id should fail");
+    assert!(
+        out.events.is_empty(),
+        "invalid resume id should not emit JSONL events: {:?}",
+        out.events
+    );
+    assert!(
+        !out.stderr.is_empty(),
+        "invalid resume id should report an error on stderr"
+    );
+    assert!(
+        out.stderr.contains("invalid thread id"),
+        "invalid resume id should report the validation failure: {:?}",
+        out.stderr
+    );
+    assert!(
+        out.stderr.contains("expected canonical UUID"),
+        "invalid resume id should describe the expected format: {:?}",
+        out.stderr
+    );
+    assert!(
+        session_artifacts(codex_home).is_empty(),
+        "invalid resume id should not write session artifacts"
+    );
 }
 
 fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) {
@@ -82,10 +128,9 @@ fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) {
     };
     for entry in entries.flatten() {
         let path = entry.path();
+        f(&path);
         if path.is_dir() {
             walk(&path, f);
-        } else {
-            f(&path);
         }
     }
 }
@@ -155,6 +200,86 @@ fn resume_with_unknown_id_starts_fresh_with_supplied_id() {
             .unwrap_or_default()
             .starts_with(supplied)
     );
+}
+
+#[test]
+fn resume_rejects_absolute_thread_id_without_events_or_artifacts() {
+    let codex_dir = TempDir::new().unwrap();
+    let outside_dir = TempDir::new().unwrap();
+    let outside_target = outside_dir.path().join("escape");
+    let supplied = outside_target.to_str().unwrap();
+
+    let out = run(codex_dir.path(), &["exec", "resume", supplied, "--", "hi"]).unwrap();
+    assert_invalid_resume_rejected(codex_dir.path(), &out);
+
+    assert!(
+        !outside_target.with_extension("jsonl").exists(),
+        "invalid absolute id should not create an outside session file"
+    );
+    assert!(
+        !outside_target.with_extension("jsonl.tmp").exists(),
+        "invalid absolute id should not leave an outside temp file"
+    );
+}
+
+#[test]
+fn resume_rejects_traversal_thread_id_without_events_or_artifacts() {
+    let dir = TempDir::new().unwrap();
+
+    let out = run(dir.path(), &["exec", "resume", "../escape", "--", "hi"]).unwrap();
+    assert_invalid_resume_rejected(dir.path(), &out);
+}
+
+#[test]
+fn resume_rejects_nested_thread_id_without_events_or_artifacts() {
+    let dir = TempDir::new().unwrap();
+
+    let out = run(dir.path(), &["exec", "resume", "nested/id", "--", "hi"]).unwrap();
+    assert_invalid_resume_rejected(dir.path(), &out);
+}
+
+#[test]
+fn resume_rejects_non_uuid_thread_id_without_events_or_artifacts() {
+    let dir = TempDir::new().unwrap();
+
+    let out = run(dir.path(), &["exec", "resume", "xyz-uuid", "--", "hi"]).unwrap();
+    assert_invalid_resume_rejected(dir.path(), &out);
+}
+
+#[test]
+fn resume_rejects_uppercase_uuid_thread_id_without_events_or_artifacts() {
+    let dir = TempDir::new().unwrap();
+
+    let out = run(
+        dir.path(),
+        &[
+            "exec",
+            "resume",
+            "0199A213-81C0-7800-8AA1-BBAB2A035A53",
+            "--",
+            "hi",
+        ],
+    )
+    .unwrap();
+    assert_invalid_resume_rejected(dir.path(), &out);
+}
+
+#[test]
+fn resume_rejects_simple_uuid_thread_id_without_events_or_artifacts() {
+    let dir = TempDir::new().unwrap();
+
+    let out = run(
+        dir.path(),
+        &[
+            "exec",
+            "resume",
+            "0199a21381c078008aa1bbab2a035a53",
+            "--",
+            "hi",
+        ],
+    )
+    .unwrap();
+    assert_invalid_resume_rejected(dir.path(), &out);
 }
 
 #[test]

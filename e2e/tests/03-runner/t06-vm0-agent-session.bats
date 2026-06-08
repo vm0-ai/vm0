@@ -43,7 +43,6 @@ agents:
     framework: claude-code
     volumes:
       - claude-files:/home/user/.claude
-    working_dir: /home/user/workspace
 volumes:
   claude-files:
     name: $VOLUME_NAME
@@ -231,7 +230,6 @@ agents:
   ${env_agent_name}:
     description: "Test agent for environment variable expansion"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       TEST_VAR: "\${{ vars.testVar }}"
       TEST_SECRET: "\${{ secrets.TEST_SECRET }}"

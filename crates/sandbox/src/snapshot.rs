@@ -19,6 +19,8 @@ pub struct SnapshotCreateConfig {
     pub vcpu_count: u32,
     /// Memory size in MiB for the VM.
     pub memory_mb: u32,
+    /// Workspace disk size in MiB for the temporary workspace image used by the snapshot VM.
+    pub workspace_disk_mb: u32,
 }
 
 /// Output paths from a successful snapshot creation.
@@ -128,6 +130,20 @@ pub trait SnapshotProvider: Send + Sync {
 
     /// Create a snapshot by booting a temporary VM, configuring it, and
     /// capturing its state to the output directory.
+    ///
+    /// The default implementation calls
+    /// [`create_uncommitted_snapshot`](Self::create_uncommitted_snapshot),
+    /// then commits the returned [`PendingSnapshotPublish`]. It returns the
+    /// stable output paths only after the pending publish commits successfully.
+    ///
+    /// If the pending publish commit fails, the default implementation calls
+    /// [`PendingSnapshotPublish::discard`] best-effort and returns the original
+    /// commit error. Any discard error is intentionally suppressed, and callers
+    /// should treat the attempted output as incomplete.
+    ///
+    /// Providers that override this method should preserve the same
+    /// cleanup/error semantics or explicitly document a stronger
+    /// provider-specific guarantee.
     async fn create_snapshot(
         &self,
         config: SnapshotCreateConfig,

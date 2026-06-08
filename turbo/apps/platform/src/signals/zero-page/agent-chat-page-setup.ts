@@ -24,6 +24,7 @@ import {
 } from "./zero-chat-page.ts";
 import { reloadUserModelPreference$ } from "../external/user-model-preference.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
+import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -75,6 +76,8 @@ export const setupAgentChatPage$ = command(
 
     set(rememberLastUsedAgentId$, agentId);
     set(updateDocumentTitle$, agent.displayName ?? "Chat");
+
+    await set(checkUnifiedSettingsParam$, signal);
 
     const params = get(searchParams$);
     const prompt = params.get("prompt");

@@ -14,11 +14,13 @@ import {
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { setChatShortcutHelpOpen$ } from "../../../signals/chat-page/chat-shortcut-help.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
+import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
 
 const context = testContext();
 const THREAD_ID = "thread-test-model-picker";
 const PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const DEFAULT_MODEL = "claude-sonnet-4-6";
+const NOW = "2026-05-08T00:00:00.000Z";
 
 function enableModelPicker(): void {
   setMockFeatureSwitches({});
@@ -82,6 +84,61 @@ describe("chat composer — model picker", () => {
     expect(
       screen.getByRole("option", { name: /Claude Opus 4\.8/ }),
     ).toBeInTheDocument();
+  });
+
+  it("labels BYOK model routes instead of showing built-in multipliers", async () => {
+    const user = userEvent.setup();
+    setMockFeatureSwitches({});
+    setMockOrgModelProviders([]);
+    setMockOrgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000101",
+        model: DEFAULT_MODEL,
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      {
+        id: "00000000-0000-4000-a000-000000000102",
+        model: "kimi-k2.6",
+        modelLabel: "Kimi K2.6",
+        isDefault: false,
+        defaultProviderType: "moonshot-api-key",
+        credentialScope: "org",
+        modelProviderId: PROVIDER_ID,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+    ] satisfies OrgModelPolicy[]);
+
+    mockChatLifecycle({ threadId: THREAD_ID });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+      ).toBeInTheDocument();
+    });
+    await user.click(
+      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("option", { name: /Kimi K2\.6 BYOK/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("×1")).toBeInTheDocument();
+    expect(screen.queryByText("×0.3")).toBeNull();
   });
 
   it("does not open the model picker from mod+alt+.", async () => {

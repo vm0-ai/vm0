@@ -10,7 +10,7 @@ import { and, eq } from "drizzle-orm";
 import { db$ } from "../external/db";
 import { downloadS3Buffer, downloadManifest } from "../external/s3";
 import { env } from "../../lib/env";
-import { extractFileFromTarGz } from "../../lib/tar";
+import { extractFilesFromTarGz } from "../../lib/tar";
 
 const SKILL_FILENAME = "SKILL.md";
 
@@ -21,6 +21,9 @@ interface SkillDetailResult {
   readonly content: string | null;
   readonly files:
     | readonly { readonly path: string; readonly size: number }[]
+    | null;
+  readonly fileContents:
+    | readonly { readonly path: string; readonly content: string }[]
     | null;
 }
 
@@ -65,6 +68,7 @@ export function zeroSkillDetail(
         description: skill.description ?? null,
         content: null,
         files: null,
+        fileContents: null,
       };
     }
 
@@ -81,6 +85,7 @@ export function zeroSkillDetail(
         description: skill.description ?? null,
         content: null,
         files: null,
+        fileContents: null,
       };
     }
 
@@ -92,6 +97,7 @@ export function zeroSkillDetail(
         description: skill.description ?? null,
         content: null,
         files: null,
+        fileContents: null,
       };
     }
 
@@ -107,30 +113,25 @@ export function zeroSkillDetail(
       };
     });
 
-    const skillFile = manifest.files.find((f) => {
-      return normalize(f.path) === SKILL_FILENAME;
-    });
-
-    if (!skillFile) {
-      return {
-        name: skill.name,
-        displayName: skill.displayName ?? null,
-        description: skill.description ?? null,
-        content: null,
-        files: filesList,
-      };
-    }
-
     const archiveKey = `${version.s3Key}/archive.tar.gz`;
     const archiveBuffer = await get(downloadS3Buffer(bucket, archiveKey));
-    const content = extractFileFromTarGz(archiveBuffer, skillFile.path);
+    const fileContents = extractFilesFromTarGz(
+      archiveBuffer,
+      filesList.map((file) => {
+        return file.path;
+      }),
+    );
+    const skillFileContent = fileContents.find((file) => {
+      return normalize(file.path) === SKILL_FILENAME;
+    });
 
     return {
       name: skill.name,
       displayName: skill.displayName ?? null,
       description: skill.description ?? null,
-      content,
+      content: skillFileContent?.content ?? null,
       files: filesList,
+      fileContents,
     };
   });
 }
