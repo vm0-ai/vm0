@@ -612,12 +612,12 @@ def _sanitize_content_type_for_capture(value: str) -> str | None:
 def _sanitize_allowed_capture_header_value(name: str, value: str) -> str | None:
     if _UNSAFE_CAPTURE_HEADER_VALUE_CHARS.search(value) is not None:
         return None
-    if len(value) > _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE:
-        return None
     normalized_name = name.strip().lower()
     normalized_value = value.strip()
     if normalized_name == "content-type":
         return _sanitize_content_type_for_capture(normalized_value)
+    if len(normalized_value) > _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE:
+        return None
     if normalized_name == "date":
         return normalized_value if _is_http_date_header_value(normalized_value) else None
 

@@ -177,6 +177,7 @@ class TestSanitizeHeadersForCapture:
             ("application/json; charset=utf-8", "application/json"),
             ('application/json; profile="https://app.example/secret-token"', "application/json"),
             ("multipart/form-data; boundary=secret-token", "multipart/form-data"),
+            ("multipart/form-data; boundary=" + ("x" * 300), "multipart/form-data"),
         ],
     )
     def test_content_type_parameters_are_dropped(self, headers, value, expected):
