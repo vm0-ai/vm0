@@ -4,19 +4,41 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-// A single chat thread's usage, aggregated across all its runs. Ordered by
-// the most recent activity so the list reads as a chronological record.
-const usageRecordChatRowSchema = z.object({
-  threadId: z.string(),
-  threadTitle: z.string().nullable(),
+// Where a run originated. `chat` is web chat (trigger_source 'web'); the rest
+// mirror zero_runs.trigger_source so each row can be attributed to its surface.
+export const usageRecordSourceSchema = z.enum([
+  "chat",
+  "schedule",
+  "slack",
+  "telegram",
+  "email",
+  "agentphone",
+  "github",
+  "cli",
+  "agent",
+]);
+
+export type UsageRecordSource = z.infer<typeof usageRecordSourceSchema>;
+
+// One usage row. Threaded sources (chat, schedule) aggregate every run in the
+// thread into a single row that links to the thread; unthreaded sources are one
+// row per run that links to the run's activity detail. Ordered by most recent
+// activity so the list reads as a chronological record.
+const usageRecordRowSchema = z.object({
+  source: usageRecordSourceSchema,
+  // Set for threaded sources (web chat, schedule) — links to the chat thread.
+  threadId: z.string().nullable(),
+  // Set for unthreaded sources (slack, telegram, …) — links to the run.
+  runId: z.string().nullable(),
+  title: z.string().nullable(),
   credits: z.number(),
   tokens: z.number(),
-  // ISO string of the most recent usage event in this chat.
+  // ISO string of the most recent run in this row.
   lastActivityAt: z.string(),
 });
 
 const usageRecordResponseSchema = z.object({
-  chats: z.array(usageRecordChatRowSchema),
+  rows: z.array(usageRecordRowSchema),
   pagination: z.object({
     page: z.number(),
     pageSize: z.number(),
@@ -32,6 +54,7 @@ export const zeroUsageRecordContract = c.router({
     query: z.object({
       page: z.coerce.number().int().positive().default(1),
       pageSize: z.coerce.number().int().positive().max(100).default(20),
+      source: usageRecordSourceSchema.optional(),
     }),
     responses: {
       200: usageRecordResponseSchema,
@@ -40,10 +63,10 @@ export const zeroUsageRecordContract = c.router({
       500: apiErrorSchema,
     },
     summary:
-      "Get the signed-in user's per-chat usage record, ordered by recent activity",
+      "Get the signed-in user's usage record across sources, ordered by recent activity",
   },
 });
 
 export type ZeroUsageRecordContract = typeof zeroUsageRecordContract;
 export type UsageRecordResponse = z.infer<typeof usageRecordResponseSchema>;
-export type UsageRecordChatRow = z.infer<typeof usageRecordChatRowSchema>;
+export type UsageRecordRow = z.infer<typeof usageRecordRowSchema>;

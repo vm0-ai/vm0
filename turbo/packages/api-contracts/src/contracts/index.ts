@@ -1179,9 +1179,11 @@ export {
 } from "./zero-usage-insight";
 export {
   zeroUsageRecordContract,
+  usageRecordSourceSchema,
   type ZeroUsageRecordContract,
   type UsageRecordResponse,
-  type UsageRecordChatRow,
+  type UsageRecordRow,
+  type UsageRecordSource,
 } from "./zero-usage-record";
 export {
   usageContract,

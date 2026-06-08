@@ -25,7 +25,6 @@ import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx
 import { PersonalClaudeCodeDeviceAuthDialog } from "../settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "../settings/codex-device-auth-dialog.tsx";
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
-import { PersonalUsageRecord } from "./personal-usage-record.tsx";
 
 type OAuthStatus = "connected" | "stale" | "missing";
 
@@ -33,7 +32,6 @@ export function PersonalProvidersTab() {
   return (
     <div className="flex flex-col gap-8">
       <OAuthCredentialsSection />
-      <PersonalUsageRecord />
       <PersonalProviderDialog />
       <PersonalClaudeCodeDeviceAuthDialog />
       <PersonalCodexDeviceAuthDialog />

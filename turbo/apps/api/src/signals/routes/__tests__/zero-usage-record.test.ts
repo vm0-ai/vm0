@@ -11,6 +11,7 @@ import {
   deleteUsageFixture$,
   insertModelUsage$,
   seedChatThreadRun$,
+  seedRun$,
   seedUsageFixture$,
   type UsageFixture,
 } from "./helpers/zero-usage";
@@ -47,7 +48,7 @@ describe("GET /api/zero/usage/record", () => {
     });
   });
 
-  it("returns the user's chats ordered by recent activity", async () => {
+  it("returns rows across sources ordered by recent activity", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
     );
@@ -71,6 +72,31 @@ describe("GET /api/zero/usage/record", () => {
         inputTokens: 100,
         outputTokens: 50,
         creditsCharged: 80,
+      },
+      context.signal,
+    );
+
+    // Unthreaded Slack run — one row per run, links via runId.
+    const slack = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        prompt: "Slack triage",
+        triggerSource: "slack",
+        createdAt: createdAt(60),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: slack.runId,
+        inputTokens: 30,
+        outputTokens: 20,
+        creditsCharged: 40,
       },
       context.signal,
     );
@@ -105,14 +131,95 @@ describe("GET /api/zero/usage/record", () => {
       [200],
     );
 
-    expect(response.body.chats).toHaveLength(2);
-    expect(response.body.pagination.total).toBe(2);
-    expect(response.body.chats[0]?.threadId).toBe(newer.threadId);
-    expect(response.body.chats[0]?.threadTitle).toBe("Newer chat");
-    expect(response.body.chats[0]?.credits).toBe(250);
-    expect(response.body.chats[0]?.tokens).toBe(300);
-    expect(response.body.chats[1]?.threadId).toBe(older.threadId);
-    expect(response.body.chats[1]?.credits).toBe(80);
+    expect(response.body.rows).toHaveLength(3);
+    expect(response.body.pagination.total).toBe(3);
+
+    expect(response.body.rows[0]?.source).toBe("chat");
+    expect(response.body.rows[0]?.threadId).toBe(newer.threadId);
+    expect(response.body.rows[0]?.runId).toBeNull();
+    expect(response.body.rows[0]?.title).toBe("Newer chat");
+    expect(response.body.rows[0]?.credits).toBe(250);
+    expect(response.body.rows[0]?.tokens).toBe(300);
+
+    expect(response.body.rows[1]?.source).toBe("slack");
+    expect(response.body.rows[1]?.threadId).toBeNull();
+    expect(response.body.rows[1]?.runId).toBe(slack.runId);
+    expect(response.body.rows[1]?.title).toBe("Slack triage");
+    expect(response.body.rows[1]?.credits).toBe(40);
+
+    expect(response.body.rows[2]?.source).toBe("chat");
+    expect(response.body.rows[2]?.threadId).toBe(older.threadId);
+    expect(response.body.rows[2]?.credits).toBe(80);
+  });
+
+  it("labels schedule threads and filters by source", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+
+    const chat = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "A chat",
+        createdAt: createdAt(20),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: chat.runId,
+        inputTokens: 10,
+        outputTokens: 10,
+        creditsCharged: 10,
+      },
+      context.signal,
+    );
+
+    const schedule = await store.set(
+      seedChatThreadRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        title: "Daily brief",
+        triggerSource: "schedule",
+        createdAt: createdAt(10),
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: schedule.runId,
+        inputTokens: 50,
+        outputTokens: 50,
+        creditsCharged: 120,
+      },
+      context.signal,
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { source: "schedule" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.rows).toHaveLength(1);
+    expect(response.body.pagination.total).toBe(1);
+    expect(response.body.rows[0]?.source).toBe("schedule");
+    expect(response.body.rows[0]?.threadId).toBe(schedule.threadId);
+    expect(response.body.rows[0]?.title).toBe("Daily brief");
+    expect(response.body.rows[0]?.credits).toBe(120);
   });
 
   it("paginates by page size", async () => {
@@ -155,9 +262,9 @@ describe("GET /api/zero/usage/record", () => {
       [200],
     );
 
-    expect(response.body.chats).toHaveLength(2);
+    expect(response.body.rows).toHaveLength(2);
     expect(response.body.pagination.total).toBe(3);
-    expect(response.body.chats[0]?.threadTitle).toBe("Chat 10");
-    expect(response.body.chats[1]?.threadTitle).toBe("Chat 20");
+    expect(response.body.rows[0]?.title).toBe("Chat 10");
+    expect(response.body.rows[1]?.title).toBe("Chat 20");
   });
 });

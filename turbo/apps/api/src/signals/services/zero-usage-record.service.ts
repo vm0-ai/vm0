@@ -1,8 +1,9 @@
 import { command } from "ccstate";
 import { sql } from "drizzle-orm";
 import type {
-  UsageRecordChatRow,
+  UsageRecordRow,
   UsageRecordResponse,
+  UsageRecordSource,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
 
 import { writeDb$, type Db } from "../external/db";
@@ -20,11 +21,14 @@ interface UsageRecordArgs {
   readonly orgId: string;
   readonly page: number;
   readonly pageSize: number;
+  readonly source?: UsageRecordSource;
 }
 
-interface UsageRecordRow extends Record<string, unknown> {
-  thread_id: string;
-  thread_title: string | null;
+interface UsageRecordSqlRow extends Record<string, unknown> {
+  source: string;
+  thread_id: string | null;
+  run_id: string | null;
+  title: string | null;
   credits: string;
   tokens: string;
   last_activity: Date | string;
@@ -39,49 +43,83 @@ function tokenExpr(): string {
   return `CASE WHEN ue.kind = ${pgLit(MODEL_USAGE_KIND)} AND ue.category IN (${list}) THEN ue.quantity ELSE 0 END`;
 }
 
-// Per-chat usage for one user in one org, aggregated across every run in the
-// chat. `per_chat` is the shared CTE so the row query and the count query stay
-// in sync.
-function perChatWith(userIdLit: string, orgIdLit: string): string {
+// Per-source usage for one user in one org. `record` is the shared CTE so the
+// row query and the count query stay in sync. Threaded sources (web chat,
+// schedule) collapse to one row per thread; everything else is one row per run.
+// `web` is surfaced as the `chat` source.
+function recordWith(userIdLit: string, orgIdLit: string): string {
   return `
     WITH usage_rows AS (
       SELECT
         ue.run_id,
-        COALESCE(ue.credits_charged, 0)::bigint AS credits_charged,
+        COALESCE(ue.credits_charged, 0)::bigint AS credits,
         ${tokenExpr()}::bigint AS tokens
       FROM usage_event ue
       WHERE ue.user_id = ${userIdLit}
         AND ue.org_id = ${orgIdLit}
         AND ue.status = 'processed'
     ),
-    per_chat AS (
+    runs AS (
       SELECT
-        zr.chat_thread_id AS thread_id,
-        ct.title AS thread_title,
-        COALESCE(SUM(ur.credits_charged), 0)::bigint AS credits,
-        COALESCE(SUM(ur.tokens), 0)::bigint AS tokens,
-        MAX(ar.created_at) AS last_activity
+        ur.run_id,
+        ur.credits,
+        ur.tokens,
+        zr.trigger_source,
+        zr.chat_thread_id,
+        zr.summary,
+        ar.prompt,
+        ar.created_at
       FROM usage_rows ur
       INNER JOIN zero_runs zr ON zr.id = ur.run_id
       INNER JOIN agent_runs ar ON ar.id = ur.run_id
-      LEFT JOIN chat_threads ct ON ct.id = zr.chat_thread_id
-      WHERE zr.chat_thread_id IS NOT NULL
-      GROUP BY zr.chat_thread_id, ct.title
+    ),
+    threaded AS (
+      SELECT
+        (CASE WHEN bool_or(r.trigger_source = 'schedule') THEN 'schedule' ELSE 'chat' END) AS source,
+        r.chat_thread_id::text AS thread_id,
+        NULL::text AS run_id,
+        ct.title AS title,
+        COALESCE(SUM(r.credits), 0)::bigint AS credits,
+        COALESCE(SUM(r.tokens), 0)::bigint AS tokens,
+        MAX(r.created_at) AS last_activity
+      FROM runs r
+      LEFT JOIN chat_threads ct ON ct.id = r.chat_thread_id
+      WHERE r.chat_thread_id IS NOT NULL
+      GROUP BY r.chat_thread_id, ct.title
+    ),
+    unthreaded AS (
+      SELECT
+        (CASE WHEN r.trigger_source = 'web' THEN 'chat' ELSE r.trigger_source END) AS source,
+        NULL::text AS thread_id,
+        r.run_id::text AS run_id,
+        LEFT(COALESCE(NULLIF(r.summary, ''), r.prompt), 120) AS title,
+        r.credits::bigint AS credits,
+        r.tokens::bigint AS tokens,
+        r.created_at AS last_activity
+      FROM runs r
+      WHERE r.chat_thread_id IS NULL
+    ),
+    record AS (
+      SELECT * FROM threaded
+      UNION ALL
+      SELECT * FROM unthreaded
     )`;
 }
 
 async function queryUsageRecordRows(
   db: Db,
-  userIdLit: string,
-  orgIdLit: string,
+  recordCte: string,
+  sourceFilterLit: string | null,
   pageSize: number,
   offset: number,
-): Promise<UsageRecordChatRow[]> {
-  const result = await db.execute<UsageRecordRow>(
+): Promise<UsageRecordRow[]> {
+  const where = sourceFilterLit ? `WHERE source = ${sourceFilterLit}` : "";
+  const result = await db.execute<UsageRecordSqlRow>(
     sql.raw(`
-      ${perChatWith(userIdLit, orgIdLit)}
-      SELECT thread_id, thread_title, credits, tokens, last_activity
-      FROM per_chat
+      ${recordCte}
+      SELECT source, thread_id, run_id, title, credits, tokens, last_activity
+      FROM record
+      ${where}
       ORDER BY last_activity DESC
       LIMIT ${pageSize} OFFSET ${offset}
     `),
@@ -92,8 +130,10 @@ async function queryUsageRecordRows(
         ? row.last_activity.toISOString()
         : new Date(row.last_activity).toISOString();
     return {
+      source: row.source as UsageRecordSource,
       threadId: row.thread_id,
-      threadTitle: row.thread_title,
+      runId: row.run_id,
+      title: row.title,
       credits: Number(row.credits),
       tokens: Number(row.tokens),
       lastActivityAt: lastActivity,
@@ -103,13 +143,14 @@ async function queryUsageRecordRows(
 
 async function queryUsageRecordTotal(
   db: Db,
-  userIdLit: string,
-  orgIdLit: string,
+  recordCte: string,
+  sourceFilterLit: string | null,
 ): Promise<number> {
+  const where = sourceFilterLit ? `WHERE source = ${sourceFilterLit}` : "";
   const result = await db.execute<{ total: string }>(
     sql.raw(`
-      ${perChatWith(userIdLit, orgIdLit)}
-      SELECT COUNT(*)::bigint AS total FROM per_chat
+      ${recordCte}
+      SELECT COUNT(*)::bigint AS total FROM record ${where}
     `),
   );
   return Number(result.rows[0]?.total ?? 0);
@@ -124,22 +165,24 @@ export const zeroUsageRecord$ = command(
     const db = set(writeDb$);
     const userIdLit = pgLit(args.userId);
     const orgIdLit = pgLit(args.orgId);
+    const sourceFilterLit = args.source ? pgLit(args.source) : null;
     const offset = (args.page - 1) * args.pageSize;
+    const recordCte = recordWith(userIdLit, orgIdLit);
 
     signal.throwIfAborted();
-    const chats = await queryUsageRecordRows(
+    const rows = await queryUsageRecordRows(
       db,
-      userIdLit,
-      orgIdLit,
+      recordCte,
+      sourceFilterLit,
       args.pageSize,
       offset,
     );
     signal.throwIfAborted();
-    const total = await queryUsageRecordTotal(db, userIdLit, orgIdLit);
+    const total = await queryUsageRecordTotal(db, recordCte, sourceFilterLit);
     signal.throwIfAborted();
 
     return {
-      chats,
+      rows,
       pagination: {
         page: args.page,
         pageSize: args.pageSize,

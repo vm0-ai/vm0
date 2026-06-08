@@ -19,6 +19,7 @@ const getUsageRecordInner$ = command(
         orgId: auth.orgId,
         page: query.page,
         pageSize: query.pageSize,
+        source: query.source,
       },
       signal,
     );
