@@ -4,6 +4,24 @@ export const STRIPE_OPENAPI_URL =
 export const STRIPE_PERMISSIONS_URL =
   "https://docs.stripe.com/stripe-apps/reference/permissions.md";
 
+export const STRIPE_RESTRICTED_API_KEYS_URL =
+  "https://docs.stripe.com/keys/restricted-api-keys.md";
+
+export const STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES = [
+  {
+    url: "https://docs.stripe.com/payments/vault-and-forward.md",
+    product: "Payments",
+    resource: "Forwarding Requests",
+    permissions: ["forwarding_request_read", "forwarding_request_write"],
+    apiDocUrls: ["https://docs.stripe.com/api/forwarding/request.md"],
+    requiredSnippets: [
+      "`forwarding_request_write`",
+      "`forwarding_request_read`",
+      "/v1/forwarding/requests",
+    ],
+  },
+] as const;
+
 const STRIPE_SKIPPED_API_DOC_ENDPOINT_URLS = new Set([
   // The permission controls expanding the `source` attribute; it is not a
   // general balance transaction read permission.

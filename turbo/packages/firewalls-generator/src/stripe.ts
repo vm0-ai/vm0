@@ -4,13 +4,15 @@
  * Data sources:
  * - https://github.com/stripe/openapi
  * - https://docs.stripe.com/stripe-apps/reference/permissions
+ * - https://docs.stripe.com/keys/restricted-api-keys
  *
  * The OpenAPI spec provides official path/method rules. The permissions
- * reference provides official Stripe permission names. Stripe does not publish
+ * reference provides official Stripe Apps permission names. Stripe's
+ * restricted key docs state that Stripe resources have Read/Write permissions
+ * and that all Stripe APIs support restricted API keys. Stripe does not publish
  * a direct operation-to-permission map in the public GA OpenAPI spec, so this
- * generator maps operations through either unambiguous OpenAPI x-resourceId
- * schemas or endpoint lists from official API docs linked by the permissions
- * reference.
+ * generator first uses named official permissions, then maps remaining
+ * operations through unambiguous OpenAPI x-resourceId schemas.
  *
  * Token format (gitleaks: stripe-access-token):
  *   (sk|rk)_(test|live|prod)_ + 10-99 alphanumeric chars
@@ -30,6 +32,8 @@ import type { PermissionGroup } from "./codegen";
 import {
   STRIPE_OPENAPI_URL,
   STRIPE_PERMISSIONS_URL,
+  STRIPE_RESTRICTED_API_KEYS_URL,
+  STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES,
   stripeAdditionalApiDocUrlsForResource,
   stripeApiDocUrlsFromDescription,
 } from "./stripe-sources";
@@ -145,6 +149,7 @@ interface BuildStats {
   totalOperations: number;
   mappedOperations: number;
   docsMappedOperations: number;
+  openApiResourceMappedOperations: number;
   unmappedOperations: number;
   ambiguousOperations: number;
   permissionCount: number;
@@ -395,6 +400,36 @@ function chooseAmbiguousResourcePermission(
   return null;
 }
 
+function resourceIdForOpenApiPermission(
+  resourceId: string,
+  access: "read" | "write",
+): string {
+  if (access === "write") {
+    return resourceIdWithoutDeletedPrefix(resourceId);
+  }
+  return resourceId;
+}
+
+function chooseOpenApiResourcePermission(
+  resourceIds: string[],
+  access: "read" | "write",
+): StripePermissionDefinition | null {
+  if (resourceIds.length === 0) return null;
+
+  const normalizedResourceIds = new Set(
+    resourceIds.map((resourceId) => {
+      return resourceIdForOpenApiPermission(resourceId, access);
+    }),
+  );
+  if (normalizedResourceIds.size !== 1) return null;
+
+  const resourceId = [...normalizedResourceIds][0]!;
+  return {
+    name: permissionNameForResource(resourceId, access),
+    description: `Stripe API resource ${resourceId}`,
+  };
+}
+
 function cleanPermissionName(value: string): string {
   return value.replace(/`/g, "").trim();
 }
@@ -458,6 +493,36 @@ function parsePermissionRows(markdown: string): StripePermissionRow[] {
   return rows;
 }
 
+async function supplementalPermissionRows(): Promise<StripePermissionRow[]> {
+  const rows: StripePermissionRow[] = [];
+
+  for (const source of STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES) {
+    const res = await fetchSpec(
+      source.url,
+      `Stripe supplemental permission source ${source.resource}`,
+    );
+    const markdown = await res.text();
+
+    for (const snippet of source.requiredSnippets) {
+      if (!markdown.includes(snippet)) {
+        throw new Error(
+          `Stripe supplemental permission source ${source.url} is missing required snippet: ${snippet}`,
+        );
+      }
+    }
+
+    rows.push({
+      product: source.product,
+      resource: source.resource,
+      permissions: [...source.permissions],
+      description: `Supplemental permissions from ${source.url}`,
+      apiDocUrls: [...source.apiDocUrls],
+    });
+  }
+
+  return rows;
+}
+
 function buildPermissionDefinitions(
   rows: StripePermissionRow[],
 ): Map<string, StripePermissionDefinition> {
@@ -483,6 +548,29 @@ function buildPermissionDefinitions(
   }
 
   return definitions;
+}
+
+async function validateRestrictedApiKeysReference(): Promise<void> {
+  const res = await fetchSpec(
+    STRIPE_RESTRICTED_API_KEYS_URL,
+    "Stripe restricted API keys reference",
+  );
+  const markdown = await res.text();
+  const requiredSnippets = [
+    "select which Stripe resources the key can access",
+    "All Stripe APIs support restricted API keys",
+    "| GET         | read",
+    "| POST        | write",
+    "| DELETE      | write",
+  ];
+
+  for (const snippet of requiredSnippets) {
+    if (!markdown.includes(snippet)) {
+      throw new Error(
+        `Stripe restricted API keys reference is missing required snippet: ${snippet}`,
+      );
+    }
+  }
 }
 
 function accessForMethod(methodLower: string): "read" | "write" | null {
@@ -659,11 +747,17 @@ function buildGroups(
   }
 
   const groups = new Map<string, Set<string>>();
+  const permissionDescriptions = new Map(
+    [...permissionDefinitions.entries()].map(([name, definition]) => {
+      return [name, definition.description] as const;
+    }),
+  );
   const unmappedRules: string[] = [];
   const ambiguousRules: string[] = [];
   let totalOperations = 0;
   let mappedOperations = 0;
   let docsMappedOperations = 0;
+  let openApiResourceMappedOperations = 0;
 
   for (const [apiPath, methods] of Object.entries(spec.paths)) {
     for (const [methodLower, op] of Object.entries(methods)) {
@@ -710,7 +804,13 @@ function buildGroups(
       }
 
       const permissionName = resourcePermissionName ?? docsPermissionName;
-      if (!permissionName) {
+      const openApiResourcePermission = permissionName
+        ? null
+        : chooseOpenApiResourcePermission(resourceIds, access);
+      const mappedPermissionName =
+        permissionName ?? openApiResourcePermission?.name ?? null;
+
+      if (!mappedPermissionName) {
         if (resourceIds.length > 1) {
           ambiguousRules.push(rule);
         } else {
@@ -719,15 +819,25 @@ function buildGroups(
         continue;
       }
 
-      let ruleSet = groups.get(permissionName);
+      if (openApiResourcePermission) {
+        permissionDescriptions.set(
+          openApiResourcePermission.name,
+          openApiResourcePermission.description,
+        );
+      }
+
+      let ruleSet = groups.get(mappedPermissionName);
       if (!ruleSet) {
         ruleSet = new Set();
-        groups.set(permissionName, ruleSet);
+        groups.set(mappedPermissionName, ruleSet);
       }
       ruleSet.add(rule);
       mappedOperations += 1;
       if (!resourcePermissionName && docsPermissionName) {
         docsMappedOperations += 1;
+      }
+      if (openApiResourcePermission) {
+        openApiResourceMappedOperations += 1;
       }
     }
   }
@@ -737,7 +847,7 @@ function buildGroups(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, ruleSet]) => ({
       name,
-      description: permissionDefinitions.get(name)?.description,
+      description: permissionDescriptions.get(name),
       rules: sanitizeAndSortRules([...ruleSet]),
     }));
 
@@ -748,6 +858,7 @@ function buildGroups(
     totalOperations,
     mappedOperations,
     docsMappedOperations,
+    openApiResourceMappedOperations,
     unmappedOperations: totalOperations - mappedOperations,
     ambiguousOperations: ambiguousRules.length,
     permissionCount: permissions.length,
@@ -769,6 +880,7 @@ function renderStats(stats: BuildStats): string[] {
     `  totalOperations: ${stats.totalOperations},`,
     `  mappedOperations: ${stats.mappedOperations},`,
     `  docsMappedOperations: ${stats.docsMappedOperations},`,
+    `  openApiResourceMappedOperations: ${stats.openApiResourceMappedOperations},`,
     `  unmappedOperations: ${stats.unmappedOperations},`,
     `  ambiguousOperations: ${stats.ambiguousOperations},`,
     `  permissionCount: ${stats.permissionCount},`,
@@ -785,6 +897,10 @@ function generateTypeScript(
     "// Auto-generated from official Stripe API data.",
     `// OpenAPI source: ${STRIPE_OPENAPI_URL}`,
     `// Permissions source: ${STRIPE_PERMISSIONS_URL}`,
+    `// Restricted keys source: ${STRIPE_RESTRICTED_API_KEYS_URL}`,
+    ...STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES.map((source) => {
+      return `// Supplemental permissions source: ${source.url}`;
+    }),
     "// Update sources: cd turbo && pnpm -F @vm0/firewalls-generator update-specs:stripe",
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:stripe",
     "//",
@@ -842,10 +958,14 @@ export async function generate(): Promise<void> {
     STRIPE_PERMISSIONS_URL,
     "Stripe permissions reference",
   );
-  const permissionRows = parsePermissionRows(await permissionsRes.text());
+  await validateRestrictedApiKeysReference();
+  const permissionRows = [
+    ...parsePermissionRows(await permissionsRes.text()),
+    ...(await supplementalPermissionRows()),
+  ];
   const permissionDefinitions = buildPermissionDefinitions(permissionRows);
   console.error(
-    `  ${permissionDefinitions.size} official permission names loaded`,
+    `  ${permissionDefinitions.size} named permission definitions loaded`,
   );
   const { permissionsByRule, conflictRules } = await buildApiDocsPermissionMap(
     spec,

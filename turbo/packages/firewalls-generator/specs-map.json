@@ -422,6 +422,7 @@
     "https://docs.stripe.com/api/disputes.md": "6ed11e8d12322d9e2efac5eb45405410d8f2343fe44831120cae4e31fa286e43",
     "https://docs.stripe.com/api/events.md": "6de4bfb696c7d1ba0f96bdd1113f31368adb57646742c8eb48aa27d9ce78cdd1",
     "https://docs.stripe.com/api/files.md": "6bf7f82d0cb5b13a10d2224db5ba1e0bb5d91cdc1d3c22e9331804998bb488f6",
+    "https://docs.stripe.com/api/forwarding/request.md": "d2c6be4594f8bc511354c61e3ce37b0da316135ed9aaa29c1c0aa9ab5d4ef656",
     "https://docs.stripe.com/api/invoices.md": "d68acd9e74afeb75b6f56dc5711a09875ec7011f6450ec4a8f520b19514a1296",
     "https://docs.stripe.com/api/issuing/authorizations.md": "0962d71e8b2e268509caa07a143d48d9ac3820e34af05cd5bd836b6f6c506094",
     "https://docs.stripe.com/api/issuing/cardholders.md": "a13989e17e0c5a020930ec6e2eece85462f04ea7a62bf20dce0d70de7030deb0",
@@ -458,6 +459,8 @@
     "https://docs.stripe.com/api/transfers.md": "fff47893f3509d95ff6bf57c34d57031abf313d5032fd74e0f07957a418dd0c2",
     "https://docs.stripe.com/api/treasury/transactions.md": "d64392bf5745218db8a127725a25b29dec1e84e23b0cffff47269554fc20a1ad",
     "https://docs.stripe.com/api/webhook_endpoints.md": "af8a3e0b82ae69e4485e401f55363bc33322fde80a7668dcec71e0583a18cbbe",
+    "https://docs.stripe.com/keys/restricted-api-keys.md": "ded013234bedaecaeb1fa90eb50d78ccd2218237fa82c8522f14d4fbd30c3b4a",
+    "https://docs.stripe.com/payments/vault-and-forward.md": "fc57998f2188b4d3ada7750fbe0e0534db24d396db9eaea5f8cb9e9a2c3b7a1b",
     "https://docs.stripe.com/stripe-apps/reference/permissions.md": "7079059fbd5e65f617ad3b2da1644779dd4b028fe680078fbc07740f3a17cd53",
     "https://raw.githubusercontent.com/stripe/openapi/master/latest/openapi.spec3.json": "f00242857c84b56ec6cfab86cbb487b7a84611bc447bc2cbd56e1dac7f86fabe"
   },

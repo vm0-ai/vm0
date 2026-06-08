@@ -129,6 +129,31 @@ describe("stripe firewall", () => {
     );
   });
 
+  it("uses OpenAPI resource IDs for Stripe restricted key resource permissions", () => {
+    expectStripeRule(
+      "forwarding_request_read",
+      "GET /v1/forwarding/requests/{id}",
+    );
+    expectStripeRule(
+      "forwarding_request_write",
+      "POST /v1/forwarding/requests",
+    );
+    expectStripeRule("climate_order_read", "GET /v1/climate/orders");
+    expectStripeRule("climate_order_write", "POST /v1/climate/orders");
+    expectStripeRule(
+      "identity_verification_session_write",
+      "POST /v1/identity/verification_sessions",
+    );
+    expectStripeRule(
+      "treasury_financial_account_read",
+      "GET /v1/treasury/financial_accounts/{financial_account}",
+    );
+    expectStripeRule(
+      "treasury_financial_account_write",
+      "POST /v1/treasury/financial_accounts",
+    );
+  });
+
   it("reports generated mapping coverage without hiding unmapped operations", () => {
     const firewall = getConnectorFirewall("stripe");
     const permissionCount = firewall.apis.reduce((count, api) => {
@@ -138,6 +163,9 @@ describe("stripe firewall", () => {
     expect(stripeGenerationStats.totalOperations).toBeGreaterThan(0);
     expect(stripeGenerationStats.mappedOperations).toBeGreaterThan(0);
     expect(stripeGenerationStats.docsMappedOperations).toBeGreaterThan(0);
+    expect(
+      stripeGenerationStats.openApiResourceMappedOperations,
+    ).toBeGreaterThan(0);
     expect(stripeGenerationStats.unmappedOperations).toBeGreaterThan(0);
     expect(stripeGenerationStats.permissionCount).toBe(permissionCount);
   });

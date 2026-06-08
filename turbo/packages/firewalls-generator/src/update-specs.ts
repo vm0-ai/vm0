@@ -22,6 +22,8 @@ import {
 import {
   STRIPE_OPENAPI_URL,
   STRIPE_PERMISSIONS_URL,
+  STRIPE_RESTRICTED_API_KEYS_URL,
+  STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES,
   stripeAdditionalApiDocUrlsForResource,
   stripeApiDocUrlsFromDescription,
 } from "./stripe-sources";
@@ -201,9 +203,35 @@ const stripeUpdater: Updater = {
     const permissionsMarkdown = await permissionsRes.text();
     entries.set(STRIPE_PERMISSIONS_URL, permissionsMarkdown);
 
-    const docsUrls = stripePermissionApiDocsUrls(permissionsMarkdown);
-    console.error(`  Found ${docsUrls.length} Stripe API docs links`);
-    for (const url of docsUrls) {
+    const restrictedKeysRes = await fetchRemote(
+      STRIPE_RESTRICTED_API_KEYS_URL,
+      "stripe: restricted API keys reference",
+    );
+    entries.set(STRIPE_RESTRICTED_API_KEYS_URL, await restrictedKeysRes.text());
+
+    const docsUrls = new Set(stripePermissionApiDocsUrls(permissionsMarkdown));
+    for (const source of STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES) {
+      const sourceRes = await fetchRemote(
+        source.url,
+        `stripe: supplemental permissions ${source.resource}`,
+      );
+      const sourceMarkdown = await sourceRes.text();
+      for (const snippet of source.requiredSnippets) {
+        if (!sourceMarkdown.includes(snippet)) {
+          throw new Error(
+            `Stripe supplemental permission source ${source.url} is missing required snippet: ${snippet}`,
+          );
+        }
+      }
+      entries.set(source.url, sourceMarkdown);
+      for (const url of source.apiDocUrls) {
+        docsUrls.add(url);
+      }
+    }
+
+    const sortedDocsUrls = [...docsUrls].sort();
+    console.error(`  Found ${sortedDocsUrls.length} Stripe API docs links`);
+    for (const url of sortedDocsUrls) {
       const res = await fetchRemote(url, `stripe: ${url}`);
       entries.set(url, await res.text());
     }
