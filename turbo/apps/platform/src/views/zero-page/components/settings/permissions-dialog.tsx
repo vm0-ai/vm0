@@ -601,6 +601,7 @@ function PermissionGrantPolicyControl({
   hasPendingChange,
   expirationEnabled,
   allowAlwaysActive,
+  expirationStatusExpiresAt,
   readOnly,
   saving,
   showCurrentExpirationStatus = true,
@@ -616,6 +617,7 @@ function PermissionGrantPolicyControl({
   hasPendingChange: boolean;
   expirationEnabled: boolean;
   allowAlwaysActive: boolean;
+  expirationStatusExpiresAt?: string | null;
   readOnly?: boolean;
   saving: boolean;
   showCurrentExpirationStatus?: boolean;
@@ -627,12 +629,14 @@ function PermissionGrantPolicyControl({
   const allowGrant = grant?.action === "allow" ? grant : undefined;
   const showExpirationStatus =
     showCurrentExpirationStatus && expirationEnabled && policy === "allow";
+  const expirationStatusValue =
+    expirationStatusExpiresAt ?? allowGrant?.expiresAt ?? null;
   const showSplitPolicy = expirationEnabled && !readOnly;
 
   return (
     <div className="flex shrink-0 items-center gap-2">
       {showExpirationStatus && (
-        <GrantExpirationStatus expiresAt={allowGrant?.expiresAt ?? null} />
+        <GrantExpirationStatus expiresAt={expirationStatusValue} />
       )}
       {!showSplitPolicy ? (
         <PolicyPill
@@ -803,6 +807,41 @@ function hasGroupAllowAlwaysPolicy({
   });
 }
 
+function groupExpirationStatusExpiresAt({
+  explicitGrants,
+  permissions,
+  policies,
+}: {
+  explicitGrants: Map<string, UserPermissionGrantResponse>;
+  permissions: readonly ConnectorPermission[];
+  policies: Record<string, PermissionPolicy>;
+}): string | null | undefined {
+  if (permissions.length === 0) {
+    return null;
+  }
+
+  let firstExpiresAt: string | null | undefined;
+  for (const permission of permissions) {
+    const name = permission.name;
+    if ((policies[name] ?? "allow") !== "allow") {
+      return undefined;
+    }
+
+    const grant = explicitGrants.get(name);
+    const expiresAt =
+      grant?.action === "allow" && grant.expiresAt ? grant.expiresAt : null;
+    if (firstExpiresAt === undefined) {
+      firstExpiresAt = expiresAt;
+      continue;
+    }
+    if (firstExpiresAt !== expiresAt) {
+      return undefined;
+    }
+  }
+
+  return firstExpiresAt ?? null;
+}
+
 function PermissionRows({
   groups,
   permissions,
@@ -863,6 +902,11 @@ function PermissionRows({
         permissions: group.permissions,
         policies,
       });
+      const groupExpirationStatus = groupExpirationStatusExpiresAt({
+        explicitGrants,
+        permissions: group.permissions,
+        policies,
+      });
       return (
         <div key={group.category}>
           {groupIdx > 0 && (
@@ -891,9 +935,10 @@ function PermissionRows({
               hasPendingChange={groupHasPendingChange}
               expirationEnabled={expirationEnabled}
               allowAlwaysActive={groupAllowAlwaysActive}
+              expirationStatusExpiresAt={groupExpirationStatus ?? null}
               readOnly={readOnly}
               saving={saving}
-              showCurrentExpirationStatus={false}
+              showCurrentExpirationStatus={groupExpirationStatus !== undefined}
               onClearExpiration={() => {
                 for (const permission of group.permissions) {
                   onGrantExpirationChange(permission.name, null);

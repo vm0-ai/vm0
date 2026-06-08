@@ -403,6 +403,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     expect(within(row).queryByText("Always")).not.toBeInTheDocument();
     click(getPolicyButton(row, "Allow"));
     expect(getPolicyButton(row, "Allow")).toHaveTextContent("Allow");
+    expect(within(row).getByText("Always")).toBeInTheDocument();
     click(screen.getByText("Apply"));
 
     await waitFor(() => {
@@ -656,6 +657,31 @@ describe("permissions dialog - grouped connector (Slack)", () => {
       "Allow",
     );
     expect(screen.getByText("Apply")).toBeDisabled();
+  });
+
+  it("shows always when a grouped deny change returns to allow", async () => {
+    mockAPIs({ connectorType: "slack" });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Slack");
+
+    const readGroup = getPermissionGroupHeader("Read");
+    click(getPolicyButton(readGroup, "Deny"));
+    expect(within(readGroup).queryByText("Always")).not.toBeInTheDocument();
+
+    click(getPolicyButton(readGroup, "Allow"));
+    expect(within(readGroup).getByText("Always")).toBeInTheDocument();
+
+    click(screen.getByText(/Read \(\d+\)/i));
+    await waitFor(() => {
+      expect(screen.getByText("channels:read")).toBeInTheDocument();
+    });
+    expect(
+      within(getPermissionRow("channels:read")).getByText("Always"),
+    ).toBeInTheDocument();
   });
 
   it("saves changed grants and closes drawer when Apply is clicked (FW-D-036)", async () => {
