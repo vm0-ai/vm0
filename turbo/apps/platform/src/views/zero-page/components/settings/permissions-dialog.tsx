@@ -556,27 +556,14 @@ function PermissionGrantPolicyControl({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
-              {policy === "allow" ? (
-                <DropdownMenuItem
-                  onSelect={() => {
-                    onPolicyChange("allow");
-                    onChange(permission, null);
-                  }}
-                >
-                  <MenuItemCheck active={selected === undefined} />
-                  Keep current
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem
-                  onSelect={() => {
-                    onPolicyChange("allow");
-                    onChange(permission, null);
-                  }}
-                >
-                  <MenuItemCheck active={false} />
-                  Allow
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem
+                onSelect={() => {
+                  onChange(permission, null);
+                }}
+              >
+                <MenuItemCheck active={selected === undefined} />
+                Keep current
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               {ALLOW_DURATION_MENU_OPTIONS.map((option) => {
                 return (

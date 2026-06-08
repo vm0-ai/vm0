@@ -426,6 +426,47 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     });
   });
 
+  it("keeps deny policy when choosing current duration from allow options", async () => {
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
+    });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    click(getAllowOptionsButton(row, "insert_comments"));
+
+    let menuItems: HTMLElement[] = [];
+    await waitFor(() => {
+      menuItems = queryAllByRoleFast("menuitem");
+      expect(menuItems.length).toBeGreaterThan(0);
+    });
+    expect(
+      menuItems.some((item) => {
+        return item.textContent?.trim() === "Allow";
+      }),
+    ).toBeFalsy();
+
+    const keepCurrent = menuItems.find((item) => {
+      return item.textContent?.includes("Keep current") ?? false;
+    });
+    if (!(keepCurrent instanceof HTMLElement)) {
+      throw new Error("Keep current menu item not found");
+    }
+    click(keepCurrent);
+
+    expect(getPolicyButton(row, "Deny")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByText("Apply")).toBeDisabled();
+  });
+
   it("does not show expiration controls for deny changes", async () => {
     const grantBodies: unknown[] = [];
     mockAPIs({ connectorType: "notion" });
