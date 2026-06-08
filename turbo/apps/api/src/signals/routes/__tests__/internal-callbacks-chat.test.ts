@@ -1546,6 +1546,9 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(run?.appendSystemPrompt).toContain(
       `Template ID: ${item.templateId}`,
     );
+    expect(run?.appendSystemPrompt).toContain(
+      "--artifact-kind presentation-html",
+    );
 
     const [zeroRun] = await db
       .select({

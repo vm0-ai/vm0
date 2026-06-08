@@ -601,6 +601,9 @@ describe("POST /api/zero/chat/messages", () => {
     expect(run?.appendSystemPrompt).toContain(
       "- Keep the user's prompt as the source of the requested content.",
     );
+    expect(run?.appendSystemPrompt).toContain(
+      "--artifact-kind presentation-html",
+    );
   });
 
   it("rejects unknown generation template resources", async () => {

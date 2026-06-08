@@ -395,7 +395,6 @@ export function ArtifactDownloadMenu({
   const showPresentationPptxDownload =
     artifactKind === "presentation-html" &&
     Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]);
-
   const show = () => {
     openMenu(menuKey);
   };
