@@ -60,7 +60,8 @@ function connectorIconHasLooseViewBox(type: ConnectorType): boolean {
 }
 
 /**
- * Multi-color / gradient brand marks: skip `zero-icon-mono` so `filter: invert(1)` does not distort them.
+ * Multi-color, gradient, and distinctive single-color brand marks: skip `zero-icon-mono`
+ * so `filter: invert(1)` does not distort their official colors.
  * Dark single-fill logos (e.g. navy) are *not* listed here—they invert for contrast on dark UI.
  */
 const CONNECTOR_ICON_COLORFUL = {
@@ -72,7 +73,7 @@ const CONNECTOR_ICON_COLORFUL = {
   alchemy: true,
   amadeus: true,
   amplitude: true,
-  anthropic: true,
+  "anthropic-managed-agents": true,
   apify: true,
   asana: true,
   ashby: true,
