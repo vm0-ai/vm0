@@ -518,8 +518,8 @@ async fn read_usage_pending_file_content(
     path: &Path,
 ) -> std::io::Result<String> {
     let mut limited = file.take(USAGE_PENDING_MAX_BYTES + 1);
-    let mut content = String::new();
-    limited.read_to_string(&mut content).await?;
+    let mut content = Vec::new();
+    limited.read_to_end(&mut content).await?;
     if content.len() as u64 > USAGE_PENDING_MAX_BYTES {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -530,7 +530,7 @@ async fn read_usage_pending_file_content(
             ),
         ));
     }
-    Ok(content)
+    String::from_utf8(content).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
 #[cfg(not(unix))]

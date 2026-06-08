@@ -776,7 +776,13 @@ fn is_inactive_mode(mode: &str) -> bool {
 
 async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
     let path = base_dir.join("status.json");
-    let content = tokio::fs::read_to_string(&path).await.ok()?;
+    let content = crate::private_fs::read_private_file_to_string_with_max(
+        &path,
+        crate::private_fs::PRIVATE_STATUS_FILE_READ_MAX_BYTES,
+    )
+    .await
+    .ok()
+    .flatten()?;
     let file: StatusFile = serde_json::from_str(&content).ok()?;
     Some(StatusInfo {
         mode: file.mode,

@@ -10,6 +10,7 @@ const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const ROOT_UID: u32 = 0;
 const STICKY_BIT: u32 = 0o1000;
 const PRIVATE_FILE_READ_MAX_BYTES: u64 = 64 * 1024;
+pub(crate) const PRIVATE_STATUS_FILE_READ_MAX_BYTES: u64 = 1024 * 1024;
 const RESERVED_PRIVATE_DIR_PATHS: &[&str] = &[
     "/",
     "/bin",
@@ -117,6 +118,14 @@ async fn reject_existing_symlink_components(path: &Path) -> RunnerResult<()> {
 
 #[cfg(unix)]
 pub async fn read_private_file_to_string(path: &Path) -> RunnerResult<Option<String>> {
+    read_private_file_to_string_with_max(path, PRIVATE_FILE_READ_MAX_BYTES).await
+}
+
+#[cfg(unix)]
+pub async fn read_private_file_to_string_with_max(
+    path: &Path,
+    max_bytes: u64,
+) -> RunnerResult<Option<String>> {
     let mut options = tokio::fs::OpenOptions::new();
     options
         .read(true)
@@ -132,30 +141,49 @@ pub async fn read_private_file_to_string(path: &Path) -> RunnerResult<Option<Str
         }
     };
     secure_open_private_file(&file, path)?;
-    read_private_file_contents(file, path).await.map(Some)
+    read_private_file_contents(file, path, max_bytes)
+        .await
+        .map(Some)
 }
 
-async fn read_private_file_contents(file: tokio::fs::File, path: &Path) -> RunnerResult<String> {
+async fn read_private_file_contents(
+    file: tokio::fs::File,
+    path: &Path,
+    max_bytes: u64,
+) -> RunnerResult<String> {
     use tokio::io::AsyncReadExt;
 
-    let mut limited = file.take(PRIVATE_FILE_READ_MAX_BYTES + 1);
-    let mut contents = String::new();
+    let mut limited = file.take(max_bytes + 1);
+    let mut contents = Vec::new();
     limited
-        .read_to_string(&mut contents)
+        .read_to_end(&mut contents)
         .await
         .map_err(|e| RunnerError::Config(format!("read private file {}: {e}", path.display())))?;
-    if contents.len() as u64 > PRIVATE_FILE_READ_MAX_BYTES {
+    if contents.len() as u64 > max_bytes {
         return Err(RunnerError::Config(format!(
             "private file {} exceeds {} bytes",
             path.display(),
-            PRIVATE_FILE_READ_MAX_BYTES
+            max_bytes
         )));
     }
-    Ok(contents)
+    String::from_utf8(contents).map_err(|e| {
+        RunnerError::Config(format!(
+            "read private file {} as UTF-8: {e}",
+            path.display()
+        ))
+    })
 }
 
 #[cfg(not(unix))]
 pub async fn read_private_file_to_string(path: &Path) -> RunnerResult<Option<String>> {
+    read_private_file_to_string_with_max(path, PRIVATE_FILE_READ_MAX_BYTES).await
+}
+
+#[cfg(not(unix))]
+pub async fn read_private_file_to_string_with_max(
+    path: &Path,
+    max_bytes: u64,
+) -> RunnerResult<Option<String>> {
     let file = match tokio::fs::File::open(path).await {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -166,7 +194,9 @@ pub async fn read_private_file_to_string(path: &Path) -> RunnerResult<Option<Str
             )));
         }
     };
-    read_private_file_contents(file, path).await.map(Some)
+    read_private_file_contents(file, path, max_bytes)
+        .await
+        .map(Some)
 }
 
 #[cfg(unix)]
