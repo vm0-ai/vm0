@@ -2256,6 +2256,23 @@ describe("zero chat thread page display - artifact sidebar", () => {
     const user = userEvent.setup();
     const fileUrl = "https://demo-deck.sites.vm0.io";
     let presentationHtmlRequested = false;
+    let exportFrame: HTMLIFrameElement | null = null;
+    const appendSpy = vi
+      .spyOn(document.body, "append")
+      .mockImplementation(function (
+        this: HTMLElement,
+        ...nodes: Parameters<HTMLElement["append"]>
+      ) {
+        for (const node of nodes) {
+          if (
+            node instanceof HTMLIFrameElement &&
+            node.title === "Presentation PPTX export"
+          ) {
+            exportFrame = node;
+          }
+        }
+        return Element.prototype.append.apply(this, nodes);
+      });
     const presentationHtml = `
       <!doctype html>
       <html>
@@ -2331,11 +2348,13 @@ describe("zero chat thread page display - artifact sidebar", () => {
     await waitFor(() => {
       expect(presentationHtmlRequested).toBeTruthy();
     });
-    const exportFrame = await waitFor(() => {
-      const frame = screen.getByTitle("Presentation PPTX export");
-      expect(frame).toBeInTheDocument();
-      return frame;
+    await waitFor(() => {
+      expect(exportFrame).not.toBeNull();
     });
+    appendSpy.mockRestore();
+    if (!exportFrame) {
+      throw new Error("Presentation export iframe was not created");
+    }
     expect(exportFrame).toHaveAttribute(
       "sandbox",
       "allow-scripts allow-downloads",
