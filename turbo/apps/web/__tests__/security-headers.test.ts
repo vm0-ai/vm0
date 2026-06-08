@@ -756,6 +756,14 @@ const AGENT_USAGE_EVENT_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/agent/usage-event/extra",
   "/api/webhooks/agent",
 ] as const;
+const AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE =
+  "/api/webhooks/agent/model-usage-observation";
+const AGENT_MODEL_USAGE_OBSERVATION_PATH =
+  "/api/webhooks/agent/model-usage-observation";
+const AGENT_MODEL_USAGE_OBSERVATION_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/agent/model-usage-observation/extra",
+  "/api/webhooks/agent",
+] as const;
 const AGENT_STORAGES_COMMIT_REWRITE_SOURCE =
   "/api/webhooks/agent/storages/commit";
 const AGENT_STORAGES_COMMIT_PATH = "/api/webhooks/agent/storages/commit";
@@ -1015,6 +1023,13 @@ const ZERO_BILLING_REDEEM_NEXT_NEGATIVE_PATHS = [
   "/api/zero/billing/redeem",
   "/api/zero/billing/redeem/ZERO100/extra",
   "/api/zero/billing/redeems/ZERO100",
+] as const;
+const ZERO_BILLING_RESTORE_REWRITE_SOURCE = "/api/zero/billing/restore";
+const ZERO_BILLING_RESTORE_PATH = "/api/zero/billing/restore";
+const ZERO_BILLING_RESTORE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/billing",
+  "/api/zero/billing/restore/extra",
+  "/api/zero/billing/restores",
 ] as const;
 const ZERO_BILLING_STATUS_REWRITE_SOURCE = "/api/zero/billing/status";
 const ZERO_BILLING_STATUS_PATH = "/api/zero/billing/status";
@@ -1351,6 +1366,14 @@ const ZERO_CHAT_THREAD_MARK_READ_PATH =
 const ZERO_CHAT_THREAD_MARK_READ_NEXT_NEGATIVE_PATHS = [
   "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/mark-read/extra",
   "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/mark-read",
+] as const;
+const ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE =
+  "/api/zero/chat-threads/:id/model-selection";
+const ZERO_CHAT_THREAD_MODEL_SELECTION_PATH =
+  "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/model-selection";
+const ZERO_CHAT_THREAD_MODEL_SELECTION_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/model-selection/extra",
+  "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/model-selection",
 ] as const;
 const ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE = "/api/zero/chat-threads/:id/pin";
 const ZERO_CHAT_THREAD_PIN_PATH =
@@ -2270,6 +2293,11 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/webhooks/agent/usage-event",
         },
         {
+          source: AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/webhooks/agent/model-usage-observation",
+        },
+        {
           source: AGENT_STORAGES_COMMIT_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/webhooks/agent/storages/commit",
@@ -2472,6 +2500,10 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/billing/redeem/:campaign",
         },
         {
+          source: ZERO_BILLING_RESTORE_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/billing/restore",
+        },
+        {
           source: ZERO_BILLING_STATUS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/billing/status",
         },
@@ -2569,11 +2601,6 @@ describe("API backend rewrites", () => {
           source: "/api/zero/integrations/phone/:path*",
           destination:
             "https://api.example.test/api/zero/integrations/phone/:path*",
-        },
-        {
-          source: "/api/zero/integrations/chat/message",
-          destination:
-            "https://api.example.test/api/zero/integrations/chat/message",
         },
         {
           source: "/api/zero/integrations/slack",
@@ -2858,6 +2885,11 @@ describe("API backend rewrites", () => {
           source: ZERO_CHAT_THREAD_MARK_READ_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/chat-threads/:id/mark-read",
+        },
+        {
+          source: ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/chat-threads/:id/model-selection",
         },
         {
           source: ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE,
@@ -5045,6 +5077,30 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact agent model usage observation webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/webhooks/agent/model-usage-observation",
+    });
+
+    const matcher = getPathMatch(AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_MODEL_USAGE_OBSERVATION_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_MODEL_USAGE_OBSERVATION_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact agent storages commit webhook rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -6251,6 +6307,35 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only one segment for the zero chat thread model-selection rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/chat-threads/:id/model-selection",
+    });
+
+    const matcher = getPathMatch(
+      ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+
+    expect(matcher(ZERO_CHAT_THREAD_MODEL_SELECTION_PATH)).toStrictEqual({
+      id: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    for (const pathname of ZERO_CHAT_THREAD_MODEL_SELECTION_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only one segment for the zero chat thread pin rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -6744,6 +6829,29 @@ describe("API backend rewrites", () => {
       campaign: "ZERO100",
     });
     for (const pathname of ZERO_BILLING_REDEEM_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero billing restore rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_BILLING_RESTORE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_BILLING_RESTORE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/billing/restore",
+    });
+
+    const matcher = getPathMatch(ZERO_BILLING_RESTORE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_BILLING_RESTORE_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_BILLING_RESTORE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -8165,18 +8273,6 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match the zero integrations chat message route for middleware pass-through", async () => {
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/chat/message"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/integrations/chat/message/extra"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/integrations/chat")).toBe(
-      false,
-    );
-  });
-
   it("should match the zero integrations Slack message route for middleware pass-through", async () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/integrations/slack/message"),
@@ -8755,6 +8851,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact zero billing portal path", () => {
     expect(matchesApiBackendRewritePath(ZERO_BILLING_PORTAL_PATH)).toBe(true);
     for (const pathname of ZERO_BILLING_PORTAL_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact zero billing restore path", () => {
+    expect(matchesApiBackendRewritePath(ZERO_BILLING_RESTORE_PATH)).toBe(true);
+    for (const pathname of ZERO_BILLING_RESTORE_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

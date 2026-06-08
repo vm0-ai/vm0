@@ -1,4 +1,10 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import {
+  MEMORY_ACTIVITY_DEFAULT_LIMIT,
+  zeroMemoryActivityContract,
+  type MemoryActivityResponse,
+} from "@vm0/api-contracts/contracts/zero-memory-activity";
+import { zeroMemoryDevRefreshContract } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -7,12 +13,18 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockMemory } from "../../../mocks/handlers/api-memory.ts";
 import { setMockMemoryActivity } from "../../../mocks/handlers/api-memory-activity.ts";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname$ } from "../../../signals/route.ts";
 
 const context = testContext();
+const mockApi = createMockApi(context);
+type MemoryActivityDiff =
+  MemoryActivityResponse["entries"][number]["items"][number]["diff"];
+type MemoryActivityEntry = MemoryActivityResponse["entries"][number];
 
 async function clickTab(name: string): Promise<void> {
   const tab = await waitFor(() => {
@@ -23,6 +35,71 @@ async function clickTab(name: string): Promise<void> {
     return found!;
   });
   click(tab);
+}
+
+function addedDiff(text: string): MemoryActivityDiff {
+  return {
+    format: "line",
+    beforeExists: false,
+    afterExists: true,
+    truncated: false,
+    stats: { added: 1, removed: 0 },
+    hunks: [
+      {
+        beforeStartLine: null,
+        afterStartLine: 1,
+        lines: [{ op: "add", beforeLine: null, afterLine: 1, text }],
+      },
+    ],
+  };
+}
+
+function updatedDiff(
+  beforeText: string,
+  afterText: string,
+): MemoryActivityDiff {
+  return {
+    format: "line",
+    beforeExists: true,
+    afterExists: true,
+    truncated: false,
+    stats: { added: 1, removed: 1 },
+    hunks: [
+      {
+        beforeStartLine: 1,
+        afterStartLine: 1,
+        lines: [
+          { op: "remove", beforeLine: 1, afterLine: null, text: beforeText },
+          { op: "add", beforeLine: null, afterLine: 1, text: afterText },
+        ],
+      },
+    ],
+  };
+}
+
+function memoryActivityEntry({
+  date,
+  summary,
+  toVersionId,
+  filePath,
+}: {
+  readonly date: string;
+  readonly summary: string;
+  readonly toVersionId: string;
+  readonly filePath: string;
+}): MemoryActivityEntry {
+  return {
+    date,
+    summary,
+    fromVersionId: null,
+    toVersionId,
+    items: [
+      {
+        filePath,
+        diff: addedDiff(summary),
+      },
+    ],
+  };
 }
 
 function setupMemoryPage(): void {
@@ -77,7 +154,7 @@ describe("memory page", () => {
       expect(screen.getByText("No updates yet")).toBeInTheDocument();
     });
 
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     await waitFor(() => {
       expect(screen.getByText("No memory yet")).toBeInTheDocument();
@@ -89,29 +166,23 @@ describe("memory page", () => {
       entries: [
         {
           date: "2024-03-02",
-          summary: "Zero learned how you prefer to deploy.",
+          summary:
+            "**Changed memory**\n- Zero learned the deployment preference for blue-green deploys.\n\n**How Zero will use this**\n- Zero should apply blue-green deployment context in future release work.",
           fromVersionId: "v1",
           toVersionId: "v2",
           items: [
             {
-              kind: "learned",
-              title: "Deploy preference",
-              description: "Use blue-green deploys",
               filePath: "deploy.md",
-              beforeSnippet: null,
-              afterSnippet: "Use blue-green deploys",
+              diff: addedDiff("Use blue-green deploys"),
             },
             {
-              kind: "updated",
-              title: "Project setup",
-              description: null,
               filePath: "setup.md",
-              beforeSnippet: "old setup",
-              afterSnippet: "new setup",
+              diff: updatedDiff("old setup", "new setup"),
             },
           ],
         },
       ],
+      nextCursor: null,
     });
 
     detachedSetupPage({
@@ -120,21 +191,60 @@ describe("memory page", () => {
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("Zero learned how you prefer to deploy."),
-      ).toBeInTheDocument();
+    const summary = await waitFor(() => {
+      const element = screen.getByText(
+        "Zero learned the deployment preference for blue-green deploys.",
+      );
+      expect(element).toBeInTheDocument();
+      return element;
     });
 
-    expect(screen.getByText("Deploy preference")).toBeInTheDocument();
-    expect(screen.getByText("Learned")).toBeInTheDocument();
-    expect(screen.getByText("Updated")).toBeInTheDocument();
+    const updateCard = summary.closest("section");
+    if (updateCard === null) {
+      throw new Error("Missing memory update card");
+    }
+    const markdownRoot = updateCard.querySelector(".wmde-markdown");
+    if (!(markdownRoot instanceof HTMLElement)) {
+      throw new Error("Missing markdown summary root");
+    }
+    expect(updateCard).toHaveClass("shrink-0");
+    expect(screen.getByText("Changed memory")).toBeInTheDocument();
+    expect(screen.getByText("How Zero will use this")).toBeInTheDocument();
+    expect(screen.queryByText("**Changed memory**")).not.toBeInTheDocument();
+    expect(screen.getByText("2 memory files changed")).toBeInTheDocument();
+    expect(screen.queryByText("deploy.md")).not.toBeInTheDocument();
+    expect(screen.queryByText("setup.md")).not.toBeInTheDocument();
+    expect(screen.queryByText("Deploy preference")).not.toBeInTheDocument();
+    expect(screen.queryByText("Updated")).not.toBeInTheDocument();
+    expect(updateCard).toHaveTextContent("+2");
+    expect(updateCard).toHaveTextContent("-1");
+
+    const viewFiles = queryAllByRoleFast("button", updateCard).find(
+      (button) => {
+        return button.textContent?.includes("View files");
+      },
+    );
+    expect(viewFiles).toBeDefined();
+    expect(viewFiles).toHaveAttribute("aria-expanded", "false");
+    click(viewFiles!);
+
+    await waitFor(() => {
+      expect(screen.getByText("deploy.md")).toBeInTheDocument();
+      expect(screen.getByText("setup.md")).toBeInTheDocument();
+    });
+    const hideFiles = queryAllByRoleFast("button", updateCard).find(
+      (button) => {
+        return button.textContent?.includes("Hide files");
+      },
+    );
+    expect(hideFiles).toBeDefined();
+    expect(hideFiles).toHaveAttribute("aria-expanded", "true");
 
     // Evidence is hidden until the item is expanded.
     expect(screen.queryByText("new setup")).not.toBeInTheDocument();
 
     const updatedItem = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.includes("Project setup");
+      return button.textContent?.includes("setup.md");
     });
     expect(updatedItem).toBeDefined();
     click(updatedItem!);
@@ -143,6 +253,148 @@ describe("memory page", () => {
       expect(screen.getByText("new setup")).toBeInTheDocument();
     });
     expect(screen.getByText("old setup")).toBeInTheDocument();
+    const diff = screen.getByLabelText("Memory diff");
+    expect(within(diff).getByText("-")).toBeInTheDocument();
+    expect(within(diff).getByText("+")).toBeInTheDocument();
+
+    click(hideFiles!);
+    await waitFor(() => {
+      expect(screen.queryByText("deploy.md")).not.toBeInTheDocument();
+      expect(screen.queryByText("setup.md")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows an Updates-shaped skeleton while the default tab is loading", async () => {
+    server.use(
+      mockApi(zeroMemoryActivityContract.get, ({ never }) => {
+        return never();
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("memory-updates-loading")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("memory-loading")).not.toBeInTheDocument();
+  });
+
+  it("loads more daily activity entries when a next cursor is available", async () => {
+    const firstEntry = memoryActivityEntry({
+      date: "2024-03-02",
+      summary: "First page update",
+      toVersionId: "v2",
+      filePath: "first.md",
+    });
+    const secondEntry = memoryActivityEntry({
+      date: "2024-03-01",
+      summary: "Second page update",
+      toVersionId: "v1",
+      filePath: "second.md",
+    });
+    server.use(
+      mockApi(zeroMemoryActivityContract.get, ({ query, respond }) => {
+        expect(query.limit).toBe(MEMORY_ACTIVITY_DEFAULT_LIMIT);
+        if (query.cursor === "2024-03-02") {
+          return respond(200, { entries: [secondEntry], nextCursor: null });
+        }
+        expect(query.cursor).toBeUndefined();
+        return respond(200, {
+          entries: [firstEntry],
+          nextCursor: "2024-03-02",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("First page update")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Second page update")).not.toBeInTheDocument();
+
+    const loadMoreButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.includes("Load more");
+    });
+    expect(loadMoreButton).toBeDefined();
+    click(loadMoreButton!);
+
+    await waitFor(() => {
+      expect(screen.getByText("Second page update")).toBeInTheDocument();
+    });
+    expect(screen.getByText("First page update")).toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").some((button) => {
+        return button.textContent?.includes("Load more");
+      }),
+    ).toBeFalsy();
+  });
+
+  it("dev-refreshes memory summaries and reloads the activity timeline", async () => {
+    const beforeEntry = memoryActivityEntry({
+      date: "2024-03-02",
+      summary: "Before refresh",
+      toVersionId: "v2",
+      filePath: "before.md",
+    });
+    const afterEntry = memoryActivityEntry({
+      date: "2024-03-02",
+      summary: "After refresh",
+      toVersionId: "v2",
+      filePath: "after.md",
+    });
+    let activityCalls = 0;
+    let refreshCalls = 0;
+    server.use(
+      mockApi(zeroMemoryActivityContract.get, ({ respond }) => {
+        activityCalls++;
+        return respond(200, {
+          entries: [activityCalls === 1 ? beforeEntry : afterEntry],
+          nextCursor: null,
+        });
+      }),
+      mockApi(zeroMemoryDevRefreshContract.refresh, ({ respond }) => {
+        refreshCalls++;
+        return respond(200, { summarized: 1 });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.MemoryDevRefresh]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Before refresh")).toBeInTheDocument();
+    });
+
+    const refreshButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.includes("Dev refresh");
+    });
+    expect(refreshButton).toBeDefined();
+    click(refreshButton!);
+
+    await waitFor(() => {
+      expect(screen.getByText("After refresh")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Before refresh")).not.toBeInTheDocument();
+    expect(
+      screen.getAllByText("Refreshed 1 memory summary").length,
+    ).toBeGreaterThan(0);
+    expect(refreshCalls).toBe(1);
+    expect(activityCalls).toBe(2);
   });
 
   it("falls back to a deterministic summary line when the LLM summary is null", async () => {
@@ -155,32 +407,21 @@ describe("memory page", () => {
           toVersionId: "v2",
           items: [
             {
-              kind: "learned",
-              title: "Fact A",
-              description: null,
               filePath: "a.md",
-              beforeSnippet: null,
-              afterSnippet: "a",
+              diff: addedDiff("a"),
             },
             {
-              kind: "learned",
-              title: "Fact B",
-              description: null,
               filePath: "b.md",
-              beforeSnippet: null,
-              afterSnippet: "b",
+              diff: addedDiff("b"),
             },
             {
-              kind: "updated",
-              title: "Fact C",
-              description: null,
               filePath: "c.md",
-              beforeSnippet: "old",
-              afterSnippet: "new",
+              diff: updatedDiff("old", "new"),
             },
           ],
         },
       ],
+      nextCursor: null,
     });
 
     detachedSetupPage({
@@ -191,7 +432,7 @@ describe("memory page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("3 changes — 2 learned, 1 updated"),
+        screen.getByText("3 memory files changed (+3 -1)."),
       ).toBeInTheDocument();
     });
   });
@@ -213,7 +454,7 @@ describe("memory page", () => {
 
   it("lists memory files and shows selected file content read-only", async () => {
     setupMemoryPage();
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     // Defaults to MEMORY.md (rendered as markdown).
     await waitFor(() => {
@@ -247,7 +488,7 @@ describe("memory page", () => {
 
   it("pins MEMORY.md to the top of the file list", async () => {
     setupMemoryPage();
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     await waitFor(() => {
       expect(screen.getAllByText("MEMORY.md").length).toBeGreaterThan(0);
@@ -295,7 +536,7 @@ describe("memory page", () => {
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
 
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Memory content")).toHaveTextContent(
@@ -343,7 +584,7 @@ describe("memory page", () => {
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
 
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     // Defaults to MEMORY.md, which renders the relative link to other-note.md.
     await waitFor(() => {
@@ -406,7 +647,7 @@ describe("memory page", () => {
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
 
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Memory content")).toHaveTextContent(
@@ -458,7 +699,7 @@ describe("memory page", () => {
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
 
-    await clickTab("Raw files");
+    await clickTab("Memory files");
 
     // Defaults to MEMORY.md, which renders an absolute external link.
     await waitFor(() => {

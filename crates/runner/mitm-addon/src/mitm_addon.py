@@ -11,6 +11,7 @@ This addon runs on the runner HOST (not inside VMs) and:
 6. Participates in runner-triggered usage drain before proxy shutdown
 """
 
+import asyncio
 import functools
 import json
 import signal
@@ -18,6 +19,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
+from collections.abc import Callable
 from pathlib import Path
 
 from mitmproxy import ctx, http, tcp, tls
@@ -34,7 +36,6 @@ from mitmproxy.addonmanager import Loader
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import body_utils
-import flow_metadata
 import flow_metadata_keys as metadata_keys
 import matching
 import network_log_sanitization
@@ -42,6 +43,7 @@ import registry
 import response_streaming
 import usage
 from auth import (
+    FirewallAuthHandlingResult,
     clear_cached_firewall_headers,
     handle_firewall_request,
     is_billable_firewall,
@@ -67,7 +69,11 @@ _BROWSER_USER_AGENT_MARKERS = (
     " safari/",
 )
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
+_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
+# Network log size fields are consumed as JavaScript numbers downstream.
+_MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
+_MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))
 
 # Runner-triggered usage drain protocol:
 # - Rust writes `usage-flush-request` with the active usageStateId and a fresh
@@ -352,6 +358,44 @@ def _block_authority_validation_error(flow: http.HTTPFlow, error: AuthorityValid
     )
 
 
+def _block_registry_unavailable(
+    flow: http.HTTPFlow,
+    unavailable: registry.RegistryUnavailable,
+) -> None:
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = "registry_unavailable"
+    flow.response = http.Response.make(
+        503,
+        json.dumps(
+            {
+                "error": "registry_unavailable",
+                "message": "Proxy registry is unavailable",
+                "reason": unavailable.reason,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
+def _block_invalid_registry_vm(
+    flow: http.HTTPFlow,
+    invalid_vm: registry.InvalidVmEntry,
+) -> None:
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = "invalid_registry_vm"
+    flow.response = http.Response.make(
+        503,
+        json.dumps(
+            {
+                "error": "invalid_registry_vm",
+                "message": invalid_vm.message,
+                "reason": invalid_vm.reason,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
 # ============================================================================
 # TLS ClientHello Handler
 # ============================================================================
@@ -367,8 +411,11 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
     if not client_ip:
         return
 
-    vm_info = registry.get_vm_info(client_ip, get_registry_path())
-    if not vm_info:
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        return
+
+    if client_ip not in registry_state.vms and client_ip not in registry_state.invalid_vms:
         # Not a registered VM - pass through without MITM interception
         # This is critical for CIDR-based rules where all VM traffic is redirected
         data.ignore_connection = True
@@ -387,8 +434,9 @@ async def request(flow: http.HTTPFlow) -> None:
     Intercept request: inject firewall auth headers for configured firewall rules.
 
     Order:
-    1. VM0 API auto-allow (agent must always reach the platform)
-    2. Firewall match (inject auth headers for allowed requests)
+    1. Registry gate (block unavailable or invalid registered VM state)
+    2. VM0 API auto-allow (agent must always reach the platform)
+    3. Firewall match (inject auth headers for allowed requests)
     """
     # Get client IP (source VM)
     client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
@@ -397,13 +445,23 @@ async def request(flow: http.HTTPFlow) -> None:
         ctx.log.warn("No client IP available, passing through")
         return
 
-    # Look up VM info from registry
-    vm_context = registry.get_vm_context(client_ip, get_registry_path())
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        _block_registry_unavailable(flow, registry_state)
+        return
 
-    if not vm_context:
+    # Look up VM info from registry. This pass-through path is valid only after
+    # the registry file loaded successfully; unavailable registry is blocked above.
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is None:
+        invalid_vm = registry_state.invalid_vms.get(client_ip)
+        if invalid_vm is not None:
+            _block_invalid_registry_vm(flow, invalid_vm)
+            return
         # Not a registered VM, pass through without proxying
         return
-    vm_info, compiled_firewalls, compiled_network_policies = vm_context
+    compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
+    compiled_network_policies = registry_state.compiled_network_policies[client_ip]
 
     run_id = vm_info.get("runId", "")
 
@@ -440,11 +498,11 @@ async def request(flow: http.HTTPFlow) -> None:
 
         hostname = trusted_authority.host.lower()
 
-        # --- Step 1: Auto-allow VM0 API requests ---
+        # --- Step 2: Auto-allow VM0 API requests ---
         # The agent MUST be able to communicate with the platform (heartbeat,
         # logs, CLI auth, etc.). Exception: `/api/test/*` routes exist only to
         # exercise the firewall pipeline itself (e.g. the test-oauth provider),
-        # so they must go through Step 2 and get their auth injected by the
+        # so they must go through Step 3 and get their auth injected by the
         # matching firewall — otherwise the E2E tests that back them would
         # auto-allow past the thing they're supposed to exercise.
         api_url = get_api_url()
@@ -459,7 +517,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
                 return
 
-        # --- Step 2: Firewall match with permission check ---
+        # --- Step 3: Firewall match with permission check ---
         # Match base URL, then check permission rules before injecting auth headers.
         if compiled_firewalls:
             result = matching.match_compiled_firewall_request(
@@ -519,11 +577,10 @@ async def request(flow: http.HTTPFlow) -> None:
                 _maybe_track_usage_flow(
                     flow,
                     is_billable_firewall(result.name, vm_info),
+                    _is_model_provider_usage_observable(result.name, vm_info),
                 )
-                await handle_firewall_request(flow, result, vm_info)
-                if flow.response is not None and not flow.metadata.get(
-                    metadata_keys.AUTH_URL_REWRITE
-                ):
+                auth_result = await handle_firewall_request(flow, result, vm_info)
+                if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
                     # Local firewall/auth errors never reach a provider. They only
                     # need pre-tracking to keep shutdown from racing while auth is
                     # resolving, so release as soon as the local response exists.
@@ -538,18 +595,25 @@ async def request(flow: http.HTTPFlow) -> None:
         raise
 
 
-def _maybe_track_usage_flow(flow: http.HTTPFlow, firewall_billable: bool) -> None:
-    """Track billable flows before provider work can outlive shutdown.
+def _is_model_provider_usage_observable(firewall_name: str, vm_info: dict) -> bool:
+    """Return whether a firewall can produce model usage observations."""
+    return firewall_name.startswith("model-provider:") and bool(vm_info.get("modelUsageProvider"))
+
+
+def _maybe_track_usage_flow(
+    flow: http.HTTPFlow, firewall_billable: bool, model_usage_observable: bool
+) -> None:
+    """Track usage flows before provider work can outlive shutdown.
 
     This closes the shutdown drain gap before standard upstream dispatch and
     before auth.base URL rewrites, where the addon itself forwards upstream.
     Normal HTTP flows release from response/error.  Model-provider WebSocket
     upgrades release from websocket_end/error because the 101 response does not
-    complete the billable usage lifecycle.
+    complete the usage reporting lifecycle.
     """
     if flow.metadata.get(_USAGE_FLOW_TRACKED):
         return
-    if firewall_billable:
+    if firewall_billable or model_usage_observable:
         usage.increment_in_flight_flows()
         flow.metadata[_USAGE_FLOW_TRACKED] = True
 
@@ -563,8 +627,43 @@ def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
     """Avoid duplicate usage webhook enqueue if response/error both fire."""
     if flow.metadata.get(_MODEL_PROVIDER_USAGE_REPORTED, False):
         return
-    if usage.report_model_provider_usage(flow, run_id):
+    reported_usage = usage.report_model_provider_usage(flow, run_id)
+    reported_observation = usage.report_model_provider_usage_observation(flow, run_id)
+    if reported_usage or reported_observation:
         flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True
+
+
+_WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
+
+
+def _call_soon(callback: _WebSocketTrimCallback, flow: http.HTTPFlow) -> None:
+    asyncio.get_running_loop().call_soon(callback, flow)
+
+
+def _is_model_websocket_usage_flow(flow: http.HTTPFlow) -> bool:
+    return bool(flow.websocket and response_streaming.is_model_websocket_usage_enabled(flow))
+
+
+def _trim_model_websocket_messages(flow: http.HTTPFlow) -> None:
+    flow.metadata.pop(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, None)
+    if not _is_model_websocket_usage_flow(flow):
+        return
+    if not flow.websocket or not flow.websocket.messages:
+        return
+    flow.websocket.messages[:] = flow.websocket.messages[-1:]
+
+
+def _clear_model_websocket_messages(flow: http.HTTPFlow) -> None:
+    flow.metadata.pop(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, None)
+    if _is_model_websocket_usage_flow(flow) and flow.websocket:
+        flow.websocket.messages.clear()
+
+
+def _schedule_model_websocket_message_trim(flow: http.HTTPFlow) -> None:
+    if flow.metadata.get(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, False):
+        return
+    flow.metadata[_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED] = True
+    _call_soon(_trim_model_websocket_messages, flow)
 
 
 # ============================================================================
@@ -583,11 +682,15 @@ def websocket_message(flow: http.HTTPFlow) -> None:
         return
     if not flow.metadata.get(metadata_keys.VM_RUN_ID, ""):
         return
+    if not response_streaming.is_model_websocket_usage_enabled(flow):
+        return
 
     message = flow.websocket.messages[-1]
     if getattr(message, "from_client", False):
+        _schedule_model_websocket_message_trim(flow)
         return
     response_streaming.feed_model_websocket_usage(flow, message.content)
+    _schedule_model_websocket_message_trim(flow)
 
 
 def _response_size(flow: http.HTTPFlow) -> int:
@@ -598,10 +701,62 @@ def _response_size(flow: http.HTTPFlow) -> int:
     if streamed_size is not None:
         return streamed_size
 
-    return int(flow.response.headers.get("content-length", 0))
+    return _content_length_response_size(flow.response.headers.get("content-length"))
+
+
+def _content_length_response_size(content_length: str | None) -> int:
+    if content_length is None:
+        return 0
+
+    response_size: int | None = None
+    start = 0
+    while True:
+        comma = content_length.find(",", start)
+        end = len(content_length) if comma == -1 else comma
+        parsed_size = _single_content_length_response_size(content_length, start, end)
+        if parsed_size is None:
+            return 0
+        if response_size is None:
+            response_size = parsed_size
+        elif response_size != parsed_size:
+            return 0
+        if comma == -1:
+            break
+        start = comma + 1
+
+    return response_size if response_size is not None else 0
+
+
+def _single_content_length_response_size(content_length: str, start: int, end: int) -> int | None:
+    while start < end and content_length[start] in (" ", "\t"):
+        start += 1
+    while end > start and content_length[end - 1] in (" ", "\t"):
+        end -= 1
+    if start == end:
+        return None
+
+    while start < end and content_length[start] == "0":
+        start += 1
+    if start == end:
+        return 0
+
+    significant_start = start
+    if end - significant_start > _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS:
+        return None
+    for index in range(significant_start, end):
+        char = content_length[index]
+        if char < "0" or char > "9":
+            return None
+
+    response_size = int(content_length[significant_start:end])
+    if response_size > _MAX_SAFE_NETWORK_LOG_SIZE:
+        return None
+    return response_size
 
 
 def _release_usage_hook_state(flow: http.HTTPFlow, *, release_tracking: bool) -> None:
+    if release_tracking:
+        _clear_model_websocket_messages(flow)
     response_streaming.release_response_stream_state(flow)
     if release_tracking:
         _release_tracked_usage_flow(flow)
@@ -667,7 +822,6 @@ def response(flow: http.HTTPFlow) -> None:
     firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
     request_size = len(flow.request.raw_content or b"")
-    response_size = _response_size(flow)
     stream_buf = flow.metadata.get(metadata_keys.STREAM_BUFFER)
     status_code = flow.response.status_code if flow.response else 0
 
@@ -677,6 +831,7 @@ def response(flow: http.HTTPFlow) -> None:
     network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     if network_log_path:
+        response_size = _response_size(flow)
         log_entry = _http_network_log_entry(
             flow,
             action=firewall_action,
@@ -709,33 +864,28 @@ def response(flow: http.HTTPFlow) -> None:
         not flow.metadata.get(metadata_keys.MODEL_JSON_USAGE_FINALIZED)
         and not flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
         and stream_buf
+        and usage.is_model_provider_usage_observable(flow)
     ):
-        firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
-        if firewall_name.startswith("model-provider:") and flow.metadata.get(
-            metadata_keys.FIREWALL_BILLABLE, False
-        ):
-            if response_streaming.uses_openai_responses_usage_protocol(flow):
-                json_usage, json_error = usage.extract_openai_responses_usage_with_error_from_json(
-                    bytes(stream_buf),
-                    flow.response.headers if flow.response else None,
-                )
-            else:
-                json_usage, json_error = (
-                    usage.extract_anthropic_messages_usage_with_error_from_json(
-                        bytes(stream_buf),
-                        flow.response.headers if flow.response else None,
-                    )
-                )
-            if json_usage:
-                flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = json_usage
-            elif json_error is not None:
-                log_proxy_entry(
-                    proxy_log_path,
-                    "warn",
-                    "Model provider JSON usage extraction failed",
-                    type="usage_event",
-                    error=json_error,
-                )
+        if response_streaming.uses_openai_responses_usage_protocol(flow):
+            json_usage, json_error = usage.extract_openai_responses_usage_with_error_from_json(
+                bytes(stream_buf),
+                flow.response.headers if flow.response else None,
+            )
+        else:
+            json_usage, json_error = usage.extract_anthropic_messages_usage_with_error_from_json(
+                bytes(stream_buf),
+                flow.response.headers if flow.response else None,
+            )
+        if json_usage:
+            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = json_usage
+        elif json_error is not None:
+            log_proxy_entry(
+                proxy_log_path,
+                "warn",
+                "Model provider JSON usage extraction failed",
+                type="usage_event",
+                error=json_error,
+            )
     _report_model_provider_usage_once(flow, run_id)
 
     # Billable connector usage observation (issue #9504, stage 0).
@@ -872,8 +1022,15 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
     if not client_ip:
         return
 
-    vm_info = registry.get_vm_info(client_ip, get_registry_path())
-    if not vm_info:
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        flow.kill()
+        return
+
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is None:
+        if client_ip in registry_state.invalid_vms:
+            flow.kill()
         return
 
     flow.metadata[metadata_keys.VM_RUN_ID] = vm_info.get("runId", "")

@@ -74,8 +74,11 @@ const INHERIT_SENTINEL = "__inherit_default__";
 
 // Radix Select uses the selected item's offsetHeight as the scroll-button
 // step. Keep hidden selected items measurable so native hover scrolling works.
+// These items are also `disabled`, and SelectItem's base `data-[disabled]:opacity-50`
+// outranks a plain `opacity-0` on specificity, so restate the hidden opacity under
+// the disabled variant to stop the measuring item from bleeding through.
 const MEASURABLE_HIDDEN_SELECT_ITEM_CLASS =
-  "absolute left-0 top-0 h-8 w-px overflow-hidden opacity-0 pointer-events-none";
+  "absolute left-0 top-0 h-8 w-px overflow-hidden opacity-0 data-[disabled]:opacity-0 pointer-events-none";
 
 function formatMultiplier(multiplier: number): string {
   return `×${multiplier}`;
@@ -92,6 +95,23 @@ function MultiplierBadge({ multiplier }: { multiplier: number }) {
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
           Credit cost multiplier
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ByokBadge() {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="shrink-0 cursor-help text-xs font-medium text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-muted-foreground">
+            BYOK
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          Uses your configured provider
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -282,7 +302,10 @@ function modelFirstSelectionFromRaw(
 
 function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
   const iconType = getModelFirstIconType(policy.model);
-  const multiplier = getVm0ModelMultiplier(policy.model);
+  const builtInMultiplier =
+    policy.defaultProviderType === "vm0"
+      ? getVm0ModelMultiplier(policy.model)
+      : undefined;
   return (
     <SelectItem
       key={policy.id}
@@ -294,8 +317,10 @@ function ModelFirstPolicyRow({ policy }: { policy: OrgModelPolicy }) {
         <span className="truncate">
           {policy.modelLabel || getCanonicalModelDisplayName(policy.model)}
         </span>
-        {multiplier !== undefined && (
-          <MultiplierBadge multiplier={multiplier} />
+        {builtInMultiplier !== undefined ? (
+          <MultiplierBadge multiplier={builtInMultiplier} />
+        ) : (
+          <ByokBadge />
         )}
       </span>
     </SelectItem>

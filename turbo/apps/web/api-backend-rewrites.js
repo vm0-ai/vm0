@@ -171,6 +171,8 @@ const AGENT_FIREWALL_AUTH_REWRITE_SOURCE = "/api/webhooks/agent/firewall/auth";
 const AGENT_HEARTBEAT_REWRITE_SOURCE = "/api/webhooks/agent/heartbeat";
 const AGENT_TELEMETRY_REWRITE_SOURCE = "/api/webhooks/agent/telemetry";
 const AGENT_USAGE_EVENT_REWRITE_SOURCE = "/api/webhooks/agent/usage-event";
+const AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE =
+  "/api/webhooks/agent/model-usage-observation";
 const AGENT_STORAGES_COMMIT_REWRITE_SOURCE =
   "/api/webhooks/agent/storages/commit";
 const AGENT_STORAGES_PREPARE_REWRITE_SOURCE =
@@ -319,6 +321,10 @@ const ZERO_CHAT_THREAD_MARK_READ_REWRITE_SOURCE =
   "/api/zero/chat-threads/:id/mark-read";
 const ZERO_CHAT_THREAD_MARK_READ_PATH_RE =
   /^\/api\/zero\/chat-threads\/[^/]+\/mark-read$/;
+const ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE =
+  "/api/zero/chat-threads/:id/model-selection";
+const ZERO_CHAT_THREAD_MODEL_SELECTION_PATH_RE =
+  /^\/api\/zero\/chat-threads\/[^/]+\/model-selection$/;
 const ZERO_CHAT_THREADS_REWRITE_SOURCE = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_PATH_RE = /^\/api\/zero\/chat-threads$/;
 const ZERO_CHAT_THREAD_DETAIL_REWRITE_SOURCE = "/api/zero/chat-threads/:id";
@@ -350,6 +356,7 @@ const ZERO_BILLING_INVOICES_REWRITE_SOURCE = "/api/zero/billing/invoices";
 const ZERO_BILLING_PORTAL_REWRITE_SOURCE = "/api/zero/billing/portal";
 const ZERO_BILLING_REDEEM_REWRITE_SOURCE = "/api/zero/billing/redeem/:campaign";
 const ZERO_BILLING_REDEEM_PATH_RE = /^\/api\/zero\/billing\/redeem\/[^/]+$/;
+const ZERO_BILLING_RESTORE_REWRITE_SOURCE = "/api/zero/billing/restore";
 const ZERO_BILLING_STATUS_REWRITE_SOURCE = "/api/zero/billing/status";
 const ZERO_DEFAULT_AGENT_REWRITE_SOURCE = "/api/zero/default-agent";
 const ZERO_FEATURE_SWITCHES_REWRITE_SOURCE = "/api/zero/feature-switches";
@@ -507,6 +514,10 @@ export const API_BACKEND_REWRITES = [
   [AGENT_HEARTBEAT_REWRITE_SOURCE, "/api/webhooks/agent/heartbeat"],
   [AGENT_TELEMETRY_REWRITE_SOURCE, "/api/webhooks/agent/telemetry"],
   [AGENT_USAGE_EVENT_REWRITE_SOURCE, "/api/webhooks/agent/usage-event"],
+  [
+    AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE,
+    "/api/webhooks/agent/model-usage-observation",
+  ],
   [AGENT_STORAGES_COMMIT_REWRITE_SOURCE, "/api/webhooks/agent/storages/commit"],
   [
     AGENT_STORAGES_PREPARE_REWRITE_SOURCE,
@@ -694,6 +705,7 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/billing/redeem/:campaign",
     ZERO_BILLING_REDEEM_PATH_RE,
   ],
+  [ZERO_BILLING_RESTORE_REWRITE_SOURCE, "/api/zero/billing/restore"],
   [ZERO_BILLING_STATUS_REWRITE_SOURCE, "/api/zero/billing/status"],
   [ZERO_DEFAULT_AGENT_REWRITE_SOURCE, "/api/zero/default-agent"],
   [ZERO_FEATURE_SWITCHES_REWRITE_SOURCE, "/api/zero/feature-switches"],
@@ -926,6 +938,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_CHAT_THREAD_MARK_READ_PATH_RE,
   ],
   [
+    ZERO_CHAT_THREAD_MODEL_SELECTION_REWRITE_SOURCE,
+    "/api/zero/chat-threads/:id/model-selection",
+    ZERO_CHAT_THREAD_MODEL_SELECTION_PATH_RE,
+  ],
+  [
     ZERO_CHAT_THREAD_DETAIL_REWRITE_SOURCE,
     "/api/zero/chat-threads/:id",
     ZERO_CHAT_THREAD_DETAIL_PATH_RE,
@@ -967,10 +984,6 @@ export const API_BACKEND_REWRITES = [
   [
     "/api/zero/integrations/phone/:path*",
     "/api/zero/integrations/phone/:path*",
-  ],
-  [
-    "/api/zero/integrations/chat/message",
-    "/api/zero/integrations/chat/message",
   ],
   [
     "/api/zero/integrations/github/download-file",
@@ -1089,6 +1102,7 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/zero/memory", "/api/zero/memory"],
   ["/api/zero/memory/activity", "/api/zero/memory/activity"],
+  ["/api/zero/memory/dev-refresh", "/api/zero/memory/dev-refresh"],
   ["/api/zero/skills", "/api/zero/skills"],
   [
     ZERO_SKILLS_BY_NAME_REWRITE_SOURCE,

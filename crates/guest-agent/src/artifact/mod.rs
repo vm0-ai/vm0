@@ -2,19 +2,18 @@
 //!
 //! Flow (caller first walks the mount via [`walk_files_for_checkpoint`], then
 //! invokes [`create_snapshot`] with the pre-walked file list):
-//! 1. POST `/storages/prepare` with file list → get presigned URLs
-//! 2. If deduplicated, POST `/storages/commit` to update HEAD
-//! 3. Create tar.gz archive
-//! 4. Create manifest.json
-//! 5. PUT archive + manifest to S3
-//! 6. POST `/storages/commit`
+//! 1. POST `/storages/prepare` with file list to get version/upload metadata
+//! 2. If prepare found an existing version, validate the local archive inputs,
+//!    then POST `/storages/commit` to update HEAD
+//! 3. Otherwise, create tar.gz archive and manifest.json
+//! 4. PUT archive + manifest to S3
+//! 5. POST `/storages/commit`
 
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info};
+use guest_common::{log_error, log_info, log_warn};
 use serde::Serialize;
-use serde_json::json;
 
 mod api;
 mod archive;
@@ -24,7 +23,10 @@ use api::{
     commit_snapshot, prepare_snapshot,
 };
 use archive::{collect_file_metadata, create_archive, validate_archive_inputs};
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
@@ -49,25 +51,93 @@ pub(crate) struct CreateSnapshotRequest<'a> {
     pub(crate) parent_version_id: &'a str,
 }
 
+struct SnapshotRequest<'a> {
+    mount_path: &'a str,
+    files: Arc<[FileEntry]>,
+    storage_name: &'a str,
+    storage_type: &'a str,
+    run_id: &'a str,
+    message: &'a str,
+    parent_version_id: &'a str,
+}
+
+impl<'a> From<CreateSnapshotRequest<'a>> for SnapshotRequest<'a> {
+    fn from(request: CreateSnapshotRequest<'a>) -> Self {
+        Self {
+            mount_path: request.mount_path,
+            files: request.files.into(),
+            storage_name: request.storage_name,
+            storage_type: request.storage_type,
+            run_id: request.run_id,
+            message: request.message,
+            parent_version_id: request.parent_version_id,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ArtifactManifest<'a> {
+    version: u8,
+    files: &'a [FileEntry],
+    created_at: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+enum ArchiveBundleError {
+    #[error(transparent)]
+    Archive(#[from] archive::ArchiveError),
+    #[error(transparent)]
+    Manifest(#[from] ManifestWriteError),
+}
+
+#[derive(Debug, thiserror::Error)]
+enum ManifestWriteError {
+    #[error("failed to create manifest output {}: {source}", path.display())]
+    Create {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[error("failed to serialize manifest: {0}")]
+    Serialize(serde_json::Error),
+    #[error("failed to flush manifest: {0}")]
+    Flush(std::io::Error),
+}
+
 #[derive(Debug)]
 pub(crate) enum WalkFilesError {
     Execution(String),
     Checkpoint {
         message: String,
-        root_not_found: bool,
         elapsed: std::time::Duration,
+        missing_root: bool,
     },
 }
 
 impl WalkFilesError {
-    pub(crate) fn is_root_not_found(&self) -> bool {
+    pub(crate) fn is_missing_root(&self) -> bool {
         matches!(
             self,
             Self::Checkpoint {
-                root_not_found: true,
+                missing_root: true,
                 ..
             }
         )
+    }
+
+    pub(crate) fn record_preserved_missing_root(self, storage_name: &str, mount_path: &str) {
+        if let Self::Checkpoint {
+            message, elapsed, ..
+        } = self
+        {
+            log_warn!(
+                LOG_TAG,
+                "Artifact root missing for '{}' at {}; preserving parent version: {message}",
+                storage_name,
+                mount_path
+            );
+            record_sandbox_op("artifact_missing_root_preserved", elapsed, true, None);
+        }
     }
 
     pub(crate) fn into_agent_error(self) -> AgentError {
@@ -107,12 +177,11 @@ pub(crate) async fn walk_files_for_checkpoint(
     let files = match files_result {
         Ok(files) => files,
         Err(e) => {
-            let root_not_found = e.is_root_not_found();
             let message = format!("Failed to walk artifact files: {e}");
             return Err(WalkFilesError::Checkpoint {
                 message,
-                root_not_found,
                 elapsed: hash_start.elapsed(),
+                missing_root: e.is_root_not_found(),
             });
         }
     };
@@ -129,6 +198,7 @@ pub(crate) async fn create_snapshot(
     http: &HttpClient,
     request: CreateSnapshotRequest<'_>,
 ) -> Result<SnapshotResult, AgentError> {
+    let request = SnapshotRequest::from(request);
     log_info!(
         LOG_TAG,
         "Creating direct upload snapshot for '{}'",
@@ -143,13 +213,15 @@ pub(crate) async fn create_snapshot(
             LOG_TAG,
             "Version already exists (deduplicated), updating HEAD"
         );
-        validate_dedup_snapshot(request.mount_path, &request.files).await?;
+        // Validate the local manifest inputs before committing the existing
+        // version as HEAD, since this branch does not build an archive.
+        validate_dedup_snapshot(request.mount_path, Arc::clone(&request.files)).await?;
         commit_existing_snapshot(http, &request, &version_id).await?;
         return Ok(SnapshotResult { version_id });
     }
 
     let uploads = extract_uploads(prep.uploads)?;
-    let archive = create_archive_bundle(request.mount_path, &request.files).await?;
+    let archive = create_archive_bundle(request.mount_path, Arc::clone(&request.files)).await?;
     upload_archive_bundle(http, &uploads, &archive).await?;
     commit_uploaded_snapshot(http, &request, &version_id).await?;
 
@@ -167,7 +239,7 @@ struct ArchiveBundle {
 
 async fn prepare_snapshot_step(
     http: &HttpClient,
-    request: &CreateSnapshotRequest<'_>,
+    request: &SnapshotRequest<'_>,
 ) -> Result<PreparedSnapshot, AgentError> {
     log_info!(LOG_TAG, "Calling prepare endpoint...");
     let prep_start = std::time::Instant::now();
@@ -177,7 +249,7 @@ async fn prepare_snapshot_step(
             run_id: request.run_id,
             storage_name: request.storage_name,
             storage_type: request.storage_type,
-            files: &request.files,
+            files: request.files.as_ref(),
             parent_version_id: request.parent_version_id,
         },
     )
@@ -200,13 +272,15 @@ async fn prepare_snapshot_step(
     }
 }
 
-async fn validate_dedup_snapshot(mount_path: &str, files: &[FileEntry]) -> Result<(), AgentError> {
+async fn validate_dedup_snapshot(
+    mount_path: &str,
+    files: Arc<[FileEntry]>,
+) -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Validating deduplicated artifact inputs...");
     let validate_start = std::time::Instant::now();
     let validate_mount = mount_path.to_string();
-    let validate_files = files.to_vec();
     let validate_result = match tokio::task::spawn_blocking(move || {
-        validate_archive_inputs(&validate_mount, &validate_files)
+        validate_archive_inputs(&validate_mount, files.as_ref())
     })
     .await
     {
@@ -246,7 +320,7 @@ async fn validate_dedup_snapshot(mount_path: &str, files: &[FileEntry]) -> Resul
 
 async fn commit_existing_snapshot(
     http: &HttpClient,
-    request: &CreateSnapshotRequest<'_>,
+    request: &SnapshotRequest<'_>,
     version_id: &str,
 ) -> Result<(), AgentError> {
     let commit_success = commit_snapshot(
@@ -257,7 +331,7 @@ async fn commit_existing_snapshot(
             storage_type: request.storage_type,
             version_id,
             parent_version_id: request.parent_version_id,
-            files: &request.files,
+            files: request.files.as_ref(),
             message: None,
         },
         "Failed to parse dedup commit response",
@@ -275,7 +349,7 @@ fn extract_uploads(uploads: Option<PreparedUploads>) -> Result<PreparedUploads, 
 
 async fn create_archive_bundle(
     mount_path: &str,
-    files: &[FileEntry],
+    files: Arc<[FileEntry]>,
 ) -> Result<ArchiveBundle, AgentError> {
     let temp_dir = tempfile::tempdir().map_err(AgentError::Io)?;
     let archive_path = temp_dir.path().join("archive.tar.gz");
@@ -285,36 +359,66 @@ async fn create_archive_bundle(
     let arc_start = std::time::Instant::now();
     let archive_mount = mount_path.to_string();
     let archive_path_for_task = archive_path.clone();
-    let archive_files = files.to_vec();
+    let manifest_path_for_task = manifest_path.clone();
     let archive_result = tokio::task::spawn_blocking(move || {
-        create_archive(&archive_mount, &archive_path_for_task, &archive_files)
+        create_archive_bundle_files(
+            &archive_mount,
+            &archive_path_for_task,
+            &manifest_path_for_task,
+            files.as_ref(),
+        )
     })
     .await
     .map_err(|e| AgentError::Execution(format!("archive task panicked: {e}")))?;
-    if let Err(e) = archive_result {
-        log_error!(LOG_TAG, "Failed to create archive: {e}");
+    if let Err(error) = archive_result {
         record_sandbox_op("artifact_archive_create", arc_start.elapsed(), false, None);
-        return Err(AgentError::Checkpoint("Failed to create archive".into()));
+        match error {
+            ArchiveBundleError::Archive(e) => {
+                log_error!(LOG_TAG, "Failed to create archive: {e}");
+                return Err(AgentError::Checkpoint("Failed to create archive".into()));
+            }
+            ArchiveBundleError::Manifest(e) => {
+                log_error!(LOG_TAG, "Failed to write manifest: {e}");
+                return Err(AgentError::Checkpoint(format!(
+                    "Failed to write manifest: {e}"
+                )));
+            }
+        }
     }
     record_sandbox_op("artifact_archive_create", arc_start.elapsed(), true, None);
-
-    let manifest = json!({
-        "version": 1,
-        "files": files,
-        "createdAt": guest_common::log::timestamp(),
-    });
-    std::fs::write(
-        &manifest_path,
-        serde_json::to_string_pretty(&manifest)
-            .map_err(|e| AgentError::Checkpoint(e.to_string()))?,
-    )
-    .map_err(|e| AgentError::Checkpoint(format!("Failed to write manifest: {e}")))?;
 
     Ok(ArchiveBundle {
         _temp_dir: temp_dir,
         archive_path,
         manifest_path,
     })
+}
+
+fn create_archive_bundle_files(
+    mount_path: &str,
+    archive_path: &Path,
+    manifest_path: &Path,
+    files: &[FileEntry],
+) -> Result<(), ArchiveBundleError> {
+    create_archive(mount_path, archive_path, files)?;
+    write_manifest(manifest_path, files)?;
+    Ok(())
+}
+
+fn write_manifest(manifest_path: &Path, files: &[FileEntry]) -> Result<(), ManifestWriteError> {
+    let file = File::create(manifest_path).map_err(|source| ManifestWriteError::Create {
+        path: manifest_path.to_owned(),
+        source,
+    })?;
+    let mut writer = BufWriter::new(file);
+    let manifest = ArtifactManifest {
+        version: 1,
+        files,
+        created_at: guest_common::log::timestamp(),
+    };
+
+    serde_json::to_writer_pretty(&mut writer, &manifest).map_err(ManifestWriteError::Serialize)?;
+    writer.flush().map_err(ManifestWriteError::Flush)
 }
 
 async fn upload_archive_bundle(
@@ -337,11 +441,10 @@ async fn upload_archive_bundle(
     }
 
     log_info!(LOG_TAG, "Uploading manifest to S3...");
-    let manifest_data = tokio::fs::read(&archive.manifest_path).await?;
     if let Err(e) = http
-        .put_presigned(
+        .put_presigned_file(
             &uploads.manifest_url,
-            manifest_data.into(),
+            &archive.manifest_path,
             "application/json",
         )
         .await
@@ -355,7 +458,7 @@ async fn upload_archive_bundle(
 
 async fn commit_uploaded_snapshot(
     http: &HttpClient,
-    request: &CreateSnapshotRequest<'_>,
+    request: &SnapshotRequest<'_>,
     version_id: &str,
 ) -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Calling commit endpoint...");
@@ -368,7 +471,7 @@ async fn commit_uploaded_snapshot(
             storage_type: request.storage_type,
             version_id,
             parent_version_id: request.parent_version_id,
-            files: &request.files,
+            files: request.files.as_ref(),
             message: Some(request.message),
         },
         "Failed to parse commit response",

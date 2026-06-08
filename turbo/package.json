@@ -4,7 +4,7 @@
   "scripts": {
     "postinstall": "pnpm -F @vm0/firewalls-generator generate",
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --filter=!@vm0/desktop",
     "dev:auth": "bash ../scripts/dev-auth.sh",
     "desktop:dev": "VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev:packaged",
     "desktop:dev:forge": "VM0_DESKTOP_PLATFORM_URL=https://app.vm7.ai:8443 pnpm -F @vm0/desktop dev",

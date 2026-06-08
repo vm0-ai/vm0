@@ -2,7 +2,10 @@ import {
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../contracts/model-providers";
-import { CANONICAL_WORKING_DIR } from "../contracts/runners";
+import {
+  CANONICAL_GUEST_HOME_DIR,
+  CANONICAL_WORKING_DIR,
+} from "../contracts/runners";
 
 export interface RustStringConstantBinding {
   readonly rustModulePath: readonly string[];
@@ -126,6 +129,15 @@ function placeholderRustDoc(name: string): readonly string[] {
 }
 
 export const rustStringConstantBindings = [
+  {
+    rustModulePath: runnerPathsModule,
+    rustConstName: "CANONICAL_GUEST_HOME_DIR",
+    value: CANONICAL_GUEST_HOME_DIR,
+    rustDoc: [
+      "Canonical home directory path expected for the sandbox user inside runner guests.",
+      "Rust and TypeScript components use this shared contract value when building runner guest paths.",
+    ],
+  },
   {
     rustModulePath: runnerPathsModule,
     rustConstName: "CANONICAL_WORKING_DIR",

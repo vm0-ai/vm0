@@ -49,6 +49,8 @@ import {
   getAvailableAuthCodeAuthMethod,
   getOnlyAvailableAuthCodeAuthMethod,
   getConnectorConnectLaunchMode,
+  connectorCurrentConnectionStatus,
+  connectorExpiryCountdownText,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import {
@@ -314,6 +316,7 @@ function GlobalConnectorCard({
   isDisconnecting: boolean;
 }) {
   const status = (() => {
+    const connectionStatus = connectorCurrentConnectionStatus(connector);
     if (isPolling) {
       const standaloneHint = isStandaloneMode()
         ? " Switch back here after completing sign-in."
@@ -325,7 +328,7 @@ function GlobalConnectorCard({
         </span>
       );
     }
-    if (connector.connected && connector.needsReconnect) {
+    if (connector.connected && connectionStatus === "reconnect-required") {
       return (
         <span className="flex items-center gap-2 text-xs truncate">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
@@ -342,7 +345,7 @@ function GlobalConnectorCard({
         </span>
       );
     }
-    if (connector.connected && connector.scopeMismatch) {
+    if (connector.connected && connectionStatus === "scope-mismatch") {
       return (
         <span className="flex items-center gap-2 text-xs truncate">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
@@ -360,14 +363,16 @@ function GlobalConnectorCard({
       );
     }
     if (connector.connected) {
+      const expiryText = connectorExpiryCountdownText(connector);
+      const connectedText =
+        expiryText ??
+        (connector.connector?.externalUsername
+          ? `@${connector.connector.externalUsername}`
+          : "Connected");
       return (
         <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-          <span className="truncate">
-            {connector.connector?.externalUsername
-              ? `@${connector.connector.externalUsername}`
-              : "Connected"}
-          </span>
+          <span className="truncate">{connectedText}</span>
         </span>
       );
     }
@@ -665,21 +670,21 @@ export function ZeroConnectorsPage() {
     await disconnect(type, signal);
   });
 
-  const getEffective = (c: ConnectorTypeWithStatus) => {
+  const getOptimisticConnector = (c: ConnectorTypeWithStatus) => {
     return optimisticConnected.has(c.type) && !c.connected
       ? { ...c, connected: true }
       : c;
   };
 
   const renderCard = (c: ConnectorTypeWithStatus) => {
-    const effectiveConnector = getEffective(c);
+    const optimisticConnector = getOptimisticConnector(c);
     const isPolling =
       pollingAuthCodeType === c.type || pollingDeviceAuthType === c.type;
-    if (!effectiveConnector.connected) {
+    if (!optimisticConnector.connected) {
       return (
         <AvailableConnectorCard
           key={c.type}
-          connector={effectiveConnector}
+          connector={optimisticConnector}
           isPolling={isPolling}
           onConnect={() => {
             return connectHandler(c.type);
@@ -690,7 +695,7 @@ export function ZeroConnectorsPage() {
     return (
       <GlobalConnectorCard
         key={c.type}
-        connector={effectiveConnector}
+        connector={optimisticConnector}
         isPolling={isPolling}
         isDisconnecting={disconnecting}
         onConnect={() => {
@@ -706,7 +711,9 @@ export function ZeroConnectorsPage() {
     );
   };
 
-  const grouped = groupConnectorsByCategory(filtered.map(getEffective));
+  const grouped = groupConnectorsByCategory(
+    filtered.map(getOptimisticConnector),
+  );
 
   const builtinList = renderBuiltinList({
     loadingState: allTypesLoadable.state,

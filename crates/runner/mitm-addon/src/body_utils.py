@@ -641,7 +641,10 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     log_entry["request_headers"] = _sanitize_headers_for_capture(flow.request.headers)
 
     # Request body
-    if flow.request.raw_content:
+    if flow.metadata.get(metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE):
+        if flow.request.raw_content:
+            log_entry["request_body_truncated"] = True
+    elif flow.request.raw_content:
         req_ct = flow.request.headers.get("content-type", "")
         request_body = _decode_body_bounded(
             flow.request.raw_content,

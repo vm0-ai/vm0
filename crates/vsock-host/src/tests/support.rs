@@ -4,33 +4,158 @@ use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use vsock_proto::{
-    Decoder, ExecCapturedOutput, ExecControlNonce, ExecControlStatus, ExecOutputStream,
-    ExecTermination, HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_EXEC_CONTROL_RESULT,
-    MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED, MSG_PING, MSG_PONG,
-    MSG_READY, RawMessage,
+    ExecCapturedOutput, ExecControlNonce, ExecControlStatus, ExecOutputStream, ExecTermination,
+    HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
+    MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
+    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
+    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
+    MSG_WRITE_FILE_RESULT, RawMessage,
 };
 
 use crate::operation_tracker::NormalOperationReadiness;
 use crate::{ConnectionState, NormalOperationFence, VsockHost};
 
+const MOCK_GUEST_IO_TIMEOUT: Duration = Duration::from_secs(5);
+// Keep the task guard wider than multi-frame reads so the per-frame
+// assertions report the actual protocol step that got stuck.
+const MOCK_GUEST_TASK_TIMEOUT: Duration = Duration::from_secs(60);
+
 pub(crate) fn make_pair() -> (UnixStream, UnixStream) {
     UnixStream::pair().unwrap()
 }
 
+pub(crate) async fn await_mock_guest(mut task: JoinHandle<()>) {
+    match tokio::time::timeout(MOCK_GUEST_TASK_TIMEOUT, &mut task).await {
+        Ok(result) => result.expect("mock guest task panicked"),
+        Err(_) => {
+            task.abort();
+            let _ = task.await;
+            panic!("mock guest task did not finish");
+        }
+    }
+}
+
+pub(crate) struct MockGuest {
+    stream: UnixStream,
+}
+
+impl MockGuest {
+    pub(crate) fn new(stream: UnixStream) -> Self {
+        Self { stream }
+    }
+
+    pub(crate) fn into_stream(self) -> UnixStream {
+        self.stream
+    }
+
+    pub(crate) fn stream_mut(&mut self) -> &mut UnixStream {
+        &mut self.stream
+    }
+
+    pub(crate) async fn complete_handshake(&mut self) {
+        mock_handshake(&mut self.stream).await;
+    }
+
+    pub(crate) async fn read_message(&mut self) -> RawMessage {
+        read_guest_message(&mut self.stream).await
+    }
+
+    pub(crate) async fn read_messages(&mut self, count: usize) -> Vec<RawMessage> {
+        read_guest_messages(&mut self.stream, count).await
+    }
+
+    pub(crate) async fn expect_message(&mut self, expected_type: u8) -> RawMessage {
+        let message = self.read_message().await;
+        assert_eq!(
+            message.msg_type,
+            expected_type,
+            "expected guest message type {} ({:#04x}), got {} ({:#04x})",
+            message_type_name(expected_type),
+            expected_type,
+            message_type_name(message.msg_type),
+            message.msg_type
+        );
+        message
+    }
+
+    pub(crate) async fn expect_eof(&mut self) {
+        let mut buf = [0u8; 1];
+        let n = tokio::time::timeout(MOCK_GUEST_IO_TIMEOUT, self.stream.read(&mut buf))
+            .await
+            .expect("timed out waiting for guest stream EOF")
+            .unwrap();
+        assert_eq!(n, 0, "expected guest stream EOF, got {n} byte(s)");
+    }
+
+    pub(crate) async fn send_response(&mut self, msg_type: u8, seq: u32, payload: &[u8]) {
+        let frame = vsock_proto::encode(msg_type, seq, payload).unwrap();
+        self.stream.write_all(&frame).await.unwrap();
+    }
+
+    pub(crate) async fn send_empty_response(&mut self, msg_type: u8, seq: u32) {
+        self.send_response(msg_type, seq, &[]).await;
+    }
+
+    pub(crate) async fn send_error_response(&mut self, seq: u32, diagnostic: &str) {
+        let payload = vsock_proto::encode_error(diagnostic);
+        self.send_response(MSG_ERROR, seq, &payload).await;
+    }
+
+    pub(crate) async fn send_exec_result(
+        &mut self,
+        seq: u32,
+        termination: ExecTermination,
+        stdout: &[u8],
+        stderr: &[u8],
+    ) {
+        send_exec_result(&mut self.stream, seq, termination, stdout, stderr).await;
+    }
+}
+
 /// Perform mock guest handshake: send ready, receive ping, send pong.
-pub(crate) async fn mock_handshake(stream: &mut UnixStream, decoder: &mut Decoder) {
+pub(crate) async fn mock_handshake(stream: &mut UnixStream) {
     let ready = vsock_proto::encode(MSG_READY, 0, &[]).unwrap();
     stream.write_all(&ready).await.unwrap();
 
-    let mut buf = [0u8; 1024];
-    let n = stream.read(&mut buf).await.unwrap();
-    let msgs = decoder.decode(&buf[..n]).unwrap();
-    assert_eq!(msgs[0].msg_type, MSG_PING);
+    let ping = read_guest_message(stream).await;
+    assert_eq!(
+        ping.msg_type,
+        MSG_PING,
+        "expected handshake ping, got {} ({:#04x})",
+        message_type_name(ping.msg_type),
+        ping.msg_type
+    );
 
-    let pong = vsock_proto::encode(MSG_PONG, msgs[0].seq, &[]).unwrap();
+    let pong = vsock_proto::encode(MSG_PONG, ping.seq, &[]).unwrap();
     stream.write_all(&pong).await.unwrap();
+}
+
+fn message_type_name(msg_type: u8) -> &'static str {
+    match msg_type {
+        MSG_READY => "ready",
+        MSG_PING => "ping",
+        MSG_PONG => "pong",
+        MSG_SHUTDOWN => "shutdown",
+        MSG_SHUTDOWN_ACK => "shutdown_ack",
+        MSG_QUIESCE_OPERATIONS => "quiesce_operations",
+        MSG_OPERATIONS_QUIESCED => "operations_quiesced",
+        MSG_RESUME_OPERATIONS => "resume_operations",
+        MSG_OPERATIONS_RESUMED => "operations_resumed",
+        MSG_WRITE_FILE => "write_file",
+        MSG_WRITE_FILE_RESULT => "write_file_result",
+        MSG_EXEC_START => "exec_start",
+        MSG_EXEC_STARTED => "exec_started",
+        MSG_EXEC_OUTPUT => "exec_output",
+        MSG_EXEC_RESULT => "exec_result",
+        MSG_EXEC_CANCEL => "exec_cancel",
+        MSG_EXEC_CONTROL => "exec_control",
+        MSG_EXEC_CONTROL_RESULT => "exec_control_result",
+        MSG_ERROR => "error",
+        _ => "unknown",
+    }
 }
 
 pub(crate) async fn host_from_stream(stream: UnixStream) -> io::Result<VsockHost> {
@@ -85,7 +210,10 @@ pub(crate) fn drop_started_request_write_guard(host: &VsockHost) {
 
 pub(crate) async fn read_guest_message(stream: &mut UnixStream) -> RawMessage {
     let mut header = [0u8; HEADER_SIZE];
-    stream.read_exact(&mut header).await.unwrap();
+    tokio::time::timeout(MOCK_GUEST_IO_TIMEOUT, stream.read_exact(&mut header))
+        .await
+        .expect("timed out reading guest message header")
+        .unwrap();
 
     let body_len = u32::from_be_bytes(header) as usize;
     assert!(
@@ -94,7 +222,10 @@ pub(crate) async fn read_guest_message(stream: &mut UnixStream) -> RawMessage {
     );
 
     let mut body = vec![0u8; body_len];
-    stream.read_exact(&mut body).await.unwrap();
+    tokio::time::timeout(MOCK_GUEST_IO_TIMEOUT, stream.read_exact(&mut body))
+        .await
+        .expect("timed out reading guest message body")
+        .unwrap();
 
     RawMessage {
         msg_type: body[0],
@@ -129,13 +260,17 @@ async fn read_guest_message_preserves_coalesced_frames() {
     assert_eq!(second.payload, b"second");
 }
 
-pub(crate) async fn setup_host_and_guest() -> (VsockHost, UnixStream) {
+pub(crate) async fn setup_host_and_mock_guest() -> (VsockHost, MockGuest) {
     let (host_stream, mut guest) = make_pair();
     let host_task = tokio::spawn(async move { host_from_stream(host_stream).await.unwrap() });
-    let mut decoder = Decoder::new();
-    mock_handshake(&mut guest, &mut decoder).await;
+    mock_handshake(&mut guest).await;
     let host = host_task.await.unwrap();
-    (host, guest)
+    (host, MockGuest::new(guest))
+}
+
+pub(crate) async fn setup_host_and_guest() -> (VsockHost, UnixStream) {
+    let (host, guest) = setup_host_and_mock_guest().await;
+    (host, guest.into_stream())
 }
 
 fn exec_result_payload(termination: ExecTermination, stdout: &[u8], stderr: &[u8]) -> Vec<u8> {

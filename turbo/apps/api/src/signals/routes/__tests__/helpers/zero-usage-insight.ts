@@ -9,6 +9,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
@@ -151,6 +152,16 @@ export const deleteUsageInsightFixture$ = command(
     await db
       .delete(usageEvent)
       .where(and(eq(usageEvent.orgId, orgId), eq(usageEvent.userId, userId)));
+    signal.throwIfAborted();
+
+    await db
+      .delete(modelUsageObservation)
+      .where(
+        and(
+          eq(modelUsageObservation.orgId, orgId),
+          eq(modelUsageObservation.userId, userId),
+        ),
+      );
     signal.throwIfAborted();
 
     await db
@@ -549,6 +560,14 @@ export const seedSchedule$ = command(
     signal: AbortSignal,
   ): Promise<string> => {
     const db = set(writeDb$);
+    const [thread] = await db
+      .insert(chatThreads)
+      .values({ userId: args.userId, agentComposeId: args.agentId })
+      .returning({ id: chatThreads.id });
+    signal.throwIfAborted();
+    if (!thread) {
+      throw new Error("seedSchedule$: chat thread insert returned no row");
+    }
     const [row] = await db
       .insert(zeroAgentSchedules)
       .values({
@@ -559,6 +578,7 @@ export const seedSchedule$ = command(
         description: args.description,
         cronExpression: "0 0 * * *",
         prompt: "test",
+        chatThreadId: thread.id,
       })
       .returning({ id: zeroAgentSchedules.id });
     signal.throwIfAborted();
@@ -768,6 +788,15 @@ export const seedScheduleBatch$ = command(
     });
     const results = await Promise.all(
       indices.map(async (index) => {
+        const [thread] = await db
+          .insert(chatThreads)
+          .values({ userId: args.userId, agentComposeId: args.composeId })
+          .returning({ id: chatThreads.id });
+        if (!thread) {
+          throw new Error(
+            "seedScheduleBatch$: chat thread insert returned no row",
+          );
+        }
         const [scheduleRow] = await db
           .insert(zeroAgentSchedules)
           .values({
@@ -777,6 +806,7 @@ export const seedScheduleBatch$ = command(
             name: `sched-${randomUUID().slice(0, 8)}`,
             cronExpression: "0 0 * * *",
             prompt: "test",
+            chatThreadId: thread.id,
           })
           .returning({ id: zeroAgentSchedules.id });
         if (!scheduleRow) {

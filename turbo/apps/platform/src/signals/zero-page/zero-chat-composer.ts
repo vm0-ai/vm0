@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -79,3 +80,99 @@ export const modelPickerOpen$ = computed((get) => {
 export const setModelPickerOpen$ = command(({ set }, open: boolean) => {
   set(internalModelPickerOpen$, open);
 });
+
+// -- Template picker open/category state ------------------------------------
+
+const internalTemplatePickerOpen$ = state(false);
+export const templatePickerOpen$ = computed((get) => {
+  return get(internalTemplatePickerOpen$);
+});
+export const setTemplatePickerOpen$ = command(({ set }, open: boolean) => {
+  set(internalTemplatePickerOpen$, open);
+});
+
+const internalTemplatePickerCategory$ = state("slides");
+export const templatePickerCategory$ = computed((get) => {
+  return get(internalTemplatePickerCategory$);
+});
+export const setTemplatePickerCategory$ = command(
+  ({ set }, category: string) => {
+    set(internalTemplatePickerCategory$, category);
+  },
+);
+
+const internalTemplatePickerSearch$ = state("");
+export const templatePickerSearch$ = computed((get) => {
+  return get(internalTemplatePickerSearch$);
+});
+export const setTemplatePickerSearch$ = command(({ set }, value: string) => {
+  set(internalTemplatePickerSearch$, value);
+});
+
+const internalTemplatePickerPreviewSlug$ = state<string | null>(null);
+export const templatePickerPreviewSlug$ = computed((get) => {
+  return get(internalTemplatePickerPreviewSlug$);
+});
+export const setTemplatePickerPreviewSlug$ = command(
+  ({ set }, slug: string | null) => {
+    set(internalTemplatePickerPreviewSlug$, slug);
+  },
+);
+
+const internalTemplatePickerPreviewSlideIndex$ = state(0);
+export const templatePickerPreviewSlideIndex$ = computed((get) => {
+  return get(internalTemplatePickerPreviewSlideIndex$);
+});
+export const setTemplatePickerPreviewSlideIndex$ = command(
+  ({ set }, index: number) => {
+    set(internalTemplatePickerPreviewSlideIndex$, index);
+  },
+);
+
+// Hover scrubbing on template cards. Only one card is hovered at a time, so a
+// single signal tracks the active card's slug plus the scrubbed slide index;
+// each card resolves its own index by matching the stored slug.
+interface TemplateCardHoverState {
+  readonly slug: string;
+  readonly index: number;
+}
+
+const internalTemplateCardHover$ = state<TemplateCardHoverState | null>(null);
+export const templateCardHover$ = computed((get) => {
+  return get(internalTemplateCardHover$);
+});
+export const setTemplateCardHover$ = command(
+  ({ set }, value: TemplateCardHoverState | null) => {
+    set(internalTemplateCardHover$, value);
+  },
+);
+
+// -- Per-message generation template selections --------------------------------
+
+const internalNewThreadGenerationTemplate$ = state<
+  GenerationTemplateRequest | undefined
+>(undefined);
+export const newThreadGenerationTemplate$ = computed((get) => {
+  return get(internalNewThreadGenerationTemplate$);
+});
+export const setNewThreadGenerationTemplate$ = command(
+  ({ set }, value: GenerationTemplateRequest | undefined) => {
+    set(internalNewThreadGenerationTemplate$, value);
+  },
+);
+
+interface ThreadGenerationTemplateState {
+  readonly threadId: string;
+  readonly value: GenerationTemplateRequest | undefined;
+}
+
+const internalThreadGenerationTemplate$ =
+  state<ThreadGenerationTemplateState | null>(null);
+export const threadGenerationTemplate$ = computed((get) => {
+  return get(internalThreadGenerationTemplate$);
+});
+export const setThreadGenerationTemplate$ = command(
+  ({ set }, threadId: string, value: GenerationTemplateRequest | undefined) => {
+    set(internalThreadGenerationTemplate$, { threadId, value });
+  },
+);

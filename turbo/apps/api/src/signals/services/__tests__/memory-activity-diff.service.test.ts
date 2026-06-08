@@ -16,7 +16,7 @@ function fileMap(
 }
 
 describe("computeChangeSet", () => {
-  it("classifies an added file as learned", () => {
+  it("records an added file with lifecycle metadata", () => {
     const changeSet = computeChangeSet(
       fileMap([]),
       fileMap([["facts/coffee.md", "h1", "User drinks oat milk lattes"]]),
@@ -25,14 +25,32 @@ describe("computeChangeSet", () => {
     expect(changeSet.changed).toBeTruthy();
     expect(changeSet.items).toHaveLength(1);
     expect(changeSet.items[0]).toMatchObject({
-      kind: "learned",
       filePath: "facts/coffee.md",
-      beforeSnippet: null,
-      afterSnippet: "User drinks oat milk lattes",
+      diff: {
+        format: "line",
+        beforeExists: false,
+        afterExists: true,
+        truncated: false,
+        stats: { added: 1, removed: 0 },
+        hunks: [
+          {
+            beforeStartLine: null,
+            afterStartLine: 1,
+            lines: [
+              {
+                op: "add",
+                beforeLine: null,
+                afterLine: 1,
+                text: "User drinks oat milk lattes",
+              },
+            ],
+          },
+        ],
+      },
     });
   });
 
-  it("classifies a removed file as forgotten", () => {
+  it("records a removed file with lifecycle metadata", () => {
     const changeSet = computeChangeSet(
       fileMap([["facts/coffee.md", "h1", "User drinks oat milk lattes"]]),
       fileMap([]),
@@ -40,14 +58,32 @@ describe("computeChangeSet", () => {
 
     expect(changeSet.items).toHaveLength(1);
     expect(changeSet.items[0]).toMatchObject({
-      kind: "forgotten",
       filePath: "facts/coffee.md",
-      beforeSnippet: "User drinks oat milk lattes",
-      afterSnippet: null,
+      diff: {
+        format: "line",
+        beforeExists: true,
+        afterExists: false,
+        truncated: false,
+        stats: { added: 0, removed: 1 },
+        hunks: [
+          {
+            beforeStartLine: 1,
+            afterStartLine: null,
+            lines: [
+              {
+                op: "remove",
+                beforeLine: 1,
+                afterLine: null,
+                text: "User drinks oat milk lattes",
+              },
+            ],
+          },
+        ],
+      },
     });
   });
 
-  it("classifies a hash change as updated and ignores unchanged files", () => {
+  it("records a hash change as a modified file and ignores unchanged files", () => {
     const changeSet = computeChangeSet(
       fileMap([
         ["facts/coffee.md", "h1", "old"],
@@ -61,44 +97,30 @@ describe("computeChangeSet", () => {
 
     expect(changeSet.items).toHaveLength(1);
     expect(changeSet.items[0]).toMatchObject({
-      kind: "updated",
       filePath: "facts/coffee.md",
-      beforeSnippet: "old",
-      afterSnippet: "new",
+      diff: {
+        format: "line",
+        beforeExists: true,
+        afterExists: true,
+        truncated: false,
+        stats: { added: 1, removed: 1 },
+        hunks: [
+          {
+            beforeStartLine: 1,
+            afterStartLine: 1,
+            lines: [
+              { op: "remove", beforeLine: 1, afterLine: null, text: "old" },
+              { op: "add", beforeLine: null, afterLine: 1, text: "new" },
+            ],
+          },
+        ],
+      },
     });
   });
 
-  it("derives title and description from markdown frontmatter", () => {
-    const content =
-      "---\nname: Coffee preference\ndescription: User prefers oat milk lattes\n---\nbody";
-    const changeSet = computeChangeSet(
-      fileMap([]),
-      fileMap([["facts/coffee.md", "h1", content]]),
-    );
-
-    expect(changeSet.items[0]).toMatchObject({
-      title: "Coffee preference",
-      description: "User prefers oat milk lattes",
-    });
-  });
-
-  it("falls back to the file path as title when there is no frontmatter", () => {
-    const changeSet = computeChangeSet(
-      fileMap([]),
-      fileMap([["notes/raw.txt", "h1", "freeform note"]]),
-    );
-
-    expect(changeSet.items[0]).toMatchObject({
-      title: "notes/raw.txt",
-      description: null,
-    });
-  });
-
-  it("falls back to the file path when frontmatter is not valid YAML", () => {
-    // Regression for the prod crash: a memory file whose `description` value
-    // opens with a backtick is a reserved YAML scalar char and makes
-    // parseSkillFrontmatter throw a YAMLParseError. The diff must degrade to a
-    // path-based title instead of letting the whole summary run 500.
+  it("does not parse frontmatter while computing diffs", () => {
+    // Regression coverage: activity diffs should not parse memory file
+    // frontmatter, so malformed YAML-like content cannot crash summarization.
     const content =
       "---\nname: zero search\ndescription: `zero search` command shipped in CLI v9.125.x\n---\nbody";
     expect(() => {
@@ -113,13 +135,15 @@ describe("computeChangeSet", () => {
       fileMap([["facts/zero-search.md", "h1", content]]),
     );
     expect(changeSet.items[0]).toMatchObject({
-      kind: "learned",
-      title: "facts/zero-search.md",
-      description: null,
+      filePath: "facts/zero-search.md",
+      diff: {
+        beforeExists: false,
+        afterExists: true,
+      },
     });
   });
 
-  it("folds MEMORY.md churn into real file changes (does not emit it)", () => {
+  it("emits MEMORY.md alongside real file changes", () => {
     const changeSet = computeChangeSet(
       fileMap([["MEMORY.md", "idx1", "# index v1"]]),
       fileMap([
@@ -128,11 +152,14 @@ describe("computeChangeSet", () => {
       ]),
     );
 
-    expect(changeSet.items).toHaveLength(1);
-    expect(changeSet.items[0]?.filePath).toBe("facts/coffee.md");
+    expect(
+      changeSet.items.map((item) => {
+        return item.filePath;
+      }),
+    ).toStrictEqual(["MEMORY.md", "facts/coffee.md"]);
   });
 
-  it("emits MEMORY.md as its own item when no real file change explains it", () => {
+  it("emits MEMORY.md as its own item when it is the only changed file", () => {
     const changeSet = computeChangeSet(
       fileMap([["MEMORY.md", "idx1", "# index v1"]]),
       fileMap([["MEMORY.md", "idx2", "# index v2 reorganized"]]),
@@ -140,8 +167,11 @@ describe("computeChangeSet", () => {
 
     expect(changeSet.items).toHaveLength(1);
     expect(changeSet.items[0]).toMatchObject({
-      kind: "updated",
       filePath: "MEMORY.md",
+      diff: {
+        beforeExists: true,
+        afterExists: true,
+      },
     });
   });
 

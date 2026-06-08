@@ -8,6 +8,7 @@ from usage.idempotency import (
     USAGE_EVENT_NAMESPACE_AGGREGATE,
     USAGE_EVENT_NAMESPACE_CONNECTOR,
     USAGE_EVENT_NAMESPACE_MODEL,
+    USAGE_OBSERVATION_NAMESPACE_MODEL,
     encode_uuid_name,
 )
 
@@ -15,6 +16,7 @@ from usage.idempotency import (
 def test_usage_event_namespaces_are_stable():
     assert str(USAGE_EVENT_NAMESPACE_CONNECTOR) == "2f8e4a91-6d3c-4b5a-8e7f-9c1d2e3f4a5b"
     assert str(USAGE_EVENT_NAMESPACE_MODEL) == "18a22204-d25e-4170-8973-86477f864bfb"
+    assert str(USAGE_OBSERVATION_NAMESPACE_MODEL) == "13733c67-514d-4111-9249-45dde8c1c312"
     assert str(USAGE_EVENT_NAMESPACE_AGGREGATE) == "4c4ee19a-b1b4-47e6-aef4-642d972cf4f5"
 
 

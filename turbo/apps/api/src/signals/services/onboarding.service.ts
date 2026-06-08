@@ -435,6 +435,19 @@ function onboardingPaymentPending(orgId: string): Computed<Promise<boolean>> {
   });
 }
 
+function orgTier(orgId: string): Computed<Promise<string>> {
+  return computed(async (get): Promise<string> => {
+    const db = get(db$);
+    const [row] = await db
+      .select({ tier: orgMetadata.tier })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, orgId))
+      .limit(1);
+
+    return row?.tier ?? "pro-suspend";
+  });
+}
+
 function defaultAgentInfo(
   orgId: string,
   composeId: string,
@@ -494,15 +507,18 @@ export function onboardingStatus(
     const isAdmin = "orgRole" in auth && auth.orgRole === "admin";
     const agentId = await get(defaultAgentId(auth.orgId));
     const paymentPending = await get(onboardingPaymentPending(auth.orgId));
+    const tier = await get(orgTier(auth.orgId));
     const defaultAgent = agentId
       ? await get(defaultAgentInfo(auth.orgId, agentId))
       : null;
 
-    // Existing free workspaces never have onboardingPaymentPending set, so
-    // they do not re-enter onboarding. New onboarding remains active until the
-    // Pro trial checkout succeeds.
+    // New pro-suspend onboarding stays active until checkout clears the
+    // pending marker. Paid orgs do not re-enter onboarding just because a
+    // stale marker exists.
     return {
-      needsOnboarding: isAdmin && (!defaultAgent || paymentPending),
+      needsOnboarding:
+        isAdmin &&
+        (!defaultAgent || (tier === "pro-suspend" && paymentPending)),
       isAdmin,
       hasOrg: true,
       hasDefaultAgent: defaultAgent !== null,

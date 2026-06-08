@@ -32,10 +32,6 @@ struct FifoGate {
     file: Option<File>,
 }
 
-struct RunFileGuard {
-    run_id: String,
-}
-
 struct ConnectionHarness {
     host: Option<vsock_host::VsockHost>,
     guest: Option<thread::JoinHandle<io::Result<()>>>,
@@ -85,25 +81,9 @@ impl FifoGate {
     }
 }
 
-impl RunFileGuard {
-    fn new(run_id: &str) -> Self {
-        Self {
-            run_id: run_id.to_owned(),
-        }
-    }
-}
-
 impl Drop for FifoGuard {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
-    }
-}
-
-impl Drop for RunFileGuard {
-    fn drop(&mut self) {
-        for path in run_scoped_files(&self.run_id) {
-            let _ = std::fs::remove_file(path);
-        }
     }
 }
 
@@ -151,7 +131,6 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         std::process::id(),
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
     );
-    let _run_files = RunFileGuard::new(&run_id);
 
     let guest_agent = env!("CARGO_BIN_EXE_guest-agent");
     let prompt = format!(
@@ -396,22 +375,6 @@ fn join_guest(guest: thread::JoinHandle<io::Result<()>>) -> TestResult<()> {
         .join()
         .map_err(|_| io::Error::other("guest thread panicked"))??;
     Ok(())
-}
-
-fn run_scoped_files(run_id: &str) -> [String; 11] {
-    [
-        format!("/tmp/vm0-session-{run_id}.txt"),
-        format!("/tmp/vm0-session-history-{run_id}.txt"),
-        format!("/tmp/vm0-event-error-{run_id}"),
-        format!("/tmp/vm0-checkpoint-error-{run_id}"),
-        format!("/tmp/vm0-system-{run_id}.log"),
-        format!("/tmp/vm0-agent-{run_id}.log"),
-        format!("/tmp/vm0-metrics-{run_id}.jsonl"),
-        format!("/tmp/vm0-sandbox-ops-{run_id}.jsonl"),
-        format!("/tmp/vm0-telemetry-system-log-pos-{run_id}.txt"),
-        format!("/tmp/vm0-telemetry-metrics-pos-{run_id}.txt"),
-        format!("/tmp/vm0-telemetry-sandbox-ops-pos-{run_id}.txt"),
-    ]
 }
 
 fn shell_quote_path(path: &Path) -> String {

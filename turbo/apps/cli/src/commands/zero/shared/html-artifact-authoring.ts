@@ -95,7 +95,9 @@ export function createHtmlArtifactAuthoringPacket(
   const site =
     options.siteSlug ?? slugify(options.slugSource ?? options.prompt);
   const outputDir = outputDirForSite(site);
-  const hostCommand = `zero host ${outputDir} --site ${site}${
+  const artifactKindFlag =
+    options.kind === "presentation" ? " --artifact-kind presentation-html" : "";
+  const hostCommand = `zero host ${outputDir} --site ${site}${artifactKindFlag}${
     options.kind === "website" ? " --spa" : ""
   }`;
   const title = titleForKind(options.kind);

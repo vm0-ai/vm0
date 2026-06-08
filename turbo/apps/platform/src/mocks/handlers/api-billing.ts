@@ -3,6 +3,7 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingDowngradeContract,
+  zeroBillingRestoreContract,
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
   zeroBillingRedeemContract,
@@ -25,6 +26,7 @@ function defaultBillingStatus(): BillingStatusResponse {
     subscriptionStatus: null,
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
+    scheduledChange: null,
     hasSubscription: false,
     autoRecharge: { enabled: false, threshold: null, amount: null },
     creditExpiry: {
@@ -85,6 +87,12 @@ export const apiBillingHandlers = [
       success: true,
       effectiveDate: null,
     });
+  }),
+
+  mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
+    mockBillingStatus.cancelAtPeriodEnd = false;
+    mockBillingStatus.scheduledChange = null;
+    return respond(200, { success: true });
   }),
 
   mockApi(zeroBillingAutoRechargeContract.get, ({ respond }) => {

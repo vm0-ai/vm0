@@ -1,19 +1,16 @@
 import { computed, type Computed } from "ccstate";
-import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
+import {
+  memoryChangeItems,
+  type MemoryChangeDiff,
+} from "@vm0/db/schema/memory-change-item";
 import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt } from "drizzle-orm";
 
 import { db$ } from "../external/db";
 
-type MemoryActivityKind = "learned" | "updated" | "forgotten";
-
 interface MemoryActivityItem {
-  readonly kind: MemoryActivityKind;
-  readonly title: string | null;
-  readonly description: string | null;
   readonly filePath: string;
-  readonly beforeSnippet: string | null;
-  readonly afterSnippet: string | null;
+  readonly diff: MemoryChangeDiff;
 }
 
 interface MemoryActivityEntry {
@@ -26,15 +23,14 @@ interface MemoryActivityEntry {
 
 interface MemoryActivityResult {
   readonly entries: readonly MemoryActivityEntry[];
+  readonly nextCursor: string | null;
 }
 
-function toKind(kind: string): MemoryActivityKind {
-  if (kind === "learned" || kind === "updated" || kind === "forgotten") {
-    return kind;
-  }
-  // The cron owns this vocabulary; an unknown value is a producer-side data bug
-  // that should surface rather than be silently coerced.
-  throw new Error(`Unexpected memory change item kind: ${kind}`);
+interface MemoryActivityParams {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly limit: number;
+  readonly cursor?: string;
 }
 
 /**
@@ -42,16 +38,23 @@ function toKind(kind: string): MemoryActivityKind {
  * purely from the precomputed `memory_change_summaries` /
  * `memory_change_items` tables (never touches S3).
  *
- * Summaries are scoped per (orgId, userId) and returned most-recent-day first;
- * each summary's deterministic change items are nested under it.
+ * Summaries are scoped per (orgId, userId) and returned most-recent-day first
+ * when they have deterministic change items to display.
  */
 export function zeroMemoryActivity(
-  orgId: string,
-  userId: string,
+  params: MemoryActivityParams,
 ): Computed<Promise<MemoryActivityResult>> {
   return computed(async (get): Promise<MemoryActivityResult> => {
-    const summaries = await get(db$)
-      .select({
+    const filters = [
+      eq(memoryChangeSummaries.orgId, params.orgId),
+      eq(memoryChangeSummaries.userId, params.userId),
+    ];
+    if (params.cursor !== undefined) {
+      filters.push(lt(memoryChangeSummaries.date, params.cursor));
+    }
+
+    const summaryPage = await get(db$)
+      .selectDistinct({
         id: memoryChangeSummaries.id,
         date: memoryChangeSummaries.date,
         summary: memoryChangeSummaries.summary,
@@ -59,16 +62,24 @@ export function zeroMemoryActivity(
         toVersionId: memoryChangeSummaries.toVersionId,
       })
       .from(memoryChangeSummaries)
-      .where(
-        and(
-          eq(memoryChangeSummaries.orgId, orgId),
-          eq(memoryChangeSummaries.userId, userId),
-        ),
+      .innerJoin(
+        memoryChangeItems,
+        eq(memoryChangeItems.summaryId, memoryChangeSummaries.id),
       )
-      .orderBy(desc(memoryChangeSummaries.date));
+      .where(and(...filters))
+      .orderBy(desc(memoryChangeSummaries.date))
+      .limit(params.limit + 1);
+
+    const hasMore = summaryPage.length > params.limit;
+    const summaries = hasMore
+      ? summaryPage.slice(0, params.limit)
+      : summaryPage;
+    const nextCursor = hasMore
+      ? (summaries[summaries.length - 1]?.date ?? null)
+      : null;
 
     if (summaries.length === 0) {
-      return { entries: [] };
+      return { entries: [], nextCursor: null };
     }
 
     const summaryIds = summaries.map((summary) => {
@@ -79,46 +90,42 @@ export function zeroMemoryActivity(
       .select({
         id: memoryChangeItems.id,
         summaryId: memoryChangeItems.summaryId,
-        kind: memoryChangeItems.kind,
-        title: memoryChangeItems.title,
-        description: memoryChangeItems.description,
         filePath: memoryChangeItems.filePath,
-        beforeSnippet: memoryChangeItems.beforeSnippet,
-        afterSnippet: memoryChangeItems.afterSnippet,
+        diff: memoryChangeItems.diff,
       })
       .from(memoryChangeItems)
       .where(inArray(memoryChangeItems.summaryId, summaryIds))
       // The cron batch-inserts every item of a summary in one transaction, so
       // they all share the transaction-start `now()` `created_at`; ordering by
       // it would leave intra-day order undefined across page loads. Order by
-      // `kind` then `file_path` instead: both are stable, non-null columns, so
-      // the result is fully deterministic and matches the kind-grouped UI.
-      .orderBy(asc(memoryChangeItems.kind), asc(memoryChangeItems.filePath));
+      // the stable memory file path instead.
+      .orderBy(asc(memoryChangeItems.filePath));
 
     const itemsBySummaryId = new Map<string, MemoryActivityItem[]>();
     for (const item of items) {
       const bucket = itemsBySummaryId.get(item.summaryId) ?? [];
       bucket.push({
-        kind: toKind(item.kind),
-        title: item.title,
-        description: item.description,
         filePath: item.filePath,
-        beforeSnippet: item.beforeSnippet,
-        afterSnippet: item.afterSnippet,
+        diff: item.diff,
       });
       itemsBySummaryId.set(item.summaryId, bucket);
     }
 
-    const entries = summaries.map((summary): MemoryActivityEntry => {
-      return {
+    const entries: MemoryActivityEntry[] = [];
+    for (const summary of summaries) {
+      const summaryItems = itemsBySummaryId.get(summary.id) ?? [];
+      if (summaryItems.length === 0) {
+        continue;
+      }
+      entries.push({
         date: summary.date,
         summary: summary.summary,
         fromVersionId: summary.fromVersionId,
         toVersionId: summary.toVersionId,
-        items: itemsBySummaryId.get(summary.id) ?? [],
-      };
-    });
+        items: summaryItems,
+      });
+    }
 
-    return { entries };
+    return { entries, nextCursor };
   });
 }

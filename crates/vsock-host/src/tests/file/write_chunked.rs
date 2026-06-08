@@ -3,14 +3,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
-use vsock_proto::{Decoder, ExecTermination, MSG_EXEC_START, MSG_WRITE_FILE};
+use vsock_proto::{ExecTermination, MSG_EXEC_START, MSG_WRITE_FILE};
 
 use super::super::support::{
-    assert_connection_accepts_exec_operation, host_from_stream, make_pair, mock_handshake,
-    normal_operation_readiness, operation_count, pending_request_count, read_guest_message,
-    send_exec_result, setup_host_and_guest,
+    MockGuest, assert_connection_accepts_exec_operation, await_mock_guest, host_from_stream,
+    make_pair, normal_operation_readiness, operation_count, pending_request_count,
+    read_guest_message, send_exec_result, setup_host_and_guest,
 };
 use super::support::{
     ChunkedWriteTempPath, expect_write_file, send_guest_error, send_write_file_failure,
@@ -724,30 +724,25 @@ async fn test_write_file_chunked_cleans_up_on_mv_failure() {
 
 #[tokio::test]
 async fn test_write_file_chunked_cleans_up_when_cancelled() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
     let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
     let content = vec![0xABu8; chunk_limit + 100];
     let (first_chunk_tx, first_chunk_rx) = oneshot::channel::<()>();
     let (cleanup_tx, cleanup_rx) = oneshot::channel::<String>();
 
-    let guest_task = tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let mut guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
-        let mut buf = vec![0u8; chunk_limit + 4096];
         let mut temp_path = None::<String>;
         let mut first_chunk_tx = Some(first_chunk_tx);
         let mut cleanup_tx = Some(cleanup_tx);
 
         loop {
-            let n = guest.read(&mut buf).await.unwrap();
-            if n == 0 {
-                break;
-            }
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            for msg in msgs {
-                if msg.msg_type == MSG_WRITE_FILE {
+            let msg = guest.read_message().await;
+            match msg.msg_type {
+                MSG_WRITE_FILE => {
                     let (path, _chunk, _sudo, _append) =
                         vsock_proto::decode_write_file(&msg.payload).unwrap();
                     if let Some(temp_path) = &temp_path {
@@ -757,11 +752,12 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
 
                     assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
                     temp_path = Some(path.to_string());
-                    send_write_file_success(&mut guest, msg.seq).await;
+                    send_write_file_success(guest.stream_mut(), msg.seq).await;
                     if let Some(tx) = first_chunk_tx.take() {
                         let _ = tx.send(());
                     }
-                } else if msg.msg_type == MSG_EXEC_START {
+                }
+                MSG_EXEC_START => {
                     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
                     let temp_path = temp_path.as_ref().expect("temp path");
                     assert!(decoded.command.contains("rm -f --"));
@@ -770,16 +766,17 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
                     if let Some(tx) = cleanup_tx.take() {
                         let _ = tx.send(decoded.command.to_string());
                     }
-                    send_exec_result(
-                        &mut guest,
-                        msg.seq,
-                        ExecTermination::Exited { exit_code: 0 },
-                        &[],
-                        &[],
-                    )
-                    .await;
+                    guest
+                        .send_exec_result(
+                            msg.seq,
+                            ExecTermination::Exited { exit_code: 0 },
+                            &[],
+                            &[],
+                        )
+                        .await;
                     return;
                 }
+                _ => panic!("unexpected guest message type {:#04x}", msg.msg_type),
             }
         }
     });
@@ -788,7 +785,18 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
     let mut write = Box::pin(host.write_file("/tmp/big.bin", &content, false));
     tokio::select! {
         _ = &mut write => panic!("chunked write completed before cancellation"),
-        result = first_chunk_rx => result.unwrap(),
+        result = first_chunk_rx => {
+            if result.is_err() {
+                match (&mut guest_task).await {
+                    Ok(()) => panic!("mock guest finished before first chunk"),
+                    Err(err) => panic!("mock guest task panicked before first chunk: {err}"),
+                }
+            }
+        }
+        result = &mut guest_task => {
+            result.expect("mock guest task panicked before first chunk");
+            panic!("mock guest finished before first chunk");
+        }
     }
     drop(write);
     assert_eq!(
@@ -796,11 +804,26 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
         NormalOperationReadiness::NotParkable
     );
 
-    let cleanup_command = tokio::time::timeout(Duration::from_secs(2), cleanup_rx)
-        .await
-        .expect("cleanup command was not sent after cancellation")
-        .expect("cleanup sender dropped");
+    let cleanup_command = tokio::select! {
+        biased;
+        result = tokio::time::timeout(Duration::from_secs(2), cleanup_rx) => {
+            match result {
+                Ok(Ok(command)) => command,
+                Ok(Err(_)) => {
+                    match (&mut guest_task).await {
+                        Ok(()) => panic!("mock guest finished before cleanup command"),
+                        Err(err) => panic!("mock guest task panicked before cleanup command: {err}"),
+                    }
+                }
+                Err(_) => panic!("cleanup command was not sent after cancellation"),
+            }
+        }
+        result = &mut guest_task => {
+            result.expect("mock guest task panicked before cleanup command");
+            panic!("mock guest finished before cleanup command");
+        }
+    };
     assert!(cleanup_command.contains("rm -f --"));
 
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }

@@ -886,6 +886,48 @@ def test_same_base_specific_deny_blocks_earlier_broad_allow():
     assert result.reason == "permission_denied"
 
 
+def test_same_base_specific_deny_discards_earlier_broad_deny_permissions():
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.example.com",
+                "auth": {"headers": {"Authorization": "Bearer broad"}},
+                "permissions": [
+                    {"name": "broad", "rules": ["ANY /{path+}"]},
+                ],
+            },
+            {
+                "base": "https://api.example.com",
+                "auth": {"headers": {"Authorization": "Bearer admin"}},
+                "permissions": [
+                    {"name": "admin", "rules": ["GET /admin/delete"]},
+                ],
+            },
+        ],
+        name="example",
+    )
+    policies = {
+        "example": {
+            "allow": [],
+            "deny": ["broad", "admin"],
+            "unknownPolicy": "deny",
+        }
+    }
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com/admin/delete",
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.base == "https://api.example.com"
+    assert result.path == "/admin/delete"
+    assert result.permissions == ("admin",)
+    assert result.reason == "permission_denied"
+
+
 # Malformed policy precedence
 
 
@@ -1228,4 +1270,55 @@ def test_denied_permission_names_keep_encounter_order_and_deduplicate():
     )
     assert isinstance(compiled, matching.FirewallBlock)
     assert compiled.permissions == ("repo-read", "repo-admin")
+    assert compiled.reason == "permission_denied"
+
+
+def test_denied_permission_names_deduplicate_many_same_specificity_candidates():
+    matching_rule = "GET /repos/{owner}/{repo}"
+    repeated_rule = "ANY /repos/{owner}/{repo}"
+    generated_permissions = [
+        {"name": f"generated-{index}", "rules": [matching_rule, repeated_rule]}
+        for index in range(12)
+    ]
+    fws = wrap_firewalls(
+        [
+            api_entry(
+                "https://api.github.com",
+                [
+                    {"name": "repo-read", "rules": [matching_rule, repeated_rule]},
+                    *generated_permissions,
+                ],
+            ),
+            api_entry(
+                "https://api.github.com",
+                [
+                    {"name": "repo-write", "rules": [matching_rule]},
+                    {"name": "generated-3", "rules": [repeated_rule]},
+                    {"name": "repo-read", "rules": [repeated_rule]},
+                ],
+            ),
+        ],
+        name="github",
+    )
+    expected_permissions = (
+        "repo-read",
+        *(f"generated-{index}" for index in range(12)),
+        "repo-write",
+    )
+    policies = {
+        "github": {
+            "allow": [],
+            "deny": list(expected_permissions),
+            "unknownPolicy": "deny",
+        }
+    }
+    url = "https://api.github.com/repos/org/repo"
+    compiled = matching.match_compiled_firewall_request(
+        url,
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+    assert isinstance(compiled, matching.FirewallBlock)
+    assert compiled.permissions == expected_permissions
     assert compiled.reason == "permission_denied"

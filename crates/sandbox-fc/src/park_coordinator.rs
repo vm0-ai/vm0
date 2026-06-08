@@ -105,6 +105,23 @@ impl ParkCoordinator {
         }
     }
 
+    /// Linearize host-side termination against idle parking.
+    ///
+    /// Once this moves the policy to `Terminating`, future or in-flight park
+    /// attempts cannot reach `Parked`, so a terminate request cannot race with
+    /// the active job finalizer transferring ownership to the idle pool.
+    pub(crate) fn begin_terminate(&self) -> bool {
+        let mut inner = self.inner();
+        match inner.state {
+            CoordinatorState::Parked => false,
+            CoordinatorState::Terminating => true,
+            _ => {
+                inner.state = CoordinatorState::Terminating;
+                true
+            }
+        }
+    }
+
     pub(crate) fn mark_dirty(&self, reason: DirtyReason) {
         self.inner().mark_dirty(reason);
     }
@@ -120,6 +137,7 @@ pub(crate) enum CoordinatorState {
     ClosingForPark { attempt_id: ParkAttemptId },
     ReadyForPark { attempt_id: ParkAttemptId },
     Parked,
+    Terminating,
     Dirty { reason: DirtyReason },
 }
 
@@ -214,7 +232,10 @@ impl Inner {
     }
 
     fn mark_dirty(&mut self, reason: DirtyReason) {
-        if matches!(self.state, CoordinatorState::Dirty { .. }) {
+        if matches!(
+            self.state,
+            CoordinatorState::Dirty { .. } | CoordinatorState::Terminating
+        ) {
             return;
         }
 
@@ -321,6 +342,15 @@ mod tests {
             parked.ensure_operation_start_allowed(),
             Err(OperationStartRejection::GateClosed {
                 state: CoordinatorState::Parked
+            })
+        );
+
+        let terminating = ParkCoordinator::new();
+        assert!(terminating.begin_terminate());
+        assert_eq!(
+            terminating.ensure_operation_start_allowed(),
+            Err(OperationStartRejection::GateClosed {
+                state: CoordinatorState::Terminating
             })
         );
 
@@ -557,6 +587,137 @@ mod tests {
             }
 
             assert_eq!(coordinator.state(), CoordinatorState::Open);
+        }
+    }
+
+    #[test]
+    fn terminate_blocks_future_park_attempts() {
+        let coordinator = ParkCoordinator::new();
+
+        assert!(coordinator.begin_terminate());
+        assert!(coordinator.begin_terminate());
+        assert_eq!(coordinator.state(), CoordinatorState::Terminating);
+
+        assert_eq!(
+            coordinator.begin_prepare_park(),
+            Err(PrepareParkError::InvalidState {
+                state: CoordinatorState::Terminating
+            })
+        );
+    }
+
+    #[test]
+    fn terminate_preempts_in_progress_park() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = begin_attempt(&coordinator);
+
+        assert!(coordinator.begin_terminate());
+        assert_eq!(coordinator.state(), CoordinatorState::Terminating);
+
+        assert_eq!(
+            coordinator.complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced),
+            Err(PrepareParkError::StaleAttempt {
+                attempt_id: attempt.id,
+                state: CoordinatorState::Terminating,
+            })
+        );
+    }
+
+    #[test]
+    fn terminate_preempts_ready_for_park_before_idle_transfer() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = begin_attempt(&coordinator);
+        complete_attempt(&coordinator, &attempt);
+
+        assert!(coordinator.begin_terminate());
+        assert_eq!(coordinator.state(), CoordinatorState::Terminating);
+        assert_eq!(
+            coordinator.mark_parked(&attempt),
+            Err(PrepareParkError::InvalidState {
+                state: CoordinatorState::Terminating
+            })
+        );
+    }
+
+    #[test]
+    fn terminate_refuses_parked_sandbox() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = begin_attempt(&coordinator);
+        complete_attempt(&coordinator, &attempt);
+        coordinator.mark_parked(&attempt).unwrap();
+
+        assert!(!coordinator.begin_terminate());
+        assert_eq!(coordinator.state(), CoordinatorState::Parked);
+    }
+
+    #[test]
+    fn terminate_accepts_dirty_policy() {
+        let coordinator = ParkCoordinator::new();
+        coordinator.mark_dirty(DirtyReason::new("transport failed"));
+
+        assert!(coordinator.begin_terminate());
+        assert_eq!(coordinator.state(), CoordinatorState::Terminating);
+    }
+
+    #[test]
+    fn dirty_does_not_override_terminating() {
+        let coordinator = ParkCoordinator::new();
+
+        assert!(coordinator.begin_terminate());
+        coordinator.mark_dirty(DirtyReason::new("late park failure"));
+
+        assert_eq!(coordinator.state(), CoordinatorState::Terminating);
+    }
+
+    #[test]
+    fn concurrent_prepare_and_terminate_are_linearized() {
+        for _ in 0..64 {
+            let coordinator = ParkCoordinator::new();
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+
+            let prepare_coordinator = coordinator.clone();
+            let prepare_barrier = std::sync::Arc::clone(&barrier);
+            let prepare_thread = std::thread::spawn(move || {
+                prepare_barrier.wait();
+                prepare_coordinator.begin_prepare_park()
+            });
+
+            let terminate_coordinator = coordinator.clone();
+            let terminate_barrier = std::sync::Arc::clone(&barrier);
+            let terminate_thread = std::thread::spawn(move || {
+                terminate_barrier.wait();
+                terminate_coordinator.begin_terminate()
+            });
+
+            let prepare_result = prepare_thread
+                .join()
+                .expect("prepare thread should not panic");
+            let terminate_result = terminate_thread
+                .join()
+                .expect("terminate thread should not panic");
+
+            match (prepare_result, terminate_result) {
+                (Ok(attempt), true) => {
+                    assert_eq!(coordinator.state(), CoordinatorState::Terminating);
+                    assert_eq!(
+                        coordinator
+                            .complete_prepare_park(&attempt, PrepareParkEvidence::AgentQuiesced,),
+                        Err(PrepareParkError::StaleAttempt {
+                            attempt_id: attempt.id,
+                            state: CoordinatorState::Terminating,
+                        })
+                    );
+                }
+                (
+                    Err(PrepareParkError::InvalidState {
+                        state: CoordinatorState::Terminating,
+                    }),
+                    true,
+                ) => {
+                    assert_eq!(coordinator.state(), CoordinatorState::Terminating);
+                }
+                other => panic!("unexpected concurrent prepare/terminate result: {other:?}"),
+            }
         }
     }
 

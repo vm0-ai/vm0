@@ -8,6 +8,7 @@ use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::paths;
 use crate::session_history;
+use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 use bytes::Bytes;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
@@ -15,10 +16,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::ErrorKind;
 
-use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
-
 const LOG_TAG: &str = "sandbox:guest-agent";
-const API_AUTO_MEMORY_GENERATED_BY: &str = "apiAutoMemory";
 
 #[derive(Clone, Copy)]
 enum CheckpointMode {
@@ -70,38 +68,29 @@ fn build_artifact_snapshot_entry(
     name: &str,
     version: &str,
     mount_path: &str,
-    generated_by: Option<&str>,
+    missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
 ) -> serde_json::Value {
     let mut entry = json!({
         "name": name,
         "version": version,
         "mountPath": mount_path,
     });
-    if let Some(generated_by) = generated_by
+    if let Some(policy) = missing_root_policy
         && let Some(object) = entry.as_object_mut()
     {
-        object.insert("generatedBy".to_string(), json!(generated_by));
+        object.insert("missingRootPolicy".to_string(), json!(policy));
     }
     entry
 }
 
-fn artifact_snapshot_generated_by(entry: &env::ArtifactEnv) -> Option<&'static str> {
-    match entry.missing_root_policy {
-        Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion) => {
-            Some(API_AUTO_MEMORY_GENERATED_BY)
-        }
-        _ => None,
-    }
-}
-
-struct ArtifactSnapshotPlan<'a> {
-    entry: &'a env::ArtifactEnv,
-    files: Vec<artifact::FileEntry>,
-}
-
-enum ArtifactSnapshotWork<'a> {
-    Preserve(serde_json::Value),
-    Snapshot(ArtifactSnapshotPlan<'a>),
+enum ArtifactSnapshotPlan<'a> {
+    Snapshot {
+        entry: &'a env::ArtifactEnv,
+        files: Vec<artifact::FileEntry>,
+    },
+    PreserveParentVersion {
+        entry: &'a env::ArtifactEnv,
+    },
 }
 
 /// Prepare + upload the session history to S3 via a presigned URL. If the
@@ -193,7 +182,7 @@ async fn upload_session_history(
 
 /// Snapshot artifact entries. Memory rides in `VM0_ARTIFACTS` post-#10602, so
 /// there is no longer a separate memory arm. Payload shape is
-/// `Array<{name, version, mountPath, generatedBy?}>`, matching the webhook
+/// `Array<{name, version, mountPath}>`, matching the webhook
 /// receiver's canonical artifact snapshot schema.
 async fn snapshot_artifact_entries(
     http: &HttpClient,
@@ -207,7 +196,7 @@ async fn snapshot_artifact_entries(
         return Ok(None);
     }
 
-    let mut work = Vec::with_capacity(entries.len());
+    let mut plans = Vec::with_capacity(entries.len());
     for entry in entries {
         log_info!(
             LOG_TAG,
@@ -215,51 +204,43 @@ async fn snapshot_artifact_entries(
             entry.name,
             entry.mount_path
         );
-        let files = match artifact::walk_files_for_checkpoint(&entry.mount_path).await {
-            Ok(files) => files,
+        match artifact::walk_files_for_checkpoint(&entry.mount_path).await {
+            Ok(files) => {
+                plans.push(ArtifactSnapshotPlan::Snapshot { entry, files });
+            }
             Err(error)
-                if entry.missing_root_policy
-                    == Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
-                    && error.is_root_not_found() =>
+                if error.is_missing_root()
+                    && matches!(
+                        entry.missing_root_policy,
+                        Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
+                    ) =>
             {
-                let preserve_start = std::time::Instant::now();
-                let message = format!(
-                    "Preserving artifact '{}' parent version {} because mount root is missing at {}",
-                    entry.name, entry.version_id, entry.mount_path
+                error.record_preserved_missing_root(&entry.name, &entry.mount_path);
+                plans.push(ArtifactSnapshotPlan::PreserveParentVersion { entry });
+            }
+            Err(error) => return Err(error.into_agent_error()),
+        }
+    }
+
+    let mut results = Vec::with_capacity(plans.len());
+    for plan in plans {
+        let (entry, files) = match plan {
+            ArtifactSnapshotPlan::Snapshot { entry, files } => (entry, files),
+            ArtifactSnapshotPlan::PreserveParentVersion { entry } => {
+                log_info!(
+                    LOG_TAG,
+                    "VAS artifact snapshot preserved parent version for missing root: {}@{}",
+                    entry.name,
+                    entry.version_id
                 );
-                log_warn!(LOG_TAG, "{message}");
-                record_sandbox_op(
-                    "artifact_snapshot_preserved_missing_root",
-                    preserve_start.elapsed(),
-                    true,
-                    Some(&message),
-                );
-                work.push(ArtifactSnapshotWork::Preserve(
-                    build_artifact_snapshot_entry(
-                        &entry.name,
-                        &entry.version_id,
-                        &entry.mount_path,
-                        artifact_snapshot_generated_by(entry),
-                    ),
+                results.push(build_artifact_snapshot_entry(
+                    &entry.name,
+                    &entry.version_id,
+                    &entry.mount_path,
+                    entry.missing_root_policy,
                 ));
                 continue;
             }
-            Err(error) => return Err(error.into_agent_error()),
-        };
-        work.push(ArtifactSnapshotWork::Snapshot(ArtifactSnapshotPlan {
-            entry,
-            files,
-        }));
-    }
-
-    let mut results = Vec::with_capacity(work.len());
-    for item in work {
-        let (entry, files) = match item {
-            ArtifactSnapshotWork::Preserve(entry) => {
-                results.push(entry);
-                continue;
-            }
-            ArtifactSnapshotWork::Snapshot(ArtifactSnapshotPlan { entry, files }) => (entry, files),
         };
         // Skip the VAS round-trips when the mount is byte-identical to what
         // was originally mounted. `version_id` in VAS *is* the content hash
@@ -288,7 +269,7 @@ async fn snapshot_artifact_entries(
                 &entry.name,
                 &entry.version_id,
                 &entry.mount_path,
-                artifact_snapshot_generated_by(entry),
+                entry.missing_root_policy,
             ));
             continue;
         }
@@ -322,7 +303,7 @@ async fn snapshot_artifact_entries(
             &entry.name,
             &snapshot.version_id,
             &entry.mount_path,
-            artifact_snapshot_generated_by(entry),
+            entry.missing_root_policy,
         ));
     }
     Ok(Some(serde_json::Value::Array(results)))
@@ -552,6 +533,7 @@ fn validate_recoverable_session_history(session_history: &str) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
     use httpmock::prelude::*;
     use std::time::Duration;
 
@@ -590,15 +572,22 @@ mod tests {
 
     #[test]
     fn artifact_snapshot_entry_uses_camel_case_keys() {
-        let entry = build_artifact_snapshot_entry("n", "v", "/m", None);
+        let entry = build_artifact_snapshot_entry(
+            "n",
+            "v",
+            "/m",
+            Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
+        );
         let obj = entry.as_object().expect("entry must be a JSON object");
         // Contract-boundary invariant: the web Zod receiver requires camelCase
-        // `mountPath`; a snake_case slip would silently cause a 400 on the
-        // webhook side.
+        // `mountPath` and `missingRootPolicy`; a snake_case slip would
+        // silently cause a 400 on the webhook side.
         assert!(obj.contains_key("name"));
         assert!(obj.contains_key("version"));
         assert!(obj.contains_key("mountPath"));
+        assert!(obj.contains_key("missingRootPolicy"));
         assert!(!obj.contains_key("mount_path"));
+        assert!(!obj.contains_key("missing_root_policy"));
     }
 
     #[tokio::test]
@@ -725,7 +714,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn artifact_snapshot_preserves_parent_version_for_policy_missing_root() {
+    async fn artifact_snapshot_preserve_policy_missing_mount_preserves_parent_version() {
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {
             when.method(POST)
@@ -749,16 +738,21 @@ mod tests {
             missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
         }];
 
-        let snapshots = snapshot_artifact_entries(&http, &entries).await.unwrap();
+        let snapshots = snapshot_artifact_entries(&http, &entries)
+            .await
+            .unwrap()
+            .unwrap();
 
         assert_eq!(
             snapshots,
-            Some(json!([{
-                "name": "memory",
-                "version": "old-memory-version",
-                "mountPath": missing_mount.to_string_lossy(),
-                "generatedBy": "apiAutoMemory",
-            }]))
+            json!([
+                {
+                    "name": "memory",
+                    "version": "old-memory-version",
+                    "mountPath": missing_mount.to_string_lossy(),
+                    "missingRootPolicy": "preserveParentVersion",
+                }
+            ])
         );
         prepare.assert_calls(0);
         commit.assert_calls(0);
@@ -804,13 +798,20 @@ mod tests {
 
     #[tokio::test]
     async fn checkpoint_missing_mount_fails_before_final_checkpoint_api_call() {
-        let _files_guard = CheckpointFilesGuard::new();
         let server = MockServer::start();
         let dir = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("VM0_RUN_ID", "checkpoint-missing-mount");
+            std::env::set_var(
+                guest_runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                dir.path().join("runtime"),
+            );
+        }
+        let _files_guard = CheckpointFilesGuard::new();
         let history_path = dir.path().join("history.jsonl");
         std::fs::write(&history_path, r#"{"type":"system"}"#).unwrap();
-        std::fs::write(paths::session_id_file(), "session-with-missing-artifact").unwrap();
-        std::fs::write(
+        paths::write_private(paths::session_id_file(), "session-with-missing-artifact").unwrap();
+        paths::write_private(
             paths::session_history_path_file(),
             history_path.to_string_lossy().as_ref(),
         )

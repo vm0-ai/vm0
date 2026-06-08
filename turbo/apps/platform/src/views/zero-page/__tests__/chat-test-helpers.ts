@@ -12,6 +12,7 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   chatMessagesContract,
+  type GenerationTemplateRequest,
   type PagedChatMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -164,6 +165,7 @@ interface ThreadListItem {
   updatedAt: string;
   isRead: boolean;
   running: boolean;
+  scheduleCount?: number;
   pinnedAt?: string | null;
 }
 
@@ -328,6 +330,7 @@ export function mockChatLifecycle(options?: {
     content?: string;
     attachments?: PersistedAttachment[];
     clientMessageId: string;
+    generationTemplate?: GenerationTemplateRequest;
   }) => void;
   onRecallMessageAppend?: (body: {
     revokesMessageId: string;
@@ -451,6 +454,7 @@ export function mockChatLifecycle(options?: {
       size: number;
     }[];
     clientMessageId?: string;
+    generationTemplate?: GenerationTemplateRequest;
   }) => {
     const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
     const attachFiles = body.attachFiles?.map((file) => {
@@ -463,6 +467,7 @@ export function mockChatLifecycle(options?: {
       content: body.prompt,
       attachments: attachFiles,
       clientMessageId,
+      generationTemplate: body.generationTemplate,
     });
     if (options?.appendGate) {
       await options.appendGate;
@@ -473,6 +478,7 @@ export function mockChatLifecycle(options?: {
       role: "user" as const,
       content: body.prompt ?? "",
       attachFiles,
+      generationTemplate: body.generationTemplate,
       createdAt: now,
     });
     return { runId: null, threadId, createdAt: now };

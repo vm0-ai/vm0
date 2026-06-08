@@ -8,15 +8,14 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq } from "drizzle-orm";
 
-import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
-import { touchChatThreadLastMessageAt } from "./zero-chat-thread.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
 interface OwnedThreadForSend {
@@ -48,7 +47,10 @@ function generateCallbackSecret(): string {
 }
 
 function chatCallbackUrl(): string {
-  return new URL("/api/internal/callbacks/chat", env("VM0_API_URL")).toString();
+  return new URL(
+    "/api/internal/callbacks/chat",
+    internalApiBaseUrl(),
+  ).toString();
 }
 
 export const sendChatThreadMessageV1$ = command(
@@ -171,9 +173,6 @@ export const sendChatThreadMessageV1$ = command(
       throw new Error("Failed to insert chat message");
     }
 
-    await touchChatThreadLastMessageAt(db, thread.id);
-    signal.throwIfAborted();
-
     await publishUserSignal(
       [args.auth.userId],
       `chatThreadMessageCreated:${thread.id}`,
@@ -221,7 +220,15 @@ async function latestSessionIdForThread(
     .select({ result: agentRuns.result })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(eq(zeroRuns.chatThreadId, threadId))
+    // D7 session-continuity exclusion (see latestSessionIdForThread in
+    // zero-chat-messages.ts): only web-source runs join the chain, so a
+    // scheduled run never bleeds into web-chat session continuity.
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        eq(zeroRuns.triggerSource, "web"),
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(5);
 

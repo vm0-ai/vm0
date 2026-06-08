@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.18.11](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.10...vsock-proto-v0.18.11) (2026-06-07)
+
+
+### Refactoring
+
+* centralize exec operation test layouts ([#16409](https://github.com/vm0-ai/vm0/issues/16409)) ([dea53c0](https://github.com/vm0-ai/vm0/commit/dea53c0f77e93007c81d81509dd9b69433899bf1))
+
+
+### Performance Improvements
+
+* preallocate exec env vector while decoding ([#16401](https://github.com/vm0-ai/vm0/issues/16401)) ([34395f8](https://github.com/vm0-ai/vm0/commit/34395f8ca957e7e768cc8c26c12610db5a10584d))
+
+## [0.18.10](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.9...vsock-proto-v0.18.10) (2026-06-04)
+
+
+### Performance Improvements
+
+* avoid exec output payload copy ([#16081](https://github.com/vm0-ai/vm0/issues/16081)) ([3611818](https://github.com/vm0-ai/vm0/commit/3611818fcd7d15583dde5113ace28918395858cb))
+
 ## [0.18.9](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.8...vsock-proto-v0.18.9) (2026-05-28)
 
 

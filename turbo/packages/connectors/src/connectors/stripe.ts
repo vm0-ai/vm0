@@ -73,6 +73,45 @@ export const stripe = {
         },
         revoke: { kind: "none" },
       },
+      cli: {
+        label: "Sign in with Stripe",
+        helpText:
+          "Approve access in the Stripe Dashboard so vm0 can import a restricted API key.",
+        client: {
+          clientRegistration: "dynamic",
+          clientType: "public",
+        },
+        storage: {
+          secrets: ["STRIPE_TOKEN"],
+          variables: [],
+        },
+        grant: {
+          kind: "device-auth",
+          scopes: [],
+          outputs: {
+            token: "$secrets.STRIPE_TOKEN",
+          },
+          startOptions: {
+            mode: {
+              kind: "select",
+              label: "Mode",
+              required: true,
+              defaultValue: "test",
+              options: [
+                { value: "test", label: "Test" },
+                { value: "live", label: "Live" },
+              ],
+            },
+          },
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            STRIPE_TOKEN: "$secrets.STRIPE_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
     },
     defaultAuthMethod: "oauth",
   },

@@ -1,5 +1,5 @@
 //! Content-addressable storage hash — Rust port of the TS implementation
-//! at `turbo/apps/web/src/lib/infra/storage/content-hash.ts`.
+//! at `turbo/apps/api/src/signals/services/storage-content-hash.service.ts`.
 //!
 //! `version_id` in VAS *is* this hash — the TS function is the sole producer
 //! across every prepare/commit route. Guest-side we recompute it locally so
@@ -7,11 +7,17 @@
 //! artifact is unchanged since mount (see issue #10967).
 //!
 //! The two implementations must stay byte-identical. The inline `#[cfg(test)]`
-//! suite below and its TS counterpart at
-//! `turbo/apps/web/src/lib/infra/storage/__tests__/content-hash-parity.test.ts`
-//! hardcode the same fixture vectors — a drift on either side fails CI.
+//! suite below hardcodes fixture vectors for the Rust port; changes here must
+//! be checked against TS `computeContentHashFromHashes`.
 
 use sha2::{Digest, Sha256};
+use std::cmp::Ordering;
+
+#[derive(Clone, Copy)]
+struct ContentHashEntry<'a> {
+    path: &'a str,
+    hash: &'a str,
+}
 
 /// Compute the content hash for a storage version.
 ///
@@ -28,31 +34,62 @@ pub(crate) fn compute_content_hash<'a, I>(storage_id: &str, files: I) -> String
 where
     I: IntoIterator<Item = (&'a str, &'a str)>,
 {
-    let mut entries: Vec<String> = files
+    let mut entries: Vec<ContentHashEntry<'a>> = files
         .into_iter()
-        .map(|(path, hash)| format!("{path}:{hash}"))
+        .map(|(path, hash)| ContentHashEntry { path, hash })
         .collect();
 
     let mut hasher = Sha256::new();
-    if entries.is_empty() {
-        hasher.update(format!("storage:{storage_id}\n").as_bytes());
-    } else {
-        entries.sort();
-        let combined = format!("storage:{storage_id}\n{}", entries.join("\n"));
-        hasher.update(combined.as_bytes());
+    hasher.update(b"storage:");
+    hasher.update(storage_id.as_bytes());
+    hasher.update(b"\n");
+
+    if !entries.is_empty() {
+        entries.sort_by(|left, right| compare_formatted_entries(*left, *right));
+        for (index, entry) in entries.iter().enumerate() {
+            if index > 0 {
+                hasher.update(b"\n");
+            }
+            hasher.update(entry.path.as_bytes());
+            hasher.update(b":");
+            hasher.update(entry.hash.as_bytes());
+        }
     }
+
     hex::encode(hasher.finalize())
+}
+
+fn compare_formatted_entries(left: ContentHashEntry<'_>, right: ContentHashEntry<'_>) -> Ordering {
+    let mut left_bytes = formatted_entry_bytes(left);
+    let mut right_bytes = formatted_entry_bytes(right);
+
+    loop {
+        match (left_bytes.next(), right_bytes.next()) {
+            (Some(left), Some(right)) => match left.cmp(&right) {
+                Ordering::Equal => {}
+                ordering => return ordering,
+            },
+            (Some(_), None) => return Ordering::Greater,
+            (None, Some(_)) => return Ordering::Less,
+            (None, None) => return Ordering::Equal,
+        }
+    }
+}
+
+fn formatted_entry_bytes<'a>(entry: ContentHashEntry<'a>) -> impl Iterator<Item = u8> + 'a {
+    entry
+        .path
+        .bytes()
+        .chain(std::iter::once(b':'))
+        .chain(entry.hash.bytes())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Fixtures below are shared with the TS parity test at
-    // `turbo/apps/web/src/lib/infra/storage/__tests__/content-hash-parity.test.ts`.
-    // Any change here must be mirrored there (and vice versa); CI runs both
-    // sides, so a drift between TS `computeContentHashFromHashes` and this
-    // Rust port fails fast.
+    // Fixtures below must stay aligned with TS `computeContentHashFromHashes` at
+    // `turbo/apps/api/src/signals/services/storage-content-hash.service.ts`.
     const STORAGE_A: &str = "01234567-89ab-cdef-0123-456789abcdef";
     const STORAGE_B: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 
@@ -109,5 +146,25 @@ mod tests {
             got,
             "e7158d0cbdae3793daa8352a6197eab9f772d8cb8784c941d921e81f5d4b09d6"
         );
+    }
+
+    #[test]
+    fn colon_paths_sort_like_formatted_entries() {
+        let got = compute_content_hash(STORAGE_A, [("a", "b:1"), ("a:b", "0")]);
+
+        assert_eq!(
+            got,
+            sha256_hex(&format!("storage:{STORAGE_A}\na:b:0\na:b:1"))
+        );
+        assert_ne!(
+            got,
+            sha256_hex(&format!("storage:{STORAGE_A}\na:b:1\na:b:0"))
+        );
+    }
+
+    fn sha256_hex(input: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(input.as_bytes());
+        hex::encode(hasher.finalize())
     }
 }

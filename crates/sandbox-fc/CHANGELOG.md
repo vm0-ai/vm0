@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.37.13](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.12...sandbox-fc-v0.37.13) (2026-06-07)
+
+
+### Bug Fixes
+
+* prevent runner kill from signaling reused pids ([#16296](https://github.com/vm0-ai/vm0/issues/16296)) ([5b6c483](https://github.com/vm0-ai/vm0/commit/5b6c48301845c9267a7437b63014fcd6d75bc331))
+
+
+### Documentation
+
+* document snapshot publish cleanup semantics ([#16419](https://github.com/vm0-ai/vm0/issues/16419)) ([a0e1cf3](https://github.com/vm0-ai/vm0/commit/a0e1cf3e4f95ac6b6221728ce2c6f6fe52e9ddcd))
+
+
+### Refactoring
+
+* **sandbox-fc:** split netns pool modules ([#16454](https://github.com/vm0-ai/vm0/issues/16454)) ([4b75eb3](https://github.com/vm0-ai/vm0/commit/4b75eb39a134466fd9fea22000b94fe96718b3b9))
+
+## [0.37.12](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.11...sandbox-fc-v0.37.12) (2026-06-05)
+
+
+### Bug Fixes
+
+* offload nbd netlink critical sections ([#16246](https://github.com/vm0-ai/vm0/issues/16246)) ([0e25bae](https://github.com/vm0-ai/vm0/commit/0e25bae1f967857478a454ba7448653a8e7cf058))
+
+## [0.37.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.10...sandbox-fc-v0.37.11) (2026-06-05)
+
+## [0.37.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.9...sandbox-fc-v0.37.10) (2026-06-04)
+
+## [0.37.9](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.8...sandbox-fc-v0.37.9) (2026-06-04)
+
+
+### Refactoring
+
+* extract snapshot provider test fixtures ([#16165](https://github.com/vm0-ai/vm0/issues/16165)) ([6a5ae0b](https://github.com/vm0-ai/vm0/commit/6a5ae0bf05ee765c5986dd56ab67bf28d86440d7))
+
+## [0.37.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.7...sandbox-fc-v0.37.8) (2026-06-04)
+
+## [0.37.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.6...sandbox-fc-v0.37.7) (2026-06-04)
+
+## [0.37.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.5...sandbox-fc-v0.37.6) (2026-06-04)
+
 ## [0.37.5](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.4...sandbox-fc-v0.37.5) (2026-06-03)
 
 ## [0.37.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.3...sandbox-fc-v0.37.4) (2026-06-03)

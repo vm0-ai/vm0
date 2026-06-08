@@ -72,12 +72,6 @@ describe("connector icon component", () => {
     expect(img).toHaveClass("zero-icon-mono");
   });
 
-  it("should not apply zero-icon-mono to colorful icons", () => {
-    const { container } = render(<ConnectorIcon type="slack" />);
-    const img = container.querySelector("img");
-    expect(img).not.toHaveClass("zero-icon-mono");
-  });
-
   it("should scale slack icon (has loose viewbox)", () => {
     const { container } = render(<ConnectorIcon type="slack" size={28} />);
     const img = container.querySelector("img");

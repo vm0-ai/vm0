@@ -19,6 +19,7 @@ const PAYMENT_FAILURE_DOWNGRADE_GRACE_MS = 24 * 60 * 60 * 1000;
 interface SubscriptionInput {
   readonly id: string;
   readonly status: string;
+  readonly cancel_at?: number | null;
   readonly cancel_at_period_end: boolean;
   readonly items: {
     readonly data: readonly {
@@ -52,6 +53,27 @@ function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   return typeof periodEndUnix === "number"
     ? new Date(periodEndUnix * 1000)
     : null;
+}
+
+function subscriptionCancelAt(subscription: SubscriptionInput): Date | null {
+  return typeof subscription.cancel_at === "number"
+    ? new Date(subscription.cancel_at * 1000)
+    : null;
+}
+
+function subscriptionWillCancel(subscription: SubscriptionInput): boolean {
+  return (
+    subscription.cancel_at_period_end ||
+    subscriptionCancelAt(subscription) !== null
+  );
+}
+
+function subscriptionScheduledEnd(
+  subscription: SubscriptionInput,
+): Date | null {
+  return (
+    subscriptionCancelAt(subscription) ?? subscriptionPeriodEnd(subscription)
+  );
 }
 
 function subscriptionCanRefreshPaidThrough(
@@ -95,13 +117,14 @@ async function reconcileBillingCandidate(
   signal.throwIfAborted();
 
   const stripePeriodEnd = subscriptionPeriodEnd(subscription);
+  const scheduledEnd = subscriptionScheduledEnd(subscription);
   const canRefreshPaidThrough = subscriptionCanRefreshPaidThrough(subscription);
   const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
   const syncedFields = {
     subscriptionStatus: subscription.status,
-    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
     updatedAt: now,
-    ...(stripePeriodEnd ? { currentPeriodEnd: stripePeriodEnd } : {}),
+    ...(scheduledEnd ? { currentPeriodEnd: scheduledEnd } : {}),
   };
 
   const currentCandidate = and(
@@ -121,6 +144,7 @@ async function reconcileBillingCandidate(
         subscriptionStatus: "canceled",
         stripeSubscriptionId: null,
         cancelAtPeriodEnd: false,
+        currentPeriodEnd: null,
         updatedAt: now,
       })
       .where(currentCandidate)

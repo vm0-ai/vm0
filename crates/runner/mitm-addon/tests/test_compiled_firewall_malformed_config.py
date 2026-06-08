@@ -1196,6 +1196,14 @@ def test_malformed_api_list_shape_is_skipped_without_compile_error():
 
 
 @pytest.mark.parametrize(
+    "firewalls",
+    [None, [], 0, 1, False, "", {}, {"name": "github"}, "broken"],
+)
+def test_direct_compile_firewalls_ignores_missing_empty_or_non_list_payloads(firewalls):
+    assert matching.compile_firewalls(firewalls) is None
+
+
+@pytest.mark.parametrize(
     "policies",
     [
         {"github": {"deny": None, "ask": [], "unknownPolicy": "deny"}},

@@ -62,7 +62,7 @@ fn setup_env_once() {
 }
 
 /// Serialise tests — they share both LazyLock state and the run-id-scoped
-/// `/tmp/vm0-session-*.txt` files written by `capture_session_metadata`.
+/// runtime metadata files written by `capture_session_metadata`.
 static TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 macro_rules! http_client {

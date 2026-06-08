@@ -6,6 +6,7 @@ use tokio::net::UnixStream;
 
 /// Request from a `runner exec` client.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExecRequest {
     /// Command text to execute inside the guest.
     pub command: String,
@@ -66,6 +67,39 @@ pub enum ExecResponse {
         /// Human-readable error message for operators and clients.
         error: String,
     },
+}
+
+/// Host-side control action requested over the local control socket.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminateAction {
+    Terminate,
+}
+
+/// Request from a host-side termination client.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TerminateRequest {
+    pub action: TerminateAction,
+}
+
+/// Result status for a host-side termination request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminateStatus {
+    Accepted,
+    AlreadyStopped,
+    /// The sandbox is parked in idle ownership; direct process termination
+    /// would leave runner-owned idle resources retained.
+    RefusedIdle,
+}
+
+/// Response to a host-side termination client.
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum TerminateResponse {
+    Status { status: TerminateStatus },
+    Error { error: String },
 }
 
 /// Maximum frame size: 64 MiB (generous for large stdout/stderr).
@@ -244,5 +278,84 @@ mod tests {
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["error"], "sandbox not running");
         assert!(json.get("exit_code").is_none());
+    }
+
+    #[test]
+    fn terminate_protocol_round_trip() {
+        let request = TerminateRequest {
+            action: TerminateAction::Terminate,
+        };
+        let request_json = serde_json::to_vec(&request).unwrap();
+
+        let decoded: TerminateRequest = serde_json::from_slice(&request_json).unwrap();
+        assert!(matches!(decoded.action, TerminateAction::Terminate));
+
+        let response = TerminateResponse::Status {
+            status: TerminateStatus::Accepted,
+        };
+        let response_json = serde_json::to_vec(&response).unwrap();
+        let decoded: TerminateResponse = serde_json::from_slice(&response_json).unwrap();
+        assert_eq!(
+            decoded,
+            TerminateResponse::Status {
+                status: TerminateStatus::Accepted
+            }
+        );
+
+        let response = TerminateResponse::Status {
+            status: TerminateStatus::RefusedIdle,
+        };
+        let response_json = serde_json::to_vec(&response).unwrap();
+        let decoded: TerminateResponse = serde_json::from_slice(&response_json).unwrap();
+        assert_eq!(
+            decoded,
+            TerminateResponse::Status {
+                status: TerminateStatus::RefusedIdle
+            }
+        );
+
+        let response = TerminateResponse::Error {
+            error: "sandbox not running".into(),
+        };
+        let response_json = serde_json::to_vec(&response).unwrap();
+        let decoded: TerminateResponse = serde_json::from_slice(&response_json).unwrap();
+        assert_eq!(
+            decoded,
+            TerminateResponse::Error {
+                error: "sandbox not running".into()
+            }
+        );
+    }
+
+    #[test]
+    fn terminate_request_does_not_decode_as_exec_request() {
+        let request = TerminateRequest {
+            action: TerminateAction::Terminate,
+        };
+        let request_json = serde_json::to_vec(&request).unwrap();
+
+        assert!(serde_json::from_slice::<ExecRequest>(&request_json).is_err());
+    }
+
+    #[test]
+    fn terminate_request_rejects_exec_fields() {
+        let request_json = serde_json::json!({
+            "action": "terminate",
+            "command": "true",
+            "timeout_secs": 1,
+        });
+
+        assert!(serde_json::from_value::<TerminateRequest>(request_json).is_err());
+    }
+
+    #[test]
+    fn exec_request_rejects_terminate_fields() {
+        let request_json = serde_json::json!({
+            "command": "true",
+            "timeout_secs": 1,
+            "action": "terminate",
+        });
+
+        assert!(serde_json::from_value::<ExecRequest>(request_json).is_err());
     }
 }

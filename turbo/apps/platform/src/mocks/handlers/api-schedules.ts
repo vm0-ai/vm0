@@ -9,6 +9,8 @@ import { mockApi } from "../msw-contract.ts";
 
 let mockSchedules: ScheduleResponse[] = [];
 
+const DEFAULT_CHAT_THREAD_ID = "d0000000-0000-4000-a000-000000000001";
+
 export function createMockScheduleResponse(
   overrides?: Partial<ScheduleResponse>,
 ): ScheduleResponse {
@@ -34,6 +36,7 @@ export function createMockScheduleResponse(
     lastRunAt: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
+    chatThreadId: DEFAULT_CHAT_THREAD_ID,
     createdAt: "2026-03-01T00:00:00Z",
     updatedAt: "2026-03-01T00:00:00Z",
     ...overrides,
@@ -79,6 +82,7 @@ export const apiSchedulesHandlers = [
       lastRunAt: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
+      chatThreadId: body.chatThreadId ?? crypto.randomUUID(),
       createdAt: now,
       updatedAt: now,
     };

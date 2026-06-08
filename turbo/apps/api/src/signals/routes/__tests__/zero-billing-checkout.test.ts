@@ -659,7 +659,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
     return fixture;
   }
 
-  it("reconciles a completed subscription checkout for the current org", async () => {
+  it("records a completed subscription checkout while waiting for invoice payment", async () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
     const fixture = await trackedSeed({
@@ -699,7 +699,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ completed: true });
+    expect(response.body).toStrictEqual({ completed: false });
 
     const writeDb = store.set(writeDb$);
     const [row] = await writeDb
@@ -714,12 +714,76 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       .where(eq(orgMetadata.orgId, fixture.orgId))
       .limit(1);
 
-    expect(row).toMatchObject({
-      tier: "pro",
+    expect(row).toStrictEqual({
+      tier: "pro-suspend",
       stripeSubscriptionId: subscriptionId,
       subscriptionStatus: "trialing",
-      onboardingPaymentPending: false,
-      currentPeriodEnd: new Date(1_800_000_000 * 1000),
+      onboardingPaymentPending: true,
+      currentPeriodEnd: null,
+    });
+  });
+
+  it("keeps checkout pending when the subscription is incomplete", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const fixture = await trackedSeed({
+      onboardingPaymentPending: true,
+      stripeCustomerId: customerId,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: "cs_test_completed",
+      mode: "subscription",
+      status: "complete",
+      customer: customerId,
+      subscription: subscriptionId,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subscriptionId,
+      status: "incomplete",
+      cancel_at_period_end: false,
+      items: {
+        data: [
+          {
+            price: { id: TEST_PRICE_PRO },
+            current_period_end: 1_800_000_000,
+          },
+        ],
+      },
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.complete({
+        body: { sessionId: "cs_test_completed" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ completed: false });
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        tier: orgMetadata.tier,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        subscriptionStatus: orgMetadata.subscriptionStatus,
+        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+        currentPeriodEnd: orgMetadata.currentPeriodEnd,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+
+    expect(row).toStrictEqual({
+      tier: "pro-suspend",
+      stripeSubscriptionId: subscriptionId,
+      subscriptionStatus: "incomplete",
+      onboardingPaymentPending: true,
+      currentPeriodEnd: null,
     });
   });
 

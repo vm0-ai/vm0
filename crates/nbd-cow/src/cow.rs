@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::ops::Range;
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 
@@ -19,6 +20,72 @@ const _: () = assert!(
     std::mem::size_of::<usize>() == 8,
     "nbd-cow requires a 64-bit target"
 );
+
+struct BlockSpan {
+    block_idx: u64,
+    absolute_offset: u64,
+    block_offset: usize,
+    buffer_offset: usize,
+    len: usize,
+}
+
+impl BlockSpan {
+    fn buffer_range(&self) -> Range<usize> {
+        self.buffer_offset..self.buffer_offset + self.len
+    }
+
+    fn block_range(&self) -> Range<usize> {
+        self.block_offset..self.block_offset + self.len
+    }
+
+    fn is_full_block(&self, block_size: usize) -> bool {
+        self.block_offset == 0 && self.len == block_size
+    }
+}
+
+struct BlockSpans {
+    offset: u64,
+    len: usize,
+    block_size: usize,
+    pos: usize,
+}
+
+impl BlockSpans {
+    fn new(offset: u64, len: usize, block_size: usize) -> Self {
+        debug_assert!(block_size > 0);
+        Self {
+            offset,
+            len,
+            block_size,
+            pos: 0,
+        }
+    }
+}
+
+impl Iterator for BlockSpans {
+    type Item = BlockSpan;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos >= self.len {
+            return None;
+        }
+
+        let absolute_offset = self.offset + self.pos as u64;
+        let block_idx = absolute_offset / self.block_size as u64;
+        let block_offset = (absolute_offset % self.block_size as u64) as usize;
+        let remaining_in_block = self.block_size - block_offset;
+        let len = remaining_in_block.min(self.len - self.pos);
+        let span = BlockSpan {
+            block_idx,
+            absolute_offset,
+            block_offset,
+            buffer_offset: self.pos,
+            len,
+        };
+        self.pos += len;
+        Some(span)
+    }
+}
 
 /// COW (Copy-on-Write) layer with write buffering.
 ///
@@ -137,30 +204,21 @@ impl CowLayer {
     pub fn read(&self, offset: u64, buf: &mut [u8]) -> Result<()> {
         self.check_bounds(offset, buf.len() as u64)?;
 
-        let mut pos = 0usize;
-        while pos < buf.len() {
-            let current_offset = offset + pos as u64;
-            let block_idx = current_offset / self.block_size as u64;
-            let block_offset = (current_offset % self.block_size as u64) as usize;
-            let remaining_in_block = self.block_size - block_offset;
-            let to_read = remaining_in_block.min(buf.len() - pos);
-
-            let dest = buf.get_mut(pos..pos + to_read).ok_or_else(|| {
+        for span in BlockSpans::new(offset, buf.len(), self.block_size) {
+            let dest = buf.get_mut(span.buffer_range()).ok_or_else(|| {
                 NbdCowError::Io(std::io::Error::other("slice out of bounds in read"))
             })?;
 
             // Check write buffer first
-            if let Some(block_data) = self.write_buffer.get(&block_idx) {
-                let src = block_data
-                    .get(block_offset..block_offset + to_read)
-                    .ok_or_else(|| {
-                        NbdCowError::Io(std::io::Error::other("block_data slice out of bounds"))
-                    })?;
+            if let Some(block_data) = self.write_buffer.get(&span.block_idx) {
+                let src = block_data.get(span.block_range()).ok_or_else(|| {
+                    NbdCowError::Io(std::io::Error::other("block_data slice out of bounds"))
+                })?;
                 dest.copy_from_slice(src);
-            } else if self.is_dirty(block_idx) {
+            } else if self.is_dirty(span.block_idx) {
                 // Read from COW file
                 if let Some(ref cow_fd) = self.cow_fd {
-                    cow_fd.read_exact_at(dest, current_offset)?;
+                    cow_fd.read_exact_at(dest, span.absolute_offset)?;
                 } else {
                     return Err(NbdCowError::Io(std::io::Error::other(
                         "dirty bit set but COW file not open",
@@ -168,10 +226,8 @@ impl CowLayer {
                 }
             } else {
                 // Read from base image
-                self.base_fd.read_exact_at(dest, current_offset)?;
+                self.base_fd.read_exact_at(dest, span.absolute_offset)?;
             }
-
-            pos += to_read;
         }
 
         Ok(())
@@ -181,38 +237,27 @@ impl CowLayer {
     pub fn write(&mut self, offset: u64, data: &[u8]) -> Result<bool> {
         self.check_bounds(offset, data.len() as u64)?;
 
-        let mut pos = 0usize;
-        while pos < data.len() {
-            let current_offset = offset + pos as u64;
-            let block_idx = current_offset / self.block_size as u64;
-            let block_offset = (current_offset % self.block_size as u64) as usize;
-            let remaining_in_block = self.block_size - block_offset;
-            let to_write = remaining_in_block.min(data.len() - pos);
-
-            if !self.write_buffer.contains_key(&block_idx) {
-                let full_block = if block_offset == 0 && to_write == self.block_size {
+        for span in BlockSpans::new(offset, data.len(), self.block_size) {
+            if !self.write_buffer.contains_key(&span.block_idx) {
+                let full_block = if span.is_full_block(self.block_size) {
                     vec![0u8; self.block_size]
                 } else {
-                    self.read_full_block(block_idx)?
+                    self.read_full_block(span.block_idx)?
                 };
-                self.write_buffer.insert(block_idx, full_block);
+                self.write_buffer.insert(span.block_idx, full_block);
             }
             let block_data = self
                 .write_buffer
-                .get_mut(&block_idx)
+                .get_mut(&span.block_idx)
                 .ok_or_else(|| NbdCowError::Io(std::io::Error::other("missing buffer entry")))?;
 
-            let dest_slice = block_data
-                .get_mut(block_offset..block_offset + to_write)
-                .ok_or_else(|| {
-                    NbdCowError::Io(std::io::Error::other("block_data dest slice out of bounds"))
-                })?;
-            let src_slice = data.get(pos..pos + to_write).ok_or_else(|| {
+            let dest_slice = block_data.get_mut(span.block_range()).ok_or_else(|| {
+                NbdCowError::Io(std::io::Error::other("block_data dest slice out of bounds"))
+            })?;
+            let src_slice = data.get(span.buffer_range()).ok_or_else(|| {
                 NbdCowError::Io(std::io::Error::other("data src slice out of bounds"))
             })?;
             dest_slice.copy_from_slice(src_slice);
-
-            pos += to_write;
         }
 
         // Recalculate buffer bytes
@@ -629,6 +674,19 @@ mod tests {
         cow.flush().unwrap();
         cow.read(0, &mut buf).unwrap();
         assert!(buf.iter().all(|&b| b == 0xBB));
+    }
+
+    #[test]
+    fn full_block_write_does_not_read_base_block() {
+        let base = create_base_image(&[]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        cow.write(0, &vec![0xCC; 4096]).unwrap();
+
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xCC));
     }
 
     #[test]

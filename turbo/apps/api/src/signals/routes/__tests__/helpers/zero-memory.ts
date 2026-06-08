@@ -3,7 +3,10 @@ import { gzipSync } from "node:zlib";
 
 import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
 import { command } from "ccstate";
-import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
+import {
+  memoryChangeItems,
+  type MemoryChangeDiff,
+} from "@vm0/db/schema/memory-change-item";
 import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
@@ -59,12 +62,8 @@ export const deleteMemoryForFixture$ = command(
 );
 
 interface MemoryActivityItemSeed {
-  readonly kind: string;
-  readonly title?: string | null;
-  readonly description?: string | null;
   readonly filePath: string;
-  readonly beforeSnippet?: string | null;
-  readonly afterSnippet?: string | null;
+  readonly diff?: MemoryChangeDiff;
 }
 
 interface MemoryActivitySummarySeed {
@@ -75,6 +74,17 @@ interface MemoryActivitySummarySeed {
   readonly toVersionId: string;
   readonly summary?: string | null;
   readonly items?: readonly MemoryActivityItemSeed[];
+}
+
+function emptyMemoryChangeDiff(): MemoryChangeDiff {
+  return {
+    format: "line",
+    beforeExists: true,
+    afterExists: true,
+    truncated: false,
+    stats: { added: 0, removed: 0 },
+    hunks: [],
+  };
 }
 
 export const seedMemoryActivitySummary$ = command(
@@ -101,17 +111,13 @@ export const seedMemoryActivitySummary$ = command(
       // Mirror the cron: every item of a summary is batch-inserted in one
       // transaction and so shares the same transaction-start `now()`
       // `created_at`. This leaves `created_at` order undefined and lets the
-      // service's `kind` / `file_path` ordering be exercised honestly.
+      // service's `file_path` ordering be exercised honestly.
       await db.insert(memoryChangeItems).values(
         items.map((item) => {
           return {
             summaryId,
-            kind: item.kind,
-            title: item.title ?? null,
-            description: item.description ?? null,
             filePath: item.filePath,
-            beforeSnippet: item.beforeSnippet ?? null,
-            afterSnippet: item.afterSnippet ?? null,
+            diff: item.diff ?? emptyMemoryChangeDiff(),
           };
         }),
       );

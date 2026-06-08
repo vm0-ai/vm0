@@ -45,7 +45,7 @@ function printConnectorDetails(
   if (connector) {
     console.log(
       `${"Status:".padEnd(LABEL_WIDTH)}${
-        connector.needsReconnect
+        connector.connectionStatus === "reconnect-required"
           ? chalk.yellow("reconnect needed")
           : chalk.green("connected")
       }`,
@@ -111,7 +111,7 @@ async function printAgentAction(
 ): Promise<void> {
   const authorized = agentCtx.authorizedTypes.has(type);
   const isConnected = connector !== null;
-  const needsReconnect = connector?.needsReconnect === true;
+  const needsReconnect = connector?.connectionStatus === "reconnect-required";
   const agentLabel =
     agentCtx.displayName === agentCtx.agentId
       ? agentCtx.agentId
@@ -155,11 +155,11 @@ async function printStandaloneAction(
   type: ConnectorType,
   connector: Connector | null,
 ): Promise<void> {
-  if (connector && !connector.needsReconnect) return;
+  if (connector?.connectionStatus === "connected") return;
 
   const origin = await getPlatformOrigin();
   console.log();
-  if (connector?.needsReconnect) {
+  if (connector?.connectionStatus === "reconnect-required") {
     const url = `${origin}/connectors`;
     console.log(
       `The ${type} connector is connected but needs to be reconnected.`,

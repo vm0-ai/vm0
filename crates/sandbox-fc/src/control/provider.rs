@@ -5,11 +5,14 @@ use std::time::Duration;
 use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use sandbox::{RemoteExecResult, SandboxControl, SandboxControlError};
+use sandbox::{RemoteExecResult, RemoteKillResult, SandboxControl, SandboxControlError};
 
 use super::CONTROL_SOCKET_OVERHEAD_MS;
-use super::client::send_exec;
-use super::protocol::{ExecRequest, ExecResponse};
+use super::client::{send_exec, send_terminate};
+use super::protocol::{
+    ExecRequest, ExecResponse, TerminateAction, TerminateRequest, TerminateResponse,
+    TerminateStatus,
+};
 use super::resolver::resolve_control_socket;
 use crate::paths::RuntimePaths;
 
@@ -79,6 +82,42 @@ impl SandboxControl for FirecrackerControl {
         }
     }
 
+    async fn kill_remote(&self, sandbox_id: &str) -> Result<RemoteKillResult, SandboxControlError> {
+        if sandbox_id.is_empty() {
+            return Err(SandboxControlError::NotFound(
+                "sandbox id must not be empty".into(),
+            ));
+        }
+
+        let sock_path = resolve_control_socket(sandbox_id)?;
+        let request = TerminateRequest {
+            action: TerminateAction::Terminate,
+        };
+
+        let response = send_terminate(&sock_path, &request, Duration::from_secs(5))
+            .await
+            .map_err(|e| {
+                if e.kind() == io::ErrorKind::InvalidInput {
+                    SandboxControlError::Io(e)
+                } else {
+                    SandboxControlError::Connection(format!("failed to connect to sandbox: {e}"))
+                }
+            })?;
+
+        match response {
+            TerminateResponse::Status {
+                status: TerminateStatus::Accepted,
+            } => Ok(RemoteKillResult::Accepted),
+            TerminateResponse::Status {
+                status: TerminateStatus::AlreadyStopped,
+            } => Ok(RemoteKillResult::AlreadyStopped),
+            TerminateResponse::Status {
+                status: TerminateStatus::RefusedIdle,
+            } => Ok(RemoteKillResult::RefusedIdle),
+            TerminateResponse::Error { error } => Err(SandboxControlError::Remote(error)),
+        }
+    }
+
     fn runtime_dir(&self, sandbox_id: &str) -> PathBuf {
         RuntimePaths::new().sock_dir(sandbox_id)
     }
@@ -104,6 +143,16 @@ mod tests {
         let result = control
             .exec_remote("", "echo hi", Duration::from_secs(5), false)
             .await;
+        let Err(e) = result else {
+            panic!("expected error");
+        };
+        assert!(e.to_string().contains("must not be empty"));
+    }
+
+    #[tokio::test]
+    async fn kill_remote_empty_id() {
+        let control = FirecrackerControl;
+        let result = control.kill_remote("").await;
         let Err(e) = result else {
             panic!("expected error");
         };

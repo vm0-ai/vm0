@@ -148,6 +148,73 @@ class TestReportModelProviderUsage:
 
         assert webhook.request_count == 0
 
+    def test_reports_non_billable_observable_model_provider(
+        self, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
+        """BYOK model providers report observations without billing events."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = False
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
+        flow.metadata["model_provider_usage"] = {
+            "model": "ignored-runtime-model",
+            "message_id": "msg-byok-usage-1",
+            "tokens.input": 100,
+        }
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage_observation(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        assert webhook.request_count == 1
+        assert webhook.requests[0].path == "/api/webhooks/agent/model-usage-observation"
+        body = webhook.requests[0].json_body()
+        assert set(body["events"][0]) == {
+            "idempotencyKey",
+            "model",
+            "category",
+            "quantity",
+        }
+        assert body["events"][0]["model"] == "claude-sonnet-4-6"
+        assert body["events"][0]["quantity"] == 100
+
+    def test_billable_model_provider_reports_billing_and_observation(
+        self, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:vm0"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
+        flow.metadata["model_provider_usage"] = {
+            "message_id": "msg-built-in-usage-1",
+            "tokens.input": 100,
+        }
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.report_model_provider_usage_observation(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        requests_by_path = {request.path: request for request in webhook.requests}
+        assert set(requests_by_path) == {
+            "/api/webhooks/agent/usage-event",
+            "/api/webhooks/agent/model-usage-observation",
+        }
+        usage_body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
+        observation_body = requests_by_path[
+            "/api/webhooks/agent/model-usage-observation"
+        ].json_body()
+        assert usage_body["events"][0]["provider"] == "claude-sonnet-4-6"
+        assert observation_body["events"][0]["model"] == "claude-sonnet-4-6"
+        assert (
+            usage_body["events"][0]["idempotencyKey"]
+            != observation_body["events"][0]["idempotencyKey"]
+        )
+
     def test_skips_non_model_provider(self, real_flow, fresh_usage_executor, usage_webhook_api):
         """Should NOT reach the webhook boundary for non-model-provider requests."""
         flow = real_flow(with_response=False, host="api.github.com")

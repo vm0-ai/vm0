@@ -24,6 +24,7 @@ import {
   setSidebarExpanded$,
   sidebarOff$,
 } from "../../../signals/zero-page/zero-nav.ts";
+import { isOrgAdmin$ } from "../../../signals/org.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockOrgMembers } from "../../../mocks/handlers/api-org-members.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
@@ -123,6 +124,28 @@ describe("sidebar layout - invite button hidden for non-admins (SIDEBAR-D-049)",
     await waitFor(() => {
       expect(screen.queryByText("Invite")).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("sidebar layout - invite button hidden on mobile thread routes", () => {
+  it("does not render the Invite fallback in the chat thread top bar for admins", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/chats/b0000000-0000-4000-a000-000000000001",
+    });
+
+    await waitFor(async () => {
+      await expect(context.store.get(isOrgAdmin$)).resolves.toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Open mobile artifacts"),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Invite")).not.toBeInTheDocument();
   });
 });
 

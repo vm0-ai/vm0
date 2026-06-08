@@ -24,6 +24,7 @@ import {
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -46,11 +47,22 @@ const TIER_CONCURRENCY_LIMITS: Readonly<Record<OrgTier, number>> =
     team: 10,
   });
 
-function tierLimit(tier: OrgTier | null | undefined): number {
+function effectiveOrgConcurrencyLimit(
+  tier: OrgTier | null | undefined,
+): number {
   if (!tier) {
     return TIER_CONCURRENCY_LIMITS["pro-suspend"];
   }
-  return TIER_CONCURRENCY_LIMITS[tier];
+  const tierLimit = TIER_CONCURRENCY_LIMITS[tier];
+  if (tierLimit === 0) {
+    return 0;
+  }
+
+  const cap = env("CONCURRENT_RUN_LIMIT_CAP");
+  if (cap === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return cap === undefined ? tierLimit : Math.min(tierLimit, cap);
 }
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -138,7 +150,9 @@ async function loadDrainCandidates(
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, orgId))
       .limit(1);
-    const limit = tierLimit(orgRow?.tier as OrgTier | null | undefined);
+    const limit = effectiveOrgConcurrencyLimit(
+      orgRow?.tier as OrgTier | null | undefined,
+    );
 
     const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
     const [activeRow] = await tx
@@ -194,7 +208,9 @@ async function promoteQueuedCandidate(
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, args.orgId))
       .limit(1);
-    const limit = tierLimit(orgRow?.tier as OrgTier | null | undefined);
+    const limit = effectiveOrgConcurrencyLimit(
+      orgRow?.tier as OrgTier | null | undefined,
+    );
 
     const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
     const [activeRow] = await tx
@@ -418,6 +434,24 @@ export const drainOrgQueue$ = command(
     }
 
     return 0;
+  },
+);
+
+export const drainOrgQueueToCapacity$ = command(
+  async (
+    { set },
+    args: { readonly orgId: string },
+    signal: AbortSignal,
+  ): Promise<number> => {
+    let drained = 0;
+    while (true) {
+      const promoted = await set(drainOrgQueue$, args, signal);
+      signal.throwIfAborted();
+      if (promoted === 0) {
+        return drained;
+      }
+      drained += promoted;
+    }
   },
 );
 

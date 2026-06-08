@@ -1,5 +1,149 @@
 # Changelog
 
+## [0.108.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.12...runner-rs-v0.108.13) (2026-06-07)
+
+
+### Bug Fixes
+
+* surface service logs journalctl failures ([#16499](https://github.com/vm0-ai/vm0/issues/16499)) ([e564257](https://github.com/vm0-ai/vm0/commit/e56425769e08dd6fc91d385e4db49bf299d0eaed))
+
+## [0.108.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.11...runner-rs-v0.108.12) (2026-06-07)
+
+
+### Bug Fixes
+
+* make nbd orphan detection lock-aware ([#16388](https://github.com/vm0-ai/vm0/issues/16388)) ([6def1ff](https://github.com/vm0-ai/vm0/commit/6def1ff8df4f45c7154e428d52ae97fbf9a7bf29))
+* **mitm-addon:** harden x billing json parser failures ([#16426](https://github.com/vm0-ai/vm0/issues/16426)) ([80c7315](https://github.com/vm0-ai/vm0/commit/80c73157dbbf5fa32922e1241e9f23ab2be5e745))
+* prevent runner kill from signaling reused pids ([#16296](https://github.com/vm0-ai/vm0/issues/16296)) ([5b6c483](https://github.com/vm0-ai/vm0/commit/5b6c48301845c9267a7437b63014fcd6d75bc331))
+* restore workspace image cache staff switch ([#16410](https://github.com/vm0-ai/vm0/issues/16410)) ([e78f7ad](https://github.com/vm0-ai/vm0/commit/e78f7ad24b2469854f1fdd43cf2422d915715f58))
+
+
+### Documentation
+
+* **mitm-addon:** document flow metadata contract ([#16423](https://github.com/vm0-ai/vm0/issues/16423)) ([ad9ed9e](https://github.com/vm0-ai/vm0/commit/ad9ed9e1d95748babc06045d7fe78405d5c30701))
+
+
+### Refactoring
+
+* **runner:** split executor into focused modules ([#16458](https://github.com/vm0-ai/vm0/issues/16458)) ([8ac3405](https://github.com/vm0-ai/vm0/commit/8ac3405705b7bef8a02c59b3b1125715bcbbbd3e))
+
+## [0.108.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.10...runner-rs-v0.108.11) (2026-06-05)
+
+
+### Bug Fixes
+
+* **mitm-addon:** reject nested encoded unsafe paths ([#16309](https://github.com/vm0-ai/vm0/issues/16309)) ([2533197](https://github.com/vm0-ai/vm0/commit/2533197d15212008784285d19e36167a1335dbd4))
+* **runner:** split guest-agent bootstrap env ([#16295](https://github.com/vm0-ai/vm0/issues/16295)) ([b77e7c7](https://github.com/vm0-ai/vm0/commit/b77e7c7c2dfd54e7c97596fee8ca371654e7c7b7))
+
+## [0.108.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.9...runner-rs-v0.108.10) (2026-06-05)
+
+## [0.108.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.8...runner-rs-v0.108.9) (2026-06-05)
+
+
+### Bug Fixes
+
+* **mitm-addon:** handle tld updater fetch failures ([#16293](https://github.com/vm0-ai/vm0/issues/16293)) ([901cb7e](https://github.com/vm0-ai/vm0/commit/901cb7ed48660db25ec92b05a2da7226b2f5fa30))
+
+## [0.108.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.7...runner-rs-v0.108.8) (2026-06-05)
+
+
+### Bug Fixes
+
+* move guest runtime files out of tmp ([#16263](https://github.com/vm0-ai/vm0/issues/16263)) ([dc87ac5](https://github.com/vm0-ai/vm0/commit/dc87ac5f4f11ada3306d4061a845de5f592d09b2))
+
+## [0.108.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.6...runner-rs-v0.108.7) (2026-06-05)
+
+
+### Documentation
+
+* **mitm-addon:** document url syntax helper semantics ([#16250](https://github.com/vm0-ai/vm0/issues/16250)) ([ff6d2cb](https://github.com/vm0-ai/vm0/commit/ff6d2cb3c290b72af2ae28dd0d939775587bf67b))
+
+## [0.108.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.5...runner-rs-v0.108.6) (2026-06-04)
+
+
+### Bug Fixes
+
+* drain usage flushes during shutdown ([#16181](https://github.com/vm0-ai/vm0/issues/16181)) ([6ba3593](https://github.com/vm0-ai/vm0/commit/6ba35934834c1d82e4ddac85f959a5e5bfdd666c))
+* **runner:** document and harden mitm matcher malformed inputs ([#16164](https://github.com/vm0-ai/vm0/issues/16164)) ([b839b76](https://github.com/vm0-ai/vm0/commit/b839b76fc640b668ec5051348b2b325dd562b618))
+
+## [0.108.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.4...runner-rs-v0.108.5) (2026-06-04)
+
+
+### Performance Improvements
+
+* avoid cloning workspace image cache list entries ([#16177](https://github.com/vm0-ai/vm0/issues/16177)) ([0d190b6](https://github.com/vm0-ai/vm0/commit/0d190b693d21ab16b3d332388d52c1e824eea64e))
+
+## [0.108.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.3...runner-rs-v0.108.4) (2026-06-04)
+
+
+### Bug Fixes
+
+* bound model websocket retention ([#16182](https://github.com/vm0-ai/vm0/issues/16182)) ([ff822d9](https://github.com/vm0-ai/vm0/commit/ff822d9c222b4b1b7439ef37e6e59753493993a1))
+* share X billing IDNA normalization ([#16162](https://github.com/vm0-ai/vm0/issues/16162)) ([16d3d59](https://github.com/vm0-ai/vm0/commit/16d3d592a396f15a7430282941ba5b861b29df46))
+
+
+### Refactoring
+
+* make firewall auth ownership explicit ([#16161](https://github.com/vm0-ai/vm0/issues/16161)) ([9832ae3](https://github.com/vm0-ai/vm0/commit/9832ae33d48503dc3e705d4c1e33b240fc3b177e))
+
+## [0.108.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.2...runner-rs-v0.108.3) (2026-06-04)
+
+
+### Bug Fixes
+
+* **runner:** restore codex sessions with rollout filenames ([#16144](https://github.com/vm0-ai/vm0/issues/16144)) ([1adf687](https://github.com/vm0-ai/vm0/commit/1adf687fcfcf39c06a11e3b995918f8c46e8f611))
+
+## [0.108.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.1...runner-rs-v0.108.2) (2026-06-04)
+
+
+### Bug Fixes
+
+* **mitm-addon:** guard content length response size fallback ([#16104](https://github.com/vm0-ai/vm0/issues/16104)) ([95d44d6](https://github.com/vm0-ai/vm0/commit/95d44d6801868530954bc262497525e4421e370e))
+* reject invalid registry vm entries before auth ([#16108](https://github.com/vm0-ai/vm0/issues/16108)) ([238ffc2](https://github.com/vm0-ai/vm0/commit/238ffc239283aaf1bdeac808bbbdfbe9abda3f67))
+
+
+### Refactoring
+
+* clarify idle pool lifecycle state ([#16135](https://github.com/vm0-ai/vm0/issues/16135)) ([a5e63e6](https://github.com/vm0-ai/vm0/commit/a5e63e6b5e19c6ac99f49549d42d2238dcab06d6))
+
+## [0.108.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.0...runner-rs-v0.108.1) (2026-06-04)
+
+
+### Bug Fixes
+
+* **mitm-addon:** bound X includes usage categories ([#16100](https://github.com/vm0-ai/vm0/issues/16100)) ([a5dcb25](https://github.com/vm0-ai/vm0/commit/a5dcb25c2ce73842e928c7b241d1e35798bb9caa))
+* tolerate invalid response content length ([#16088](https://github.com/vm0-ai/vm0/issues/16088)) ([6ab7225](https://github.com/vm0-ai/vm0/commit/6ab72256f2d2dee06d31423f0db2e81ab03377af))
+
+
+### Documentation
+
+* **mitm-addon:** document anthropic json usage extractor ([#16085](https://github.com/vm0-ai/vm0/issues/16085)) ([59cb7b4](https://github.com/vm0-ai/vm0/commit/59cb7b45f0a2ccf36b78a925e5df24de7fa39bc3))
+
+## [0.108.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.10...runner-rs-v0.108.0) (2026-06-04)
+
+
+### Features
+
+* add workspace image cache inspection ([#15941](https://github.com/vm0-ai/vm0/issues/15941)) ([7cf129c](https://github.com/vm0-ai/vm0/commit/7cf129c0193c716f2a3d20eb9b12ea1d3937be4e))
+
+
+### Bug Fixes
+
+* materialize cached artifact mount roots ([#16083](https://github.com/vm0-ai/vm0/issues/16083)) ([d6a4ed3](https://github.com/vm0-ai/vm0/commit/d6a4ed307b5c4aeac8edb400aec1f65369d5f781))
+* **mitm-addon:** avoid quadratic sse line scans ([#16082](https://github.com/vm0-ai/vm0/issues/16082)) ([1230752](https://github.com/vm0-ai/vm0/commit/1230752fddb62c60f26554bcdf0a47de1ae48e20))
+
+
+### Refactoring
+
+* clarify local queue job lookup ([#16074](https://github.com/vm0-ai/vm0/issues/16074)) ([2483cd4](https://github.com/vm0-ai/vm0/commit/2483cd44526cbe74363dd054f0bc121c89966558))
+
+## [0.107.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.9...runner-rs-v0.107.10) (2026-06-04)
+
+
+### Bug Fixes
+
+* include byok model usage in rankings ([#15979](https://github.com/vm0-ai/vm0/issues/15979)) ([09e8919](https://github.com/vm0-ai/vm0/commit/09e8919abf68a3c5d2662ff061b7892a54d29c29))
+
 ## [0.107.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.8...runner-rs-v0.107.9) (2026-06-03)
 
 

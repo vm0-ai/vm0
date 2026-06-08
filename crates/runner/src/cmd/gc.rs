@@ -1033,7 +1033,7 @@ async fn gc_versions(
     Ok(removed)
 }
 
-/// Scan for NBD devices whose owning process has exited (orphans) and
+/// Scan for lock-free NBD devices whose recorded owner task has exited and
 /// optionally disconnect them. Returns the number of orphans cleaned.
 async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
     let (max_devs, orphans) = tokio::task::spawn_blocking(super::nbd::find_nbd_orphans)

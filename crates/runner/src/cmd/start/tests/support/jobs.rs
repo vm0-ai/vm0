@@ -78,3 +78,15 @@ pub(in super::super) fn context_with_session(
     });
     ctx
 }
+
+pub(in super::super) fn context_with_workspace_image_cache_enabled(
+    run_id: RunId,
+    session_id: &str,
+) -> crate::types::ExecutionContext {
+    let mut ctx = context_with_session(run_id, session_id);
+    ctx.feature_flags = Some(std::collections::HashMap::from([(
+        crate::types::SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.to_string(),
+        true,
+    )]));
+    ctx
+}

@@ -137,6 +137,47 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     );
   });
 
+  it("returns generation template on sent user messages", async () => {
+    const fixture = await trackThread(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    const generationTemplate = {
+      type: "presentation",
+      selection: {
+        designSystemId: "design-system:test",
+        templateId: "template:test",
+      },
+    } as const;
+    await store.set(
+      seedZeroChatMessage$,
+      fixture,
+      {
+        role: "user",
+        content: "Make a template deck",
+        generationTemplate,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadMessagesContract);
+    const response = await accept(
+      client.list({
+        params: { threadId: fixture.threadId },
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.messages).toHaveLength(1);
+    expect(response.body.messages[0]).toMatchObject({
+      role: "user",
+      content: "Make a template deck",
+      generationTemplate,
+    });
+  });
+
   it("paginates using sinceId cursor", async () => {
     const fixture = await trackThread(
       store.set(seedZeroChatThread$, {}, context.signal),

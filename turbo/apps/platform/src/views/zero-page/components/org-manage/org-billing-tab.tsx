@@ -20,6 +20,10 @@ import {
   closeDowngradeDialog$,
   confirmDowngrade$,
   downgradeDialogOpen$,
+  openRestoreDialog$,
+  closeRestoreDialog$,
+  restoreDialogOpen$,
+  restorePlan$,
   type BillingTier,
 } from "../../../../signals/zero-page/billing.ts";
 import {
@@ -29,6 +33,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import {
   Dialog,
   DialogContent,
@@ -47,7 +52,9 @@ import {
   billingSubPage$,
   setBillingScrollTarget$,
   setBillingSubPage$,
+  lockedTarget$,
   selectedTarget$,
+  setLockedTarget$,
   setSelectedTarget$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
@@ -113,6 +120,9 @@ const COMPARE_PLANS = PLANS.filter((plan) => {
   return plan.tier !== "free";
 });
 
+type ScheduledBillingChange = BillingStatusResponse["scheduledChange"];
+type BillingPlan = (typeof PLANS)[number];
+
 function getPlanPrice(tier: string): string {
   const plan = PLANS.find((p) => {
     return p.tier === tier;
@@ -137,10 +147,44 @@ function isPaidTier(tier: BillingTier): boolean {
   return tier === "pro" || tier === "team";
 }
 
-function planButtonLabel(
-  plan: (typeof PLANS)[number],
-  currentTier: BillingTier,
-): string {
+function formatBillingDate(value: string): string {
+  return new Date(value).toLocaleDateString("en-US");
+}
+
+function scheduledEffectiveDate(
+  scheduledChange: ScheduledBillingChange,
+  periodEnd: string | null | undefined,
+): string | null {
+  return scheduledChange?.effectiveDate ?? periodEnd ?? null;
+}
+
+function scheduledTargetLabel(scheduledChange: ScheduledBillingChange): string {
+  if (!scheduledChange?.targetTier) {
+    return "the selected plan";
+  }
+  return formatTierLabel(scheduledChange.targetTier);
+}
+
+function billingScheduledChange(
+  status: BillingStatusResponse | null,
+): ScheduledBillingChange {
+  if (!status) {
+    return null;
+  }
+  if (status.scheduledChange) {
+    return status.scheduledChange;
+  }
+  if (status.cancelAtPeriodEnd) {
+    return {
+      type: "cancel",
+      targetTier: "pro-suspend",
+      effectiveDate: status.currentPeriodEnd,
+    };
+  }
+  return null;
+}
+
+function planButtonLabel(plan: BillingPlan, currentTier: BillingTier): string {
   if (plan.tier === currentTier) {
     return "Current plan";
   }
@@ -153,23 +197,186 @@ function planButtonLabel(
   if (tierRank(plan.tier) > tierRank(currentTier)) {
     return plan.cta;
   }
-  return "Manage subscription";
+  return "Manage";
+}
+
+function isPlanDowngradeTarget(
+  plan: BillingPlan,
+  scheduledChange: ScheduledBillingChange,
+): boolean {
+  return (
+    scheduledChange?.type === "downgrade" &&
+    plan.tier === scheduledChange.targetTier
+  );
+}
+
+function canReplaceCancellationWithPro(
+  plan: BillingPlan,
+  currentTier: BillingTier,
+  scheduledChange: ScheduledBillingChange,
+): boolean {
+  return (
+    currentTier === "team" &&
+    plan.tier === "pro" &&
+    scheduledChange?.type === "cancel"
+  );
+}
+
+function canRestoreCurrentPlan(args: {
+  currentTier: BillingTier;
+  scheduledChange: ScheduledBillingChange;
+  isCurrent: boolean;
+}): boolean {
+  return (
+    isPaidTier(args.currentTier) &&
+    args.scheduledChange !== null &&
+    args.isCurrent
+  );
+}
+
+function planCardLabel(args: {
+  plan: BillingPlan;
+  currentTier: BillingTier;
+  scheduledChange: ScheduledBillingChange;
+  restoreCurrentPlan: boolean;
+}): string {
+  if (args.restoreCurrentPlan) {
+    return "Restore plan";
+  }
+  if (
+    canReplaceCancellationWithPro(
+      args.plan,
+      args.currentTier,
+      args.scheduledChange,
+    )
+  ) {
+    return "Downgrade to Pro";
+  }
+  return planButtonLabel(args.plan, args.currentTier);
+}
+
+function planCardButtonVariant(args: {
+  plan: BillingPlan;
+  isCurrent: boolean;
+  label: string;
+  restoreCurrentPlan: boolean;
+}): React.ComponentProps<typeof Button>["variant"] {
+  if (args.restoreCurrentPlan) {
+    return "default";
+  }
+  if (args.isCurrent || args.label === "Manage") {
+    return "outline";
+  }
+  if ("primary" in args.plan && args.plan.primary) {
+    return "default";
+  }
+  return "outline";
+}
+
+function planCardButtonDisabled(args: {
+  loading: boolean;
+  label: string;
+  unavailable: boolean;
+  isCurrent: boolean;
+  restoreCurrentPlan: boolean;
+}): boolean {
+  if (args.loading) {
+    return true;
+  }
+  if (args.restoreCurrentPlan || args.label === "Manage") {
+    return false;
+  }
+  return args.isCurrent || args.unavailable;
+}
+
+function PlanScheduleNotice({
+  plan,
+  isCurrent,
+  isDowngradeTarget,
+  scheduledChange,
+  changeDate,
+}: {
+  plan: BillingPlan;
+  isCurrent: boolean;
+  isDowngradeTarget: boolean;
+  scheduledChange: ScheduledBillingChange;
+  changeDate: string | null;
+}) {
+  if (!changeDate) {
+    return null;
+  }
+  const noticeClassName =
+    "mb-5 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[12px] leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300";
+
+  if (scheduledChange?.type === "cancel" && isCurrent) {
+    return (
+      <p className={noticeClassName}>Ends on {formatBillingDate(changeDate)}</p>
+    );
+  }
+  if (scheduledChange?.type === "downgrade" && isCurrent) {
+    return (
+      <p className={noticeClassName}>
+        Downgrades to {scheduledTargetLabel(scheduledChange)} on{" "}
+        {formatBillingDate(changeDate)}
+      </p>
+    );
+  }
+  if (isDowngradeTarget) {
+    return (
+      <p className={noticeClassName}>
+        Downgrades to {formatTierLabel(plan.tier)} on{" "}
+        {formatBillingDate(changeDate)}
+      </p>
+    );
+  }
+  return null;
 }
 
 function PlanCard({
   plan,
   currentTier,
+  scheduledChange,
+  periodEnd,
   loading,
   onAction,
+  onRestore,
 }: {
-  plan: (typeof PLANS)[number];
+  plan: BillingPlan;
   currentTier: BillingTier;
+  scheduledChange: ScheduledBillingChange;
+  periodEnd: string | null | undefined;
   loading: boolean;
   onAction: (planTier: BillingTier, e: React.MouseEvent) => void;
+  onRestore: () => void;
 }) {
   const isCurrent = plan.tier === currentTier;
-  const label = planButtonLabel(plan, currentTier);
+  const isDowngradeTarget = isPlanDowngradeTarget(plan, scheduledChange);
+  const restoreCurrentPlan = canRestoreCurrentPlan({
+    currentTier,
+    scheduledChange,
+    isCurrent,
+  });
+  const label = planCardLabel({
+    plan,
+    currentTier,
+    scheduledChange,
+    restoreCurrentPlan,
+  });
   const unavailable = label === "Unavailable";
+  const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
+  const buttonVariant = planCardButtonVariant({
+    plan,
+    isCurrent,
+    label,
+    restoreCurrentPlan,
+  });
+  const buttonDisabled = planCardButtonDisabled({
+    loading,
+    label,
+    unavailable,
+    isCurrent,
+    restoreCurrentPlan,
+  });
 
   return (
     <div className="relative flex flex-col rounded-xl transition-transform duration-200 hover:-translate-y-0.5 zero-border px-6 py-7">
@@ -206,6 +413,14 @@ function PlanCard({
         {plan.description}
       </p>
 
+      <PlanScheduleNotice
+        plan={plan}
+        isCurrent={isCurrent}
+        isDowngradeTarget={isDowngradeTarget}
+        scheduledChange={scheduledChange}
+        changeDate={changeDate}
+      />
+
       <ul className="mb-6 flex flex-col gap-2.5">
         {plan.features.map((feature) => {
           return (
@@ -234,21 +449,18 @@ function PlanCard({
 
       <div className="mt-auto">
         <Button
-          variant={
-            isCurrent
-              ? "outline"
-              : "primary" in plan && plan.primary
-                ? "default"
-                : "outline"
-          }
+          variant={buttonVariant}
           size="default"
           className="w-full h-11 text-sm font-medium"
-          disabled={loading || isCurrent || unavailable}
+          disabled={buttonDisabled}
           onClick={(e) => {
+            if (restoreCurrentPlan) {
+              return onRestore();
+            }
             return onAction(plan.tier, e);
           }}
         >
-          {isCurrent ? "Current plan" : label}
+          {label}
         </Button>
       </div>
     </div>
@@ -257,21 +469,37 @@ function PlanCard({
 
 function PricingPage({
   currentTier,
+  scheduledChange,
+  periodEnd,
   onBack,
+  onRestore,
 }: {
   currentTier: BillingTier;
+  scheduledChange: ScheduledBillingChange;
+  periodEnd: string | null | undefined;
   onBack: () => void;
+  onRestore: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const loading = checkoutLoadable.state === "loading";
   const openDowngrade = useSet(openDowngradeDialog$);
+  const setLockedTarget = useSet(setLockedTarget$);
 
   const handlePlanAction = (planTier: BillingTier, e: React.MouseEvent) => {
     if (planTier === currentTier) {
       return;
     }
     if (planTier === "free" && currentTier === "pro-suspend") {
+      return;
+    }
+    if (
+      currentTier === "team" &&
+      planTier === "pro" &&
+      scheduledChange?.type === "cancel"
+    ) {
+      setLockedTarget("pro");
+      openDowngrade();
       return;
     }
     if (planTier === "free" || tierRank(planTier) < tierRank(currentTier)) {
@@ -323,15 +551,18 @@ function PricingPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 -mx-4 sm:-mx-10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {COMPARE_PLANS.map((plan) => {
           return (
             <PlanCard
               key={plan.tier}
               plan={plan}
               currentTier={currentTier}
+              scheduledChange={scheduledChange}
+              periodEnd={periodEnd}
               loading={loading}
               onAction={handlePlanAction}
+              onRestore={onRestore}
             />
           );
         })}
@@ -358,30 +589,48 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
       : null;
   const close = useSet(closeDowngradeDialog$);
   const selectedTarget = useGet(selectedTarget$);
+  const lockedTarget = useGet(lockedTarget$);
   const setSelectedTarget = useSet(setSelectedTarget$);
+  const setLockedTarget = useSet(setLockedTarget$);
 
   const isTeam = currentTier === "team";
+  const isLockedTarget = lockedTarget !== null;
+  const downgradeTarget = isTeam ? selectedTarget : "pro-suspend";
+  const targetLabel = formatTierLabel(downgradeTarget);
 
   const handleConfirm = () => {
-    detach(confirm(selectedTarget, pageSignal), Reason.DomCallback);
+    detach(confirm(downgradeTarget, pageSignal), Reason.DomCallback);
   };
 
   return (
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        return !v && close();
+        if (v) {
+          return;
+        }
+        setLockedTarget(null);
+        close();
       }}
     >
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle>Downgrade plan</DialogTitle>
           <DialogDescription>
-            {isTeam
-              ? "Choose which plan to downgrade to."
-              : "Are you sure you want to cancel your Pro plan?"}
+            {isTeam && isLockedTarget
+              ? `Downgrade to ${targetLabel}?`
+              : isTeam
+                ? "Choose which plan to downgrade to."
+                : "Are you sure you want to cancel your Pro plan?"}
           </DialogDescription>
         </DialogHeader>
+
+        {isTeam && isLockedTarget && (
+          <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
+            Your Team access remains active until the current billing period
+            ends. After that, this workspace moves to {targetLabel}.
+          </p>
+        )}
 
         {!isTeam && (
           <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
@@ -391,7 +640,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           </p>
         )}
 
-        {isTeam && (
+        {isTeam && !isLockedTarget && (
           <div className="flex flex-col gap-2 mt-2">
             <button
               type="button"
@@ -442,6 +691,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           <Button
             variant="outline"
             onClick={() => {
+              setLockedTarget(null);
               return close();
             }}
             disabled={loading}
@@ -455,9 +705,75 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           >
             {loading
               ? "Downgrading..."
-              : selectedTarget === "pro-suspend"
+              : downgradeTarget === "pro-suspend"
                 ? "Cancel subscription"
-                : `Downgrade to ${formatTierLabel(selectedTarget)}`}
+                : `Downgrade to ${targetLabel}`}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RestorePlanConfirmDialog({
+  currentTier,
+  periodEnd,
+  scheduledChange,
+}: {
+  currentTier: BillingTier;
+  periodEnd: string | null | undefined;
+  scheduledChange: ScheduledBillingChange;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const open = useGet(restoreDialogOpen$);
+  const close = useSet(closeRestoreDialog$);
+  const [restoreLoadable, restore] = useLoadableSet(restorePlan$);
+  const loading = restoreLoadable.state === "loading";
+  const error =
+    restoreLoadable.state === "hasError" ? String(restoreLoadable.error) : null;
+  const planLabel = formatTierLabel(currentTier);
+  const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
+  const periodText = changeDate
+    ? ` It will renew on ${formatBillingDate(changeDate)}.`
+    : "";
+  const description =
+    scheduledChange?.type === "downgrade"
+      ? `This will cancel the scheduled downgrade to ${scheduledTargetLabel(
+          scheduledChange,
+        )}. Your ${planLabel} plan will continue renewing.`
+      : `This will undo the scheduled cancellation for your ${planLabel} plan.${periodText}`;
+
+  const handleConfirm = () => {
+    detach(restore(pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        return !v && close();
+      }}
+    >
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader>
+          <DialogTitle>Restore {planLabel} plan?</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+
+        {error && <p className="text-sm text-destructive mt-2">{error}</p>}
+
+        <div className="flex justify-end gap-2 mt-4">
+          <Button
+            variant="outline"
+            onClick={() => {
+              return close();
+            }}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
+          <Button onClick={handleConfirm} disabled={loading}>
+            {loading ? "Restoring..." : "Restore plan"}
           </Button>
         </div>
       </DialogContent>
@@ -467,25 +783,38 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
 
 function PlanActionButtons({
   isPaid,
-  isCancelling,
+  hasScheduledChange,
   currentTier,
   loading,
   onUpgrade,
   onDowngrade,
+  onRestore,
 }: {
   isPaid: boolean;
-  isCancelling: boolean;
+  hasScheduledChange: boolean;
   currentTier: BillingTier;
   loading: boolean;
   onUpgrade: () => void;
   onDowngrade: () => void;
+  onRestore: () => void;
 }) {
   const showUpgrade =
-    (isPaid && currentTier !== "team" && !isCancelling) || !isPaid;
-  const showDowngrade = isPaid && !isCancelling;
+    (isPaid && currentTier !== "team" && !hasScheduledChange) || !isPaid;
+  const showDowngrade = isPaid && !hasScheduledChange;
+  const showRestore = isPaid && hasScheduledChange;
 
   return (
     <div className="flex items-center gap-2 shrink-0">
+      {showRestore && (
+        <Button
+          size="sm"
+          className="rounded-lg h-8 text-xs"
+          disabled={loading}
+          onClick={onRestore}
+        >
+          Restore plan
+        </Button>
+      )}
       {showUpgrade && (
         <Button
           size="sm"
@@ -518,6 +847,31 @@ function shouldShowBuyCreditsSection(
   return hasBillingStatus && currentTier !== "pro-suspend";
 }
 
+function billingPeriodLabel(args: {
+  isPaid: boolean;
+  scheduledChange: ScheduledBillingChange;
+  periodEnd: string | null | undefined;
+}): string | null {
+  const { isPaid, scheduledChange, periodEnd } = args;
+  if (!isPaid) {
+    return null;
+  }
+
+  const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
+  if (!changeDate) {
+    return null;
+  }
+
+  const date = formatBillingDate(changeDate);
+  if (scheduledChange?.type === "cancel") {
+    return `Ends on ${date}`;
+  }
+  if (scheduledChange?.type === "downgrade") {
+    return `Downgrades to ${scheduledTargetLabel(scheduledChange)} on ${date}`;
+  }
+  return `Renews ${date}`;
+}
+
 export function OrgBillingTab() {
   const pricingOpen = useGet(billingSubPage$);
   const billingScrollTarget = useGet(billingScrollTarget$);
@@ -529,6 +883,8 @@ export function OrgBillingTab() {
   const pageSignal = useGet(pageSignal$);
   const reloadBilling = useSet(reloadBillingStatus$);
   const openDowngrade = useSet(openDowngradeDialog$);
+  const setLockedTarget = useSet(setLockedTarget$);
+  const openRestore = useSet(openRestoreDialog$);
   const [portalLoadable, portal] = useLoadableSet(startDowngrade$);
   const statusLoadable = useLastLoadable(billingStatusAsync$);
   const loading = portalLoadable.state === "loading";
@@ -540,17 +896,24 @@ export function OrgBillingTab() {
 
   const currentTier = apiTierToBillingTier(status?.tier);
   const isPaid = isPaidTier(currentTier);
-  const isCancelling = status?.cancelAtPeriodEnd === true;
+  const scheduledChange = billingScheduledChange(status);
+  const hasScheduledChange = scheduledChange !== null;
+  const isCancelling = scheduledChange?.type === "cancel";
+  const isDowngrading = scheduledChange?.type === "downgrade";
   const periodEnd = status?.currentPeriodEnd;
-  const periodLabel =
-    periodEnd !== undefined && periodEnd !== null && periodEnd !== ""
-      ? isCancelling
-        ? `Ends on ${new Date(periodEnd).toLocaleDateString("en-US")}`
-        : `Renews ${new Date(periodEnd).toLocaleDateString("en-US")}`
-      : null;
+  const periodLabel = billingPeriodLabel({
+    isPaid,
+    scheduledChange,
+    periodEnd,
+  });
+  const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
 
   const handleDowngrade = () => {
+    setLockedTarget(null);
     openDowngrade();
+  };
+  const handleRestore = () => {
+    openRestore();
   };
   const currentPlanLabel =
     currentTier === "pro-suspend"
@@ -566,11 +929,19 @@ export function OrgBillingTab() {
       <>
         <PricingPage
           currentTier={currentTier}
+          scheduledChange={scheduledChange}
+          periodEnd={periodEnd}
           onBack={() => {
             return setPricingOpen(false);
           }}
+          onRestore={handleRestore}
         />
         <DowngradeConfirmDialog currentTier={currentTier} />
+        <RestorePlanConfirmDialog
+          currentTier={currentTier}
+          periodEnd={periodEnd}
+          scheduledChange={scheduledChange}
+        />
       </>
     );
   }
@@ -616,23 +987,35 @@ export function OrgBillingTab() {
                 </div>
                 <PlanActionButtons
                   isPaid={isPaid}
-                  isCancelling={isCancelling}
+                  hasScheduledChange={hasScheduledChange}
                   currentTier={currentTier}
                   loading={loading}
                   onUpgrade={() => {
                     return setPricingOpen(true);
                   }}
                   onDowngrade={handleDowngrade}
+                  onRestore={handleRestore}
                 />
               </div>
-              {isCancelling && periodEnd && (
+              {isCancelling && changeDate && (
                 <>
                   <div className="h-0 zero-border-t mx-5" />
                   <div className="px-5 py-3">
                     <p className="text-[13px] text-amber-600 dark:text-amber-400">
                       Your {formatTierLabel(currentTier)} plan has been
-                      cancelled and will end on{" "}
-                      {new Date(periodEnd).toLocaleDateString("en-US")}.
+                      cancelled and will end on {formatBillingDate(changeDate)}.
+                    </p>
+                  </div>
+                </>
+              )}
+              {isDowngrading && changeDate && (
+                <>
+                  <div className="h-0 zero-border-t mx-5" />
+                  <div className="px-5 py-3">
+                    <p className="text-[13px] text-amber-600 dark:text-amber-400">
+                      Your {formatTierLabel(currentTier)} plan will downgrade to{" "}
+                      {scheduledTargetLabel(scheduledChange)} on{" "}
+                      {formatBillingDate(changeDate)}.
                     </p>
                   </div>
                 </>
@@ -715,6 +1098,11 @@ export function OrgBillingTab() {
       )}
 
       <DowngradeConfirmDialog currentTier={currentTier} />
+      <RestorePlanConfirmDialog
+        currentTier={currentTier}
+        periodEnd={periodEnd}
+        scheduledChange={scheduledChange}
+      />
     </div>
   );
 }

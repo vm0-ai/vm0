@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import http.client
+import io
 import subprocess
 import sys
+import urllib.error
 from collections.abc import Iterable
+from email.message import Message
 from pathlib import Path
 
 import pytest
@@ -13,6 +17,52 @@ from usage.providers.connectors.x_tlds import IANA_TLD_VERSION, IANA_TLDS
 _ADDON_ROOT = Path(__file__).resolve().parents[1]
 _UPDATE_SCRIPT = _ADDON_ROOT / "scripts" / "update-x-tlds.py"
 _CLI_TIMEOUT_SECONDS = 30
+
+
+class _FailingOpener:
+    def open(self, request: object, timeout: int) -> None:
+        raise urllib.error.URLError("dns failed")
+
+
+class _HttpErrorOpener:
+    def open(self, request: object, timeout: int) -> None:
+        raise urllib.error.HTTPError(
+            update_x_tlds.SOURCE_URL,
+            503,
+            "Service Unavailable",
+            Message(),
+            io.BytesIO(b""),
+        )
+
+
+class _ReadFailureResponse:
+    status = update_x_tlds.HTTPStatus.OK
+
+    def __enter__(self) -> _ReadFailureResponse:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        raise http.client.IncompleteRead(b"partial")
+
+
+class _ReadFailureOpener:
+    def open(self, request: object, timeout: int) -> _ReadFailureResponse:
+        return _ReadFailureResponse()
+
+
+def _build_failing_opener(*handlers: object) -> _FailingOpener:
+    return _FailingOpener()
+
+
+def _build_http_error_opener(*handlers: object) -> _HttpErrorOpener:
+    return _HttpErrorOpener()
+
+
+def _build_read_failure_opener(*handlers: object) -> _ReadFailureOpener:
+    return _ReadFailureOpener()
 
 
 def _source_text(version: str, tlds: Iterable[str]) -> str:
@@ -95,6 +145,57 @@ def test_update_generated_rejects_malformed_source_without_replacing_output(tmp_
     with pytest.raises(ValueError, match="version header"):
         update_x_tlds.update_generated(source)
 
+    assert output.read_text(encoding="utf-8") == original
+
+
+def test_fetch_source_reports_url_error_as_fetch_error(monkeypatch):
+    monkeypatch.setattr(update_x_tlds.urllib.request, "build_opener", _build_failing_opener)
+
+    with pytest.raises(update_x_tlds.TldFetchError) as exc_info:
+        update_x_tlds.fetch_source()
+
+    message = str(exc_info.value)
+    assert f"failed to fetch {update_x_tlds.SOURCE_URL}:" in message
+    assert "dns failed" in message
+
+
+def test_fetch_source_preserves_http_error_status_message(monkeypatch):
+    monkeypatch.setattr(update_x_tlds.urllib.request, "build_opener", _build_http_error_opener)
+
+    with pytest.raises(update_x_tlds.TldFetchError) as exc_info:
+        update_x_tlds.fetch_source()
+
+    assert str(exc_info.value) == f"failed to fetch {update_x_tlds.SOURCE_URL}: HTTP 503"
+
+
+def test_fetch_source_reports_response_read_failure_as_fetch_error(monkeypatch):
+    monkeypatch.setattr(update_x_tlds.urllib.request, "build_opener", _build_read_failure_opener)
+
+    with pytest.raises(update_x_tlds.TldFetchError) as exc_info:
+        update_x_tlds.fetch_source()
+
+    message = str(exc_info.value)
+    assert f"failed to fetch {update_x_tlds.SOURCE_URL}:" in message
+    assert "IncompleteRead" in message
+
+
+def test_default_update_cli_reports_fetch_failure_without_replacing_output(
+    tmp_path, monkeypatch, capsys
+):
+    output = tmp_path / "x_tlds.py"
+    original = "# existing generated snapshot\n"
+    output.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [str(_UPDATE_SCRIPT)])
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+    monkeypatch.setattr(update_x_tlds.urllib.request, "build_opener", _build_failing_opener)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert f"failed to fetch {update_x_tlds.SOURCE_URL}:" in captured.err
+    assert "dns failed" in captured.err
+    assert "Traceback" not in captured.err
     assert output.read_text(encoding="utf-8") == original
 
 

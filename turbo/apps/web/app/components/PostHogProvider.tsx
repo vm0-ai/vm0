@@ -48,6 +48,17 @@ function ensureInitialized(): void {
   initialized = true;
 }
 
+export function capturePostHogEvent(
+  eventName: string,
+  properties?: Record<string, unknown>,
+): void {
+  ensureInitialized();
+  if (!POSTHOG_KEY) {
+    return;
+  }
+  posthog.capture(eventName, properties);
+}
+
 export function PostHogProvider() {
   const pathname = usePathname();
 

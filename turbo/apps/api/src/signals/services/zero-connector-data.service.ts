@@ -1,25 +1,26 @@
 import { command, computed, type Computed } from "ccstate";
 import type {
   ConnectorListResponse,
+  ConnectorProvidedBinding,
   ConnectorResponse,
   ScopeDiffResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   connectorAuthMethodRefHasRevokeKind,
-  getAvailableConnectorAuthMethods,
+  getAvailableConnectorAuthMethodIds,
   getConnectorAuthMethodGrantMetadata,
   getConnectorAuthMethodRevokeMetadata,
-  getConnectorAuthMethodStorageMetadata,
+  getConnectorAuthMethodRuntimeMetadata,
   getConnectorAuthMethodScopeDiff,
   getConnectorAuthMethod,
   getConnectorManualGrantFieldNamesForAuthMethod,
   getConnectorOwnedSecretNames,
-  getConnectorVariableNames,
+  getConnectorOwnedVariableNames,
   getRuntimeAvailableConnectorTypes,
   type ConnectorAuthMethodRef,
   type ConnectorAuthMethodRefByRevokeKind,
-  type ManualGrantFieldNames,
+  type ConnectorManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
 import { revokeConnectorAuthMethodAccessToken } from "@vm0/connectors/auth-providers";
 import {
@@ -30,7 +31,7 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
-  type ConnectorAuthProviderType,
+  type AuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getAllFeatureStates,
@@ -56,6 +57,7 @@ import {
   userFeatureSwitchContext,
   userFeatureSwitchOverrides,
 } from "./feature-switches.service";
+import { connectorCredentialStatus } from "./connector-credential-status.service";
 
 type StoredConnectorRow = {
   readonly id: string;
@@ -65,13 +67,10 @@ type StoredConnectorRow = {
   readonly externalEmail: string | null;
   readonly oauthScopes: string | null;
   readonly needsReconnect: boolean;
+  readonly tokenExpiresAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
-
-interface ConnectorScopedSecretNames {
-  readonly secretNames: ReadonlySet<string>;
-}
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
@@ -149,7 +148,15 @@ function parseOauthScopes(value: string | null): string[] | null {
 function storedConnectorRowToResponse(
   row: StoredConnectorRow,
   type: ConnectorType,
+  now: Date,
 ): ConnectorResponse {
+  const credentialStatus = connectorCredentialStatus({
+    type,
+    authMethod: row.authMethod,
+    storedNeedsReconnect: row.needsReconnect,
+    tokenExpiresAt: row.tokenExpiresAt,
+    now,
+  });
   return {
     id: row.id,
     type,
@@ -158,7 +165,11 @@ function storedConnectorRowToResponse(
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
     oauthScopes: parseOauthScopes(row.oauthScopes),
-    needsReconnect: row.needsReconnect,
+    connectionStatus:
+      credentialStatus === "reconnect-required"
+        ? "reconnect-required"
+        : "connected",
+    tokenExpiresAt: row.tokenExpiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -169,7 +180,7 @@ function storedConnectorTypeIsVisible(
   featureStates: FeatureStates,
 ): boolean {
   return (
-    getAvailableConnectorAuthMethods(type, featureStates, {
+    getAvailableConnectorAuthMethodIds(type, featureStates, {
       apiAuthMethodPolicy: "include",
     }).length > 0
   );
@@ -343,7 +354,7 @@ export function zeroConnectorList(args: {
 }): Computed<Promise<ConnectorListResponse>> {
   return computed(async (get): Promise<ConnectorListResponse> => {
     const db = get(db$);
-    const [storedRows, connectorSecretRows, overrides] = await Promise.all([
+    const [storedRows, overrides] = await Promise.all([
       db
         .select({
           id: connectors.id,
@@ -354,6 +365,7 @@ export function zeroConnectorList(args: {
           externalEmail: connectors.externalEmail,
           oauthScopes: connectors.oauthScopes,
           needsReconnect: connectors.needsReconnect,
+          tokenExpiresAt: connectors.tokenExpiresAt,
           createdAt: connectors.createdAt,
           updatedAt: connectors.updatedAt,
         })
@@ -364,16 +376,6 @@ export function zeroConnectorList(args: {
             eq(connectors.userId, args.userId),
           ),
         ),
-      db
-        .select({ name: secrets.name })
-        .from(secrets)
-        .where(
-          and(
-            eq(secrets.orgId, args.orgId),
-            eq(secrets.userId, args.userId),
-            eq(secrets.type, "connector"),
-          ),
-        ),
       get(userFeatureSwitchOverrides(args.orgId, args.userId)),
     ]);
     const featureStates = getAllFeatureStates({
@@ -382,6 +384,7 @@ export function zeroConnectorList(args: {
       overrides,
     });
 
+    const now = nowDate();
     const connectorList: ConnectorResponse[] = storedRows.flatMap((row) => {
       const parsed = connectorTypeSchema.safeParse(row.type);
       if (!parsed.success) {
@@ -390,52 +393,64 @@ export function zeroConnectorList(args: {
       if (!storedConnectorTypeIsVisible(parsed.data, featureStates)) {
         return [];
       }
-      return [storedConnectorRowToResponse(row, parsed.data)];
+      return [storedConnectorRowToResponse(row, parsed.data, now)];
     });
-    const connectorScopedSecretNames: ConnectorScopedSecretNames = {
-      secretNames: new Set(
-        connectorSecretRows.map((row) => {
-          return row.name;
-        }),
-      ),
-    };
+    const connectorProvidedBindings =
+      connectorProvidedBindingsForStoredConnectors(connectorList);
 
     return {
       connectors: connectorList,
       configuredTypes: getRuntimeAvailableConnectorTypes((name) => {
         return optionalEnv(name);
       }),
-      connectorProvidedEnvNames: [
-        ...connectorProvidedEnvNamesForStoredConnectors(
-          connectorList,
-          connectorScopedSecretNames,
-        ),
-      ],
+      connectorProvidedBindings,
     };
   });
 }
 
-function connectorProvidedEnvNamesForStoredConnectors(
+function connectorProvidedBindingsForStoredConnectors(
   connectorList: readonly ConnectorResponse[],
-  connectorScopedSecretNames: ConnectorScopedSecretNames,
-): Set<string> {
-  const provided = new Set<string>();
+): ConnectorProvidedBinding[] {
+  const provided: ConnectorProvidedBinding[] = [];
   for (const connector of connectorList) {
-    const metadata = getConnectorAuthMethodStorageMetadata(
+    if (connector.connectionStatus !== "connected") {
+      continue;
+    }
+    const metadata = getConnectorAuthMethodRuntimeMetadata(
       connector.type,
       connector.authMethod,
     );
     if (!metadata) {
       continue;
     }
-    for (const { envName, source } of metadata.runtimeBindings) {
-      if (source.kind !== "connector-secret") {
-        continue;
+    for (const { envName, optional, source } of metadata.runtimeBindings) {
+      switch (source.kind) {
+        case "connector-secret": {
+          provided.push({
+            connectorType: connector.type,
+            authMethod: connector.authMethod,
+            namespace: "secrets",
+            name: envName,
+            optional,
+            source,
+          });
+          break;
+        }
+        case "connector-variable": {
+          provided.push({
+            connectorType: connector.type,
+            authMethod: connector.authMethod,
+            namespace: "vars",
+            name: envName,
+            optional,
+            source,
+          });
+          break;
+        }
+        case "platform-secret": {
+          break;
+        }
       }
-      if (!connectorScopedSecretNames.secretNames.has(source.name)) {
-        continue;
-      }
-      provided.add(envName);
     }
   }
   return provided;
@@ -458,6 +473,7 @@ function storedConnectorByType(args: {
         externalEmail: connectors.externalEmail,
         oauthScopes: connectors.oauthScopes,
         needsReconnect: connectors.needsReconnect,
+        tokenExpiresAt: connectors.tokenExpiresAt,
         createdAt: connectors.createdAt,
         updatedAt: connectors.updatedAt,
       })
@@ -473,7 +489,7 @@ function storedConnectorByType(args: {
 
     const oauthRow = oauthRows[0];
     if (oauthRow) {
-      return storedConnectorRowToResponse(oauthRow, args.type);
+      return storedConnectorRowToResponse(oauthRow, args.type, nowDate());
     }
 
     return null;
@@ -626,7 +642,7 @@ async function deleteManualGrantConnectorLocalState(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly fields: ManualGrantFieldNames | null;
+  readonly fields: ConnectorManualGrantFieldNames | null;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
   if (!args.fields) {
@@ -776,7 +792,7 @@ export const deleteZeroConnectorLocalState$ = command(
       await deleteConnectorScopedVariableNames(tx, {
         orgId: args.orgId,
         userId: args.userId,
-        names: getConnectorVariableNames(args.type, existing.authMethod),
+        names: getConnectorOwnedVariableNames(args.type, existing.authMethod),
         signal,
       });
 
@@ -910,6 +926,7 @@ async function upsertManualGrantConnectorRow(
       externalEmail: connectors.externalEmail,
       oauthScopes: connectors.oauthScopes,
       needsReconnect: connectors.needsReconnect,
+      tokenExpiresAt: connectors.tokenExpiresAt,
       createdAt: connectors.createdAt,
       updatedAt: connectors.updatedAt,
     });
@@ -1071,7 +1088,7 @@ async function cleanupExistingStoredConnectorForManualGrantConnect(
   await deleteConnectorScopedVariableNames(db, {
     orgId: args.orgId,
     userId: args.userId,
-    names: getConnectorVariableNames(args.type, existing.authMethod),
+    names: getConnectorOwnedVariableNames(args.type, existing.authMethod),
     signal: args.signal,
   });
 
@@ -1207,7 +1224,11 @@ export const connectManualGrantConnector$ = command(
 
     return {
       status: "connected",
-      connector: storedConnectorRowToResponse(connectorRow, args.type),
+      connector: storedConnectorRowToResponse(
+        connectorRow,
+        args.type,
+        nowDate(),
+      ),
     };
   },
 );
@@ -1317,11 +1338,11 @@ function requiredConnectorTokenSecretRequirements(args: {
   readonly authMethod: string;
   readonly outputSecretNames: Readonly<Record<string, string>>;
 }): ConnectorTokenSecretRequirements {
-  const storageMetadata = getConnectorAuthMethodStorageMetadata(
+  const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
     args.type,
     args.authMethod,
   );
-  if (!storageMetadata) {
+  if (!runtimeMetadata) {
     return { requiredOutputNames: [], requiredExtraSecretNames: [] };
   }
 
@@ -1332,7 +1353,10 @@ function requiredConnectorTokenSecretRequirements(args: {
   );
   const requiredOutputNames = new Set<string>();
   const requiredExtraSecretNames = new Set<string>();
-  for (const binding of storageMetadata.runtimeBindings) {
+  for (const binding of runtimeMetadata.runtimeBindings) {
+    if (binding.optional) {
+      continue;
+    }
     if (binding.source.kind !== "connector-secret") {
       continue;
     }
@@ -1350,7 +1374,7 @@ function requiredConnectorTokenSecretRequirements(args: {
 }
 
 function validateRequiredConnectorTokenSecrets(args: {
-  readonly type: ConnectorAuthProviderType;
+  readonly type: AuthGrantConnectorType;
   readonly outputs: ConnectorTokenOutputValues;
   readonly requiredOutputNames: readonly string[];
   readonly extraSecrets: readonly (readonly [string, string])[];
@@ -1383,7 +1407,7 @@ function validateRequiredConnectorTokenSecrets(args: {
 }
 
 function allowedConnectorTokenSecretNames(
-  type: ConnectorAuthProviderType,
+  type: AuthGrantConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): Set<string> {
   return new Set(getConnectorOwnedSecretNames(type, authMethod));
@@ -1397,7 +1421,7 @@ function isPrimaryConnectorTokenSecret(args: {
 }
 
 function validateExtraConnectorTokenSecrets(args: {
-  readonly type: ConnectorAuthProviderType;
+  readonly type: AuthGrantConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
   readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
   readonly outputSecretNames: Readonly<Record<string, string>>;
@@ -1434,7 +1458,7 @@ function validateExtraConnectorTokenSecrets(args: {
 }
 
 async function encryptExtraConnectorTokenSecrets(args: {
-  readonly type: ConnectorAuthProviderType;
+  readonly type: AuthGrantConnectorType;
   readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
@@ -1455,7 +1479,7 @@ async function encryptExtraConnectorTokenSecrets(args: {
 }
 
 async function encryptConnectorTokenSecretSet(args: {
-  readonly type: ConnectorAuthProviderType;
+  readonly type: AuthGrantConnectorType;
   readonly outputSecretNames: Readonly<Record<string, string>>;
   readonly requiredOutputNames: readonly string[];
   readonly requiredExtraSecretNames: readonly string[];
@@ -1557,7 +1581,7 @@ async function upsertConnectorTokenConnectionRow(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: ConnectorAuthProviderType;
+    readonly type: AuthGrantConnectorType;
     readonly authMethod: ConnectorAuthMethodId;
     readonly userInfo: ExternalUserInfo;
     readonly oauthScopes: readonly string[];
@@ -1600,6 +1624,7 @@ async function upsertConnectorTokenConnectionRow(
       externalEmail: connectors.externalEmail,
       oauthScopes: connectors.oauthScopes,
       needsReconnect: connectors.needsReconnect,
+      tokenExpiresAt: connectors.tokenExpiresAt,
       createdAt: connectors.createdAt,
       updatedAt: connectors.updatedAt,
     });
@@ -1617,7 +1642,7 @@ async function deleteObsoleteConnectorScopedStateForTokenConnect(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: ConnectorAuthProviderType;
+    readonly type: AuthGrantConnectorType;
     readonly authMethod: ConnectorAuthMethodId;
     readonly existingAuthMethod: string | null;
     readonly signal: AbortSignal;
@@ -1637,9 +1662,9 @@ async function deleteObsoleteConnectorScopedStateForTokenConnect(
     return !targetSecretNames.has(name);
   });
   const targetVariableNames = new Set(
-    getConnectorVariableNames(args.type, args.authMethod),
+    getConnectorOwnedVariableNames(args.type, args.authMethod),
   );
-  const obsoleteVariableNames = getConnectorVariableNames(
+  const obsoleteVariableNames = getConnectorOwnedVariableNames(
     args.type,
     args.existingAuthMethod,
   ).filter((name) => {
@@ -1665,7 +1690,7 @@ export const upsertConnectorTokenConnection$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ConnectorAuthProviderType;
+      readonly type: AuthGrantConnectorType;
       readonly authMethod: ConnectorAuthMethodId;
       readonly outputs: ConnectorTokenOutputValues;
       readonly userInfo: ExternalUserInfo;
@@ -1786,7 +1811,11 @@ export const upsertConnectorTokenConnection$ = command(
     signal.throwIfAborted();
 
     return {
-      connector: storedConnectorRowToResponse(connectorRow, args.type),
+      connector: storedConnectorRowToResponse(
+        connectorRow,
+        args.type,
+        nowDate(),
+      ),
       created:
         connectorRow.createdAt.getTime() === connectorRow.updatedAt.getTime(),
     };
@@ -1838,7 +1867,7 @@ export function zeroConnectorSearch(args: {
     return CONNECTOR_TYPE_KEYS.flatMap((type) => {
       const config = CONNECTOR_TYPES[type];
       const authMethods: ConnectorSearchAuthMethod[] =
-        getAvailableConnectorAuthMethods(type, featureStates, {
+        getAvailableConnectorAuthMethodIds(type, featureStates, {
           apiAuthMethodPolicy: "include",
         });
 

@@ -166,26 +166,3 @@ export const chatThreadsNextCursor$ = computed(async (get) => {
   const page = await get(chatThreadsFirstPage$);
   return page?.nextCursor ?? null;
 });
-
-/**
- * The earliest ended-but-unread thread that is not the currently open thread.
- * Used by the mobile header to prompt the user to check pending replies.
- */
-export const earliestUnreadEndedThread$ = computed(
-  async (get): Promise<ChatThreadListItem | null> => {
-    const threads = await get(chatThreads$);
-    const currentThreadId = get(currentChatThreadId$);
-
-    const candidates = threads
-      .filter((t) => {
-        return !t.running && !t.isRead && t.id !== currentThreadId;
-      })
-      .sort((a, b) => {
-        return (
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        );
-      });
-
-    return candidates[0] ?? null;
-  },
-);

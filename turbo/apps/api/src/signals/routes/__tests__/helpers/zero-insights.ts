@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { and, eq } from "drizzle-orm";
 
 import { writeDb$ } from "../../../external/db";
@@ -35,6 +36,10 @@ export const deleteInsightsForFixture$ = command(
           eq(insightsDaily.userId, fixture.userId),
         ),
       );
+    signal.throwIfAborted();
+    await db
+      .delete(orgMembersCache)
+      .where(eq(orgMembersCache.orgId, fixture.orgId));
     signal.throwIfAborted();
   },
 );

@@ -3,8 +3,9 @@ import {
   type AuthCodeGrantConnectorType,
   connectorAuthMethodIdSchema,
   type ConnectorType,
-  type ConnectorAuthProviderType,
+  type AuthGrantConnectorType,
   type ConnectorDeviceAuthGrantAuthMethodId,
+  type ConnectorDeviceAuthStartOptions,
   type ConnectorAuthMethodIdsByGrantKind,
   type DeviceAuthGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
@@ -21,14 +22,15 @@ import {
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodGrantScopes,
   isStaticConfidentialConnectorAuthClient,
+  parseConnectorDeviceAuthStartOptions,
   resolveConnectorAuthClientForMethod,
   type ConnectorAuthClientForMethod,
-  type ConnectorAuthMethodClientRefByAccessKind,
-  type ConnectorAuthMethodClientRefByGrantKind,
+  type ConnectorResolvedAuthMethodClientByGrantKind,
   type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeConnectorAuthProvider,
+  ConnectorAuthProviderRefreshArgs,
   ConnectorAuthProviderRefreshResultBase,
   ConnectorAuthProviderRefreshResult,
   DeviceAuthConnectorAuthProvider,
@@ -44,63 +46,68 @@ import {
   type OAuthDeviceAuthPollResult,
   type OAuthDeviceAuthPollResultBase,
   type OAuthDeviceAuthStartResult,
-} from "./oauth/types";
+} from "./provider-flow-types";
 import { providerEnvFromObject, type ProviderEnv } from "./provider-env";
-import { ahrefsProvider } from "./oauth/providers/ahrefs-provider";
-import { airtableProvider } from "./oauth/providers/airtable-provider";
-import { asanaProvider } from "./oauth/providers/asana-provider";
-import { base44Provider } from "./oauth/providers/base44-provider";
-import { canvaProvider } from "./oauth/providers/canva-provider";
-import { closeProvider } from "./oauth/providers/close-provider";
-import { deelProvider } from "./oauth/providers/deel-provider";
-import { docusignProvider } from "./oauth/providers/docusign-provider";
-import { dropboxProvider } from "./oauth/providers/dropbox-provider";
-import { figmaProvider } from "./oauth/providers/figma-provider";
-import { garminConnectProvider } from "./oauth/providers/garmin-connect-provider";
-import { gumroadProvider } from "./oauth/providers/gumroad-provider";
-import { githubProvider } from "./oauth/providers/github-provider";
-import { gmailProvider } from "./oauth/providers/gmail-provider";
-import { hubspotProvider } from "./oauth/providers/hubspot-provider";
-import { googleAdsProvider } from "./oauth/providers/google-ads-provider";
-import { googleCalendarProvider } from "./oauth/providers/google-calendar-provider";
-import { googleDocsProvider } from "./oauth/providers/google-docs-provider";
-import { googleDriveProvider } from "./oauth/providers/google-drive-provider";
-import { googleMeetProvider } from "./oauth/providers/google-meet-provider";
-import { googleSearchConsoleProvider } from "./oauth/providers/google-search-console-provider";
-import { googleSheetsProvider } from "./oauth/providers/google-sheets-provider";
-import { linearProvider } from "./oauth/providers/linear-provider";
-import { mailchimpProvider } from "./oauth/providers/mailchimp-provider";
-import { mercuryProvider } from "./oauth/providers/mercury-provider";
-import { mondayProvider } from "./oauth/providers/monday-provider";
-import { neonProvider } from "./oauth/providers/neon-provider";
-import { notionProvider } from "./oauth/providers/notion-provider";
-import { outlookCalendarProvider } from "./oauth/providers/outlook-calendar-provider";
-import { outlookMailProvider } from "./oauth/providers/outlook-mail-provider";
-import { redditProvider } from "./oauth/providers/reddit-provider";
-import { intervalsIcuProvider } from "./oauth/providers/intervals-icu-provider";
-import { sentryProvider } from "./oauth/providers/sentry-provider";
-import { slackProvider } from "./oauth/providers/slack-provider";
-import { slockProvider } from "./oauth/providers/slock-provider";
-import { stravaProvider } from "./oauth/providers/strava-provider";
-import { stripeProvider } from "./oauth/providers/stripe-provider";
-import { todoistProvider } from "./oauth/providers/todoist-provider";
-import { vercelProvider } from "./oauth/providers/vercel-provider";
-import { webflowProvider } from "./oauth/providers/webflow-provider";
-import { supabaseProvider } from "./oauth/providers/supabase-provider";
-import { metaAdsProvider } from "./oauth/providers/meta-ads-provider";
-import { posthogProvider } from "./oauth/providers/posthog-provider";
-import { spotifyProvider } from "./oauth/providers/spotify-provider";
-import { xProvider } from "./oauth/providers/x-provider";
-import { xeroProvider } from "./oauth/providers/xero-provider";
-import { zoomProvider } from "./oauth/providers/zoom-provider";
+import { ahrefsProvider } from "./connectors/ahrefs/provider";
+import { airtableProvider } from "./connectors/airtable/provider";
+import { asanaProvider } from "./connectors/asana/provider";
+import { base44Provider } from "./connectors/base44/provider";
+import { canvaProvider } from "./connectors/canva/provider";
+import { closeProvider } from "./connectors/close/provider";
+import { deelProvider } from "./connectors/deel/provider";
+import { docusignProvider } from "./connectors/docusign/provider";
+import { dropboxProvider } from "./connectors/dropbox/provider";
+import { figmaProvider } from "./connectors/figma/provider";
+import { garminConnectProvider } from "./connectors/garmin-connect/provider";
+import { gumroadProvider } from "./connectors/gumroad/provider";
+import { githubProvider } from "./connectors/github/provider";
+import { gmailProvider } from "./connectors/gmail/provider";
+import { hubspotProvider } from "./connectors/hubspot/provider";
+import { googleAdsProvider } from "./connectors/google-ads/provider";
+import { googleCalendarProvider } from "./connectors/google-calendar/provider";
+import { googleDocsProvider } from "./connectors/google-docs/provider";
+import { googleDriveProvider } from "./connectors/google-drive/provider";
+import { googleMeetProvider } from "./connectors/google-meet/provider";
+import { googleSearchConsoleProvider } from "./connectors/google-search-console/provider";
+import { googleSheetsProvider } from "./connectors/google-sheets/provider";
+import { larkProvider } from "./connectors/lark/provider";
+import { linearProvider } from "./connectors/linear/provider";
+import { mailchimpProvider } from "./connectors/mailchimp/provider";
+import { mercuryProvider } from "./connectors/mercury/provider";
+import { mondayProvider } from "./connectors/monday/provider";
+import { neonProvider } from "./connectors/neon/provider";
+import { notionProvider } from "./connectors/notion/provider";
+import { outlookCalendarProvider } from "./connectors/outlook-calendar/provider";
+import { outlookMailProvider } from "./connectors/outlook-mail/provider";
+import { redditProvider } from "./connectors/reddit/provider";
+import { intervalsIcuProvider } from "./connectors/intervals-icu/provider";
+import { sentryProvider } from "./connectors/sentry/provider";
+import { slackProvider } from "./connectors/slack/provider";
+import { slockProvider } from "./connectors/slock/provider";
+import { stravaProvider } from "./connectors/strava/provider";
 import {
+  stripeCliProvider,
+  stripeProvider,
+} from "./connectors/stripe/provider";
+import { todoistProvider } from "./connectors/todoist/provider";
+import { vercelProvider } from "./connectors/vercel/provider";
+import { webflowProvider } from "./connectors/webflow/provider";
+import { supabaseProvider } from "./connectors/supabase/provider";
+import { metaAdsProvider } from "./connectors/meta-ads/provider";
+import { posthogProvider } from "./connectors/posthog/provider";
+import { spotifyProvider } from "./connectors/spotify/provider";
+import { xProvider } from "./connectors/x/provider";
+import { xeroProvider } from "./connectors/xero/provider";
+import { zoomProvider } from "./connectors/zoom/provider";
+import {
+  testOauthApiTokenProvider,
   testOauthApiProvider,
   testOauthProvider,
-} from "./oauth/providers/test-oauth-provider";
+} from "./connectors/test-oauth/provider";
 import {
   testOauthDeviceApiProvider,
   testOauthDeviceProvider,
-} from "./oauth/providers/test-oauth-device-provider";
+} from "./connectors/test-oauth-device/provider";
 
 export type {
   ConnectorAuthProviderRefreshResultBase,
@@ -114,7 +121,7 @@ export type ConnectorAuthProviderAccessTokenRevokeResult =
   | { readonly status: "unsupported" };
 
 type ConnectorProviderBackedType =
-  | ConnectorAuthProviderType
+  | AuthGrantConnectorType
   | RefreshTokenAccessConnectorType
   | TokenRevokeConnectorType;
 
@@ -298,6 +305,15 @@ function deviceAuthRefreshProviderEntry<
   return { grant: provider.grant, access: provider.access };
 }
 
+function refreshProviderEntry<
+  Type extends RefreshTokenAccessConnectorType,
+  Method extends ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
+>(provider: {
+  readonly access: RefreshTokenAccessProvider<Type, Method>;
+}): ConnectorRefreshTokenAccessProviderEntry<Type, Method> {
+  return { access: provider.access };
+}
+
 function connectorRefreshTokenAccessProviderFor<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
@@ -396,6 +412,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   },
   gumroad: { oauth: authCodeRefreshProviderEntry(gumroadProvider) },
   hubspot: { oauth: authCodeRefreshProviderEntry(hubspotProvider) },
+  lark: { "api-token": refreshProviderEntry(larkProvider) },
   "intervals-icu": {
     oauth: authCodeProviderEntry(intervalsIcuProvider),
   },
@@ -418,10 +435,14 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   slock: { oauth: deviceAuthRefreshProviderEntry(slockProvider) },
   spotify: { oauth: authCodeRefreshProviderEntry(spotifyProvider) },
   strava: { oauth: authCodeRefreshProviderEntry(stravaProvider) },
-  stripe: { oauth: authCodeRefreshProviderEntry(stripeProvider) },
+  stripe: {
+    oauth: authCodeRefreshProviderEntry(stripeProvider),
+    cli: deviceAuthProviderEntry(stripeCliProvider),
+  },
   supabase: { oauth: authCodeRefreshProviderEntry(supabaseProvider) },
   "test-oauth": {
     oauth: authCodeRefreshProviderEntry(testOauthProvider),
+    "api-token": refreshProviderEntry(testOauthApiTokenProvider),
     api: authCodeRefreshProviderEntry(testOauthApiProvider),
   },
   "test-oauth-device": {
@@ -440,42 +461,75 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
 const CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY: ConnectorAuthMethodProviderRegistry =
   CONNECTOR_AUTH_METHOD_PROVIDERS;
 
-type ConnectorAuthCodeMethodClientRef =
-  ConnectorAuthMethodClientRefByGrantKind<"auth-code">;
+type ConnectorAuthCodeResolvedMethodClient =
+  ConnectorResolvedAuthMethodClientByGrantKind<"auth-code">;
 
-type ConnectorDeviceAuthMethodClientRef =
-  ConnectorAuthMethodClientRefByGrantKind<"device-auth">;
-
-type ConnectorRefreshTokenAccessMethodClientRef =
-  ConnectorAuthMethodClientRefByAccessKind<"refresh-token">;
+type ConnectorDeviceAuthResolvedMethodClient =
+  ConnectorResolvedAuthMethodClientByGrantKind<"device-auth">;
 
 type ConnectorAuthCodeAuthorizationUrlArgs =
-  ConnectorAuthCodeMethodClientRef & {
+  ConnectorAuthCodeResolvedMethodClient & {
     readonly redirectUri: string;
     readonly state: string;
   };
 
-type ConnectorAuthCodeExchangeCallArgs = ConnectorAuthCodeMethodClientRef & {
-  readonly code: string;
-  readonly redirectUri: string;
-  readonly state: string | undefined;
-  readonly codeVerifier: string | undefined;
-  readonly oauthContext: string | undefined;
-};
+type ConnectorAuthCodeExchangeCallArgs =
+  ConnectorAuthCodeResolvedMethodClient & {
+    readonly code: string;
+    readonly redirectUri: string;
+    readonly state: string | undefined;
+    readonly codeVerifier: string | undefined;
+    readonly oauthContext: string | undefined;
+  };
 
 type ConnectorDeviceAuthorizationStartCallArgs =
-  ConnectorDeviceAuthMethodClientRef;
+  ConnectorDeviceAuthResolvedMethodClient & {
+    readonly options: ConnectorDeviceAuthStartOptions;
+  };
 
 type ConnectorDeviceAuthorizationPollCallArgs =
-  ConnectorDeviceAuthMethodClientRef & {
+  ConnectorDeviceAuthResolvedMethodClient & {
     readonly deviceCode: string;
+    readonly pollState?: string;
   };
 
-type ConnectorRefreshTokenAccessCallArgs =
-  ConnectorRefreshTokenAccessMethodClientRef & {
-    readonly inputs: Readonly<Record<string, string>>;
-    readonly signal: AbortSignal;
-  };
+type ConnectorRefreshTokenAccessCallArgs<
+  T extends RefreshTokenAccessConnectorType,
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
+  Inputs extends Readonly<Record<string, string>> = ConnectorRefreshInputValues<
+    T,
+    Method
+  >,
+> =
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">
+    ? {
+        readonly type: T;
+        readonly authMethod: Method;
+        readonly inputs: Inputs;
+        readonly signal: AbortSignal;
+      } & ConnectorRefreshTokenAccessClientArgs<T, Method>
+    : never;
+
+type ConnectorRefreshTokenAccessClientArgs<
+  T extends RefreshTokenAccessConnectorType,
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
+> =
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">
+    ? Omit<ConnectorAuthProviderRefreshArgs<T, Method>, "inputs" | "signal">
+    : never;
+
+type ConnectorRefreshTokenAccessDynamicCallArgs = {
+  readonly [Type in RefreshTokenAccessConnectorType]: {
+    readonly [Method in ConnectorAuthMethodIdsByAccessKind<
+      Type,
+      "refresh-token"
+    >]: ConnectorRefreshTokenAccessCallArgs<
+      Type,
+      Method,
+      Readonly<Record<string, string>>
+    >;
+  }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
+}[RefreshTokenAccessConnectorType];
 
 export function buildConnectorAuthCodeAuthorizationUrl<
   T extends AuthCodeGrantConnectorType,
@@ -571,6 +625,7 @@ export function startConnectorDeviceAuthorization<
   readonly type: T;
   readonly authMethod: Method;
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+  readonly options: ConnectorDeviceAuthStartOptions;
 }): Promise<OAuthDeviceAuthStartResult>;
 export function startConnectorDeviceAuthorization(
   args: ConnectorDeviceAuthorizationStartCallArgs,
@@ -582,14 +637,24 @@ export async function startConnectorDeviceAuthorization<
   readonly type: T;
   readonly authMethod: Method;
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+  readonly options: ConnectorDeviceAuthStartOptions;
 }): Promise<OAuthDeviceAuthStartResult> {
   const provider = connectorDeviceAuthGrantProviderFor(
     args.type,
     args.authMethod,
   );
+  const startOptionsResult = parseConnectorDeviceAuthStartOptions({
+    type: args.type,
+    authMethod: args.authMethod,
+    options: args.options,
+  });
+  if (!startOptionsResult.success) {
+    throw new Error(startOptionsResult.message);
+  }
   return await provider.startDeviceAuth({
     authClient: connectorAuthClientIdentityForMethod(args.authClient),
     scopes: getConnectorAuthMethodGrantScopes(args.type, args.authMethod),
+    options: startOptionsResult.options,
   });
 }
 
@@ -601,6 +666,7 @@ export function pollConnectorDeviceAuthorization<
   readonly authMethod: Method;
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
   readonly deviceCode: string;
+  readonly pollState?: string;
 }): Promise<OAuthDeviceAuthPollResult<T, Method>>;
 export function pollConnectorDeviceAuthorization(
   args: ConnectorDeviceAuthorizationPollCallArgs,
@@ -613,6 +679,7 @@ export async function pollConnectorDeviceAuthorization<
   readonly authMethod: Method;
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
   readonly deviceCode: string;
+  readonly pollState?: string;
 }): Promise<OAuthDeviceAuthPollResult<T, Method>> {
   const provider = connectorDeviceAuthGrantProviderFor(
     args.type,
@@ -621,32 +688,22 @@ export async function pollConnectorDeviceAuthorization<
   return await provider.pollDeviceAuth({
     authClient: args.authClient,
     deviceCode: args.deviceCode,
+    ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
   });
 }
 
 export function refreshConnectorAuthProviderAccessToken<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
->(args: {
-  readonly type: T;
-  readonly authMethod: Method;
-  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
-  readonly inputs: ConnectorRefreshInputValues<T, Method>;
-  readonly signal: AbortSignal;
-}): Promise<ConnectorAuthProviderRefreshResult<T, Method>>;
+>(
+  args: ConnectorRefreshTokenAccessCallArgs<T, Method>,
+): Promise<ConnectorAuthProviderRefreshResult<T, Method>>;
 export function refreshConnectorAuthProviderAccessToken(
-  args: ConnectorRefreshTokenAccessCallArgs,
+  args: ConnectorRefreshTokenAccessDynamicCallArgs,
 ): Promise<ConnectorAuthProviderRefreshResultBase>;
-export async function refreshConnectorAuthProviderAccessToken<
-  T extends RefreshTokenAccessConnectorType,
-  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
->(args: {
-  readonly type: T;
-  readonly authMethod: Method;
-  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
-  readonly inputs: ConnectorRefreshInputValues<T, Method>;
-  readonly signal: AbortSignal;
-}): Promise<ConnectorAuthProviderRefreshResult<T, Method>> {
+export async function refreshConnectorAuthProviderAccessToken(
+  args: ConnectorRefreshTokenAccessDynamicCallArgs,
+): Promise<ConnectorAuthProviderRefreshResultBase> {
   const accessMetadata = getConnectorAuthMethodAccessMetadata(
     args.type,
     args.authMethod,
@@ -655,11 +712,7 @@ export async function refreshConnectorAuthProviderAccessToken<
     args.type,
     args.authMethod,
   );
-  const result = await access.refresh({
-    authClient: args.authClient,
-    inputs: args.inputs,
-    signal: args.signal,
-  });
+  const result = await access.refresh(args);
   const declaredOutputs = new Set(Object.keys(accessMetadata.outputs));
   for (const outputName of Object.keys(result.outputs)) {
     if (!declaredOutputs.has(outputName)) {

@@ -856,6 +856,98 @@ describe("POST /api/agent/runs", () => {
     expect(zendesk?.apis[0]?.base).toBe("https://acme.zendesk.com");
   });
 
+  it("omits expired non-refreshable connectors from run context", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        type: "stripe",
+        authMethod: "api-token",
+        tokenExpiresAt: new Date(now() - 60_000),
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        type: "notion",
+        authMethod: "oauth",
+        tokenExpiresAt: new Date(now() - 60_000),
+      },
+    ]);
+    await db.insert(secretsTable).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "STRIPE_TOKEN",
+        encryptedValue: encryptSecretForTests("expired-stripe-token"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "NOTION_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("expired-notion-token"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "NOTION_REFRESH_TOKEN",
+        encryptedValue: encryptSecretForTests("notion-refresh-token"),
+        type: "connector",
+      },
+    ]);
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use connectors",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly { readonly name: string }[];
+    };
+    expect(executionContext.environment.STRIPE_TOKEN).toBeUndefined();
+    expect(executionContext.environment.NOTION_TOKEN).toBeDefined();
+    expect(executionContext.secretConnectorMap).toMatchObject({
+      NOTION_TOKEN: "notion",
+    });
+    expect(executionContext.secretConnectorMap).not.toHaveProperty(
+      "STRIPE_TOKEN",
+    );
+    const decryptedSecrets = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
+    expect(decryptedSecrets).toMatchObject({
+      NOTION_TOKEN: "expired-notion-token",
+    });
+    expect(decryptedSecrets).not.toHaveProperty("STRIPE_TOKEN");
+    expect(
+      executionContext.firewalls.some((firewall) => {
+        return firewall.name === "stripe";
+      }),
+    ).toBeFalsy();
+    expect(
+      executionContext.firewalls.some((firewall) => {
+        return firewall.name === "notion";
+      }),
+    ).toBeTruthy();
+  });
+
   it("does not enable a manual connector from run-provided env values alone", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
@@ -1319,7 +1411,7 @@ describe("POST /api/agent/runs", () => {
       ANTHROPIC_API_KEY: "test-secret-value",
     });
     expect(executionContext.billableFirewalls).toStrictEqual([]);
-    expect(executionContext.modelUsageProvider).toBeUndefined();
+    expect(executionContext.modelUsageProvider).toBe("claude-sonnet-4-6");
   });
 
   it("injects a Codex gateway provider with the OPENAI_API_KEY placeholder", async () => {
@@ -1497,18 +1589,14 @@ describe("POST /api/agent/runs", () => {
         .sort(),
     ).toStrictEqual(["artifact", "memory"]);
     expect(
-      session?.artifacts.some((artifact) => {
-        return Object.prototype.hasOwnProperty.call(
-          artifact,
-          "missingRootPolicy",
-        );
-      }),
-    ).toBeFalsy();
-    expect(
       session?.artifacts.find((artifact) => {
         return artifact.name === "memory";
-      })?.generatedBy,
-    ).toBe("apiAutoMemory");
+      }),
+    ).toStrictEqual({
+      name: "memory",
+      mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+      missingRootPolicy: "preserveParentVersion",
+    });
 
     const [job] = await db
       .select({ executionContext: runnerJobQueue.executionContext })
@@ -1520,8 +1608,8 @@ describe("POST /api/agent/runs", () => {
         readonly artifacts: readonly {
           readonly mountPath: string;
           readonly vasStorageName: string;
-          readonly archiveUrl: string;
-          readonly manifestUrl?: string;
+          readonly vasStorageId: string;
+          readonly vasVersionId: string;
           readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
         }[];
       };
@@ -1548,7 +1636,7 @@ describe("POST /api/agent/runs", () => {
     ]);
     expect(
       executionContext.storageManifest.artifacts.every((artifact) => {
-        return artifact.archiveUrl && artifact.manifestUrl;
+        return artifact.vasStorageId && artifact.vasVersionId;
       }),
     ).toBeTruthy();
     const memoryArtifact = executionContext.storageManifest.artifacts.find(
@@ -1622,7 +1710,7 @@ describe("POST /api/agent/runs", () => {
     ]);
   });
 
-  it("keeps user-authored canonical memory artifacts strict", async () => {
+  it("adds missing root policy to canonical memory artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
 
@@ -1666,7 +1754,7 @@ describe("POST /api/agent/runs", () => {
     });
     expect(
       executionContext.storageManifest.artifacts[0]?.missingRootPolicy,
-    ).toBeUndefined();
+    ).toBe("preserveParentVersion");
   });
 
   it("keeps user-authored canonical memory mount overrides strict", async () => {
@@ -1734,7 +1822,7 @@ describe("POST /api/agent/runs", () => {
     ]);
   });
 
-  it("keeps continued user-authored canonical memory artifacts strict", async () => {
+  it("adds missing root policy for continued canonical memory artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
 
@@ -1795,7 +1883,7 @@ describe("POST /api/agent/runs", () => {
           artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
         );
       })?.missingRootPolicy,
-    ).toBeUndefined();
+    ).toBe("preserveParentVersion");
   });
 
   it("includes compose artifacts and volumes in the runner storage manifest", async () => {
@@ -2476,7 +2564,7 @@ describe("POST /api/agent/runs", () => {
     expect(run?.resumedFromCheckpointId).toBe(checkpoint.id);
   });
 
-  it("preserves auto memory policy when resuming checkpoint artifacts", async () => {
+  it("adds missing root policy when resuming legacy checkpoint artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
     const first = await accept(
@@ -2506,7 +2594,6 @@ describe("POST /api/agent/runs", () => {
           {
             name: "memory",
             mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-            generatedBy: "apiAutoMemory",
           },
         ],
       })
@@ -2548,7 +2635,7 @@ describe("POST /api/agent/runs", () => {
     ).toBe("preserveParentVersion");
   });
 
-  it("keeps user-authored canonical memory checkpoint artifacts strict", async () => {
+  it("adds missing root policy to canonical memory checkpoint artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
     const first = await accept(
@@ -2625,10 +2712,10 @@ describe("POST /api/agent/runs", () => {
           artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
         );
       })?.missingRootPolicy,
-    ).toBeUndefined();
+    ).toBe("preserveParentVersion");
   });
 
-  it("keeps continued canonical body memory checkpoint artifacts strict", async () => {
+  it("preserves missing root policy from continued canonical memory checkpoint artifacts", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
     const first = await accept(
@@ -2693,6 +2780,7 @@ describe("POST /api/agent/runs", () => {
             name: "memory",
             mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
             version: memoryStorage.headVersionId,
+            missingRootPolicy: "preserveParentVersion",
           },
         ],
       })
@@ -2731,6 +2819,6 @@ describe("POST /api/agent/runs", () => {
           artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
         );
       })?.missingRootPolicy,
-    ).toBeUndefined();
+    ).toBe("preserveParentVersion");
   });
 });

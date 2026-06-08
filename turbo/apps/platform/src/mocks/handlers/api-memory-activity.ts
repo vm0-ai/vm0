@@ -2,10 +2,14 @@ import {
   zeroMemoryActivityContract,
   type MemoryActivityResponse,
 } from "@vm0/api-contracts/contracts/zero-memory-activity";
+import { zeroMemoryDevRefreshContract } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
 
 import { mockApi } from "../msw-contract.ts";
 
-const EMPTY_ACTIVITY: MemoryActivityResponse = { entries: [] };
+const EMPTY_ACTIVITY: MemoryActivityResponse = {
+  entries: [],
+  nextCursor: null,
+};
 
 let mockMemoryActivity: MemoryActivityResponse = { ...EMPTY_ACTIVITY };
 
@@ -20,5 +24,8 @@ export function resetMockMemoryActivity(): void {
 export const apiMemoryActivityHandlers = [
   mockApi(zeroMemoryActivityContract.get, ({ respond }) => {
     return respond(200, mockMemoryActivity);
+  }),
+  mockApi(zeroMemoryDevRefreshContract.refresh, ({ respond }) => {
+    return respond(200, { skipped: true });
   }),
 ];

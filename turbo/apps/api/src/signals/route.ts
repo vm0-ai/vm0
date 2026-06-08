@@ -74,6 +74,7 @@ import { zeroBillingDowngradeRoutes } from "./routes/zero-billing-downgrade";
 import { zeroBillingInvoicesRoutes } from "./routes/zero-billing-invoices";
 import { zeroBillingPortalRoutes } from "./routes/zero-billing-portal";
 import { zeroBillingRedeemRoutes } from "./routes/zero-billing-redeem";
+import { zeroBillingRestoreRoutes } from "./routes/zero-billing-restore";
 import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
 import { zeroBankingRoutes } from "./routes/zero-banking";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
@@ -93,6 +94,7 @@ import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
 import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroMemoryRoutes } from "./routes/zero-memory";
 import { zeroMemoryActivityRoutes } from "./routes/zero-memory-activity";
+import { zeroMemoryDevRefreshRoutes } from "./routes/zero-memory-dev-refresh";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroInsightsRoutes } from "./routes/zero-insights";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
@@ -122,7 +124,6 @@ import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-provide
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroSkillsRoutes } from "./routes/zero-skills";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
-import { zeroIntegrationsChatMessageRoutes } from "./routes/zero-integrations-chat-message";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
 import { zeroIntegrationsPhoneMessageRoutes } from "./routes/zero-integrations-phone-message";
@@ -256,6 +257,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBillingInvoicesRoutes,
   ...zeroBillingPortalRoutes,
   ...zeroBillingRedeemRoutes,
+  ...zeroBillingRestoreRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroBankingRoutes,
   ...zeroChatThreadRoutes,
@@ -275,6 +277,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroHostRoutes,
   ...zeroMemoryRoutes,
   ...zeroMemoryActivityRoutes,
+  ...zeroMemoryDevRefreshRoutes,
   ...zeroBuiltInGenerationRoutes,
   ...zeroInsightsRoutes,
   ...zeroImageIoGenerateRoutes,
@@ -327,7 +330,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsGithubDownloadFileRoutes,
   ...zeroIntegrationsGithubUploadCompleteRoutes,
   ...zeroIntegrationsGithubUploadInitRoutes,
-  ...zeroIntegrationsChatMessageRoutes,
   ...zeroIntegrationsSlackRoutes,
   ...zeroIntegrationsSlackMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,

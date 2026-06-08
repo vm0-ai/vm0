@@ -10,9 +10,10 @@ import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhoo
 import type { ConnectorAuthClientConfig } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import {
+  testOauthApiTokenProvider,
   testOauthApiProvider,
   testOauthProvider,
-} from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
+} from "@vm0/connectors/auth-providers/connectors/test-oauth/provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -497,21 +498,175 @@ async function seedExpiredTestOAuthApiConnector(
   });
 }
 
-async function seedStripeApiTokenConnector(
+async function seedTestOAuthApiTokenConnector(
   fixture: FirewallFixture,
-  args: { readonly token?: string } = {},
+  args: {
+    readonly accessToken?: string;
+    readonly tokenExpiresAt?: Date | null;
+    readonly inputSecret?: string | undefined;
+    readonly inputVariable?: string | undefined;
+  } = {},
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "test-oauth",
+    authMethod: "api-token",
+    externalId: "test-oauth-api-token-user",
+    externalUsername: "test-oauth-api-token-user",
+    externalEmail: "test-oauth-api-token@example.com",
+    oauthScopes: JSON.stringify([]),
+    tokenExpiresAt:
+      args.tokenExpiresAt === undefined
+        ? new Date(now() - 60_000)
+        : args.tokenExpiresAt,
+  });
+
+  const inputSecret =
+    "inputSecret" in args
+      ? args.inputSecret
+      : "test-oauth-api-token-input-secret";
+  if (inputSecret !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "TEST_OAUTH_TOKEN",
+      value: inputSecret,
+      type: "connector",
+    });
+  }
+
+  const inputVariable =
+    "inputVariable" in args
+      ? args.inputVariable
+      : "test-oauth-api-token-input-variable";
+  if (inputVariable !== undefined) {
+    await seedVariable({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+      value: inputVariable,
+    });
+  }
+
+  if (args.accessToken !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+      value: args.accessToken,
+      type: "connector",
+    });
+  }
+}
+
+async function seedLarkConnector(
+  fixture: FirewallFixture,
+  args: {
+    readonly accessToken?: string;
+    readonly tokenExpiresAt?: Date | null;
+    readonly appId?: string | undefined;
+    readonly appSecret?: string | undefined;
+  } = {},
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "lark",
+    authMethod: "api-token",
+    tokenExpiresAt: args.tokenExpiresAt ?? null,
+  });
+
+  const appId = "appId" in args ? args.appId : "lark-app-id";
+  if (appId !== undefined) {
+    await seedVariable({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "LARK_APP_ID",
+      value: appId,
+    });
+  }
+
+  const appSecret = "appSecret" in args ? args.appSecret : "lark-app-secret";
+  if (appSecret !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "LARK_APP_SECRET",
+      value: appSecret,
+      type: "connector",
+    });
+  }
+
+  if (args.accessToken !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "LARK_ACCESS_TOKEN",
+      value: args.accessToken,
+      type: "connector",
+    });
+  }
+}
+
+function useLarkTenantAccessTokenEndpoint(
+  args: {
+    readonly accessToken?: string;
+    readonly expire?: number;
+    readonly code?: number;
+    readonly msg?: string;
+    readonly status?: number;
+    readonly body?: unknown;
+  } = {},
+): unknown[] {
+  const calls: unknown[] = [];
+  server.use(
+    http.post(
+      "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal",
+      async ({ request }) => {
+        calls.push(await request.json());
+        if (args.body !== undefined) {
+          return HttpResponse.json(args.body, { status: args.status ?? 200 });
+        }
+        return HttpResponse.json(
+          {
+            code: args.code ?? 0,
+            msg: args.msg ?? "ok",
+            tenant_access_token:
+              args.accessToken ?? "fresh-lark-tenant-access-token",
+            expire: args.expire ?? 7200,
+          },
+          { status: args.status ?? 200 },
+        );
+      },
+    ),
+  );
+  return calls;
+}
+
+async function seedStripeStaticConnector(
+  fixture: FirewallFixture,
+  args: {
+    readonly authMethod?: "api-token" | "cli";
+    readonly token?: string;
+    readonly tokenExpiresAt?: Date | null;
+    readonly needsReconnect?: boolean;
+  } = {},
 ): Promise<void> {
   const db = store.set(writeDb$);
   await db.insert(connectors).values({
     orgId: fixture.orgId,
     userId: fixture.userId,
     type: "stripe",
-    authMethod: "api-token",
+    authMethod: args.authMethod ?? "api-token",
     externalId: "stripe-account",
     externalUsername: "stripe-account",
     externalEmail: "stripe@example.com",
     oauthScopes: JSON.stringify([]),
-    tokenExpiresAt: null,
+    tokenExpiresAt: args.tokenExpiresAt ?? null,
+    needsReconnect: args.needsReconnect ?? false,
   });
 
   if (args.token !== undefined) {
@@ -565,6 +720,11 @@ type CapturedOAuthRefresh = {
   readonly tenantId?: string;
 };
 
+type CapturedInputOnlyRefresh = {
+  readonly inputSecret: string;
+  readonly inputVariable: string;
+};
+
 type TestOAuthApiRefreshOutputs = {
   readonly refreshedAccessToken: string;
   readonly refreshedRefreshToken?: string;
@@ -607,6 +767,17 @@ function useMalformedTestOAuthApiRefresh(args: {
   return {
     refreshes,
     restore: configureMalformedTestOAuthApiRefresh(refreshes, args.outputs),
+  };
+}
+
+function useTestOAuthApiTokenRefresh(): {
+  readonly refreshes: readonly CapturedInputOnlyRefresh[];
+  readonly restore: () => void;
+} {
+  const refreshes: CapturedInputOnlyRefresh[] = [];
+  return {
+    refreshes,
+    restore: configureTestOAuthApiTokenRefresh(refreshes),
   };
 }
 
@@ -682,6 +853,30 @@ function configureDynamicTestOAuthApiRefresh(
 
   return () => {
     Object.assign(method, { client: originalClient });
+    access.refresh = originalRefresh;
+  };
+}
+
+function configureTestOAuthApiTokenRefresh(
+  refreshes: CapturedInputOnlyRefresh[],
+): () => void {
+  const access = testOauthApiTokenProvider.access;
+  const originalRefresh = access.refresh;
+
+  access.refresh = (args) => {
+    refreshes.push({
+      inputSecret: args.inputs.inputSecret,
+      inputVariable: args.inputs.inputVariable,
+    });
+    return Promise.resolve({
+      outputs: {
+        accessToken: `fresh-test-oauth-api-token:${args.inputs.inputSecret}:${args.inputs.inputVariable}`,
+      },
+      expiresIn: 3600,
+    });
+  };
+
+  return () => {
     access.refresh = originalRefresh;
   };
 }
@@ -2247,6 +2442,422 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     ).resolves.toBe("test-oauth-api-refresh-token");
   });
 
+  it("resolves a missing input-only connector access secret through refresh metadata", async () => {
+    const inputOnlyRefresh = useTestOAuthApiTokenRefresh();
+    restoreDynamicTestOAuthRefresh = inputOnlyRefresh.restore;
+    const fixture = await track(seedFixture());
+    await seedTestOAuthApiTokenConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_API_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_API_TOKEN: "test-oauth",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(inputOnlyRefresh.refreshes).toStrictEqual([
+      {
+        inputSecret: "test-oauth-api-token-input-secret",
+        inputVariable: "test-oauth-api-token-input-variable",
+      },
+    ]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-test-oauth-api-token:test-oauth-api-token-input-secret:test-oauth-api-token-input-variable",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
+    expect(response.body.refreshedSecrets).toStrictEqual([
+      "TEST_OAUTH_API_TOKEN",
+    ]);
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe(
+      "fresh-test-oauth-api-token:test-oauth-api-token-input-secret:test-oauth-api-token-input-variable",
+    );
+  });
+
+  it("exchanges Lark app credentials when the cached access token is missing", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint({
+      accessToken: "fresh-lark-access-token",
+      expire: 7200,
+    });
+    const fixture = await track(seedFixture());
+    await seedLarkConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            LARK_TOKEN: "lark",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(larkCalls).toStrictEqual([
+      {
+        app_id: "lark-app-id",
+        app_secret: "lark-app-secret",
+      },
+    ]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-lark-access-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["lark"]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["LARK_TOKEN"]);
+    expect(response.body.expiresAt).toBeGreaterThan(currentSecond());
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "LARK_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("fresh-lark-access-token");
+    const connector = await connectorState(fixture, "lark");
+    expect(connector.tokenExpiresAt?.getTime()).toBeGreaterThan(now());
+  });
+
+  it("reuses current Lark access token without calling the token endpoint", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint();
+    const fixture = await track(seedFixture());
+    await seedLarkConnector(fixture, {
+      accessToken: "current-lark-access-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            LARK_TOKEN: "lark",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(larkCalls).toStrictEqual([]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-lark-access-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("refreshes expired Lark access token and updates stored state", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint({
+      accessToken: "rotated-lark-access-token",
+      expire: 3600,
+    });
+    const fixture = await track(seedFixture());
+    await seedLarkConnector(fixture, {
+      accessToken: "expired-lark-access-token",
+      tokenExpiresAt: new Date(now() - 60_000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            LARK_TOKEN: "expired-lark-access-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            LARK_TOKEN: "lark",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(larkCalls).toStrictEqual([
+      {
+        app_id: "lark-app-id",
+        app_secret: "lark-app-secret",
+      },
+    ]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer rotated-lark-access-token",
+    );
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "LARK_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("rotated-lark-access-token");
+  });
+
+  it("force-refreshes Lark access token even when the cached token is current", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint({
+      accessToken: "force-refreshed-lark-access-token",
+    });
+    const fixture = await track(seedFixture());
+    await seedLarkConnector(fixture, {
+      accessToken: "current-lark-access-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            LARK_TOKEN: "lark",
+          },
+          forceRefresh: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(larkCalls).toHaveLength(1);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer force-refreshed-lark-access-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["lark"]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["LARK_TOKEN"]);
+  });
+
+  it("returns refresh failure when Lark app credentials are missing", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint();
+    for (const missingInput of ["appId", "appSecret"] as const) {
+      const fixture = await track(seedFixture());
+      await seedLarkConnector(
+        fixture,
+        missingInput === "appId"
+          ? { appId: undefined }
+          : { appSecret: undefined },
+      );
+
+      const response = await accept(
+        firewallClient().resolve({
+          body: {
+            encryptedSecrets: encryptedSecrets({}),
+            authHeaders: {
+              Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+            },
+            secretConnectorMap: {
+              LARK_TOKEN: "lark",
+            },
+          },
+          headers: authHeaders(fixture),
+        }),
+        [502],
+      );
+
+      expect(response.body.error).toMatchObject({
+        code: "TOKEN_REFRESH_FAILED",
+        connectors: ["lark"],
+        failureReason: "reconnect_required",
+      });
+      await expect(connectorState(fixture, "lark")).resolves.toMatchObject({
+        needsReconnect: true,
+      });
+    }
+    expect(larkCalls).toStrictEqual([]);
+  });
+
+  it("treats malformed Lark token endpoint responses as upstream provider failures", async () => {
+    const larkCalls = useLarkTenantAccessTokenEndpoint({
+      body: {
+        code: 0,
+        msg: "ok",
+        expire: 7200,
+      },
+    });
+    const fixture = await track(seedFixture());
+    await seedLarkConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            LARK_TOKEN: "lark",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(larkCalls).toHaveLength(1);
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["lark"],
+      failureReason: "upstream_provider",
+    });
+    await expect(connectorState(fixture, "lark")).resolves.toMatchObject({
+      needsReconnect: false,
+    });
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "LARK_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("treats Lark token endpoint HTTP failures as upstream provider failures", async () => {
+    for (const status of [500, 429] as const) {
+      const larkCalls = useLarkTenantAccessTokenEndpoint({
+        status,
+        body: {
+          code: status,
+          msg: "temporary failure",
+        },
+      });
+      const fixture = await track(seedFixture());
+      await seedLarkConnector(fixture);
+
+      const response = await accept(
+        firewallClient().resolve({
+          body: {
+            encryptedSecrets: encryptedSecrets({}),
+            authHeaders: {
+              Authorization: `Bearer ${secretTemplate("LARK_TOKEN")}`,
+            },
+            secretConnectorMap: {
+              LARK_TOKEN: "lark",
+            },
+          },
+          headers: authHeaders(fixture),
+        }),
+        [502],
+      );
+
+      expect(larkCalls).toStrictEqual([
+        {
+          app_id: "lark-app-id",
+          app_secret: "lark-app-secret",
+        },
+      ]);
+      expect(response.body.error).toMatchObject({
+        code: "TOKEN_REFRESH_FAILED",
+        connectors: ["lark"],
+        failureReason: "upstream_provider",
+      });
+      await expect(connectorState(fixture, "lark")).resolves.toMatchObject({
+        needsReconnect: false,
+      });
+      await expect(
+        readSecret({
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          name: "LARK_ACCESS_TOKEN",
+          type: "connector",
+        }),
+      ).resolves.toBeNull();
+    }
+  });
+
+  it("reuses current input-only connector access without refreshing", async () => {
+    const inputOnlyRefresh = useTestOAuthApiTokenRefresh();
+    restoreDynamicTestOAuthRefresh = inputOnlyRefresh.restore;
+    const fixture = await track(seedFixture());
+    await seedTestOAuthApiTokenConnector(fixture, {
+      accessToken: "current-test-oauth-api-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_API_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_API_TOKEN: "test-oauth",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(inputOnlyRefresh.refreshes).toStrictEqual([]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-test-oauth-api-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("returns refresh failure when input-only connector refresh variables are missing", async () => {
+    const inputOnlyRefresh = useTestOAuthApiTokenRefresh();
+    restoreDynamicTestOAuthRefresh = inputOnlyRefresh.restore;
+    const fixture = await track(seedFixture());
+    await seedTestOAuthApiTokenConnector(fixture, {
+      inputVariable: undefined,
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_API_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_API_TOKEN: "test-oauth",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["test-oauth"],
+      failureReason: "reconnect_required",
+    });
+    expect(inputOnlyRefresh.refreshes).toStrictEqual([]);
+    await expect(connectorState(fixture, "test-oauth")).resolves.toMatchObject({
+      needsReconnect: true,
+    });
+  });
+
   it("returns refresh failure when provider output omits the runtime token", async () => {
     const dynamicOAuth = useMalformedTestOAuthApiRefresh({
       outputs: {
@@ -2605,7 +3216,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("keeps missing static connector access secrets as missing configuration", async () => {
     const fixture = await track(seedFixture());
-    await seedStripeApiTokenConnector(fixture);
+    await seedStripeStaticConnector(fixture);
 
     const response = await accept(
       firewallClient().resolve({
@@ -2633,7 +3244,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("loads current static connector access instead of stale encrypted access", async () => {
     const fixture = await track(seedFixture());
-    await seedStripeApiTokenConnector(fixture, {
+    await seedStripeStaticConnector(fixture, {
       token: "current-stripe-token",
     });
 
@@ -2660,6 +3271,136 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     );
     expect(response.body.refreshedConnectors).toStrictEqual([]);
     expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("loads current future-expiring static connector access", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeStaticConnector(fixture, {
+      token: "current-stripe-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-stripe-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("loads current Stripe CLI static connector access", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeStaticConnector(fixture, {
+      authMethod: "cli",
+      token: "current-stripe-cli-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-stripe-cli-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("rejects expired Stripe CLI static connector access as reconnect required", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeStaticConnector(fixture, {
+      authMethod: "cli",
+      token: "expired-stripe-token",
+      tokenExpiresAt: new Date(now() - 60_000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["stripe"],
+      failureReason: "reconnect_required",
+    });
+  });
+
+  it("rejects reconnect-required static connector access", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeStaticConnector(fixture, {
+      token: "current-stripe-token",
+      needsReconnect: true,
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["stripe"],
+      failureReason: "reconnect_required",
+    });
   });
 
   it("loads current static connector env aliases", async () => {
@@ -2727,7 +3468,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("rejects stale encrypted static connector access when current storage is missing", async () => {
     const fixture = await track(seedFixture());
-    await seedStripeApiTokenConnector(fixture);
+    await seedStripeStaticConnector(fixture);
 
     const response = await accept(
       firewallClient().resolve({
@@ -2786,7 +3527,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("rejects encrypted connector secrets outside the selected access method", async () => {
     const fixture = await track(seedFixture());
-    await seedStripeApiTokenConnector(fixture);
+    await seedStripeStaticConnector(fixture);
 
     const response = await accept(
       firewallClient().resolve({

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
@@ -416,7 +416,10 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
     await store
       .set(writeDb$)
       .update(hostedDeployments)
-      .set({ runId })
+      .set({
+        runId,
+        manifest: sql`${hostedDeployments.manifest} - 'artifactKind'`,
+      })
       .where(eq(hostedDeployments.id, prepared.body.deploymentId));
 
     const prefix = `sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}`;
@@ -469,6 +472,93 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
         entrypoint: "/index.html",
         spaFallback: true,
       },
+    });
+  });
+
+  it("records presentation html artifact metadata when requested", async () => {
+    const fixture = await seedHostedSiteFixture();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "cli",
+        status: "completed",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const prepared = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "deck-site",
+          slugSuffix: "release-01",
+          artifactKind: "presentation-html",
+          spaFallback: false,
+          files: validFiles(),
+        },
+      }),
+      [200],
+    );
+
+    await store
+      .set(writeDb$)
+      .update(hostedDeployments)
+      .set({ runId })
+      .where(eq(hostedDeployments.id, prepared.body.deploymentId));
+
+    const prefix = `sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}`;
+    mockUploadedKeys([
+      `${prefix}/index.html`,
+      `${prefix}/assets/index-a1b2c3d4.js`,
+    ]);
+
+    const completed = await accept(
+      client.complete({
+        params: { deploymentId: prepared.body.deploymentId },
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    const [deployment] = await store
+      .set(writeDb$)
+      .select()
+      .from(hostedDeployments)
+      .where(eq(hostedDeployments.id, prepared.body.deploymentId));
+    expect(deployment?.manifest).toMatchObject({
+      artifactKind: "presentation-html",
+    });
+
+    const artifactRows = await store
+      .set(writeDb$)
+      .select()
+      .from(runUploadedFiles)
+      .where(eq(runUploadedFiles.runId, runId));
+    expect(artifactRows).toHaveLength(1);
+    expect(artifactRows[0]?.metadata).toMatchObject({
+      generatedBy: "zero-official-website",
+      artifactKind: "presentation-html",
+      publicSlug: prepared.body.publicSlug,
+      deploymentId: prepared.body.deploymentId,
+      entrypoint: "/index.html",
+      spaFallback: false,
+    });
+    expect(artifactRows[0]).toMatchObject({
+      externalId: completed.body.url,
+      filename: `${prepared.body.publicSlug}.html`,
+      contentType: "text/html",
+      url: completed.body.url,
     });
   });
 });

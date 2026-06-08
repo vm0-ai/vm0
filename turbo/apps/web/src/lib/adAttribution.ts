@@ -211,6 +211,36 @@ function hasAdTraffic(params: URLSearchParams): boolean {
   });
 }
 
+export function hasAdAttributionParams(landingSearch: string): boolean {
+  return hasAdTraffic(new URLSearchParams(landingSearch));
+}
+
+export function buildHomepageAttributionProperties(
+  landingSearch: string,
+  context: LandingAttributionContext = {},
+): Record<string, string> {
+  const attribution = acquisitionAttributionParams(landingSearch, context);
+  const properties: Record<string, string> = {};
+
+  attribution.forEach((value, key) => {
+    if (properties[key] === undefined) {
+      properties[key] = value;
+    }
+  });
+
+  if (attribution.has("gclid")) {
+    properties.gclid_present = "true";
+  }
+  if (attribution.has("gbraid")) {
+    properties.gbraid_present = "true";
+  }
+  if (attribution.has("wbraid")) {
+    properties.wbraid_present = "true";
+  }
+
+  return properties;
+}
+
 function appendHomepageAttributionParams(
   url: URLSearchParams,
   landingSearch: string,

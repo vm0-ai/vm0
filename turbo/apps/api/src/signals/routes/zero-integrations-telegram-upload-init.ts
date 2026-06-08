@@ -2,7 +2,11 @@ import { command } from "ccstate";
 import { integrationsTelegramUploadInitContract } from "@vm0/api-contracts/contracts/integrations";
 
 import { env } from "../../lib/env";
-import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
+import {
+  buildArtifactKey,
+  buildFileUrl,
+  sanitizeArtifactFilename,
+} from "../../lib/file-url";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -24,7 +28,7 @@ const initInner$ = command(async ({ get }, signal: AbortSignal) => {
 
   const { filename, contentType, length } = bodyResult.data;
   const uploadId = crypto.randomUUID();
-  const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const sanitized = sanitizeArtifactFilename(filename);
   const s3Key = buildArtifactKey(auth.userId, uploadId, sanitized);
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
   const uploadUrl = await get(

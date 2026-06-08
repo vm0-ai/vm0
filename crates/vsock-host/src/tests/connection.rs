@@ -2,17 +2,15 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use vsock_proto::{
-    Decoder, ExecTermination, MSG_ERROR, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
-    MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
-    MSG_SHUTDOWN_ACK,
+    ExecTermination, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
+    MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
 };
 
 use super::support::{
-    drop_idle_request_write_guard, drop_started_request_write_guard, fence_normal_operations,
-    host_from_stream, is_connected, make_pair, mock_handshake, normal_operation_readiness,
-    poison_connection, read_guest_message, send_exec_result, setup_host_and_guest,
+    MockGuest, await_mock_guest, drop_idle_request_write_guard, drop_started_request_write_guard,
+    fence_normal_operations, host_from_stream, is_connected, make_pair, normal_operation_readiness,
+    poison_connection, setup_host_and_mock_guest,
 };
 use crate::{
     NormalOperationFenceRejection, VsockHost, operation_tracker::NormalOperationReadiness,
@@ -80,76 +78,72 @@ async fn wait_for_connection_removes_listener_socket_on_abort() {
 
 #[tokio::test]
 async fn test_shutdown() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
-        let mut buf = [0u8; 4096];
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SHUTDOWN);
-
-        let resp = vsock_proto::encode(MSG_SHUTDOWN_ACK, msgs[0].seq, &[]).unwrap();
-        guest.write_all(&resp).await.unwrap();
+        let shutdown = guest.expect_message(MSG_SHUTDOWN).await;
+        guest
+            .send_empty_response(MSG_SHUTDOWN_ACK, shutdown.seq)
+            .await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
     assert!(host.shutdown(Duration::from_secs(2)).await);
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn quiesce_operations_sends_request_and_accepts_empty_ack() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
-        let mut buf = [0u8; 4096];
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_QUIESCE_OPERATIONS);
-        assert!(msgs[0].payload.is_empty());
+        let quiesce = guest.expect_message(MSG_QUIESCE_OPERATIONS).await;
+        assert!(quiesce.payload.is_empty());
 
-        let resp = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, msgs[0].seq, &[]).unwrap();
-        guest.write_all(&resp).await.unwrap();
+        guest
+            .send_empty_response(MSG_OPERATIONS_QUIESCED, quiesce.seq)
+            .await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
     host.quiesce_operations(Duration::from_secs(2))
         .await
         .unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn resume_operations_sends_request_and_accepts_empty_ack() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
-        let mut buf = [0u8; 4096];
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_RESUME_OPERATIONS);
-        assert!(msgs[0].payload.is_empty());
+        let resume = guest.expect_message(MSG_RESUME_OPERATIONS).await;
+        assert!(resume.payload.is_empty());
 
-        let resp = vsock_proto::encode(MSG_OPERATIONS_RESUMED, msgs[0].seq, &[]).unwrap();
-        guest.write_all(&resp).await.unwrap();
+        guest
+            .send_empty_response(MSG_OPERATIONS_RESUMED, resume.seq)
+            .await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
     host.resume_operations(Duration::from_secs(2))
         .await
         .unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn lifecycle_request_bypasses_normal_operation_fence() {
-    let (host, mut guest) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_mock_guest().await;
     let host = Arc::new(host);
     let _fence = fence_normal_operations(&host);
 
@@ -161,17 +155,17 @@ async fn lifecycle_request_bypasses_normal_operation_fence() {
         tokio::spawn(async move { host.quiesce_operations(Duration::from_secs(2)).await })
     };
 
-    let msg = read_guest_message(&mut guest).await;
-    assert_eq!(msg.msg_type, MSG_QUIESCE_OPERATIONS);
-    let resp = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, msg.seq, &[]).unwrap();
-    guest.write_all(&resp).await.unwrap();
+    let msg = guest.expect_message(MSG_QUIESCE_OPERATIONS).await;
+    guest
+        .send_empty_response(MSG_OPERATIONS_QUIESCED, msg.seq)
+        .await;
 
     quiesce_task.await.unwrap().unwrap();
 }
 
 #[tokio::test]
 async fn normal_operation_fence_rejects_new_normal_operations_until_dropped() {
-    let (host, mut guest) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_mock_guest().await;
     let fence = host
         .try_fence_normal_operations()
         .expect("idle host should fence normal operations");
@@ -185,42 +179,40 @@ async fn normal_operation_fence_rejects_new_normal_operations_until_dropped() {
 
     drop(fence);
     let exec_task = tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await });
-    let request = read_guest_message(&mut guest).await;
-    assert_eq!(request.msg_type, MSG_EXEC_START);
-    send_exec_result(
-        &mut guest,
-        request.seq,
-        ExecTermination::Exited { exit_code: 0 },
-        b"ok",
-        b"",
-    )
-    .await;
+    let request = guest.expect_message(MSG_EXEC_START).await;
+    guest
+        .send_exec_result(
+            request.seq,
+            ExecTermination::Exited { exit_code: 0 },
+            b"ok",
+            b"",
+        )
+        .await;
 
     assert_eq!(exec_task.await.unwrap().unwrap().stdout, b"ok");
 }
 
 #[tokio::test]
 async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
     let release_exec = Arc::new(tokio::sync::Notify::new());
     let (request_seen_tx, request_seen_rx) = tokio::sync::oneshot::channel();
-    let guest_task = {
+    let mut guest_task = {
         let release_exec = Arc::clone(&release_exec);
         tokio::spawn(async move {
-            let mut decoder = Decoder::new();
-            mock_handshake(&mut guest, &mut decoder).await;
-            let request = read_guest_message(&mut guest).await;
-            assert_eq!(request.msg_type, MSG_EXEC_START);
+            let mut guest = MockGuest::new(guest);
+            guest.complete_handshake().await;
+            let request = guest.expect_message(MSG_EXEC_START).await;
             let _ = request_seen_tx.send(());
             release_exec.notified().await;
-            send_exec_result(
-                &mut guest,
-                request.seq,
-                ExecTermination::Exited { exit_code: 0 },
-                b"done",
-                b"",
-            )
-            .await;
+            guest
+                .send_exec_result(
+                    request.seq,
+                    ExecTermination::Exited { exit_code: 0 },
+                    b"done",
+                    b"",
+                )
+                .await;
             drop(guest);
         })
     };
@@ -230,10 +222,24 @@ async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.exec("sleep", 5000, &[], false).await })
     };
-    tokio::time::timeout(Duration::from_secs(2), request_seen_rx)
-        .await
-        .expect("guest should receive exec start before busy assertion")
-        .unwrap();
+    tokio::select! {
+        result = tokio::time::timeout(Duration::from_secs(2), request_seen_rx) => {
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(_)) => {
+                    match (&mut guest_task).await {
+                        Ok(()) => panic!("mock guest finished before exec request"),
+                        Err(err) => panic!("mock guest task panicked before exec request: {err}"),
+                    }
+                }
+                Err(_) => panic!("guest should receive exec start before busy assertion"),
+            }
+        }
+        result = &mut guest_task => {
+            result.expect("mock guest task panicked before exec request");
+            panic!("mock guest finished before exec request");
+        }
+    }
     assert_eq!(
         host.try_fence_normal_operations().unwrap_err(),
         NormalOperationFenceRejection::Busy
@@ -248,9 +254,9 @@ async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
         host.try_fence_normal_operations().unwrap_err(),
         NormalOperationFenceRejection::Closed
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 
-    let (poisoned_host, _guest) = setup_host_and_guest().await;
+    let (poisoned_host, _guest) = setup_host_and_mock_guest().await;
     poison_connection(&poisoned_host);
     assert_eq!(
         poisoned_host.try_fence_normal_operations().unwrap_err(),
@@ -260,20 +266,16 @@ async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
 
 #[tokio::test]
 async fn quiesce_operations_surfaces_guest_error() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
-        let mut buf = [0u8; 4096];
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_QUIESCE_OPERATIONS);
-
-        let payload = vsock_proto::encode_error("guest operations still pending: 1");
-        let resp = vsock_proto::encode(MSG_ERROR, msgs[0].seq, &payload).unwrap();
-        guest.write_all(&resp).await.unwrap();
+        let quiesce = guest.expect_message(MSG_QUIESCE_OPERATIONS).await;
+        guest
+            .send_error_response(quiesce.seq, "guest operations still pending: 1")
+            .await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
@@ -283,21 +285,21 @@ async fn quiesce_operations_surfaces_guest_error() {
         .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::Other);
     assert_eq!(err.to_string(), "guest operations still pending: 1");
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn quiesce_operations_rejects_wrong_ack_type() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
-        let mut buf = [0u8; 4096];
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        let resp = vsock_proto::encode(MSG_OPERATIONS_RESUMED, msgs[0].seq, &[]).unwrap();
-        guest.write_all(&resp).await.unwrap();
+        let quiesce = guest.expect_message(MSG_QUIESCE_OPERATIONS).await;
+        guest
+            .send_empty_response(MSG_OPERATIONS_RESUMED, quiesce.seq)
+            .await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
@@ -310,21 +312,21 @@ async fn quiesce_operations_rejects_wrong_ack_type() {
         err.to_string()
             .contains("unexpected lifecycle response type")
     );
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn quiesce_operations_rejects_non_empty_ack_payload() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
-        let mut buf = [0u8; 4096];
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        let resp = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, msgs[0].seq, b"x").unwrap();
-        guest.write_all(&resp).await.unwrap();
+        let quiesce = guest.expect_message(MSG_QUIESCE_OPERATIONS).await;
+        guest
+            .send_response(MSG_OPERATIONS_QUIESCED, quiesce.seq, b"x")
+            .await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
@@ -337,75 +339,91 @@ async fn quiesce_operations_rejects_non_empty_ack_payload() {
         err.to_string()
             .contains("operations_quiesced payload must be empty")
     );
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
     let (quiesce_seen_tx, quiesce_seen_rx) = tokio::sync::oneshot::channel();
     let (send_late_ack, receive_late_ack) = tokio::sync::oneshot::channel();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let mut guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
-        let quiesce = read_guest_message(&mut guest).await;
-        assert_eq!(quiesce.msg_type, MSG_QUIESCE_OPERATIONS);
+        let quiesce = guest.expect_message(MSG_QUIESCE_OPERATIONS).await;
         quiesce_seen_tx.send(()).unwrap();
 
         receive_late_ack.await.unwrap();
-        let late = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, quiesce.seq, &[]).unwrap();
-        guest.write_all(&late).await.unwrap();
+        guest
+            .send_empty_response(MSG_OPERATIONS_QUIESCED, quiesce.seq)
+            .await;
 
-        let resume = read_guest_message(&mut guest).await;
-        assert_eq!(resume.msg_type, MSG_RESUME_OPERATIONS);
-        let resp = vsock_proto::encode(MSG_OPERATIONS_RESUMED, resume.seq, &[]).unwrap();
-        guest.write_all(&resp).await.unwrap();
+        let resume = guest.expect_message(MSG_RESUME_OPERATIONS).await;
+        guest
+            .send_empty_response(MSG_OPERATIONS_RESUMED, resume.seq)
+            .await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
     let err = host.quiesce_operations(Duration::ZERO).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
 
-    tokio::time::timeout(Duration::from_secs(2), quiesce_seen_rx)
-        .await
-        .unwrap()
-        .unwrap();
+    tokio::select! {
+        result = tokio::time::timeout(Duration::from_secs(2), quiesce_seen_rx) => {
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(_)) => {
+                    match (&mut guest_task).await {
+                        Ok(()) => panic!("mock guest finished before quiesce request"),
+                        Err(err) => panic!("mock guest task panicked before quiesce request: {err}"),
+                    }
+                }
+                Err(_) => panic!("guest should receive quiesce request before late ack"),
+            }
+        }
+        result = &mut guest_task => {
+            result.expect("mock guest task panicked before quiesce request");
+            panic!("mock guest finished before quiesce request");
+        }
+    }
     assert!(is_connected(&host));
     send_late_ack.send(()).unwrap();
     host.resume_operations(Duration::from_secs(2))
         .await
         .unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn test_connection_closed_returns_error() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
         // Read the exec request then close the connection.
-        let mut buf = [0u8; 4096];
-        let _ = guest.read(&mut buf).await.unwrap();
+        let _request = guest.expect_message(MSG_EXEC_START).await;
         drop(guest);
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
     let err = host.exec("echo hi", 5000, &[], false).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    await_mock_guest(guest_task).await;
 }
 
 /// Request made after connection is already closed returns ConnectionReset
 /// immediately (not after timeout).
 #[tokio::test]
 async fn test_request_after_close_returns_immediately() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
         // Close immediately after handshake.
         drop(guest);
     });
@@ -435,15 +453,16 @@ async fn test_request_after_close_returns_immediately() {
         "expected ConnectionReset or BrokenPipe, got {:?}",
         err.kind()
     );
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn lifecycle_request_after_connection_close_returns_immediately() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
     let guest_task = tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
         drop(guest);
     });
 
@@ -465,16 +484,16 @@ async fn lifecycle_request_after_connection_close_returns_immediately() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Closed
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn connection_close_marks_normal_operations_closed() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
     let guest_task = tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
         drop(guest);
     });
 
@@ -487,16 +506,16 @@ async fn connection_close_marks_normal_operations_closed() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Closed
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn late_poison_after_connection_close_does_not_reclassify_readiness() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
     let guest_task = tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
         drop(guest);
     });
 
@@ -514,18 +533,17 @@ async fn late_poison_after_connection_close_does_not_reclassify_readiness() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Closed
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn connection_poison_marks_normal_operations_not_parkable() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
     let guest_task = tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
-        let mut buf = [0u8; 1];
-        let _ = guest.read(&mut buf).await;
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
+        guest.expect_eof().await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
@@ -535,15 +553,12 @@ async fn connection_poison_marks_normal_operations_not_parkable() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
     );
-    tokio::time::timeout(Duration::from_secs(5), guest_task)
-        .await
-        .unwrap()
-        .unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]
 async fn cancelled_request_before_frame_write_does_not_poison_connection() {
-    let (host, _guest) = setup_host_and_guest().await;
+    let (host, _guest) = setup_host_and_mock_guest().await;
 
     drop_idle_request_write_guard(&host);
 
@@ -556,7 +571,7 @@ async fn cancelled_request_before_frame_write_does_not_poison_connection() {
 
 #[tokio::test]
 async fn cancelled_request_frame_write_poisons_connection() {
-    let (host, _guest) = setup_host_and_guest().await;
+    let (host, _guest) = setup_host_and_mock_guest().await;
 
     drop_started_request_write_guard(&host);
 
@@ -572,20 +587,13 @@ async fn cancelled_request_frame_write_poisons_connection() {
 /// Two concurrent exec calls get the correct response matched by seq.
 #[tokio::test]
 async fn test_concurrent_execs() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
-        // Read both exec requests (may arrive in one or two reads).
-        let mut all_msgs = Vec::new();
-        let mut buf = [0u8; 4096];
-        while all_msgs.len() < 2 {
-            let n = guest.read(&mut buf).await.unwrap();
-            let msgs = decoder.decode(&buf[..n]).unwrap();
-            all_msgs.extend(msgs);
-        }
+        let all_msgs = guest.read_messages(2).await;
         assert_eq!(all_msgs.len(), 2);
         assert!(all_msgs.iter().all(|m| m.msg_type == MSG_EXEC_START));
 
@@ -593,18 +601,17 @@ async fn test_concurrent_execs() {
         for msg in all_msgs.iter().rev() {
             let d = vsock_proto::decode_exec_start(&msg.payload).unwrap();
             let out = format!("reply:{}", d.command);
-            send_exec_result(
-                &mut guest,
-                msg.seq,
-                ExecTermination::Exited { exit_code: 0 },
-                out.as_bytes(),
-                b"",
-            )
-            .await;
+            guest
+                .send_exec_result(
+                    msg.seq,
+                    ExecTermination::Exited { exit_code: 0 },
+                    out.as_bytes(),
+                    b"",
+                )
+                .await;
         }
 
-        let mut discard = [0u8; 1];
-        let _ = guest.read(&mut discard).await;
+        guest.expect_eof().await;
     });
 
     let host = Arc::new(host_from_stream(host_stream).await.unwrap());
@@ -626,38 +633,38 @@ async fn test_concurrent_execs() {
     let out2 = String::from_utf8_lossy(&r2.stdout);
     assert_eq!(out1, "reply:cmd-a");
     assert_eq!(out2, "reply:cmd-b");
+    drop(host);
+    await_mock_guest(guest_task).await;
 }
 
 /// Verify that post-handshake request seq starts at 2 (seq=1 is used by handshake ping).
 #[tokio::test]
 async fn test_seq_starts_at_2() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
         // Read the first exec request and verify its seq.
-        let mut buf = [0u8; 4096];
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_EXEC_START);
+        let msg = guest.expect_message(MSG_EXEC_START).await;
         // Handshake used seq=1, so first request must be seq=2.
-        assert_eq!(msgs[0].seq, 2, "first post-handshake seq should be 2");
+        assert_eq!(msg.seq, 2, "first post-handshake seq should be 2");
 
-        send_exec_result(
-            &mut guest,
-            msgs[0].seq,
-            ExecTermination::Exited { exit_code: 0 },
-            b"ok",
-            b"",
-        )
-        .await;
+        guest
+            .send_exec_result(
+                msg.seq,
+                ExecTermination::Exited { exit_code: 0 },
+                b"ok",
+                b"",
+            )
+            .await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
     let result = host.exec("test", 5000, &[], false).await.unwrap();
     assert_eq!(result.exit_code, 0);
+    await_mock_guest(guest_task).await;
 }
 
 /// Regression for #10076: the guest writes the exec response and then
@@ -670,29 +677,26 @@ async fn test_seq_starts_at_2() {
 /// returned via the biased `rx` arm of `select!`.
 #[tokio::test]
 async fn test_response_then_close_returns_ok() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
 
         // Read the exec request.
-        let mut buf = [0u8; 4096];
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_EXEC_START);
+        let msg = guest.expect_message(MSG_EXEC_START).await;
 
         // Write the response and close the socket. The response must
         // race with EOF such that reader_loop processes both before the
         // host's `request_raw` returns from its select!.
-        send_exec_result(
-            &mut guest,
-            msgs[0].seq,
-            ExecTermination::Exited { exit_code: 0 },
-            b"race-survived",
-            b"",
-        )
-        .await;
+        guest
+            .send_exec_result(
+                msg.seq,
+                ExecTermination::Exited { exit_code: 0 },
+                b"race-survived",
+                b"",
+            )
+            .await;
         drop(guest);
     });
 
@@ -705,4 +709,5 @@ async fn test_response_then_close_returns_ok() {
     let result = result.expect("response delivered before close must not be lost");
     assert_eq!(result.exit_code, 0);
     assert_eq!(result.stdout, b"race-survived");
+    await_mock_guest(guest_task).await;
 }

@@ -4,11 +4,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio::io::AsyncWriteExt;
-use vsock_proto::{Decoder, MSG_EXEC_START};
+use vsock_proto::MSG_EXEC_START;
 
 use super::super::support::{
-    assert_connection_accepts_exec_operation, host_from_stream, make_pair, mock_handshake,
-    normal_operation_readiness, pending_request_count, setup_host_and_guest,
+    MockGuest, assert_connection_accepts_exec_operation, await_mock_guest, host_from_stream,
+    make_pair, normal_operation_readiness, pending_request_count, setup_host_and_guest,
 };
 use super::support::{
     expect_write_file, send_guest_error, send_write_file_failure, send_write_file_success,
@@ -264,11 +264,11 @@ async fn write_file_connection_close_after_request_marks_tracker_not_parkable() 
 
 #[tokio::test]
 async fn write_file_after_connection_close_returns_immediately_without_not_parkable() {
-    let (host_stream, mut guest) = make_pair();
+    let (host_stream, guest) = make_pair();
 
     let guest_task = tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
         drop(guest);
     });
 
@@ -290,7 +290,7 @@ async fn write_file_after_connection_close_returns_immediately_without_not_parka
         normal_operation_readiness(&host),
         NormalOperationReadiness::Closed
     );
-    guest_task.await.unwrap();
+    await_mock_guest(guest_task).await;
 }
 
 #[tokio::test]

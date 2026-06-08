@@ -137,7 +137,7 @@ function formatDetailIdentity(
     identity = connector.externalEmail;
   }
   if (!identity) return "";
-  if (connector.needsReconnect) {
+  if (connector.connectionStatus === "reconnect-required") {
     identity += ` ${chalk.yellow("(needs reconnect)")}`;
   }
   return identity;

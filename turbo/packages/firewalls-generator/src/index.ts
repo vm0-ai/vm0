@@ -18,6 +18,7 @@ import { generate as generateAlchemy } from "./alchemy";
 import { generate as generateApollo } from "./apollo";
 import { generate as generateApify } from "./apify";
 import { generate as generateAsana } from "./asana";
+import { generate as generateAshby } from "./ashby";
 import { generate as generateAttio } from "./attio";
 import { generate as generateAtlassian } from "./atlassian";
 import { generate as generateAtlascloud } from "./atlascloud";
@@ -55,7 +56,9 @@ import { generate as generateCoingecko } from "./coingecko";
 import { generate as generateCoresignal } from "./coresignal";
 import { generate as generateCronlytic } from "./cronlytic";
 import { generate as generateCrustdata } from "./crustdata";
+import { generate as generateCursor } from "./cursor";
 import { generate as generateCustomerIo } from "./customer-io";
+import { generate as generateDaytona } from "./daytona";
 import { generate as generateDeepseek } from "./deepseek";
 import { generate as generateDoubao } from "./doubao";
 import { generate as generateDeel } from "./deel";
@@ -137,6 +140,7 @@ import { generate as generateMinimax } from "./minimax";
 import { generate as generateMiro } from "./miro";
 import { generate as generateMixpanel } from "./mixpanel";
 import { generate as generateMonday } from "./monday";
+import { generate as generateModal } from "./modal";
 import { generate as generateMoss } from "./moss";
 import { generate as generateMsg9 } from "./msg9";
 import { generate as generateN8n } from "./n8n";
@@ -260,6 +264,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   apollo: generateApollo,
   apify: generateApify,
   asana: generateAsana,
+  ashby: generateAshby,
   attio: generateAttio,
   atlassian: generateAtlassian,
   atlascloud: generateAtlascloud,
@@ -294,7 +299,9 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   coresignal: generateCoresignal,
   cronlytic: generateCronlytic,
   crustdata: generateCrustdata,
+  cursor: generateCursor,
   "customer-io": generateCustomerIo,
+  daytona: generateDaytona,
   deel: generateDeel,
   defillama: generateDefillama,
   deepseek: generateDeepseek,
@@ -373,6 +380,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   miro: generateMiro,
   mixpanel: generateMixpanel,
   monday: generateMonday,
+  modal: generateModal,
   moss: generateMoss,
   msg9: generateMsg9,
   n8n: generateN8n,

@@ -1,10 +1,11 @@
 "use client";
 
+import { capturePostHogEvent } from "../../components/PostHogProvider";
 import { useTheme } from "../../components/ThemeProvider";
 import Image from "next/image";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { useSearchParams } from "next/navigation";
-import { use } from "react";
+import { use, useEffect, useRef } from "react";
 
 interface PageProps {
   params: Promise<{ status: string }>;
@@ -24,6 +25,18 @@ export default function ConnectorStatusPage({
   const isSuccess = status === "success";
   const connectorLabel =
     connectorType === "github" ? "GitHub" : connectorType.toUpperCase();
+  const capturedSuccessRef = useRef(false);
+
+  useEffect(() => {
+    if (!isSuccess || capturedSuccessRef.current) {
+      return;
+    }
+    capturedSuccessRef.current = true;
+    capturePostHogEvent("connector_connection_success", {
+      connector_type: connectorType,
+      has_username: Boolean(username),
+    });
+  }, [connectorType, isSuccess, username]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">

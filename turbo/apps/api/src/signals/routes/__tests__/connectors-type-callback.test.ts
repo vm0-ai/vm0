@@ -17,7 +17,7 @@ import {
 import {
   testOauthApiProvider,
   testOauthProvider,
-} from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
+} from "@vm0/connectors/auth-providers/connectors/test-oauth/provider";
 import type { AuthCodeConnectorAuthProvider } from "@vm0/connectors/auth-providers/types";
 import type { exchangeConnectorAuthCode } from "@vm0/connectors/auth-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";

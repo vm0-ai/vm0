@@ -1,4 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="connector logo">
-  <!-- Official brand asset source: https://clearbit.com/apple-touch-icon.png -->
-  <image href="data:image/png;base64,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" x="0" y="0" width="256" height="256" preserveAspectRatio="xMidYMid meet"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <defs>
+    <clipPath id="clearbit-icon-clip">
+      <rect width="180" height="180" rx="30"/>
+    </clipPath>
+    <linearGradient id="clearbit-left" x1="0" x2="90" y1="0" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#21A5FD"/>
+      <stop offset="1" stop-color="#1591FD"/>
+    </linearGradient>
+    <linearGradient id="clearbit-top" x1="90" x2="180" y1="0" y2="90" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4FB9FD"/>
+      <stop offset="1" stop-color="#62BDFD"/>
+    </linearGradient>
+    <linearGradient id="clearbit-bottom" x1="90" x2="180" y1="90" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B9E1FE"/>
+      <stop offset="1" stop-color="#DDF2FE"/>
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#clearbit-icon-clip)">
+    <rect width="90" height="180" fill="url(#clearbit-left)"/>
+    <rect x="90" width="90" height="90" fill="url(#clearbit-top)"/>
+    <rect x="90" y="90" width="90" height="90" fill="url(#clearbit-bottom)"/>
+  </g>
 </svg>

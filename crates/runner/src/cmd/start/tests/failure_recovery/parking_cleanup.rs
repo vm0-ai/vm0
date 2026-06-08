@@ -1,13 +1,13 @@
 use super::super::super::*;
 use super::super::support::{
-    context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool, shutdown,
-    test_profiles, wait_budget_count, wait_cancel_token, wait_cancel_token_removed,
+    context_with_session, context_with_workspace_image_cache_enabled,
+    mock_run_config_with_overrides, push_job, seed_idle_pool, shutdown, test_profiles,
+    wait_budget_count, wait_cancel_token, wait_cancel_token_removed, wait_workspace_cache_sessions,
 };
 use super::support::assert_no_completion_for_run;
 
 use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
-use crate::types::SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG;
 use crate::workspace_image_cache::SessionWorkspaceCache;
 use sandbox_mock::MockLifecycleGate;
 
@@ -111,11 +111,7 @@ async fn assert_workspace_cache_after_failed_park(
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    let mut context = context_with_session(run_id, session_id);
-    context.feature_flags = Some(std::collections::HashMap::from([(
-        SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.to_string(),
-        true,
-    )]));
+    let context = context_with_workspace_image_cache_enabled(run_id, session_id);
     push_job(&env, run_id, "vm0/default", Some(context));
 
     wait_gate
@@ -149,11 +145,11 @@ async fn assert_workspace_cache_after_failed_park(
     assert_eq!(idle_pool.lock().await.len(), 0);
     assert_eq!(counter.park_call_count(), 1);
     assert_eq!(counter.destroy_call_count(), 1);
-    let held = workspace_cache.held_session_states().await;
     if expect_cache {
-        assert_eq!(held.len(), 1);
-        assert_eq!(held[0].session_id, session_id);
+        wait_workspace_cache_sessions(&workspace_cache, &[session_id], Duration::from_secs(2))
+            .await;
     } else {
+        let held = workspace_cache.held_session_states().await;
         assert!(held.is_empty());
     }
 
@@ -215,11 +211,7 @@ async fn assert_workspace_cache_after_late_cancellation(
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    let mut context = context_with_session(run_id, session_id);
-    context.feature_flags = Some(std::collections::HashMap::from([(
-        SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.to_string(),
-        true,
-    )]));
+    let context = context_with_workspace_image_cache_enabled(run_id, session_id);
     push_job(&env, run_id, "vm0/default", Some(context));
     let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
 
@@ -295,9 +287,7 @@ async fn assert_workspace_cache_after_late_cancellation(
     wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
     wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(2)).await;
     assert_eq!(idle_pool.lock().await.len(), 0);
-    let held = workspace_cache.held_session_states().await;
-    assert_eq!(held.len(), 1);
-    assert_eq!(held[0].session_id, session_id);
+    wait_workspace_cache_sessions(&workspace_cache, &[session_id], Duration::from_secs(2)).await;
 
     shutdown(&env, run_handle).await;
 }

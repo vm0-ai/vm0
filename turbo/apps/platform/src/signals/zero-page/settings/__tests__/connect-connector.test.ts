@@ -35,7 +35,7 @@ function makeEmptyConnectorResponse(): ConnectorListResponse {
   return {
     connectors: [],
     configuredTypes: [],
-    connectorProvidedEnvNames: [],
+    connectorProvidedBindings: [],
   };
 }
 
@@ -50,13 +50,14 @@ function makeGithubConnectorResponse(): ConnectorListResponse {
         externalUsername: "testuser",
         externalEmail: "test@example.com",
         oauthScopes: ["repo", "read:user"],
-        needsReconnect: false,
+        connectionStatus: "connected",
+        tokenExpiresAt: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
     ],
     configuredTypes: ["github"],
-    connectorProvidedEnvNames: [],
+    connectorProvidedBindings: [],
   };
 }
 
@@ -74,13 +75,14 @@ function makeTestOauthConnectorResponse(
         externalUsername: "test-oauth-user",
         externalEmail: null,
         oauthScopes: ["read"],
-        needsReconnect: false,
+        connectionStatus: "connected",
+        tokenExpiresAt: null,
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt,
       },
     ],
     configuredTypes: ["test-oauth"],
-    connectorProvidedEnvNames: [],
+    connectorProvidedBindings: [],
   };
 }
 
@@ -130,7 +132,8 @@ function makeTestOauthDeviceConnectorResponse(): ConnectorResponse {
     externalUsername: "device-user",
     externalEmail: null,
     oauthScopes: ["read"],
-    needsReconnect: false,
+    connectionStatus: "connected",
+    tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   };
@@ -643,9 +646,11 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
 
     const connectPromise = context.store.set(
       connectConnectorOAuthDeviceAuth$,
-      "test-oauth-device",
-      "oauth",
-      {},
+      {
+        type: "test-oauth-device",
+        authMethod: "oauth",
+        options: {},
+      },
       context.signal,
     );
 
@@ -672,6 +677,75 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
       "_blank",
     );
     expect(context.store.get(pollingOAuthDeviceAuthConnectorType$)).toBeNull();
+  });
+
+  it("sends selected start options when creating a device auth session", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    let submittedBody:
+      | {
+          readonly authMethod: string;
+          readonly options?: Record<string, string>;
+        }
+      | undefined;
+    server.use(
+      mockApi(
+        zeroConnectorOauthDeviceAuthSessionContract.create,
+        ({ body, params, respond }) => {
+          submittedBody = body;
+          return respond(200, {
+            sessionId: "00000000-0000-4000-8000-000000000124",
+            sessionToken: "device-session-token",
+            type: params.type,
+            status: "pending",
+            userCode: "VM0-DEVICE",
+            verificationUri: "https://oauth.test/device",
+            verificationUriComplete:
+              "https://oauth.test/device?user_code=VM0-DEVICE",
+            expiresIn: 300,
+            interval: 1,
+          });
+        },
+      ),
+      mockApi(zeroConnectorOauthDeviceAuthSessionContract.poll, ({ never }) => {
+        return never();
+      }),
+    );
+
+    const connectPromise = (async () => {
+      try {
+        return await context.store.set(
+          connectConnectorOAuthDeviceAuth$,
+          {
+            type: "test-oauth-device",
+            authMethod: "api",
+            options: {},
+            startOptions: { mode: "live" },
+          },
+          context.signal,
+        );
+      } catch (error) {
+        return returnFalseForAbortError(error);
+      }
+    })();
+
+    await vi.waitFor(() => {
+      expect(context.store.get(connectorOAuthDeviceAuthState$).status).toBe(
+        "pending",
+      );
+    });
+    expect(submittedBody).toStrictEqual({
+      authMethod: "api",
+      options: { mode: "live" },
+    });
+
+    context.store.set(clearConnectorOAuthDeviceAuth$);
+    await expect(connectPromise).resolves.toBeFalsy();
   });
 
   it("opens the verification URI when complete verification URI is absent", async () => {
@@ -715,9 +789,11 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
 
     const connectPromise = context.store.set(
       connectConnectorOAuthDeviceAuth$,
-      "test-oauth-device",
-      "oauth",
-      {},
+      {
+        type: "test-oauth-device",
+        authMethod: "oauth",
+        options: {},
+      },
       context.signal,
     );
 
@@ -781,9 +857,11 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
       try {
         return await context.store.set(
           connectConnectorOAuthDeviceAuth$,
-          "test-oauth-device",
-          "oauth",
-          {},
+          {
+            type: "test-oauth-device",
+            authMethod: "oauth",
+            options: {},
+          },
           context.signal,
         );
       } catch (error) {
@@ -857,9 +935,11 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
       try {
         return await context.store.set(
           connectConnectorOAuthDeviceAuth$,
-          "test-oauth-device",
-          "oauth",
-          {},
+          {
+            type: "test-oauth-device",
+            authMethod: "oauth",
+            options: {},
+          },
           flowSignal,
         );
       } catch (error) {
@@ -904,7 +984,8 @@ describe("submitManualGrant$", () => {
           externalUsername: null,
           externalEmail: null,
           oauthScopes: null,
-          needsReconnect: false,
+          connectionStatus: "connected",
+          tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         });

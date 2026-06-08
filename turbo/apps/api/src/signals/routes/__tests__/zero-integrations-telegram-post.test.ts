@@ -1278,6 +1278,51 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(job).toBeDefined();
   });
 
+  it("stores the internal callback url on VM0_API_BACKEND_URL when set", async () => {
+    mockEnv("VM0_API_URL", "https://www.vm0.ai");
+    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+    const fixture = await trackFixture(
+      store.set(
+        seedTelegramPostFixture$,
+        { linkTelegramUser: true },
+        context.signal,
+      ),
+    );
+    telegramApiMocks();
+
+    const response = await postWebhook({
+      telegramBotId: fixture.telegramBotId,
+      secret: fixture.webhookSecret,
+      body: {
+        update_id: 1,
+        message: {
+          message_id: 42,
+          chat: { id: 77_001, type: "private" },
+          from: {
+            id: Number(fixture.telegramUserId),
+            username: "alice",
+            first_name: "Alice",
+            language_code: "en",
+          },
+          text: "hello from telegram",
+        },
+      },
+    });
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+
+    const run = await latestRunForFixture(fixture);
+    const db = store.set(writeDb$);
+    const [callback] = await db
+      .select()
+      .from(agentRunCallbacks)
+      .where(eq(agentRunCallbacks.runId, run!.id))
+      .limit(1);
+    expect(callback?.url).toBe(
+      "https://api.vm0.ai/api/internal/callbacks/telegram",
+    );
+  });
+
   it("formats generic failed callback errors for Telegram replies", async () => {
     const fixture = await trackFixture(
       store.set(

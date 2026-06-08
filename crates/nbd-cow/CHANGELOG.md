@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.4.35](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.34...nbd-cow-v0.4.35) (2026-06-07)
+
+
+### Performance Improvements
+
+* **nbd-cow:** avoid blocking fio benchmark wait ([#16453](https://github.com/vm0-ai/vm0/issues/16453)) ([1f1b3eb](https://github.com/vm0-ai/vm0/commit/1f1b3eb8424215c8e16c5ec8cedc852e48c9dcb6))
+
+## [0.4.34](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.33...nbd-cow-v0.4.34) (2026-06-05)
+
+
+### Bug Fixes
+
+* offload nbd netlink critical sections ([#16246](https://github.com/vm0-ai/vm0/issues/16246)) ([0e25bae](https://github.com/vm0-ai/vm0/commit/0e25bae1f967857478a454ba7448653a8e7cf058))
+
+## [0.4.33](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.32...nbd-cow-v0.4.33) (2026-06-05)
+
+
+### Refactoring
+
+* **nbd-cow:** use safe netlink socket wrappers ([#16249](https://github.com/vm0-ai/vm0/issues/16249)) ([ed5848b](https://github.com/vm0-ai/vm0/commit/ed5848becef1c9f86d362b54194d2007954d2521))
+
+## [0.4.32](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.31...nbd-cow-v0.4.32) (2026-06-04)
+
+
+### Refactoring
+
+* extract nbd cow dispatch test harness ([#16140](https://github.com/vm0-ai/vm0/issues/16140)) ([280d6ca](https://github.com/vm0-ai/vm0/commit/280d6cae22a379ff4ed2c611eb532202c8fd0efa))
+
+## [0.4.31](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.30...nbd-cow-v0.4.31) (2026-06-04)
+
+
+### Refactoring
+
+* share nbd cow block spans ([#16076](https://github.com/vm0-ai/vm0/issues/16076)) ([4532704](https://github.com/vm0-ai/vm0/commit/45327045e27dc8545dfa42a2051d054d722d47f5))
+
 ## [0.4.30](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.29...nbd-cow-v0.4.30) (2026-06-03)
 
 

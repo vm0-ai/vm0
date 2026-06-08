@@ -251,8 +251,10 @@ export {
   type WebhookTelemetryContract,
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
+  webhookModelUsageObservationContract,
   webhookUsageEventContract,
   type WebhookClerkContract,
+  type WebhookModelUsageObservationContract,
   type WebhookUsageEventContract,
   type WebhookGithubContract,
   type WebhookStripeContract,
@@ -539,6 +541,7 @@ export {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
+  chatThreadModelSelectionContract,
   chatMessagesContract,
   chatThreadMessagesContract,
   chatThreadArtifactsContract,
@@ -565,6 +568,7 @@ export {
   type ChatThreadsContract,
   type ChatThreadByIdContract,
   type ChatThreadMarkReadContract,
+  type ChatThreadModelSelectionContract,
   type ChatMessagesContract,
   type ChatThreadMessagesContract,
   type ChatThreadArtifactsContract,
@@ -653,6 +657,7 @@ export {
   storageEntrySchema,
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
   artifactEntrySchema,
@@ -709,13 +714,14 @@ export {
   CONNECTOR_DISPLAY_CATEGORY_META,
   CONNECTOR_DISPLAY_CATEGORY_ORDER,
   type ConnectorType,
-  type ConnectorAuthProviderType,
+  type AuthGrantConnectorType,
   type ConnectorConfig,
   type ConnectorDisplayCategory,
   type ConnectorDisplayCategoryGroup,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
   type ConnectorEnvBindings,
+  type ConnectorEnvBindingValue,
 } from "@vm0/connectors/connectors";
 export {
   getConnectorOwnedSecretNames,
@@ -723,12 +729,20 @@ export {
   type ScopeDiff,
 } from "@vm0/connectors/connector-utils";
 export {
+  connectorResponseConnectionStatusSchema,
   connectorResponseSchema,
   connectorListResponseSchema,
+  guaranteedConnectorProvidedBindingNames,
+  connectorProvidedBindingNamespaceSchema,
+  connectorProvidedBindingSchema,
+  connectorProvidedBindingSourceSchema,
   scopeDiffResponseSchema,
+  type ConnectorResponseConnectionStatus,
   type ScopeDiffResponse,
   type ConnectorResponse,
   type ConnectorListResponse,
+  type ConnectorProvidedBinding,
+  type ConnectorProvidedBindingNamespace,
 } from "./connector-schemas";
 
 export {
@@ -1004,6 +1018,11 @@ export {
 } from "./zero-feature-switches";
 export { zeroMemoryContract, type ZeroMemoryContract } from "./zero-memory";
 export {
+  zeroMemoryDevRefreshContract,
+  type MemoryDevRefreshResponse,
+  type ZeroMemoryDevRefreshContract,
+} from "./zero-memory-dev-refresh";
+export {
   zeroSecretsContract,
   zeroSecretsByNameContract,
   zeroVariablesContract,
@@ -1086,10 +1105,6 @@ export {
   integrationsPhoneUploadCompleteContract,
   type PhoneUploadCompleteBody,
   type PhoneUploadCompleteResponse,
-  integrationsChatMessageContract,
-  type IntegrationsChatMessageContract,
-  type SendChatMessageBody,
-  type SendChatMessageResponse,
 } from "./integrations";
 export {
   deleteGithubInstallationResponseSchema,
@@ -1120,6 +1135,7 @@ export {
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
   zeroBillingDowngradeContract,
+  zeroBillingRestoreContract,
   zeroBillingRedeemContract,
   type ZeroBillingStatusContract,
   type ZeroBillingCheckoutContract,
@@ -1127,6 +1143,7 @@ export {
   type ZeroBillingAutoRechargeContract,
   type ZeroBillingInvoicesContract,
   type ZeroBillingDowngradeContract,
+  type ZeroBillingRestoreContract,
   type ZeroBillingRedeemContract,
   // Inferred types
   type BillingStatusResponse,

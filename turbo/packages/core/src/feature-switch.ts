@@ -178,12 +178,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.LarkConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable the Lark connector while tenant access-token exchange is being repaired.",
-    enabled: false,
-  },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Lab page for toggling experimental features",
@@ -211,12 +205,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description:
       "Enable the test-oauth connector, a synthetic OAuth 2.0 provider used only for automated tests. Off in prod.",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ChatHeaderNewButton]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the Invite people button in the agent chat page header with a New button that creates a new chat thread",
     enabled: false,
   },
   [FeatureSwitchKey.ChatThreadRename]: {
@@ -275,17 +263,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatArtifactSidebar]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the inline attachment text editor and modal lightbox with a single page-level artifact sidebar (50/50 with the chat thread area, URL-routed via ?artifact=, fullscreen-capable). When on, inline text/markdown attachments render as anchor chips, all preview chips route to the sidebar, and the artifacts drawer is hidden.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatGithubPrTracking]: {
     maintainer: "linghan@vm0.ai",
     description:
       "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatTemplatePicker]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show the Template picker in the Zero chat composer for per-message generation template selection.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -296,11 +284,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatScrollToBottomButton]: {
-    maintainer: "ethan@vm0.ai",
+  [FeatureSwitchKey.MemoryDevRefresh]: {
+    maintainer: "lancy@vm0.ai",
     description:
-      "Show a floating scroll-to-bottom button in the bottom-right of the chat thread whenever the message list is scrolled away from the bottom. Clicking it jumps to the latest message.",
-    enabled: true,
+      "Show the internal Memory page dev refresh action for staff prompt iteration.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatRecommendedFollowups]: {
     maintainer: "linghan@vm0.ai",

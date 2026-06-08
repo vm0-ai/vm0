@@ -33,8 +33,8 @@ Design:
   will cause under- or over-charging until an override is corrected.
 
 - ``_INCLUDES_TO_BUCKET`` maps X v2 ``includes.<key>`` resource types
-  to buckets.  Unknown keys return ``None`` and the caller emits a
-  synthetic ``includes.<key>`` category; the billing processor applies
+  to buckets.  Unknown keys return ``None`` and the caller routes them
+  to a bounded synthetic or overflow category; the billing processor applies
   a server-side fallback price for these.
 
 - Scopes that are not billable (e.g. the ``"app-only"`` group for
@@ -53,9 +53,10 @@ sheet for drift.
 import json
 import re
 from collections.abc import Callable
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 import matching
+from host_normalization import UnsafeIdnaCompatibilityMappingError, normalize_idna_label
 
 from .x_tlds import IANA_TLDS
 
@@ -291,6 +292,7 @@ _DOMAIN_LABEL_RE = re.compile(r"^[a-z0-9-]{1,63}$")
 _MIN_DOMAIN_LABELS = 2
 _URL_TRAILING_PUNCTUATION = ".,:;!?"
 _URL_WRAPPER_CHARS = " \t\r\n<>()[]{}\"'"
+_BareDomainClassification = Literal["url", "non_link", "ambiguous"]
 
 
 def _host_from_bare_domain_candidate(candidate: str) -> str | None:
@@ -308,36 +310,56 @@ def _host_from_bare_domain_candidate(candidate: str) -> str | None:
     return host.rstrip(".")
 
 
-def _idna_domain_labels(host: str) -> tuple[str, ...] | None:
-    labels = host.split(".")
-    if len(labels) < _MIN_DOMAIN_LABELS:
-        return None
+def _label_is_billing_domain_label(label: str) -> bool:
+    return (
+        bool(label)
+        and _DOMAIN_LABEL_RE.fullmatch(label) is not None
+        and not label.startswith("-")
+        and not label.endswith("-")
+    )
 
-    normalized_labels = []
+
+def _classify_bare_domain_host(host: str) -> _BareDomainClassification:
+    labels = tuple(host.split("."))
+    if len(labels) < _MIN_DOMAIN_LABELS or any(not label for label in labels):
+        return "non_link"
+
+    has_ambiguous_label = False
+    normalized_labels: list[str | None] = []
     for label in labels:
-        if not label:
-            return None
         try:
-            normalized = label.encode("idna").decode("ascii").lower()
+            normalized_label = normalize_idna_label(label)
+        except UnsafeIdnaCompatibilityMappingError:
+            # Keep billing conservative for URL-like compatibility aliases,
+            # but do not fold them into unrelated ASCII domains.
+            has_ambiguous_label = True
+            normalized_labels.append(None)
+            continue
         except UnicodeError:
-            return None
-        if (
-            _DOMAIN_LABEL_RE.fullmatch(normalized) is None
-            or normalized.startswith("-")
-            or normalized.endswith("-")
-        ):
-            return None
-        normalized_labels.append(normalized)
+            return "non_link"
 
-    return tuple(normalized_labels)
+        if not _label_is_billing_domain_label(normalized_label):
+            return "non_link"
+        normalized_labels.append(normalized_label)
+
+    normalized_tld = normalized_labels[-1]
+    if normalized_tld is not None and normalized_tld not in IANA_TLDS:
+        return "non_link"
+    if has_ambiguous_label:
+        return "ambiguous"
+    return "url"
 
 
 def _bare_domain_candidate_likely_contains_url(candidate: str) -> bool:
     host = _host_from_bare_domain_candidate(candidate)
     if host is None:
         return False
-    labels = _idna_domain_labels(host)
-    return labels is not None and labels[-1] in IANA_TLDS
+
+    match _classify_bare_domain_host(host):
+        case "url" | "ambiguous":
+            return True
+        case "non_link":
+            return False
 
 
 def _tweet_text_likely_contains_url(text: str) -> bool:
@@ -372,7 +394,7 @@ def _tweet_create_body_is_plain_text_without_url(body: bytes | None) -> bool:
         return False
     try:
         obj = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (ValueError, RecursionError):
         return False
     if not isinstance(obj, dict):
         return False

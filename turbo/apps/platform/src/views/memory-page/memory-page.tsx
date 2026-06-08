@@ -1,22 +1,38 @@
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import type { MouseEvent } from "react";
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
+import { IconChevronDown, IconLoader2, IconRefresh } from "@tabler/icons-react";
 import type { MemoryDetailResponse } from "@vm0/api-contracts/contracts/zero-memory";
 import type { MemoryActivityResponse } from "@vm0/api-contracts/contracts/zero-memory-activity";
-import { cn } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { Button, cn } from "@vm0/ui";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 
 import {
+  expandedMemoryEntries$,
   expandedMemoryItems$,
+  loadMoreMemoryActivity$,
   memoryActivity$,
+  memoryActivityExtraEntries$,
+  memoryActivityExtraHasMore$,
+  memoryActivityHasLoadedExtraPages$,
+  memoryActivityLatestCursor$,
+  memoryActivityLoadMoreError$,
+  memoryActivityLoadingMore$,
+  memoryDevRefreshState$,
   memoryDetail$,
   memoryTab$,
+  refreshMemoryDevSummaries$,
   selectedMemoryFilePath$,
   setMemoryTab$,
   setSelectedMemoryFilePath$,
+  toggleMemoryEntryExpanded$,
   toggleMemoryItemExpanded$,
   type MemoryTab,
 } from "../../signals/memory-page/memory-signals.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { Markdown } from "../components/markdown.tsx";
 
 const PREFERRED_FILE = "MEMORY.md";
@@ -173,6 +189,63 @@ function isMemoryTab(value: string): value is MemoryTab {
   return value === "updates" || value === "raw";
 }
 
+function MemoryDevRefreshButton({
+  className,
+}: {
+  readonly className?: string;
+}) {
+  const features = useGet(featureSwitch$);
+  const refreshState = useGet(memoryDevRefreshState$);
+  const refresh = useSet(refreshMemoryDevSummaries$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (!features[FeatureSwitchKey.MemoryDevRefresh]) {
+    return null;
+  }
+
+  const refreshing = refreshState.status === "refreshing";
+  const status =
+    refreshState.status === "success" || refreshState.status === "error"
+      ? refreshState
+      : null;
+
+  return (
+    <div className={cn("flex shrink-0 flex-col items-end gap-1", className)}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8 gap-1.5 px-2.5 text-xs"
+        disabled={refreshing}
+        title="Force-refresh memory summaries"
+        onClick={() => {
+          detach(refresh(pageSignal), Reason.DomCallback);
+        }}
+      >
+        {refreshing ? (
+          <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <IconRefresh className="h-3.5 w-3.5" />
+        )}
+        <span>{refreshing ? "Refreshing" : "Dev refresh"}</span>
+      </Button>
+      {status ? (
+        <span
+          role={status.status === "error" ? "alert" : "status"}
+          className={cn(
+            "max-w-[180px] text-right text-[11px] leading-4",
+            status.status === "error"
+              ? "text-destructive"
+              : "text-muted-foreground",
+          )}
+        >
+          {status.message}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function MemoryPage() {
   const activeTab = useGet(memoryTab$);
   const setTab = useSet(setMemoryTab$);
@@ -181,38 +254,44 @@ export function MemoryPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
         <div className="mx-auto w-full max-w-[900px]">
-          <div className="hidden min-w-0 md:block">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Memory
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              What Zero remembers across runs. Read-only.
-            </p>
+          <div className="hidden min-w-0 items-start justify-between gap-4 md:flex">
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold tracking-tight text-foreground">
+                Memory
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                What Zero remembers from previous work.
+              </p>
+            </div>
+            <MemoryDevRefreshButton />
           </div>
-          <Tabs
-            value={activeTab}
-            onValueChange={(value) => {
-              if (isMemoryTab(value)) {
-                setTab(value);
-              }
-            }}
-            className="mt-3"
-          >
-            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-              <TabsTrigger
-                value="updates"
-                className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
-              >
-                Updates
-              </TabsTrigger>
-              <TabsTrigger
-                value="raw"
-                className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
-              >
-                Raw files
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="mt-3 flex min-w-0 items-start justify-between gap-3">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => {
+                if (isMemoryTab(value)) {
+                  setTab(value);
+                }
+              }}
+              className="min-w-0"
+            >
+              <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+                <TabsTrigger
+                  value="updates"
+                  className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+                >
+                  Updates
+                </TabsTrigger>
+                <TabsTrigger
+                  value="raw"
+                  className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+                >
+                  Memory files
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <MemoryDevRefreshButton className="md:hidden" />
+          </div>
         </div>
       </header>
 
@@ -234,7 +313,7 @@ function MemoryRawFiles() {
   const hasFiles = detail !== null && detail.exists && detail.files.length > 0;
 
   if (loading) {
-    return <MemorySkeleton />;
+    return <MemoryRawFilesSkeleton />;
   }
   if (hasFiles && detail) {
     return <MemoryViewer detail={detail} />;
@@ -424,54 +503,38 @@ function MemoryFrontmatter({
 
 type MemoryActivityEntry = MemoryActivityResponse["entries"][number];
 type MemoryActivityItem = MemoryActivityEntry["items"][number];
-type MemoryItemKind = MemoryActivityItem["kind"];
+type MemoryActivityDiff = MemoryActivityItem["diff"];
+type MemoryActivityDiffLine =
+  MemoryActivityDiff["hunks"][number]["lines"][number];
 
-const KIND_ORDER: readonly MemoryItemKind[] = [
-  "learned",
-  "updated",
-  "forgotten",
-];
+const DIFF_LINE_CLASS = {
+  add: "border-l-emerald-500 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100",
+  remove: "border-l-rose-500 bg-rose-500/10 text-rose-950 dark:text-rose-100",
+  context: "border-l-transparent text-muted-foreground",
+} as const satisfies Record<MemoryActivityDiffLine["op"], string>;
 
-const KIND_LABEL = {
-  learned: "Learned",
-  updated: "Updated",
-  forgotten: "Forgotten",
-} as const satisfies Record<MemoryItemKind, string>;
-
-const KIND_BADGE_CLASS = {
-  learned:
-    "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  updated:
-    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  forgotten:
-    "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
-} as const satisfies Record<MemoryItemKind, string>;
-
-function isMarkdownPath(path: string): boolean {
-  return path.toLowerCase().endsWith(".md");
-}
+const DIFF_LINE_SYMBOL = {
+  add: "+",
+  remove: "-",
+  context: " ",
+} as const satisfies Record<MemoryActivityDiffLine["op"], string>;
 
 /**
- * Deterministic fallback line shown when the LLM narrative is null. Mirrors the
- * "N changes — A learned, B updated, C forgotten" shape so a failed generation
- * still reads as a real summary rather than a broken card.
+ * Deterministic fallback line shown when the LLM narrative is null, based only
+ * on the raw file diffs persisted for the day.
  */
 function buildFallbackSummary(items: readonly MemoryActivityItem[]): string {
-  const counts = new Map<MemoryItemKind, number>();
+  const totals = { added: 0, removed: 0 };
   for (const item of items) {
-    counts.set(item.kind, (counts.get(item.kind) ?? 0) + 1);
+    totals.added += item.diff.stats.added;
+    totals.removed += item.diff.stats.removed;
   }
-  const parts = KIND_ORDER.filter((kind) => {
-    return (counts.get(kind) ?? 0) > 0;
-  }).map((kind) => {
-    return `${counts.get(kind)} ${kind}`;
-  });
   const total = items.length;
-  const noun = total === 1 ? "change" : "changes";
-  if (parts.length === 0) {
-    return `${total} ${noun}`;
+  if (total === 0) {
+    return "No memory files changed.";
   }
-  return `${total} ${noun} — ${parts.join(", ")}`;
+  const noun = total === 1 ? "memory file" : "memory files";
+  return `${total} ${noun} changed (${formatLineStatsText(totals)}).`;
 }
 
 function formatActivityDate(date: string): string {
@@ -494,19 +557,83 @@ function formatActivityDate(date: string): string {
   });
 }
 
+function hasDiffEvidence(diff: MemoryActivityDiff): boolean {
+  return (
+    diff.hunks.some((hunk) => {
+      return hunk.lines.length > 0;
+    }) || diff.omittedReason !== undefined
+  );
+}
+
+function formatLineStatsText(stats: {
+  readonly added: number;
+  readonly removed: number;
+}): string {
+  const parts: string[] = [];
+  if (stats.added > 0) {
+    parts.push(`+${stats.added}`);
+  }
+  if (stats.removed > 0) {
+    parts.push(`-${stats.removed}`);
+  }
+  return parts.length === 0 ? "0" : parts.join(" ");
+}
+
+function getMemoryItemsStats(items: readonly MemoryActivityItem[]): {
+  readonly added: number;
+  readonly removed: number;
+} {
+  return items.reduce(
+    (totals, item) => {
+      return {
+        added: totals.added + item.diff.stats.added,
+        removed: totals.removed + item.diff.stats.removed,
+      };
+    },
+    { added: 0, removed: 0 },
+  );
+}
+
+function formatMemoryFileCount(count: number): string {
+  const noun = count === 1 ? "memory file" : "memory files";
+  return `${count} ${noun} changed`;
+}
+
 function MemoryUpdates() {
   const activityLoadable = useLoadable(memoryActivity$);
+  const extraEntries = useLastResolved(memoryActivityExtraEntries$) ?? [];
+  const hasLoadedExtraPages =
+    useLastResolved(memoryActivityHasLoadedExtraPages$) ?? false;
+  const extraHasMore = useLastResolved(memoryActivityExtraHasMore$) ?? false;
+  const latestCursor = useLastResolved(memoryActivityLatestCursor$);
+  const loadingMore = useLastResolved(memoryActivityLoadingMore$) ?? false;
+  const loadMoreError = useLastResolved(memoryActivityLoadMoreError$) ?? null;
+  const loadMore = useSet(loadMoreMemoryActivity$);
+  const pageSignal = useGet(pageSignal$);
 
   if (activityLoadable.state === "loading") {
-    return <MemorySkeleton />;
+    return <MemoryUpdatesSkeleton />;
   }
   if (activityLoadable.state === "hasError") {
     return <MemoryEmptyState errored />;
   }
 
-  const entries = activityLoadable.data.entries;
+  const entries = [...activityLoadable.data.entries, ...extraEntries];
   if (entries.length === 0) {
     return <MemoryUpdatesEmptyState />;
+  }
+  const cursorForLoadMore = hasLoadedExtraPages
+    ? latestCursor
+    : activityLoadable.data.nextCursor;
+  const hasMore = hasLoadedExtraPages
+    ? extraHasMore
+    : activityLoadable.data.nextCursor !== null;
+
+  function handleLoadMore() {
+    if (!cursorForLoadMore || loadingMore) {
+      return;
+    }
+    detach(loadMore(cursorForLoadMore, pageSignal), Reason.DomCallback);
   }
 
   return (
@@ -514,65 +641,119 @@ function MemoryUpdates() {
       {entries.map((entry) => {
         return <MemoryUpdateCard key={entry.toVersionId} entry={entry} />;
       })}
+      {hasMore ? (
+        <MemoryUpdatesLoadMore
+          loading={loadingMore}
+          error={loadMoreError}
+          onLoadMore={handleLoadMore}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function MemoryUpdatesLoadMore({
+  loading,
+  error,
+  onLoadMore,
+}: {
+  readonly loading: boolean;
+  readonly error: string | null;
+  readonly onLoadMore: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 flex-col items-center gap-2 py-1">
+      <button
+        type="button"
+        disabled={loading}
+        onClick={onLoadMore}
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border/70 bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-accent/50 disabled:pointer-events-none disabled:opacity-50"
+      >
+        {loading ? (
+          <IconLoader2 size={14} className="animate-spin" />
+        ) : (
+          <IconChevronDown size={14} />
+        )}
+        <span>{loading ? "Loading..." : "Load more"}</span>
+      </button>
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>
   );
 }
 
 function MemoryUpdateCard({ entry }: { readonly entry: MemoryActivityEntry }) {
+  const expandedByKey = useGet(expandedMemoryEntries$);
+  const toggleExpanded = useSet(toggleMemoryEntryExpanded$);
   const summary = entry.summary ?? buildFallbackSummary(entry.items);
-  const grouped = KIND_ORDER.map((kind) => {
-    return {
-      kind,
-      items: entry.items.filter((item) => {
-        return item.kind === kind;
-      }),
-    };
-  }).filter((group) => {
-    return group.items.length > 0;
-  });
+  const entryKey = entry.toVersionId;
+  const expanded = expandedByKey[entryKey] ?? false;
+  const hasFiles = entry.items.length > 0;
+  const stats = getMemoryItemsStats(entry.items);
+  const filesListId = `memory-update-files-${entryKey}`;
 
   return (
-    <section className="zero-card flex flex-col overflow-hidden">
-      <header className="border-b border-border/70 px-4 py-3">
+    <section className="zero-card flex shrink-0 flex-col overflow-hidden">
+      <header className="px-4 py-3">
         <h2 className="text-sm font-semibold tracking-tight text-foreground">
           {formatActivityDate(entry.date)}
         </h2>
-        <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-muted-foreground">
-          {summary}
-        </p>
+        <Markdown
+          source={summary}
+          className="mt-2 [&_p]:my-0 [&_p]:text-muted-foreground [&_ul]:my-1.5 [&_ul]:pl-5 [&_li]:my-0.5 [&_li]:text-muted-foreground [&_strong]:text-foreground"
+        />
       </header>
-      <div className="flex flex-col gap-4 px-4 py-3">
-        {grouped.map((group) => {
-          return (
-            <div key={group.kind} className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span
+      <div className="mx-4 border-t border-border/70">
+        <div className="flex min-h-10 items-center justify-between gap-3 py-1.5">
+          <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/60"
+            />
+            <span className="truncate">
+              {formatMemoryFileCount(entry.items.length)}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <MemorySummaryLineStats stats={stats} />
+            {hasFiles ? (
+              <button
+                type="button"
+                aria-label={expanded ? "Hide files" : "View files"}
+                aria-controls={filesListId}
+                aria-expanded={expanded}
+                onClick={() => {
+                  toggleExpanded(entryKey);
+                }}
+                className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+              >
+                <span className="hidden sm:inline">
+                  {expanded ? "Hide files" : "View files"}
+                </span>
+                <span className="sm:hidden">{expanded ? "Hide" : "View"}</span>
+                <IconChevronDown
+                  size={13}
                   className={cn(
-                    "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
-                    KIND_BADGE_CLASS[group.kind],
+                    "transition-transform",
+                    expanded && "rotate-180",
                   )}
-                >
-                  {KIND_LABEL[group.kind]}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {group.items.length}
-                </span>
-              </div>
-              <div className="flex flex-col gap-2">
-                {group.items.map((item) => {
-                  const itemKey = `${entry.toVersionId}:${item.kind}:${item.filePath}`;
-                  return (
-                    <MemoryUpdateItem
-                      key={itemKey}
-                      itemKey={itemKey}
-                      item={item}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+                />
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {expanded && hasFiles ? (
+          <div
+            id={filesListId}
+            className="flex flex-col border-t border-border/70 py-2"
+          >
+            {entry.items.map((item) => {
+              const itemKey = `${entry.toVersionId}:${item.filePath}`;
+              return (
+                <MemoryUpdateItem key={itemKey} itemKey={itemKey} item={item} />
+              );
+            })}
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -588,11 +769,10 @@ function MemoryUpdateItem({
   const expandedByKey = useGet(expandedMemoryItems$);
   const toggleExpanded = useSet(toggleMemoryItemExpanded$);
   const expanded = expandedByKey[itemKey] ?? false;
-  const title = item.title ?? item.filePath;
-  const hasEvidence = item.beforeSnippet !== null || item.afterSnippet !== null;
+  const hasEvidence = hasDiffEvidence(item.diff);
 
   return (
-    <div className="rounded-md border border-border/70 bg-background">
+    <div>
       <button
         type="button"
         aria-expanded={expanded}
@@ -601,67 +781,126 @@ function MemoryUpdateItem({
           toggleExpanded(itemKey);
         }}
         className={cn(
-          "flex w-full min-w-0 flex-col items-start gap-0.5 px-3 py-2 text-left",
+          "flex w-full min-w-0 items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left",
           hasEvidence
             ? "transition-colors hover:bg-accent/40"
             : "cursor-default",
         )}
       >
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">
-          {title}
-        </span>
-        {item.description !== null ? (
-          <span className="min-w-0 truncate text-xs text-muted-foreground">
-            {item.description}
-          </span>
-        ) : null}
-        <span className="truncate font-mono text-[11px] text-muted-foreground/80">
+        <span className="min-w-0 truncate font-mono text-xs text-foreground">
           {item.filePath}
         </span>
+        <MemoryLineStats diff={item.diff} />
       </button>
       {expanded && hasEvidence ? (
-        <div className="border-t border-border/70 px-3 py-2">
-          <MemorySnippet
-            label="Before"
-            filePath={item.filePath}
-            snippet={item.beforeSnippet}
-          />
-          <MemorySnippet
-            label="After"
-            filePath={item.filePath}
-            snippet={item.afterSnippet}
-          />
+        <div className="px-2 pb-2 pt-1">
+          <MemoryDiffView diff={item.diff} />
         </div>
       ) : null}
     </div>
   );
 }
 
-function MemorySnippet({
-  label,
-  filePath,
-  snippet,
+function MemorySummaryLineStats({
+  stats,
 }: {
-  readonly label: string;
-  readonly filePath: string;
-  readonly snippet: string | null;
+  readonly stats: { readonly added: number; readonly removed: number };
 }) {
+  const { added, removed } = stats;
+
+  if (added > 0 && removed > 0) {
+    return (
+      <span className="flex shrink-0 items-center gap-1 font-mono text-xs">
+        <span className="text-emerald-700 dark:text-emerald-300">+{added}</span>
+        <span className="text-muted-foreground">/</span>
+        <span className="text-rose-700 dark:text-rose-300">-{removed}</span>
+      </span>
+    );
+  }
+
   return (
-    <div className="mt-2 first:mt-0">
-      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
-      {snippet === null ? (
-        <p className="text-xs italic text-muted-foreground">None</p>
-      ) : isMarkdownPath(filePath) ? (
-        <div className="overflow-auto rounded bg-muted/30 px-3 py-2 text-sm">
-          <Markdown source={snippet} />
+    <span className="flex shrink-0 items-center gap-1 font-mono text-xs">
+      {added > 0 ? (
+        <span className="text-emerald-700 dark:text-emerald-300">+{added}</span>
+      ) : null}
+      {removed > 0 ? (
+        <span className="text-rose-700 dark:text-rose-300">-{removed}</span>
+      ) : null}
+      {added === 0 && removed === 0 ? (
+        <span className="text-muted-foreground">0</span>
+      ) : null}
+    </span>
+  );
+}
+
+function MemoryLineStats({ diff }: { readonly diff: MemoryActivityDiff }) {
+  const { added, removed } = diff.stats;
+  return (
+    <span className="flex shrink-0 items-center gap-1 font-mono text-xs">
+      {added > 0 ? (
+        <span className="text-emerald-700 dark:text-emerald-300">+{added}</span>
+      ) : null}
+      {removed > 0 ? (
+        <span className="text-rose-700 dark:text-rose-300">-{removed}</span>
+      ) : null}
+      {added === 0 && removed === 0 ? (
+        <span className="text-muted-foreground">0</span>
+      ) : null}
+    </span>
+  );
+}
+
+function MemoryDiffView({ diff }: { readonly diff: MemoryActivityDiff }) {
+  return (
+    <div
+      aria-label="Memory diff"
+      className="overflow-hidden rounded-md border border-border/70 bg-muted/20"
+    >
+      {diff.hunks.map((hunk, hunkIndex) => {
+        const hunkKey = `${hunk.beforeStartLine ?? "x"}:${hunk.afterStartLine ?? "x"}:${hunkIndex}`;
+        return (
+          <div
+            key={hunkKey}
+            className={cn(hunkIndex > 0 && "border-t border-border/70")}
+          >
+            {hunk.lines.map((line, lineIndex) => {
+              const lineKey = `${line.beforeLine ?? "x"}:${line.afterLine ?? "x"}:${line.op}:${lineIndex}`;
+              return (
+                <div
+                  key={lineKey}
+                  className={cn(
+                    "grid grid-cols-[3rem_3rem_1.75rem_minmax(0,1fr)] border-l-2 font-mono text-xs leading-5",
+                    DIFF_LINE_CLASS[line.op],
+                  )}
+                >
+                  <span className="select-none px-2 text-right text-muted-foreground/70">
+                    {line.beforeLine ?? ""}
+                  </span>
+                  <span className="select-none border-l border-border/50 px-2 text-right text-muted-foreground/70">
+                    {line.afterLine ?? ""}
+                  </span>
+                  <span className="select-none border-l border-border/50 px-2 text-right text-muted-foreground">
+                    {DIFF_LINE_SYMBOL[line.op]}
+                  </span>
+                  <span className="whitespace-pre-wrap break-words border-l border-border/50 py-0.5 pr-3 pl-2">
+                    {line.text}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+      {diff.omittedReason ? (
+        <div className="px-3 py-2 text-xs text-muted-foreground">
+          Diff omitted because this memory file is too large.
         </div>
-      ) : (
-        <pre className="overflow-auto whitespace-pre-wrap rounded bg-muted/30 px-3 py-2 font-mono text-xs leading-5 text-foreground">
-          {snippet}
-        </pre>
-      )}
+      ) : null}
+      {diff.truncated && !diff.omittedReason ? (
+        <div className="border-t border-border/70 px-3 py-2 text-xs text-muted-foreground">
+          Diff truncated.
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -693,7 +932,45 @@ function MemoryEmptyState({ errored }: { readonly errored: boolean }) {
   );
 }
 
-function MemorySkeleton() {
+function MemoryUpdatesSkeleton() {
+  return (
+    <div
+      className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-2"
+      data-testid="memory-updates-loading"
+    >
+      {[0, 1].map((cardIndex) => {
+        return (
+          <section
+            key={cardIndex}
+            className="zero-card flex shrink-0 flex-col overflow-hidden"
+          >
+            <header className="border-b border-border/70 px-4 py-3">
+              <div className="h-4 w-40 rounded bg-muted/50" />
+              <div className="mt-2 h-3 w-full max-w-[560px] rounded bg-muted/50" />
+            </header>
+            <div className="flex flex-col gap-2 px-4 py-3">
+              {[0, 1, 2].map((itemIndex) => {
+                return (
+                  <div
+                    key={itemIndex}
+                    className="rounded-md border border-border/70 bg-background px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="h-3 w-52 max-w-full rounded bg-muted/50" />
+                      <div className="h-3 w-12 shrink-0 rounded bg-muted/50" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function MemoryRawFilesSkeleton() {
   return (
     <section className="zero-card flex min-h-[420px] flex-1 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">

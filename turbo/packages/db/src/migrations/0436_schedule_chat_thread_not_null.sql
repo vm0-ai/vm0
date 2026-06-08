@@ -1,0 +1,1 @@
+ALTER TABLE "zero_agent_schedules" ALTER COLUMN "chat_thread_id" SET NOT NULL;

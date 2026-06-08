@@ -8,6 +8,7 @@ const item: PresentationItem = {
   prompt: "/gen presentation",
   embedUrl: "https://example.vm0.io",
   previewImage: "https://example.com/preview.png",
+  previewImages: ["https://example.com/preview.png"],
   designSystemId: "design-system:test",
   templateId: "template:test",
 };

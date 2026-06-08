@@ -13,7 +13,7 @@ import {
   type ConnectorTypesByAccessKind,
   type ConnectorTypesByGrantKind,
   type ConnectorTypesByRevokeKind,
-  type ConnectorAuthMethodClientConfig,
+  type ConnectorAuthClientConfigForMethod,
   type ConnectorAuthMethodConfigFor,
   type RefreshTokenAccessConnectorType,
   type ConnectorAccessConfig,
@@ -21,6 +21,9 @@ import {
   type ConnectorAuthCodeGrantConfig,
   type ConnectorAuthClientConfig,
   type ConnectorDeviceAuthGrantConfig,
+  type ConnectorDeviceAuthStartOptionConfig,
+  type ConnectorDeviceAuthStartOptions,
+  type ConnectorDeviceAuthStartOptionsConfig,
   type ConnectorEnvBindings,
   type ConnectorGenerationType,
   type ConnectorGrantOutputBindings,
@@ -35,6 +38,7 @@ import {
   type ConnectorRevokeKind,
   type ConnectorSecretValueRef,
   type ConnectorVariableValueRef,
+  type ConnectorEnvBindingValue,
   type ConnectorType,
   type AuthCodeGrantConnectorType,
   type DeviceAuthGrantConnectorType,
@@ -46,8 +50,9 @@ import type { FeatureSwitchKey } from "./feature-switch-key";
 
 const CONNECTOR_AUTH_METHOD_PRIORITY = {
   oauth: 0,
-  "api-token": 1,
-  api: 2,
+  cli: 1,
+  "api-token": 2,
+  api: 3,
 } as const satisfies Record<ConnectorAuthMethodId, number>;
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VARIABLE_REF_PREFIX = "$vars.";
@@ -58,7 +63,7 @@ function connectorAuthMethodPriority(
   return CONNECTOR_AUTH_METHOD_PRIORITY[authMethod];
 }
 
-export function getConfiguredConnectorAuthMethods(
+export function getConfiguredConnectorAuthMethodIds(
   type: ConnectorType,
 ): ConnectorAuthMethodId[] {
   // Configured methods are raw registry entries; callers apply feature flags.
@@ -117,7 +122,7 @@ export function getConnectorAuthMethodIdsForGrantKind<
   type: Type,
   grantKind: Kind,
 ): ConnectorAuthMethodIdsByGrantKind<Type, Kind>[] {
-  return getConfiguredConnectorAuthMethods(type).filter(
+  return getConfiguredConnectorAuthMethodIds(type).filter(
     (
       authMethod,
     ): authMethod is ConnectorAuthMethodIdsByGrantKind<Type, Kind> => {
@@ -144,7 +149,7 @@ export function getConnectorAuthMethodIdsForAccessKind<
   type: Type,
   accessKind: Kind,
 ): ConnectorAuthMethodIdsByAccessKind<Type, Kind>[] {
-  return getConfiguredConnectorAuthMethods(type).filter(
+  return getConfiguredConnectorAuthMethodIds(type).filter(
     (
       authMethod,
     ): authMethod is ConnectorAuthMethodIdsByAccessKind<Type, Kind> => {
@@ -171,7 +176,7 @@ export function getConnectorAuthMethodIdsForRevokeKind<
   type: Type,
   revokeKind: Kind,
 ): ConnectorAuthMethodIdsByRevokeKind<Type, Kind>[] {
-  return getConfiguredConnectorAuthMethods(type).filter(
+  return getConfiguredConnectorAuthMethodIds(type).filter(
     (
       authMethod,
     ): authMethod is ConnectorAuthMethodIdsByRevokeKind<Type, Kind> => {
@@ -189,14 +194,14 @@ function getManualGrantFields(
   return method.grant.fields;
 }
 
-export interface ManualGrantFieldNames {
+export interface ConnectorManualGrantFieldNames {
   readonly secrets: readonly string[];
   readonly variables: readonly string[];
 }
 
 function manualGrantFieldNames(
   fields: Record<string, ConnectorManualGrantFieldConfig>,
-): ManualGrantFieldNames {
+): ConnectorManualGrantFieldNames {
   const secretNames: string[] = [];
   const variableNames: string[] = [];
   for (const [name, cfg] of Object.entries(fields)) {
@@ -212,17 +217,17 @@ function manualGrantFieldNames(
 export function getConnectorManualGrantFieldNamesForAuthMethod(
   type: ConnectorType,
   authMethod: string,
-): ManualGrantFieldNames | null {
+): ConnectorManualGrantFieldNames | null {
   const fields = getManualGrantFields(getConnectorAuthMethod(type, authMethod));
   return fields ? manualGrantFieldNames(fields) : null;
 }
 
 export function getConnectorManualGrantFieldNames(
   type: ConnectorType,
-): ManualGrantFieldNames | null {
+): ConnectorManualGrantFieldNames | null {
   const secretNames = new Set<string>();
   const variableNames = new Set<string>();
-  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+  for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
     const fields = getConnectorManualGrantFieldNamesForAuthMethod(
       type,
       authMethod,
@@ -256,6 +261,12 @@ function connectorAccessEnvBindings(
   }
 }
 
+function connectorAccessRuntimeEnvBindings(
+  access: ConnectorAccessConfig,
+): ConnectorRuntimeEnvBindings {
+  return connectorRuntimeEnvBindings(connectorAccessEnvBindings(access));
+}
+
 function connectorAccessPlatformSecrets(
   access: ConnectorAccessConfig,
 ): readonly ConnectorPlatformSecretName[] {
@@ -271,22 +282,24 @@ function connectorAccessPlatformSecrets(
 export type ConnectorAuthMethodAccessMetadata =
   | {
       readonly kind: "static";
-      readonly envBindings: ConnectorEnvBindings;
+      readonly envBindings: ConnectorRuntimeEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     }
   | {
       readonly kind: "refresh-token";
-      readonly inputs: Readonly<Record<string, ConnectorRefreshInputMetadata>>;
+      readonly inputs: Readonly<
+        Record<string, ConnectorRefreshTokenInputMetadata>
+      >;
       readonly outputs: Readonly<
-        Record<string, ConnectorRefreshOutputMetadata>
+        Record<string, ConnectorRefreshTokenOutputMetadata>
       >;
       readonly refreshableSecrets: readonly string[];
-      readonly envBindings: ConnectorEnvBindings;
+      readonly envBindings: ConnectorRuntimeEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     }
   | {
       readonly kind: "none";
-      readonly envBindings: ConnectorEnvBindings;
+      readonly envBindings: ConnectorRuntimeEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     };
 
@@ -295,7 +308,7 @@ export type ConnectorRefreshTokenAccessMetadata = Extract<
   { readonly kind: "refresh-token" }
 >;
 
-export interface ConnectorRefreshInputMetadata {
+export interface ConnectorRefreshTokenInputMetadata {
   readonly valueRef: string;
   readonly source: Extract<
     ConnectorRuntimeBindingSource,
@@ -303,14 +316,16 @@ export interface ConnectorRefreshInputMetadata {
   >;
 }
 
-export interface ConnectorRefreshOutputMetadata {
+export interface ConnectorRefreshTokenOutputMetadata {
   readonly valueRef: string;
   readonly secretName: string;
 }
 
-export interface ConnectorRefreshMetadata {
-  readonly inputs: Readonly<Record<string, ConnectorRefreshInputMetadata>>;
-  readonly outputs: Readonly<Record<string, ConnectorRefreshOutputMetadata>>;
+export interface ConnectorRefreshTokenMetadata {
+  readonly inputs: Readonly<Record<string, ConnectorRefreshTokenInputMetadata>>;
+  readonly outputs: Readonly<
+    Record<string, ConnectorRefreshTokenOutputMetadata>
+  >;
   readonly refreshableSecrets: readonly string[];
 }
 
@@ -361,10 +376,11 @@ export type ConnectorRuntimeBindingSource =
 export interface ConnectorRuntimeBindingEntry {
   readonly envName: string;
   readonly valueRef: string;
+  readonly optional: boolean;
   readonly source: ConnectorRuntimeBindingSource;
 }
 
-export interface ConnectorAuthMethodStorageMetadata {
+export interface ConnectorAuthMethodRuntimeMetadata {
   readonly storage: {
     readonly secrets: readonly string[];
     readonly variables: readonly string[];
@@ -392,7 +408,7 @@ function connectorVariableNameFromValueRef(
 
 function connectorRefreshInputMetadata(
   valueRef: ConnectorRefreshTokenInputValueRef,
-): ConnectorRefreshInputMetadata {
+): ConnectorRefreshTokenInputMetadata {
   if (isConnectorSecretValueRef(valueRef)) {
     return {
       valueRef,
@@ -412,7 +428,7 @@ function connectorRefreshInputMetadata(
 
 function connectorRefreshOutputMetadata(
   valueRef: ConnectorSecretValueRef,
-): ConnectorRefreshOutputMetadata {
+): ConnectorRefreshTokenOutputMetadata {
   return { valueRef, secretName: connectorSecretNameFromValueRef(valueRef) };
 }
 
@@ -432,7 +448,7 @@ function connectorRefreshMetadata(args: {
   readonly inputs: ConnectorRefreshTokenInputBindings;
   readonly outputs: ConnectorRefreshTokenOutputBindings;
   readonly refreshableSecrets: readonly string[];
-}): ConnectorRefreshMetadata {
+}): ConnectorRefreshTokenMetadata {
   return {
     inputs: Object.fromEntries(
       Object.entries(args.inputs).map(([name, valueRef]) => {
@@ -469,7 +485,7 @@ export function getConnectorAuthMethodAccessMetadata(
     case "static": {
       return {
         kind: "static",
-        envBindings: method.access.envBindings,
+        envBindings: connectorAccessRuntimeEnvBindings(method.access),
         platformSecrets: method.access.platformSecrets ?? [],
       };
     }
@@ -477,7 +493,7 @@ export function getConnectorAuthMethodAccessMetadata(
       return {
         kind: "refresh-token",
         ...connectorRefreshMetadata(method.access),
-        envBindings: method.access.envBindings,
+        envBindings: connectorAccessRuntimeEnvBindings(method.access),
         platformSecrets: method.access.platformSecrets ?? [],
       };
     case "none":
@@ -574,7 +590,7 @@ export function getConnectorRefreshOutputSecretName(
 }
 
 export function getConnectorRuntimeBindingSecretName(
-  metadata: ConnectorAuthMethodStorageMetadata,
+  metadata: ConnectorAuthMethodRuntimeMetadata,
   envName: string,
 ): string | undefined {
   const binding = metadata.runtimeBindings.find((entry) => {
@@ -606,12 +622,41 @@ function connectorPlatformSecretSource(
   });
 }
 
+export type ConnectorRuntimeEnvBindings = Record<
+  string,
+  ConnectorRefreshTokenInputValueRef
+>;
+
+function connectorEnvBindingValueRef(
+  binding: ConnectorEnvBindingValue,
+): ConnectorRefreshTokenInputValueRef {
+  return typeof binding === "string" ? binding : binding.valueRef;
+}
+
+function connectorEnvBindingIsOptional(
+  binding: ConnectorEnvBindingValue,
+): boolean {
+  return typeof binding === "string" ? false : (binding.optional ?? false);
+}
+
+function connectorRuntimeEnvBindings(
+  envBindings: ConnectorEnvBindings,
+): ConnectorRuntimeEnvBindings {
+  return Object.fromEntries(
+    Object.entries(envBindings).map(([envName, binding]) => {
+      return [envName, connectorEnvBindingValueRef(binding)];
+    }),
+  );
+}
+
 function connectorRuntimeBindingEntries(args: {
   readonly envBindings: ConnectorEnvBindings;
   readonly platformSecrets: readonly ConnectorPlatformSecretName[];
 }): ConnectorRuntimeBindingEntry[] {
   const entries: ConnectorRuntimeBindingEntry[] = [];
-  for (const [envName, valueRef] of Object.entries(args.envBindings)) {
+  for (const [envName, binding] of Object.entries(args.envBindings)) {
+    const valueRef = connectorEnvBindingValueRef(binding);
+    const optional = connectorEnvBindingIsOptional(binding);
     if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
       const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
       const platformSecret = connectorPlatformSecretSource(
@@ -621,6 +666,7 @@ function connectorRuntimeBindingEntries(args: {
       entries.push({
         envName,
         valueRef,
+        optional,
         source: platformSecret
           ? { kind: "platform-secret", name: platformSecret }
           : { kind: "connector-secret", name: secretName },
@@ -632,6 +678,7 @@ function connectorRuntimeBindingEntries(args: {
       entries.push({
         envName,
         valueRef,
+        optional,
         source: {
           kind: "connector-variable",
           name: valueRef.slice(CONNECTOR_VARIABLE_REF_PREFIX.length),
@@ -642,10 +689,10 @@ function connectorRuntimeBindingEntries(args: {
   return entries;
 }
 
-export function getConnectorAuthMethodStorageMetadata(
+export function getConnectorAuthMethodRuntimeMetadata(
   type: ConnectorType,
   authMethod: string,
-): ConnectorAuthMethodStorageMetadata | undefined {
+): ConnectorAuthMethodRuntimeMetadata | undefined {
   const method = getConnectorAuthMethod(type, authMethod);
   if (!method) {
     return undefined;
@@ -778,6 +825,138 @@ export function getConnectorAuthMethodDeviceAuthGrantConfig(
   return grant?.kind === "device-auth" ? grant : undefined;
 }
 
+export function getConnectorAuthMethodDeviceAuthStartOptionsConfig<
+  Type extends DeviceAuthGrantConnectorType,
+>(
+  type: Type,
+  authMethod: ConnectorDeviceAuthGrantAuthMethodId<Type>,
+): ConnectorDeviceAuthStartOptionsConfig | undefined;
+export function getConnectorAuthMethodDeviceAuthStartOptionsConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorDeviceAuthStartOptionsConfig | undefined;
+export function getConnectorAuthMethodDeviceAuthStartOptionsConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorDeviceAuthStartOptionsConfig | undefined {
+  return getConnectorAuthMethodDeviceAuthGrantConfig(type, authMethod)
+    ?.startOptions;
+}
+
+export type ConnectorDeviceAuthStartOptionsParseResult =
+  | {
+      readonly success: true;
+      readonly options: ConnectorDeviceAuthStartOptions;
+    }
+  | {
+      readonly success: false;
+      readonly message: string;
+    };
+
+function parseConnectorDeviceAuthStartOption(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly optionName: string;
+  readonly config: ConnectorDeviceAuthStartOptionConfig;
+  readonly requestedValue: string | undefined;
+}): ConnectorDeviceAuthStartOptionsParseResult {
+  const value = args.requestedValue ?? args.config.defaultValue;
+  if (value === undefined) {
+    if (args.config.required) {
+      return {
+        success: false,
+        message: `${args.type} ${args.authMethod} device-auth start option ${args.optionName} is required`,
+      };
+    }
+    return { success: true, options: {} };
+  }
+
+  switch (args.config.kind) {
+    case "select": {
+      if (
+        !args.config.options.some((option) => {
+          return option.value === value;
+        })
+      ) {
+        return {
+          success: false,
+          message: `${args.type} ${args.authMethod} device-auth start option ${args.optionName} must be one of: ${args.config.options
+            .map((option) => {
+              return option.value;
+            })
+            .join(", ")}`,
+        };
+      }
+      return { success: true, options: { [args.optionName]: value } };
+    }
+  }
+}
+
+function connectorDeviceAuthStartOptionValue(
+  options: ConnectorDeviceAuthStartOptions | undefined,
+  optionName: string,
+): string | undefined {
+  if (!options || !Object.hasOwn(options, optionName)) {
+    return undefined;
+  }
+  return options[optionName];
+}
+
+export function parseConnectorDeviceAuthStartOptions(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly options: ConnectorDeviceAuthStartOptions | undefined;
+}): ConnectorDeviceAuthStartOptionsParseResult {
+  const configuredOptions = getConnectorAuthMethodDeviceAuthStartOptionsConfig(
+    args.type,
+    args.authMethod,
+  );
+  const requestedOptionKeys = Object.keys(args.options ?? {});
+
+  if (!configuredOptions || Object.keys(configuredOptions).length === 0) {
+    if (requestedOptionKeys.length === 0) {
+      return { success: true, options: {} };
+    }
+    return {
+      success: false,
+      message: `${args.type} ${args.authMethod} device-auth start options are not supported: ${requestedOptionKeys.join(", ")}`,
+    };
+  }
+
+  for (const optionName of requestedOptionKeys) {
+    if (!Object.hasOwn(configuredOptions, optionName)) {
+      return {
+        success: false,
+        message: `${args.type} ${args.authMethod} device-auth start option ${optionName} is not supported`,
+      };
+    }
+  }
+
+  const normalizedOptions: Record<string, string> = {};
+  for (const [optionName, config] of Object.entries(configuredOptions)) {
+    const parsedOption = parseConnectorDeviceAuthStartOption({
+      type: args.type,
+      authMethod: args.authMethod,
+      optionName,
+      config,
+      requestedValue: connectorDeviceAuthStartOptionValue(
+        args.options,
+        optionName,
+      ),
+    });
+    if (!parsedOption.success) {
+      return parsedOption;
+    }
+    for (const [parsedOptionName, parsedOptionValue] of Object.entries(
+      parsedOption.options,
+    )) {
+      normalizedOptions[parsedOptionName] = parsedOptionValue;
+    }
+  }
+
+  return { success: true, options: normalizedOptions };
+}
+
 function connectorGrantScopes(
   grant: ConnectorGrantConfig | undefined,
 ): readonly string[] {
@@ -858,16 +1037,16 @@ function shouldIncludeApiAuthMethod(
  *
  * This does not describe persisted connected state.
  */
-export function getAvailableConnectorAuthMethods(
+export function getAvailableConnectorAuthMethodIds(
   type: ConnectorType,
   featureStates: ConnectorFeatureStates,
   options: AvailableConnectorAuthMethodsOptions = {},
 ): ConnectorAuthMethodId[] {
   const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
-  const availableAuthMethods: ConnectorAuthMethodId[] = [];
-  const configuredAuthMethods = getConfiguredConnectorAuthMethods(type);
+  const availableAuthMethodIds: ConnectorAuthMethodId[] = [];
+  const configuredAuthMethodIds = getConfiguredConnectorAuthMethodIds(type);
 
-  for (const authMethod of configuredAuthMethods) {
+  for (const authMethod of configuredAuthMethodIds) {
     const method = getConnectorAuthMethod(type, authMethod);
     switch (method?.grant.kind) {
       case "managed": {
@@ -886,11 +1065,11 @@ export function getAvailableConnectorAuthMethods(
       }
     }
     if (isConnectorAuthMethodAvailable(type, authMethod, featureStates)) {
-      availableAuthMethods.push(authMethod);
+      availableAuthMethodIds.push(authMethod);
     }
   }
 
-  return availableAuthMethods;
+  return availableAuthMethodIds;
 }
 
 export type ConnectorEnvReader = (name: string) => string | undefined;
@@ -945,7 +1124,9 @@ export type ConnectorAuthClientForConfig<
 export type ConnectorAuthClientForMethod<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,
-> = ConnectorAuthClientForConfig<ConnectorAuthMethodClientConfig<Type, Method>>;
+> = ConnectorAuthClientForConfig<
+  ConnectorAuthClientConfigForMethod<Type, Method>
+>;
 
 export type ConnectorAuthClientIdentityForConfig<
   Client extends ConnectorAuthClientConfig,
@@ -961,10 +1142,10 @@ export type ConnectorAuthClientIdentityForMethod<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,
 > = ConnectorAuthClientIdentityForConfig<
-  ConnectorAuthMethodClientConfig<Type, Method>
+  ConnectorAuthClientConfigForMethod<Type, Method>
 >;
 
-export type ConnectorAuthMethodClientRef<
+export type ConnectorResolvedAuthMethodClient<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,
 > = {
@@ -973,27 +1154,27 @@ export type ConnectorAuthMethodClientRef<
   readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
 };
 
-export type ConnectorAuthClientGrantKind = "auth-code" | "device-auth";
+export type ConnectorGrantKindWithAuthClient = "auth-code" | "device-auth";
 
-export type ConnectorAuthMethodClientRefByGrantKind<
-  Kind extends ConnectorAuthClientGrantKind,
+export type ConnectorResolvedAuthMethodClientByGrantKind<
+  Kind extends ConnectorGrantKindWithAuthClient,
 > = {
   readonly [Type in ConnectorTypesByGrantKind<Kind>]: {
     readonly [Method in ConnectorAuthMethodIdsByGrantKind<
       Type,
       Kind
-    >]: ConnectorAuthMethodClientRef<Type, Method>;
+    >]: ConnectorResolvedAuthMethodClient<Type, Method>;
   }[ConnectorAuthMethodIdsByGrantKind<Type, Kind>];
 }[ConnectorTypesByGrantKind<Kind>];
 
-export type ConnectorAuthMethodClientRefByAccessKind<
+export type ConnectorResolvedAuthMethodClientByAccessKind<
   Kind extends "refresh-token",
 > = {
   readonly [Type in ConnectorTypesByAccessKind<Kind>]: {
     readonly [Method in ConnectorAuthMethodIdsByAccessKind<
       Type,
       Kind
-    >]: ConnectorAuthMethodClientRef<Type, Method>;
+    >]: ConnectorResolvedAuthMethodClient<Type, Method>;
   }[ConnectorAuthMethodIdsByAccessKind<Type, Kind>];
 }[ConnectorTypesByAccessKind<Kind>];
 
@@ -1056,7 +1237,7 @@ export function getConnectorAuthClientConfigForMethod<
 >(
   type: Type,
   authMethod: Method,
-): ConnectorAuthMethodClientConfig<Type, Method> | undefined;
+): ConnectorAuthClientConfigForMethod<Type, Method> | undefined;
 export function getConnectorAuthClientConfigForMethod(
   type: ConnectorType,
   authMethod: string,
@@ -1145,16 +1326,16 @@ export function resolveConnectorAuthClientForMethod(
   return resolveConnectorAuthClient(clientConfig, readEnv);
 }
 
-type ResolvedConnectorAuthMethodClientRef = {
+type AnyConnectorResolvedAuthMethodClient = {
   readonly type: ConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
   readonly authClient: ConnectorAuthClient;
 };
 
-function resolveConnectorAuthMethodClientRef(
+function resolveConnectorResolvedAuthMethodClient(
   authMethodRef: ConnectorAuthMethodRef,
   readEnv: ConnectorEnvReader,
-): ResolvedConnectorAuthMethodClientRef | undefined {
+): AnyConnectorResolvedAuthMethodClient | undefined {
   const authClient = resolveConnectorAuthClientForMethod(
     authMethodRef.type,
     authMethodRef.authMethod,
@@ -1170,37 +1351,37 @@ function resolveConnectorAuthMethodClientRef(
   };
 }
 
-export function resolveConnectorAuthMethodClientRefByGrantKind(
+export function resolveConnectorResolvedAuthMethodClientByGrantKind(
   authMethodRef: ConnectorAuthMethodRefByGrantKind<"auth-code">,
   readEnv: ConnectorEnvReader,
-): ConnectorAuthMethodClientRefByGrantKind<"auth-code"> | undefined;
-export function resolveConnectorAuthMethodClientRefByGrantKind(
+): ConnectorResolvedAuthMethodClientByGrantKind<"auth-code"> | undefined;
+export function resolveConnectorResolvedAuthMethodClientByGrantKind(
   authMethodRef: ConnectorAuthMethodRefByGrantKind<"device-auth">,
   readEnv: ConnectorEnvReader,
-): ConnectorAuthMethodClientRefByGrantKind<"device-auth"> | undefined;
-export function resolveConnectorAuthMethodClientRefByGrantKind(
-  authMethodRef: ConnectorAuthMethodRefByGrantKind<ConnectorAuthClientGrantKind>,
+): ConnectorResolvedAuthMethodClientByGrantKind<"device-auth"> | undefined;
+export function resolveConnectorResolvedAuthMethodClientByGrantKind(
+  authMethodRef: ConnectorAuthMethodRefByGrantKind<ConnectorGrantKindWithAuthClient>,
   readEnv: ConnectorEnvReader,
-): ResolvedConnectorAuthMethodClientRef | undefined {
-  return resolveConnectorAuthMethodClientRef(authMethodRef, readEnv);
+): AnyConnectorResolvedAuthMethodClient | undefined {
+  return resolveConnectorResolvedAuthMethodClient(authMethodRef, readEnv);
 }
 
-export function resolveConnectorAuthMethodClientRefByAccessKind(
+export function resolveConnectorResolvedAuthMethodClientByAccessKind(
   authMethodRef: ConnectorAuthMethodRefByAccessKind<"refresh-token">,
   readEnv: ConnectorEnvReader,
-): ConnectorAuthMethodClientRefByAccessKind<"refresh-token"> | undefined;
-export function resolveConnectorAuthMethodClientRefByAccessKind(
+): ConnectorResolvedAuthMethodClientByAccessKind<"refresh-token"> | undefined;
+export function resolveConnectorResolvedAuthMethodClientByAccessKind(
   authMethodRef: ConnectorAuthMethodRefByAccessKind<"refresh-token">,
   readEnv: ConnectorEnvReader,
-): ResolvedConnectorAuthMethodClientRef | undefined {
-  return resolveConnectorAuthMethodClientRef(authMethodRef, readEnv);
+): AnyConnectorResolvedAuthMethodClient | undefined {
+  return resolveConnectorResolvedAuthMethodClient(authMethodRef, readEnv);
 }
 
 function hasRuntimeAvailableAuthMethod(
   readEnv: ConnectorEnvReader,
   type: ConnectorType,
 ): boolean {
-  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+  for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
     const method = getConnectorAuthMethod(type, authMethod);
     switch (method?.grant.kind) {
       case "auth-code":
@@ -1251,28 +1432,30 @@ export function getConnectorOwnedSecretNames(
   type: ConnectorType,
   authMethod: string,
 ): string[] {
-  return connectorMethodOwnedSecretNames(
+  return connectorAuthMethodOwnedSecretNames(
     getConnectorAuthMethod(type, authMethod),
   );
 }
 
 /**
- * Get variable names for a specific auth method
+ * Get connector-owned variable storage names for a specific auth method.
  */
-export function getConnectorVariableNames(
+export function getConnectorOwnedVariableNames(
   type: ConnectorType,
   authMethod: string,
 ): string[] {
-  return connectorMethodVariableNames(getConnectorAuthMethod(type, authMethod));
+  return connectorAuthMethodOwnedVariableNames(
+    getConnectorAuthMethod(type, authMethod),
+  );
 }
 
-function connectorMethodOwnedSecretNames(
+function connectorAuthMethodOwnedSecretNames(
   method: ConnectorAuthMethodConfig | undefined,
 ): string[] {
   return method ? [...method.storage.secrets] : [];
 }
 
-function connectorMethodVariableNames(
+function connectorAuthMethodOwnedVariableNames(
   method: ConnectorAuthMethodConfig | undefined,
 ): string[] {
   return method ? [...method.storage.variables] : [];
@@ -1284,9 +1467,9 @@ function connectorMethodVariableNames(
 export function getConnectorAuthMethodEnvBindings(
   type: ConnectorType,
   authMethod: string,
-): ConnectorEnvBindings {
+): ConnectorRuntimeEnvBindings {
   const method = getConnectorAuthMethod(type, authMethod);
-  return method ? connectorAccessEnvBindings(method.access) : {};
+  return method ? connectorAccessRuntimeEnvBindings(method.access) : {};
 }
 
 export interface ConnectorEnvBindingEntry {
@@ -1305,7 +1488,7 @@ export function getConnectorEnvBindingEntries(
   type: ConnectorType,
 ): ConnectorEnvBindingEntry[] {
   const entries: ConnectorEnvBindingEntry[] = [];
-  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+  for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
     const envBindings = getConnectorAuthMethodEnvBindings(type, authMethod);
     for (const [envName, valueRef] of Object.entries(envBindings)) {
       entries.push({ authMethod, envName, valueRef });
@@ -1335,7 +1518,7 @@ export function getConnectorStoredSecretDisplayInfo(
     const config = CONNECTOR_TYPES[type];
 
     const found = Object.values(config.authMethods).some((method) => {
-      return connectorMethodOwnedSecretNames(method).includes(secretName);
+      return connectorAuthMethodOwnedSecretNames(method).includes(secretName);
     });
     if (!found) {
       continue;

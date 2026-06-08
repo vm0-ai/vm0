@@ -35,6 +35,7 @@ export interface HostedSiteManifest {
   readonly siteId: string;
   readonly publicSlug: string;
   readonly createdAt: string;
+  readonly artifactKind?: "hosted-site" | "presentation-html";
   readonly spaFallback: boolean;
   readonly files: Record<string, HostedSiteManifestFile>;
 }

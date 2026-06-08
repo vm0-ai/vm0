@@ -56,6 +56,18 @@ export const testOauthDevice = {
           outputs: {
             accessToken: "$secrets.TEST_OAUTH_DEVICE_API_ACCESS_TOKEN",
           },
+          startOptions: {
+            mode: {
+              kind: "select",
+              label: "Mode",
+              required: true,
+              defaultValue: "test",
+              options: [
+                { value: "test", label: "Test" },
+                { value: "live", label: "Live" },
+              ],
+            },
+          },
         },
         access: {
           kind: "static",

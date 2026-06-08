@@ -13,6 +13,12 @@ use super::{
     ExecControlRegistration,
 };
 
+/// Per-connection registry of active exec-control registrations.
+///
+/// Entries are keyed by exec operation sequence id. Each entry binds that
+/// operation to its control nonce, and may optionally own a control sink for
+/// process-control forwarding. A no-sink entry is still active: it preserves
+/// nonce-aware control responses while resolving as unsupported for forwarding.
 #[derive(Clone)]
 pub(crate) struct ExecControlRegistry {
     inner: Arc<Mutex<HashMap<u32, ExecControlEntry>>>,
@@ -31,6 +37,13 @@ struct ExecControlEntry {
     sink: Option<Arc<ControlSinkState>>,
 }
 
+/// RAII owner for one exec-control registry entry.
+///
+/// Normal operation completion paths release the guard explicitly, and `Drop`
+/// releases it as a fallback for aborted setup or any missed explicit release.
+/// Cleanup removes the active entry and closes any sink. The release path is
+/// idempotent so a released guard cannot remove a later registration that
+/// reused the same sequence id.
 pub(crate) struct ExecControlGuard {
     registry: ExecControlRegistry,
     seq: u32,
@@ -38,6 +51,14 @@ pub(crate) struct ExecControlGuard {
 }
 
 impl ExecControlRegistry {
+    /// Register exec-control state for an active operation.
+    ///
+    /// Duplicate active sequence ids are rejected. When `control_sink` is
+    /// enabled, registration creates a bootstrap endpoint and starts the
+    /// sink accept path; if that setup fails after insertion, the inserted
+    /// entry is removed before returning the error. When `control_sink` is
+    /// disabled, the operation is still registered with its nonce, but later
+    /// matching control requests resolve as unsupported instead of forwarding.
     pub(crate) fn register(
         &self,
         seq: u32,
@@ -105,6 +126,12 @@ impl ExecControlRegistry {
         }
     }
 
+    /// Resolve an exec-control request to the target operation's sink.
+    ///
+    /// Missing targets resolve as inactive. Active targets must match the
+    /// registered nonce before sink support is considered; mismatches resolve
+    /// as nonce errors, while matching no-sink entries resolve as unsupported.
+    /// Only a matching sink-backed entry returns a sink for forwarding.
     pub(super) fn resolve(
         &self,
         target_seq: u32,
@@ -146,6 +173,10 @@ fn operation_already_active_error() -> io::Error {
 }
 
 impl ExecControlGuard {
+    /// Explicitly release the registry entry owned by this guard.
+    ///
+    /// This is idempotent with itself and with `Drop`; only the first release
+    /// removes the active entry and closes any sink.
     pub(crate) fn release(&self) {
         self.release_once();
     }

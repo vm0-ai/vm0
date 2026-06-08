@@ -1,5 +1,441 @@
 # Changelog
 
+## [0.421.1](https://github.com/vm0-ai/vm0/compare/app-v0.421.0...app-v0.421.1) (2026-06-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.68.0
+    * @vm0/core bumped to 8.314.3
+
+## [0.421.0](https://github.com/vm0-ai/vm0/compare/app-v0.420.1...app-v0.421.0) (2026-06-07)
+
+
+### Features
+
+* add connector device auth start options ([#16353](https://github.com/vm0-ai/vm0/issues/16353)) ([3a846f5](https://github.com/vm0-ai/vm0/commit/3a846f5e9fdd2884c874b96824de5701f85e8f3f))
+* add stripe cli dashboard connector ([#16418](https://github.com/vm0-ai/vm0/issues/16418)) ([852128d](https://github.com/vm0-ai/vm0/commit/852128d179c9fc89d3ec9b3d84d5daea36bd6a28))
+
+
+### Bug Fixes
+
+* default schedules page to calendar view ([#16427](https://github.com/vm0-ai/vm0/issues/16427)) ([9139983](https://github.com/vm0-ai/vm0/commit/913998366edd68223be7fb0b1e3b275de0c227d2))
+* **platform:** update adzuna connector icon ([#16389](https://github.com/vm0-ai/vm0/issues/16389)) ([bfa6dc2](https://github.com/vm0-ai/vm0/commit/bfa6dc23c0ebe6e2af124ced3a7b36481bee928d))
+* **platform:** update diffbot connector logo ([#16390](https://github.com/vm0-ai/vm0/issues/16390)) ([fa01428](https://github.com/vm0-ai/vm0/commit/fa01428d59ad23bee96a4f8f0c47a32652c1285b))
+* **platform:** update doppler connector icon ([#16402](https://github.com/vm0-ai/vm0/issues/16402)) ([9917def](https://github.com/vm0-ai/vm0/commit/9917defcaf5d6cce850b7e5892056503ae64c8e2))
+* **platform:** update etsy connector icon ([#16392](https://github.com/vm0-ai/vm0/issues/16392)) ([eebe676](https://github.com/vm0-ai/vm0/commit/eebe676b788c6ab433e55f8c8609b3c380cb5da2))
+* **platform:** update flightaware connector logo ([#16393](https://github.com/vm0-ai/vm0/issues/16393)) ([d18039e](https://github.com/vm0-ai/vm0/commit/d18039e77bb65a1aea7b6c15e58fcec783ff2f95))
+* **platform:** update mapbox connector icon ([#16394](https://github.com/vm0-ai/vm0/issues/16394)) ([027bcfb](https://github.com/vm0-ai/vm0/commit/027bcfb3be83855ca269ce45fbcfdf6836090441))
+* **platform:** update n8n connector icon ([#16395](https://github.com/vm0-ai/vm0/issues/16395)) ([0ac1053](https://github.com/vm0-ai/vm0/commit/0ac1053cc8266d802a7afd5f7dbaf305a4380087))
+* **platform:** update openweather connector logo ([#16396](https://github.com/vm0-ai/vm0/issues/16396)) ([883f796](https://github.com/vm0-ai/vm0/commit/883f796a6be9b9c57c609e371a931d94938bcfbc))
+* **platform:** update reducto connector icon ([#16397](https://github.com/vm0-ai/vm0/issues/16397)) ([a7ff693](https://github.com/vm0-ai/vm0/commit/a7ff693fa7861fdc130f48f5b7909623082a49ce))
+* **platform:** update serpapi connector icon ([#16387](https://github.com/vm0-ai/vm0/issues/16387)) ([d66a1d2](https://github.com/vm0-ai/vm0/commit/d66a1d20c0792b50da11e0e10bb8e4c3963bfb2b))
+* **platform:** update ticketmaster connector logo ([#16398](https://github.com/vm0-ai/vm0/issues/16398)) ([11f7af8](https://github.com/vm0-ai/vm0/commit/11f7af8a0e39b81040663377b7afa803ddbe09af))
+* **platform:** update typeform connector icon ([#16399](https://github.com/vm0-ai/vm0/issues/16399)) ([a9bdc53](https://github.com/vm0-ai/vm0/commit/a9bdc536bb2b4097ca587af28a2bc36f43ed77e1))
+* remove amplitude png connector icon ([#16417](https://github.com/vm0-ai/vm0/issues/16417)) ([373aba5](https://github.com/vm0-ai/vm0/commit/373aba50dbc5377f467db82a73c1ea5b8dff09fa))
+* remove attio raster icon duplicate ([#16425](https://github.com/vm0-ai/vm0/issues/16425)) ([f56db43](https://github.com/vm0-ai/vm0/commit/f56db43d520234a416561dd03d79871aa624b3bf))
+* remove chat header new button feature ([#16385](https://github.com/vm0-ai/vm0/issues/16385)) ([2b2afb0](https://github.com/vm0-ai/vm0/commit/2b2afb06e455f9fc600e6384f217cd084ebaa46a))
+* replace amadeus raster icon ([#16416](https://github.com/vm0-ai/vm0/issues/16416)) ([246be20](https://github.com/vm0-ai/vm0/commit/246be200ec8a30ba8ee6e377081994d142240226))
+* replace aviationstack connector icon svg ([#16457](https://github.com/vm0-ai/vm0/issues/16457)) ([0e7efbb](https://github.com/vm0-ai/vm0/commit/0e7efbb26d76fff6d80017ae76f49f3b84616d95))
+* replace bitrefill connector icon svg ([#16437](https://github.com/vm0-ai/vm0/issues/16437)) ([2236e81](https://github.com/vm0-ai/vm0/commit/2236e814dbcbdb1b1696d53585d88313abd09414))
+* replace bland connector icon svg ([#16439](https://github.com/vm0-ai/vm0/issues/16439)) ([64bc352](https://github.com/vm0-ai/vm0/commit/64bc352d73c57cc521d7271da71f304ffb0712d4))
+* update altium 365 connector icon ([#16415](https://github.com/vm0-ai/vm0/issues/16415)) ([2271856](https://github.com/vm0-ai/vm0/commit/22718564b7306adf01a42405861f16b9812c2745))
+* update bentoml connector icon ([#16436](https://github.com/vm0-ai/vm0/issues/16436)) ([16f9cdd](https://github.com/vm0-ai/vm0/commit/16f9cdd16172798d76fe463488452488b66474c0))
+* update bitrix connector icon ([#16438](https://github.com/vm0-ai/vm0/issues/16438)) ([0067196](https://github.com/vm0-ai/vm0/commit/0067196fb751937356a954462dfd31372e86ca09))
+* update brave search connector icon ([#16440](https://github.com/vm0-ai/vm0/issues/16440)) ([5d75c59](https://github.com/vm0-ai/vm0/commit/5d75c59008315fc219ad8c0324881002df8274bc))
+* update brevo connector icon ([#16459](https://github.com/vm0-ai/vm0/issues/16459)) ([8bcfae4](https://github.com/vm0-ai/vm0/commit/8bcfae454472c467e47b3cde58778d5b5aea1d46))
+* update bright data connector icon ([#16460](https://github.com/vm0-ai/vm0/issues/16460)) ([2cb719a](https://github.com/vm0-ai/vm0/commit/2cb719ad72727466fcfdd434ee52b0fe9c203c42))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.67.0
+    * @vm0/connectors bumped to 1.50.0
+    * @vm0/core bumped to 8.314.2
+
+## [0.420.1](https://github.com/vm0-ai/vm0/compare/app-v0.420.0...app-v0.420.1) (2026-06-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.3
+    * @vm0/connectors bumped to 1.49.0
+    * @vm0/core bumped to 8.314.1
+
+## [0.420.0](https://github.com/vm0-ai/vm0/compare/app-v0.419.4...app-v0.420.0) (2026-06-06)
+
+
+### Features
+
+* show next run time in chat thread schedule menu ([#16358](https://github.com/vm0-ai/vm0/issues/16358)) ([b4032d7](https://github.com/vm0-ai/vm0/commit/b4032d7a49a823889a89f9fef4bc2cce287206fa))
+
+
+### Bug Fixes
+
+* label BYOK model routes in composer picker ([#16362](https://github.com/vm0-ai/vm0/issues/16362)) ([a94bc9b](https://github.com/vm0-ai/vm0/commit/a94bc9b90272816a02ac7dc1bebd9947dc471509))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.2
+    * @vm0/core bumped to 8.314.0
+
+## [0.419.4](https://github.com/vm0-ai/vm0/compare/app-v0.419.3...app-v0.419.4) (2026-06-05)
+
+
+### Bug Fixes
+
+* **platform:** treat groq connector icon as colorful ([#16339](https://github.com/vm0-ai/vm0/issues/16339)) ([a528f34](https://github.com/vm0-ai/vm0/commit/a528f34af5d36b8c9141923942268a7731d01b06))
+* **platform:** update alchemy connector logo ([#16352](https://github.com/vm0-ai/vm0/issues/16352)) ([83260e1](https://github.com/vm0-ai/vm0/commit/83260e17136d615930cea11259f756fa944bdbf0))
+* **platform:** update altium 365 connector icon ([#16345](https://github.com/vm0-ai/vm0/issues/16345)) ([e7b33d9](https://github.com/vm0-ai/vm0/commit/e7b33d97396fee560cb342f2bcda8322377b1360))
+* **platform:** update browserstack connector logo ([#16344](https://github.com/vm0-ai/vm0/issues/16344)) ([0694c92](https://github.com/vm0-ai/vm0/commit/0694c92de3093845c8935c0c98214744ac579129))
+* **platform:** update cal.com connector logo ([#16337](https://github.com/vm0-ai/vm0/issues/16337)) ([a2497a3](https://github.com/vm0-ai/vm0/commit/a2497a30fa044aa64478469a5b1ec48896c7cf1d))
+* **platform:** update explorium connector logo ([#16347](https://github.com/vm0-ai/vm0/issues/16347)) ([896a955](https://github.com/vm0-ai/vm0/commit/896a95589aeaef297fefede14c47459cf0d10a83))
+* **platform:** update klaviyo connector icon ([#16351](https://github.com/vm0-ai/vm0/issues/16351)) ([ae5df3d](https://github.com/vm0-ai/vm0/commit/ae5df3dafb193d1ff17b2d98399d3b8fee60eda9))
+* **platform:** update onyx connector logo ([#16343](https://github.com/vm0-ai/vm0/issues/16343)) ([cc2c459](https://github.com/vm0-ai/vm0/commit/cc2c4599085871dcb381272a2ba97e83500a8f16))
+* **platform:** update pipedrive connector icon ([#16350](https://github.com/vm0-ai/vm0/issues/16350)) ([9f5611a](https://github.com/vm0-ai/vm0/commit/9f5611a91be766844e12eeef8bd4b687de5a431e))
+* **platform:** update servicenow connector logo ([#16346](https://github.com/vm0-ai/vm0/issues/16346)) ([68e4c9e](https://github.com/vm0-ai/vm0/commit/68e4c9e99f7cf6be3287d6c97ddc9961699ab82f))
+* **platform:** update tldv connector logo ([#16341](https://github.com/vm0-ai/vm0/issues/16341)) ([11b2723](https://github.com/vm0-ai/vm0/commit/11b2723bd94c122cdf37fa3c3c2b8c30d7c5b146))
+* **platform:** update twilio connector logo ([#16336](https://github.com/vm0-ai/vm0/issues/16336)) ([ae4ff87](https://github.com/vm0-ai/vm0/commit/ae4ff87629d35d4dfb0625cf1b05476d8fb25af3))
+* treat expired connectors as reconnect required ([#16313](https://github.com/vm0-ai/vm0/issues/16313)) ([523c20b](https://github.com/vm0-ai/vm0/commit/523c20bcf51fb1e30e3b126b1e5a37357c866f85))
+
+
+### Refactoring
+
+* assume schedules always have a chat thread ([#16332](https://github.com/vm0-ai/vm0/issues/16332)) ([d371992](https://github.com/vm0-ai/vm0/commit/d371992d53c2681ed4b1b398ca881b095799f715))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.1
+    * @vm0/core bumped to 8.313.2
+
+## [0.419.3](https://github.com/vm0-ai/vm0/compare/app-v0.419.2...app-v0.419.3) (2026-06-05)
+
+
+### Bug Fixes
+
+* **platform:** update agora connector logo ([#16334](https://github.com/vm0-ai/vm0/issues/16334)) ([8b0c85e](https://github.com/vm0-ai/vm0/commit/8b0c85e1173a5495aa9c290d5e4ac93f8c354917))
+* show schedule button in mobile chat thread header ([#16333](https://github.com/vm0-ai/vm0/issues/16333)) ([2bf8b5e](https://github.com/vm0-ai/vm0/commit/2bf8b5e36466d85bb0b4ce9443882d9ab7f39b6c))
+
+## [0.419.2](https://github.com/vm0-ai/vm0/compare/app-v0.419.1...app-v0.419.2) (2026-06-05)
+
+
+### Bug Fixes
+
+* **platform:** update groq connector icon ([#16323](https://github.com/vm0-ai/vm0/issues/16323)) ([a5744ce](https://github.com/vm0-ai/vm0/commit/a5744cedac662fe1d50c3d963a2ffb242c216266))
+* **platform:** update parallel connector logo ([#16321](https://github.com/vm0-ai/vm0/issues/16321)) ([c3dd6c1](https://github.com/vm0-ai/vm0/commit/c3dd6c1a0c9dd95ea63ece14dbadf902f22b46f9))
+* **platform:** update pika connector logo ([#16327](https://github.com/vm0-ai/vm0/issues/16327)) ([e789173](https://github.com/vm0-ai/vm0/commit/e789173584bc33049efa249bd4019cc15a9934c4))
+* **platform:** use official stripe connector logo ([#16318](https://github.com/vm0-ai/vm0/issues/16318)) ([a40c525](https://github.com/vm0-ai/vm0/commit/a40c52515d2e96dd923ca9493b0acd3a2da174a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.0
+    * @vm0/core bumped to 8.313.1
+
+## [0.419.1](https://github.com/vm0-ai/vm0/compare/app-v0.419.0...app-v0.419.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* stop schedules and runs when deleting a chat thread ([#16279](https://github.com/vm0-ai/vm0/issues/16279)) ([83efb00](https://github.com/vm0-ai/vm0/commit/83efb00210f82125ad875267a776c369898b562f))
+
+## [0.419.0](https://github.com/vm0-ai/vm0/compare/app-v0.418.0...app-v0.419.0) (2026-06-05)
+
+
+### Features
+
+* add template ppt preview page ([#16285](https://github.com/vm0-ai/vm0/issues/16285)) ([5c82156](https://github.com/vm0-ai/vm0/commit/5c821560e9c4d4ceccc20c09508adfb4d4aa916b))
+* collapse memory file diffs ([#16290](https://github.com/vm0-ai/vm0/issues/16290)) ([795bafc](https://github.com/vm0-ai/vm0/commit/795bafcd361ebf7cc9898a46b209486d3f775d05))
+
+
+### Bug Fixes
+
+* allow recommended followups to wrap ([#16291](https://github.com/vm0-ai/vm0/issues/16291)) ([5862532](https://github.com/vm0-ai/vm0/commit/586253261dbe3c55521557322c947960e5d36b82))
+* handle scheduled billing plan changes ([#16261](https://github.com/vm0-ai/vm0/issues/16261)) ([3453471](https://github.com/vm0-ai/vm0/commit/345347139ca5151393bacd9ab15951572f37d084))
+* remove lark connector feature switch ([#16289](https://github.com/vm0-ai/vm0/issues/16289)) ([844fb53](https://github.com/vm0-ai/vm0/commit/844fb53259a5eba2600e02a90ce0255f8383b3f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.2
+    * @vm0/connectors bumped to 1.48.1
+    * @vm0/core bumped to 8.313.0
+
+## [0.418.0](https://github.com/vm0-ai/vm0/compare/app-v0.417.1...app-v0.418.0) (2026-06-05)
+
+
+### Features
+
+* roll out scheduled chat ([#16260](https://github.com/vm0-ai/vm0/issues/16260)) ([00bf130](https://github.com/vm0-ai/vm0/commit/00bf130980a3989ee7b48b6f13ad05fc681ec9ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.312.0
+
+## [0.417.1](https://github.com/vm0-ai/vm0/compare/app-v0.417.0...app-v0.417.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* hide schedule button without linked schedules ([#16258](https://github.com/vm0-ai/vm0/issues/16258)) ([b7ab9d2](https://github.com/vm0-ai/vm0/commit/b7ab9d20975bbf038f6f1d2feb7b0a17e7a8a929))
+* remove schedule chat migration flow ([#16262](https://github.com/vm0-ai/vm0/issues/16262)) ([5df9c43](https://github.com/vm0-ai/vm0/commit/5df9c43dadd24b3b03ea5c68b7331052bd446613))
+* render memory summaries as markdown ([#16265](https://github.com/vm0-ai/vm0/issues/16265)) ([391e64f](https://github.com/vm0-ai/vm0/commit/391e64f33522f64d090b544d837e414a43172bcd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.1
+    * @vm0/core bumped to 8.311.1
+
+## [0.417.0](https://github.com/vm0-ai/vm0/compare/app-v0.416.2...app-v0.417.0) (2026-06-05)
+
+
+### Features
+
+* add ashby connector ([#16200](https://github.com/vm0-ai/vm0/issues/16200)) ([12d77f4](https://github.com/vm0-ai/vm0/commit/12d77f44f5ec307f10b8b997af66997ade41e3e2))
+
+
+### Bug Fixes
+
+* focus website artifact previews ([#16255](https://github.com/vm0-ai/vm0/issues/16255)) ([78b8456](https://github.com/vm0-ai/vm0/commit/78b8456d86a2c8ceb6bd18ff8c19d2d7650ab4e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.0
+    * @vm0/connectors bumped to 1.48.0
+    * @vm0/core bumped to 8.311.0
+
+## [0.416.2](https://github.com/vm0-ai/vm0/compare/app-v0.416.1...app-v0.416.2) (2026-06-05)
+
+
+### Bug Fixes
+
+* show schedule titles in chat schedule navigation ([#16221](https://github.com/vm0-ai/vm0/issues/16221)) ([d1605b3](https://github.com/vm0-ai/vm0/commit/d1605b34813562da3d155fa2d6d7e5d7c970577f))
+
+## [0.416.1](https://github.com/vm0-ai/vm0/compare/app-v0.416.0...app-v0.416.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* persist thread composer model selection ([#16219](https://github.com/vm0-ai/vm0/issues/16219)) ([b1e7682](https://github.com/vm0-ai/vm0/commit/b1e768217fab71380d4b4dc3f0f72f5fabb7379a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.64.1
+    * @vm0/core bumped to 8.310.2
+
+## [0.416.0](https://github.com/vm0-ai/vm0/compare/app-v0.415.0...app-v0.416.0) (2026-06-04)
+
+
+### Features
+
+* migrate legacy schedules to chat thread from schedules page ([#16215](https://github.com/vm0-ai/vm0/issues/16215)) ([f103975](https://github.com/vm0-ai/vm0/commit/f103975ad8fe77ab4b350c223740f215a67e92ee))
+
+
+### Refactoring
+
+* replace connector provided env names ([#16212](https://github.com/vm0-ai/vm0/issues/16212)) ([defceb5](https://github.com/vm0-ai/vm0/commit/defceb5b08717af9228f1c7021bc54fdf7ab7893))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.64.0
+    * @vm0/connectors bumped to 1.47.1
+    * @vm0/core bumped to 8.310.1
+
+## [0.415.0](https://github.com/vm0-ai/vm0/compare/app-v0.414.0...app-v0.415.0) (2026-06-04)
+
+
+### Features
+
+* scope chat header schedule menu to the thread and refresh it in realtime ([#16208](https://github.com/vm0-ai/vm0/issues/16208)) ([6a3ed06](https://github.com/vm0-ai/vm0/commit/6a3ed060531645250e875c1dbba1ac119b6e665f))
+
+## [0.414.0](https://github.com/vm0-ai/vm0/compare/app-v0.413.0...app-v0.414.0) (2026-06-04)
+
+
+### Features
+
+* add artifact inbox sidebar preview ([#15983](https://github.com/vm0-ai/vm0/issues/15983)) ([bc96129](https://github.com/vm0-ai/vm0/commit/bc96129f7584851ec8d892bd5ce1d1827d83e8d2))
+* paginate memory activity updates ([#16204](https://github.com/vm0-ai/vm0/issues/16204)) ([45522b7](https://github.com/vm0-ai/vm0/commit/45522b73f613d08ec66a8d21123962bff37faf05))
+* run schedules as web-chat turns in a linked chat thread ([#16176](https://github.com/vm0-ai/vm0/issues/16176)) ([f403258](https://github.com/vm0-ai/vm0/commit/f4032589b6c024852293bb4ee16f2ea1a22e9c87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.63.0
+    * @vm0/connectors bumped to 1.47.0
+    * @vm0/core bumped to 8.310.0
+
+## [0.413.0](https://github.com/vm0-ai/vm0/compare/app-v0.412.0...app-v0.413.0) (2026-06-04)
+
+
+### Features
+
+* show template on sent chat messages ([#16191](https://github.com/vm0-ai/vm0/issues/16191)) ([0083a37](https://github.com/vm0-ai/vm0/commit/0083a37acbde5e348758bffb4a93bb8f046476ed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.62.0
+    * @vm0/core bumped to 8.309.12
+
+## [0.412.0](https://github.com/vm0-ai/vm0/compare/app-v0.411.0...app-v0.412.0) (2026-06-04)
+
+
+### Features
+
+* route recovered first-party platform routes to api backend ([#16173](https://github.com/vm0-ai/vm0/issues/16173)) ([073f509](https://github.com/vm0-ai/vm0/commit/073f509f9ac6a8e223027012009607ebe5a911ef))
+* simplify memory activity updates ([#16175](https://github.com/vm0-ai/vm0/issues/16175)) ([6187410](https://github.com/vm0-ai/vm0/commit/618741097fc725534135efcdb4690818d26ba233))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.61.0
+    * @vm0/connectors bumped to 1.46.2
+    * @vm0/core bumped to 8.309.11
+
+## [0.411.0](https://github.com/vm0-ai/vm0/compare/app-v0.410.0...app-v0.411.0) (2026-06-04)
+
+
+### Features
+
+* add structured memory activity diffs ([#16145](https://github.com/vm0-ai/vm0/issues/16145)) ([7b91b35](https://github.com/vm0-ai/vm0/commit/7b91b357292ecb5611ab5f98b2ae9e5909ed4fbf))
+* expose org switcher in onboarding ([#16029](https://github.com/vm0-ai/vm0/issues/16029)) ([863e59b](https://github.com/vm0-ai/vm0/commit/863e59bb53cddac25affe687f03f41b49c0e9123))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.60.0
+    * @vm0/core bumped to 8.309.10
+
+## [0.410.0](https://github.com/vm0-ai/vm0/compare/app-v0.409.0...app-v0.410.0) (2026-06-04)
+
+
+### Features
+
+* **platform:** refine recommended follow-ups styling ([#16057](https://github.com/vm0-ai/vm0/issues/16057)) ([9c79927](https://github.com/vm0-ai/vm0/commit/9c79927c36cc353a574751576331d27a8bd9eee1))
+* refine chat template picker ([#16131](https://github.com/vm0-ai/vm0/issues/16131)) ([8772de3](https://github.com/vm0-ai/vm0/commit/8772de3b296638bbd0ace61356b2bdecbce1fed7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.6
+    * @vm0/connectors bumped to 1.46.1
+    * @vm0/core bumped to 8.309.9
+
+## [0.409.0](https://github.com/vm0-ai/vm0/compare/app-v0.408.0...app-v0.409.0) (2026-06-04)
+
+
+### Features
+
+* route platform connector and slack-integration data to api backend ([#16120](https://github.com/vm0-ai/vm0/issues/16120)) ([414aeeb](https://github.com/vm0-ai/vm0/commit/414aeebdbe975bacb918da667c34b598b8321967))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.5
+    * @vm0/connectors bumped to 1.46.0
+    * @vm0/core bumped to 8.309.8
+
+## [0.408.0](https://github.com/vm0-ai/vm0/compare/app-v0.407.3...app-v0.408.0) (2026-06-04)
+
+
+### Features
+
+* route platform billing, onboarding and attribution to api backend ([#16106](https://github.com/vm0-ai/vm0/issues/16106)) ([3e48a9d](https://github.com/vm0-ai/vm0/commit/3e48a9d4dad33f5e7486a767ae616199841f31c2))
+
+
+### Bug Fixes
+
+* add side padding to Compare plans cards on wide screens ([#16099](https://github.com/vm0-ai/vm0/issues/16099)) ([ebe4930](https://github.com/vm0-ai/vm0/commit/ebe49302e4f06ce623f0711d34d3bac413bc8cc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.4
+    * @vm0/core bumped to 8.309.7
+
+## [0.407.3](https://github.com/vm0-ai/vm0/compare/app-v0.407.2...app-v0.407.3) (2026-06-04)
+
+
+### Bug Fixes
+
+* **onboarding:** scale trial gallery on large screens ([#15433](https://github.com/vm0-ai/vm0/issues/15433)) ([1dbc85e](https://github.com/vm0-ai/vm0/commit/1dbc85eccd510c1780fb620cab0bfb2b875999f5))
+
+## [0.407.2](https://github.com/vm0-ai/vm0/compare/app-v0.407.1...app-v0.407.2) (2026-06-04)
+
+
+### Bug Fixes
+
+* show skill folders in viewer ([#16052](https://github.com/vm0-ai/vm0/issues/16052)) ([6541bc3](https://github.com/vm0-ai/vm0/commit/6541bc354f392ab6caba5e4bf9c09308ee355cf2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.3
+    * @vm0/core bumped to 8.309.6
+
+## [0.407.1](https://github.com/vm0-ai/vm0/compare/app-v0.407.0...app-v0.407.1) (2026-06-04)
+
+
+### Bug Fixes
+
+* contain memory markdown overflow ([#16041](https://github.com/vm0-ai/vm0/issues/16041)) ([5f56519](https://github.com/vm0-ai/vm0/commit/5f565197b5daa6393401c1d3f8a37ef4d88f2d3e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.2
+    * @vm0/connectors bumped to 1.45.3
+    * @vm0/core bumped to 8.309.5
+
 ## [0.407.0](https://github.com/vm0-ai/vm0/compare/app-v0.406.1...app-v0.407.0) (2026-06-03)
 
 

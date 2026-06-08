@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 #[cfg(not(test))]
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
@@ -206,13 +206,15 @@ fn workspace_image_size_mb(image_size_bytes: u64) -> u32 {
     image_size_bytes.div_ceil(mib).min(u64::from(u32::MAX)) as u32
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct FsStats {
-    total_bytes: u64,
-    available_bytes: u64,
+    pub(crate) total_bytes: u64,
+    pub(crate) available_bytes: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CacheBudget {
     pub(crate) max_cache_bytes: u64,
     pub(crate) target_after_gc_bytes: u64,
@@ -235,12 +237,81 @@ impl CacheBudget {
     }
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WorkspaceImageCacheInspection {
+    pub(crate) cache_dir: String,
+    pub(crate) lock_dir: String,
+    pub(crate) fs_stats: FsStats,
+    pub(crate) budget: CacheBudget,
+    pub(crate) summary: WorkspaceImageCacheInspectionSummary,
+    pub(crate) entries: Vec<WorkspaceImageCacheInspectionEntry>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WorkspaceImageCacheInspectionSummary {
+    pub(crate) total_entries: usize,
+    pub(crate) reusable_entries: usize,
+    pub(crate) invalid_entries: usize,
+    pub(crate) stale_entries: usize,
+    pub(crate) temporary_entries: usize,
+    pub(crate) locked_entries: usize,
+    pub(crate) temporary_paths: usize,
+    pub(crate) total_allocated_bytes: u64,
+    pub(crate) total_logical_image_bytes: u64,
+    pub(crate) temporary_allocated_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WorkspaceImageCacheInspectionEntry {
+    pub(crate) cache_key: String,
+    pub(crate) status: WorkspaceImageCacheInspectionStatus,
+    pub(crate) reason: Option<String>,
+    pub(crate) cache_scope: Option<String>,
+    pub(crate) profile_name: Option<String>,
+    pub(crate) working_dir: Option<String>,
+    pub(crate) last_completed_at: Option<String>,
+    pub(crate) last_used_at: Option<String>,
+    pub(crate) last_terminal_status: Option<WorkspaceCacheTerminalStatus>,
+    pub(crate) allocated_bytes: u64,
+    pub(crate) logical_image_size_bytes: u64,
+    pub(crate) temporary_path_count: usize,
+    pub(crate) temporary_allocated_bytes: u64,
+    pub(crate) storage_count: usize,
+    pub(crate) artifact_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum WorkspaceImageCacheInspectionStatus {
+    Reusable,
+    Invalid,
+    Stale,
+    TemporaryOnly,
+    Locked,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct TemporaryPathStats {
+    path_count: usize,
+    allocated_bytes: u64,
+}
+
 impl SessionWorkspaceCache {
     #[cfg(test)]
     pub(crate) fn new(paths: RunnerPaths) -> Self {
         let cache_dir = paths.workspace_image_cache_dir();
         let lock_dir = paths.base_dir().join("locks");
         Self::with_cache_dirs(paths, cache_dir, lock_dir, "")
+    }
+
+    #[cfg(test)]
+    fn new_with_fs_stats(paths: RunnerPaths, fs_stats: FsStats) -> Self {
+        let cache_dir = paths.workspace_image_cache_dir();
+        let lock_dir = paths.base_dir().join("locks");
+        Self::with_cache_dirs_and_fs_stats(paths, cache_dir, lock_dir, "", fs_stats)
     }
 
     pub(crate) fn shared(paths: RunnerPaths, home: &HomePaths, cache_scope: &str) -> Self {
@@ -258,17 +329,48 @@ impl SessionWorkspaceCache {
         lock_dir: PathBuf,
         cache_scope: &str,
     ) -> Self {
+        #[cfg(test)]
+        {
+            Self::with_cache_dirs_and_fs_stats(
+                paths,
+                cache_dir,
+                lock_dir,
+                cache_scope,
+                FsStats {
+                    total_bytes: TEST_FS_TOTAL_BYTES,
+                    available_bytes: TEST_FS_AVAILABLE_BYTES,
+                },
+            )
+        }
+
+        #[cfg(not(test))]
+        {
+            Self {
+                inner: Arc::new(SessionWorkspaceCacheInner {
+                    paths,
+                    cache_dir,
+                    lock_dir,
+                    cache_scope: cache_scope.to_owned(),
+                }),
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn with_cache_dirs_and_fs_stats(
+        paths: RunnerPaths,
+        cache_dir: PathBuf,
+        lock_dir: PathBuf,
+        cache_scope: &str,
+        fs_stats: FsStats,
+    ) -> Self {
         Self {
             inner: Arc::new(SessionWorkspaceCacheInner {
                 paths,
                 cache_dir,
                 lock_dir,
                 cache_scope: cache_scope.to_owned(),
-                #[cfg(test)]
-                fs_stats_override: FsStats {
-                    total_bytes: TEST_FS_TOTAL_BYTES,
-                    available_bytes: TEST_FS_AVAILABLE_BYTES,
-                },
+                fs_stats_override: fs_stats,
             }),
         }
     }
@@ -281,12 +383,8 @@ impl SessionWorkspaceCache {
         &self.inner.cache_dir
     }
 
-    #[cfg(not(test))]
-    fn workspace_image_cache_fs_stats_path(&self) -> &Path {
-        self.inner
-            .cache_dir
-            .parent()
-            .unwrap_or(self.workspace_image_cache_dir())
+    fn workspace_image_cache_fs_stats_path(&self) -> PathBuf {
+        existing_fs_stats_path(self.workspace_image_cache_dir())
     }
 
     async fn fs_stats(&self) -> RunnerResult<FsStats> {
@@ -297,7 +395,8 @@ impl SessionWorkspaceCache {
 
         #[cfg(not(test))]
         {
-            statvfs_bytes(self.workspace_image_cache_fs_stats_path()).await
+            let path = self.workspace_image_cache_fs_stats_path();
+            statvfs_bytes(&path).await
         }
     }
 
@@ -546,6 +645,44 @@ impl SessionWorkspaceCache {
             }
         };
 
+        let entry_dir = self.session_workspace_cache_entry_dir(&cache_key);
+        match remove_non_directory_workspace_cache_entry(&entry_dir).await {
+            Ok(true) => {
+                info!(
+                    run_id = %request.run_id,
+                    cache_key,
+                    path = %entry_dir.display(),
+                    "removed non-directory workspace image cache entry before checkout"
+                );
+                return workspace_drive(
+                    WorkspaceCacheCheckoutResult::Miss,
+                    None,
+                    None,
+                    Some(lock),
+                    Some(cache_key),
+                    true,
+                );
+            }
+            Ok(false) => {}
+            Err(e) => {
+                warn!(
+                    run_id = %request.run_id,
+                    cache_key,
+                    path = %entry_dir.display(),
+                    error = %e,
+                    "failed to remove non-directory workspace image cache entry before checkout"
+                );
+                return workspace_drive(
+                    WorkspaceCacheCheckoutResult::InvalidMetadata,
+                    None,
+                    None,
+                    Some(lock),
+                    Some(cache_key),
+                    true,
+                );
+            }
+        }
+
         let metadata_path = self.session_workspace_cache_metadata(&cache_key);
         let current_path = self.session_workspace_cache_current_image(&cache_key);
         let hit = match self
@@ -720,6 +857,79 @@ impl SessionWorkspaceCache {
         }
     }
 
+    pub(crate) async fn invalidate_current_images_for_session(
+        &self,
+        run_id: RunId,
+        session_id: Option<&str>,
+        reason: &str,
+    ) -> RunnerResult<usize> {
+        let Some(session_id) = session_id else {
+            return Ok(0);
+        };
+
+        let root = self.workspace_image_cache_dir().to_path_buf();
+        let mut entries = match fs::read_dir(&root).await {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) => return Err(e.into()),
+        };
+        let mut invalidated = 0;
+        loop {
+            let entry = match entries.next_entry().await {
+                Ok(Some(entry)) => entry,
+                Ok(None) => break,
+                Err(e) => return Err(e.into()),
+            };
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type().await else {
+                continue;
+            };
+            if !file_type.is_dir() {
+                continue;
+            }
+            let Some(cache_key) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            if !is_cache_key_name(cache_key) {
+                continue;
+            }
+            let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(cache_key)).await else {
+                continue;
+            };
+            let metadata_path = self.session_workspace_cache_metadata(cache_key);
+            let metadata = match self.read_metadata_file(&metadata_path).await {
+                Ok(metadata) => metadata,
+                Err(_) => {
+                    drop(lock);
+                    continue;
+                }
+            };
+            if metadata.session_id == session_id
+                && self
+                    .metadata_is_publishable_held_session_state(cache_key, &metadata)
+                    .await
+            {
+                let current = self.session_workspace_cache_current_image(cache_key);
+                match self
+                    .invalidate_current_image(run_id, cache_key, &current, reason)
+                    .await
+                {
+                    Ok(true) => invalidated += 1,
+                    Ok(false) => {}
+                    Err(e) => warn!(
+                        run_id = %run_id,
+                        cache_key,
+                        reason,
+                        error = %e,
+                        "failed to invalidate workspace image cache baseline for disabled session"
+                    ),
+                }
+            }
+            drop(lock);
+        }
+        Ok(invalidated)
+    }
+
     pub(crate) async fn held_session_states(&self) -> Vec<HeldSessionState> {
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
@@ -756,17 +966,9 @@ impl SessionWorkspaceCache {
                     continue;
                 }
             };
-            if metadata.format_version == CACHE_FORMAT_VERSION
-                && metadata.key_version == CACHE_KEY_VERSION
-                && metadata.cache_scope == self.inner.cache_scope
-                && metadata.drive_layout == WORKSPACE_DRIVE_LAYOUT
-                && metadata.state == WorkspaceCacheState::Current
-                && metadata.workspace_trust == WorkspaceTrust::Clean
-                && is_safe_guest_working_dir(&metadata.working_dir)
-                && self.metadata_matches_cache_key(cache_key, &metadata)
-                && self
-                    .metadata_matches_current_image(cache_key, &metadata)
-                    .await
+            if self
+                .metadata_is_publishable_held_session_state(cache_key, &metadata)
+                .await
             {
                 states.push(HeldSessionState {
                     session_id: metadata.session_id,
@@ -778,40 +980,254 @@ impl SessionWorkspaceCache {
         cap_workspace_held_session_states(states)
     }
 
+    async fn metadata_is_publishable_held_session_state(
+        &self,
+        cache_key: &str,
+        metadata: &WorkspaceCacheMetadata,
+    ) -> bool {
+        metadata.format_version == CACHE_FORMAT_VERSION
+            && metadata.key_version == CACHE_KEY_VERSION
+            && metadata.cache_scope == self.inner.cache_scope
+            && metadata.drive_layout == WORKSPACE_DRIVE_LAYOUT
+            && metadata.state == WorkspaceCacheState::Current
+            && metadata.workspace_trust == WorkspaceTrust::Clean
+            && is_safe_guest_working_dir(&metadata.working_dir)
+            && self.metadata_matches_cache_key(cache_key, metadata)
+            && self
+                .metadata_matches_current_image(cache_key, metadata)
+                .await
+    }
+
+    pub(crate) async fn inspect(&self) -> RunnerResult<WorkspaceImageCacheInspection> {
+        let fs_stats = self.fs_stats().await?;
+        let budget = CacheBudget::from_fs_stats(fs_stats);
+        let root = self.workspace_image_cache_dir().to_path_buf();
+        let mut entries = match fs::read_dir(&root).await {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(self.inspection_from_entries(fs_stats, budget, Vec::new()));
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let mut inspection_entries = Vec::new();
+        while let Some(entry) = entries.next_entry().await? {
+            if !entry_file_type_is_dir(&entry).await? {
+                continue;
+            }
+            let Some(cache_key) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if !is_cache_key_name(&cache_key) {
+                continue;
+            }
+            if let Some(entry) = self.inspect_entry(cache_key, entry.path()).await? {
+                inspection_entries.push(entry);
+            }
+        }
+        inspection_entries.sort_unstable_by(|left, right| left.cache_key.cmp(&right.cache_key));
+        Ok(self.inspection_from_entries(fs_stats, budget, inspection_entries))
+    }
+
+    fn inspection_from_entries(
+        &self,
+        fs_stats: FsStats,
+        budget: CacheBudget,
+        entries: Vec<WorkspaceImageCacheInspectionEntry>,
+    ) -> WorkspaceImageCacheInspection {
+        let mut summary = WorkspaceImageCacheInspectionSummary {
+            total_entries: entries.len(),
+            ..WorkspaceImageCacheInspectionSummary::default()
+        };
+        for entry in &entries {
+            match entry.status {
+                WorkspaceImageCacheInspectionStatus::Reusable => summary.reusable_entries += 1,
+                WorkspaceImageCacheInspectionStatus::Invalid => summary.invalid_entries += 1,
+                WorkspaceImageCacheInspectionStatus::Stale => summary.stale_entries += 1,
+                WorkspaceImageCacheInspectionStatus::TemporaryOnly => {
+                    summary.temporary_entries += 1;
+                }
+                WorkspaceImageCacheInspectionStatus::Locked => summary.locked_entries += 1,
+            }
+            summary.temporary_paths += entry.temporary_path_count;
+            summary.total_allocated_bytes = summary
+                .total_allocated_bytes
+                .saturating_add(entry.allocated_bytes)
+                .saturating_add(entry.temporary_allocated_bytes);
+            summary.total_logical_image_bytes = summary
+                .total_logical_image_bytes
+                .saturating_add(entry.logical_image_size_bytes);
+            summary.temporary_allocated_bytes = summary
+                .temporary_allocated_bytes
+                .saturating_add(entry.temporary_allocated_bytes);
+        }
+        WorkspaceImageCacheInspection {
+            cache_dir: self.workspace_image_cache_dir().display().to_string(),
+            lock_dir: self.inner.lock_dir.display().to_string(),
+            fs_stats,
+            budget,
+            summary,
+            entries,
+        }
+    }
+
+    async fn inspect_entry(
+        &self,
+        cache_key: String,
+        entry_dir: PathBuf,
+    ) -> RunnerResult<Option<WorkspaceImageCacheInspectionEntry>> {
+        let lock = match crate::lock::try_acquire_or_busy(self.entry_lock_path(&cache_key)).await? {
+            crate::lock::TryLock::Acquired(lock) => lock,
+            crate::lock::TryLock::Busy => {
+                return Ok(Some(WorkspaceImageCacheInspectionEntry {
+                    cache_key,
+                    status: WorkspaceImageCacheInspectionStatus::Locked,
+                    reason: Some("entry lock is held".into()),
+                    cache_scope: None,
+                    profile_name: None,
+                    working_dir: None,
+                    last_completed_at: None,
+                    last_used_at: None,
+                    last_terminal_status: None,
+                    allocated_bytes: 0,
+                    logical_image_size_bytes: 0,
+                    temporary_path_count: 0,
+                    temporary_allocated_bytes: 0,
+                    storage_count: 0,
+                    artifact_count: 0,
+                }));
+            }
+        };
+        if !cache_entry_dir_is_dir(&entry_dir).await? {
+            drop(lock);
+            return Ok(None);
+        }
+        let temporary = inspect_temporary_paths(&entry_dir).await?;
+
+        let current = self.session_workspace_cache_current_image(&cache_key);
+        let current_metadata = match fs::symlink_metadata(&current).await {
+            Ok(metadata) => Some(metadata),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => {
+                drop(lock);
+                return Err(e.into());
+            }
+        };
+        let metadata_path = self.session_workspace_cache_metadata(&cache_key);
+        let (metadata, metadata_read_error) = match self.read_metadata_file(&metadata_path).await {
+            Ok(metadata) => (Some(metadata), None),
+            Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => (None, None),
+            Err(RunnerError::Internal(_)) => (None, None),
+            Err(e) => (None, Some(e.to_string())),
+        };
+        let current_allocated_bytes = match current_metadata.as_ref() {
+            Some(metadata) if metadata.is_dir() => directory_tree_allocated_bytes(&current).await,
+            Some(metadata) => allocated_bytes(metadata),
+            None => 0,
+        };
+
+        let entry = match (current_metadata, metadata) {
+            (None, metadata) => {
+                let status = if temporary.path_count > 0 {
+                    WorkspaceImageCacheInspectionStatus::TemporaryOnly
+                } else {
+                    WorkspaceImageCacheInspectionStatus::Stale
+                };
+                let reason = if temporary.path_count > 0 {
+                    "missing current image; temporary paths present"
+                } else {
+                    "missing current image"
+                };
+                workspace_image_cache_inspection_entry(
+                    cache_key,
+                    status,
+                    Some(reason.into()),
+                    metadata.as_ref(),
+                    None,
+                    0,
+                    temporary,
+                )
+            }
+            (Some(current_metadata), None) => {
+                let reason = metadata_read_error
+                    .map(|error| format!("metadata read failed: {error}"))
+                    .unwrap_or_else(|| "missing or invalid metadata".into());
+                workspace_image_cache_inspection_entry(
+                    cache_key,
+                    WorkspaceImageCacheInspectionStatus::Invalid,
+                    Some(reason),
+                    None,
+                    Some(&current_metadata),
+                    current_allocated_bytes,
+                    temporary,
+                )
+            }
+            (Some(current_metadata), Some(metadata)) => {
+                let reason = self
+                    .unusable_current_entry_reason(&cache_key, &metadata, &current_metadata)
+                    .map(str::to_owned);
+                let status = if reason.is_some() {
+                    WorkspaceImageCacheInspectionStatus::Invalid
+                } else {
+                    WorkspaceImageCacheInspectionStatus::Reusable
+                };
+                workspace_image_cache_inspection_entry(
+                    cache_key,
+                    status,
+                    reason,
+                    Some(&metadata),
+                    Some(&current_metadata),
+                    current_allocated_bytes,
+                    temporary,
+                )
+            }
+        };
+        drop(lock);
+        Ok(Some(entry))
+    }
+
     pub(crate) async fn gc(&self, dry_run: bool) -> RunnerResult<u64> {
-        let temporary_freed = self.gc_temporary_images(dry_run).await?;
-        let stale_entry_freed = self.gc_entries_without_current_image(dry_run).await?;
-        let unusable_current_freed = self.gc_unusable_current_entries(dry_run).await?;
+        let stale_cleanup = self.gc_entries_without_current_image(dry_run).await?;
+        let unusable_cleanup = self.gc_unusable_current_entries(dry_run).await?;
+        let mut removed_entry_keys = stale_cleanup.removed_entry_keys;
+        removed_entry_keys.extend(unusable_cleanup.removed_entry_keys);
+        let temporary_freed = self
+            .gc_temporary_images(dry_run, &removed_entry_keys)
+            .await?;
         let stats = self.fs_stats().await?;
-        let budget = CacheBudget::from_fs_stats(stats);
+        let pre_cleanup_freed = temporary_freed
+            .saturating_add(stale_cleanup.freed_bytes)
+            .saturating_add(unusable_cleanup.freed_bytes);
+        let stats_after_pre_cleanup = if dry_run {
+            fs_stats_with_additional_available(stats, pre_cleanup_freed)
+        } else {
+            stats
+        };
+        let budget = CacheBudget::from_fs_stats(stats_after_pre_cleanup);
         let mut candidates = self.gc_candidates().await?;
+        candidates.retain(|candidate| !removed_entry_keys.contains(&candidate.cache_key));
         let mut entry_count = candidates.len();
         let mut total: u64 = candidates
             .iter()
             .map(|candidate| candidate.allocated_bytes)
             .sum();
-        let needs_budget_gc =
-            total > budget.max_cache_bytes || stats.available_bytes < budget.min_free_bytes;
+        let needs_budget_gc = total > budget.max_cache_bytes
+            || stats_after_pre_cleanup.available_bytes < budget.min_free_bytes;
         if !needs_budget_gc && entry_count <= MAX_HELD_SESSION_STATES {
-            return Ok(temporary_freed
-                .saturating_add(stale_entry_freed)
-                .saturating_add(unusable_current_freed));
+            return Ok(pre_cleanup_freed);
         }
         candidates.sort_by(|left, right| {
             left.last_used_at
                 .cmp(&right.last_used_at)
                 .then_with(|| left.cache_key.cmp(&right.cache_key))
         });
-        let mut freed = temporary_freed
-            .saturating_add(stale_entry_freed)
-            .saturating_add(unusable_current_freed);
+        let mut freed = pre_cleanup_freed;
         let mut candidate_freed: u64 = 0;
         for candidate in candidates {
             if gc_budget_satisfied(
                 needs_budget_gc,
                 total,
                 entry_count,
-                stats,
+                stats_after_pre_cleanup,
                 budget,
                 candidate_freed,
             ) {
@@ -863,14 +1279,16 @@ impl SessionWorkspaceCache {
         Ok(freed)
     }
 
-    async fn gc_unusable_current_entries(&self, dry_run: bool) -> RunnerResult<u64> {
+    async fn gc_unusable_current_entries(&self, dry_run: bool) -> RunnerResult<GcEntryCleanup> {
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(GcEntryCleanup::default());
+            }
             Err(e) => return Err(e.into()),
         };
-        let mut freed: u64 = 0;
+        let mut cleanup = GcEntryCleanup::default();
         while let Some(entry) = entries.next_entry().await? {
             if !entry_file_type_is_dir(&entry).await? {
                 continue;
@@ -884,6 +1302,11 @@ impl SessionWorkspaceCache {
             let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await else {
                 continue;
             };
+            let entry_dir = entry.path();
+            if !cache_entry_dir_is_dir(&entry_dir).await? {
+                drop(lock);
+                continue;
+            }
             let current = self.session_workspace_cache_current_image(&cache_key);
             let current_metadata = match fs::symlink_metadata(&current).await {
                 Ok(metadata) => metadata,
@@ -898,29 +1321,20 @@ impl SessionWorkspaceCache {
             };
             let metadata_path = self.session_workspace_cache_metadata(&cache_key);
             let reason = match self.read_metadata_file(&metadata_path).await {
-                Ok(metadata) => {
-                    self.unusable_current_entry_reason(&cache_key, &metadata, &current_metadata)
-                }
+                Ok(metadata) => self
+                    .unusable_current_entry_reason(&cache_key, &metadata, &current_metadata)
+                    .map(str::to_owned),
                 Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
-                    Some("missing metadata")
+                    Some("missing metadata".into())
                 }
-                Err(RunnerError::Internal(_)) => Some("invalid metadata"),
-                Err(e) => {
-                    warn!(
-                        cache_key,
-                        error = %e,
-                        "failed to inspect workspace image cache metadata during GC"
-                    );
-                    drop(lock);
-                    continue;
-                }
+                Err(RunnerError::Internal(_)) => Some("invalid metadata".into()),
+                Err(e) => Some(format!("metadata read failed: {e}")),
             };
             let Some(reason) = reason else {
                 drop(lock);
                 continue;
             };
 
-            let entry_dir = entry.path();
             let allocated = directory_tree_allocated_bytes(&entry_dir).await;
             if dry_run {
                 info!(
@@ -947,10 +1361,11 @@ impl SessionWorkspaceCache {
                     "deleted unusable workspace image cache entry"
                 );
             }
-            freed = freed.saturating_add(allocated);
+            cleanup.freed_bytes = cleanup.freed_bytes.saturating_add(allocated);
+            cleanup.removed_entry_keys.insert(cache_key);
             drop(lock);
         }
-        Ok(freed)
+        Ok(cleanup)
     }
 
     fn unusable_current_entry_reason(
@@ -976,6 +1391,9 @@ impl SessionWorkspaceCache {
         if !is_safe_guest_working_dir(&metadata.working_dir) {
             return Some("unsafe working dir");
         }
+        if !current_metadata.is_file() {
+            return Some("current image is not a file");
+        }
         if !self.metadata_matches_cache_key(cache_key, metadata) {
             return Some("cache key mismatch");
         }
@@ -985,14 +1403,19 @@ impl SessionWorkspaceCache {
         None
     }
 
-    async fn gc_entries_without_current_image(&self, dry_run: bool) -> RunnerResult<u64> {
+    async fn gc_entries_without_current_image(
+        &self,
+        dry_run: bool,
+    ) -> RunnerResult<GcEntryCleanup> {
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(GcEntryCleanup::default());
+            }
             Err(e) => return Err(e.into()),
         };
-        let mut freed: u64 = 0;
+        let mut cleanup = GcEntryCleanup::default();
         while let Some(entry) = entries.next_entry().await? {
             if !entry_file_type_is_dir(&entry).await? {
                 continue;
@@ -1006,6 +1429,11 @@ impl SessionWorkspaceCache {
             let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await else {
                 continue;
             };
+            let entry_dir = entry.path();
+            if !cache_entry_dir_is_dir(&entry_dir).await? {
+                drop(lock);
+                continue;
+            }
             let current = self.session_workspace_cache_current_image(&cache_key);
             match fs::try_exists(&current).await {
                 Ok(true) => {
@@ -1018,7 +1446,6 @@ impl SessionWorkspaceCache {
                     return Err(e.into());
                 }
             }
-            let entry_dir = entry.path();
             let allocated = directory_tree_allocated_bytes(&entry_dir).await;
             if dry_run {
                 info!(
@@ -1042,13 +1469,18 @@ impl SessionWorkspaceCache {
                     "deleted stale workspace image cache entry"
                 );
             }
-            freed = freed.saturating_add(allocated);
+            cleanup.freed_bytes = cleanup.freed_bytes.saturating_add(allocated);
+            cleanup.removed_entry_keys.insert(cache_key);
             drop(lock);
         }
-        Ok(freed)
+        Ok(cleanup)
     }
 
-    async fn gc_temporary_images(&self, dry_run: bool) -> RunnerResult<u64> {
+    async fn gc_temporary_images(
+        &self,
+        dry_run: bool,
+        skip_entry_keys: &BTreeSet<String>,
+    ) -> RunnerResult<u64> {
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
@@ -1066,10 +1498,17 @@ impl SessionWorkspaceCache {
             if !is_cache_key_name(&cache_key) {
                 continue;
             }
+            if skip_entry_keys.contains(&cache_key) {
+                continue;
+            }
             let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await else {
                 continue;
             };
             let entry_dir = entry.path();
+            if !cache_entry_dir_is_dir(&entry_dir).await? {
+                drop(lock);
+                continue;
+            }
             let mut files = match fs::read_dir(&entry_dir).await {
                 Ok(files) => files,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -1086,7 +1525,7 @@ impl SessionWorkspaceCache {
                 let Some(file_name) = file_name.to_str() else {
                     continue;
                 };
-                if !is_workspace_tmp_file_name(file_name) {
+                if !is_workspace_tmp_path_name(file_name) {
                     continue;
                 }
                 let path = file.path();
@@ -1152,6 +1591,10 @@ impl SessionWorkspaceCache {
     }
 
     async fn gc_candidate(&self, cache_key: String) -> Option<GcCandidate> {
+        let entry_dir = self.session_workspace_cache_entry_dir(&cache_key);
+        if !cache_entry_dir_is_dir(&entry_dir).await.ok()? {
+            return None;
+        }
         let metadata_path = self.session_workspace_cache_metadata(&cache_key);
         let current_path = self.session_workspace_cache_current_image(&cache_key);
         let file_metadata = fs::symlink_metadata(&current_path).await.ok()?;
@@ -1189,7 +1632,7 @@ impl SessionWorkspaceCache {
         working_dir: &str,
         image_size_bytes: u64,
     ) -> RunnerResult<Option<WorkspaceCacheMetadata>> {
-        let metadata = match self.read_metadata_file(metadata_path).await {
+        let mut metadata = match self.read_metadata_file(metadata_path).await {
             Ok(metadata) => metadata,
             Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(None);
@@ -1216,6 +1659,7 @@ impl SessionWorkspaceCache {
             image_size_bytes,
         )?;
         validate_current_image_identity(&metadata, &current_metadata)?;
+        metadata.allocated_bytes = allocated_bytes(&current_metadata);
         Ok(Some(metadata))
     }
 
@@ -1235,6 +1679,13 @@ impl SessionWorkspaceCache {
         &self,
         metadata_path: &Path,
     ) -> RunnerResult<WorkspaceCacheMetadata> {
+        let metadata = fs::symlink_metadata(metadata_path).await?;
+        if !metadata.is_file() {
+            return Err(RunnerError::Internal(format!(
+                "workspace image cache metadata is not a file: {}",
+                metadata_path.display()
+            )));
+        }
         let bytes = fs::read(metadata_path).await?;
         serde_json::from_slice(&bytes)
             .map_err(|e| RunnerError::Internal(format!("parse {}: {e}", metadata_path.display())))
@@ -1249,10 +1700,11 @@ impl SessionWorkspaceCache {
         let metadata_path = self.session_workspace_cache_metadata(cache_key);
         let tmp = metadata_path.with_file_name(format!("metadata.json.tmp.{run_id}"));
         if let Some(parent) = metadata_path.parent() {
-            fs::create_dir_all(parent).await?;
+            ensure_workspace_cache_entry_dir(parent).await?;
         }
         let bytes = serde_json::to_vec_pretty(&metadata)
             .map_err(|e| RunnerError::Internal(format!("serialize workspace metadata: {e}")))?;
+        let _ = remove_workspace_cache_path_if_exists(&tmp).await;
         if let Err(e) = fs::write(&tmp, bytes).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e.into());
@@ -1287,6 +1739,15 @@ impl SessionWorkspaceCache {
     }
 
     async fn promote_locked(&self, input: WorkspaceImagePromotionInput<'_>) -> RunnerResult<bool> {
+        let cache_dir = self.session_workspace_cache_entry_dir(input.cache_key);
+        if remove_non_directory_workspace_cache_entry(&cache_dir).await? {
+            info!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                path = %cache_dir.display(),
+                "removed non-directory workspace image cache entry before promotion"
+            );
+        }
         let metadata_path = self.session_workspace_cache_metadata(input.cache_key);
         match self
             .read_valid_metadata(
@@ -1344,7 +1805,16 @@ impl SessionWorkspaceCache {
             );
             return Ok(false);
         }
-        let image_metadata = fs::metadata(input.active_image).await?;
+        let image_metadata = fs::symlink_metadata(input.active_image).await?;
+        if !image_metadata.is_file() {
+            info!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                active_image = %input.active_image.display(),
+                "workspace image cache promotion skipped because active image is not a file"
+            );
+            return Ok(false);
+        }
         let active_allocated = allocated_bytes(&image_metadata);
         if active_allocated > budget.max_entry_bytes {
             info!(
@@ -1383,15 +1853,14 @@ impl SessionWorkspaceCache {
             return Ok(false);
         }
 
-        let cache_dir = self.session_workspace_cache_entry_dir(input.cache_key);
-        fs::create_dir_all(&cache_dir).await?;
+        ensure_workspace_cache_entry_dir(&cache_dir).await?;
         let tmp = self.session_workspace_cache_tmp_image(input.cache_key, input.run_id);
         let _ = remove_workspace_cache_path_if_exists(&tmp).await;
         if let Err(e) = sparse_copy(input.active_image, &tmp).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e);
         }
-        let tmp_metadata = match fs::metadata(&tmp).await {
+        let tmp_metadata = match fs::symlink_metadata(&tmp).await {
             Ok(metadata) => metadata,
             Err(e) => {
                 let _ = remove_workspace_cache_path_if_exists(&tmp).await;
@@ -1500,6 +1969,95 @@ impl SessionWorkspaceCache {
             );
         }
         Ok(true)
+    }
+}
+
+fn workspace_image_cache_inspection_entry(
+    cache_key: String,
+    status: WorkspaceImageCacheInspectionStatus,
+    reason: Option<String>,
+    metadata: Option<&WorkspaceCacheMetadata>,
+    current_metadata: Option<&std::fs::Metadata>,
+    current_allocated_bytes: u64,
+    temporary: TemporaryPathStats,
+) -> WorkspaceImageCacheInspectionEntry {
+    let logical_image_size_bytes = current_metadata.map(std::fs::Metadata::len).unwrap_or(0);
+    WorkspaceImageCacheInspectionEntry {
+        cache_key,
+        status,
+        reason,
+        cache_scope: metadata.map(|metadata| metadata.cache_scope.clone()),
+        profile_name: metadata.map(|metadata| metadata.profile_name.clone()),
+        working_dir: metadata.map(|metadata| metadata.working_dir.clone()),
+        last_completed_at: metadata.map(|metadata| metadata.last_completed_at.clone()),
+        last_used_at: metadata.map(|metadata| metadata.last_used_at.clone()),
+        last_terminal_status: metadata.map(|metadata| metadata.last_terminal_status),
+        allocated_bytes: current_allocated_bytes,
+        logical_image_size_bytes,
+        temporary_path_count: temporary.path_count,
+        temporary_allocated_bytes: temporary.allocated_bytes,
+        storage_count: metadata
+            .map(|metadata| metadata.storage_fingerprints.storages.len())
+            .unwrap_or(0),
+        artifact_count: metadata
+            .map(|metadata| metadata.storage_fingerprints.artifacts.len())
+            .unwrap_or(0),
+    }
+}
+
+async fn inspect_temporary_paths(entry_dir: &Path) -> RunnerResult<TemporaryPathStats> {
+    let mut files = match fs::read_dir(entry_dir).await {
+        Ok(files) => files,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(TemporaryPathStats::default());
+        }
+        Err(e) => return Err(e.into()),
+    };
+    let mut stats = TemporaryPathStats::default();
+    while let Some(file) = files.next_entry().await? {
+        let file_name = file.file_name();
+        let Some(file_name) = file_name.to_str() else {
+            continue;
+        };
+        if !is_workspace_tmp_path_name(file_name) {
+            continue;
+        }
+        let path = file.path();
+        let metadata = match fs::symlink_metadata(&path).await {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.into()),
+        };
+        let allocated = if metadata.is_dir() {
+            directory_tree_allocated_bytes(&path).await
+        } else {
+            allocated_bytes(&metadata)
+        };
+        stats.path_count += 1;
+        stats.allocated_bytes = stats.allocated_bytes.saturating_add(allocated);
+    }
+    Ok(stats)
+}
+
+impl WorkspaceCacheTerminalStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::NonzeroExit => "nonzeroExit",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+impl WorkspaceImageCacheInspectionStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Reusable => "reusable",
+            Self::Invalid => "invalid",
+            Self::Stale => "stale",
+            Self::TemporaryOnly => "temporaryOnly",
+            Self::Locked => "locked",
+        }
     }
 }
 
@@ -1886,6 +2444,12 @@ struct GcCandidate {
     last_used_at: String,
 }
 
+#[derive(Default)]
+struct GcEntryCleanup {
+    freed_bytes: u64,
+    removed_entry_keys: BTreeSet<String>,
+}
+
 impl GcCandidate {
     fn same_current_image(&self, other: &Self) -> bool {
         self.file_dev == other.file_dev
@@ -2043,12 +2607,36 @@ fn validate_current_image_identity(
     Ok(())
 }
 
-fn is_workspace_tmp_file_name(name: &str) -> bool {
+fn is_workspace_tmp_path_name(name: &str) -> bool {
     name.starts_with("current.ext4.tmp.") || name.starts_with("metadata.json.tmp.")
 }
 
 fn allocated_bytes(metadata: &std::fs::Metadata) -> u64 {
     metadata.blocks().saturating_mul(512)
+}
+
+fn fs_stats_with_additional_available(stats: FsStats, bytes: u64) -> FsStats {
+    FsStats {
+        total_bytes: stats.total_bytes,
+        available_bytes: stats
+            .available_bytes
+            .saturating_add(bytes)
+            .min(stats.total_bytes),
+    }
+}
+
+fn existing_fs_stats_path(path: &Path) -> PathBuf {
+    let mut current = Some(path);
+    while let Some(candidate) = current {
+        match std::fs::metadata(candidate) {
+            Ok(_) => return candidate.to_path_buf(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                current = candidate.parent();
+            }
+            Err(_) => return candidate.to_path_buf(),
+        }
+    }
+    path.to_path_buf()
 }
 
 async fn workspace_cache_path_allocated_bytes(path: &Path) -> u64 {
@@ -2074,6 +2662,32 @@ async fn remove_workspace_cache_path_if_exists(path: &Path) -> std::io::Result<b
         fs::remove_file(path).await?;
     }
     Ok(true)
+}
+
+async fn remove_non_directory_workspace_cache_entry(path: &Path) -> RunnerResult<bool> {
+    let metadata = match fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e.into()),
+    };
+    if metadata.is_dir() {
+        return Ok(false);
+    }
+    remove_workspace_cache_path_if_exists(path).await?;
+    Ok(true)
+}
+
+async fn ensure_workspace_cache_entry_dir(path: &Path) -> RunnerResult<()> {
+    remove_non_directory_workspace_cache_entry(path).await?;
+    fs::create_dir_all(path).await?;
+    let metadata = fs::symlink_metadata(path).await?;
+    if metadata.is_dir() {
+        return Ok(());
+    }
+    Err(RunnerError::Internal(format!(
+        "workspace image cache entry is not a directory: {}",
+        path.display()
+    )))
 }
 
 fn has_copy_headroom(stats: FsStats, budget: CacheBudget, allocated_bytes: u64) -> bool {
@@ -2107,6 +2721,7 @@ async fn sparse_copy_with_timeout(src: &Path, dst: &Path, timeout: Duration) -> 
     let mut command = tokio::process::Command::new("cp");
     command
         .arg("--sparse=always")
+        .arg("--no-dereference")
         .arg("--")
         .arg(src)
         .arg(dst)
@@ -2136,7 +2751,7 @@ async fn sparse_copy_with_timeout(src: &Path, dst: &Path, timeout: Duration) -> 
             let _ = child.wait().await;
             let _ = stderr_task.await;
             return Err(RunnerError::Internal(format!(
-                "cp --sparse=always {} {} timed out after {}ms",
+                "cp --sparse=always --no-dereference {} {} timed out after {}ms",
                 src.display(),
                 dst.display(),
                 timeout.as_millis()
@@ -2152,7 +2767,7 @@ async fn sparse_copy_with_timeout(src: &Path, dst: &Path, timeout: Duration) -> 
     }
     let stderr = String::from_utf8_lossy(&stderr);
     Err(RunnerError::Internal(format!(
-        "cp --sparse=always {} {} failed: {}",
+        "cp --sparse=always --no-dereference {} {} failed: {}",
         src.display(),
         dst.display(),
         stderr.trim()
@@ -2178,6 +2793,14 @@ async fn statvfs_bytes(path: &Path) -> RunnerResult<FsStats> {
 
 async fn entry_file_type_is_dir(entry: &fs::DirEntry) -> RunnerResult<bool> {
     entry_file_type_matches(entry, std::fs::FileType::is_dir).await
+}
+
+async fn cache_entry_dir_is_dir(path: &Path) -> RunnerResult<bool> {
+    match fs::symlink_metadata(path).await {
+        Ok(metadata) => Ok(metadata.is_dir()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.into()),
+    }
 }
 
 async fn entry_file_type_matches(
@@ -2556,6 +3179,572 @@ mod tests {
         assert_eq!(budget.target_after_gc_bytes, 150 * GIB);
         assert_eq!(budget.min_free_bytes, 50 * GIB);
         assert_eq!(budget.max_entry_bytes, 20 * GIB);
+    }
+
+    #[test]
+    fn fs_stats_path_prefers_existing_cache_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        std::fs::create_dir_all(paths.workspace_image_cache_dir()).unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+
+        assert_eq!(
+            cache.workspace_image_cache_fs_stats_path(),
+            paths.workspace_image_cache_dir()
+        );
+    }
+
+    #[test]
+    fn fs_stats_path_falls_back_to_existing_parent_when_cache_dir_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        std::fs::create_dir_all(paths.base_dir()).unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+
+        assert_eq!(
+            cache.workspace_image_cache_fs_stats_path(),
+            paths.base_dir().to_path_buf()
+        );
+    }
+
+    #[tokio::test]
+    async fn inspect_missing_cache_dir_returns_empty_summary() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths);
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert!(inspection.entries.is_empty());
+        assert_eq!(inspection.summary.total_entries, 0);
+        assert_eq!(inspection.summary.total_allocated_bytes, 0);
+        assert_eq!(inspection.summary.total_logical_image_bytes, 0);
+        assert_eq!(inspection.fs_stats.total_bytes, TEST_FS_TOTAL_BYTES);
+        assert_eq!(
+            inspection.budget,
+            CacheBudget::from_fs_stats(inspection.fs_stats)
+        );
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_reusable_entry_with_storage_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 5);
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        fs::write(&current, b"image").await.unwrap();
+        let current_metadata = fs::metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: "sess-1".into(),
+                    working_dir: "/workspace".into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:01:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints {
+                        storages: HashMap::from([
+                            ("/workspace".into(), ("repo".into(), "v1".into())),
+                            ("/workspace/cache".into(), ("cache".into(), "v2".into())),
+                        ]),
+                        artifacts: HashMap::from([(
+                            "/workspace/artifact".into(),
+                            ("artifact".into(), "v1".into()),
+                        )]),
+                    },
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.total_entries, 1);
+        assert_eq!(inspection.summary.reusable_entries, 1);
+        assert_eq!(inspection.summary.total_logical_image_bytes, 5);
+        assert!(inspection.summary.total_allocated_bytes > 0);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Reusable);
+        assert_eq!(entry.storage_count, 2);
+        assert_eq!(entry.artifact_count, 1);
+        assert_eq!(entry.allocated_bytes, allocated_bytes(&current_metadata));
+        assert_eq!(entry.logical_image_size_bytes, current_metadata.len());
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_invalid_metadata_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 5);
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        fs::write(&current, b"image").await.unwrap();
+        let current_metadata = fs::metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: "other-session".into(),
+                    working_dir: "/workspace".into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:01:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert_eq!(entry.reason.as_deref(), Some("cache key mismatch"));
+    }
+
+    #[tokio::test]
+    async fn inspect_rejects_symlink_current_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let image = b"image";
+        let key = cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            "sess-1",
+            "/workspace",
+            image.len() as u64,
+        );
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let target = dir.path().join("target.ext4");
+        fs::write(&target, image).await.unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        std::os::unix::fs::symlink(&target, &current).unwrap();
+        let current_target_metadata = fs::metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: "sess-1".into(),
+                    working_dir: "/workspace".into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:01:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_target_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_target_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(
+                        &current_target_metadata,
+                    ),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert_eq!(entry.reason.as_deref(), Some("current image is not a file"));
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_current_directory_as_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let session_id = "sess-1";
+        let working_dir = "/workspace";
+        let probe = dir.path().join("current-probe");
+        tokio::fs::create_dir_all(&probe).await.unwrap();
+        let image_size_bytes = fs::metadata(&probe).await.unwrap().len();
+        tokio::fs::remove_dir_all(&probe).await.unwrap();
+        let key =
+            cache.scoped_cache_key(TEST_PROFILE_NAME, session_id, working_dir, image_size_bytes);
+        let current = paths.session_workspace_cache_current_image(&key);
+        fs::create_dir_all(&current).await.unwrap();
+        fs::write(current.join("nested"), vec![1_u8; 4096])
+            .await
+            .unwrap();
+        let current_metadata = fs::symlink_metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: session_id.into(),
+                    working_dir: working_dir.into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:01:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert_eq!(entry.reason.as_deref(), Some("current image is not a file"));
+        assert!(
+            entry.allocated_bytes > allocated_bytes(&current_metadata),
+            "inspection should count nested bytes for directory-shaped current images",
+        );
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_stale_entry_without_current_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = write_current_cache_entry(
+            &cache,
+            &paths,
+            RunId::new_v4(),
+            "sess-1",
+            "/workspace",
+            "2026-05-01T00:00:00.000Z",
+            "2026-05-01T00:00:00.000Z",
+        )
+        .await;
+        fs::remove_file(paths.session_workspace_cache_current_image(&key))
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.stale_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Stale);
+        assert_eq!(entry.reason.as_deref(), Some("missing current image"));
+        assert_eq!(entry.profile_name.as_deref(), Some(TEST_PROFILE_NAME));
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_temporary_only_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
+        fs::create_dir_all(tmp.parent().unwrap()).await.unwrap();
+        fs::write(&tmp, b"partial image").await.unwrap();
+        let tmp_metadata = fs::metadata(&tmp).await.unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.temporary_entries, 1);
+        assert_eq!(inspection.summary.temporary_paths, 1);
+        assert_eq!(
+            inspection.summary.temporary_allocated_bytes,
+            allocated_bytes(&tmp_metadata)
+        );
+        let entry = &inspection.entries[0];
+        assert_eq!(
+            entry.status,
+            WorkspaceImageCacheInspectionStatus::TemporaryOnly
+        );
+        assert_eq!(entry.temporary_path_count, 1);
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_temporary_only_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
+        fs::create_dir_all(&tmp).await.unwrap();
+        fs::write(tmp.join("partial-image"), vec![1_u8; 4096])
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.temporary_entries, 1);
+        assert_eq!(inspection.summary.temporary_paths, 1);
+        assert!(inspection.summary.temporary_allocated_bytes > 0);
+        let entry = &inspection.entries[0];
+        assert_eq!(
+            entry.status,
+            WorkspaceImageCacheInspectionStatus::TemporaryOnly
+        );
+        assert_eq!(
+            entry.reason.as_deref(),
+            Some("missing current image; temporary paths present")
+        );
+        assert_eq!(entry.temporary_path_count, 1);
+        assert!(entry.temporary_allocated_bytes > 0);
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_locked_entry_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        fs::write(
+            paths.session_workspace_cache_tmp_image(&key, RunId::new_v4()),
+            b"partial image",
+        )
+        .await
+        .unwrap();
+        let _lock = crate::lock::acquire(cache.entry_lock_path(&key))
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.locked_entries, 1);
+        assert_eq!(inspection.summary.temporary_paths, 0);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Locked);
+        assert_eq!(entry.reason.as_deref(), Some("entry lock is held"));
+        assert_eq!(entry.temporary_path_count, 0);
+    }
+
+    #[tokio::test]
+    async fn inspect_propagates_lock_path_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        fs::write(paths.base_dir().join("locks"), b"not a directory")
+            .await
+            .unwrap();
+
+        let err = cache.inspect().await.unwrap_err();
+
+        assert!(
+            err.to_string().contains("create lock dir"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn inspect_entry_skips_directory_removed_after_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+        fs::create_dir_all(&entry_dir).await.unwrap();
+        fs::remove_dir_all(&entry_dir).await.unwrap();
+
+        let entry = cache.inspect_entry(key, entry_dir).await.unwrap();
+
+        assert!(entry.is_none());
+    }
+
+    #[tokio::test]
+    async fn inspect_entry_skips_symlink_replacement_after_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+        fs::create_dir_all(entry_dir.parent().unwrap())
+            .await
+            .unwrap();
+        let target = dir.path().join("outside-cache-entry");
+        fs::create_dir_all(&target).await.unwrap();
+        std::os::unix::fs::symlink(&target, &entry_dir).unwrap();
+
+        let entry = cache.inspect_entry(key, entry_dir).await.unwrap();
+
+        assert!(entry.is_none());
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_non_file_metadata_as_invalid_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        fs::write(paths.session_workspace_cache_current_image(&key), b"image")
+            .await
+            .unwrap();
+        fs::create_dir(paths.session_workspace_cache_metadata(&key))
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert_eq!(entry.reason.as_deref(), Some("missing or invalid metadata"));
+    }
+
+    #[tokio::test]
+    async fn inspect_rejects_metadata_symlink_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        fs::write(paths.session_workspace_cache_current_image(&key), b"image")
+            .await
+            .unwrap();
+        let outside = dir.path().join("outside-metadata.json");
+        fs::write(&outside, b"{\"unexpected\":true}").await.unwrap();
+        std::os::unix::fs::symlink(&outside, paths.session_workspace_cache_metadata(&key)).unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert_eq!(entry.reason.as_deref(), Some("missing or invalid metadata"));
+    }
+
+    #[tokio::test]
+    async fn prepare_removes_symlink_cache_entry_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let session_id = "sess-entry-symlink";
+        let key = cache.scoped_cache_key(TEST_PROFILE_NAME, session_id, "/workspace", 5);
+        let outside_entry = dir.path().join("outside-cache-entry");
+        fs::create_dir_all(&outside_entry).await.unwrap();
+        let outside_current = outside_entry.join("current.ext4");
+        fs::write(&outside_current, b"image").await.unwrap();
+        let current_metadata = fs::metadata(&outside_current).await.unwrap();
+        let metadata = WorkspaceCacheMetadata {
+            format_version: CACHE_FORMAT_VERSION,
+            key_version: CACHE_KEY_VERSION,
+            cache_scope: cache.inner.cache_scope.clone(),
+            profile_name: TEST_PROFILE_NAME.into(),
+            session_id: session_id.into(),
+            working_dir: "/workspace".into(),
+            last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+            last_used_at: "2026-05-01T00:00:00.000Z".into(),
+            last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+            workspace_trust: WorkspaceTrust::Clean,
+            logical_image_size_bytes: current_metadata.len(),
+            allocated_bytes: allocated_bytes(&current_metadata),
+            current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+            drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+            storage_fingerprints: StorageFingerprints::default(),
+            state: WorkspaceCacheState::Current,
+        };
+        fs::write(
+            outside_entry.join("metadata.json"),
+            serde_json::to_vec_pretty(&metadata).unwrap(),
+        )
+        .await
+        .unwrap();
+        let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+        fs::create_dir_all(entry_dir.parent().unwrap())
+            .await
+            .unwrap();
+        std::os::unix::fs::symlink(&outside_entry, &entry_dir).unwrap();
+
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: true,
+            })
+            .await;
+
+        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
+        assert!(
+            lease
+                .workspace_drive_config()
+                .expect("workspace drive should stay enabled")
+                .seed_image
+                .is_none()
+        );
+        assert!(matches!(
+            fs::symlink_metadata(&entry_dir).await,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound
+        ));
+        assert_eq!(fs::read(&outside_current).await.unwrap(), b"image");
     }
 
     #[test]
@@ -3158,6 +4347,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_metadata_replaces_stale_tmp_symlink_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 5);
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        fs::write(&current, b"image").await.unwrap();
+        let current_metadata = fs::metadata(&current).await.unwrap();
+        let outside = dir.path().join("outside-metadata-target");
+        fs::write(&outside, b"outside").await.unwrap();
+        let metadata_tmp = paths
+            .session_workspace_cache_metadata(&key)
+            .with_file_name(format!("metadata.json.tmp.{run_id}"));
+        std::os::unix::fs::symlink(&outside, &metadata_tmp).unwrap();
+
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: "sess-1".into(),
+                    working_dir: "/workspace".into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:01:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(fs::read(&outside).await.unwrap(), b"outside");
+        let metadata_path = paths.session_workspace_cache_metadata(&key);
+        let metadata_file_type = fs::symlink_metadata(&metadata_path)
+            .await
+            .unwrap()
+            .file_type();
+        assert!(metadata_file_type.is_file());
+        assert!(!metadata_file_type.is_symlink());
+    }
+
+    #[tokio::test]
     async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().to_path_buf());
@@ -3561,26 +4807,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checkout_invalidates_stale_current_when_cache_hit_copy_lacks_headroom() {
+    async fn checkout_uses_current_allocated_bytes_when_cache_hit_copy_lacks_headroom() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
-        let cache = SessionWorkspaceCache::new(paths.clone());
+        let setup_cache = SessionWorkspaceCache::new(paths.clone());
         let run_id = RunId::new_v4();
         let sandbox_id = sandbox::SandboxId::new_v4();
-        let cache_key = cache.scoped_cache_key(
+        let image = vec![1_u8; 4096];
+        let cache_key = setup_cache.scoped_cache_key(
             TEST_PROFILE_NAME,
             "sess-1",
             "/workspace",
-            b"old image".len() as u64,
+            image.len() as u64,
         );
         tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&cache_key))
             .await
             .unwrap();
         let current = paths.session_workspace_cache_current_image(&cache_key);
-        tokio::fs::write(&current, b"old image").await.unwrap();
+        tokio::fs::write(&current, &image).await.unwrap();
         let current_metadata = fs::metadata(&current).await.unwrap();
-        cache
+        let actual_allocated_bytes = allocated_bytes(&current_metadata);
+        assert!(
+            actual_allocated_bytes > 0,
+            "test filesystem must report allocated blocks for the cache image"
+        );
+        setup_cache
             .write_metadata(
                 &cache_key,
                 run_id,
@@ -3596,7 +4848,7 @@ mod tests {
                     last_terminal_status: WorkspaceCacheTerminalStatus::Success,
                     workspace_trust: WorkspaceTrust::Clean,
                     logical_image_size_bytes: current_metadata.len(),
-                    allocated_bytes: u64::MAX,
+                    allocated_bytes: 0,
                     current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
                     drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
                     storage_fingerprints: StorageFingerprints::default(),
@@ -3605,6 +4857,18 @@ mod tests {
             )
             .await
             .unwrap();
+        let min_free = CacheBudget::from_fs_stats(FsStats {
+            total_bytes: TEST_FS_TOTAL_BYTES,
+            available_bytes: TEST_FS_TOTAL_BYTES,
+        })
+        .min_free_bytes;
+        let cache = SessionWorkspaceCache::new_with_fs_stats(
+            paths.clone(),
+            FsStats {
+                total_bytes: TEST_FS_TOTAL_BYTES,
+                available_bytes: min_free.saturating_add(actual_allocated_bytes - 1),
+            },
+        );
 
         let lease = cache
             .prepare(WorkspaceImagePrepareRequest {
@@ -3622,7 +4886,7 @@ mod tests {
         assert!(!lease.can_attempt_promotion(Some("sess-1")));
         assert!(
             !tokio::fs::try_exists(&current).await.unwrap(),
-            "old current image must not remain reusable after a cache hit is skipped"
+            "current image must not remain reusable after real allocated bytes make a cache hit unsafe"
         );
         tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
             .await
@@ -4036,6 +5300,133 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_removes_unusable_current_entry_with_unreadable_metadata_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        tokio::fs::write(
+            paths.session_workspace_cache_current_image(&key),
+            b"orphan image",
+        )
+        .await
+        .unwrap();
+        tokio::fs::create_dir(paths.session_workspace_cache_metadata(&key))
+            .await
+            .unwrap();
+
+        let freed = cache.gc(false).await.unwrap();
+
+        assert!(freed > 0);
+        assert!(
+            !paths.session_workspace_cache_entry_dir(&key).exists(),
+            "unreadable metadata paths make entries unusable and should not block cache GC"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_dry_run_counts_temporary_only_entry_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+        tokio::fs::create_dir_all(&entry_dir).await.unwrap();
+        let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
+        tokio::fs::write(&tmp, vec![1_u8; 4096]).await.unwrap();
+        let expected = directory_tree_allocated_bytes(&entry_dir).await;
+
+        let freed = cache.gc(true).await.unwrap();
+
+        assert_eq!(
+            freed, expected,
+            "dry-run should count temporary-only entries once, matching actual full-entry cleanup"
+        );
+        assert!(tmp.exists());
+        assert!(entry_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn gc_dry_run_counts_unusable_entry_with_temporary_path_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+        tokio::fs::create_dir_all(&entry_dir).await.unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        tokio::fs::write(&current, b"orphan image").await.unwrap();
+        let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
+        tokio::fs::write(&tmp, vec![1_u8; 4096]).await.unwrap();
+        let expected = directory_tree_allocated_bytes(&entry_dir).await;
+
+        let freed = cache.gc(true).await.unwrap();
+
+        assert_eq!(
+            freed, expected,
+            "dry-run should not count temporary paths again after an unusable entry is already selected for cleanup"
+        );
+        assert!(current.exists());
+        assert!(tmp.exists());
+        assert!(entry_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn gc_dry_run_uses_pre_cleanup_freed_bytes_for_disk_pressure() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let setup_cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let key = write_current_cache_entry(
+            &setup_cache,
+            &paths,
+            run_id,
+            "sess-1",
+            "/workspace",
+            "2026-05-01T00:00:00.000Z",
+            "2026-05-01T00:00:00.000Z",
+        )
+        .await;
+        let tmp = paths.session_workspace_cache_tmp_image(&key, run_id);
+        tokio::fs::write(&tmp, vec![1_u8; 4096]).await.unwrap();
+        let temporary_allocated = workspace_cache_path_allocated_bytes(&tmp).await;
+        assert!(temporary_allocated > 0);
+
+        let fs_total = TEST_FS_TOTAL_BYTES;
+        let min_free = CacheBudget::from_fs_stats(FsStats {
+            total_bytes: fs_total,
+            available_bytes: fs_total,
+        })
+        .min_free_bytes;
+        let cache = SessionWorkspaceCache::new_with_fs_stats(
+            paths.clone(),
+            FsStats {
+                total_bytes: fs_total,
+                available_bytes: min_free.saturating_sub(1),
+            },
+        );
+
+        let freed = cache.gc(true).await.unwrap();
+
+        assert_eq!(
+            freed, temporary_allocated,
+            "dry-run should account for pre-cleanup temporary bytes before deciding whether valid cache entries need budget GC"
+        );
+        assert!(tmp.exists());
+        assert!(
+            paths.session_workspace_cache_current_image(&key).exists(),
+            "dry-run must not preview deleting a valid entry when temporary cleanup would relieve disk pressure"
+        );
+    }
+
+    #[tokio::test]
     async fn gc_removes_current_directory_even_when_metadata_matches() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
@@ -4360,6 +5751,127 @@ mod tests {
             .unwrap_err();
 
         assert!(err.to_string().contains("timed out after"));
+    }
+
+    #[tokio::test]
+    async fn promote_skips_symlink_active_image_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let session_id = "sess-active-symlink";
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: false,
+            })
+            .await;
+        let active_image = paths.active_workspace_image(&sandbox_id);
+        tokio::fs::create_dir_all(active_image.parent().unwrap())
+            .await
+            .unwrap();
+        let outside_image = dir.path().join("outside-active.ext4");
+        tokio::fs::write(&outside_image, b"image").await.unwrap();
+        std::os::unix::fs::symlink(&outside_image, &active_image).unwrap();
+
+        let promoted = lease
+            .promote(
+                run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-05-01T00:00:00.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap();
+
+        let cache_key = session_workspace_cache_key(session_id, "/workspace");
+        assert!(!promoted);
+        assert!(
+            !paths
+                .session_workspace_cache_current_image(&cache_key)
+                .exists()
+        );
+        assert_eq!(tokio::fs::read(&outside_image).await.unwrap(), b"image");
+        assert!(
+            tokio::fs::symlink_metadata(&active_image)
+                .await
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+    }
+
+    #[tokio::test]
+    async fn promote_replaces_symlink_cache_entry_dir_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let session_id = "sess-promote-entry-symlink";
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: false,
+            })
+            .await;
+        let active_image = paths.active_workspace_image(&sandbox_id);
+        tokio::fs::create_dir_all(active_image.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&active_image, b"image").await.unwrap();
+        let cache_key = session_workspace_cache_key(session_id, "/workspace");
+        let entry_dir = paths.session_workspace_cache_entry_dir(&cache_key);
+        let outside_entry = dir.path().join("outside-promotion-entry");
+        tokio::fs::create_dir_all(&outside_entry).await.unwrap();
+        tokio::fs::write(outside_entry.join("marker"), b"marker")
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(entry_dir.parent().unwrap())
+            .await
+            .unwrap();
+        std::os::unix::fs::symlink(&outside_entry, &entry_dir).unwrap();
+
+        let promoted = lease
+            .promote(
+                run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-05-01T00:00:00.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap();
+
+        let entry_metadata = fs::symlink_metadata(&entry_dir).await.unwrap();
+        assert!(promoted);
+        assert!(entry_metadata.is_dir());
+        assert!(!entry_metadata.file_type().is_symlink());
+        assert_eq!(
+            fs::read(paths.session_workspace_cache_current_image(&cache_key))
+                .await
+                .unwrap(),
+            b"image"
+        );
+        assert!(!outside_entry.join("current.ext4").exists());
+        assert_eq!(
+            fs::read(outside_entry.join("marker")).await.unwrap(),
+            b"marker"
+        );
     }
 
     #[tokio::test]

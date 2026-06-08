@@ -4,6 +4,7 @@ import { patchThreadMeta$ } from "../external/idb-thread-meta-store.ts";
 import {
   chatMessagesContract,
   chatThreadsContract,
+  type GenerationTemplateRequest,
   type ChatThreadListItem,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -89,6 +90,7 @@ interface SendNewThreadMessageRequest {
   agentId: string;
   prompt: string;
   modelSelection: ModelSelectionRequest | null;
+  generationTemplate: GenerationTemplateRequest | undefined;
 }
 
 interface SendNewThreadMessageResult {
@@ -123,6 +125,7 @@ async function appendQueuedMessage(
         hasTextContent: append.hasTextContent,
         clientMessageId: append.clientMessageId,
         modelSelection: append.modelSelection,
+        generationTemplate: append.generationTemplate,
         attachFiles: append.attachments ?? undefined,
         ...(append.forceNewSession ? { forceNewSession: true } : {}),
       },
@@ -157,6 +160,7 @@ function queuedReplayAppendArgs({
     clientMessageId: entry.message.id,
     hasTextContent: hasTextContentForQueuedReplay(entry.message),
     modelSelection,
+    generationTemplate: entry.message.generationTemplate,
     ...(entry.forceNewSession ? { forceNewSession: true } : {}),
   };
 }
@@ -462,7 +466,12 @@ export const sidebarChatThreads$ = computed(
 const sendNewThreadMessage$ = command(
   async (
     { get, set },
-    { agentId, prompt, modelSelection }: SendNewThreadMessageRequest,
+    {
+      agentId,
+      prompt,
+      modelSelection,
+      generationTemplate,
+    }: SendNewThreadMessageRequest,
     signal: AbortSignal,
   ): Promise<SendNewThreadMessagePending | null> => {
     const draft = get(talkDraft$);
@@ -508,6 +517,7 @@ const sendNewThreadMessage$ = command(
         role: "user",
         content: prepared.prompt,
         attachFiles: prepared.attachments,
+        generationTemplate,
         createdAt: messageCreatedAt,
       },
     });
@@ -540,6 +550,7 @@ const sendNewThreadMessage$ = command(
             hasTextContent: prepared.hasTextContent,
             clientMessageId,
             modelSelection,
+            generationTemplate,
             attachFiles: prepared.attachFiles,
           },
           fetchOptions: { signal },

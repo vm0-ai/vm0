@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import mitm_addon
 import usage
 from tests.pending_helpers import assert_pending
 
@@ -359,41 +358,6 @@ class TestUsagePendingCounter:
         assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
         usage.write_pending_snapshot(flush_request_id="request-1")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
-
-    def test_decorator_pop_prevents_double_decrement(self, tmp_path, real_flow):
-        """If both response() and error() fire for the same flow, decrement only once."""
-        usage.set_pending_path(str(tmp_path / "usage-pending"))
-        usage.increment_in_flight_flows()
-        assert usage.counters._in_flight_flows == 1
-
-        flow = real_flow(with_response=False)
-        flow.metadata["_usage_flow_tracked"] = True
-
-        # Simulate response() followed by error() on the same flow.
-        @mitm_addon._track_usage_flow
-        def fake_handler(f):
-            pass
-
-        fake_handler(flow)  # first call: pops flag, decrements
-        assert usage.counters._in_flight_flows == 0
-
-        fake_handler(flow)  # second call: flag already popped, no decrement
-        assert usage.counters._in_flight_flows == 0  # stays at 0, not -1
-
-    def test_untracked_flow_not_decremented(self, tmp_path, real_flow):
-        """Flows without _usage_flow_tracked should not touch the counter."""
-        usage.set_pending_path(str(tmp_path / "usage-pending"))
-        usage.increment_in_flight_flows()  # simulate one tracked flow in flight
-
-        flow = real_flow(with_response=False)
-        # No _usage_flow_tracked in metadata — this is a regular flow.
-
-        @mitm_addon._track_usage_flow
-        def fake_handler(f):
-            pass
-
-        fake_handler(flow)
-        assert usage.counters._in_flight_flows == 1  # unchanged
 
     def test_sync_fallback_decrements_reports(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api

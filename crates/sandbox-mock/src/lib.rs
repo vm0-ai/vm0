@@ -2,7 +2,8 @@
 //!
 //! All mocks succeed by default with exit code 0 and empty output.
 //! Use [`MockSandbox::push_exec_result`], [`MockSandbox::push_write_file_result`],
-//! or [`MockSandboxControl::push_exec_remote_result`] to queue custom responses
+//! [`MockSandboxControl::push_exec_remote_result`], or
+//! [`MockSandboxControl::push_kill_remote_result`] to queue custom responses
 //! consumed in FIFO order.
 //!
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
@@ -51,45 +52,87 @@ pub struct ExecMatcher {
     pub stderr: Vec<u8>,
 }
 
+/// Captured `exec` request fields recorded for test assertions.
+///
+/// The record intentionally keeps environment variable names but not their
+/// values. Stdin bytes and output limits are captured because downstream tests
+/// assert those request properties directly.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecCall {
+    /// Command string passed to `ExecRequest.cmd`.
     pub cmd: String,
+    /// Timeout passed to `ExecRequest.timeout`.
     pub timeout: Duration,
+    /// Environment variable names from `ExecRequest.env`.
+    ///
+    /// Environment values are not recorded in this field.
     pub env_keys: Vec<String>,
+    /// Whether the exec request was made with sudo privileges.
     pub sudo: bool,
+    /// Stdin bytes supplied to the exec request, when present.
     pub stdin_bytes: Option<Vec<u8>>,
+    /// Output limits supplied to the exec request.
     pub output_limits: ExecOutputLimits,
 }
 
+/// Captured `start_process` request fields recorded for test assertions.
+///
+/// Unlike [`ExecCall`], this record captures environment values as well as
+/// names because tests use it to assert guest-agent bootstrap environment
+/// construction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StartProcessCall {
+    /// Command string passed to `StartProcessRequest.cmd`.
+    pub cmd: String,
+    /// Timeout passed to `StartProcessRequest.timeout`.
+    pub timeout: Duration,
+    /// Environment variable names and values from `StartProcessRequest.env`.
+    pub env: Vec<(String, String)>,
+    /// Whether the process request was made with sudo privileges.
+    pub sudo: bool,
+    /// Output mode requested for the guest process.
     pub output: ProcessOutputMode,
+    /// Control mode requested for the guest process.
     pub control: ProcessControlMode,
 }
 
+/// Captured process-cancel request fields recorded for test assertions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessCancelCall {
+    /// Timeout supplied to the process cancel handle.
     pub timeout: Duration,
 }
 
+/// Captured `write_file` request fields recorded for test assertions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WriteFileCall {
+    /// Guest path passed to `write_file`.
     pub path: String,
+    /// Content bytes passed to `write_file`.
     pub content: Vec<u8>,
 }
 
+/// Captured `read_file` request fields recorded for test assertions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReadFileCall {
+    /// Guest path passed to `read_file`.
     pub path: String,
+    /// Maximum byte count passed to `read_file`.
     pub max_bytes: u64,
 }
 
+/// Captured `copy_file` request fields recorded for test assertions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CopyFileCall {
+    /// Guest path requested as the copy source.
     pub path: String,
+    /// Host path requested as the copy destination.
     pub host_path: PathBuf,
+    /// Maximum byte count requested for the copy.
     pub max_bytes: u64,
+    /// Timeout requested for the copy operation.
     pub timeout: Duration,
+    /// Whether a missing guest source should be accepted as a no-op.
     pub missing_ok: bool,
 }
 
@@ -318,12 +361,18 @@ enum BlockingGate {
 /// sandbox produced by the factory can share queued behavior and call
 /// observations. Queue fields on this type are shared globally by every
 /// factory and sandbox that receives the same `Arc<MockSandboxOverrides>`.
+///
+/// Accessors on this type return shared observation snapshots across that
+/// override set. Sandbox-local observations remain available through
+/// [`MockSandbox`] accessors.
 pub struct MockSandboxOverrides {
     /// Pattern-matched exec results. First matching pattern wins and is
     /// consumed (one-shot).
     exec_matchers: Mutex<Vec<ExecMatcher>>,
     /// Recorded exec calls across all sandboxes built from this override set.
     exec_calls: Mutex<Vec<ExecCall>>,
+    /// Recorded write_file calls across all sandboxes built from this override set.
+    write_file_calls: Mutex<Vec<WriteFileCall>>,
     /// FIFO queue of read_file results consumed by factory-created sandboxes.
     read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     /// When `Some`, `wait_process` returns this exit code instead of 0.
@@ -395,10 +444,16 @@ pub struct MockSandboxOverrides {
 }
 
 impl MockSandboxOverrides {
+    /// Create an override set with empty shared queues and observations.
+    ///
+    /// Sandboxes and factories only share this state after the same instance is
+    /// passed through [`MockSandboxRuntime::with_overrides`] or
+    /// [`MockSandboxFactory::with_overrides`].
     pub fn new() -> Self {
         Self {
             exec_matchers: Mutex::new(Vec::new()),
             exec_calls: Mutex::new(Vec::new()),
+            write_file_calls: Mutex::new(Vec::new()),
             read_file_results: Mutex::new(VecDeque::new()),
             wait_process_code: None,
             wait_process_gate: None,
@@ -483,10 +538,23 @@ impl MockSandboxOverrides {
         self.exec_matchers.lock_ignoring_poison().push(matcher);
     }
 
-    /// Recorded exec calls across all sandboxes built from this override set,
-    /// in call order.
+    /// Return recorded exec calls across all sandboxes built from this
+    /// override set.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order. Each record
+    /// is captured before exec matchers or queued exec results are consumed.
     pub fn exec_calls(&self) -> Vec<ExecCall> {
         self.exec_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Return recorded write-file calls across all sandboxes built from this
+    /// override set.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order. Shared
+    /// overrides observe these calls but do not provide a shared write-file
+    /// result queue.
+    pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
+        self.write_file_calls.lock_ignoring_poison().clone()
     }
 
     /// Queue a read_file result applied to the next read made through any
@@ -505,6 +573,12 @@ impl MockSandboxOverrides {
         self.create_results.lock_ignoring_poison().push_back(result);
     }
 
+    /// Return sandbox create configs observed by factories using this override
+    /// set.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order. A create
+    /// config is recorded before factory-local or shared queued create errors
+    /// are returned.
     pub fn create_configs(&self) -> Vec<SandboxConfig> {
         self.create_configs.lock_ignoring_poison().clone()
     }
@@ -619,8 +693,10 @@ impl MockSandboxOverrides {
         *self.destroy_calls.lock_ignoring_poison()
     }
 
-    /// Recorded start_process calls across all sandboxes built from this
-    /// override set, in call order.
+    /// Return recorded start-process calls across all sandboxes built from this
+    /// override set.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order.
     pub fn start_process_calls(&self) -> Vec<StartProcessCall> {
         self.start_process_calls.lock_ignoring_poison().clone()
     }
@@ -644,8 +720,11 @@ impl MockSandboxOverrides {
         *self.process_cancel_supported.lock_ignoring_poison() = supported;
     }
 
-    /// Recorded process cancel calls across all sandboxes built from this
-    /// override set, in call order.
+    /// Return recorded process-cancel calls across all sandboxes built from
+    /// this override set.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order. Cancel
+    /// attempts are recorded before any queued cancel send error is returned.
     pub fn process_cancel_calls(&self) -> Vec<ProcessCancelCall> {
         self.process_cancel_calls.lock_ignoring_poison().clone()
     }
@@ -735,6 +814,10 @@ impl Default for MockSandboxOverrides {
 /// Queue custom results with [`push_exec_result`](Self::push_exec_result)
 /// and [`push_write_file_result`](Self::push_write_file_result).
 /// When a queue is empty, the operation returns its default success value.
+///
+/// This type owns sandbox-local queues and sandbox-local call observations.
+/// Sandboxes created by an override-enabled factory also record selected calls
+/// in the shared [`MockSandboxOverrides`] observations.
 pub struct MockSandbox {
     id: String,
     source_ip: String,
@@ -754,6 +837,10 @@ pub struct MockSandbox {
 }
 
 impl MockSandbox {
+    /// Create a sandbox with empty local queues and observations.
+    ///
+    /// The default source IP is `10.0.0.1`, and no shared
+    /// [`MockSandboxOverrides`] are attached.
     pub fn new(id: impl Into<String>) -> Self {
         Self::build(id, None)
     }
@@ -779,6 +866,10 @@ impl MockSandbox {
         }
     }
 
+    /// Override the source IP returned by this sandbox.
+    ///
+    /// This only changes the value returned by [`Sandbox::source_ip`]; it does
+    /// not affect queued behavior or call observations.
     pub fn with_source_ip(mut self, ip: impl Into<String>) -> Self {
         self.source_ip = ip.into();
         self
@@ -789,6 +880,11 @@ impl MockSandbox {
         self.exec_results.lock_ignoring_poison().push_back(result);
     }
 
+    /// Return this sandbox's recorded exec calls.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order. When this
+    /// sandbox was built with shared overrides, exec calls are also recorded in
+    /// [`MockSandboxOverrides::exec_calls`].
     pub fn exec_calls(&self) -> Vec<ExecCall> {
         self.exec_calls.lock_ignoring_poison().clone()
     }
@@ -800,6 +896,11 @@ impl MockSandbox {
             .push_back(result);
     }
 
+    /// Return this sandbox's recorded read-file calls.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order. Calls are
+    /// recorded before mock validation errors such as zero `max_bytes` are
+    /// returned.
     pub fn read_file_calls(&self) -> Vec<ReadFileCall> {
         self.read_file_calls.lock_ignoring_poison().clone()
     }
@@ -812,6 +913,12 @@ impl MockSandbox {
             .push_back(result);
     }
 
+    /// Return this sandbox's recorded copy-file calls.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order. Calls are
+    /// recorded before mock validation errors such as zero `max_bytes` or zero
+    /// timeout are returned. Copy-file calls are sandbox-local; shared
+    /// overrides do not expose a copy-file call accessor.
     pub fn copy_file_calls(&self) -> Vec<CopyFileCall> {
         self.copy_file_calls.lock_ignoring_poison().clone()
     }
@@ -824,6 +931,11 @@ impl MockSandbox {
             .push_back(result);
     }
 
+    /// Return this sandbox's recorded write-file calls.
+    ///
+    /// The returned vector is a cloned snapshot in recorded order. When this
+    /// sandbox was built with shared overrides, write-file calls are also
+    /// recorded in [`MockSandboxOverrides::write_file_calls`].
     pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
         self.write_file_calls.lock_ignoring_poison().clone()
     }
@@ -1074,12 +1186,16 @@ impl Sandbox for MockSandbox {
     }
 
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()> {
+        let call = WriteFileCall {
+            path: path.to_string(),
+            content: content.to_vec(),
+        };
         self.write_file_calls
             .lock_ignoring_poison()
-            .push(WriteFileCall {
-                path: path.to_string(),
-                content: content.to_vec(),
-            });
+            .push(call.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides.write_file_calls.lock_ignoring_poison().push(call);
+        }
         self.write_file_results
             .lock_ignoring_poison()
             .pop_front()
@@ -1093,6 +1209,14 @@ impl Sandbox for MockSandbox {
                 .start_process_calls
                 .lock_ignoring_poison()
                 .push(StartProcessCall {
+                    cmd: request.cmd.to_string(),
+                    timeout: request.timeout,
+                    env: request
+                        .env
+                        .iter()
+                        .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+                        .collect(),
+                    sudo: request.sudo,
                     output: request.output,
                     control: request.control,
                 });
@@ -1241,12 +1365,19 @@ impl Sandbox for MockSandbox {
 /// When the factory-local queue is empty, `create` checks shared
 /// [`MockSandboxOverrides`] create results. When both queues are empty,
 /// `create` returns a default `MockSandbox`.
+///
+/// Factories built with shared overrides record create configs in that override
+/// set and pass the same overrides to every sandbox they create.
 pub struct MockSandboxFactory {
     create_results: Mutex<VecDeque<Result<()>>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
 }
 
 impl MockSandboxFactory {
+    /// Create a factory without shared overrides.
+    ///
+    /// Sandboxes produced by this factory keep only sandbox-local queues and
+    /// observations.
     pub fn new() -> Self {
         Self {
             create_results: Mutex::new(VecDeque::new()),
@@ -1254,6 +1385,11 @@ impl MockSandboxFactory {
         }
     }
 
+    /// Create a factory that shares one override set across all created
+    /// sandboxes.
+    ///
+    /// Create configs and selected sandbox calls are recorded on the supplied
+    /// [`MockSandboxOverrides`] instance.
     pub fn with_overrides(overrides: Arc<MockSandboxOverrides>) -> Self {
         Self {
             create_results: Mutex::new(VecDeque::new()),
@@ -1331,10 +1467,16 @@ pub struct MockSandboxRuntime {
 }
 
 impl MockSandboxRuntime {
+    /// Create a runtime whose factories do not share overrides.
     pub fn new() -> Self {
         Self { overrides: None }
     }
 
+    /// Create a runtime that propagates one shared override set to every
+    /// factory it creates.
+    ///
+    /// Factories created by this runtime pass the same overrides to their
+    /// sandboxes, so shared queues and observations span the whole runtime.
     pub fn with_overrides(overrides: Arc<MockSandboxOverrides>) -> Self {
         Self {
             overrides: Some(overrides),
@@ -1430,20 +1572,30 @@ impl SnapshotProvider for MockSnapshotProvider {
 
 /// A mock [`SandboxControl`] for testing exec/kill commands.
 ///
-/// Queue custom results with [`push_exec_remote_result`](Self::push_exec_remote_result).
-/// When the queue is empty, returns exit code 0 with empty output.
+/// Queue custom results with [`push_exec_remote_result`](Self::push_exec_remote_result)
+/// or [`push_kill_remote_result`](Self::push_kill_remote_result).
+/// When queues are empty, exec returns exit code 0 and kill returns accepted.
 pub struct MockSandboxControl {
     base_dir: PathBuf,
     exec_results: Mutex<VecDeque<std::result::Result<RemoteExecResult, SandboxControlError>>>,
+    kill_results: Mutex<VecDeque<std::result::Result<RemoteKillResult, SandboxControlError>>>,
     recorded_commands: Mutex<Vec<String>>,
+    recorded_kill_ids: Mutex<Vec<String>>,
 }
 
 impl MockSandboxControl {
+    /// Create a control mock that records remote exec commands and kill ids.
+    ///
+    /// The `base_dir` is used as the remote exec working directory. Result
+    /// queues start empty, so remote exec succeeds with exit code 0 and remote
+    /// kill returns accepted by default.
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         Self {
             base_dir: base_dir.into(),
             exec_results: Mutex::new(VecDeque::new()),
+            kill_results: Mutex::new(VecDeque::new()),
             recorded_commands: Mutex::new(Vec::new()),
+            recorded_kill_ids: Mutex::new(Vec::new()),
         }
     }
 
@@ -1458,6 +1610,19 @@ impl MockSandboxControl {
     /// Return every command string passed to `exec_remote`, in call order.
     pub fn recorded_commands(&self) -> Vec<String> {
         self.recorded_commands.lock_ignoring_poison().clone()
+    }
+
+    /// Queue a kill remote result. Results are consumed in FIFO order.
+    pub fn push_kill_remote_result(
+        &self,
+        result: std::result::Result<RemoteKillResult, SandboxControlError>,
+    ) {
+        self.kill_results.lock_ignoring_poison().push_back(result);
+    }
+
+    /// Return every sandbox id passed to `kill_remote`, in call order.
+    pub fn recorded_kill_ids(&self) -> Vec<String> {
+        self.recorded_kill_ids.lock_ignoring_poison().clone()
     }
 }
 
@@ -1485,6 +1650,19 @@ impl SandboxControl for MockSandboxControl {
                     stderr_truncated: false,
                 })
             })
+    }
+
+    async fn kill_remote(
+        &self,
+        sandbox_id: &str,
+    ) -> std::result::Result<RemoteKillResult, SandboxControlError> {
+        self.recorded_kill_ids
+            .lock_ignoring_poison()
+            .push(sandbox_id.to_string());
+        self.kill_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or(Ok(RemoteKillResult::Accepted))
     }
 
     fn runtime_dir(&self, sandbox_id: &str) -> PathBuf {
@@ -2616,10 +2794,18 @@ mod tests {
             overrides.start_process_calls(),
             vec![
                 StartProcessCall {
+                    cmd: "agent".to_string(),
+                    timeout: Duration::from_secs(5),
+                    env: Vec::new(),
+                    sudo: false,
                     output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
                     control: ProcessControlMode::None,
                 },
                 StartProcessCall {
+                    cmd: "agent".to_string(),
+                    timeout: Duration::from_secs(5),
+                    env: Vec::new(),
+                    sudo: false,
                     output: ProcessOutputMode::stream(),
                     control: ProcessControlMode::None,
                 },
@@ -3023,6 +3209,10 @@ mod tests {
             .unwrap();
         assert_eq!(result.exit_code, 0);
         assert_eq!(
+            control.kill_remote("sandbox-1").await.unwrap(),
+            RemoteKillResult::Accepted
+        );
+        assert_eq!(
             control.runtime_dir("sandbox-1"),
             PathBuf::from("/tmp/test/sandbox-1")
         );
@@ -3084,6 +3274,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sandbox_control_records_kill_ids() {
+        let control = MockSandboxControl::new("/tmp/test");
+        control.kill_remote("sandbox-1").await.unwrap();
+        control.kill_remote("sandbox-2").await.unwrap();
+
+        assert_eq!(
+            control.recorded_kill_ids(),
+            vec!["sandbox-1".to_string(), "sandbox-2".to_string()],
+        );
+    }
+
+    #[tokio::test]
     async fn sandbox_control_queued_results() {
         let control = MockSandboxControl::new("/tmp/test");
         control.push_exec_remote_result(Err(SandboxControlError::NotFound("gone".into())));
@@ -3099,5 +3301,19 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn sandbox_control_queued_kill_results() {
+        let control = MockSandboxControl::new("/tmp/test");
+        control.push_kill_remote_result(Err(SandboxControlError::NotFound("gone".into())));
+
+        let result = control.kill_remote("sandbox-1").await;
+        assert!(result.is_err());
+
+        assert_eq!(
+            control.kill_remote("sandbox-1").await.unwrap(),
+            RemoteKillResult::Accepted
+        );
     }
 }

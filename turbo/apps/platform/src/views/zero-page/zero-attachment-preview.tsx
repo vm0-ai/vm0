@@ -1,36 +1,22 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import {
-  IconChevronDown,
-  IconChevronUp,
   IconDownload,
   IconEye,
-  IconExternalLink,
   IconFileMusic,
-  IconFileTypePdf,
-  IconLoader2,
   IconPlayerPlay,
-  IconTable,
   IconVideo,
-  IconWorld,
 } from "@tabler/icons-react";
-import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import type { Computed } from "ccstate";
 import { IN_VITEST } from "../../env.ts";
-import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
-import {
-  textPreviewCollapsedByKey$,
-  toggleTextPreviewCollapsed$,
-} from "../../signals/view-component-state.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
-  chatArtifactSidebarEnabled$,
+  openAudioLightboxOrArtifact$,
   openDocumentLightboxOrArtifact$,
   openVideoLightboxOrArtifact$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
-import {
-  classifyChatAttachment,
-  EMPTY_TEXT$,
-} from "../../signals/chat-page/parse-body-blocks.ts";
+import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
 import {
   FilePreviewIcon,
   getFilePreviewAccentClass,
@@ -77,14 +63,6 @@ function normalizePlatformFileUrl(url: string): string {
   return url;
 }
 
-function formatPreviewText(kind: "text" | "json", text: string): string {
-  if (kind === "json") {
-    const parsed = jsonParseOr<unknown>(text, null);
-    return parsed === null ? text : JSON.stringify(parsed, null, 2);
-  }
-  return text;
-}
-
 function shouldUseNativeAnchorNavigation(
   event: ReactMouseEvent<HTMLAnchorElement>,
 ): boolean {
@@ -105,18 +83,13 @@ type TextPreviewProps = {
   text$?: Computed<Promise<string>>;
 };
 
-function TextPreview(props: TextPreviewProps) {
-  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
-  if (sidebarEnabled) {
-    return (
-      <AttachmentAnchorChip
-        filename={props.filename}
-        url={props.url}
-        kind={props.kind}
-      />
-    );
-  }
-  return <TextPreviewInline {...props} />;
+const MEDIA_PREVIEW_CARD_CLASS =
+  "inline-flex w-[min(100%,400px)] overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground no-underline shadow-sm transition-all duration-200";
+const MEDIA_PREVIEW_CARD_HOVER_CLASS =
+  "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+
+function TextPreview({ filename, kind, url }: TextPreviewProps) {
+  return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
 }
 
 type AttachmentAnchorChipKind =
@@ -127,17 +100,56 @@ type AttachmentAnchorChipKind =
   | "pdf"
   | "html";
 
-function attachmentAnchorChipIcon(kind: AttachmentAnchorChipKind): ReactNode {
-  if (kind === "html") {
-    return <IconWorld size={13} stroke={1.8} />;
+function documentPreviewAccentClass(kind: AttachmentAnchorChipKind) {
+  if (kind === "markdown") {
+    return "from-emerald-500/15 via-lime-500/10 to-background";
   }
   if (kind === "csv") {
-    return <IconTable size={13} stroke={1.8} />;
+    return "from-teal-500/15 via-emerald-500/10 to-background";
   }
   if (kind === "pdf") {
-    return <IconFileTypePdf size={13} stroke={1.8} />;
+    return "from-rose-500/15 via-orange-500/10 to-background";
   }
-  return <IconExternalLink size={13} stroke={1.8} />;
+  return "from-slate-500/15 via-cyan-500/10 to-background";
+}
+
+function AttachmentDocumentThumbnailArtwork({
+  actionIcon,
+  actionLabel,
+  filename,
+  kind,
+}: {
+  actionIcon: ReactNode;
+  actionLabel: string;
+  filename: string;
+  kind: AttachmentAnchorChipKind;
+}) {
+  return (
+    <div
+      className={`relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br sm:w-[168px] ${documentPreviewAccentClass(
+        kind,
+      )}`}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
+      <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
+      <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover/doc-preview:scale-105">
+        <FilePreviewIcon
+          filename={filename}
+          contentType={contentTypeForDocumentPreviewKind(kind)}
+          testId={`attachment-preview-${kind}-icon`}
+        />
+      </div>
+      <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
+        {actionIcon}
+        {actionLabel}
+      </div>
+      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
+        <div className="min-w-0">
+          <div className="truncate text-xs font-medium">{filename}</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function AttachmentAnchorChip({
@@ -150,8 +162,6 @@ function AttachmentAnchorChip({
   kind: AttachmentAnchorChipKind;
 }) {
   const publicUrl = publicAttachmentUrl(url);
-  // Switch-aware open. html chips can render even when the sidebar feature is
-  // off, in which case this routes back to the legacy modal lightbox.
   const openDocument = useSet(openDocumentLightboxOrArtifact$);
 
   return (
@@ -168,15 +178,14 @@ function AttachmentAnchorChip({
       }}
       aria-label={`Open ${kind} preview for ${filename}`}
       title={filename}
-      className="group/anchor-chip inline-flex min-h-8 max-w-[min(100%,520px)] w-fit items-center gap-2 self-start rounded-full border border-foreground/10 bg-background px-2 py-1 pr-3 text-left align-top text-sm text-foreground no-underline transition-colors hover:border-foreground/20 hover:bg-muted/40"
+      className="group/doc-preview inline-flex w-fit self-start align-top text-left no-underline"
     >
-      <span
-        data-testid={`attachment-preview-${kind}-icon`}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-muted/40 text-muted-foreground transition-colors group-hover/anchor-chip:border-foreground/15 group-hover/anchor-chip:bg-muted/60 group-hover/anchor-chip:text-foreground"
-      >
-        {attachmentAnchorChipIcon(kind)}
-      </span>
-      <span className="min-w-0 truncate font-medium">{filename}</span>
+      <AttachmentDocumentThumbnailArtwork
+        actionIcon={<IconEye size={10} />}
+        actionLabel="Preview"
+        filename={filename}
+        kind={kind}
+      />
     </a>
   );
 }
@@ -232,7 +241,7 @@ function HtmlSitePreviewCard({
       }}
       aria-label={`Open html preview for ${filename}`}
       title={title}
-      className="group/site-preview inline-flex w-[min(100%,400px)] flex-col overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground no-underline shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30"
+      className={`group/site-preview flex-col ${MEDIA_PREVIEW_CARD_CLASS} ${MEDIA_PREVIEW_CARD_HOVER_CLASS}`}
     >
       <div className="flex min-h-10 items-center border-b border-border/60 bg-background/95 px-3 py-2">
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
@@ -265,87 +274,6 @@ function HtmlSitePreviewCard({
   );
 }
 
-function TextPreviewInline({ filename, url, kind, text$ }: TextPreviewProps) {
-  const textPreviewCollapsedByKey = useGet(textPreviewCollapsedByKey$);
-  const toggleTextPreviewCollapsed = useSet(toggleTextPreviewCollapsed$);
-  const collapsedKey = `attachment-preview:${kind}:${filename}:${url}`;
-  const text = useLastResolved(text$ ?? EMPTY_TEXT$);
-  const collapsed = textPreviewCollapsedByKey[collapsedKey] ?? false;
-
-  let content: ReactNode = (
-    <div className="mt-3 flex items-center justify-center rounded-lg bg-muted/30 p-3 text-muted-foreground">
-      <IconLoader2 size={16} className="animate-spin" />
-    </div>
-  );
-
-  if (text !== undefined) {
-    const formatted = formatPreviewText(kind, text);
-    const trimmed =
-      formatted.length > 8000 ? `${formatted.slice(0, 8000)}\n\n…` : formatted;
-    content = collapsed ? null : (
-      <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/50 p-3 text-xs text-foreground">
-        {trimmed}
-      </pre>
-    );
-  }
-
-  return (
-    <div
-      className="relative rounded-xl border border-foreground/10 bg-background/60 p-3"
-      data-testid={`attachment-preview-${kind}`}
-    >
-      <button
-        type="button"
-        onClick={() => {
-          detach(
-            downloadAttachmentUrl(
-              normalizePlatformFileUrl(url),
-              undefined,
-              filename,
-            ),
-            Reason.DomCallback,
-            "attachment download",
-          );
-        }}
-        title={filename}
-        aria-label={`Download ${filename}`}
-        className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/90 text-muted-foreground hover:text-foreground"
-      >
-        <IconDownload size={12} />
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          toggleTextPreviewCollapsed(collapsedKey);
-        }}
-        className="flex w-full items-center gap-3 text-left"
-        aria-label={`${collapsed ? "Expand" : "Collapse"} ${kind} preview for ${filename}`}
-      >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/60">
-          <FilePreviewIcon
-            filename={filename}
-            contentType={contentTypeForDocumentPreviewKind(kind)}
-            testId={`attachment-preview-${kind}-icon`}
-          />
-        </div>
-        <div className="min-w-0 flex-1 pr-16">
-          <div className="truncate text-sm font-medium text-foreground">
-            {filename}
-          </div>
-        </div>
-        <div className="shrink-0 text-muted-foreground">
-          {collapsed ? (
-            <IconChevronDown size={16} />
-          ) : (
-            <IconChevronUp size={16} />
-          )}
-        </div>
-      </button>
-      {content}
-    </div>
-  );
-}
-
 function DocumentThumbnailPreview({
   filename,
   url,
@@ -355,64 +283,11 @@ function DocumentThumbnailPreview({
   url: string;
   kind: "markdown" | "csv" | "pdf" | "html";
 }) {
-  const sidebarEnabled = useGet(chatArtifactSidebarEnabled$);
-  const openDocumentLightbox = useSet(openDocumentLightboxOrArtifact$);
-  const lightboxOpen = useGet(lightboxUrl$) !== null;
-
   if (kind === "html") {
     return <HtmlSitePreviewCard filename={filename} url={url} />;
   }
 
-  // markdown/csv/pdf use the chip when the artifact sidebar is on, and keep the
-  // full thumbnail card otherwise so legacy lightbox layouts still look right.
-  if (sidebarEnabled) {
-    return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
-  }
-
-  const accentClass =
-    kind === "markdown"
-      ? "from-emerald-500/15 via-lime-500/10 to-background"
-      : kind === "csv"
-        ? "from-teal-500/15 via-emerald-500/10 to-background"
-        : "from-rose-500/15 via-orange-500/10 to-background";
-
-  return (
-    <button
-      type="button"
-      data-testid={`attachment-preview-${kind}`}
-      onClick={(event) => {
-        event.currentTarget.blur();
-        openDocumentLightbox({ kind, url, filename });
-      }}
-      disabled={lightboxOpen}
-      className={`${lightboxOpen ? "" : "group/doc-preview"} inline-flex w-fit self-start align-top text-left disabled:pointer-events-none`}
-      aria-label={`Open ${kind} preview for ${filename}`}
-      title={filename}
-    >
-      <div
-        className={`relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br sm:w-[168px] ${accentClass}`}
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
-        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
-        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover/doc-preview:scale-105">
-          <FilePreviewIcon
-            filename={filename}
-            contentType={contentTypeForDocumentPreviewKind(kind)}
-            testId={`attachment-preview-${kind}-icon`}
-          />
-        </div>
-        <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <IconEye size={10} />
-          Preview
-        </div>
-        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <div className="min-w-0">
-            <div className="truncate text-xs font-medium">{filename}</div>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
+  return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
 }
 
 function FileThumbnailPreview({
@@ -471,49 +346,58 @@ function FileThumbnailPreview({
   );
 }
 
-function AudioPreview({ filename, url }: { filename: string; url: string }) {
+function AudioPreview({
+  contentType,
+  filename,
+  url,
+}: {
+  contentType?: string;
+  filename: string;
+  url: string;
+}) {
+  const openAudioLightbox = useSet(openAudioLightboxOrArtifact$);
+  const lightboxOpen = useGet(lightboxUrl$) !== null;
+  const accentClass = getFilePreviewAccentClass(
+    filename,
+    contentType ?? "audio/mpeg",
+  );
+
   return (
-    <div
-      className="w-full max-w-md rounded-xl border border-foreground/10 bg-background/60 p-3"
+    <button
+      type="button"
+      onClick={(event) => {
+        event.currentTarget.blur();
+        openAudioLightbox({ url, filename });
+      }}
+      disabled={lightboxOpen}
+      title={filename}
+      aria-label={`Open audio preview for ${filename}`}
       data-testid="attachment-preview-audio"
+      className={`${lightboxOpen ? "" : "group/doc-preview"} inline-flex w-fit self-start align-top text-left disabled:pointer-events-none`}
     >
-      <div className="mb-3 flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground">
-          <IconFileMusic size={22} stroke={1.6} />
+      <div
+        className={`relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br sm:w-[168px] ${accentClass}`}
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
+        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
+        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover/doc-preview:scale-105">
+          <FilePreviewIcon
+            filename={filename}
+            contentType={contentType ?? "audio/mpeg"}
+            testId="attachment-preview-audio-icon"
+          />
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-foreground">
-            {filename}
+        <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
+          <IconFileMusic size={10} />
+          Preview
+        </div>
+        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
+          <div className="min-w-0">
+            <div className="truncate text-xs font-medium">{filename}</div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            detach(
-              downloadAttachmentUrl(
-                normalizePlatformFileUrl(url),
-                undefined,
-                filename,
-              ),
-              Reason.DomCallback,
-              "attachment download",
-            );
-          }}
-          title={filename}
-          aria-label={`Download ${filename}`}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-background/90 text-muted-foreground hover:text-foreground"
-        >
-          <IconDownload size={12} />
-        </button>
       </div>
-      <audio
-        src={url}
-        controls
-        preload="metadata"
-        className="block w-full"
-        aria-label={`Audio preview for ${filename}`}
-      />
-    </div>
+    </button>
   );
 }
 
@@ -541,9 +425,13 @@ function VideoThumbnailPreview({
       title={filename}
       aria-label={`Open video preview for ${filename}`}
       data-testid="attachment-preview-video"
-      className={`${lightboxOpen ? "" : "group/video-preview"} inline-flex w-fit self-start align-top text-left disabled:pointer-events-none`}
+      className={`${
+        lightboxOpen
+          ? ""
+          : `group/video-preview ${MEDIA_PREVIEW_CARD_HOVER_CLASS}`
+      } ${MEDIA_PREVIEW_CARD_CLASS} self-start disabled:pointer-events-none`}
     >
-      <div className="relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl border border-foreground/10 bg-black sm:w-[168px]">
+      <div className="relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden bg-black">
         <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-stone-900 text-white">
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-white/10">
             <FilePreviewIcon
@@ -649,7 +537,11 @@ export function AttachmentPreview({
     }
     case "audio": {
       return (
-        <AudioPreview filename={attachment.filename} url={attachment.url} />
+        <AudioPreview
+          contentType={attachment.contentType}
+          filename={attachment.filename}
+          url={attachment.url}
+        />
       );
     }
     case "video": {

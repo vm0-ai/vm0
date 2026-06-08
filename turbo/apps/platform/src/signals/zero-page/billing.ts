@@ -7,6 +7,7 @@ import {
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
   zeroBillingDowngradeContract,
+  zeroBillingRestoreContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
@@ -25,6 +26,23 @@ type CompletedBillingCheckoutTier = "pro" | "team";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
+
+function formatEffectiveDate(effectiveDate: string | null): string | null {
+  if (!effectiveDate) {
+    return null;
+  }
+
+  const date = new Date(effectiveDate);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
 
 export function apiTierToBillingTier(tier: string | undefined): BillingTier {
   if (
@@ -52,6 +70,7 @@ interface CompletedBillingCheckout {
 const internalCompletedBillingCheckout$ =
   state<CompletedBillingCheckout | null>(null);
 const internalDowngradeDialogOpen$ = state(false);
+const internalRestoreDialogOpen$ = state(false);
 const internalPendingEnabled$ = state<boolean | null>(null);
 const internalFormThresholdOverride$ = state<string | null>(null);
 const internalFormAmountOverride$ = state<string | null>(null);
@@ -65,6 +84,9 @@ export const billingDialogOpen$ = computed((get) => {
 });
 export const downgradeDialogOpen$ = computed((get) => {
   return get(internalDowngradeDialogOpen$);
+});
+export const restoreDialogOpen$ = computed((get) => {
+  return get(internalRestoreDialogOpen$);
 });
 export const pendingEnabled$ = computed((get) => {
   return get(internalPendingEnabled$);
@@ -255,6 +277,14 @@ export const closeDowngradeDialog$ = command(({ set }) => {
   set(internalDowngradeDialogOpen$, false);
 });
 
+export const openRestoreDialog$ = command(({ set }) => {
+  set(internalRestoreDialogOpen$, true);
+});
+
+export const closeRestoreDialog$ = command(({ set }) => {
+  set(internalRestoreDialogOpen$, false);
+});
+
 export const confirmDowngrade$ = command(
   async (
     { get, set },
@@ -263,7 +293,7 @@ export const confirmDowngrade$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingDowngradeContract);
-    await accept(
+    const result = await accept(
       client.create({
         body: { targetTier },
         fetchOptions: { signal },
@@ -276,6 +306,41 @@ export const confirmDowngrade$ = command(
     set(billingReload$, (x) => {
       return x + 1;
     });
+    if (targetTier === "pro-suspend") {
+      const effectiveDate = formatEffectiveDate(result.body.effectiveDate);
+      toast.success(
+        effectiveDate
+          ? `Cancellation scheduled. Your current plan stays active until ${effectiveDate}.`
+          : "Cancellation scheduled. Your current plan stays active until the billing period ends.",
+      );
+    } else {
+      const effectiveDate = formatEffectiveDate(result.body.effectiveDate);
+      toast.success(
+        effectiveDate
+          ? `Downgrade scheduled. Your current plan stays active until ${effectiveDate}.`
+          : "Downgrade scheduled. Your current plan stays active until the billing period ends.",
+      );
+    }
+  },
+);
+
+export const restorePlan$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingRestoreContract);
+    await accept(
+      client.create({
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalRestoreDialogOpen$, false);
+    set(billingReload$, (x) => {
+      return x + 1;
+    });
+    toast.success("Plan restored. Your subscription will renew normally.");
   },
 );
 

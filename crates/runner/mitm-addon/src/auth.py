@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Protocol
 
 from mitmproxy import ctx, http
@@ -20,6 +21,8 @@ from mitmproxy import ctx, http
 import flow_metadata_keys as metadata_keys
 import matching
 from auth_base_forwarder import (
+    MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+    ForwardedRequestTooLargeError,
     forward_request,
     forwarded_request_header_pairs,
     header_pairs,
@@ -67,6 +70,14 @@ class FirewallAuthApiError(Exception):
 class _ResponseBodyReader(Protocol):
     def read(self, n: int = -1) -> bytes:
         raise NotImplementedError
+
+
+class FirewallAuthHandlingResult(Enum):
+    """Request ownership outcome after firewall auth handling."""
+
+    CONTINUE_UPSTREAM = "continue_upstream"
+    INLINE_PROVIDER_RESPONSE = "inline_provider_response"
+    LOCAL_RESPONSE = "local_response"
 
 
 # Vercel bypass secret (still from environment as it's a secret)
@@ -249,6 +260,11 @@ def evict_stale_cache_keys(active_run_ids: set[str]) -> None:
     stale = [k for k in _auth_state if k[0] not in active_run_ids]
     for k in stale:
         _auth_state.pop(k, None)
+
+
+def evict_all_cache_keys() -> None:
+    """Remove all auth cache entries when active registry ownership is unknown."""
+    _auth_state.clear()
 
 
 def get_api_url() -> str:
@@ -707,6 +723,40 @@ def _set_url_rewrite_forward_failed(
     )
 
 
+def _request_body_exceeds_auth_base_limit(flow: http.HTTPFlow) -> bool:
+    body = flow.request.raw_content
+    return body is not None and len(body) > MAX_AUTH_BASE_REQUEST_BODY_BYTES
+
+
+def _set_auth_base_request_too_large(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+) -> None:
+    body = flow.request.raw_content
+    observed_size = len(body) if body is not None else 0
+    flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] = True
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "auth.base request body too large",
+        type="firewall",
+        firewall_base=firewall_base,
+        request_body_size_bytes=observed_size,
+        request_body_limit_bytes=MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=413,
+        action="ALLOW",
+        error_code="auth_base_request_body_too_large",
+        message="auth.base request body too large",
+        permission=allow.name,
+    )
+
+
 async def _apply_url_rewrite(
     flow: http.HTTPFlow,
     *,
@@ -716,7 +766,7 @@ async def _apply_url_rewrite(
     resolved_query: dict | None,
     firewall_base: str,
     proxy_log_path: str,
-) -> bool:
+) -> FirewallAuthHandlingResult:
     # The addon forwards the request itself because mitmproxy's eager
     # connection already connected to the placeholder IP. Setting
     # flow.response bypasses the upstream connection entirely.
@@ -731,7 +781,7 @@ async def _apply_url_rewrite(
             firewall_base=firewall_base,
             error_type=type(e).__name__,
         )
-        return False
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
     # Filter client-controlled hop-by-hop headers before adding trusted
     # auth headers, so Connection tokens cannot suppress injected auth.
@@ -748,6 +798,14 @@ async def _apply_url_rewrite(
             req_body,
         )
         flow.response = http.Response.make(status, resp_body, resp_headers)
+    except ForwardedRequestTooLargeError:
+        _set_auth_base_request_too_large(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
     except Exception as e:
         _set_url_rewrite_forward_failed(
             flow,
@@ -756,7 +814,7 @@ async def _apply_url_rewrite(
             firewall_base=firewall_base,
             error_type=type(e).__name__,
         )
-        return False
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
     flow.metadata[metadata_keys.AUTH_URL_REWRITE] = True
     log_proxy_entry(
@@ -766,7 +824,7 @@ async def _apply_url_rewrite(
         type="firewall",
         firewall_base=firewall_base,
     )
-    return True
+    return FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
 
 
 async def _apply_resolved_firewall_auth(
@@ -776,13 +834,8 @@ async def _apply_resolved_firewall_auth(
     token_meta: dict,
     firewall_base: str,
     proxy_log_path: str,
-) -> bool:
-    """Apply resolved firewall auth.
-
-    Returns True when the caller should record common success metadata.
-    Returns False when this helper already set a local response and the
-    caller must return immediately.
-    """
+) -> FirewallAuthHandlingResult:
+    """Apply resolved firewall auth and return request ownership outcome."""
     headers = token_meta["headers"]
     resolved_query = token_meta.get("query")
     resolved_base = token_meta.get("base")
@@ -803,13 +856,13 @@ async def _apply_resolved_firewall_auth(
         headers=headers,
         resolved_query=resolved_query,
     )
-    return True
+    return FirewallAuthHandlingResult.CONTINUE_UPSTREAM
 
 
 async def handle_firewall_request(
     flow: http.HTTPFlow, allow: matching.FirewallAllow, vm_info: dict
-) -> None:
-    """Handle a firewall-matched request: fetch resolved headers, inject into request."""
+) -> FirewallAuthHandlingResult:
+    """Handle firewall auth and return who owns the next response lifecycle."""
     _prepare_firewall_metadata(flow, allow, vm_info)
     api_entry = allow.api_entry
     firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
@@ -827,6 +880,15 @@ async def handle_firewall_request(
 
     firewall_billable = bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE])
 
+    if auth_base and _request_body_exceeds_auth_base_limit(flow):
+        _set_auth_base_request_too_large(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
     if not encrypted_secrets:
         log_proxy_entry(
             proxy_log_path,
@@ -843,7 +905,7 @@ async def handle_firewall_request(
             message="Auth secrets not configured",
             permission=allow.name,
         )
-        return
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
     try:
         token_meta = await get_firewall_headers(
@@ -876,7 +938,7 @@ async def handle_firewall_request(
             permission=allow.name,
             connectors=[allow.name] if allow.name else None,
         )
-        return
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
     except InsufficientCreditsError as e:
         log_proxy_entry(
             proxy_log_path,
@@ -893,7 +955,7 @@ async def handle_firewall_request(
             message=str(e),
             permission=allow.name,
         )
-        return
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
     except InvalidBillableAuthExpiryError as e:
         log_proxy_entry(
             proxy_log_path,
@@ -910,7 +972,7 @@ async def handle_firewall_request(
             message=str(e),
             permission=allow.name,
         )
-        return
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
     except FirewallAuthApiError as e:
         log_proxy_entry(
             proxy_log_path,
@@ -934,7 +996,7 @@ async def handle_firewall_request(
             connectors=e.connectors,
             failure_reason=e.failure_reason,
         )
-        return
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
     except Exception as e:
         log_proxy_entry(
             proxy_log_path,
@@ -951,17 +1013,17 @@ async def handle_firewall_request(
             message=f"Failed to resolve auth headers: {e}",
             permission=allow.name,
         )
-        return
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
-    should_continue = await _apply_resolved_firewall_auth(
+    auth_result = await _apply_resolved_firewall_auth(
         flow,
         allow=allow,
         token_meta=token_meta,
         firewall_base=firewall_base,
         proxy_log_path=proxy_log_path,
     )
-    if not should_continue:
-        return
+    if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
+        return auth_result
 
     _record_firewall_auth_success_metadata(flow, token_meta)
 
@@ -977,3 +1039,4 @@ async def handle_firewall_request(
         host=trusted_host,
         request_host_header=flow.request.host_header,
     )
+    return auth_result

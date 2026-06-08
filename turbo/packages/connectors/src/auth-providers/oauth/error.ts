@@ -1,7 +1,8 @@
+import { ProviderHttpError } from "../provider-error";
+
 const MAX_BODY_LENGTH = 500;
 
-export class OAuthProviderHttpError extends Error {
-  readonly status: number;
+export class OAuthProviderHttpError extends ProviderHttpError {
   readonly oauthError: string | undefined;
 
   constructor(
@@ -9,9 +10,8 @@ export class OAuthProviderHttpError extends Error {
     status: number,
     oauthError: string | undefined = undefined,
   ) {
-    super(message);
+    super(message, status);
     this.name = "OAuthProviderHttpError";
-    this.status = status;
     this.oauthError = oauthError;
   }
 }

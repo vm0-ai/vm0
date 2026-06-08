@@ -1112,6 +1112,7 @@ describe("POST /api/zero/chat/messages", () => {
   it("persists attachments on the user message and injects them into the run prompt", async () => {
     const fixture = await track(seedFixture());
     const fileId = randomUUID();
+    const filename = "diagram final 100%.png";
 
     const response = await send({
       agentId: fixture.agentId,
@@ -1119,8 +1120,8 @@ describe("POST /api/zero/chat/messages", () => {
       attachFiles: [
         {
           id: fileId,
-          filename: "notes.txt",
-          contentType: "text/plain",
+          filename,
+          contentType: "image/png",
           size: 42,
         },
       ],
@@ -1136,7 +1137,7 @@ describe("POST /api/zero/chat/messages", () => {
       .from(agentRuns)
       .where(eq(agentRuns.id, response.body.runId!))
       .limit(1);
-    expect(run?.prompt).toContain("[Web file] notes.txt (text/plain)");
+    expect(run?.prompt).toContain(`[Web file] ${filename} (image/png)`);
     expect(run?.prompt).toContain(`[ID] ${fileId}`);
     expect(run?.appendSystemPrompt).toContain("zero web download-file -h");
     expect(run?.appendSystemPrompt).toContain("zero web upload-file -h");
@@ -1147,10 +1148,10 @@ describe("POST /api/zero/chat/messages", () => {
     expect(message?.attachFileMetadata).toStrictEqual([
       {
         id: fileId,
-        filename: "notes.txt",
-        contentType: "text/plain",
+        filename,
+        contentType: "image/png",
         size: 42,
-        objectKey: `artifacts/${fixture.userId}/${fileId}/notes.txt`,
+        objectKey: `artifacts/${fixture.userId}/${fileId}/diagram_final_100_.png`,
       },
     ]);
   });

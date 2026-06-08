@@ -255,8 +255,18 @@ class TestResponseHandler:
         entry = json.loads(lines[0])
         assert entry["response_size"] == len(body)
 
+    @pytest.mark.parametrize(
+        ("content_length", "expected_size"),
+        [
+            pytest.param("50000", 50000, id="plain"),
+            pytest.param(" 50000\t", 50000, id="optional-whitespace"),
+            pytest.param("10, 10", 10, id="joined-consistent"),
+            pytest.param("00042, 42", 42, id="joined-leading-zero-consistent"),
+            pytest.param("0" * 32 + "42", 42, id="leading-zero-safe-integer"),
+        ],
+    )
     def test_response_size_uses_content_length_without_stream_state(
-        self, tmp_path, real_flow, mitm_ctx
+        self, tmp_path, real_flow, mitm_ctx, content_length, expected_size
     ):
         """response_size should fall back to Content-Length without stream metadata."""
         flow = real_flow(with_response=False, host="api.example.com")
@@ -267,7 +277,7 @@ class TestResponseHandler:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.example.com/"
         flow.response = tutils.tresp(
-            status_code=200, headers=header_map({"content-length": "50000"})
+            status_code=200, headers=header_map({"content-length": content_length})
         )
 
         with mitm_ctx():
@@ -275,7 +285,27 @@ class TestResponseHandler:
 
         lines = Path(log_path).read_text().splitlines()
         entry = json.loads(lines[0])
-        assert entry["response_size"] == 50000
+        assert entry["response_size"] == expected_size
+
+    def test_response_size_accepts_max_safe_content_length(self, tmp_path, real_flow, mitm_ctx):
+        """response_size should accept the largest exactly representable JavaScript integer."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-length": "9007199254740991"})
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 9007199254740991
 
     def test_response_size_is_zero_without_stream_state_or_content_length(
         self, tmp_path, real_flow, mitm_ctx
@@ -290,6 +320,97 @@ class TestResponseHandler:
         flow.metadata["original_url"] = "https://api.example.com/"
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 0
+
+    @pytest.mark.parametrize(
+        "content_length",
+        [
+            pytest.param("", id="empty"),
+            pytest.param(" ", id="space"),
+            pytest.param("\t", id="tab"),
+            pytest.param("not-an-int", id="malformed"),
+            pytest.param("-1", id="negative"),
+            pytest.param("+1", id="signed"),
+            pytest.param("1.5", id="fractional"),
+            pytest.param("1e3", id="exponential"),
+            pytest.param("1, 2", id="joined-conflicting"),
+            pytest.param("1,", id="joined-trailing-empty"),
+            pytest.param(",1", id="joined-leading-empty"),
+            pytest.param("10,,10", id="joined-empty-part"),
+            pytest.param("10, abc", id="joined-invalid"),
+            pytest.param("\u0661\u0662", id="unicode-digits"),
+            pytest.param("9007199254740992", id="above-max-safe-integer"),
+            pytest.param("0" * 32 + str(1 << 53), id="leading-zero-above-max-safe-integer"),
+            pytest.param("1" * 257, id="too-many-safe-digits"),
+            pytest.param("9" * 4301, id="too-many-digits"),
+        ],
+    )
+    def test_response_size_is_zero_for_invalid_content_length(
+        self, tmp_path, real_flow, mitm_ctx, content_length
+    ):
+        """response_size should tolerate invalid Content-Length without stream metadata."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-length": content_length})
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 0
+
+    def test_response_size_accepts_matching_repeated_content_length(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Repeated matching Content-Length values should keep the advertised size."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers([(b"content-length", b"50000"), (b"content-length", b"50000")]),
+        )
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 50000
+
+    def test_response_size_rejects_conflicting_repeated_content_length(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Repeated conflicting Content-Length values should not be logged as a size."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers([(b"content-length", b"50000"), (b"content-length", b"50001")]),
         )
 
         with mitm_ctx():
@@ -374,6 +495,64 @@ class TestResponseHandler:
         assert cached_headers(cache_key) is None
         # Force-refresh marker must be set so the next /firewall/auth fetch
         # refreshes the token regardless of DB tokenExpiresAt (#9860).
+        assert force_refresh_pending(cache_key)
+
+    def test_invalid_content_length_without_network_log_does_not_block_401_cache_invalidation(
+        self, real_flow, mitm_ctx
+    ):
+        """Malformed log-only response size metadata must not block 401 auth recovery."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata["vm_run_id"] = "run-conn-invalid-length"
+
+        flow.metadata["vm_network_log_path"] = ""
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_base"] = "https://api.github.com"
+        flow.metadata["firewall_api_id"] = "run-conn-invalid-length:0"
+        flow.metadata["original_url"] = "https://api.github.com/repos"
+
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-length": "not-an-int"}),
+        )
+
+        cache_key = ("run-conn-invalid-length", "run-conn-invalid-length:0")
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert cached_headers(cache_key) is None
+        assert force_refresh_pending(cache_key)
+
+    def test_invalid_content_length_with_network_log_does_not_block_401_cache_invalidation(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Malformed network-log response size metadata must not block 401 auth recovery."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-conn-invalid-length-log"
+
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_base"] = "https://api.github.com"
+        flow.metadata["firewall_api_id"] = "run-conn-invalid-length-log:0"
+        flow.metadata["original_url"] = "https://api.github.com/repos"
+
+        flow.response = tutils.tresp(
+            status_code=401,
+            headers=header_map({"content-length": "not-an-int"}),
+        )
+
+        cache_key = ("run-conn-invalid-length-log", "run-conn-invalid-length-log:0")
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 0
+        assert cached_headers(cache_key) is None
         assert force_refresh_pending(cache_key)
 
     def test_401_without_existing_state_marks_force_refresh(self, real_flow, mitm_ctx, headers):
@@ -473,9 +652,8 @@ class TestResponseHandler:
         assert "#frag" not in entry["message"]
 
     def test_pops_start_time_even_when_run_id_absent(self, real_flow, mitm_ctx):
-        # If the request handler tracked this flow's start time but the
-        # metadata ended up without vm_run_id (registry missing runId),
-        # response() must still pop the timing state.
+        # If a partially initialized flow reaches response() without
+        # vm_run_id, response() must still pop the timing state.
         flow = real_flow(with_response=False)
         flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 

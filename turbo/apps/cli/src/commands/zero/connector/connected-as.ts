@@ -15,7 +15,7 @@ export function renderConnectedAsCell(
 ): string {
   if (!connector) return chalk.dim("(not connected)");
   const identity = renderIdentity(connector);
-  if (connector.needsReconnect) {
+  if (connector.connectionStatus === "reconnect-required") {
     return chalk.yellow(`${identity} (reconnect needed)`);
   }
   const scopeMismatch = !hasRequiredConnectorAuthMethodScopes(

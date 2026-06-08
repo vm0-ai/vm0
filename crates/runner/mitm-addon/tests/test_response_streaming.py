@@ -9,6 +9,7 @@ import body_utils
 import mitm_addon
 import response_streaming
 from tests.flow_helpers import header_map, response_stream
+from tests.x_flow_helpers import make_x_response_flow
 
 _OVERSIZED_NDJSON_LINE_BYTES = body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT + 1024
 
@@ -17,17 +18,8 @@ class TestNdjsonExtractor:
     """Tests for X NDJSON extraction through responseheaders (issue #9534)."""
 
     def _stream_flow(self, real_flow):
-        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
-        flow.metadata["firewall_name"] = "x"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map({"content-type": "application/json"}),
-        )
-
+        flow = make_x_response_flow(real_flow, path="/2/tweets/search/stream")
         mitm_addon.responseheaders(flow)
-
         return flow
 
     def _stream_parser(self, real_flow):
@@ -220,6 +212,42 @@ class TestNdjsonExtractor:
         )
         assert state["includes"] == {"users": 1, "tweets": 2, "media": 1}
 
+    def test_unknown_include_keys_are_bounded_and_known_keys_continue(self, real_flow):
+        parse, state = self._stream_parser(real_flow)
+
+        for index in range(70):
+            parse(
+                b'{"data":{"id":"'
+                + str(index).encode()
+                + b'"},"includes":{"future_'
+                + str(index).encode()
+                + b'":[{"id":"u"}]}}\n'
+            )
+        parse(b'{"data":{"id":"known"},"includes":{"users":[{"id":"user"}]}}\n')
+
+        unknown_keys = [key for key in state["includes"] if key.startswith("future_")]
+        assert len(unknown_keys) == 64
+        assert state["unknown_includes_overflow_count"] == 6
+        assert state["includes"]["users"] == 1
+        assert state["data_count"] == 71
+        assert state["lines_failed"] == 0
+
+    def test_unsafe_unknown_include_keys_overflow(self, real_flow):
+        parse, state = self._stream_parser(real_flow)
+        overlong_key = b"x" * 92
+
+        parse(
+            b'{"data":{"id":"1"},"includes":{"'
+            + overlong_key
+            + b'":[{"id":"long"}],"bad/key":[{"id":"one"},{"id":"two"}],'
+            b'"__overflow__":[{"id":"reserved"}]}}\n'
+        )
+
+        assert state["includes"] == {}
+        assert state["unknown_includes_overflow_count"] == 4
+        assert state["data_count"] == 1
+        assert state["lines_failed"] == 0
+
     def test_data_array_not_counted(self, real_flow):
         """Line where top-level ``data`` is an array (not a dict) contributes 0 to data_count."""
         parse, state = self._stream_parser(real_flow)
@@ -240,15 +268,7 @@ class TestXJsonFinalize:
     """Tests for finalizing non-streaming X JSON parser state."""
 
     def _billable_x_json_flow(self, real_flow):
-        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map({"content-type": "application/json"}),
-        )
-        flow.metadata["firewall_name"] = "x"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
-        return flow
+        return make_x_response_flow(real_flow)
 
     def test_no_registered_x_json_finalizer_is_noop(self, real_flow):
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
@@ -519,6 +539,23 @@ class TestResponseHeadersSseParser:
 
         assert "model_provider_usage" not in flow.metadata
 
+    def test_sets_up_sse_parser_for_non_billable_observable_model_provider(
+        self, real_flow, headers
+    ):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "text/event-stream"})
+        )
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = False
+        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
+
+        mitm_addon.responseheaders(flow)
+
+        assert "model_provider_usage" in flow.metadata
+        assert isinstance(flow.metadata["model_provider_usage"], dict)
+        assert "model_sse_usage_finish" in flow.metadata
+
     def test_no_sse_parser_without_firewall_name(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
@@ -532,14 +569,11 @@ class TestResponseHeadersSseParser:
 
     @pytest.mark.parametrize("firewall_name", [None, 42])
     def test_malformed_firewall_name_skips_usage_parsers(self, real_flow, firewall_name):
-        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map({"content-type": "application/json"}),
+        flow = make_x_response_flow(
+            real_flow,
+            path="/2/tweets/search/stream",
+            firewall_name=firewall_name,
         )
-        flow.metadata["firewall_name"] = firewall_name
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
 
         mitm_addon.responseheaders(flow)
 

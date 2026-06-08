@@ -1,5 +1,264 @@
 # Changelog
 
+## [12.412.6](https://github.com/vm0-ai/vm0/compare/web-v12.412.5...web-v12.412.6) (2026-06-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.68.0
+    * @vm0/core bumped to 8.314.3
+
+## [12.412.5](https://github.com/vm0-ai/vm0/compare/web-v12.412.4...web-v12.412.5) (2026-06-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.67.0
+    * @vm0/core bumped to 8.314.2
+  * devDependencies
+    * @vm0/connectors bumped to 1.50.0
+
+## [12.412.4](https://github.com/vm0-ai/vm0/compare/web-v12.412.3...web-v12.412.4) (2026-06-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.3
+    * @vm0/core bumped to 8.314.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.49.0
+
+## [12.412.3](https://github.com/vm0-ai/vm0/compare/web-v12.412.2...web-v12.412.3) (2026-06-06)
+
+
+### Refactoring
+
+* remove zero chat message send CLI command and backend ([#16359](https://github.com/vm0-ai/vm0/issues/16359)) ([14e189c](https://github.com/vm0-ai/vm0/commit/14e189c1c49d8092c9a466b643904bb4972e1cd5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.2
+    * @vm0/core bumped to 8.314.0
+
+## [12.412.2](https://github.com/vm0-ai/vm0/compare/web-v12.412.1...web-v12.412.2) (2026-06-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.1
+    * @vm0/core bumped to 8.313.2
+
+## [12.412.1](https://github.com/vm0-ai/vm0/compare/web-v12.412.0...web-v12.412.1) (2026-06-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.66.0
+    * @vm0/core bumped to 8.313.1
+
+## [12.412.0](https://github.com/vm0-ai/vm0/compare/web-v12.411.2...web-v12.412.0) (2026-06-05)
+
+
+### Features
+
+* add template ppt preview page ([#16285](https://github.com/vm0-ai/vm0/issues/16285)) ([5c82156](https://github.com/vm0-ai/vm0/commit/5c821560e9c4d4ceccc20c09508adfb4d4aa916b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.2
+    * @vm0/core bumped to 8.313.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.48.1
+
+## [12.411.2](https://github.com/vm0-ai/vm0/compare/web-v12.411.1...web-v12.411.2) (2026-06-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.312.0
+
+## [12.411.1](https://github.com/vm0-ai/vm0/compare/web-v12.411.0...web-v12.411.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* remove schedule chat migration flow ([#16262](https://github.com/vm0-ai/vm0/issues/16262)) ([5df9c43](https://github.com/vm0-ai/vm0/commit/5df9c43dadd24b3b03ea5c68b7331052bd446613))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.1
+    * @vm0/core bumped to 8.311.1
+
+## [12.411.0](https://github.com/vm0-ai/vm0/compare/web-v12.410.1...web-v12.411.0) (2026-06-05)
+
+
+### Features
+
+* add memory dev refresh ([#16244](https://github.com/vm0-ai/vm0/issues/16244)) ([95f3877](https://github.com/vm0-ai/vm0/commit/95f387719cc9b1d18eed2340ab6cad3039961c13))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.65.0
+    * @vm0/core bumped to 8.311.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.48.0
+
+## [12.410.1](https://github.com/vm0-ai/vm0/compare/web-v12.410.0...web-v12.410.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* persist thread composer model selection ([#16219](https://github.com/vm0-ai/vm0/issues/16219)) ([b1e7682](https://github.com/vm0-ai/vm0/commit/b1e768217fab71380d4b4dc3f0f72f5fabb7379a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.64.1
+    * @vm0/core bumped to 8.310.2
+
+## [12.410.0](https://github.com/vm0-ai/vm0/compare/web-v12.409.11...web-v12.410.0) (2026-06-04)
+
+
+### Features
+
+* migrate legacy schedules to chat thread from schedules page ([#16215](https://github.com/vm0-ai/vm0/issues/16215)) ([f103975](https://github.com/vm0-ai/vm0/commit/f103975ad8fe77ab4b350c223740f215a67e92ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.64.0
+    * @vm0/core bumped to 8.310.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.47.1
+
+## [12.409.11](https://github.com/vm0-ai/vm0/compare/web-v12.409.10...web-v12.409.11) (2026-06-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.63.0
+    * @vm0/core bumped to 8.310.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.47.0
+
+## [12.409.10](https://github.com/vm0-ai/vm0/compare/web-v12.409.9...web-v12.409.10) (2026-06-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.62.0
+    * @vm0/core bumped to 8.309.12
+
+## [12.409.9](https://github.com/vm0-ai/vm0/compare/web-v12.409.8...web-v12.409.9) (2026-06-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.61.0
+    * @vm0/core bumped to 8.309.11
+  * devDependencies
+    * @vm0/connectors bumped to 1.46.2
+
+## [12.409.8](https://github.com/vm0-ai/vm0/compare/web-v12.409.7...web-v12.409.8) (2026-06-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.60.0
+    * @vm0/core bumped to 8.309.10
+
+## [12.409.7](https://github.com/vm0-ai/vm0/compare/web-v12.409.6...web-v12.409.7) (2026-06-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.6
+    * @vm0/core bumped to 8.309.9
+  * devDependencies
+    * @vm0/connectors bumped to 1.46.1
+
+## [12.409.6](https://github.com/vm0-ai/vm0/compare/web-v12.409.5...web-v12.409.6) (2026-06-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.5
+    * @vm0/core bumped to 8.309.8
+  * devDependencies
+    * @vm0/connectors bumped to 1.46.0
+
+## [12.409.5](https://github.com/vm0-ai/vm0/compare/web-v12.409.4...web-v12.409.5) (2026-06-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.4
+    * @vm0/core bumped to 8.309.7
+
+## [12.409.4](https://github.com/vm0-ai/vm0/compare/web-v12.409.3...web-v12.409.4) (2026-06-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.3
+    * @vm0/core bumped to 8.309.6
+
+## [12.409.3](https://github.com/vm0-ai/vm0/compare/web-v12.409.2...web-v12.409.3) (2026-06-04)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.2
+    * @vm0/core bumped to 8.309.5
+  * devDependencies
+    * @vm0/connectors bumped to 1.45.3
+
 ## [12.409.2](https://github.com/vm0-ai/vm0/compare/web-v12.409.1...web-v12.409.2) (2026-06-03)
 
 

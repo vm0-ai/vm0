@@ -119,6 +119,23 @@ export const RUN_ERROR_GUIDANCE: Record<
 export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
   "Oops, something went wrong. Please try again later.";
 
+const CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE =
+  "ChatGPT session needs reconnection. Reconnect ChatGPT (Codex) in Model Providers, then retry.";
+
+const codexOAuthReconnectRequiredRunErrorBodySchema = z.object({
+  error: z.literal("TOKEN_REFRESH_FAILED"),
+  connectors: z.tuple([z.literal("codex-oauth-token")]),
+  failureReason: z.literal("reconnect_required"),
+});
+
+const codexOAuthReconnectRequiredRunErrorEnvelopeSchema = z.object({
+  error: z.object({
+    code: z.literal("TOKEN_REFRESH_FAILED"),
+    connectors: z.tuple([z.literal("codex-oauth-token")]),
+    failureReason: z.literal("reconnect_required"),
+  }),
+});
+
 export const INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE =
   "Ask a workspace admin to add credits or upgrade the workspace plan.";
 
@@ -141,13 +158,128 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   //   "You've hit your weekly limit · resets …"
   "session limit",
   "weekly limit",
+  CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE,
 ] as const;
 
-export function isActionableRunError(errorMessage: string): boolean {
+function isJsonWhitespace(char: string | undefined): boolean {
+  return char === " " || char === "\n" || char === "\r" || char === "\t";
+}
+
+function findNextJsonObjectStart(
+  errorMessage: string,
+  searchStart: number,
+): number {
+  let bodyStart = errorMessage.indexOf("{", searchStart);
+  while (bodyStart !== -1) {
+    let nextNonWhitespace = bodyStart + 1;
+    while (isJsonWhitespace(errorMessage[nextNonWhitespace])) {
+      nextNonWhitespace += 1;
+    }
+
+    const firstToken = errorMessage[nextNonWhitespace];
+    if (firstToken === '"' || firstToken === "}") {
+      return bodyStart;
+    }
+    bodyStart = errorMessage.indexOf("{", bodyStart + 1);
+  }
+  return -1;
+}
+
+function parseNextJsonObject(
+  errorMessage: string,
+  searchStart: number,
+): { readonly value?: unknown; readonly endIndex: number } | undefined {
+  const bodyStart = findNextJsonObjectStart(errorMessage, searchStart);
+  if (bodyStart === -1) {
+    return undefined;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = bodyStart; index < errorMessage.length; index += 1) {
+    const char = errorMessage[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = inString;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char !== "}") {
+      continue;
+    }
+
+    depth -= 1;
+    if (depth !== 0) {
+      continue;
+    }
+
+    try {
+      return {
+        value: JSON.parse(errorMessage.slice(bodyStart, index + 1)) as unknown,
+        endIndex: index + 1,
+      };
+    } catch {
+      return { endIndex: index + 1 };
+    }
+  }
+
+  return { endIndex: errorMessage.length };
+}
+
+function isCodexOAuthReconnectRequiredRunErrorObject(value: unknown): boolean {
+  return (
+    codexOAuthReconnectRequiredRunErrorBodySchema.safeParse(value).success ||
+    codexOAuthReconnectRequiredRunErrorEnvelopeSchema.safeParse(value).success
+  );
+}
+
+function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
+  if (
+    !errorMessage.includes("TOKEN_REFRESH_FAILED") ||
+    !errorMessage.includes("codex-oauth-token") ||
+    !errorMessage.includes("reconnect_required")
+  ) {
+    return false;
+  }
+
+  let searchStart = 0;
+  let parsed = parseNextJsonObject(errorMessage, searchStart);
+  while (parsed !== undefined) {
+    if (isCodexOAuthReconnectRequiredRunErrorObject(parsed?.value)) {
+      return true;
+    }
+    searchStart = parsed.endIndex;
+    parsed = parseNextJsonObject(errorMessage, searchStart);
+  }
+  return false;
+}
+
+function hasActionableRunErrorSnippet(errorMessage: string): boolean {
   const normalized = errorMessage.toLowerCase();
   return ACTIONABLE_RUN_ERROR_SNIPPETS.some((snippet) => {
     return normalized.includes(snippet.toLowerCase());
   });
+}
+
+export function isActionableRunError(errorMessage: string): boolean {
+  return (
+    isCodexOAuthReconnectRequiredRunError(errorMessage) ||
+    hasActionableRunErrorSnippet(errorMessage)
+  );
 }
 
 export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
@@ -190,7 +322,11 @@ export function formatRunErrorForExternalSurface(params: {
     return `${errorMessage}\n\nAdd credits: ${addCreditsUrl}`;
   }
 
-  return isGenericRunErrorForDisplay(errorMessage)
-    ? CHAT_RUN_TRANSIENT_ERROR_MESSAGE
-    : errorMessage;
+  if (isCodexOAuthReconnectRequiredRunError(errorMessage)) {
+    return CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE;
+  }
+
+  return hasActionableRunErrorSnippet(errorMessage)
+    ? errorMessage
+    : CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
 }

@@ -11,13 +11,14 @@ const c = initContract();
 export const MIN_EPOCH_MS_TIMESTAMP = 1_000_000_000_000;
 const apiStartTimeSchema = z.number().int().min(MIN_EPOCH_MS_TIMESTAMP);
 
-export const CANONICAL_WORKING_DIR = "/home/user/workspace";
+export const CANONICAL_GUEST_HOME_DIR = "/home/user";
+export const CANONICAL_WORKING_DIR = `${CANONICAL_GUEST_HOME_DIR}/workspace`;
 const CANONICAL_CLAUDE_PROJECT_NAME = CANONICAL_WORKING_DIR.replace(
   /^\//,
   "",
 ).replace(/\//g, "-");
-export const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH = `/home/user/.claude/projects/-${CANONICAL_CLAUDE_PROJECT_NAME}/memory`;
-export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = "/home/user/.codex/memories";
+export const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.claude/projects/-${CANONICAL_CLAUDE_PROJECT_NAME}/memory`;
+export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.codex/memories`;
 
 export function elapsedSinceApiStartMs(
   apiStartTimeMs: number | undefined,
@@ -204,6 +205,9 @@ export const storedExecutionContextSchema = z.object({
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
+  // Canonical model id the proxy reports for model token usage. The API uses
+  // this model id for built-in billing rows and model usage observations;
+  // billing eligibility is decided from API-owned run context.
   modelUsageProvider: z.string().optional(),
 });
 
@@ -265,6 +269,9 @@ export const executionContextSchema = z.object({
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
+  // Canonical model id the proxy reports for model token usage. The API uses
+  // this model id for built-in billing rows and model usage observations;
+  // billing eligibility is decided from API-owned run context.
   modelUsageProvider: z.string().optional(),
 });
 

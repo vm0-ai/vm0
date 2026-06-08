@@ -1,6 +1,7 @@
 import type { Command, Computed } from "ccstate";
 import type {
   ModelSelectionRequest,
+  GenerationTemplateRequest,
   PagedChatMessage,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -9,6 +10,7 @@ import type { ChatThread } from "../agent-chat.ts";
 export interface ChatThreadRealtimeHandlers {
   onMessageCreated$: Command<Promise<boolean>, [AbortSignal]>;
   onRunChanged$: Command<Promise<boolean>, [AbortSignal]>;
+  onSchedulesChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
 }
 
 export interface InitialPage {
@@ -24,6 +26,11 @@ export interface PatchDraftArgs {
   attachments: PersistedAttachment[] | null;
 }
 
+export interface PatchModelSelectionArgs {
+  threadId: string;
+  modelSelection: ModelSelectionRequest | null;
+}
+
 export interface AppendQueuedMessageArgs {
   threadId: string;
   agentId: string;
@@ -32,6 +39,7 @@ export interface AppendQueuedMessageArgs {
   clientMessageId: string;
   hasTextContent: boolean;
   modelSelection: ModelSelectionRequest | null;
+  generationTemplate: GenerationTemplateRequest | undefined;
   forceNewSession?: boolean;
 }
 
@@ -78,6 +86,10 @@ export interface ChatThreadDataSource {
   reloadThread$: Command<void, []>;
   initialPage$: Computed<Promise<InitialPage>>;
   patchDraft$: Command<Promise<void>, [PatchDraftArgs, AbortSignal]>;
+  patchModelSelection$: Command<
+    Promise<void>,
+    [PatchModelSelectionArgs, AbortSignal]
+  >;
   appendQueuedMessage$: Command<
     Promise<PagedChatMessage>,
     [AppendQueuedMessageArgs, AbortSignal]

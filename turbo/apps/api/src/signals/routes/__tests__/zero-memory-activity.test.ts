@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroMemoryActivityContract } from "@vm0/api-contracts/contracts/zero-memory-activity";
+import type { MemoryChangeDiff } from "@vm0/db/schema/memory-change-item";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -25,6 +26,60 @@ function authHeaders() {
 
 function activityClient() {
   return setupApp({ context })(zeroMemoryActivityContract);
+}
+
+function addedDiff(text: string): MemoryChangeDiff {
+  return {
+    format: "line",
+    beforeExists: false,
+    afterExists: true,
+    truncated: false,
+    stats: { added: 1, removed: 0 },
+    hunks: [
+      {
+        beforeStartLine: null,
+        afterStartLine: 1,
+        lines: [{ op: "add", beforeLine: null, afterLine: 1, text }],
+      },
+    ],
+  };
+}
+
+function removedDiff(text: string): MemoryChangeDiff {
+  return {
+    format: "line",
+    beforeExists: true,
+    afterExists: false,
+    truncated: false,
+    stats: { added: 0, removed: 1 },
+    hunks: [
+      {
+        beforeStartLine: 1,
+        afterStartLine: null,
+        lines: [{ op: "remove", beforeLine: 1, afterLine: null, text }],
+      },
+    ],
+  };
+}
+
+function updatedDiff(beforeText: string, afterText: string): MemoryChangeDiff {
+  return {
+    format: "line",
+    beforeExists: true,
+    afterExists: true,
+    truncated: false,
+    stats: { added: 1, removed: 1 },
+    hunks: [
+      {
+        beforeStartLine: 1,
+        afterStartLine: 1,
+        lines: [
+          { op: "remove", beforeLine: 1, afterLine: null, text: beforeText },
+          { op: "add", beforeLine: null, afterLine: 1, text: afterText },
+        ],
+      },
+    ],
+  };
 }
 
 describe("GET /api/zero/memory/activity", () => {
@@ -61,7 +116,7 @@ describe("GET /api/zero/memory/activity", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ entries: [] });
+    expect(response.body).toStrictEqual({ entries: [], nextCursor: null });
   });
 
   it("returns entries most-recent-day first with their items", async () => {
@@ -79,12 +134,8 @@ describe("GET /api/zero/memory/activity", () => {
         summary: "Zero learned about your project setup",
         items: [
           {
-            kind: "learned",
-            title: "Project uses pnpm",
-            description: "Package manager preference",
             filePath: "preferences/pnpm.md",
-            beforeSnippet: null,
-            afterSnippet: "Use pnpm for all package operations",
+            diff: addedDiff("Use pnpm for all package operations"),
           },
         ],
       },
@@ -101,22 +152,29 @@ describe("GET /api/zero/memory/activity", () => {
         summary: null,
         items: [
           {
-            kind: "updated",
-            title: "Project uses pnpm",
-            description: null,
             filePath: "preferences/pnpm.md",
-            beforeSnippet: "Use pnpm for all package operations",
-            afterSnippet: "Use pnpm 9 for all package operations",
+            diff: updatedDiff(
+              "Use pnpm for all package operations",
+              "Use pnpm 9 for all package operations",
+            ),
           },
           {
-            kind: "forgotten",
-            title: null,
-            description: null,
             filePath: "notes/stale.md",
-            beforeSnippet: "Old note",
-            afterSnippet: null,
+            diff: removedDiff("Old note"),
           },
         ],
+      },
+      context.signal,
+    );
+    await store.set(
+      seedMemoryActivitySummary$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: "2025-05-04",
+        fromVersionId: "v2",
+        toVersionId: "v3",
+        summary: null,
       },
       context.signal,
     );
@@ -134,24 +192,19 @@ describe("GET /api/zero/memory/activity", () => {
           summary: null,
           fromVersionId: "v1",
           toVersionId: "v2",
-          // Items are ordered by `kind` then `file_path`, so `forgotten`
-          // precedes `updated` regardless of the seeded insertion order.
+          // Items are ordered by `file_path`, regardless of seeded insertion
+          // order.
           items: [
             {
-              kind: "forgotten",
-              title: null,
-              description: null,
               filePath: "notes/stale.md",
-              beforeSnippet: "Old note",
-              afterSnippet: null,
+              diff: removedDiff("Old note"),
             },
             {
-              kind: "updated",
-              title: "Project uses pnpm",
-              description: null,
               filePath: "preferences/pnpm.md",
-              beforeSnippet: "Use pnpm for all package operations",
-              afterSnippet: "Use pnpm 9 for all package operations",
+              diff: updatedDiff(
+                "Use pnpm for all package operations",
+                "Use pnpm 9 for all package operations",
+              ),
             },
           ],
         },
@@ -162,20 +215,98 @@ describe("GET /api/zero/memory/activity", () => {
           toVersionId: "v1",
           items: [
             {
-              kind: "learned",
-              title: "Project uses pnpm",
-              description: "Package manager preference",
               filePath: "preferences/pnpm.md",
-              beforeSnippet: null,
-              afterSnippet: "Use pnpm for all package operations",
+              diff: addedDiff("Use pnpm for all package operations"),
             },
           ],
         },
       ],
+      nextCursor: null,
     });
   });
 
-  it("returns an entry with no items", async () => {
+  it("paginates summaries with a date cursor", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    for (const date of ["2025-05-01", "2025-05-03"]) {
+      await store.set(
+        seedMemoryActivitySummary$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          date,
+          toVersionId: `v-${date}`,
+          summary: `Summary for ${date}`,
+          items: [
+            {
+              filePath: `${date}.md`,
+              diff: addedDiff(date),
+            },
+          ],
+        },
+        context.signal,
+      );
+    }
+    for (const date of ["2025-05-02", "2025-05-04"]) {
+      await store.set(
+        seedMemoryActivitySummary$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          date,
+          toVersionId: `empty-${date}`,
+          summary: `Empty summary for ${date}`,
+        },
+        context.signal,
+      );
+    }
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const firstPage = await accept(
+      activityClient().get({
+        headers: authHeaders(),
+        query: { limit: 1 },
+      }),
+      [200],
+    );
+
+    expect(
+      firstPage.body.entries.map((entry) => {
+        return entry.date;
+      }),
+    ).toStrictEqual(["2025-05-03"]);
+    expect(firstPage.body.entries[0]?.items).toStrictEqual([
+      {
+        filePath: "2025-05-03.md",
+        diff: addedDiff("2025-05-03"),
+      },
+    ]);
+    expect(firstPage.body.nextCursor).toBe("2025-05-03");
+
+    const secondPage = await accept(
+      activityClient().get({
+        headers: authHeaders(),
+        query: { limit: 1, cursor: firstPage.body.nextCursor ?? "" },
+      }),
+      [200],
+    );
+
+    expect(
+      secondPage.body.entries.map((entry) => {
+        return entry.date;
+      }),
+    ).toStrictEqual(["2025-05-01"]);
+    expect(secondPage.body.entries[0]?.items).toStrictEqual([
+      {
+        filePath: "2025-05-01.md",
+        diff: addedDiff("2025-05-01"),
+      },
+    ]);
+    expect(secondPage.body.nextCursor).toBeNull();
+  });
+
+  it("omits entries with no items", async () => {
     const fixture = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
@@ -197,26 +328,17 @@ describe("GET /api/zero/memory/activity", () => {
       [200],
     );
 
-    expect(response.body.entries).toStrictEqual([
-      {
-        date: "2025-06-01",
-        summary: "A quiet narrative day",
-        fromVersionId: null,
-        toVersionId: "v9",
-        items: [],
-      },
-    ]);
+    expect(response.body.entries).toStrictEqual([]);
+    expect(response.body.nextCursor).toBeNull();
   });
 
-  it("orders a summary's items deterministically by kind then file_path", async () => {
+  it("orders a summary's items deterministically by file_path", async () => {
     const fixture = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
-    // Seeded out of the expected order and with a `file_path`-only order
-    // (b, a, d, c) that differs from the kind-then-path order, so a pass
-    // can only come from sorting on `kind` first and `file_path` second.
-    // All items share one batch-insert `created_at`, mirroring the cron, so
-    // the previous `created_at` ordering would leave this order undefined.
+    // Seeded out of file path order. All items share one batch-insert
+    // `created_at`, mirroring the cron, so the previous `created_at` ordering
+    // would leave this order undefined.
     await store.set(
       seedMemoryActivitySummary$,
       {
@@ -226,10 +348,10 @@ describe("GET /api/zero/memory/activity", () => {
         toVersionId: "v-order",
         summary: "Many changes in one day",
         items: [
-          { kind: "updated", filePath: "b.md" },
-          { kind: "learned", filePath: "d.md" },
-          { kind: "learned", filePath: "a.md" },
-          { kind: "forgotten", filePath: "c.md" },
+          { filePath: "b.md" },
+          { filePath: "d.md" },
+          { filePath: "a.md" },
+          { filePath: "c.md" },
         ],
       },
       context.signal,
@@ -243,14 +365,9 @@ describe("GET /api/zero/memory/activity", () => {
 
     expect(
       response.body.entries[0]?.items.map((item) => {
-        return { kind: item.kind, filePath: item.filePath };
+        return item.filePath;
       }),
-    ).toStrictEqual([
-      { kind: "forgotten", filePath: "c.md" },
-      { kind: "learned", filePath: "a.md" },
-      { kind: "learned", filePath: "d.md" },
-      { kind: "updated", filePath: "b.md" },
-    ]);
+    ).toStrictEqual(["a.md", "b.md", "c.md", "d.md"]);
   });
 
   it("scopes summaries to the authenticated user and org", async () => {
@@ -269,10 +386,8 @@ describe("GET /api/zero/memory/activity", () => {
         summary: "Other user's memory",
         items: [
           {
-            kind: "learned",
-            title: "Secret",
             filePath: "secret.md",
-            afterSnippet: "Should not leak",
+            diff: addedDiff("Should not leak"),
           },
         ],
       },
@@ -302,6 +417,12 @@ describe("GET /api/zero/memory/activity", () => {
         date: "2025-05-12",
         toVersionId: "mine-v1",
         summary: "My memory",
+        items: [
+          {
+            filePath: "mine.md",
+            diff: addedDiff("Visible"),
+          },
+        ],
       },
       context.signal,
     );
@@ -318,7 +439,12 @@ describe("GET /api/zero/memory/activity", () => {
       summary: "My memory",
       fromVersionId: null,
       toVersionId: "mine-v1",
-      items: [],
+      items: [
+        {
+          filePath: "mine.md",
+          diff: addedDiff("Visible"),
+        },
+      ],
     });
   });
 });

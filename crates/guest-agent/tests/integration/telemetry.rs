@@ -3,6 +3,26 @@ use guest_agent::masker::SecretMasker;
 use httpmock::prelude::*;
 use std::time::Duration;
 
+const TELEMETRY_DELTA_READ_LIMIT: usize = 256 * 1024;
+const OVERSIZED_SYSTEM_LOG_LINE_MARKER_FRAGMENT: &str =
+    "vm0 telemetry omitted oversized system log line";
+
+fn remove_telemetry_files() {
+    let _ = std::fs::remove_file(guest_agent::paths::system_log_file());
+    let _ = std::fs::remove_file(guest_agent::paths::metrics_log_file());
+    let _ = std::fs::remove_file(guest_agent::paths::sandbox_ops_file());
+    let _ = std::fs::remove_file(guest_agent::paths::telemetry_system_log_pos_file());
+    let _ = std::fs::remove_file(guest_agent::paths::telemetry_metrics_pos_file());
+    let _ = std::fs::remove_file(guest_agent::paths::telemetry_sandbox_ops_pos_file());
+}
+
+fn ensure_parent_dir(path: &str) {
+    let Some(parent) = std::path::Path::new(path).parent() else {
+        return;
+    };
+    let _ = std::fs::create_dir_all(parent);
+}
+
 // =========================================================================
 // Telemetry flush delta semantics
 //
@@ -248,4 +268,101 @@ async fn flush_propagates_error_then_loop_recovers() {
     success_mock.delete_async().await;
     let _ = std::fs::remove_file(ops_file);
     let _ = std::fs::remove_file(pos_file);
+}
+
+#[tokio::test]
+async fn skip_only_metrics_progress_saves_position_without_posting_empty_payload() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+    remove_telemetry_files();
+
+    let metrics_file = guest_agent::paths::metrics_log_file();
+    let metrics_pos_file = guest_agent::paths::telemetry_metrics_pos_file();
+    ensure_parent_dir(metrics_file);
+    assert!(
+        std::fs::write(metrics_file, "x".repeat(TELEMETRY_DELTA_READ_LIMIT + 1)).is_ok(),
+        "oversized metrics log should be written",
+    );
+
+    let upload_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/telemetry");
+        then.status(200);
+    });
+
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
+
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await
+        .expect("skip-only flush should succeed without HTTP");
+    telemetry.shutdown().await;
+
+    upload_mock.assert_calls_async(0).await;
+    let pos_text = std::fs::read_to_string(metrics_pos_file)
+        .expect("metrics telemetry position should be written");
+    let pos: u64 = pos_text
+        .trim()
+        .parse()
+        .expect("metrics telemetry position should be numeric");
+    assert_eq!(pos, TELEMETRY_DELTA_READ_LIMIT as u64);
+
+    upload_mock.delete_async().await;
+    remove_telemetry_files();
+}
+
+#[tokio::test]
+async fn oversized_system_log_uploads_marker_without_raw_line_fragment() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+    remove_telemetry_files();
+
+    let system_log = guest_agent::paths::system_log_file();
+    let system_log_pos_file = guest_agent::paths::telemetry_system_log_pos_file();
+    let raw_token = "raw-secret-token";
+    ensure_parent_dir(system_log);
+    assert!(
+        std::fs::write(
+            system_log,
+            raw_token.repeat((TELEMETRY_DELTA_READ_LIMIT / raw_token.len()) + 1),
+        )
+        .is_ok(),
+        "oversized system log should be written",
+    );
+
+    let raw_fragment_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/telemetry")
+            .body_includes(raw_token);
+        then.status(500);
+    });
+    let marker_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/telemetry")
+            .body_includes(OVERSIZED_SYSTEM_LOG_LINE_MARKER_FRAGMENT);
+        then.status(200);
+    });
+
+    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
+
+    telemetry
+        .flush(guest_agent::telemetry::UploadMode::Live)
+        .await
+        .expect("oversized system log marker upload should succeed");
+    telemetry.shutdown().await;
+
+    raw_fragment_mock.assert_calls_async(0).await;
+    marker_mock.assert_calls_async(1).await;
+    let pos_text = std::fs::read_to_string(system_log_pos_file)
+        .expect("system log telemetry position should be written");
+    let pos: u64 = pos_text
+        .trim()
+        .parse()
+        .expect("system log telemetry position should be numeric");
+    assert_eq!(pos, TELEMETRY_DELTA_READ_LIMIT as u64);
+
+    raw_fragment_mock.delete_async().await;
+    marker_mock.delete_async().await;
+    remove_telemetry_files();
 }

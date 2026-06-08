@@ -12,6 +12,7 @@ import pytest
 
 import auth
 import matching
+from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.auth_state_helpers import (
     cached_headers,
     force_refresh_pending,
@@ -83,7 +84,92 @@ def _allow(
     rule: str | None = "GET /repos/{owner}/{repo}",
     rel_path: str = "/",
 ) -> matching.FirewallAllow:
-    return matching.FirewallAllow(api_entry, name, permission, params or {}, rule, rel_path)
+    return matching.FirewallAllow(api_entry, name, permission, dict(params or {}), rule, rel_path)
+
+
+def _firewall_flow(
+    real_flow,
+    *,
+    host: str = "api.github.com",
+    path: str = "/repos",
+    run_id: str = "test-run",
+):
+    flow = real_flow(with_response=False, host=host, path=path)
+    flow.metadata["vm_run_id"] = run_id
+    return flow
+
+
+def _api_entry(
+    *,
+    base: str = "https://api.github.com",
+    auth_config: dict | None = None,
+    api_id: str | None = None,
+) -> dict:
+    auth = _copy_auth_config(auth_config)
+    entry = {
+        "base": base,
+        "auth": auth,
+    }
+    if api_id is not None:
+        entry["id"] = api_id
+    return entry
+
+
+def _copy_auth_config(auth_config: dict | None) -> dict:
+    if auth_config is None:
+        return {"headers": {}}
+
+    copied = dict(auth_config)
+    for key in ("headers", "query"):
+        value = copied.get(key)
+        if isinstance(value, dict):
+            copied[key] = dict(value)
+    return copied
+
+
+def _vm_info(
+    tmp_path=None,
+    *,
+    run_id: str = "run-1",
+    sandbox_marker: str = "tok-xyz",
+    encrypted_secrets: str = "iv:tag:data",
+    include_encrypted_secrets: bool = True,
+    billable_firewalls: list[str] | None = None,
+    include_billable_firewalls: bool = True,
+    network_log_path: str | None = None,
+) -> dict:
+    if network_log_path is None:
+        if tmp_path is None:
+            raise ValueError("tmp_path or network_log_path is required")
+        network_log_path = str(tmp_path / "net.jsonl")
+
+    vm_info: dict[str, object] = {
+        "runId": run_id,
+        "sandboxToken": sandbox_marker,
+        "networkLogPath": network_log_path,
+    }
+    if include_encrypted_secrets:
+        vm_info["encryptedSecrets"] = encrypted_secrets
+    if include_billable_firewalls:
+        vm_info["billableFirewalls"] = list(billable_firewalls or [])
+    return vm_info
+
+
+def _token_meta(
+    *,
+    headers: dict[str, str] | None = None,
+    resolved_secrets: list[str] | None = None,
+    refreshed_connectors: list[str] | None = None,
+    refreshed_secrets: list[str] | None = None,
+    cache_hit: bool = False,
+) -> dict:
+    return {
+        "headers": dict(headers or {}),
+        "resolved_secrets": list(resolved_secrets or []),
+        "refreshed_connectors": list(refreshed_connectors or []),
+        "refreshed_secrets": list(refreshed_secrets or []),
+        "cache_hit": cache_hit,
+    }
 
 
 class _UnreadableHttpErrorBody(io.BytesIO):
@@ -611,36 +697,27 @@ class TestHandleFirewallRequest:
     async def test_success_injects_headers_and_audit_metadata(
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
+        flow = _firewall_flow(real_flow)
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
-        api_entry = {
-            "id": "run-1:0",
-            "base": "https://api.github.com",
-            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        api_entry = _api_entry(
+            api_id="run-1:0",
+            auth_config={"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+        )
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry, params={"owner": "octocat", "repo": "hello"})
-        token_meta = {
-            "headers": {"Authorization": "Bearer real-token", "X-Custom": "value"},
-            "resolved_secrets": ["GITHUB_TOKEN"],
-            "refreshed_connectors": [],
-            "refreshed_secrets": [],
-            "cache_hit": False,
-        }
+        token_meta = _token_meta(
+            headers={"Authorization": "Bearer real-token", "X-Custom": "value"},
+            resolved_secrets=["GITHUB_TOKEN"],
+        )
 
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
 
         # Headers injected
         assert flow.request.headers["Authorization"] == "Bearer real-token"
@@ -672,28 +749,11 @@ class TestHandleFirewallRequest:
     ):
         """billableFirewalls is optional in the TS schema — a vm_info without
         the key must not KeyError; firewall_billable should be False."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {
-            "id": "run-1:0",
-            "base": "https://api.github.com",
-            "auth": {"headers": {}},
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            # intentionally no "billableFirewalls" key
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry(api_id="run-1:0")
+        vm_info = _vm_info(tmp_path, include_billable_firewalls=False)
         allow = _allow(api_entry, rule="GET /repos")
-        token_meta = {
-            "headers": {},
-            "resolved_secrets": [],
-            "refreshed_connectors": [],
-            "refreshed_secrets": [],
-            "cache_hit": False,
-        }
+        token_meta = _token_meta()
 
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -704,16 +764,9 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_billable"] is False
 
     async def test_failure_returns_502(self, real_flow, headers, mitm_ctx, tmp_path):
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
 
         with (
@@ -725,8 +778,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.metadata["firewall_action"] == "ALLOW"
@@ -764,16 +818,9 @@ class TestHandleFirewallRequest:
         mitm_ctx,
         tmp_path,
     ):
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
 
         with (
@@ -800,26 +847,14 @@ class TestHandleFirewallRequest:
         mitm_ctx,
         tmp_path,
     ):
-        flow = real_flow(
-            with_response=False,
-            host="api.github.com",
-            path="/repos?existing=1",
-        )
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {
-            "base": "https://api.github.com",
-            "auth": {
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
                 "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        )
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         mock_resp = MagicMock()
         mock_resp.__enter__.return_value = mock_resp
@@ -853,26 +888,14 @@ class TestHandleFirewallRequest:
         mitm_ctx,
         tmp_path,
     ):
-        flow = real_flow(
-            with_response=False,
-            host="api.github.com",
-            path="/repos?existing=1",
-        )
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {
-            "base": "https://api.github.com",
-            "auth": {
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
                 "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        )
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         response_body = json.dumps({"headers": {"Authorization": "Bearer tok"}}).encode()
         mock_resp = _raw_response(response_body)
@@ -910,26 +933,14 @@ class TestHandleFirewallRequest:
         mitm_ctx,
         tmp_path,
     ):
-        flow = real_flow(
-            with_response=False,
-            host="api.github.com",
-            path="/repos?existing=1",
-        )
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {
-            "base": "https://api.github.com",
-            "auth": {
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
                 "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
                 "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
             },
-        }
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        )
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         mock_resp = _json_response({"headers": []})
 
@@ -956,16 +967,9 @@ class TestHandleFirewallRequest:
         mock_resp.__exit__.assert_called_once()
 
     async def test_structured_api_error_is_preserved(self, real_flow, mitm_ctx, tmp_path):
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         api_error = auth.FirewallAuthApiError(
             status=502,
@@ -984,8 +988,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.metadata["firewall_action"] == "ALLOW"
@@ -998,18 +1003,11 @@ class TestHandleFirewallRequest:
         assert body["failureReason"] == "upstream_provider"
 
     async def test_invalid_billable_auth_expiry_returns_502(self, real_flow, mitm_ctx, tmp_path):
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
+        flow = _firewall_flow(real_flow)
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": ["github"],
-        }
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path, billable_firewalls=["github"])
         allow = _allow(api_entry)
 
         with (
@@ -1027,8 +1025,9 @@ class TestHandleFirewallRequest:
             ),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.metadata["firewall_action"] == "ALLOW"
@@ -1050,16 +1049,9 @@ class TestHandleFirewallRequest:
 
     async def test_no_response_set_on_success(self, real_flow, headers, mitm_ctx):
         """On success, flow.response should remain None (request continues to origin)."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": "",
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(network_log_path="")
         allow = _allow(api_entry)
 
         with (
@@ -1086,16 +1078,9 @@ class TestHandleFirewallRequest:
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
         """When connector is enabled but not linked, return 424 with missing secrets."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
 
         with (
@@ -1111,8 +1096,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 424
         assert flow.metadata["firewall_action"] == "BLOCK"
@@ -1126,16 +1112,9 @@ class TestHandleFirewallRequest:
 
     async def test_insufficient_credits_returns_402(self, real_flow, headers, mitm_ctx, tmp_path):
         """Billable firewall auth denied for credits returns 402 and blocks usage."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": ["github"],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path, billable_firewalls=["github"])
         allow = _allow(api_entry)
 
         with (
@@ -1147,8 +1126,9 @@ class TestHandleFirewallRequest:
             mitm_ctx(),
             patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 402
         assert flow.metadata["firewall_action"] == "BLOCK"
@@ -1164,16 +1144,9 @@ class TestHandleFirewallRequest:
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
         """Connector references are only returned when the firewall name is known."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry, name="", permission=None, rule=None)
 
         with (
@@ -1204,16 +1177,9 @@ class TestHandleFirewallRequest:
 
     async def test_missing_vars_only_returns_424(self, real_flow, headers, mitm_ctx, tmp_path):
         """When connector not configured, return 424 with connector ref."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://hcti.io", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "encryptedSecrets": "iv:tag:data",
-            "networkLogPath": str(tmp_path / "net.jsonl"),
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry(base="https://hcti.io")
+        vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry, name="htmlcsstoimage")
 
         with (
@@ -1240,20 +1206,15 @@ class TestHandleFirewallRequest:
 
     async def test_missing_encrypted_secrets_returns_502(self, real_flow, headers, mitm_ctx):
         """When encryptedSecrets is missing from vm_info, return 502."""
-        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
-        flow.metadata["vm_run_id"] = "test-run"
-        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
-        vm_info = {
-            "runId": "run-1",
-            "sandboxToken": "tok-xyz",
-            "networkLogPath": "",
-            "billableFirewalls": [],
-        }
+        flow = _firewall_flow(real_flow)
+        api_entry = _api_entry()
+        vm_info = _vm_info(network_log_path="", include_encrypted_secrets=False)
         allow = _allow(api_entry)
 
         with mitm_ctx():
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.metadata["firewall_action"] == "ALLOW"
@@ -1305,41 +1266,410 @@ class TestMakeApiRequest:
 
 
 class TestFetchFirewallHeaders:
-    def test_builds_correct_request(self, headers):
-        mock_resp = MagicMock()
-        mock_resp.__enter__.return_value = mock_resp
-        mock_resp.read.return_value = json.dumps(
-            {"headers": {"Authorization": "Bearer tok"}}
-        ).encode()
+    async def test_sends_request_and_maps_basic_success(self, mitm_ctx):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response({"headers": {"Authorization": "Bearer tok"}})
 
         with (
-            patch("auth.urllib.request.Request") as mock_req_cls,
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
-            result = auth._fetch_firewall_headers_sync(
+            result = await auth.fetch_firewall_headers(
                 "iv:tag:data",
                 {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
                 "tok-xyz",
-                "https://api.vm0.ai",
             )
 
         assert result.payload.headers == {"Authorization": "Bearer tok"}
         assert result.payload.base is None
         assert result.payload.query is None
 
-        # urllib.request.Request construction is the external boundary (#9991).
-        mock_req_cls.assert_called_once()
-        call_args = mock_req_cls.call_args
-        assert call_args[0][0] == "https://api.vm0.ai/api/webhooks/agent/firewall/auth"
-        body = json.loads(call_args[1]["data"])
-        assert body["encryptedSecrets"] == "iv:tag:data"
-        assert body["authHeaders"] == {"Authorization": "Bearer ${{ secrets.TOKEN }}"}
-        assert "runId" not in body
-        assert "base" not in body
-        assert call_args[1]["headers"]["Authorization"] == "Bearer tok-xyz"
-        assert call_args[1]["headers"]["Content-Type"] == "application/json"
+        assert endpoint.request_count == 1
+        request = endpoint.requests[0]
+        assert request.method == "POST"
+        assert request.path == "/api/webhooks/agent/firewall/auth"
+        assert request.headers["authorization"] == "Bearer tok-xyz"
+        assert request.headers["content-type"] == "application/json"
+        assert request.headers["user-agent"] == "vm0-mitm-addon/1.0"
+        assert "x-vercel-protection-bypass" not in request.headers
+        assert request.json_body() == {
+            "encryptedSecrets": "iv:tag:data",
+            "authHeaders": {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
+        }
 
+    async def test_success_response_shape_is_mapped(self, mitm_ctx):
+        expires_at = time.time() + 30
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response(
+            {
+                "headers": {
+                    "Authorization": "Bearer tok",
+                    "X-Custom": "custom",
+                },
+                "base": "https://example.com/webhook/secret",
+                "query": {"api_key": "resolved-key"},
+                "expiresAt": expires_at,
+                "resolvedSecrets": ["API_TOKEN"],
+                "refreshedConnectors": ["notion"],
+                "refreshedSecrets": ["NOTION_TOKEN"],
+                "futureField": {"ignored": True},
+            }
+        )
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            result = await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+
+        assert result.payload.headers == {
+            "Authorization": "Bearer tok",
+            "X-Custom": "custom",
+        }
+        assert result.payload.base == "https://example.com/webhook/secret"
+        assert result.payload.query == {"api_key": "resolved-key"}
+        assert result.expires_at == expires_at
+        assert result.payload.resolved_secrets == ["API_TOKEN"]
+        assert result.refreshed_connectors == ["notion"]
+        assert result.refreshed_secrets == ["NOTION_TOKEN"]
+        assert not hasattr(result, "futureField")
+
+    async def test_sends_optional_request_body_fields(self, mitm_ctx):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response({"headers": {}, "expiresAt": time.time() + 30})
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            await auth.fetch_firewall_headers(
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                secret_connector_map={"TOKEN": "notion"},
+                secret_connector_metadata_map={"TOKEN": {"kind": "oauth"}},
+                vars_map={"TEAM": "vm0"},
+                auth_base="${{ secrets.WEBHOOK_URL }}",
+                auth_query={"api_key": "${{ secrets.API_KEY }}"},
+                firewall_billable=True,
+                force_refresh=True,
+            )
+
+        body = endpoint.requests[0].json_body()
+        assert body["encryptedSecrets"] == "iv:tag:data"
+        assert body["authHeaders"] == {}
+        assert body["secretConnectorMap"] == {"TOKEN": "notion"}
+        assert body["secretConnectorMetadataMap"] == {"TOKEN": {"kind": "oauth"}}
+        assert body["vars"] == {"TEAM": "vm0"}
+        assert body["authBase"] == "${{ secrets.WEBHOOK_URL }}"
+        assert body["authQuery"] == {"api_key": "${{ secrets.API_KEY }}"}
+        assert body["firewallBillable"] is True
+        assert body["forceRefresh"] is True
+        assert "firewallName" not in body
+        assert "modelUsageProvider" not in body
+
+    async def test_includes_vercel_bypass_header(self, mitm_ctx):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response({"headers": {}})
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth, "VERCEL_BYPASS", "secret-bypass-value"),
+        ):
+            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+
+        assert endpoint.requests[0].headers["x-vercel-protection-bypass"] == "secret-bypass-value"
+
+    async def test_invalid_api_url_raises_before_urlopen(self):
+        with (
+            patch.object(auth, "get_api_url", return_value="file:///etc/passwd"),
+            patch("auth.urllib.request.urlopen") as mock_urlopen,
+            pytest.raises(ValueError, match="absolute http"),
+        ):
+            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+
+        mock_urlopen.assert_not_called()
+
+    async def test_424_connector_not_configured_raises_custom_error(self, mitm_ctx):
+        """Auth endpoint 424 CONNECTOR_NOT_CONFIGURED raises ConnectorNotConfiguredError."""
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response(
+            {
+                "error": {
+                    "message": "Connector not configured",
+                    "code": "CONNECTOR_NOT_CONFIGURED",
+                }
+            },
+            status=424,
+        )
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            with pytest.raises(auth.ConnectorNotConfiguredError) as exc_info:
+                await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            assert "Connector not configured" in str(exc_info.value)
+
+    async def test_402_insufficient_credits_raises_custom_error(self, mitm_ctx):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response(
+            {
+                "error": {
+                    "message": "Insufficient credits",
+                    "code": "INSUFFICIENT_CREDITS",
+                }
+            },
+            status=402,
+        )
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            with pytest.raises(auth.InsufficientCreditsError) as exc_info:
+                await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+            assert "Insufficient credits" in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        (
+            "status",
+            "code",
+            "message",
+            "connectors",
+            "failure_reason",
+            "expected_failure_reason",
+        ),
+        [
+            (
+                424,
+                "TOKEN_ACCESS_RESOLUTION_FAILED",
+                "Token access resolution failed for: notion.",
+                ["notion"],
+                None,
+                None,
+            ),
+            (
+                403,
+                "FORBIDDEN",
+                "Invalid model-provider secret owner",
+                None,
+                None,
+                None,
+            ),
+            (
+                502,
+                "TOKEN_REFRESH_FAILED",
+                "Access token expired and refresh failed for: codex-oauth-token.",
+                ["codex-oauth-token"],
+                "upstream_provider",
+                "upstream_provider",
+            ),
+            (
+                502,
+                "TOKEN_REFRESH_FAILED",
+                "Access token expired and refresh failed for: notion.",
+                ["notion"],
+                "provider_rate_limited",
+                None,
+            ),
+        ],
+        ids=[
+            "token-access-resolution",
+            "forbidden",
+            "token-refresh",
+            "unknown-failure-reason",
+        ],
+    )
+    async def test_current_structured_error_raises_custom_error(
+        self,
+        mitm_ctx,
+        status: int,
+        code: str,
+        message: str,
+        connectors: list[str] | None,
+        failure_reason: str | None,
+        expected_failure_reason: str | None,
+    ):
+        """Current auth endpoint errors should preserve their code and connectors."""
+        error_info: dict[str, object] = {
+            "message": message,
+            "code": code,
+        }
+        if connectors is not None:
+            error_info["connectors"] = connectors
+        if failure_reason is not None:
+            error_info["failureReason"] = failure_reason
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response({"error": error_info}, status=status)
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(auth.FirewallAuthApiError) as exc_info,
+        ):
+            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+
+        assert exc_info.value.status == status
+        assert exc_info.value.code == code
+        assert str(exc_info.value) == message
+        assert exc_info.value.connectors == connectors
+        assert exc_info.value.failure_reason == expected_failure_reason
+
+    async def test_structured_http_error_at_body_limit_is_preserved(self, mitm_ctx):
+        error_body = json.dumps(
+            {
+                "error": {
+                    "message": "Access token expired and refresh failed for: notion.",
+                    "code": "TOKEN_REFRESH_FAILED",
+                }
+            }
+        ).encode()
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_response(502, body=error_body)
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(
+                auth,
+                "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
+                len(error_body),
+            ),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(auth.FirewallAuthApiError) as exc_info,
+        ):
+            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+
+        assert exc_info.value.code == "TOKEN_REFRESH_FAILED"
+
+    async def test_http_error_over_body_limit_raises(self, mitm_ctx):
+        error_body = json.dumps(
+            {
+                "error": {
+                    "message": "Access token expired and refresh failed for: notion.",
+                    "code": "TOKEN_REFRESH_FAILED",
+                }
+            }
+        ).encode()
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_response(502, body=error_body)
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(
+                auth,
+                "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
+                len(error_body) - 1,
+            ),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(
+                auth.FirewallAuthResponseTooLargeError,
+                match="Firewall auth response body too large",
+            ),
+        ):
+            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+
+    @pytest.mark.parametrize(
+        "error_body",
+        [
+            b"not-json",
+            b'"plain string"',
+            b"[1, 2, 3]",
+            b"{}",
+            json.dumps({"error": "not-a-dict"}).encode(),
+            json.dumps({"error": None}).encode(),
+            json.dumps({"error": {}}).encode(),
+            json.dumps({"error": {"message": "Bad Request", "code": "BAD_REQUEST"}}).encode(),
+        ],
+    )
+    async def test_malformed_http_error_envelope_reraises_http_error(
+        self,
+        mitm_ctx,
+        error_body: bytes,
+    ):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_response(400, body=error_body)
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(urllib.error.HTTPError) as exc_info,
+        ):
+            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+
+        assert exc_info.value.code == 400
+
+    @pytest.mark.parametrize(
+        ("code", "status", "exception_type", "default_message"),
+        [
+            (
+                "CONNECTOR_NOT_CONFIGURED",
+                424,
+                auth.ConnectorNotConfiguredError,
+                "Connector not configured",
+            ),
+            (
+                "INSUFFICIENT_CREDITS",
+                402,
+                auth.InsufficientCreditsError,
+                "Insufficient credits",
+            ),
+        ],
+    )
+    async def test_known_error_with_non_string_message_uses_default(
+        self,
+        mitm_ctx,
+        code: str,
+        status: int,
+        exception_type: type[Exception],
+        default_message: str,
+    ):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response(
+            {
+                "error": {
+                    "message": None,
+                    "code": code,
+                }
+            },
+            status=status,
+        )
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(exception_type) as exc_info,
+        ):
+            await auth.fetch_firewall_headers("iv:tag:data", {}, "tok-xyz")
+
+        assert str(exc_info.value) == default_message
+
+    async def test_async_wrapper_uses_api_url_from_ctx(self, mitm_ctx):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response({"headers": {"Auth": "tok"}})
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            result = await auth.fetch_firewall_headers("enc", {}, "sandbox-tok")
+
+        assert result.payload.headers == {"Auth": "tok"}
+        assert endpoint.requests[0].path == "/api/webhooks/agent/firewall/auth"
+
+
+class TestFirewallAuthSuccessParser:
     @pytest.mark.parametrize(
         "body",
         [
@@ -1365,421 +1695,74 @@ class TestFetchFirewallHeaders:
         ],
     )
     def test_malformed_success_response_shape_raises_value_error(self, body: object):
-        mock_resp = _json_response(body)
+        with pytest.raises(ValueError, match=_MALFORMED_SUCCESS_PREFIX):
+            auth._parse_firewall_auth_success(body)
 
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(ValueError, match=_MALFORMED_SUCCESS_PREFIX),
-        ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
-        mock_resp.__exit__.assert_called_once()
-
-    def test_success_response_at_body_limit_is_accepted(self):
+class TestFirewallAuthResponseBodyReader:
+    def test_response_at_body_limit_is_accepted(self):
         response_body = json.dumps({"headers": {}}).encode()
         mock_resp = _raw_response(response_body)
 
-        with (
-            patch.object(
-                auth,
-                "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
-                len(response_body),
-            ),
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-        ):
-            result = auth._fetch_firewall_headers_sync(
-                "iv:tag:data",
-                {},
-                "tok-xyz",
-                "https://api.vm0.ai",
-            )
+        with patch.object(auth, "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES", len(response_body)):
+            assert auth._read_firewall_auth_response_body(mock_resp) == response_body
 
-        assert result.payload.headers == {}
         mock_resp.read.assert_called_once_with(len(response_body) + 1)
-        mock_resp.__exit__.assert_called_once()
 
-    def test_success_response_over_body_limit_raises_and_closes_response(self):
+    def test_response_over_body_limit_raises(self):
         response_body = json.dumps({"headers": {}}).encode()
         mock_resp = _raw_response(response_body)
 
         with (
-            patch.object(
-                auth,
-                "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
-                len(response_body) - 1,
-            ),
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(auth, "VERCEL_BYPASS", ""),
+            patch.object(auth, "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES", len(response_body) - 1),
             pytest.raises(
                 auth.FirewallAuthResponseTooLargeError,
                 match="Firewall auth response body too large",
             ),
         ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+            auth._read_firewall_auth_response_body(mock_resp)
 
         mock_resp.read.assert_called_once_with(len(response_body))
-        mock_resp.__exit__.assert_called_once()
 
-    def test_success_response_shape_is_parsed_to_internal_type(self):
-        expires_at = time.time() + 30
-        mock_resp = _json_response(
-            {
-                "headers": {
-                    "Authorization": "Bearer tok",
-                    "X-Custom": "custom",
-                },
-                "base": "https://example.com/webhook/secret",
-                "query": {"api_key": "resolved-key"},
-                "expiresAt": expires_at,
-                "resolvedSecrets": ["API_TOKEN"],
-                "refreshedConnectors": ["notion"],
-                "refreshedSecrets": ["NOTION_TOKEN"],
-                "futureField": {"ignored": True},
-            }
-        )
 
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-        ):
-            result = auth._fetch_firewall_headers_sync(
-                "iv:tag:data",
-                {},
-                "tok-xyz",
-                "https://api.vm0.ai",
-            )
-
-        assert isinstance(result, auth._FirewallAuthSuccess)
-        assert result.payload.headers == {
-            "Authorization": "Bearer tok",
-            "X-Custom": "custom",
-        }
-        assert result.payload.base == "https://example.com/webhook/secret"
-        assert result.payload.query == {"api_key": "resolved-key"}
-        assert result.expires_at == expires_at
-        assert result.payload.resolved_secrets == ["API_TOKEN"]
-        assert result.refreshed_connectors == ["notion"]
-        assert result.refreshed_secrets == ["NOTION_TOKEN"]
-        assert not hasattr(result, "futureField")
-
-    def test_invalid_api_url_raises_before_urlopen(self):
-        with (
-            patch("auth.urllib.request.urlopen") as mock_urlopen,
-            pytest.raises(ValueError, match="absolute http"),
-        ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "file:///etc/passwd")
-
-        mock_urlopen.assert_not_called()
-
-    def test_includes_vercel_bypass_header(self, headers):
+class TestFetchFirewallHeadersResourceBoundary:
+    def test_closes_response_on_success(self):
+        """Success path must close the urlopen response — FD leak guard (#10475)."""
         mock_resp = MagicMock()
         mock_resp.__enter__.return_value = mock_resp
         mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
 
-        mock_req_instance = MagicMock()
-
         with (
-            patch("auth.urllib.request.Request", return_value=mock_req_instance),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(auth, "VERCEL_BYPASS", "secret-bypass-value"),
-        ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
-
-        # urllib Request.add_header is the external boundary (#9991).
-        mock_req_instance.add_header.assert_called_once_with(
-            "x-vercel-protection-bypass", "secret-bypass-value"
-        )
-
-    def test_no_vercel_bypass_when_empty(self, headers):
-        mock_resp = MagicMock()
-        mock_resp.__enter__.return_value = mock_resp
-        mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
-
-        mock_req_instance = MagicMock()
-
-        with (
-            patch("auth.urllib.request.Request", return_value=mock_req_instance),
+            patch("auth.urllib.request.Request"),
             patch("auth.urllib.request.urlopen", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
-        mock_req_instance.add_header.assert_not_called()
+        mock_resp.__exit__.assert_called_once()  # urllib external boundary (#9991)
 
-    def test_includes_auth_base_in_request_body(self, headers):
-        mock_resp = MagicMock()
-        mock_resp.__enter__.return_value = mock_resp
-        mock_resp.read.return_value = json.dumps(
-            {"headers": {}, "base": "https://discord.com/api/webhooks/123/abc"}
-        ).encode()
-
-        with (
-            patch("auth.urllib.request.Request") as mock_req_cls,
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-        ):
-            result = auth._fetch_firewall_headers_sync(
-                "iv:tag:data",
-                {},
-                "tok-xyz",
-                "https://api.vm0.ai",
-                auth_base="${{ secrets.DISCORD_WEBHOOK_URL }}",
-            )
-
-        assert result.payload.base == "https://discord.com/api/webhooks/123/abc"
-        body = json.loads(mock_req_cls.call_args[1]["data"])
-        assert body["authBase"] == "${{ secrets.DISCORD_WEBHOOK_URL }}"
-
-    def test_includes_auth_base_and_query_in_request_body(self, headers):
-        mock_resp = MagicMock()
-        mock_resp.__enter__.return_value = mock_resp
-        mock_resp.read.return_value = json.dumps(
-            {
-                "headers": {},
-                "base": "https://example.com/webhook/secret",
-                "query": {"api_key": "resolved-key"},
-            }
-        ).encode()
-
-        with (
-            patch("auth.urllib.request.Request") as mock_req_cls,
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-        ):
-            result = auth._fetch_firewall_headers_sync(
-                "iv:tag:data",
-                {},
-                "tok-xyz",
-                "https://api.vm0.ai",
-                auth_base="${{ secrets.WEBHOOK_URL }}",
-                auth_query={"api_key": "${{ secrets.API_KEY }}"},
-            )
-
-        assert result.payload.base == "https://example.com/webhook/secret"
-        assert result.payload.query == {"api_key": "resolved-key"}
-        body = json.loads(mock_req_cls.call_args[1]["data"])
-        assert body["authBase"] == "${{ secrets.WEBHOOK_URL }}"
-        assert body["authQuery"] == {"api_key": "${{ secrets.API_KEY }}"}
-
-    def test_includes_billable_firewall_flag_in_request_body(self, headers):
-        mock_resp = MagicMock()
-        mock_resp.__enter__.return_value = mock_resp
-        mock_resp.read.return_value = json.dumps(
-            {
-                "headers": {},
-                "expiresAt": time.time() + 30,
-            }
-        ).encode()
-
-        with (
-            patch("auth.urllib.request.Request") as mock_req_cls,
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-        ):
-            auth._fetch_firewall_headers_sync(
-                "iv:tag:data",
-                {},
-                "tok-xyz",
-                "https://api.vm0.ai",
-                firewall_billable=True,
-            )
-
-        body = json.loads(mock_req_cls.call_args[1]["data"])
-        assert body["firewallBillable"] is True
-        assert "firewallName" not in body
-        assert "modelUsageProvider" not in body
-
-    def test_424_connector_not_configured_raises_custom_error(self):
-        """Auth endpoint 424 CONNECTOR_NOT_CONFIGURED raises ConnectorNotConfiguredError."""
-        error_body = json.dumps(
-            {
-                "error": {
-                    "message": "Connector not configured",
-                    "code": "CONNECTOR_NOT_CONFIGURED",
-                }
-            }
-        ).encode()
-        http_error = _http_error(
+    def test_closes_http_error_response_when_body_is_unreadable(self):
+        http_error = urllib.error.HTTPError(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            424,
-            "Failed Dependency",
-            error_body,
-        )
-
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-        ):
-            with pytest.raises(auth.ConnectorNotConfiguredError) as exc_info:
-                auth._fetch_firewall_headers_sync(
-                    "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
-                )
-            assert "Connector not configured" in str(exc_info.value)
-
-    def test_402_insufficient_credits_raises_custom_error(self):
-        error_body = json.dumps(
-            {
-                "error": {
-                    "message": "Insufficient credits",
-                    "code": "INSUFFICIENT_CREDITS",
-                }
-            }
-        ).encode()
-        http_error = _http_error(
-            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            402,
-            "Payment Required",
-            error_body,
-        )
-
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-        ):
-            with pytest.raises(auth.InsufficientCreditsError) as exc_info:
-                auth._fetch_firewall_headers_sync(
-                    "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
-                )
-            assert "Insufficient credits" in str(exc_info.value)
-
-    @pytest.mark.parametrize(
-        (
-            "status",
-            "reason",
-            "code",
-            "message",
-            "connectors",
-            "failure_reason",
-            "expected_failure_reason",
-        ),
-        [
-            (
-                424,
-                "Failed Dependency",
-                "TOKEN_ACCESS_RESOLUTION_FAILED",
-                "Token access resolution failed for: notion.",
-                ["notion"],
-                None,
-                None,
-            ),
-            (
-                403,
-                "Forbidden",
-                "FORBIDDEN",
-                "Invalid model-provider secret owner",
-                None,
-                None,
-                None,
-            ),
-            (
-                502,
-                "Bad Gateway",
-                "TOKEN_REFRESH_FAILED",
-                "Access token expired and refresh failed for: codex-oauth-token.",
-                ["codex-oauth-token"],
-                "upstream_provider",
-                "upstream_provider",
-            ),
-            (
-                502,
-                "Bad Gateway",
-                "TOKEN_REFRESH_FAILED",
-                "Access token expired and refresh failed for: notion.",
-                ["notion"],
-                "provider_rate_limited",
-                None,
-            ),
-        ],
-        ids=[
-            "token-access-resolution",
-            "forbidden",
-            "token-refresh",
-            "unknown-failure-reason",
-        ],
-    )
-    def test_current_structured_error_raises_custom_error(
-        self,
-        status: int,
-        reason: str,
-        code: str,
-        message: str,
-        connectors: list[str] | None,
-        failure_reason: str | None,
-        expected_failure_reason: str | None,
-    ):
-        """Current auth endpoint errors should preserve their code and connectors."""
-        error_info: dict[str, object] = {
-            "message": message,
-            "code": code,
-        }
-        if connectors is not None:
-            error_info["connectors"] = connectors
-        if failure_reason is not None:
-            error_info["failureReason"] = failure_reason
-        error_body = json.dumps({"error": error_info}).encode()
-        http_error = _http_error(
-            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            status,
-            reason,
-            error_body,
-        )
-
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(auth.FirewallAuthApiError) as exc_info,
-        ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
-
-        assert exc_info.value.status == status
-        assert exc_info.value.code == code
-        assert str(exc_info.value) == message
-        assert exc_info.value.connectors == connectors
-        assert exc_info.value.failure_reason == expected_failure_reason
-
-    def test_structured_http_error_at_body_limit_is_preserved(self):
-        error_body = json.dumps(
-            {
-                "error": {
-                    "message": "Access token expired and refresh failed for: notion.",
-                    "code": "TOKEN_REFRESH_FAILED",
-                }
-            }
-        ).encode()
-        http_error = _http_error(
-            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            502,
-            "Bad Gateway",
-            error_body,
+            400,
+            "Bad Request",
+            Message(),
+            _UnreadableHttpErrorBody(),
         )
         http_error.close = MagicMock()
 
         with (
-            patch.object(
-                auth,
-                "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
-                len(error_body),
-            ),
             patch("auth.urllib.request.Request"),
             patch("auth.urllib.request.urlopen", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(auth.FirewallAuthApiError) as exc_info,
+            pytest.raises(urllib.error.HTTPError) as exc_info,
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
-        assert exc_info.value.code == "TOKEN_REFRESH_FAILED"
+        assert exc_info.value is http_error
         http_error.close.assert_called_once()
 
-    def test_http_error_over_body_limit_raises_and_closes_response(self):
+    def test_closes_http_error_response_when_body_is_too_large(self):
         error_body = json.dumps(
             {
                 "error": {
@@ -1813,145 +1796,6 @@ class TestFetchFirewallHeaders:
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
         http_error.close.assert_called_once()
-
-    @pytest.mark.parametrize(
-        "error_body",
-        [
-            b"not-json",
-            b'"plain string"',
-            b"[1, 2, 3]",
-            b"{}",
-            json.dumps({"error": "not-a-dict"}).encode(),
-            json.dumps({"error": None}).encode(),
-            json.dumps({"error": {}}).encode(),
-        ],
-    )
-    def test_malformed_http_error_envelope_reraises_http_error(self, error_body: bytes):
-        http_error = _http_error(
-            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            400,
-            "Bad Request",
-            error_body,
-        )
-
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(urllib.error.HTTPError) as exc_info,
-        ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
-
-        assert exc_info.value is http_error
-
-    def test_unrecognized_error_envelope_reraises_http_error(self):
-        error_body = json.dumps(
-            {"error": {"message": "Bad Request", "code": "BAD_REQUEST"}}
-        ).encode()
-        http_error = _http_error(
-            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            400,
-            "Bad Request",
-            error_body,
-        )
-
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(urllib.error.HTTPError) as exc_info,
-        ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
-
-        assert exc_info.value is http_error
-
-    def test_http_error_body_read_failure_reraises_http_error(self):
-        http_error = urllib.error.HTTPError(
-            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            400,
-            "Bad Request",
-            Message(),
-            _UnreadableHttpErrorBody(),
-        )
-        http_error.close = MagicMock()
-
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(urllib.error.HTTPError) as exc_info,
-        ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
-
-        assert exc_info.value is http_error
-        http_error.close.assert_called_once()
-
-    @pytest.mark.parametrize(
-        ("code", "status", "reason", "exception_type", "default_message"),
-        [
-            (
-                "CONNECTOR_NOT_CONFIGURED",
-                424,
-                "Failed Dependency",
-                auth.ConnectorNotConfiguredError,
-                "Connector not configured",
-            ),
-            (
-                "INSUFFICIENT_CREDITS",
-                402,
-                "Payment Required",
-                auth.InsufficientCreditsError,
-                "Insufficient credits",
-            ),
-        ],
-    )
-    def test_known_error_with_non_string_message_uses_default(
-        self,
-        code: str,
-        status: int,
-        reason: str,
-        exception_type: type[Exception],
-        default_message: str,
-    ):
-        error_body = json.dumps(
-            {
-                "error": {
-                    "message": None,
-                    "code": code,
-                }
-            }
-        ).encode()
-        http_error = _http_error(
-            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            status,
-            reason,
-            error_body,
-        )
-
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(exception_type) as exc_info,
-        ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
-
-        assert str(exc_info.value) == default_message
-
-    def test_closes_response_on_success(self):
-        """Success path must close the urlopen response — FD leak guard (#10475)."""
-        mock_resp = MagicMock()
-        mock_resp.__enter__.return_value = mock_resp
-        mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
-
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-        ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
-
-        mock_resp.__exit__.assert_called_once()  # urllib external boundary (#9991)
 
     @pytest.mark.parametrize(
         ("error_body", "expected_exception"),
@@ -1991,22 +1835,3 @@ class TestFetchFirewallHeaders:
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
         http_error.close.assert_called_once()  # urllib external boundary (#9991)
-
-    async def test_async_wrapper_passes_api_url_from_ctx(self, headers):
-        """fetch_firewall_headers reads api_url on the event loop and passes it to the sync fn."""
-        mock_resp = MagicMock()
-        mock_resp.__enter__.return_value = mock_resp
-        mock_resp.read.return_value = json.dumps({"headers": {"Auth": "tok"}}).encode()
-
-        with (
-            patch.object(auth, "get_api_url", return_value="https://ctx-url.vm0.ai"),
-            patch("auth.urllib.request.Request") as mock_req_cls,
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-        ):
-            result = await auth.fetch_firewall_headers("enc", {}, "sandbox-tok")
-
-        assert result.payload.headers == {"Auth": "tok"}
-        # Verify the URL was built from the ctx-provided api_url
-        call_args = mock_req_cls.call_args
-        assert call_args[0][0] == "https://ctx-url.vm0.ai/api/webhooks/agent/firewall/auth"

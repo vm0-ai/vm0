@@ -1,5 +1,8 @@
+import { randomUUID } from "node:crypto";
+
 import { cronAggregateInsightsContract } from "@vm0/api-contracts/contracts/cron";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { createStore } from "ccstate";
@@ -76,14 +79,10 @@ async function rawCronRequest(
 
 async function cleanupFixture(fixture: UsageFixture): Promise<void> {
   const db = store.set(writeDb$);
+  await db.delete(insightsDaily).where(eq(insightsDaily.orgId, fixture.orgId));
   await db
-    .delete(insightsDaily)
-    .where(
-      and(
-        eq(insightsDaily.orgId, fixture.orgId),
-        eq(insightsDaily.userId, fixture.userId),
-      ),
-    );
+    .delete(orgMembersCache)
+    .where(eq(orgMembersCache.orgId, fixture.orgId));
   await store.set(deleteUsageFixture$, fixture, context.signal);
 }
 
@@ -96,7 +95,7 @@ async function setCreditBalance(fixture: UsageFixture): Promise<void> {
 }
 
 async function seedUserName(
-  fixture: UsageFixture,
+  fixture: Pick<UsageFixture, "userId">,
   email = "test@example.com",
   name: string | null = "Test User",
 ): Promise<void> {
@@ -107,6 +106,42 @@ async function seedUserName(
     name,
     cachedAt: new Date(FIXED_NOW_ISO),
   });
+}
+
+async function seedCachedOrgMember(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(orgMembersCache).values({
+    orgId,
+    userId,
+    role: "member",
+    cachedAt: new Date(FIXED_NOW_ISO),
+  });
+}
+
+function mockCurrentOrgMembers(
+  orgId: string,
+  userIds: readonly string[],
+): void {
+  context.mocks.clerk.organizations.getOrganizationMembershipList.mockImplementation(
+    (args: unknown) => {
+      const input = args as {
+        readonly organizationId?: string;
+        readonly limit?: number;
+        readonly offset?: number;
+      };
+      const members = input.organizationId === orgId ? userIds : [];
+      const offset = input.offset ?? 0;
+      const limit = input.limit ?? members.length;
+      return Promise.resolve({
+        data: members.slice(offset, offset + limit).map((userId) => {
+          return { publicUserData: { userId } };
+        }),
+      });
+    },
+  );
 }
 
 async function seedExistingInsights(
@@ -358,6 +393,61 @@ describe("GET /api/cron/aggregate-insights", () => {
       agentNames: ["Other usage"],
       agentCredits: { "Other usage": 333 },
     });
+  });
+
+  it("excludes removed org members from team credit usage", async () => {
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    const removedUserId = `user_${randomUUID()}`;
+    const cachedOtherUserId = `user_${randomUUID()}`;
+    await seedCachedOrgMember(fixture.orgId, cachedOtherUserId);
+    mockCurrentOrgMembers(fixture.orgId, [fixture.userId, cachedOtherUserId]);
+    await seedUserName(fixture, "active@example.com", "Active Member");
+    await seedUserName(
+      { userId: removedUserId },
+      "removed@example.com",
+      "Removed Member",
+    );
+    const processedAt = new Date("2999-01-02T11:55:00.000Z");
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: null,
+        creditsCharged: 200,
+        status: "processed",
+        processedAt,
+      },
+      context.signal,
+    );
+    await store.set(
+      insertUsageEvent$,
+      {
+        orgId: fixture.orgId,
+        userId: removedUserId,
+        runId: null,
+        creditsCharged: 900,
+        status: "processed",
+        processedAt,
+      },
+      context.signal,
+    );
+
+    await accept(apiClient().aggregate({ headers: cronHeaders() }), [200]);
+
+    const data = await findInsights(fixture);
+    expect(data?.creditsUsed).toBe(200);
+    expect(data?.teamUsage).toStrictEqual([
+      {
+        userId: fixture.userId,
+        name: "Active Member",
+        credits: 200,
+        agentNames: ["Other usage"],
+        agentCredits: { "Other usage": 200 },
+      },
+    ]);
   });
 
   it("reprocesses activity at the previous aggregation watermark", async () => {

@@ -20,8 +20,8 @@ describe("schedule page", () => {
       expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
     });
 
-    // Empty state shows "No runs scheduled"
-    expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
+    expect(screen.getByText("Week view")).toBeInTheDocument();
+    expect(screen.queryByText("No runs scheduled")).not.toBeInTheDocument();
   });
 
   it("should render schedule entries when data is present", async () => {

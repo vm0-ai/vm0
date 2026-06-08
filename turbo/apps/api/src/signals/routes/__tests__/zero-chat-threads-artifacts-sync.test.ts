@@ -92,11 +92,22 @@ function isS3GetCommandLike(command: unknown): command is S3GetCommandLike {
   );
 }
 
-function stubS3Buffer(buffer: Buffer): void {
+function s3CommandName(command: unknown): string {
+  if (typeof command !== "object" || command === null) {
+    return "";
+  }
+  return command.constructor.name;
+}
+
+function stubS3Buffer(
+  buffer: Buffer,
+  observe?: (command: S3GetCommandLike) => void,
+): void {
   context.mocks.s3.send.mockImplementation((command: unknown) => {
     if (!isS3GetCommandLike(command)) {
       return Promise.resolve({});
     }
+    observe?.(command);
     const stream = Readable.from([new Uint8Array(buffer)]);
     return Promise.resolve({ Body: stream });
   });
@@ -375,5 +386,290 @@ describe("POST /api/zero/chat-threads/:threadId/artifacts", () => {
     expect(uploadBody).toContain(`"vm0RunId":"${runId}"`);
     expect(uploadBody).toContain('"vm0FileId":"file-1"');
     expect(uploadBody).toContain("Content-Type: text/csv\r\n\r\nname,value");
+  });
+
+  it("syncs current artifact-bucket files to Google Drive", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const threadId = await store.set(
+      seedChatThread$,
+      { userId: fixture.userId, composeId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "completed",
+        chatThreadId: threadId,
+      },
+      context.signal,
+    );
+    const s3Key = `artifacts/${encodeURIComponent(
+      fixture.userId,
+    )}/file-1/data.csv`;
+    await seedRunUploadedFile({
+      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      externalId: "file-1",
+      filename: "data.csv",
+      contentType: "text/csv",
+      sizeBytes: 2048,
+      url: `https://cdn.vm7.io/${s3Key}`,
+      metadata: { s3Key },
+    });
+    await seedGoogleDriveConnector({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      accessToken: "drive-access-token",
+    });
+    seededDriveOrgs.push(fixture.orgId);
+
+    let s3GetInput: S3GetCommandLike["input"] | null = null;
+    stubS3Buffer(Buffer.from("name,value\nalpha,1\n"), (command) => {
+      s3GetInput = command.input;
+    });
+
+    server.use(
+      http.get("https://www.googleapis.com/drive/v3/files", () => {
+        return HttpResponse.json({
+          files: [{ id: "drive-folder-id", name: "folder" }],
+        });
+      }),
+      http.post("https://www.googleapis.com/upload/drive/v3/files", () => {
+        return HttpResponse.json({
+          id: "drive-file-id",
+          name: "data.csv",
+          webViewLink: "https://drive.google.com/file/d/drive-file-id/view",
+        });
+      }),
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadArtifactsContract);
+    const response = await accept(
+      client.syncGoogleDrive({
+        params: { threadId },
+        body: { runId, fileId: "file-1" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      id: "drive-file-id",
+      name: "data.csv",
+      webViewLink: "https://drive.google.com/file/d/drive-file-id/view",
+    });
+    expect(s3GetInput).toMatchObject({
+      Bucket: "test-user-artifacts",
+      Key: s3Key,
+    });
+  });
+
+  it("syncs artifact-bucket files resolved from persisted CDN URLs", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const threadId = await store.set(
+      seedChatThread$,
+      { userId: fixture.userId, composeId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "completed",
+        chatThreadId: threadId,
+      },
+      context.signal,
+    );
+    const s3Key = `artifacts/${encodeURIComponent(
+      fixture.userId,
+    )}/file-1/data.csv`;
+    const fileUrl = `https://cdn.vm7.io/${s3Key}`;
+    await seedRunUploadedFile({
+      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      externalId: "file-1",
+      filename: "data.csv",
+      contentType: "text/csv",
+      sizeBytes: 2048,
+      url: fileUrl,
+      metadata: { sourceUrl: fileUrl },
+    });
+    await seedGoogleDriveConnector({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      accessToken: "drive-access-token",
+    });
+    seededDriveOrgs.push(fixture.orgId);
+
+    let s3GetInput: S3GetCommandLike["input"] | null = null;
+    stubS3Buffer(Buffer.from("name,value\nalpha,1\n"), (command) => {
+      if (s3CommandName(command) === "GetObjectCommand") {
+        s3GetInput = command.input;
+      }
+    });
+
+    server.use(
+      http.get("https://www.googleapis.com/drive/v3/files", () => {
+        return HttpResponse.json({
+          files: [{ id: "drive-folder-id", name: "folder" }],
+        });
+      }),
+      http.post("https://www.googleapis.com/upload/drive/v3/files", () => {
+        return HttpResponse.json({
+          id: "drive-file-id",
+          name: "data.csv",
+          webViewLink: "https://drive.google.com/file/d/drive-file-id/view",
+        });
+      }),
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadArtifactsContract);
+    const response = await accept(
+      client.syncGoogleDrive({
+        params: { threadId },
+        body: { runId, fileId: "file-1" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      id: "drive-file-id",
+      name: "data.csv",
+      webViewLink: "https://drive.google.com/file/d/drive-file-id/view",
+    });
+    expect(s3GetInput).toMatchObject({
+      Bucket: "test-user-artifacts",
+      Key: s3Key,
+    });
+  });
+
+  it("falls back to legacy storage-bucket files when migrated artifacts are absent", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const threadId = await store.set(
+      seedChatThread$,
+      { userId: fixture.userId, composeId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "completed",
+        chatThreadId: threadId,
+      },
+      context.signal,
+    );
+    await seedRunUploadedFile({
+      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      externalId: "file-1",
+      filename: "data.csv",
+      contentType: "text/csv",
+      sizeBytes: 2048,
+      url: `http://localhost:3000/f/${fixture.userId}/file-1/data.csv`,
+      metadata: {},
+    });
+    await seedGoogleDriveConnector({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      accessToken: "drive-access-token",
+    });
+    seededDriveOrgs.push(fixture.orgId);
+
+    let s3GetInput: S3GetCommandLike["input"] | null = null;
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (!isS3GetCommandLike(command)) {
+        return Promise.resolve({});
+      }
+      if (s3CommandName(command) === "HeadObjectCommand") {
+        return Promise.reject(
+          Object.assign(new Error("NotFound"), {
+            name: "NotFound",
+            $metadata: { httpStatusCode: 404 },
+          }),
+        );
+      }
+      if (s3CommandName(command) === "GetObjectCommand") {
+        s3GetInput = command.input;
+        const stream = Readable.from([
+          new Uint8Array(Buffer.from("name,value\nalpha,1\n")),
+        ]);
+        return Promise.resolve({ Body: stream });
+      }
+      return Promise.resolve({});
+    });
+
+    server.use(
+      http.get("https://www.googleapis.com/drive/v3/files", () => {
+        return HttpResponse.json({
+          files: [{ id: "drive-folder-id", name: "folder" }],
+        });
+      }),
+      http.post("https://www.googleapis.com/upload/drive/v3/files", () => {
+        return HttpResponse.json({
+          id: "drive-file-id",
+          name: "data.csv",
+          webViewLink: "https://drive.google.com/file/d/drive-file-id/view",
+        });
+      }),
+    );
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadArtifactsContract);
+    const response = await accept(
+      client.syncGoogleDrive({
+        params: { threadId },
+        body: { runId, fileId: "file-1" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      id: "drive-file-id",
+      name: "data.csv",
+      webViewLink: "https://drive.google.com/file/d/drive-file-id/view",
+    });
+    expect(s3GetInput).toMatchObject({
+      Bucket: "test-user-storages",
+      Key: `uploads/${fixture.userId}/file-1/data.csv`,
+    });
   });
 });

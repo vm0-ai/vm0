@@ -79,7 +79,7 @@ function eventMessageId(event: AgentEvent): string | undefined {
   return undefined;
 }
 
-const processChatAssistantEvents$ = command(
+export const processChatAssistantEvents$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const payload = get(eventConsumerPayload$);
     signal.throwIfAborted();

@@ -11,40 +11,40 @@ const context = testContext();
 
 describe("schedule-list-tab", () => {
   describe("initScheduleListTab$", () => {
-    it("defaults to list when URL has no tab param", () => {
+    it("defaults to calendar when URL has no tab param", () => {
       const { store, signal } = context;
       mockLocation({ pathname: "/schedules", search: "" }, signal);
-
-      store.set(initScheduleListTab$);
-
-      expect(store.get(scheduleListTab$)).toBe("list");
-    });
-
-    it("reads calendar tab from URL search params", () => {
-      const { store, signal } = context;
-      mockLocation({ pathname: "/schedules", search: "?tab=calendar" }, signal);
 
       store.set(initScheduleListTab$);
 
       expect(store.get(scheduleListTab$)).toBe("calendar");
     });
 
-    it("falls back to list for invalid tab value", () => {
+    it("reads list tab from URL search params", () => {
       const { store, signal } = context;
-      mockLocation({ pathname: "/schedules", search: "?tab=bogus" }, signal);
+      mockLocation({ pathname: "/schedules", search: "?tab=list" }, signal);
 
       store.set(initScheduleListTab$);
 
       expect(store.get(scheduleListTab$)).toBe("list");
     });
 
-    it("falls back to list for removed history tab value", () => {
+    it("falls back to calendar for invalid tab value", () => {
+      const { store, signal } = context;
+      mockLocation({ pathname: "/schedules", search: "?tab=bogus" }, signal);
+
+      store.set(initScheduleListTab$);
+
+      expect(store.get(scheduleListTab$)).toBe("calendar");
+    });
+
+    it("falls back to calendar for removed history tab value", () => {
       const { store, signal } = context;
       mockLocation({ pathname: "/schedules", search: "?tab=history" }, signal);
 
       store.set(initScheduleListTab$);
 
-      expect(store.get(scheduleListTab$)).toBe("list");
+      expect(store.get(scheduleListTab$)).toBe("calendar");
     });
   });
 
@@ -72,15 +72,15 @@ describe("schedule-list-tab", () => {
         signal,
       );
 
-      store.set(setScheduleListTab$, "calendar");
+      store.set(setScheduleListTab$, "list");
 
       expect(calls).toHaveLength(1);
-      expect(calls[0]).toContain("tab=calendar");
+      expect(calls[0]).toContain("tab=list");
     });
 
-    it("removes tab param from URL when switching back to default (list)", () => {
+    it("removes tab param from URL when switching back to default (calendar)", () => {
       const { store, signal } = context;
-      mockLocation({ pathname: "/schedules", search: "?tab=calendar" }, signal);
+      mockLocation({ pathname: "/schedules", search: "?tab=list" }, signal);
 
       const calls: string[] = [];
       mockReplaceState(
@@ -92,7 +92,7 @@ describe("schedule-list-tab", () => {
         signal,
       );
 
-      store.set(setScheduleListTab$, "list");
+      store.set(setScheduleListTab$, "calendar");
 
       expect(calls).toHaveLength(1);
       expect(calls[0]).not.toContain("tab=");

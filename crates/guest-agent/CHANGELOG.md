@@ -1,5 +1,77 @@
 # Changelog
 
+## [0.34.19](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.18...guest-agent-v0.34.19) (2026-06-07)
+
+
+### Bug Fixes
+
+* bound guest telemetry delta reads ([#16455](https://github.com/vm0-ai/vm0/issues/16455)) ([122b447](https://github.com/vm0-ai/vm0/commit/122b447bcfc0d0c907596da44631549cbb3eec0e))
+
+## [0.34.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.17...guest-agent-v0.34.18) (2026-06-05)
+
+
+### Bug Fixes
+
+* **runner:** split guest-agent bootstrap env ([#16295](https://github.com/vm0-ai/vm0/issues/16295)) ([b77e7c7](https://github.com/vm0-ai/vm0/commit/b77e7c7c2dfd54e7c97596fee8ca371654e7c7b7))
+
+## [0.34.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.16...guest-agent-v0.34.17) (2026-06-05)
+
+
+### Bug Fixes
+
+* strip guest-agent reqwest urls from logs ([#16314](https://github.com/vm0-ai/vm0/issues/16314)) ([9f063de](https://github.com/vm0-ai/vm0/commit/9f063dec7ab44c8fb9584b6122ee6797ece645bf))
+
+## [0.34.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.15...guest-agent-v0.34.16) (2026-06-05)
+
+
+### Bug Fixes
+
+* move guest runtime files out of tmp ([#16263](https://github.com/vm0-ai/vm0/issues/16263)) ([dc87ac5](https://github.com/vm0-ai/vm0/commit/dc87ac5f4f11ada3306d4061a845de5f592d09b2))
+
+## [0.34.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.14...guest-agent-v0.34.15) (2026-06-05)
+
+
+### Bug Fixes
+
+* preserve missing auto-memory artifact roots ([#16245](https://github.com/vm0-ai/vm0/issues/16245)) ([44cd72a](https://github.com/vm0-ai/vm0/commit/44cd72a947c260572181cf6735e2ecbfe85624d8))
+
+## [0.34.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.13...guest-agent-v0.34.14) (2026-06-04)
+
+## [0.34.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.12...guest-agent-v0.34.13) (2026-06-04)
+
+
+### Performance Improvements
+
+* stream artifact manifest uploads ([#16178](https://github.com/vm0-ai/vm0/issues/16178)) ([68ffd1f](https://github.com/vm0-ai/vm0/commit/68ffd1fd8f4ee6e22e22145328a1beca8bd545ad))
+
+## [0.34.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.11...guest-agent-v0.34.12) (2026-06-04)
+
+
+### Bug Fixes
+
+* log session metadata write results ([#16118](https://github.com/vm0-ai/vm0/issues/16118)) ([30587a4](https://github.com/vm0-ai/vm0/commit/30587a4f0d248920f3e0a7db60c3460e9e1017e4))
+
+
+### Documentation
+
+* document artifact archive validation invariants ([#16132](https://github.com/vm0-ai/vm0/issues/16132)) ([6ad9dbe](https://github.com/vm0-ai/vm0/commit/6ad9dbe0b5f103c99eb00693928701a3ed0a0fcb))
+
+## [0.34.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.10...guest-agent-v0.34.11) (2026-06-04)
+
+## [0.34.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.9...guest-agent-v0.34.10) (2026-06-04)
+
+
+### Bug Fixes
+
+* materialize cached artifact mount roots ([#16083](https://github.com/vm0-ai/vm0/issues/16083)) ([d6a4ed3](https://github.com/vm0-ai/vm0/commit/d6a4ed307b5c4aeac8edb400aec1f65369d5f781))
+
+## [0.34.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.8...guest-agent-v0.34.9) (2026-06-04)
+
+
+### Bug Fixes
+
+* preserve canonical auto memory missing roots ([#16053](https://github.com/vm0-ai/vm0/issues/16053)) ([a3ea955](https://github.com/vm0-ai/vm0/commit/a3ea955d7e4d968d155cd70beed1a95a1a7d1109))
+
 ## [0.34.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.7...guest-agent-v0.34.8) (2026-06-03)
 
 ## [0.34.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.6...guest-agent-v0.34.7) (2026-06-03)

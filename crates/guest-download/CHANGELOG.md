@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.20.20](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.19...guest-download-v0.20.20) (2026-06-05)
+
+
+### Bug Fixes
+
+* move guest runtime files out of tmp ([#16263](https://github.com/vm0-ai/vm0/issues/16263)) ([dc87ac5](https://github.com/vm0-ai/vm0/commit/dc87ac5f4f11ada3306d4061a845de5f592d09b2))
+
+## [0.20.19](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.18...guest-download-v0.20.19) (2026-06-04)
+
+
+### Bug Fixes
+
+* materialize cached artifact mount roots ([#16083](https://github.com/vm0-ai/vm0/issues/16083)) ([d6a4ed3](https://github.com/vm0-ai/vm0/commit/d6a4ed307b5c4aeac8edb400aec1f65369d5f781))
+
 ## [0.20.18](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.17...guest-download-v0.20.18) (2026-06-03)
 
 

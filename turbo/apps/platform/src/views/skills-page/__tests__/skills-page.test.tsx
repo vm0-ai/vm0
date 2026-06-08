@@ -216,9 +216,11 @@ describe("skills page", () => {
     }
     expect(within(filesSummary).getByText("3")).toBeInTheDocument();
     expect(within(filesSummary).queryByText("67 B")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("templates")).toBeInTheDocument();
+
     const promptFileButton = queryAllByRoleFast("button", dialog).find(
       (button) => {
-        return button.textContent?.includes("templates/prompt.md");
+        return button.getAttribute("aria-label") === "Open templates/prompt.md";
       },
     );
     expect(promptFileButton).toBeDefined();
@@ -253,7 +255,7 @@ describe("skills page", () => {
 
     const dialog = screen.getByRole("dialog");
     const scriptButton = queryAllByRoleFast("button", dialog).find((button) => {
-      return button.textContent?.includes("scripts/run.sh");
+      return button.getAttribute("aria-label") === "Open scripts/run.sh";
     });
     expect(scriptButton).toBeDefined();
     click(scriptButton!);

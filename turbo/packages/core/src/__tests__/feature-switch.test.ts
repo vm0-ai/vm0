@@ -101,15 +101,11 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatHeaderNewButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
-      true,
-    );
-    expect(staffOrgStates[FeatureSwitchKey.ChatScrollToBottomButton]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
+      true,
+    );
+    expect(staffOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
       true,
     );
 
@@ -118,13 +114,10 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
+    expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatScrollToBottomButton]).toBe(
-      true,
-    );
-    expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
+    expect(otherOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
       false,
     );
   });

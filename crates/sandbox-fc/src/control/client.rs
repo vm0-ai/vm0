@@ -2,9 +2,13 @@ use std::io;
 use std::path::Path;
 use std::time::Duration;
 
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use tokio::net::UnixStream;
 
-use super::protocol::{ExecRequest, ExecResponse, read_frame, write_frame};
+use super::protocol::{
+    ExecRequest, ExecResponse, TerminateRequest, TerminateResponse, read_frame, write_frame,
+};
 
 /// Send an exec request to a control socket and return the wire response.
 ///
@@ -21,6 +25,27 @@ pub async fn send_exec(
     request: &ExecRequest,
     timeout: Duration,
 ) -> io::Result<ExecResponse> {
+    send_control_request(sock_path, request, timeout).await
+}
+
+/// Send a host-side terminate request to a control socket.
+pub async fn send_terminate(
+    sock_path: &Path,
+    request: &TerminateRequest,
+    timeout: Duration,
+) -> io::Result<TerminateResponse> {
+    send_control_request(sock_path, request, timeout).await
+}
+
+async fn send_control_request<Request, Response>(
+    sock_path: &Path,
+    request: &Request,
+    timeout: Duration,
+) -> io::Result<Response>
+where
+    Request: Serialize,
+    Response: DeserializeOwned,
+{
     let deadline = deadline_after(timeout)?;
 
     let mut stream = tokio::time::timeout_at(deadline, UnixStream::connect(sock_path))
@@ -33,7 +58,7 @@ pub async fn send_exec(
     tokio::time::timeout_at(deadline, async {
         write_frame(&mut stream, &request_json).await?;
         let frame = read_frame(&mut stream).await?;
-        let response: ExecResponse = serde_json::from_slice(&frame).map_err(|e| {
+        let response: Response = serde_json::from_slice(&frame).map_err(|e| {
             io::Error::new(io::ErrorKind::InvalidData, format!("invalid response: {e}"))
         })?;
         Ok(response)

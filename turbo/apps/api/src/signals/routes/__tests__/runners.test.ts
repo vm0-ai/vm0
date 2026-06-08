@@ -23,6 +23,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signPatJwtForTests, verifySandboxToken } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
+import { clearAllDetached } from "../../utils";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
@@ -814,9 +815,55 @@ describe("POST /api/runners/*", () => {
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, queued.runId));
     expect(remainingJobs).toHaveLength(0);
+    await clearAllDetached();
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `run:changed:${queued.runId}`,
       { status: "running" },
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "api_to_claim_request",
+          sandbox_type: "runner",
+          run_id: queued.runId,
+          duration_ms: expect.any(Number),
+          success: true,
+          runner_group: "vm0/test",
+          profile: "vm0/default",
+          auth_type: "user",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "api_to_claim",
+          sandbox_type: "runner",
+          run_id: queued.runId,
+          duration_ms: expect.any(Number),
+          success: true,
+          runner_group: "vm0/test",
+          profile: "vm0/default",
+          auth_type: "user",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "claim_request_to_running",
+          sandbox_type: "runner",
+          run_id: queued.runId,
+          duration_ms: expect.any(Number),
+          success: true,
+          runner_group: "vm0/test",
+          profile: "vm0/default",
+          auth_type: "user",
+        }),
+      ],
     );
   });
 

@@ -37,13 +37,14 @@ function makeGithubConnectedResponse(): ConnectorListResponse {
         externalUsername: "testuser",
         externalEmail: "test@example.com",
         oauthScopes: ["repo", "read:user"],
-        needsReconnect: false,
+        connectionStatus: "connected",
+        tokenExpiresAt: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
     ],
     configuredTypes: ["github"],
-    connectorProvidedEnvNames: [],
+    connectorProvidedBindings: [],
   };
 }
 
@@ -185,7 +186,8 @@ describe("onboarding connector permission dialog suppression", () => {
           externalUsername: "device-user",
           externalEmail: null,
           oauthScopes: ["read"],
-          needsReconnect: false,
+          connectionStatus: "connected",
+          tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00Z",
           updatedAt: "2026-01-01T00:00:00Z",
         },

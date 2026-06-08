@@ -1,6 +1,7 @@
 """Tests for buffered usage-event aggregation."""
 
 import json
+import threading
 import uuid
 from unittest.mock import patch
 
@@ -8,6 +9,7 @@ import pytest
 
 import usage
 import usage.buffer as usage_buffer
+from tests.usage_helpers import install_recording_usage_timer
 
 
 def _event(
@@ -39,19 +41,18 @@ def _flush_log_entries(proxy_log_path):
     ]
 
 
-class _FakeTimer:
-    def __init__(self, delay: float, callback):
-        self.delay = delay
-        self.callback = callback
-        self.daemon = False
-        self.cancelled = False
-        self.started = False
+class _InstrumentedFlushOwnerLock:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.blocking_acquire_started = threading.Event()
 
-    def start(self) -> None:
-        self.started = True
+    def acquire(self, blocking: bool = True) -> bool:
+        if blocking:
+            self.blocking_acquire_started.set()
+        return self._lock.acquire(blocking)
 
-    def cancel(self) -> None:
-        self.cancelled = True
+    def release(self) -> None:
+        self._lock.release()
 
 
 def test_flush_aggregates_same_bucket_and_dedupes_source_key(tmp_path):
@@ -86,6 +87,34 @@ def test_flush_aggregates_same_bucket_and_dedupes_source_key(tmp_path):
     ]
     uuid.UUID(payload["events"][0]["idempotencyKey"])
     assert enqueue.call_args.args[3] == proxy_log_path
+
+
+def test_model_usage_observation_buffer_uses_model_event_shape(tmp_path):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        usage.buffer_model_usage_observations(
+            "https://api.test/api/webhooks/agent/model-usage-observation",
+            "token-a",
+            "run-1",
+            [
+                _event(source_key="source-1", quantity=10),
+                _event(source_key="source-2", quantity=5),
+            ],
+            proxy_log_path,
+        )
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    payload = enqueue.call_args.args[2]
+    assert payload["events"] == [
+        {
+            "idempotencyKey": payload["events"][0]["idempotencyKey"],
+            "model": "claude-sonnet-4-6",
+            "category": "tokens.input",
+            "quantity": 15,
+        }
+    ]
+    assert enqueue.call_args.args[4] == "model_usage_observation"
 
 
 def test_flush_keeps_runs_categories_providers_and_destinations_separate(tmp_path):
@@ -603,6 +632,280 @@ def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
     assert usage.counters._buffered_usage_events == 0
 
 
+def test_shutdown_flush_waits_for_active_timer_flush_and_drains_live_usage(tmp_path):
+    timers = install_recording_usage_timer()
+    flush_owner_lock = _InstrumentedFlushOwnerLock()
+    usage_buffer._usage_event_buffer._flush_owner_lock = flush_owner_lock
+
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        proxy_log_path,
+    )
+    assert len(timers) == 1
+
+    timer_enqueue_started = threading.Event()
+    release_timer_enqueue = threading.Event()
+    shutdown_returned = threading.Event()
+    shutdown_results: list[int] = []
+    enqueued_runs: list[str] = []
+    enqueue_call_count = 0
+
+    def enqueue_webhook(url, sandbox_token, payload, path, log_type):
+        nonlocal enqueue_call_count
+        enqueue_call_count += 1
+        enqueued_runs.append(payload["runId"])
+        if payload["runId"] == "run-1":
+            timer_enqueue_started.set()
+            assert usage.flush_usage_events(trigger="runner") == 0
+            usage.buffer_usage_events(
+                url,
+                sandbox_token,
+                "run-2",
+                [_event(source_key="source-2")],
+                path,
+            )
+            assert len(timers) == 2
+            assert release_timer_enqueue.wait(timeout=1)
+        assert log_type == "usage_event"
+
+    def shutdown_flush():
+        shutdown_results.append(usage.flush_usage_events(trigger="shutdown"))
+        shutdown_returned.set()
+
+    with patch.object(usage_buffer, "_enqueue_webhook", side_effect=enqueue_webhook):
+        timer_thread = threading.Thread(target=timers[0].callback)
+        timer_thread.start()
+        assert timer_enqueue_started.wait(timeout=1)
+
+        shutdown_thread = threading.Thread(target=shutdown_flush)
+        shutdown_thread.start()
+        assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)
+        assert not shutdown_returned.is_set()
+        assert enqueue_call_count == 1
+
+        release_timer_enqueue.set()
+        timer_thread.join(timeout=1)
+        shutdown_thread.join(timeout=1)
+
+    assert not timer_thread.is_alive()
+    assert not shutdown_thread.is_alive()
+    assert shutdown_returned.is_set()
+    assert shutdown_results == [1]
+    assert enqueued_runs == ["run-1", "run-2"]
+    assert usage.counters._buffered_usage_events == 0
+    assert len(timers) == 2
+    assert timers[1].cancelled is True
+
+
+def test_shutdown_flush_retries_active_timer_failure_without_rescheduling_timer(tmp_path):
+    timers = install_recording_usage_timer()
+    flush_owner_lock = _InstrumentedFlushOwnerLock()
+    usage_buffer._usage_event_buffer._flush_owner_lock = flush_owner_lock
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        str(tmp_path / "proxy.jsonl"),
+    )
+    assert len(timers) == 1
+
+    first_enqueue_started = threading.Event()
+    release_first_enqueue = threading.Event()
+    shutdown_returned = threading.Event()
+    shutdown_results: list[int] = []
+    enqueued_run_ids: list[str] = []
+    enqueued_idempotency_keys: list[str] = []
+    timer_errors: list[str] = []
+
+    def enqueue_webhook(url, sandbox_token, payload, path, log_type):
+        del url, sandbox_token, path
+        assert log_type == "usage_event"
+        enqueued_run_ids.append(payload["runId"])
+        enqueued_idempotency_keys.append(payload["events"][0]["idempotencyKey"])
+        if len(enqueued_run_ids) == 1:
+            first_enqueue_started.set()
+            assert release_first_enqueue.wait(timeout=1)
+            raise OSError("timer failed")
+
+    def timer_flush():
+        try:
+            timers[0].callback()
+        except OSError as exc:
+            timer_errors.append(str(exc))
+
+    def shutdown_flush():
+        shutdown_results.append(usage.flush_usage_events(trigger="shutdown"))
+        shutdown_returned.set()
+
+    with patch.object(usage_buffer, "_enqueue_webhook", side_effect=enqueue_webhook):
+        timer_thread = threading.Thread(target=timer_flush)
+        timer_thread.start()
+        assert first_enqueue_started.wait(timeout=1)
+
+        shutdown_thread = threading.Thread(target=shutdown_flush)
+        shutdown_thread.start()
+        assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)
+        assert not shutdown_returned.is_set()
+
+        release_first_enqueue.set()
+        timer_thread.join(timeout=1)
+        shutdown_thread.join(timeout=1)
+
+    assert not timer_thread.is_alive()
+    assert not shutdown_thread.is_alive()
+    assert timer_errors == ["timer failed"]
+    assert shutdown_results == [1]
+    assert enqueued_run_ids == ["run-1", "run-1"]
+    assert enqueued_idempotency_keys[0] == enqueued_idempotency_keys[1]
+    assert usage.counters._buffered_usage_events == 0
+    assert len(timers) == 2
+    assert timers[0].cancelled is True
+    assert timers[1].cancelled is True
+
+
+def test_shutdown_flush_drains_usage_deferred_by_threshold_flush_while_waiting(tmp_path):
+    timers = install_recording_usage_timer()
+    flush_owner_lock = _InstrumentedFlushOwnerLock()
+    usage_buffer._usage_event_buffer._flush_owner_lock = flush_owner_lock
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        str(tmp_path / "proxy.jsonl"),
+    )
+    assert len(timers) == 1
+
+    timer_enqueue_started = threading.Event()
+    release_timer_enqueue = threading.Event()
+    shutdown_returned = threading.Event()
+    shutdown_results: list[int] = []
+    enqueued_run_ids: list[str] = []
+
+    def enqueue_webhook(url, sandbox_token, payload, path, log_type):
+        del url, sandbox_token
+        assert log_type == "usage_event"
+        enqueued_run_ids.append(payload["runId"])
+        if payload["runId"] == "run-1":
+            timer_enqueue_started.set()
+            assert release_timer_enqueue.wait(timeout=1)
+        assert path.endswith("proxy.jsonl")
+
+    def shutdown_flush():
+        shutdown_results.append(usage.flush_usage_events(trigger="shutdown"))
+        shutdown_returned.set()
+
+    with patch.object(usage_buffer, "_enqueue_webhook", side_effect=enqueue_webhook):
+        timer_thread = threading.Thread(target=timers[0].callback)
+        timer_thread.start()
+        assert timer_enqueue_started.wait(timeout=1)
+
+        shutdown_thread = threading.Thread(target=shutdown_flush)
+        shutdown_thread.start()
+        assert flush_owner_lock.blocking_acquire_started.wait(timeout=1)
+
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-2",
+            [
+                _event(source_key=f"source-deferred-{index}", category=f"category-{index}")
+                for index in range(usage_buffer.MAX_AGGREGATE_BUCKETS)
+            ],
+            str(tmp_path / "proxy.jsonl"),
+        )
+        assert not shutdown_returned.is_set()
+        assert len(timers) == 2
+
+        release_timer_enqueue.set()
+        timer_thread.join(timeout=1)
+        shutdown_thread.join(timeout=1)
+
+    assert not timer_thread.is_alive()
+    assert not shutdown_thread.is_alive()
+    assert shutdown_results == [1]
+    assert enqueued_run_ids == ["run-1", "run-2"]
+    assert usage.counters._buffered_usage_events == 0
+    assert len(timers) == 2
+    assert timers[0].cancelled is True
+    assert timers[1].cancelled is True
+
+
+def test_shutdown_flush_drains_live_usage_buffered_during_own_enqueue(tmp_path):
+    timers = install_recording_usage_timer()
+
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        proxy_log_path,
+    )
+    assert len(timers) == 1
+
+    enqueued_runs: list[str] = []
+
+    def enqueue_webhook(url, sandbox_token, payload, path, log_type):
+        enqueued_runs.append(payload["runId"])
+        if payload["runId"] == "run-1":
+            usage.buffer_usage_events(
+                url,
+                sandbox_token,
+                "run-2",
+                [_event(source_key="source-2")],
+                path,
+            )
+            assert len(timers) == 2
+        assert log_type == "usage_event"
+
+    with patch.object(usage_buffer, "_enqueue_webhook", side_effect=enqueue_webhook):
+        assert usage.flush_usage_events(trigger="shutdown") == 2
+
+    assert enqueued_runs == ["run-1", "run-2"]
+    assert usage.counters._buffered_usage_events == 0
+    assert len(timers) == 2
+    assert timers[0].cancelled is True
+    assert timers[1].cancelled is True
+
+
+def test_shutdown_flush_failure_preserves_retry_without_rescheduling_timer(tmp_path):
+    timers = install_recording_usage_timer()
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        str(tmp_path / "proxy.jsonl"),
+    )
+    assert len(timers) == 1
+
+    with (
+        patch.object(usage_buffer, "_enqueue_webhook", side_effect=OSError("shutdown failed")),
+        pytest.raises(OSError, match="shutdown failed"),
+    ):
+        usage.flush_usage_events(trigger="shutdown")
+
+    assert usage.counters._buffered_usage_events == 1
+    assert len(timers) == 1
+    assert timers[0].cancelled is True
+
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.call_args.args[2]["runId"] == "run-1"
+    assert usage.counters._buffered_usage_events == 0
+
+
 def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
         assert (
@@ -647,14 +950,7 @@ def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
 
 
 def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
-    timers = []
-
-    def timer_factory(delay: float, callback):
-        timer = _FakeTimer(delay, callback)
-        timers.append(timer)
-        return timer
-
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    timers = install_recording_usage_timer()
 
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
         usage.buffer_usage_events(
@@ -678,14 +974,7 @@ def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
 
 
 def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
-    timers = []
-
-    def timer_factory(delay: float, callback):
-        timer = _FakeTimer(delay, callback)
-        timers.append(timer)
-        return timer
-
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    timers = install_recording_usage_timer()
 
     usage.buffer_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -712,14 +1001,7 @@ def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
 
 
 def test_threshold_flush_cancels_scheduled_timer_and_allows_reschedule(tmp_path):
-    timers = []
-
-    def timer_factory(delay: float, callback):
-        timer = _FakeTimer(delay, callback)
-        timers.append(timer)
-        return timer
-
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    timers = install_recording_usage_timer()
 
     with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
         for index in range(usage_buffer.MAX_BUFFERED_WEBHOOK_BATCHES - 1):

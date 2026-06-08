@@ -159,7 +159,7 @@ describe("connectors page - connector status indicators", () => {
     mockConnectors([
       {
         type: "github",
-        needsReconnect: true,
+        connectionStatus: "reconnect-required",
         oauthScopes: ["repo", "project", "workflow"],
       },
     ]);
@@ -199,7 +199,9 @@ describe("connectors page - connector status indicators", () => {
   });
 
   it("connector shows reconnect needed state (CONN-D-004)", async () => {
-    mockConnectors([{ type: "github", needsReconnect: true }]);
+    mockConnectors([
+      { type: "github", connectionStatus: "reconnect-required" },
+    ]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -211,9 +213,7 @@ describe("connectors page - connector status indicators", () => {
 
   it("connector shows scope mismatch state (CONN-D-005)", async () => {
     // GitHub requires ["repo", "project", "workflow"] scopes; empty array triggers mismatch
-    mockConnectors([
-      { type: "github", oauthScopes: [], needsReconnect: false },
-    ]);
+    mockConnectors([{ type: "github", oauthScopes: [] }]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -223,6 +223,41 @@ describe("connectors page - connector status indicators", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Review")).toBeInTheDocument();
+  });
+
+  it("connector shows future non-refreshable expiry in days", async () => {
+    mockConnectors([
+      {
+        type: "gitlab",
+        authMethod: "api-token",
+        tokenExpiresAt: new Date(
+          Date.now() + 36 * 60 * 60 * 1000,
+        ).toISOString(),
+      },
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Expires in 2 days")).toBeInTheDocument();
+    });
+  });
+
+  it("does not show future refreshable expiry as user-facing status", async () => {
+    mockConnectors([
+      {
+        type: "lark",
+        authMethod: "api-token",
+        tokenExpiresAt: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+      },
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Connected")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Expires in 3 hours")).not.toBeInTheDocument();
   });
 
   it("device auth connector opens connect dialog instead of OAuth popup", async () => {

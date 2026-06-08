@@ -54,6 +54,7 @@ import { pikaFirewall } from "./pika.generated";
 import { dopplerFirewall } from "./doppler.generated";
 import { infisicalFirewall } from "./infisical.generated";
 import { asanaFirewall } from "./asana.generated";
+import { ashbyFirewall } from "./ashby.generated";
 import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
 import { atlascloudFirewall } from "./atlascloud.generated";
@@ -93,6 +94,7 @@ import { coingeckoFirewall } from "./coingecko.generated";
 import { coresignalFirewall } from "./coresignal.generated";
 import { cronlyticFirewall } from "./cronlytic.generated";
 import { crustdataFirewall } from "./crustdata.generated";
+import { cursorFirewall } from "./cursor.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
 import { doubaoFirewall } from "./doubao.generated";
@@ -316,6 +318,7 @@ const CONNECTOR_FIREWALLS = {
   pika: pikaFirewall,
   apify: apifyFirewall,
   asana: asanaFirewall,
+  ashby: ashbyFirewall,
   attio: attioFirewall,
   atlassian: atlassianFirewall,
   atlascloud: atlascloudFirewall,
@@ -350,6 +353,7 @@ const CONNECTOR_FIREWALLS = {
   coresignal: coresignalFirewall,
   cronlytic: cronlyticFirewall,
   crustdata: crustdataFirewall,
+  cursor: cursorFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,
   defillama: defillamaFirewall,
@@ -716,6 +720,8 @@ export type NonFirewallConnectorType =
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
   // Other
+  | "daytona"
+  | "modal"
   | "test-oauth-device"; // internal provider capability test connector
 
 /**

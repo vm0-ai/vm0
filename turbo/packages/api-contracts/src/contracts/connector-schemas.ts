@@ -5,6 +5,15 @@ import { connectorTypeSchema } from "@vm0/connectors/connectors";
 /**
  * Connector response schema
  */
+export const connectorResponseConnectionStatusSchema = z.enum([
+  "connected",
+  "reconnect-required",
+]);
+
+export type ConnectorResponseConnectionStatus = z.infer<
+  typeof connectorResponseConnectionStatusSchema
+>;
+
 export const connectorResponseSchema = z.object({
   id: z.uuid(),
   type: connectorTypeSchema,
@@ -13,12 +22,66 @@ export const connectorResponseSchema = z.object({
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),
   oauthScopes: z.array(z.string()).nullable(),
-  needsReconnect: z.boolean(),
+  connectionStatus: connectorResponseConnectionStatusSchema,
+  tokenExpiresAt: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
 export type ConnectorResponse = z.infer<typeof connectorResponseSchema>;
+
+export const connectorProvidedBindingNamespaceSchema = z.enum([
+  "secrets",
+  "vars",
+]);
+
+export const connectorProvidedBindingSourceSchema = z.discriminatedUnion(
+  "kind",
+  [
+    z.object({
+      kind: z.literal("connector-secret"),
+      name: z.string(),
+    }),
+    z.object({
+      kind: z.literal("connector-variable"),
+      name: z.string(),
+    }),
+  ],
+);
+
+export const connectorProvidedBindingSchema = z.object({
+  connectorType: connectorTypeSchema,
+  authMethod: z.string(),
+  namespace: connectorProvidedBindingNamespaceSchema,
+  name: z.string(),
+  optional: z.boolean(),
+  source: connectorProvidedBindingSourceSchema,
+});
+
+export type ConnectorProvidedBinding = z.infer<
+  typeof connectorProvidedBindingSchema
+>;
+export type ConnectorProvidedBindingNamespace = z.infer<
+  typeof connectorProvidedBindingNamespaceSchema
+>;
+
+/**
+ * Names that a stored connector guarantees at runtime. Optional bindings are
+ * omitted because they describe possible connector supply, not guaranteed
+ * connector supply.
+ */
+export function guaranteedConnectorProvidedBindingNames(args: {
+  readonly bindings: readonly ConnectorProvidedBinding[];
+  readonly namespace: ConnectorProvidedBindingNamespace;
+}): Set<string> {
+  const names = new Set<string>();
+  for (const binding of args.bindings) {
+    if (binding.namespace === args.namespace && !binding.optional) {
+      names.add(binding.name);
+    }
+  }
+  return names;
+}
 
 /**
  * List connectors response
@@ -26,7 +89,9 @@ export type ConnectorResponse = z.infer<typeof connectorResponseSchema>;
 export const connectorListResponseSchema = z.object({
   connectors: z.array(connectorResponseSchema),
   configuredTypes: z.array(connectorTypeSchema),
-  connectorProvidedEnvNames: z.array(z.string()),
+  connectorProvidedBindings: z
+    .array(connectorProvidedBindingSchema)
+    .default([]),
 });
 
 export type ConnectorListResponse = z.infer<typeof connectorListResponseSchema>;

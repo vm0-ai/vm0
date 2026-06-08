@@ -1,6 +1,6 @@
 #!/bin/bash
 # Generate a test CLI token via API and save to config file
-# Called by deploy-web job after Vercel deployment
+# Called by deploy-api job after Vercel deployment
 #
 # This creates a token that E2E tests can use immediately,
 # without waiting for the device flow authentication.

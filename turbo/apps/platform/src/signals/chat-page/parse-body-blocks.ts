@@ -821,10 +821,6 @@ export async function fetchPreviewText(
   return readLimitedText(response);
 }
 
-export const EMPTY_TEXT$ = computed(() => {
-  return Promise.resolve("");
-});
-
 function needsTextPreview(kind: BodyPreviewKind): boolean {
   return kind === "text" || kind === "json";
 }

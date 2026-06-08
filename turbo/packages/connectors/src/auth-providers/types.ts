@@ -1,11 +1,12 @@
 import type {
   AuthCodeGrantConnectorType,
   ConnectorAuthCodeGrantAuthMethodId,
+  ConnectorAuthClientConfigForMethod,
   ConnectorAuthMethodIds,
   ConnectorAuthMethodIdsByAccessKind,
   ConnectorAuthMethodIdsByRevokeKind,
   ConnectorDeviceAuthGrantAuthMethodId,
-  ConnectorAuthProviderType,
+  AuthGrantConnectorType,
   ConnectorRefreshInputValues,
   ConnectorRefreshOutputValues,
   ConnectorType,
@@ -26,7 +27,7 @@ import type {
   ConnectorAuthProviderRevokeArgs,
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
-} from "./oauth/types";
+} from "./provider-flow-types";
 import type { ConnectorAuthProviderGrantResultForMethod } from "./grant-result";
 import type { ProviderEnv } from "./provider-env";
 
@@ -70,11 +71,22 @@ export type ConnectorAuthProviderRefreshArgs<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token"> =
     ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
-> = {
-  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
-  readonly inputs: ConnectorRefreshInputValues<T, Method>;
-  readonly signal: AbortSignal;
-};
+> =
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">
+    ? {
+        readonly inputs: ConnectorRefreshInputValues<T, Method>;
+        readonly signal: AbortSignal;
+      } & ConnectorRefreshAuthClientArgs<T, Method>
+    : never;
+
+type ConnectorRefreshAuthClientArgs<
+  T extends RefreshTokenAccessConnectorType,
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
+> = [ConnectorAuthClientConfigForMethod<T, Method>] extends [never]
+  ? unknown
+  : {
+      readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+    };
 
 export interface ConnectorAuthProviderRefreshResultBase {
   readonly outputs: Readonly<Record<string, string | undefined>>;
@@ -132,7 +144,7 @@ export interface TokenRevokeProvider<
 }
 
 export type ConnectorAuthProviderRevoke<
-  T extends ConnectorAuthProviderType,
+  T extends AuthGrantConnectorType,
   Method extends ConnectorAuthMethodIds<T> = ConnectorAuthMethodIds<T>,
 > =
   Method extends ConnectorAuthMethodIdsByRevokeKind<

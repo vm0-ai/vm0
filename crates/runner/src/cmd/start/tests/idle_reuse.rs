@@ -1,16 +1,16 @@
 use super::super::*;
 use super::support::{
-    assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
-    mock_run_config_with_overrides, publish_idle_status, push_job, seed_idle_pool,
-    seed_idle_pool_with_overrides, shutdown, status_idle_sessions, test_profiles, two_profiles,
-    wait_budget_count, wait_cancel_token, wait_discover_entered, wait_idle_pool_len,
-    wait_idle_pool_session_states, wait_idle_pool_sessions, wait_parking_state,
+    assert_run_exits_within, context_with_session, context_with_workspace_image_cache_enabled,
+    minimal_context, mock_run_config, mock_run_config_with_overrides, publish_idle_status,
+    push_job, seed_idle_pool, seed_idle_pool_with_overrides, shutdown, status_idle_sessions,
+    test_profiles, two_profiles, wait_budget_count, wait_cancel_token, wait_discover_entered,
+    wait_idle_pool_len, wait_idle_pool_session_states, wait_idle_pool_sessions, wait_parking_state,
     wait_sandbox_lifecycle_counts, wait_status_idle_empty_with_active_run,
     wait_status_idle_sessions_and_active_runs,
 };
 
 use crate::idle_pool::ParkingState;
-use crate::types::{SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG, SandboxReuseResult};
+use crate::types::SandboxReuseResult;
 
 // -----------------------------------------------------------------------
 // Test 9: idle pool park/take is gated on session ID availability
@@ -255,11 +255,7 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
 
     let run_id = RunId::new_v4();
     let session_id = "sess-cache-heartbeat";
-    let mut ctx = context_with_session(run_id, session_id);
-    ctx.feature_flags = Some(std::collections::HashMap::from([(
-        SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.to_string(),
-        true,
-    )]));
+    let ctx = context_with_workspace_image_cache_enabled(run_id, session_id);
     push_job(&env, run_id, "vm0/default", Some(ctx));
 
     wait_gate
@@ -1168,7 +1164,7 @@ async fn sequential_same_session_reuse_cycle() {
 async fn park_evicts_via_guest_session_id() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
-        pattern: "cat /tmp/vm0-session-".into(),
+        pattern: "/.vm0/guest-agent/runs/".into(),
         exit_code: 0,
         stdout: b"sess-evict".to_vec(),
         stderr: Vec::new(),

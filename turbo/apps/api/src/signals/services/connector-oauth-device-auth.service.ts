@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 
 import type {
@@ -15,8 +16,9 @@ import {
   connectorAuthMethodRefHasGrantKind,
   getConnectorAuthMethod,
   getConnectorAuthMethodIdsForGrantKind,
-  resolveConnectorAuthMethodClientRefByGrantKind,
-  type ConnectorAuthMethodClientRefByGrantKind,
+  parseConnectorDeviceAuthStartOptions,
+  resolveConnectorResolvedAuthMethodClientByGrantKind,
+  type ConnectorResolvedAuthMethodClientByGrantKind,
   type ConnectorAuthMethodRef,
   type ConnectorAuthMethodRefByGrantKind,
 } from "@vm0/connectors/connector-utils";
@@ -27,7 +29,7 @@ import {
 import type {
   OAuthDeviceAuthCompleteResultBase,
   OAuthDeviceAuthPollResultBase,
-} from "@vm0/connectors/auth-providers/oauth/types";
+} from "@vm0/connectors/auth-providers/provider-flow-types";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
@@ -77,18 +79,35 @@ type PollSuccess = {
   readonly body: ConnectorOauthDeviceAuthSessionPollResponse;
 };
 
+const DEVICE_AUTH_POLL_STATE_MAX_BYTES = 4096;
+
 const encryptedProviderStateSchema = z.object({
   connectorType: z.string(),
   deviceCode: z.string(),
+  pollState: z.string().optional(),
 });
 
 type EncryptedProviderState = z.infer<typeof encryptedProviderStateSchema>;
 
-type DeviceAuthMethodRef = ConnectorAuthMethodRefByGrantKind<"device-auth">;
-type DeviceAuthMethodClientRef =
-  ConnectorAuthMethodClientRefByGrantKind<"device-auth">;
+function validatedDeviceAuthPollState(
+  pollState: string | undefined,
+): string | undefined {
+  if (pollState === undefined) {
+    return undefined;
+  }
+  if (Buffer.byteLength(pollState, "utf8") > DEVICE_AUTH_POLL_STATE_MAX_BYTES) {
+    throw new Error(
+      `Connector OAuth device authorization provider poll state exceeds ${DEVICE_AUTH_POLL_STATE_MAX_BYTES} bytes`,
+    );
+  }
+  return pollState;
+}
 
-type PollClaimedSessionArgs = DeviceAuthMethodClientRef & {
+type DeviceAuthMethodRef = ConnectorAuthMethodRefByGrantKind<"device-auth">;
+type DeviceAuthResolvedMethodClient =
+  ConnectorResolvedAuthMethodClientByGrantKind<"device-auth">;
+
+type PollClaimedSessionArgs = DeviceAuthResolvedMethodClient & {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -246,15 +265,15 @@ function resolveStoredDeviceAuthMethod(
 
 function resolveRequiredAuthClient(
   method: DeviceAuthMethodRef,
-): DeviceAuthMethodClientRef | ReturnType<typeof internalServerError> {
-  const clientRef = resolveConnectorAuthMethodClientRefByGrantKind(
+): DeviceAuthResolvedMethodClient | ReturnType<typeof internalServerError> {
+  const resolvedClient = resolveConnectorResolvedAuthMethodClientByGrantKind(
     method,
     optionalEnv,
   );
-  if (!clientRef) {
+  if (!resolvedClient) {
     return internalServerError(`${method.type} auth client not configured`);
   }
-  return clientRef;
+  return resolvedClient;
 }
 
 async function lockDeviceAuthSessionOwner(
@@ -644,6 +663,9 @@ async function runClaimedSession(
   const pollResult = await pollConnectorDeviceAuthorization({
     ...args,
     deviceCode: providerState.deviceCode,
+    ...(providerState.pollState === undefined
+      ? {}
+      : { pollState: providerState.pollState }),
   });
   args.signal.throwIfAborted();
 
@@ -721,6 +743,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       readonly userId: string;
       readonly type: ConnectorType;
       readonly authMethod: ConnectorAuthMethodId;
+      readonly options?: Readonly<Record<string, string>>;
     },
     signal: AbortSignal,
   ) => {
@@ -743,12 +766,24 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       return connectorOauthDeviceAuthDisabled;
     }
 
-    const authClientRef = resolveRequiredAuthClient(resolvedMethod);
-    if ("status" in authClientRef) {
-      return authClientRef;
+    const resolvedClient = resolveRequiredAuthClient(resolvedMethod);
+    if ("status" in resolvedClient) {
+      return resolvedClient;
     }
 
-    const startResult = await startConnectorDeviceAuthorization(authClientRef);
+    const startOptionsResult = parseConnectorDeviceAuthStartOptions({
+      type: resolvedMethod.type,
+      authMethod: resolvedMethod.authMethod,
+      options: args.options,
+    });
+    if (!startOptionsResult.success) {
+      return badRequestMessage(startOptionsResult.message);
+    }
+
+    const startResult = await startConnectorDeviceAuthorization({
+      ...resolvedClient,
+      options: startOptionsResult.options,
+    });
     signal.throwIfAborted();
 
     const sessionToken = generateSessionToken();
@@ -756,10 +791,12 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       startResult.interval ?? DEFAULT_POLL_INTERVAL_SECONDS;
     const now = nowDate();
     const expiresAt = new Date(now.getTime() + startResult.expiresIn * 1000);
+    const pollState = validatedDeviceAuthPollState(startResult.pollState);
     const encryptedProviderState = await encryptPersistentSecretValue(
       JSON.stringify({
         connectorType: resolvedMethod.type,
         deviceCode: startResult.deviceCode,
+        ...(pollState === undefined ? {} : { pollState }),
       }),
       {
         orgId: args.orgId,
@@ -872,9 +909,9 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       return connectorOauthDeviceAuthDisabled;
     }
 
-    const authClientRef = resolveRequiredAuthClient(resolvedMethod);
-    if ("status" in authClientRef) {
-      return authClientRef;
+    const resolvedClient = resolveRequiredAuthClient(resolvedMethod);
+    if ("status" in resolvedClient) {
+      return resolvedClient;
     }
 
     if (session.status === "complete") {
@@ -926,7 +963,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
     }
 
     return await pollClaimedSession({
-      ...authClientRef,
+      ...resolvedClient,
       writeDb,
       orgId: args.orgId,
       userId: args.userId,

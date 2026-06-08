@@ -166,7 +166,7 @@ describe("recommended follow-ups", () => {
       }),
     );
 
-    await screen.findByText("Recommended follow-ups");
+    await screen.findByText("Keep going");
     const followupButton = queryAllByRoleFast("button").find((button) => {
       return button.textContent?.includes(
         "Turn this into a week-by-week checklist",
@@ -175,6 +175,13 @@ describe("recommended follow-ups", () => {
     if (!followupButton) {
       throw new Error("Expected recommended follow-up button");
     }
+    expect(followupButton).toHaveAttribute(
+      "title",
+      "Turn this into a week-by-week checklist",
+    );
+    expect(
+      screen.getByText("Turn this into a week-by-week checklist"),
+    ).not.toHaveClass("truncate");
     await userEvent.click(followupButton);
 
     await waitFor(() => {
@@ -224,7 +231,7 @@ describe("recommended follow-ups", () => {
 
     await screen.findByText("Assistant complete");
     await waitFor(() => {
-      expect(screen.queryByText("Recommended follow-ups")).toBeNull();
+      expect(screen.queryByText("Keep going")).toBeNull();
     });
   });
 });

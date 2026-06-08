@@ -79,8 +79,8 @@ enum Command {
     Kill(cmd::KillArgs),
     /// Clean up unused image directories
     Gc(cmd::GcArgs),
-    /// Clean up reusable session workspace image cache entries
-    GcWorkspaceImageCache(cmd::GcWorkspaceImageCacheArgs),
+    /// Inspect and clean up session workspace image cache entries
+    WorkspaceImageCache(cmd::WorkspaceImageCacheArgs),
     /// Runtime health diagnostics for all runners on the host
     Doctor(cmd::DoctorArgs),
     /// Local file-queue provider commands
@@ -266,7 +266,7 @@ async fn main() -> ExitCode {
             .map(|()| ExitCode::SUCCESS),
         Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
         Command::Gc(args) => cmd::run_gc(args).await.map(|()| ExitCode::SUCCESS),
-        Command::GcWorkspaceImageCache(args) => cmd::run_gc_workspace_image_cache(args)
+        Command::WorkspaceImageCache(args) => cmd::run_workspace_image_cache(args)
             .await
             .map(|()| ExitCode::SUCCESS),
         Command::Doctor(args) => cmd::run_doctor(args).await,
@@ -322,6 +322,31 @@ mod tests {
         assert_eq!(
             runner_name_from_config(Path::new("/nonexistent.yaml")),
             "default"
+        );
+    }
+
+    #[test]
+    fn workspace_image_cache_command_is_registered() {
+        assert!(
+            Cli::try_parse_from(["runner", "workspace-image-cache", "info"]).is_ok(),
+            "workspace-image-cache info should be registered"
+        );
+        assert!(
+            Cli::try_parse_from(["runner", "workspace-image-cache", "list", "--limit", "1"])
+                .is_ok(),
+            "workspace-image-cache list should be registered"
+        );
+        assert!(
+            Cli::try_parse_from(["runner", "workspace-image-cache", "gc", "--dry-run"]).is_ok(),
+            "workspace-image-cache gc should be registered"
+        );
+    }
+
+    #[test]
+    fn old_gc_workspace_image_cache_command_is_removed() {
+        assert!(
+            Cli::try_parse_from(["runner", "gc-workspace-image-cache", "--dry-run"]).is_err(),
+            "old top-level gc-workspace-image-cache command should not be accepted"
         );
     }
 }

@@ -17,6 +17,48 @@
 //! stream exclusively. All public methods take `&self` and can be called
 //! concurrently. Responses are dispatched to callers via oneshot channels
 //! keyed by sequence number.
+//!
+//! ## Exec Operation Lifecycle
+//!
+//! [`VsockHost`] supports one-shot exec operations with
+//! [`VsockHost::start_exec_operation`] and supervised exec operations with
+//! [`VsockHost::start_supervised_exec`]. One-shot exec is request-scoped: the
+//! guest sends a terminal result for the original request sequence.
+//! Supervised exec first acknowledges a started guest process and then keeps a
+//! lifecycle registration until a terminal result arrives, the connection
+//! closes, or the host explicitly abandons the registration.
+//!
+//! [`ExecOperationHandle`] owns a one-shot terminal result registration.
+//! Dropping it removes only host-side registration and never sends
+//! `MSG_EXEC_CANCEL`; use [`ExecOperationHandle::wait`] to observe the
+//! terminal result or [`ExecOperationHandle::cancel_and_wait`] to send
+//! cancellation and wait for the cancelled terminal result. A plain wait
+//! timeout does not cancel the guest. If terminal proof is abandoned after a
+//! request may have reached the guest, the connection can remain open while
+//! later normal operations become unavailable on that connection. A timeout
+//! after an explicit cancel was sent poisons the connection because the guest
+//! process state is no longer known.
+//!
+//! [`SupervisedExecHandle`] owns the terminal result for a supervised process.
+//! Dropping it does not cancel the guest and does not remove the lifecycle
+//! registration; the host keeps tracking the operation until terminal result
+//! dispatch, connection close, or an explicit wait timeout. Use
+//! [`SupervisedExecHandle::cancel_and_wait`] to send cancellation and consume
+//! the terminal result. [`SupervisedExecCancelHandle::cancel`] sends only the
+//! cancel frame and leaves terminal result ownership with the paired
+//! [`SupervisedExecHandle`].
+//!
+//! Streaming exec operations expose a bounded receiver through
+//! `take_stream_receiver`. Guest-side stream or capture truncation is reported
+//! on individual output/captured-output values, while host-side bounded queue
+//! overflow is reported on [`ExecOperationResult::stream_overflowed`].
+//!
+//! Supervised operations can opt into exec control with
+//! [`SupervisedExecControl::Enabled`]. [`ExecControlHandle::control`] requires
+//! a delivered acknowledgement, while
+//! [`ExecControlHandle::control_with_write_observer`] exposes the raw
+//! [`ExecControlOutcome`] so callers can distinguish delivered requests from
+//! guest statuses and guest error responses.
 
 mod exec_operation;
 mod file;
@@ -43,9 +85,9 @@ use operation_tracker::{
     NormalOperationTransitionError, NormalOperationTransitionHandle,
 };
 use vsock_proto::{
-    Decoder, MSG_ERROR, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG,
-    MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
-    RawMessage,
+    BorrowedRawMessage, DecodeWithError, Decoder, MSG_ERROR, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_READY,
+    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, RawMessage,
 };
 
 pub use exec_operation::{
@@ -449,51 +491,14 @@ async fn reader_loop(
             Ok(n) => n,
         };
         // n <= READ_BUF_SIZE guaranteed by read()
-        let messages = match decoder.decode(buf.get(..n).unwrap_or_default()) {
-            Ok(msgs) => msgs,
-            Err(_) => break,
-        };
-        for msg in messages {
-            match exec_operation::dispatch_incoming_frame(&shared, &msg) {
-                Ok(true) => {
-                    continue;
-                }
-                Ok(false) => {}
-                Err(_) => {
-                    shared.poison_connection();
-                    return;
-                }
-            }
-
-            let mut normal_operation_transition_failed = false;
-            let pending_response = {
-                let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-                match &mut *guard {
-                    ConnectionState::Connected { pending, .. } => {
-                        if let Some(mut pending_response) = pending.remove(&msg.seq) {
-                            if pending_response
-                                .normal_terminal_msg_types
-                                .contains(&msg.msg_type)
-                                && let Some(normal_operation) =
-                                    pending_response.normal_operation.take()
-                                && complete_pending_normal_operation(normal_operation).is_err()
-                            {
-                                normal_operation_transition_failed = true;
-                            }
-                            Some(pending_response)
-                        } else {
-                            None
-                        }
-                    }
-                    ConnectionState::Closed => None,
-                }
-            };
-            if normal_operation_transition_failed {
+        match decoder.decode_with(buf.get(..n).unwrap_or_default(), |msg| {
+            dispatch_reader_frame(&shared, msg)
+        }) {
+            Ok(()) => {}
+            Err(DecodeWithError::Protocol(_)) => break,
+            Err(DecodeWithError::Visitor(_)) => {
                 shared.poison_connection();
                 return;
-            }
-            if let Some(pending_response) = pending_response {
-                let _ = pending_response.response_tx.send(msg);
             }
         }
     }
@@ -503,6 +508,42 @@ async fn reader_loop(
     shared.close();
 }
 
+fn dispatch_reader_frame(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+    match exec_operation::dispatch_incoming_frame(shared, msg) {
+        Ok(true) => {
+            return Ok(());
+        }
+        Ok(false) => {}
+        Err(error) => {
+            return Err(error);
+        }
+    }
+
+    let pending_response = {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Connected { pending, .. } => {
+                if let Some(mut pending_response) = pending.remove(&msg.seq) {
+                    if pending_response
+                        .normal_terminal_msg_types
+                        .contains(&msg.msg_type)
+                        && let Some(normal_operation) = pending_response.normal_operation.take()
+                    {
+                        complete_pending_normal_operation(normal_operation)?;
+                    }
+                    Some(pending_response)
+                } else {
+                    None
+                }
+            }
+            ConnectionState::Closed => None,
+        }
+    };
+    if let Some(pending_response) = pending_response {
+        let _ = pending_response.response_tx.send(msg.to_owned_message());
+    }
+    Ok(())
+}
 /// Send a request and wait for a response with matching sequence number.
 async fn request_on_shared(
     shared: &Arc<Shared>,

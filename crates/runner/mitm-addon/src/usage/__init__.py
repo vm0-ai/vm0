@@ -2,9 +2,10 @@
 
 Two paths:
 
-- Model-provider responses (SSE streams and non-streaming JSON): extract
-  model token counts and buffer them for aggregate platform webhook upload
-  through a background thread pool — see :mod:`usage.providers.model_provider`.
+- Observable model-provider responses (SSE streams and non-streaming JSON):
+  extract model token counts and buffer them for aggregate platform webhook
+  upload to billing and/or observation endpoints through a background thread pool — see
+  :mod:`usage.providers.model_provider`.
 - Billable connector responses (flagged by the web layer via
   ``billableFirewalls`` → ``flow.metadata["firewall_billable"]``): compute
   per-permission billable resource counts and buffer them for aggregate
@@ -26,6 +27,7 @@ from .anthropic_messages import (
 )
 from .buffer import (
     DEFAULT_FLUSH_INTERVAL_SECONDS,
+    buffer_model_usage_observations,
     buffer_usage_events,
     configure_usage_buffer,
     flush_usage_events,
@@ -47,10 +49,15 @@ from .openai_responses import (
     merge_openai_responses_usage_result,
 )
 from .providers.connectors import create_connector_response_parser, report_connector_usage
-from .providers.model_provider import report_model_provider_usage
+from .providers.model_provider import (
+    is_model_provider_usage_observable,
+    report_model_provider_usage,
+    report_model_provider_usage_observation,
+)
 
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
+    "buffer_model_usage_observations",
     "buffer_usage_events",
     "configure_usage_buffer",
     "create_anthropic_messages_json_usage_extractor",
@@ -66,10 +73,12 @@ __all__ = [
     "extract_openai_responses_usage_with_error_from_json",
     "flush_usage_events",
     "increment_in_flight_flows",
+    "is_model_provider_usage_observable",
     "merge_openai_responses_usage_result",
     "read_usage_flush_request_id",
     "report_connector_usage",
     "report_model_provider_usage",
+    "report_model_provider_usage_observation",
     "reset_usage_buffer_for_tests",
     "set_pending_path",
     "webhook",

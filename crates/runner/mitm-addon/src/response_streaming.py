@@ -21,7 +21,6 @@ from collections.abc import Callable
 from mitmproxy import http
 
 import body_utils
-import flow_metadata
 import flow_metadata_keys as metadata_keys
 import usage
 from logging_utils import log_proxy_entry
@@ -88,28 +87,27 @@ def _make_model_sse_parse_error_logger(
 
 
 def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParser | None:
-    # Set up usage extraction for billable response classes that need body
-    # inspection. The forensic stream_buffer remains capped; billing parsers
-    # consume chunks separately so a large response cannot grow that buffer.
+    # Set up usage extraction for response classes that need body inspection.
+    # The forensic stream_buffer remains capped; usage parsers consume chunks
+    # separately so a large response cannot grow that buffer.
     if not flow.response:
         return None
 
-    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
-    is_model_provider = firewall_name.startswith("model-provider:")
     # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
     # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
-    # and the incremental response parsers used for billing payload extraction.
+    # and the incremental response parsers used for connector billing payload
+    # extraction. Model-provider usage reporting is gated separately.
     is_billable_flow = flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False)
-    is_billable_model_provider = is_model_provider and is_billable_flow
+    is_observable_model_provider = usage.is_model_provider_usage_observable(flow)
     if (
-        is_billable_model_provider
+        is_observable_model_provider
         and flow.response.status_code == _HTTP_STATUS_SWITCHING_PROTOCOLS
         and uses_openai_responses_usage_protocol(flow)
     ):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {}
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
         return None
-    if is_billable_model_provider:
+    if is_observable_model_provider:
         if not body_utils.can_stream_decode_usage(flow.response.headers):
             return None
         content_type = flow.response.headers.get("content-type", "").lower()
@@ -181,7 +179,7 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
     # Buffer cap policy:
     # - stream_buffer is only for forensic logging / capture and is always
     #   capped at STREAM_BUFFER_LIMIT.
-    # - Billing extraction uses the incremental parsers above.
+    # - Token usage extraction uses the incremental parsers above.
     buf_limit = body_utils.STREAM_BUFFER_LIMIT
 
     def stream_and_buffer(chunk: bytes) -> bytes:

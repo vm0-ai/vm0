@@ -38,6 +38,7 @@ import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
 import { apify } from "./connectors/apify";
 import { apollo } from "./connectors/apollo";
 import { asana } from "./connectors/asana";
+import { ashby } from "./connectors/ashby";
 import { atlassian } from "./connectors/atlassian";
 import { attio } from "./connectors/attio";
 import { atlascloud } from "./connectors/atlascloud";
@@ -77,7 +78,9 @@ import { coingecko } from "./connectors/coingecko";
 import { coresignal } from "./connectors/coresignal";
 import { cronlytic } from "./connectors/cronlytic";
 import { crustdata } from "./connectors/crustdata";
+import { cursor } from "./connectors/cursor";
 import { customerIo } from "./connectors/customer-io";
+import { daytona } from "./connectors/daytona";
 import { db9 } from "./connectors/db9";
 import { deel } from "./connectors/deel";
 import { defillama } from "./connectors/defillama";
@@ -156,6 +159,7 @@ import { minio } from "./connectors/minio";
 import { miro } from "./connectors/miro";
 import { mixpanel } from "./connectors/mixpanel";
 import { monday } from "./connectors/monday";
+import { modal } from "./connectors/modal";
 import { moss } from "./connectors/moss";
 import { msg9 } from "./connectors/msg9";
 import { n8n } from "./connectors/n8n";
@@ -335,10 +339,38 @@ export interface ConnectorAuthCodeGrantConfig {
   readonly outputs: ConnectorGrantOutputBindings;
 }
 
+export interface ConnectorDeviceAuthStartSelectOptionChoiceConfig {
+  readonly value: string;
+  readonly label: string;
+}
+
+type ConnectorDeviceAuthStartSelectOptionChoicesConfig = readonly [
+  ConnectorDeviceAuthStartSelectOptionChoiceConfig,
+  ...ConnectorDeviceAuthStartSelectOptionChoiceConfig[],
+];
+
+export interface ConnectorDeviceAuthStartSelectOptionConfig {
+  readonly kind: "select";
+  readonly label: string;
+  readonly required: boolean;
+  readonly defaultValue?: string;
+  readonly options: ConnectorDeviceAuthStartSelectOptionChoicesConfig;
+}
+
+export type ConnectorDeviceAuthStartOptionConfig =
+  ConnectorDeviceAuthStartSelectOptionConfig;
+
+export type ConnectorDeviceAuthStartOptionsConfig = Readonly<
+  Record<string, ConnectorDeviceAuthStartOptionConfig>
+>;
+
+export type ConnectorDeviceAuthStartOptions = Readonly<Record<string, string>>;
+
 export interface ConnectorDeviceAuthGrantConfig {
   readonly kind: "device-auth";
   readonly scopes: string[];
   readonly outputs: ConnectorGrantOutputBindings;
+  readonly startOptions?: ConnectorDeviceAuthStartOptionsConfig;
 }
 
 export interface ConnectorManagedGrantConfig {
@@ -353,8 +385,6 @@ export type ConnectorGrantConfig =
 
 export type ConnectorAccessKind = "static" | "refresh-token" | "none";
 
-export type ConnectorEnvBindings = Record<string, string>;
-
 export const CONNECTOR_PLATFORM_SECRET_NAMES = [
   "GOOGLE_ADS_DEVELOPER_TOKEN",
 ] as const;
@@ -366,6 +396,13 @@ export type ConnectorVariableValueRef = `$vars.${string}`;
 export type ConnectorRefreshTokenInputValueRef =
   | ConnectorSecretValueRef
   | ConnectorVariableValueRef;
+export type ConnectorEnvBindingValue =
+  | ConnectorRefreshTokenInputValueRef
+  | {
+      readonly valueRef: ConnectorRefreshTokenInputValueRef;
+      readonly optional?: boolean;
+    };
+export type ConnectorEnvBindings = Record<string, ConnectorEnvBindingValue>;
 
 export type ConnectorGrantOutputBindings = Record<
   string,
@@ -475,7 +512,12 @@ export type ConnectorAuthMethodConfig =
  * These values are connector registry keys, not lifecycle categories. Behavior
  * must be derived from the selected auth method lifecycle config.
  */
-export const CONNECTOR_AUTH_METHOD_IDS = ["oauth", "api-token", "api"] as const;
+export const CONNECTOR_AUTH_METHOD_IDS = [
+  "oauth",
+  "api-token",
+  "cli",
+  "api",
+] as const;
 export const connectorAuthMethodIdSchema = z.enum(CONNECTOR_AUTH_METHOD_IDS);
 export type ConnectorAuthMethodId = z.infer<typeof connectorAuthMethodIdSchema>;
 
@@ -650,13 +692,32 @@ type ConnectorRefreshOutputValueRef<Storage> =
 type ConnectorRevokeInputValueRef<Storage> =
   `$secrets.${ConnectorStorageSecretName<Storage>}`;
 
+type RejectLegacyConnectorEnvBindingRequired<Binding> = Binding extends {
+  readonly required: unknown;
+}
+  ? never
+  : Binding;
+
+type ValidatedConnectorEnvBindingValue<Binding, Storage, Access> =
+  Binding extends { readonly valueRef: infer ValueRef }
+    ? RejectLegacyConnectorEnvBindingRequired<Binding> & {
+        readonly valueRef: ValueRef extends ConnectorRuntimeValueRef<
+          Storage,
+          Access
+        >
+          ? ValueRef
+          : ConnectorRuntimeValueRef<Storage, Access>;
+      }
+    : Binding extends ConnectorRuntimeValueRef<Storage, Access>
+      ? Binding
+      : ConnectorRuntimeValueRef<Storage, Access>;
+
 type ValidatedConnectorEnvBindings<EnvBindings, Storage, Access> = {
-  readonly [EnvName in keyof EnvBindings]: EnvBindings[EnvName] extends ConnectorRuntimeValueRef<
+  readonly [EnvName in keyof EnvBindings]: ValidatedConnectorEnvBindingValue<
+    EnvBindings[EnvName],
     Storage,
     Access
-  >
-    ? EnvBindings[EnvName]
-    : ConnectorRuntimeValueRef<Storage, Access>;
+  >;
 };
 
 type ValidatedConnectorRefreshInputs<Inputs, Storage> = {
@@ -800,8 +861,40 @@ type ValidatedConnectorGrantConfig<Grant, Storage> = Grant extends {
       }
     ? Grant & {
         readonly outputs: ValidatedConnectorGrantOutputs<Outputs, Storage>;
-      }
+      } & ValidatedConnectorDeviceAuthStartOptions<Grant>
     : Grant;
+
+type ConnectorDeviceAuthStartSelectOptionValue<Option> = Option extends {
+  readonly options: readonly (infer Choice)[];
+}
+  ? Choice extends { readonly value: infer Value }
+    ? Value
+    : never
+  : never;
+
+type ValidatedConnectorDeviceAuthStartOption<Option> = Option extends {
+  readonly kind: "select";
+  readonly defaultValue: infer DefaultValue;
+}
+  ? DefaultValue extends ConnectorDeviceAuthStartSelectOptionValue<Option>
+    ? Option
+    : never
+  : Option;
+
+type ValidatedConnectorDeviceAuthStartOptionMap<Options> = {
+  readonly [OptionName in keyof Options]: ValidatedConnectorDeviceAuthStartOption<
+    Options[OptionName]
+  >;
+};
+
+type ValidatedConnectorDeviceAuthStartOptions<Grant> = Grant extends {
+  readonly kind: "device-auth";
+  readonly startOptions: infer StartOptions;
+}
+  ? {
+      readonly startOptions: ValidatedConnectorDeviceAuthStartOptionMap<StartOptions>;
+    }
+  : object;
 
 type ValidatedConnectorRevokeConfig<Revoke, Storage> = Revoke extends {
   readonly kind: "token-revoke";
@@ -895,6 +988,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...apify,
   ...apollo,
   ...asana,
+  ...ashby,
   ...atlassian,
   ...attio,
   ...atlascloud,
@@ -934,7 +1028,9 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...coresignal,
   ...cronlytic,
   ...crustdata,
+  ...cursor,
   ...customerIo,
+  ...daytona,
   ...db9,
   ...deel,
   ...defillama,
@@ -1013,6 +1109,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...miro,
   ...mixpanel,
   ...monday,
+  ...modal,
   ...moss,
   ...msg9,
   ...n8n,
@@ -1223,7 +1320,7 @@ export type ConnectorRevokeInputValues<
   Record<Extract<keyof ConnectorRevokeInputsFor<Type, Method>, string>, string>
 >;
 
-export type ConnectorAuthMethodClientConfig<
+export type ConnectorAuthClientConfigForMethod<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,
 > = "client" extends keyof ConnectorAuthMethodsOf<Type>[Method]
@@ -1301,7 +1398,7 @@ export type ConnectorTypesByRevokeKind<Kind extends ConnectorRevokeKind> = {
   }[keyof ConnectorAuthMethodsOf<Type>];
 }[ConnectorType];
 
-export type ConnectorAuthProviderType = ConnectorTypesByGrantKind<
+export type AuthGrantConnectorType = ConnectorTypesByGrantKind<
   "auth-code" | "device-auth"
 >;
 export type AuthCodeGrantConnectorType = ConnectorTypesByGrantKind<"auth-code">;

@@ -3,7 +3,6 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
-  type ArtifactEntry,
   type SecretConnectorMetadata,
   type StorageManifest,
   type StoredExecutionContext,
@@ -20,7 +19,9 @@ import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
+  isSupportedRunModel,
   MODEL_PROVIDER_TYPES,
+  normalizeRunModelId,
   type ModelProviderEnvBindings,
   type ModelProviderCredentialScope,
   type ModelProviderType,
@@ -28,7 +29,7 @@ import {
 import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
-  getConnectorAuthMethodStorageMetadata,
+  getConnectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -132,12 +133,21 @@ import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { dispatchRunCallbacks } from "./agent-run-callback.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
+import {
+  connectorRuntimeCredentialStatus,
+  type ConnectorCredentialStatus,
+} from "./connector-credential-status.service";
 import { logger } from "../../lib/log";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
+type ArtifactMissingRootPolicy = NonNullable<
+  StorageManifest["artifacts"][number]["missingRootPolicy"]
+>;
+const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
+  "preserveParentVersion";
 
 const TIER_LIMITS = Object.freeze({
   free: 1,
@@ -184,23 +194,11 @@ interface ContextArtifact {
   readonly name: string;
   readonly version?: string;
   readonly mountPath: string;
-  readonly generatedBy?: "apiAutoMemory";
-}
-
-interface AutoMemoryContextArtifact {
-  readonly name: typeof AUTO_MEMORY_ARTIFACT_NAME;
-  readonly mountPath: string;
-  readonly generatedBy: "apiAutoMemory";
-}
-
-interface StorageContextArtifact extends ContextArtifact {
-  readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
+  readonly missingRootPolicy?: ArtifactMissingRootPolicy;
 }
 
 interface RunArtifacts {
   readonly artifacts: readonly ContextArtifact[];
-  // Index into `artifacts` for API-managed memory checkpoint policy.
-  readonly autoMemoryPolicyArtifactIndex: number | undefined;
 }
 
 interface ComposeArtifact {
@@ -612,25 +610,41 @@ function autoMemoryMountPath(framework: SupportedFramework): string {
     : CANONICAL_CLAUDE_MEMORY_MOUNT_PATH;
 }
 
-function autoMemoryArtifact(
-  framework: SupportedFramework,
-): AutoMemoryContextArtifact {
-  return {
+function autoMemoryArtifact(framework: SupportedFramework): ContextArtifact {
+  return withAutoMemoryMissingRootPolicy({
     name: AUTO_MEMORY_ARTIFACT_NAME,
     mountPath: autoMemoryMountPath(framework),
-    generatedBy: "apiAutoMemory",
-  };
+  });
 }
 
-function isAutoMemoryArtifact(
+function isCanonicalAutoMemoryArtifact(
   artifact: ContextArtifact,
   framework: SupportedFramework,
 ): boolean {
   return (
     artifact.name === AUTO_MEMORY_ARTIFACT_NAME &&
-    artifact.mountPath === autoMemoryMountPath(framework) &&
-    artifact.generatedBy === "apiAutoMemory"
+    artifact.mountPath === autoMemoryMountPath(framework)
   );
+}
+
+function withAutoMemoryMissingRootPolicy(
+  artifact: ContextArtifact,
+): ContextArtifact {
+  return {
+    ...artifact,
+    missingRootPolicy: AUTO_MEMORY_MISSING_ROOT_POLICY,
+  };
+}
+
+function withCanonicalAutoMemoryMissingRootPolicy(
+  artifacts: readonly ContextArtifact[],
+  framework: SupportedFramework,
+): readonly ContextArtifact[] {
+  return artifacts.map((artifact) => {
+    return isCanonicalAutoMemoryArtifact(artifact, framework)
+      ? withAutoMemoryMissingRootPolicy(artifact)
+      : artifact;
+  });
 }
 
 function claimsAutoMemorySlot(
@@ -650,23 +664,9 @@ function withoutSupersededAutoMemoryArtifacts(
 ): readonly ContextArtifact[] {
   return artifacts.filter((artifact, index) => {
     return (
-      index >= slotOwnerIndex || !isAutoMemoryArtifact(artifact, framework)
+      index >= slotOwnerIndex ||
+      !isCanonicalAutoMemoryArtifact(artifact, framework)
     );
-  });
-}
-
-function storageArtifactsForRun(
-  artifacts: readonly ContextArtifact[],
-  autoMemoryPolicyArtifactIndex: number | undefined,
-): readonly StorageContextArtifact[] {
-  return artifacts.map((artifact, index) => {
-    if (index === autoMemoryPolicyArtifactIndex) {
-      return {
-        ...artifact,
-        missingRootPolicy: "preserveParentVersion",
-      };
-    }
-    return artifact;
   });
 }
 
@@ -697,9 +697,6 @@ function artifactsForRun(args: {
   const composeContextArtifacts = isContinuation
     ? []
     : composeArtifacts(args.resolved.content);
-  const persistedArtifactStart = composeContextArtifacts.length;
-  const persistedArtifactEnd =
-    persistedArtifactStart + args.resolved.artifacts.length;
   const baseArtifacts = isContinuation
     ? args.resolved.artifacts
     : [...composeContextArtifacts, ...args.resolved.artifacts];
@@ -717,30 +714,25 @@ function artifactsForRun(args: {
   if (autoMemorySlotArtifactIndex === undefined) {
     return {
       artifacts: [...artifacts, autoMemoryArtifact(args.framework)],
-      autoMemoryPolicyArtifactIndex: artifacts.length,
     };
   }
 
   const slotOwner = artifacts[autoMemorySlotArtifactIndex]!;
-  if (!isAutoMemoryArtifact(slotOwner, args.framework)) {
+  if (!isCanonicalAutoMemoryArtifact(slotOwner, args.framework)) {
     return {
       artifacts: withoutSupersededAutoMemoryArtifacts(
         artifacts,
         args.framework,
         autoMemorySlotArtifactIndex,
       ),
-      autoMemoryPolicyArtifactIndex: undefined,
     };
   }
 
-  const autoMemoryPolicyArtifactIndex =
-    autoMemorySlotArtifactIndex >= persistedArtifactStart &&
-    autoMemorySlotArtifactIndex < persistedArtifactEnd
-      ? autoMemorySlotArtifactIndex
-      : undefined;
   return {
-    artifacts,
-    autoMemoryPolicyArtifactIndex,
+    artifacts: withCanonicalAutoMemoryMissingRootPolicy(
+      artifacts,
+      args.framework,
+    ),
   };
 }
 
@@ -1668,6 +1660,8 @@ function filterSecretConnectorMetadataMap(args: {
 interface StoredConnectorRuntimeRow {
   readonly connectorType: ConnectorType;
   readonly authMethod: string;
+  readonly needsReconnect: boolean;
+  readonly tokenExpiresAt: Date | null;
 }
 
 interface ConnectorEnvBindingSet {
@@ -1676,8 +1670,6 @@ interface ConnectorEnvBindingSet {
   readonly accessKind: "static" | "refresh-token" | "none";
   readonly refreshableSecretNames: ReadonlySet<string>;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
-  readonly optionalSecretNames: ReadonlySet<string>;
-  readonly optionalVariableNames: ReadonlySet<string>;
 }
 
 interface StoredConnectorRequirements {
@@ -1703,20 +1695,47 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
 }
 
 function allowedStoredConnectorRows(
-  rows: readonly { readonly type: string; readonly authMethod: string }[],
+  rows: readonly {
+    readonly type: string;
+    readonly authMethod: string;
+    readonly needsReconnect: boolean;
+    readonly tokenExpiresAt: Date | null;
+  }[],
   allowedConnectorTypes: readonly ConnectorType[] | undefined,
+  now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
   const validRows = rows.flatMap((row) => {
     const parsed = connectorTypeSchema.safeParse(row.type);
     return parsed.success
-      ? [{ connectorType: parsed.data, authMethod: row.authMethod }]
+      ? [
+          {
+            connectorType: parsed.data,
+            authMethod: row.authMethod,
+            needsReconnect: row.needsReconnect,
+            tokenExpiresAt: row.tokenExpiresAt,
+          },
+        ]
       : [];
   });
-  if (!allowedConnectorTypes) {
-    return validRows;
-  }
   return validRows.filter((row) => {
-    return allowedConnectorTypes.includes(row.connectorType);
+    return (
+      (!allowedConnectorTypes ||
+        allowedConnectorTypes.includes(row.connectorType)) &&
+      storedConnectorRuntimeCredentialStatus(row, now) === "available"
+    );
+  });
+}
+
+function storedConnectorRuntimeCredentialStatus(
+  row: StoredConnectorRuntimeRow,
+  now: Date,
+): ConnectorCredentialStatus {
+  return connectorRuntimeCredentialStatus({
+    type: row.connectorType,
+    authMethod: row.authMethod,
+    storedNeedsReconnect: row.needsReconnect,
+    tokenExpiresAt: row.tokenExpiresAt,
+    now,
   });
 }
 
@@ -1729,7 +1748,7 @@ function connectorEnvBindingSets(
       row.connectorType,
       row.authMethod,
     );
-    const metadata = getConnectorAuthMethodStorageMetadata(
+    const metadata = getConnectorAuthMethodRuntimeMetadata(
       row.connectorType,
       row.authMethod,
     );
@@ -1737,20 +1756,6 @@ function connectorEnvBindingSets(
       throw new Error(
         `Invalid auth method "${row.authMethod}" for stored connector "${row.connectorType}"`,
       );
-    }
-    const optionalSecretNames = new Set<string>();
-    const optionalVariableNames = new Set<string>();
-    if (method.grant.kind === "manual") {
-      for (const [name, field] of Object.entries(method.grant.fields)) {
-        if (field.required !== false) {
-          continue;
-        }
-        if (field.storage === "variable") {
-          optionalVariableNames.add(name);
-        } else {
-          optionalSecretNames.add(name);
-        }
-      }
     }
     return {
       connectorType: row.connectorType,
@@ -1761,8 +1766,6 @@ function connectorEnvBindingSets(
           ? new Set(accessMetadata.refreshableSecrets)
           : new Set<string>(),
       runtimeBindings: metadata.runtimeBindings,
-      optionalSecretNames,
-      optionalVariableNames,
     };
   });
 }
@@ -1879,10 +1882,8 @@ function resolveStoredConnectorState(
     accessKind,
     refreshableSecretNames,
     runtimeBindings,
-    optionalSecretNames,
-    optionalVariableNames,
   } of bindingSets) {
-    for (const { envName, valueRef, source } of runtimeBindings) {
+    for (const { envName, valueRef, optional, source } of runtimeBindings) {
       switch (source.kind) {
         case "connector-secret": {
           const secretName = source.name;
@@ -1890,7 +1891,7 @@ function resolveStoredConnectorState(
           if (secretValue !== undefined) {
             secrets[envName] = secretValue;
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
-          } else if (!optionalSecretNames.has(secretName)) {
+          } else if (!optional) {
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
           }
           break;
@@ -1901,7 +1902,7 @@ function resolveStoredConnectorState(
           if (variableValue !== undefined) {
             vars[envName] = variableValue;
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
-          } else if (!optionalVariableNames.has(variableName)) {
+          } else if (!optional) {
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
           }
           break;
@@ -1958,7 +1959,12 @@ async function loadStoredConnectorContext(
       sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
     );
     const connectorRows = await tx
-      .select({ type: connectors.type, authMethod: connectors.authMethod })
+      .select({
+        type: connectors.type,
+        authMethod: connectors.authMethod,
+        needsReconnect: connectors.needsReconnect,
+        tokenExpiresAt: connectors.tokenExpiresAt,
+      })
       .from(connectors)
       .where(
         and(
@@ -1973,6 +1979,7 @@ async function loadStoredConnectorContext(
     const allowedConnectorRows = allowedStoredConnectorRows(
       connectorRows,
       args.allowedConnectorTypes,
+      nowDate(),
     );
     if (allowedConnectorRows.length === 0) {
       return emptyConnectorRuntimeContext();
@@ -3153,19 +3160,21 @@ function buildStoredExecutionSecrets(args: {
     secretConnectorMetadataMap: args.modelProvider?.secretConnectorMetadataMap,
     secretConnectorMap: filteredModelProviderMap,
   });
+  const secretConnectorMap =
+    mergeRecords(filteredConnectorMap, filteredModelProviderMap) ?? null;
+  const secrets = mergeRecords(
+    args.connectorContext.secrets,
+    args.modelProvider?.secrets,
+    args.bodySecrets,
+    args.customConnectorContext.secrets,
+  );
   // The merged map is the runtime `secrets.NAME` namespace consumed by firewall
   // auth and environment expansion. Stored connectors and model providers enter
   // this map under env binding aliases; raw DB storage names stay behind the
   // access metadata used during refresh/lookup.
   return {
-    secrets: mergeRecords(
-      args.connectorContext.secrets,
-      args.modelProvider?.secrets,
-      args.bodySecrets,
-      args.customConnectorContext.secrets,
-    ),
-    secretConnectorMap:
-      mergeRecords(filteredConnectorMap, filteredModelProviderMap) ?? null,
+    secrets: secrets ?? (secretConnectorMap ? {} : undefined),
+    secretConnectorMap,
     secretConnectorMetadataMap: filteredModelProviderMetadataMap ?? null,
   };
 }
@@ -3194,9 +3203,11 @@ function billableFirewallsForPermissions(args: {
 function modelUsageProviderForContext(
   modelProvider: ResolvedModelProviderEnvironment | null,
 ): string | undefined {
-  return modelProvider?.type === "vm0"
-    ? (modelProvider.selectedModel ?? undefined)
-    : undefined;
+  if (!modelProvider?.selectedModel) {
+    return undefined;
+  }
+  const canonicalModel = normalizeRunModelId(modelProvider.selectedModel);
+  return isSupportedRunModel(canonicalModel) ? canonicalModel : undefined;
 }
 
 async function markRunFailed(
@@ -3251,7 +3262,6 @@ function buildRunnerJobPayload(
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
     readonly artifacts: readonly ContextArtifact[];
-    readonly autoMemoryPolicyArtifactIndex: number | undefined;
     readonly framework: SupportedFramework;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
@@ -3299,10 +3309,7 @@ function buildRunnerJobPayload(
           agentOrgId: args.resolved.orgId,
           runtimeOrgId: args.orgId,
           userId: args.userId,
-          artifacts: storageArtifactsForRun(
-            args.artifacts,
-            args.autoMemoryPolicyArtifactIndex,
-          ),
+          artifacts: args.artifacts,
           volumeVersionOverrides: body.volumeVersions,
           additionalVolumes: args.additionalVolumes,
           framework: args.framework,
@@ -3363,7 +3370,6 @@ function dispatchRun(
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
     readonly artifacts: readonly ContextArtifact[];
-    readonly autoMemoryPolicyArtifactIndex: number | undefined;
     readonly framework: SupportedFramework;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
@@ -3436,7 +3442,6 @@ function enqueueRunForConcurrency(
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
     readonly artifacts: readonly ContextArtifact[];
-    readonly autoMemoryPolicyArtifactIndex: number | undefined;
     readonly framework: SupportedFramework;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
@@ -3545,7 +3550,6 @@ interface PreparedRunContext {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly artifacts: readonly ContextArtifact[];
-  readonly autoMemoryPolicyArtifactIndex: number | undefined;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -3867,8 +3871,6 @@ function prepareRunContext(
         connectorContext,
         customConnectorContext,
         artifacts: runArtifacts.artifacts,
-        autoMemoryPolicyArtifactIndex:
-          runArtifacts.autoMemoryPolicyArtifactIndex,
         additionalVolumes,
         userTimezone,
         featureSwitchContext,
@@ -3941,8 +3943,6 @@ function completeQueuedRun(input: {
             resolved: input.context.resolved,
             body: input.context.body,
             artifacts: input.context.artifacts,
-            autoMemoryPolicyArtifactIndex:
-              input.context.autoMemoryPolicyArtifactIndex,
             framework: input.context.framework,
             modelProvider: input.context.modelProvider,
             connectorContext: input.context.connectorContext,
@@ -3988,8 +3988,6 @@ function completePendingRun(input: {
             resolved: input.context.resolved,
             body: input.context.body,
             artifacts: input.context.artifacts,
-            autoMemoryPolicyArtifactIndex:
-              input.context.autoMemoryPolicyArtifactIndex,
             framework: input.context.framework,
             modelProvider: input.context.modelProvider,
             connectorContext: input.context.connectorContext,

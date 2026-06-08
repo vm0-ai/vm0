@@ -6,6 +6,7 @@ import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { variables } from "@vm0/db/schema/variable";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { and, eq } from "drizzle-orm";
 import { mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 import {
@@ -38,24 +39,16 @@ describe("zeroConnectorList", () => {
     expect(openai).toBeUndefined();
   });
 
-  it("returns connector-provided env names only for stored connector credentials", async () => {
+  it("returns connector-provided bindings only for stored connector credentials", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
-    await writeDb.insert(connectors).values([
-      {
-        orgId,
-        userId,
-        type: "gitlab",
-        authMethod: "api-token",
-      },
-      {
-        orgId,
-        userId,
-        type: "openai",
-        authMethod: "api-token",
-      },
-    ]);
+    await writeDb.insert(connectors).values({
+      orgId,
+      userId,
+      type: "gitlab",
+      authMethod: "api-token",
+    });
     await writeDb.insert(secrets).values({
       orgId,
       userId,
@@ -66,12 +59,35 @@ describe("zeroConnectorList", () => {
 
     const list = await store.get(zeroConnectorList({ orgId, userId }));
 
-    expect(list.connectorProvidedEnvNames).toContain("GITLAB_TOKEN");
-    expect(list.connectorProvidedEnvNames).not.toContain("GITLAB_HOST");
-    expect(list.connectorProvidedEnvNames).not.toContain("OPENAI_TOKEN");
+    expect(list.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining([
+        {
+          connectorType: "gitlab",
+          authMethod: "api-token",
+          namespace: "secrets",
+          name: "GITLAB_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "GITLAB_TOKEN",
+          },
+        },
+        {
+          connectorType: "gitlab",
+          authMethod: "api-token",
+          namespace: "vars",
+          name: "GITLAB_HOST",
+          optional: true,
+          source: {
+            kind: "connector-variable",
+            name: "GITLAB_HOST",
+          },
+        },
+      ]),
+    );
   });
 
-  it("returns connector token env names only when the access secret exists", async () => {
+  it("returns connector token env names from selected auth method metadata", async () => {
     const orgId = `org_${randomUUID()}`;
     const userWithoutSecret = `user_${randomUUID()}`;
     const userWithSecret = `user_${randomUUID()}`;
@@ -105,12 +121,35 @@ describe("zeroConnectorList", () => {
       zeroConnectorList({ orgId, userId: userWithSecret }),
     );
 
-    expect(withoutSecret.connectorProvidedEnvNames).not.toContain("GH_TOKEN");
-    expect(withoutSecret.connectorProvidedEnvNames).not.toContain(
-      "GITHUB_TOKEN",
+    const githubTokenBindings = [
+      {
+        connectorType: "github",
+        authMethod: "oauth",
+        namespace: "secrets",
+        name: "GH_TOKEN",
+        optional: false,
+        source: {
+          kind: "connector-secret",
+          name: "GITHUB_ACCESS_TOKEN",
+        },
+      },
+      {
+        connectorType: "github",
+        authMethod: "oauth",
+        namespace: "secrets",
+        name: "GITHUB_TOKEN",
+        optional: false,
+        source: {
+          kind: "connector-secret",
+          name: "GITHUB_ACCESS_TOKEN",
+        },
+      },
+    ];
+    expect(withoutSecret.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining(githubTokenBindings),
     );
-    expect(withSecret.connectorProvidedEnvNames).toStrictEqual(
-      expect.arrayContaining(["GH_TOKEN", "GITHUB_TOKEN"]),
+    expect(withSecret.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining(githubTokenBindings),
     );
   });
 
@@ -143,13 +182,29 @@ describe("zeroConnectorList", () => {
 
     const list = await store.get(zeroConnectorList({ orgId, userId }));
 
-    expect(list.connectorProvidedEnvNames).toContain("GOOGLE_ADS_TOKEN");
-    expect(list.connectorProvidedEnvNames).not.toContain(
-      "GOOGLE_ADS_DEVELOPER_TOKEN",
+    expect(list.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining([
+        {
+          connectorType: "google-ads",
+          authMethod: "oauth",
+          namespace: "secrets",
+          name: "GOOGLE_ADS_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "GOOGLE_ADS_ACCESS_TOKEN",
+          },
+        },
+      ]),
+    );
+    expect(list.connectorProvidedBindings).not.toContainEqual(
+      expect.objectContaining({
+        name: "GOOGLE_ADS_DEVELOPER_TOKEN",
+      }),
     );
   });
 
-  it("does not report variable-backed connector env names as provided secrets", async () => {
+  it("reports variable-backed connector env names as structured provided bindings", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
@@ -176,8 +231,21 @@ describe("zeroConnectorList", () => {
 
     const list = await store.get(zeroConnectorList({ orgId, userId }));
 
-    expect(list.connectorProvidedEnvNames).toContain("GITLAB_TOKEN");
-    expect(list.connectorProvidedEnvNames).not.toContain("GITLAB_HOST");
+    expect(list.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining([
+        {
+          connectorType: "gitlab",
+          authMethod: "api-token",
+          namespace: "vars",
+          name: "GITLAB_HOST",
+          optional: true,
+          source: {
+            kind: "connector-variable",
+            name: "GITLAB_HOST",
+          },
+        },
+      ]),
+    );
   });
 
   it("returns configuredTypes in sorted order", async () => {
@@ -236,15 +304,107 @@ describe("zeroConnectorList", () => {
     await writeDb.insert(connectors).values({
       orgId,
       userId,
-      type: "lark",
+      type: "bentoml",
       authMethod: "api-token",
     });
 
     const connector = await store.get(
-      zeroConnectorByType({ orgId, userId, type: "lark" }),
+      zeroConnectorByType({ orgId, userId, type: "bentoml" }),
     );
 
     expect(connector).toBeNull();
+  });
+
+  it("derives reconnect state for expiring non-refreshable connectors", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const expiredAt = new Date("2000-01-01T00:00:00.000Z");
+    const futureAt = new Date("2100-01-01T00:00:00.000Z");
+
+    await writeDb.insert(connectors).values([
+      {
+        orgId,
+        userId,
+        type: "gitlab",
+        authMethod: "api-token",
+        tokenExpiresAt: futureAt,
+        needsReconnect: false,
+      },
+      {
+        orgId,
+        userId,
+        type: "stripe",
+        authMethod: "api-token",
+        tokenExpiresAt: expiredAt,
+        needsReconnect: false,
+      },
+      {
+        orgId,
+        userId,
+        type: "lark",
+        authMethod: "api-token",
+        tokenExpiresAt: expiredAt,
+        needsReconnect: false,
+      },
+    ]);
+
+    const list = await store.get(zeroConnectorList({ orgId, userId }));
+    const gitlab = list.connectors.find((connector) => {
+      return connector.type === "gitlab";
+    });
+    const stripe = list.connectors.find((connector) => {
+      return connector.type === "stripe";
+    });
+    const lark = list.connectors.find((connector) => {
+      return connector.type === "lark";
+    });
+
+    expect(gitlab).toMatchObject({
+      connectionStatus: "connected",
+      tokenExpiresAt: futureAt.toISOString(),
+    });
+    expect(stripe).toMatchObject({
+      connectionStatus: "reconnect-required",
+      tokenExpiresAt: expiredAt.toISOString(),
+    });
+    expect(lark).toMatchObject({
+      connectionStatus: "connected",
+      tokenExpiresAt: expiredAt.toISOString(),
+    });
+    expect(list.connectorProvidedBindings).not.toContainEqual(
+      expect.objectContaining({
+        connectorType: "stripe",
+        namespace: "secrets",
+        name: "STRIPE_TOKEN",
+      }),
+    );
+    expect(list.connectorProvidedBindings).toContainEqual(
+      expect.objectContaining({
+        connectorType: "lark",
+        namespace: "secrets",
+        name: "LARK_TOKEN",
+      }),
+    );
+
+    const stripeByType = await store.get(
+      zeroConnectorByType({ orgId, userId, type: "stripe" }),
+    );
+    expect(stripeByType).toMatchObject({
+      connectionStatus: "reconnect-required",
+      tokenExpiresAt: expiredAt.toISOString(),
+    });
+
+    const [storedStripe] = await writeDb
+      .select({ needsReconnect: connectors.needsReconnect })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, orgId),
+          eq(connectors.userId, userId),
+          eq(connectors.type, "stripe"),
+        ),
+      );
+    expect(storedStripe?.needsReconnect).toBeFalsy();
   });
 });
 
@@ -308,9 +468,17 @@ describe("zeroConnectorSearch", () => {
     expect(zapier?.authMethods).toStrictEqual(["api-token"]);
   });
 
-  it("returns Stripe API-token search auth without CLI auth", async () => {
+  it("returns Stripe API-token and CLI search auth without the Stripe switch", async () => {
     const authMethods = await stripeSearchAuthMethods({});
 
-    expect(authMethods).toStrictEqual(["api-token"]);
+    expect(authMethods).toStrictEqual(["cli", "api-token"]);
+  });
+
+  it("returns Stripe OAuth search auth when the Stripe switch is enabled", async () => {
+    const authMethods = await stripeSearchAuthMethods({
+      [FeatureSwitchKey.StripeConnector]: true,
+    });
+
+    expect(authMethods).toStrictEqual(["oauth", "cli", "api-token"]);
   });
 });

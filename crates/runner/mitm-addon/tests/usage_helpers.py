@@ -6,10 +6,40 @@ import contextlib
 import json
 import threading
 from collections import deque
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+
+import usage
+
+
+class RecordingTimer:
+    def __init__(self, delay: float, callback: Callable[[], None]) -> None:
+        self.delay = delay
+        self.callback = callback
+        self.daemon = False
+        self.cancelled = False
+        self.started = False
+
+    def start(self) -> None:
+        self.started = True
+
+    def cancel(self) -> None:
+        self.cancelled = True
+
+
+def install_recording_usage_timer() -> list[RecordingTimer]:
+    """Reset the usage buffer with a timer factory that records scheduled timers."""
+    timers: list[RecordingTimer] = []
+
+    def timer_factory(delay: float, callback: Callable[[], None]) -> RecordingTimer:
+        timer = RecordingTimer(delay, callback)
+        timers.append(timer)
+        return timer
+
+    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    return timers
 
 
 @dataclass(frozen=True)
@@ -82,7 +112,19 @@ class UsageWebhookServer:
     def usage_events(self) -> list[dict[str, Any]]:
         return [
             event
-            for body in self.json_bodies()
+            for request in self.requests
+            if request.path == "/api/webhooks/agent/usage-event"
+            for body in [request.json_body()]
+            for event in body.get("events", [])
+            if isinstance(event, dict)
+        ]
+
+    def model_usage_observation_events(self) -> list[dict[str, Any]]:
+        return [
+            event
+            for request in self.requests
+            if request.path == "/api/webhooks/agent/model-usage-observation"
+            for body in [request.json_body()]
             for event in body.get("events", [])
             if isinstance(event, dict)
         ]

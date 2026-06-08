@@ -4,13 +4,38 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const MEMORY_ACTIVITY_DEFAULT_LIMIT = 20;
+export const MEMORY_ACTIVITY_MAX_LIMIT = 50;
+
+const memoryActivityDiffLineSchema = z.object({
+  op: z.enum(["context", "add", "remove"]),
+  beforeLine: z.number().int().positive().nullable(),
+  afterLine: z.number().int().positive().nullable(),
+  text: z.string(),
+});
+
+const memoryActivityDiffHunkSchema = z.object({
+  beforeStartLine: z.number().int().positive().nullable(),
+  afterStartLine: z.number().int().positive().nullable(),
+  lines: z.array(memoryActivityDiffLineSchema),
+});
+
+const memoryActivityDiffSchema = z.object({
+  format: z.literal("line"),
+  beforeExists: z.boolean(),
+  afterExists: z.boolean(),
+  truncated: z.boolean(),
+  stats: z.object({
+    added: z.number().int().nonnegative(),
+    removed: z.number().int().nonnegative(),
+  }),
+  hunks: z.array(memoryActivityDiffHunkSchema),
+  omittedReason: z.enum(["too_large", "binary", "unsupported"]).optional(),
+});
+
 const memoryActivityItemSchema = z.object({
-  kind: z.enum(["learned", "updated", "forgotten"]),
-  title: z.string().nullable(),
-  description: z.string().nullable(),
   filePath: z.string(),
-  beforeSnippet: z.string().nullable(),
-  afterSnippet: z.string().nullable(),
+  diff: memoryActivityDiffSchema,
 });
 
 const memoryActivityEntrySchema = z.object({
@@ -27,11 +52,13 @@ const memoryActivityEntrySchema = z.object({
 
 /**
  * Precomputed daily Memory Activity timeline for the current user, ordered
- * most-recent-day first. Each entry is a per-local-day net summary of memory
- * changes with inline before/after evidence — served as a pure DB read.
+ * most-recent-day first. Each entry is a per-local-day net summary with at
+ * least one changed memory file and structured diff evidence — served as a
+ * pure DB read.
  */
 export const memoryActivityResponseSchema = z.object({
   entries: z.array(memoryActivityEntrySchema),
+  nextCursor: z.string().nullable(),
 });
 
 export type MemoryActivityResponse = z.infer<
@@ -48,6 +75,15 @@ export const zeroMemoryActivityContract = c.router({
     method: "GET",
     path: "/api/zero/memory/activity",
     headers: authHeadersSchema,
+    query: z.object({
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(MEMORY_ACTIVITY_MAX_LIMIT)
+        .default(MEMORY_ACTIVITY_DEFAULT_LIMIT),
+      cursor: z.string().min(1).optional(),
+    }),
     responses: {
       200: memoryActivityResponseSchema,
       401: apiErrorSchema,

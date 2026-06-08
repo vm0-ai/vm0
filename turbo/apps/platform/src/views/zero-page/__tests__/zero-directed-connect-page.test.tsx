@@ -28,6 +28,7 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   setMockConnectors,
@@ -44,7 +45,7 @@ function mockConnectors(
   connectors: { type: ConnectorType; externalUsername?: string }[],
 ) {
   setMockConnectors(
-    connectors.map((c) => {
+    connectors.map((c): ConnectorResponse => {
       return {
         id: crypto.randomUUID(),
         type: c.type,
@@ -53,7 +54,8 @@ function mockConnectors(
         externalUsername: c.externalUsername ?? null,
         externalEmail: null,
         oauthScopes: null,
-        needsReconnect: false,
+        connectionStatus: "connected",
+        tokenExpiresAt: null,
         createdAt: "2026-01-01T00:00:00Z",
         updatedAt: "2026-01-01T00:00:00Z",
       };
@@ -61,7 +63,7 @@ function mockConnectors(
   );
 }
 
-function manualGrantConnectorResponse(type: ConnectorType) {
+function manualGrantConnectorResponse(type: ConnectorType): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
     type,
@@ -70,7 +72,8 @@ function manualGrantConnectorResponse(type: ConnectorType) {
     externalUsername: null,
     externalEmail: null,
     oauthScopes: null,
-    needsReconnect: false,
+    connectionStatus: "connected",
+    tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
@@ -747,7 +750,8 @@ describe("directed connect page", () => {
           externalUsername: "device-user",
           externalEmail: null,
           oauthScopes: ["read"],
-          needsReconnect: false,
+          connectionStatus: "connected",
+          tokenExpiresAt: null,
           createdAt: "2026-01-01T00:00:00Z",
           updatedAt: "2026-01-01T00:00:00Z",
         },

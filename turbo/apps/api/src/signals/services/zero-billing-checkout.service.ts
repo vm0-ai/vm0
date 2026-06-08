@@ -53,7 +53,9 @@ export function activePriceId(
   return env("ZERO_PRICE")?.[tier]?.[0];
 }
 
-export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
+export function tierForKnownPriceId(
+  priceId: string,
+): SubscriptionCheckoutTier | null {
   const priceMap = env("ZERO_PRICE");
   if (priceMap) {
     for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
@@ -61,6 +63,14 @@ export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
         return tier;
       }
     }
+  }
+  return null;
+}
+
+export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
+  const tier = tierForKnownPriceId(priceId);
+  if (tier) {
+    return tier;
   }
   throw new Error(`Unknown Stripe price ID: ${priceId}`);
 }
@@ -149,11 +159,8 @@ function stripeObjectId(
   return value?.id ?? null;
 }
 
-function subscriptionPeriodEnd(subscription: Stripe.Subscription): Date | null {
-  const periodEndUnix = subscription.items.data[0]?.current_period_end;
-  return typeof periodEndUnix === "number"
-    ? new Date(periodEndUnix * 1000)
-    : null;
+function subscriptionWillCancel(subscription: Stripe.Subscription): boolean {
+  return subscription.cancel_at_period_end || subscription.cancel_at !== null;
 }
 
 function customUnitAmountParams(
@@ -300,17 +307,15 @@ export const completeCheckoutSession$ = command(
         targetTier: tier,
       };
     }
-    const periodEnd = subscriptionPeriodEnd(subscription);
+    const alreadyPaidSubscription =
+      org.stripeSubscriptionId === subscription.id && org.tier === tier;
 
     await db
       .update(orgMetadata)
       .set({
-        tier,
         stripeSubscriptionId: subscription.id,
         subscriptionStatus: subscription.status,
-        cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        onboardingPaymentPending: false,
-        ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+        cancelAtPeriodEnd: subscriptionWillCancel(subscription),
         updatedAt: nowDate(),
       })
       .where(
@@ -321,7 +326,7 @@ export const completeCheckoutSession$ = command(
       );
     signal.throwIfAborted();
 
-    return { status: "completed" };
+    return { status: alreadyPaidSubscription ? "completed" : "pending" };
   },
 );
 

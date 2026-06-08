@@ -65,6 +65,9 @@
         "crates/guest-common": {
             "release-type": "rust"
         },
+        "crates/guest-runtime-paths": {
+            "release-type": "rust"
+        },
         "crates/guest-download": {
             "release-type": "rust"
         },

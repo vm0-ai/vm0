@@ -26,8 +26,8 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
-import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { createAgentRun$ } from "./agent-run-create.service";
@@ -41,6 +41,8 @@ const DISALLOWED_TOOLS = [
   "CronDelete",
   "ScheduleWakeup",
   "AskUserQuestion",
+  "Skill(loop)",
+  "Skill(loop *)",
 ] as const;
 
 const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
@@ -111,10 +113,6 @@ function forbidden(message: string) {
       },
     },
   };
-}
-
-function apiUrl(): string {
-  return env("VM0_API_URL");
 }
 
 function generateCallbackSecret(): string {
@@ -220,7 +218,6 @@ function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `zero agent edit --help`.",
     "- Manage custom skills: `zero skill --help`.",
-    "- Send a direct message to the user via web chat: `zero chat message send --help`.",
     "- Report issues to the dev team: `zero developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
   ].join("\n");
 }
@@ -550,7 +547,7 @@ function callbacksForTriggerAgent(triggerAgentId: string | undefined) {
   return triggerAgentId
     ? [
         {
-          url: `${apiUrl()}/api/internal/callbacks/agent`,
+          url: `${internalApiBaseUrl()}/api/internal/callbacks/agent`,
           secret: generateCallbackSecret(),
           payload: { triggerAgentId },
         },
@@ -767,7 +764,15 @@ export const createZeroRun$ = command(
         selectedModelOverride:
           args.selectedModelOverride ?? agent.selectedModel ?? undefined,
         chatThreadId: args.chatThreadId,
-        extraEnvironment: { ZERO_AGENT_ID: agent.id },
+        extraEnvironment: {
+          ZERO_AGENT_ID: agent.id,
+          // Chat-mode scheduled (and web) runs carry their thread id so the
+          // in-sandbox CLI can default a newly created schedule's binding to it:
+          // zero schedule setup ... (reads $ZERO_CHAT_THREAD_ID when --thread is omitted).
+          ...(args.chatThreadId
+            ? { ZERO_CHAT_THREAD_ID: args.chatThreadId }
+            : {}),
+        },
         callbacks: [
           ...(callbacksForTriggerAgent(triggerAgentId) ?? []),
           ...(args.callbacks ?? []),

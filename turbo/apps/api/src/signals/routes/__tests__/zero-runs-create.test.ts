@@ -641,7 +641,6 @@ describe("POST /api/zero/runs", () => {
       "zero doctor permission-deny --help",
       "zero doctor permission-change --help",
       "zero skill --help",
-      "zero chat message send --help",
       "zero developer-support --help",
       "zero maps --help",
     ]) {
@@ -681,6 +680,8 @@ describe("POST /api/zero/runs", () => {
       "CronDelete",
       "ScheduleWakeup",
       "AskUserQuestion",
+      "Skill(loop)",
+      "Skill(loop *)",
     ]);
     expect(executionContext.environment.ZERO_AGENT_ID).toBe(agent.agentId);
 
@@ -1234,7 +1235,7 @@ describe("POST /api/zero/runs", () => {
       }),
     ).toContain("model-provider:codex-oauth-token");
     expect(executionContext.billableFirewalls).toStrictEqual([]);
-    expect(executionContext.modelUsageProvider).toBeUndefined();
+    expect(executionContext.modelUsageProvider).toBe("gpt-5.4");
 
     const [zeroRun] = await db
       .select({
@@ -1317,7 +1318,7 @@ describe("POST /api/zero/runs", () => {
       ANTHROPIC_API_KEY: "test-secret-value",
     });
     expect(executionContext.billableFirewalls).toStrictEqual([]);
-    expect(executionContext.modelUsageProvider).toBeUndefined();
+    expect(executionContext.modelUsageProvider).toBe("claude-sonnet-4-6");
 
     const [zeroRun] = await db
       .select({
@@ -1674,6 +1675,73 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMetadataMap).toBeNull();
   });
 
+  it("injects stored optional API-token connector env fields", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    const db = store.set(writeDb$);
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "gitlab",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "gitlab",
+      authMethod: "api-token",
+    });
+    await db.insert(secrets).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "GITLAB_TOKEN",
+      encryptedValue: encryptSecretForTests("glpat-token"),
+      type: "connector",
+    });
+    await db.insert(variables).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "GITLAB_HOST",
+      value: "gitlab.example.com",
+      type: "connector",
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt: "use gitlab with optional host",
+          agentId: agent.agentId,
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly secretConnectorMetadataMap: Record<string, unknown> | null;
+    };
+    expect(executionContext.environment.GITLAB_TOKEN).toBe(
+      connectorSecretPlaceholder("gitlab", "GITLAB_TOKEN"),
+    );
+    expect(executionContext.environment.GITLAB_HOST).toBe("gitlab.example.com");
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
+      GITLAB_TOKEN: "glpat-token",
+    });
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      GITLAB_TOKEN: "gitlab",
+    });
+    expect(executionContext.secretConnectorMetadataMap).toBeNull();
+  });
+
   it("injects authorized connector token secrets and refresh metadata", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
@@ -1957,6 +2025,172 @@ describe("POST /api/zero/runs", () => {
     expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
       ["Bearer $", "{{ secrets.BASE44_TOKEN }}"].join(""),
     );
+  });
+
+  it("maps cached Lark access token to the logical runtime firewall secret", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "lark",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "lark",
+      authMethod: "api-token",
+    });
+    await db.insert(variables).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "LARK_APP_ID",
+      value: "lark-app-id",
+      type: "connector",
+    });
+    await db.insert(secrets).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "LARK_APP_SECRET",
+        encryptedValue: encryptSecretForTests("lark-app-secret"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "LARK_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("lark-cached-access-token"),
+        type: "connector",
+      },
+    ]);
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "lark connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly {
+          readonly base: string;
+          readonly auth?: { readonly headers?: Record<string, string> };
+        }[];
+      }[];
+    };
+
+    expect(executionContext.environment.LARK_TOKEN).toBe(
+      connectorSecretPlaceholder("lark", "LARK_TOKEN"),
+    );
+    expect(executionContext.environment).not.toHaveProperty("LARK_APP_ID");
+    expect(executionContext.environment).not.toHaveProperty("LARK_APP_SECRET");
+    expect(executionContext.environment).not.toHaveProperty(
+      "LARK_ACCESS_TOKEN",
+    );
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
+    expect(decrypted).toMatchObject({
+      LARK_TOKEN: "lark-cached-access-token",
+    });
+    expect(decrypted).toHaveProperty("ZERO_TOKEN");
+    expect(decrypted).not.toHaveProperty("LARK_APP_SECRET");
+    expect(decrypted).not.toHaveProperty("LARK_ACCESS_TOKEN");
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      LARK_TOKEN: "lark",
+    });
+    const firewall = executionContext.firewalls.find((candidate) => {
+      return candidate.name === "lark";
+    });
+    expect(firewall?.apis[0]?.base).toBe("https://open.larksuite.com");
+    expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
+      ["Bearer $", "{{ secrets.LARK_TOKEN }}"].join(""),
+    );
+  });
+
+  it("keeps Lark refresh ownership when no cached access token exists", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "lark",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "lark",
+      authMethod: "api-token",
+    });
+    await db.insert(variables).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "LARK_APP_ID",
+      value: "lark-app-id",
+      type: "connector",
+    });
+    await db.insert(secrets).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "LARK_APP_SECRET",
+      encryptedValue: encryptSecretForTests("lark-app-secret"),
+      type: "connector",
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt: "lark connector without cache",
+          agentId: agent.agentId,
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+    };
+
+    expect(executionContext.environment.LARK_TOKEN).toBe(
+      connectorSecretPlaceholder("lark", "LARK_TOKEN"),
+    );
+    expect(executionContext.environment).not.toHaveProperty("LARK_APP_ID");
+    expect(executionContext.environment).not.toHaveProperty("LARK_APP_SECRET");
+    expect(executionContext.environment).not.toHaveProperty(
+      "LARK_ACCESS_TOKEN",
+    );
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
+    expect(decrypted).toHaveProperty("ZERO_TOKEN");
+    expect(decrypted).not.toHaveProperty("LARK_TOKEN");
+    expect(decrypted).not.toHaveProperty("LARK_APP_SECRET");
+    expect(decrypted).not.toHaveProperty("LARK_ACCESS_TOKEN");
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      LARK_TOKEN: "lark",
+    });
   });
 
   it("injects authorized Slock OAuth secrets through the runtime firewall without platform secrets", async () => {

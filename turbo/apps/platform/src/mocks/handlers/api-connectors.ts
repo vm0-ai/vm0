@@ -43,7 +43,8 @@ function createMockOauthDeviceAuthConnector(
     externalUsername: `mock-${type}`,
     externalEmail: null,
     oauthScopes: ["read"],
-    needsReconnect: false,
+    connectionStatus: "connected",
+    tokenExpiresAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -77,7 +78,8 @@ function createMockManualGrantConnector(
     externalUsername: null,
     externalEmail: null,
     oauthScopes: null,
-    needsReconnect: false,
+    connectionStatus: "connected",
+    tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
@@ -123,7 +125,7 @@ export const apiConnectorsHandlers = [
     return respond(200, {
       connectors: mockConnectors,
       configuredTypes: [...CONNECTOR_TYPE_KEYS],
-      connectorProvidedEnvNames: [],
+      connectorProvidedBindings: [],
     });
   }),
 

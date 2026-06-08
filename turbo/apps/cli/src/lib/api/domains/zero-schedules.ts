@@ -27,6 +27,7 @@ export async function deployZeroSchedule(body: {
   appendSystemPrompt?: string;
   volumeVersions?: Record<string, string>;
   enabled?: boolean;
+  chatThreadId?: string;
 }): Promise<DeployScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroSchedulesMainContract, config);

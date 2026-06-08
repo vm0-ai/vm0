@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import type { HostedArtifactKind } from "@vm0/api-contracts/contracts/zero-host";
 import { eq, sql } from "drizzle-orm";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -29,6 +30,7 @@ interface RecordHostedSiteArtifactArgs {
   readonly runId: string | null | undefined;
   readonly userId: string;
   readonly orgId: string;
+  readonly artifactKind: HostedArtifactKind;
   readonly siteId: string;
   readonly deploymentId: string;
   readonly publicSlug: string;
@@ -143,7 +145,7 @@ export const recordHostedSiteArtifact$ = command(
         url: args.url,
         metadata: {
           generatedBy: "zero-official-website",
-          artifactKind: "hosted-site",
+          artifactKind: args.artifactKind,
           siteId: args.siteId,
           deploymentId: args.deploymentId,
           publicSlug: args.publicSlug,
@@ -167,7 +169,7 @@ export const recordHostedSiteArtifact$ = command(
           url: args.url,
           metadata: {
             generatedBy: "zero-official-website",
-            artifactKind: "hosted-site",
+            artifactKind: args.artifactKind,
             siteId: args.siteId,
             deploymentId: args.deploymentId,
             publicSlug: args.publicSlug,

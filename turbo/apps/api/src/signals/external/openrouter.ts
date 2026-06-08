@@ -11,6 +11,8 @@ interface OpenRouterMessage {
 
 interface OpenRouterResponse {
   readonly choices: readonly {
+    readonly finish_reason: string | null;
+    readonly native_finish_reason?: string | null;
     readonly message: {
       readonly content: string;
     };
@@ -34,7 +36,7 @@ export function isLlmConfigured(): boolean {
 export async function generateText(
   model: string,
   messages: readonly OpenRouterMessage[],
-  maxTokens: number,
+  maxTokens?: number,
 ): Promise<string | null> {
   const apiKey = optionalEnv("OPENROUTER_API_KEY");
   if (!apiKey) {
@@ -50,7 +52,7 @@ export async function generateText(
     body: JSON.stringify({
       model,
       messages,
-      max_tokens: maxTokens,
+      ...(maxTokens === undefined ? {} : { max_tokens: maxTokens }),
       temperature: 0.3,
     }),
   });
@@ -62,7 +64,20 @@ export async function generateText(
   }
 
   const data = (await response.json()) as OpenRouterResponse;
-  const content = data.choices[0]?.message.content.trim();
+  const choice = data.choices[0];
+  if (!choice) {
+    throw new Error("OpenRouter returned no choices");
+  }
+  if (choice.finish_reason !== "stop") {
+    const nativeReason = choice.native_finish_reason
+      ? ` (native: ${choice.native_finish_reason})`
+      : "";
+    throw new Error(
+      `OpenRouter completion finished with ${choice.finish_reason ?? "unknown"}${nativeReason}`,
+    );
+  }
+
+  const content = choice.message.content.trim();
   if (!content) {
     throw new Error("OpenRouter returned empty content");
   }

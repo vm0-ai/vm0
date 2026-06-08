@@ -57,4 +57,66 @@ describe("memory page layout", () => {
       wrapper.remove();
     }
   });
+
+  it("keeps update cards at their content height inside the scrolling timeline", () => {
+    const wrapper = document.createElement("div");
+    wrapper.style.display = "flex";
+    wrapper.style.height = "220px";
+    wrapper.style.width = "760px";
+    wrapper.innerHTML = `
+      <div aria-label="Memory updates" style="display: flex; min-height: 0; flex: 1 1 0%; flex-direction: column; gap: 16px; overflow: auto; padding-bottom: 8px;">
+        <section class="zero-card shrink-0" style="display: flex; height: 140px; flex-shrink: 0; flex-direction: column; overflow: hidden;">
+          <header style="border-bottom: 1px solid hsl(var(--border)); padding: 12px 16px;">
+            <h2 style="font-size: 14px; font-weight: 600;">Wednesday, June 3, 2026</h2>
+            <p style="margin-top: 4px; font-size: 14px; line-height: 20px;">Zero learned a new development preference.</p>
+          </header>
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px;">
+            <div style="height: 40px; border: 1px solid hsl(var(--border)); border-radius: 6px;"></div>
+          </div>
+        </section>
+        <section class="zero-card shrink-0" style="display: flex; height: 140px; flex-shrink: 0; flex-direction: column; overflow: hidden;">
+          <header style="border-bottom: 1px solid hsl(var(--border)); padding: 12px 16px;">
+            <h2 style="font-size: 14px; font-weight: 600;">Sunday, May 31, 2026</h2>
+            <p style="margin-top: 4px; font-size: 14px; line-height: 20px;">Zero updated existing memory files.</p>
+          </header>
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px;">
+            <div style="height: 40px; border: 1px solid hsl(var(--border)); border-radius: 6px;"></div>
+          </div>
+        </section>
+        <section class="zero-card shrink-0" style="display: flex; height: 460px; flex-shrink: 0; flex-direction: column; overflow: hidden;">
+          <header style="border-bottom: 1px solid hsl(var(--border)); padding: 12px 16px;">
+            <h2 style="font-size: 14px; font-weight: 600;">Thursday, May 21, 2026</h2>
+            <p style="margin-top: 4px; font-size: 14px; line-height: 20px;">Zero learned several repo-specific workflows.</p>
+          </header>
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px;">
+            ${Array.from({ length: 8 }, () => {
+              return '<div style="height: 40px; border: 1px solid hsl(var(--border)); border-radius: 6px;"></div>';
+            }).join("")}
+          </div>
+        </section>
+      </div>
+    `;
+    document.body.appendChild(wrapper);
+
+    try {
+      const scroller = getRequiredElement('[aria-label="Memory updates"]');
+      const firstCard = getRequiredElement(
+        '[aria-label="Memory updates"] .zero-card:nth-of-type(1)',
+      );
+      const secondCard = getRequiredElement(
+        '[aria-label="Memory updates"] .zero-card:nth-of-type(2)',
+      );
+      const thirdCard = getRequiredElement(
+        '[aria-label="Memory updates"] .zero-card:nth-of-type(3)',
+      );
+
+      expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight);
+      expect(getComputedStyle(firstCard).flexShrink).toBe("0");
+      expect(firstCard.getBoundingClientRect().height).toBeGreaterThan(130);
+      expect(secondCard.getBoundingClientRect().height).toBeGreaterThan(130);
+      expect(thirdCard.getBoundingClientRect().height).toBeGreaterThan(450);
+    } finally {
+      wrapper.remove();
+    }
+  });
 });

@@ -24,10 +24,18 @@ pub(super) async fn destroy_cow_device_with_retries(
     cow_device: PooledNbdCowDevice,
 ) -> bool {
     match cow_device
-        .destroy_with_retries(cow_destroy_retry_policy())
+        .destroy_with_retries_detailed(cow_destroy_retry_policy())
         .await
     {
         Ok(()) => true,
+        Err(e) if e.backing_files_safe_to_delete() => {
+            warn!(
+                id = %id,
+                error = %e,
+                "COW device released but file cleanup failed; continuing directory cleanup"
+            );
+            true
+        }
         Err(e) => {
             warn!(id = %id, error = %e, "destroy failed after retries — abandoned device");
             false

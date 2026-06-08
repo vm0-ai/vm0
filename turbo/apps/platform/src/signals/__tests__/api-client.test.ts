@@ -9,7 +9,6 @@ import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
 import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
-import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import {
@@ -319,22 +318,23 @@ describe("zeroClient$ apiBackend routing", () => {
 
     const requestHosts: string[] = [];
     server.use(
-      mockApi(zeroConnectorsMainContract.list, ({ request, respond }) => {
+      mockApi(zeroFeatureSwitchesContract.get, ({ request, respond }) => {
         requestHosts.push(new URL(request.url).host);
-        return respond(200, {
-          connectors: [],
-          configuredTypes: [],
-          connectorProvidedEnvNames: [],
-        });
+        return respond(200, { switches: {} });
       }),
     );
 
+    // feature-switches stays on www (bootstrap), so it is a stable example of
+    // a policy-routed GET that is intentionally not in the allowlist.
     const createClient = context.store.get(zeroClient$);
-    const client = createClient(zeroConnectorsMainContract);
-    const result = await client.list();
+    const client = createClient(zeroFeatureSwitchesContract);
+    const result = await client.get();
 
     expect(result.status).toBe(200);
-    expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
+    // Bootstrap also loads feature switches; assert every request stays on www,
+    // not the count.
+    expect(requestHosts.length).toBeGreaterThan(0);
+    expect([...new Set(requestHosts)]).toStrictEqual(["www.vm0.ai"]);
   });
 
   it("routes policy allowlisted user preferences contract requests to api host when apiBackend is off", async () => {

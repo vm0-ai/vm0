@@ -321,14 +321,28 @@ export const setSaveError$ = command(({ set }, value: string | null) => {
 // ---------------------------------------------------------------------------
 
 const internalSelectedTarget$ = state<"pro-suspend" | "pro">("pro-suspend");
+const internalLockedTarget$ = state<"pro-suspend" | "pro" | null>(null);
 
 export const selectedTarget$ = computed((get) => {
   return get(internalSelectedTarget$);
 });
 
+export const lockedTarget$ = computed((get) => {
+  return get(internalLockedTarget$);
+});
+
 export const setSelectedTarget$ = command(
   ({ set }, value: "pro-suspend" | "pro") => {
     set(internalSelectedTarget$, value);
+  },
+);
+
+export const setLockedTarget$ = command(
+  ({ set }, value: "pro-suspend" | "pro" | null) => {
+    set(internalLockedTarget$, value);
+    if (value) {
+      set(internalSelectedTarget$, value);
+    }
   },
 );
 

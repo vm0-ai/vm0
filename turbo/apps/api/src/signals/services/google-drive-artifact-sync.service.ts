@@ -17,9 +17,13 @@ import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
+import {
+  buildArtifactKey,
+  storageUserIdFromFileUrlSegment,
+} from "../../lib/file-url";
 import { db$, type ReadonlyDb } from "../external/db";
-import { downloadS3Buffer } from "../external/s3";
-import { settle } from "../utils";
+import { downloadS3Buffer, s3ObjectExists } from "../external/s3";
+import { safeSync, settle } from "../utils";
 import { decryptStoredSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
@@ -384,6 +388,11 @@ interface ArtifactFileRow {
   readonly metadata: Record<string, unknown>;
 }
 
+interface ArtifactS3Object {
+  readonly bucketName: string;
+  readonly key: string;
+}
+
 async function loadArtifactFile(
   db: ReadonlyDb,
   args: {
@@ -439,18 +448,135 @@ async function loadArtifactFile(
   return row ?? null;
 }
 
-function resolveArtifactS3Key(
-  metadata: Record<string, unknown>,
+function resolveArtifactS3ObjectFromKey(
+  value: string,
   userId: string,
-): string | null {
-  const value = metadata.s3Key;
-  if (typeof value !== "string") {
-    return null;
+): ArtifactS3Object | null {
+  if (value.startsWith(`artifacts/${encodeURIComponent(userId)}/`)) {
+    return {
+      bucketName: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+      key: value,
+    };
   }
   if (!value.startsWith(`uploads/${userId}/`)) {
     return null;
   }
-  return value;
+  return {
+    bucketName: env("R2_USER_STORAGES_BUCKET_NAME"),
+    key: value,
+  };
+}
+
+function resolveArtifactS3ObjectFromUrl(
+  value: string,
+  userId: string,
+): ArtifactS3Object | null {
+  if (!URL.canParse(value)) {
+    return null;
+  }
+  const key = new URL(value).pathname.replace(/^\/+/, "");
+  return resolveArtifactS3ObjectFromKey(key, userId);
+}
+
+interface LegacyFileUrlParts {
+  readonly storageUserId: string;
+  readonly id: string;
+  readonly filename: string;
+}
+
+function decodeUrlSegment(segment: string): string | null {
+  const result = safeSync(() => {
+    return decodeURIComponent(segment);
+  });
+  if ("error" in result) {
+    return null;
+  }
+  return result.ok;
+}
+
+function legacyFileUrlParts(value: string): LegacyFileUrlParts | null {
+  if (!URL.canParse(value)) {
+    return null;
+  }
+  const segments = new URL(value).pathname.split("/").filter(Boolean);
+  if (segments.length !== 4 || segments[0] !== "f") {
+    return null;
+  }
+
+  const [, rawUserIdSegment, rawId, rawFilename] = segments;
+  if (!rawUserIdSegment || !rawId || !rawFilename) {
+    return null;
+  }
+
+  const userIdSegment = decodeUrlSegment(rawUserIdSegment);
+  const id = decodeUrlSegment(rawId);
+  const filename = decodeUrlSegment(rawFilename);
+  if (!userIdSegment || !id || !filename) {
+    return null;
+  }
+
+  return {
+    storageUserId: storageUserIdFromFileUrlSegment(userIdSegment),
+    id,
+    filename,
+  };
+}
+
+function artifactSourceUrls(artifact: ArtifactFileRow): readonly string[] {
+  const metadataSourceUrl = artifact.metadata.sourceUrl;
+  return [
+    ...(artifact.url ? [artifact.url] : []),
+    ...(typeof metadataSourceUrl === "string" &&
+    metadataSourceUrl !== artifact.url
+      ? [metadataSourceUrl]
+      : []),
+  ];
+}
+
+function resolveArtifactS3Object(
+  artifact: ArtifactFileRow,
+  userId: string,
+): Computed<Promise<ArtifactS3Object | null>> {
+  return computed(async (get): Promise<ArtifactS3Object | null> => {
+    const value = artifact.metadata.s3Key;
+    if (typeof value === "string") {
+      const s3Object = resolveArtifactS3ObjectFromKey(value, userId);
+      if (s3Object) {
+        return s3Object;
+      }
+    }
+
+    for (const sourceUrl of artifactSourceUrls(artifact)) {
+      const s3Object = resolveArtifactS3ObjectFromUrl(sourceUrl, userId);
+      if (s3Object) {
+        return s3Object;
+      }
+    }
+
+    for (const sourceUrl of artifactSourceUrls(artifact)) {
+      const legacy = legacyFileUrlParts(sourceUrl);
+      if (!legacy || legacy.storageUserId !== userId) {
+        continue;
+      }
+
+      const artifactBucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+      const artifactKey = buildArtifactKey(
+        legacy.storageUserId,
+        legacy.id,
+        legacy.filename,
+      );
+      if (await get(s3ObjectExists(artifactBucket, artifactKey))) {
+        return { bucketName: artifactBucket, key: artifactKey };
+      }
+
+      return {
+        bucketName: env("R2_USER_STORAGES_BUCKET_NAME"),
+        key: `uploads/${legacy.storageUserId}/${legacy.id}/${legacy.filename}`,
+      };
+    }
+
+    return null;
+  });
 }
 
 type DriveTokenResult<T> =
@@ -679,7 +805,7 @@ type BadRequestResponse = ReturnType<typeof badRequestMessage>;
  *  - 400 "Connect Google Drive before syncing artifacts" — connector
  *    absent or `needsReconnect`.
  *  - 400 "This artifact file cannot be synced to Google Drive" — file
- *    metadata.s3Key is missing or doesn't match the caller's user prefix.
+ *    location is missing or doesn't match a caller-owned artifact prefix.
  *  - 400 "Google Drive upload failed with HTTP <status>" — upload error
  *    after refresh-token retry exhausted.
  *  - 200 with `{ id, name, webViewLink }`.
@@ -727,8 +853,9 @@ export const syncArtifactToGoogleDrive$ = command(
       return notFound("Artifact file not found");
     }
 
-    const s3Key = resolveArtifactS3Key(artifact.metadata, args.userId);
-    if (!s3Key) {
+    const s3Object = await get(resolveArtifactS3Object(artifact, args.userId));
+    signal.throwIfAborted();
+    if (!s3Object) {
       return badRequestMessage(
         "This artifact file cannot be synced to Google Drive",
       );
@@ -736,9 +863,7 @@ export const syncArtifactToGoogleDrive$ = command(
 
     const filename = artifact.filename ?? artifact.externalId;
     const contentType = artifact.contentType ?? inferMimetype(filename);
-    const file = await get(
-      downloadS3Buffer(env("R2_USER_STORAGES_BUCKET_NAME"), s3Key),
-    );
+    const file = await get(downloadS3Buffer(s3Object.bucketName, s3Object.key));
     signal.throwIfAborted();
 
     let result = await uploadArtifactWithToken({

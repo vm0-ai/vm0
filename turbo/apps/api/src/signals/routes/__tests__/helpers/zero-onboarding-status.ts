@@ -18,6 +18,7 @@ interface DefaultAgentValues {
 interface OnboardingSeedValues {
   readonly defaultAgent?: DefaultAgentValues;
   readonly onboardingPaymentPending?: boolean;
+  readonly tier?: string;
 }
 
 export interface OnboardingStatusFixture {
@@ -61,6 +62,7 @@ export const seedOnboardingStatusOrg$ = command(
       orgId,
       defaultAgentId: composeId,
       onboardingPaymentPending: values.onboardingPaymentPending ?? false,
+      ...(values.tier === undefined ? {} : { tier: values.tier }),
     });
     signal.throwIfAborted();
 

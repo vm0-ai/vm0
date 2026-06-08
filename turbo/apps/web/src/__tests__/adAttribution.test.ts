@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildHomepageAttributionProperties,
   buildSignupHref,
   buildSignupRedirectUrl,
+  hasAdAttributionParams,
   writeAcquisitionAttributionCookie,
 } from "../lib/adAttribution";
 import { ACQUISITION_ATTRIBUTION_COOKIE } from "@vm0/api-contracts/contracts/zero-attribution";
@@ -161,6 +163,40 @@ describe("buildSignupHref", () => {
     expect(url.searchParams.get("utm_medium")).toBe("cpc");
     expect(url.searchParams.get("utm_campaign")).toBe("homepage_search");
     expect(url.searchParams.get("unused")).toBeNull();
+  });
+});
+
+describe("homepage paid funnel properties", () => {
+  it("detects ad attribution params", () => {
+    expect(hasAdAttributionParams("")).toBe(false);
+    expect(hasAdAttributionParams("?unused=value")).toBe(false);
+    expect(hasAdAttributionParams("?utm_source=newsletter")).toBe(true);
+    expect(hasAdAttributionParams("?utm_campaign=hyp_b_developer")).toBe(true);
+    expect(hasAdAttributionParams("?gclid=test-click")).toBe(true);
+  });
+
+  it("builds PostHog/Plausible properties from paid homepage traffic", () => {
+    const properties = buildHomepageAttributionProperties(
+      "?gclid=test-click&utm_source=google&utm_medium=cpc&utm_campaign=hyp_b_developer&utm_content=ad_1&utm_term=developer+productivity",
+      {
+        hostname: "www.vm0.ai",
+        pathname: "/en",
+        referrer: "https://www.google.com/",
+      },
+    );
+
+    expect(properties.vm0_source).toBe("homepage");
+    expect(properties.source_type).toBe("paid");
+    expect(properties.referrer_domain).toBe("google.com");
+    expect(properties.landing_host).toBe("vm0.ai");
+    expect(properties.landing_path).toBe("/en");
+    expect(properties.gclid).toBe("test-click");
+    expect(properties.gclid_present).toBe("true");
+    expect(properties.utm_source).toBe("google");
+    expect(properties.utm_medium).toBe("cpc");
+    expect(properties.utm_campaign).toBe("hyp_b_developer");
+    expect(properties.utm_content).toBe("ad_1");
+    expect(properties.utm_term).toBe("developer productivity");
   });
 });
 

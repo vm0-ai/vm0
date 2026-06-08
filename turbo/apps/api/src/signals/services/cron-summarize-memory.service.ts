@@ -1,13 +1,16 @@
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
 import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
 import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { command, computed, type Computed } from "ccstate";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import {
   localDateLabel,
   localMidnightUtc,
@@ -21,11 +24,7 @@ import { generateMemoryDaySummary } from "./memory-activity-summarize.service";
 import { settle } from "../utils";
 
 const L = logger("CronSummarizeMemory");
-
-// Most closed local days a single run will summarize. Bounds missed-cron
-// recovery (and guards against pathologically old windows) so one run stays
-// cheap; older un-summarized days are simply not backfilled.
-const MAX_RECOVERY_DAYS = 14;
+const MEMORY_SUMMARY_LOOKBACK_DAYS = 7;
 
 type SummarizeMemoryResult =
   | { readonly skipped: true }
@@ -37,68 +36,65 @@ interface MemoryStorageRow {
   readonly storageId: string;
 }
 
+interface MemoryStorageFilter {
+  readonly orgId?: string;
+  readonly userId?: string;
+}
+
+interface SummarizeUserMemoryOptions {
+  readonly now: Date;
+  readonly signal: AbortSignal;
+  readonly force: boolean;
+}
+
 interface MemoryVersionRow {
   readonly id: string;
   readonly s3Key: string;
   readonly createdAt: Date;
 }
 
-interface LastSummaryRow {
-  readonly date: string;
-  readonly toVersionId: string;
+function addDateLabelDays(dateLabel: string, days: number): string {
+  const date = new Date(`${dateLabel}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
-interface ClosedDayWindow {
-  readonly targetDate: string;
-  readonly dayEnd: Date;
+/** The previous calendar date (YYYY-MM-DD) before `dateLabel`. */
+function previousDateLabel(dateLabel: string): string {
+  return addDateLabelDays(dateLabel, -1);
 }
 
 /** The next calendar date (YYYY-MM-DD) after `dateLabel`. */
 function nextDateLabel(dateLabel: string): string {
-  const next = new Date(`${dateLabel}T00:00:00Z`);
-  next.setUTCDate(next.getUTCDate() + 1);
-  return next.toISOString().slice(0, 10);
+  return addDateLabelDays(dateLabel, 1);
 }
 
-/**
- * The closed (already-elapsed) local days in `[windowStart, now)`, one window
- * per day. The current local day is excluded because it is still open. Each
- * window's `dayEnd` is the UTC instant of the next local midnight, so a version
- * is "in" the day when its createdAt is strictly before dayEnd.
- *
- * Iteration is by calendar date (stable across hosts), capped at the recovery
- * window so a stale/never-summarized baseline can't expand into a huge list.
- */
-function closedLocalDays(
-  timezone: string,
-  windowStart: Date,
-  now: Date,
-): ClosedDayWindow[] {
-  const currentDate = localDateLabel(timezone, now);
-  const earliest = new Date(
-    localMidnightUtc(timezone, currentDate).getTime() -
-      MAX_RECOVERY_DAYS * 24 * 3_600_000,
-  );
-  const effectiveStart = windowStart > earliest ? windowStart : earliest;
-
-  const windows: ClosedDayWindow[] = [];
-  let date = localDateLabel(timezone, effectiveStart);
-  while (date < currentDate) {
-    const nextDate = nextDateLabel(date);
-    windows.push({
-      targetDate: date,
-      dayEnd: localMidnightUtc(timezone, nextDate),
-    });
-    date = nextDate;
+function recentClosedDateLabels(todayLabel: string): readonly string[] {
+  const labels: string[] = [];
+  let cursor = todayLabel;
+  for (let index = 0; index < MEMORY_SUMMARY_LOOKBACK_DAYS; index++) {
+    cursor = previousDateLabel(cursor);
+    labels.push(cursor);
   }
-
-  return windows;
+  return labels.reverse();
 }
 
 async function loadMemoryStorages(
   db: Db,
   signal: AbortSignal,
+  filter: MemoryStorageFilter = {},
 ): Promise<MemoryStorageRow[]> {
+  const filters = [
+    eq(storages.name, MEMORY_ARTIFACT_NAME),
+    eq(storages.type, "artifact"),
+  ];
+  if (filter.orgId !== undefined) {
+    filters.push(eq(storages.orgId, filter.orgId));
+  }
+  if (filter.userId !== undefined) {
+    filters.push(eq(storages.userId, filter.userId));
+  }
+
   const rows = await db
     .select({
       orgId: storages.orgId,
@@ -106,12 +102,7 @@ async function loadMemoryStorages(
       storageId: storages.id,
     })
     .from(storages)
-    .where(
-      and(
-        eq(storages.name, MEMORY_ARTIFACT_NAME),
-        eq(storages.type, "artifact"),
-      ),
-    );
+    .where(and(...filters));
   signal.throwIfAborted();
   return rows;
 }
@@ -134,28 +125,26 @@ async function loadVersions(
   return rows;
 }
 
-async function loadLastSummary(
+async function summaryExists(
   db: Db,
   orgId: string,
   userId: string,
+  date: string,
   signal: AbortSignal,
-): Promise<LastSummaryRow | null> {
+): Promise<boolean> {
   const [row] = await db
-    .select({
-      date: memoryChangeSummaries.date,
-      toVersionId: memoryChangeSummaries.toVersionId,
-    })
+    .select({ id: memoryChangeSummaries.id })
     .from(memoryChangeSummaries)
     .where(
       and(
         eq(memoryChangeSummaries.orgId, orgId),
         eq(memoryChangeSummaries.userId, userId),
+        eq(memoryChangeSummaries.date, date),
       ),
     )
-    .orderBy(desc(memoryChangeSummaries.date))
     .limit(1);
   signal.throwIfAborted();
-  return row ?? null;
+  return row !== undefined;
 }
 
 /** The latest version whose createdAt is strictly before `instant`. */
@@ -180,7 +169,7 @@ async function persistSummary(
     readonly orgId: string;
     readonly userId: string;
     readonly date: string;
-    readonly fromVersionId: string;
+    readonly fromVersionId: string | null;
     readonly toVersionId: string;
     readonly summary: string | null;
     readonly changeSet: MemoryChangeSet;
@@ -222,101 +211,96 @@ async function persistSummary(
     await tx
       .delete(memoryChangeItems)
       .where(eq(memoryChangeItems.summaryId, summaryId));
-    await tx.insert(memoryChangeItems).values(
-      args.changeSet.items.map((item) => {
-        return {
-          summaryId,
-          kind: item.kind,
-          title: item.title,
-          description: item.description,
-          filePath: item.filePath,
-          beforeSnippet: item.beforeSnippet,
-          afterSnippet: item.afterSnippet,
-        };
-      }),
-    );
+    if (args.changeSet.items.length > 0) {
+      await tx.insert(memoryChangeItems).values(
+        args.changeSet.items.map((item) => {
+          return {
+            summaryId,
+            filePath: item.filePath,
+            diff: item.diff,
+          };
+        }),
+      );
+    }
   });
   signal.throwIfAborted();
 }
 
+/**
+ * Summarize a single user's memory for the seven most-recently-closed local
+ * days. Each missing day is compared against the day before it, so the first
+ * run backfills a daily timeline instead of one combined multi-day diff.
+ *
+ * The baseline for a date is the version current at that date's local
+ * midnight. The target is the version current at the next local midnight. A
+ * null baseline means the user's memory first appeared during that day. Days
+ * with no changes still get a quiet card once memory exists, while days before
+ * the user's first memory version are skipped.
+ */
 function summarizeUserMemory(
   db: Db,
   storage: MemoryStorageRow,
   timezone: string,
-  now: Date,
-  signal: AbortSignal,
+  options: SummarizeUserMemoryOptions,
 ): Computed<Promise<number>> {
   return computed(async (get): Promise<number> => {
+    const { now, signal, force } = options;
+    const todayLabel = localDateLabel(timezone, now);
+    const dateLabels = recentClosedDateLabels(todayLabel);
     const versions = await loadVersions(db, storage.storageId, signal);
-    const firstVersion = versions[0];
-    if (!firstVersion) {
-      return 0;
-    }
 
-    const lastSummary = await loadLastSummary(
-      db,
-      storage.orgId,
-      storage.userId,
-      signal,
-    );
-
-    const latestVersion = versions[versions.length - 1] ?? firstVersion;
-    if (lastSummary && latestVersion.id === lastSummary.toVersionId) {
-      // Memory has not advanced since the last summary: nothing new can fall
-      // into a newly-closed day. Skip without any S3 work.
-      return 0;
-    }
-
-    // Baseline = version current at the start of the window. On the first ever
-    // run it's the user's first version (older memory is not re-emitted as
-    // "learned today"); otherwise it's the previous summary's toVersion. The
-    // window starts at the first version's day, or the day after the last
-    // summarized day.
-    let baseline = firstVersion;
-    let windowStart = firstVersion.createdAt;
-    if (lastSummary) {
-      const prior = versions.find((version) => {
-        return version.id === lastSummary.toVersionId;
-      });
-      if (prior) {
-        baseline = prior;
-      }
-      // Resume from the local day after the one already summarized.
-      windowStart = localMidnightUtc(timezone, nextDateLabel(lastSummary.date));
-    }
-
-    const days = closedLocalDays(timezone, windowStart, now);
     let summarized = 0;
-
-    for (const day of days) {
-      const toVersion = lastVersionBefore(versions, day.dayEnd);
-      if (!toVersion || toVersion.id === baseline.id) {
-        // No version through this day's close, or unchanged since the
-        // baseline: skip entirely (no LLM call, no row).
+    for (const dateLabel of dateLabels) {
+      // Idempotent cron path: if a date already has a summary row, do nothing.
+      // Dev refresh sets `force` so prompt changes can regenerate old rows.
+      if (
+        !force &&
+        (await summaryExists(
+          db,
+          storage.orgId,
+          storage.userId,
+          dateLabel,
+          signal,
+        ))
+      ) {
         continue;
       }
 
-      const changeSet = await get(
-        computeMemoryChangeSet(baseline.s3Key, toVersion.s3Key),
-      );
+      const dayStart = localMidnightUtc(timezone, dateLabel);
+      const dayEnd = localMidnightUtc(timezone, nextDateLabel(dateLabel));
+
+      // State at the end of the day. Null means the user had no memory through
+      // that date, so there is no card to show.
+      const toVersion = lastVersionBefore(versions, dayEnd);
+      if (!toVersion) {
+        continue;
+      }
+
+      // State at the start of the day (= end of the day before). Null means
+      // the user's memory first appeared during this date.
+      const baseline = lastVersionBefore(versions, dayStart);
+
+      const changeSet =
+        baseline?.id === toVersion.id
+          ? { items: [], changed: false }
+          : await get(
+              computeMemoryChangeSet(baseline?.s3Key ?? null, toVersion.s3Key),
+            );
       signal.throwIfAborted();
 
-      const fromVersionId = baseline.id;
-      // Carry the baseline forward so a quiet later day re-diffs from here.
-      baseline = toVersion;
-
-      if (!changeSet.changed) {
-        continue;
-      }
-
-      const summaryResult = await settle(generateMemoryDaySummary(changeSet));
-      if (!summaryResult.ok) {
-        L.warn("Memory day summary generation failed", {
-          orgId: storage.orgId,
-          userId: storage.userId,
-          date: day.targetDate,
-          err: summaryResult.error,
-        });
+      let summary: string | null = null;
+      if (changeSet.changed) {
+        const summaryResult = await settle(generateMemoryDaySummary(changeSet));
+        if (summaryResult.ok) {
+          summary = summaryResult.value;
+        } else {
+          L.warn("Memory day summary generation failed", {
+            orgId: storage.orgId,
+            userId: storage.userId,
+            date: dateLabel,
+            err: summaryResult.error,
+          });
+        }
       }
 
       await persistSummary(
@@ -324,10 +308,10 @@ function summarizeUserMemory(
         {
           orgId: storage.orgId,
           userId: storage.userId,
-          date: day.targetDate,
-          fromVersionId,
+          date: dateLabel,
+          fromVersionId: baseline?.id ?? null,
           toVersionId: toVersion.id,
-          summary: summaryResult.ok ? summaryResult.value : null,
+          summary,
           changeSet,
           createdAt: now,
         },
@@ -335,8 +319,25 @@ function summarizeUserMemory(
       );
       summarized++;
     }
-
     return summarized;
+  });
+}
+
+/**
+ * Whether the Memory Viewer feature is enabled for this org/user. Generation
+ * must match UI visibility exactly: a user who cannot see the Memory page must
+ * not have summaries generated (and burn LLM credits). The context mirrors what
+ * the platform `featureSwitch$` signal evaluates — registry identity plus the
+ * per-(org,user) DB overrides — so a manually enabled override is honored too.
+ */
+function memoryViewerEnabled(
+  db: Db,
+  orgId: string,
+  userId: string,
+): Computed<Promise<boolean>> {
+  return computed(async (): Promise<boolean> => {
+    const ctx = await loadUserFeatureSwitchContext(db, orgId, userId);
+    return isFeatureEnabled(FeatureSwitchKey.MemoryViewer, ctx);
   });
 }
 
@@ -359,16 +360,39 @@ export const summarizeMemory$ = command(
       signal,
     );
 
+    // Cache the feature-switch evaluation per distinct org/user so a user with
+    // several artifacts (or a repeated org) is only evaluated once.
+    const enabledCache = new Map<string, boolean>();
+
     let summarized = 0;
     for (const storage of memoryStorages) {
-      const timezone =
-        timezoneMap.get(`${storage.orgId}:${storage.userId}`) ?? "UTC";
+      const cacheKey = `${storage.orgId}:${storage.userId}`;
+      let enabled = enabledCache.get(cacheKey);
+      if (enabled === undefined) {
+        enabled = await get(
+          memoryViewerEnabled(db, storage.orgId, storage.userId),
+        );
+        signal.throwIfAborted();
+        enabledCache.set(cacheKey, enabled);
+      }
+      if (!enabled) {
+        // User cannot see the Memory page: skip generation entirely.
+        continue;
+      }
+
+      const timezone = timezoneMap.get(cacheKey) ?? "UTC";
       // Isolate each user: one user's malformed data (e.g. invalid memory
       // frontmatter) must not abort the whole run for everyone. AbortError
       // still propagates through `settle`, so a genuine cancellation stops the
       // loop instead of being swallowed.
       const result = await settle(
-        get(summarizeUserMemory(db, storage, timezone, now, signal)),
+        get(
+          summarizeUserMemory(db, storage, timezone, {
+            now,
+            signal,
+            force: false,
+          }),
+        ),
         signal,
       );
       if (result.ok) {
@@ -384,6 +408,63 @@ export const summarizeMemory$ = command(
     }
 
     L.debug("Summarized memory changes", { summarized });
+    if (summarized === 0) {
+      return { skipped: true };
+    }
+    return { summarized };
+  },
+);
+
+export const summarizeMemoryForUser$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly force: boolean;
+    },
+    signal: AbortSignal,
+  ): Promise<SummarizeMemoryResult> => {
+    const db = set(writeDb$);
+    const now = nowDate();
+
+    const memoryStorages = await loadMemoryStorages(db, signal, {
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    if (memoryStorages.length === 0) {
+      L.debug("No memory artifact to summarize for user", {
+        orgId: args.orgId,
+        userId: args.userId,
+      });
+      return { skipped: true };
+    }
+
+    if (!(await get(memoryViewerEnabled(db, args.orgId, args.userId)))) {
+      signal.throwIfAborted();
+      return { skipped: true };
+    }
+    signal.throwIfAborted();
+
+    const timezoneMap = await resolveUserTimezones(
+      db,
+      [{ orgId: args.orgId, userId: args.userId }],
+      signal,
+    );
+    const timezone = timezoneMap.get(`${args.orgId}:${args.userId}`) ?? "UTC";
+
+    let summarized = 0;
+    for (const storage of memoryStorages) {
+      summarized += await get(
+        summarizeUserMemory(db, storage, timezone, {
+          now,
+          signal,
+          force: args.force,
+        }),
+      );
+      signal.throwIfAborted();
+    }
+
     if (summarized === 0) {
       return { skipped: true };
     }

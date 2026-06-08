@@ -34,7 +34,7 @@ import {
   connectorAuthMethodRefHasAccessKind,
   connectorAuthMethodRefHasGrantKind,
   connectorAuthMethodRefHasRevokeKind,
-  getAvailableConnectorAuthMethods,
+  getAvailableConnectorAuthMethodIds,
   getConnectorAuthMethodGrantScopes,
   getConnectorAuthMethodGrantMetadata,
   getConnectorAuthMethodRevokeMetadata,
@@ -42,12 +42,13 @@ import {
   getConnectorAuthMethodIdsForGrantKind,
   getConnectorAuthMethodIdsForRevokeKind,
   getConnectorAuthMethodScopeDiff,
-  getConfiguredConnectorAuthMethods,
+  getConfiguredConnectorAuthMethodIds,
   hasRequiredConnectorAuthMethodScopes,
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodDeviceAuthGrantConfig,
+  getConnectorAuthMethodDeviceAuthStartOptionsConfig,
   getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodStorageMetadata,
+  getConnectorAuthMethodRuntimeMetadata,
   getConnectorGrantOutputSecretName,
   getConnectorRefreshOutputSecretName,
   getConnectorStoredSecretDisplayInfo,
@@ -59,8 +60,9 @@ import {
   getConnectorManualGrantFieldNames,
   getConnectorManualGrantFieldNamesForAuthMethod,
   getRuntimeAvailableConnectorTypes,
+  parseConnectorDeviceAuthStartOptions,
   getConnectorOwnedSecretNames,
-  getConnectorVariableNames,
+  getConnectorOwnedVariableNames,
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
   isStaticConfidentialConnectorAuthClient,
@@ -78,10 +80,11 @@ import {
   revokeConnectorAuthMethodAccessToken,
   startConnectorDeviceAuthorization,
 } from "../auth-providers/connector-auth";
+import type { ConnectorAuthProviderRefreshArgs } from "../auth-providers/types";
 import {
   TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME,
   TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME,
-} from "../auth-providers/oauth/providers/test-oauth-device";
+} from "../auth-providers/connectors/test-oauth-device/oauth";
 import {
   GOOGLE_OAUTH_CONNECTOR_TYPES,
   isGoogleOAuthConnector,
@@ -109,6 +112,11 @@ function hasConnectorAuthorizationGrant(type: ConnectorType): boolean {
 
 const server = setupServer();
 const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
+const STRIPE_CLI_AUTH_URL = "https://dashboard.stripe.com/stripecli/auth";
+const STRIPE_CLI_BROWSER_URL =
+  "https://dashboard.stripe.com/stripecli/confirm_auth?code=STRIPE-CLI";
+const STRIPE_CLI_TEST_SECRET = "rk_test_connector123";
+const STRIPE_CLI_LIVE_SECRET = "rk_live_connector456";
 
 type OAuthAuthMethodConnectorType = {
   readonly [Type in ConnectorType]: "oauth" extends ConnectorAuthMethodIds<Type>
@@ -224,6 +232,31 @@ function restoreEnv(values: Record<string, string | undefined>): void {
   }
 }
 
+function stripeCliAuthClient() {
+  const authClient = resolveConnectorAuthClientForMethod(
+    "stripe",
+    "cli",
+    () => {
+      return undefined;
+    },
+  );
+  if (!authClient) {
+    throw new Error("Expected Stripe CLI auth client");
+  }
+  return authClient;
+}
+
+function stripeCliProviderPollState(args: {
+  readonly mode: "test" | "live";
+  readonly token: string;
+}): string {
+  return JSON.stringify({
+    version: 1,
+    mode: args.mode,
+    pollUrl: `${STRIPE_CLI_AUTH_URL}?poll_token=${args.token}`,
+  });
+}
+
 const manualAuthMethodConfig = {
   label: "API Token",
   helpText: "Enter an API token.",
@@ -302,17 +335,26 @@ describe("connector auth method lifecycle helpers", () => {
       getConnectorAuthMethodIdsForGrantKind("stripe", "manual"),
     ).toStrictEqual(["api-token"]);
     expect(
+      getConnectorAuthMethodIdsForGrantKind("stripe", "device-auth"),
+    ).toStrictEqual(["cli"]);
+    expect(
       getConnectorAuthMethodIdsForAccessKind("stripe", "refresh-token"),
     ).toStrictEqual(["oauth"]);
     expect(
       getConnectorAuthMethodIdsForAccessKind("stripe", "static"),
+    ).toStrictEqual(["cli", "api-token"]);
+    expect(
+      getConnectorAuthMethodIdsForAccessKind("lark", "refresh-token"),
     ).toStrictEqual(["api-token"]);
+    expect(
+      getConnectorAuthMethodIdsForAccessKind("lark", "static"),
+    ).toStrictEqual([]);
     expect(
       getConnectorAuthMethodIdsForRevokeKind("stripe", "token-revoke"),
     ).toStrictEqual([]);
     expect(
       getConnectorAuthMethodIdsForRevokeKind("stripe", "none"),
-    ).toStrictEqual(["oauth", "api-token"]);
+    ).toStrictEqual(["oauth", "cli", "api-token"]);
 
     expect(
       getConnectorAuthMethodIdsForGrantKind("test-oauth-device", "device-auth"),
@@ -325,7 +367,7 @@ describe("connector auth method lifecycle helpers", () => {
     ).toStrictEqual(["oauth", "api"]);
     expect(
       getConnectorAuthMethodIdsForAccessKind("test-oauth", "refresh-token"),
-    ).toStrictEqual(["oauth", "api"]);
+    ).toStrictEqual(["oauth", "api-token", "api"]);
 
     expect(
       connectorAuthMethodHasGrantKind("github", "oauth", "auth-code"),
@@ -399,7 +441,7 @@ describe("connector auth method config", () => {
       (typeof multiAuthMethodFixture)["multi-auth-method-fixture"];
 
     expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<
-      "oauth" | "api-token" | "api"
+      "oauth" | "api-token" | "cli" | "api"
     >();
     expectTypeOf<"app-credential">().not.toMatchTypeOf<ConnectorAuthMethodId>();
     expectTypeOf<"app-credential">().not.toMatchTypeOf<
@@ -598,7 +640,7 @@ describe("connector auth method config", () => {
             `${type}:${authMethod}`,
           ]);
         }
-        for (const name of getConnectorVariableNames(type, authMethod)) {
+        for (const name of getConnectorOwnedVariableNames(type, authMethod)) {
           variableOwners.set(name, [
             ...(variableOwners.get(name) ?? []),
             `${type}:${authMethod}`,
@@ -608,10 +650,20 @@ describe("connector auth method config", () => {
     }
 
     const duplicateSecrets = [...secretOwners].filter(([, owners]) => {
-      return owners.length > 1;
+      const ownerTypes = new Set(
+        owners.map((owner) => {
+          return owner.split(":")[0];
+        }),
+      );
+      return ownerTypes.size > 1;
     });
     const duplicateVariables = [...variableOwners].filter(([, owners]) => {
-      return owners.length > 1;
+      const ownerTypes = new Set(
+        owners.map((owner) => {
+          return owner.split(":")[0];
+        }),
+      );
+      return ownerTypes.size > 1;
     });
 
     expect(duplicateSecrets).toStrictEqual([]);
@@ -644,14 +696,14 @@ describe("connector auth method config", () => {
 describe("connector selected auth method capability checks", () => {
   it("matches exactly the auth methods that declare auth-code and device-auth grants", () => {
     for (const type of connectorTypeSchema.options) {
-      const authMethods = getConfiguredConnectorAuthMethods(type);
+      const authMethodIds = getConfiguredConnectorAuthMethodIds(type);
       expect(hasConnectorAuthCodeGrant(type)).toBe(
-        authMethods.some((authMethod) => {
+        authMethodIds.some((authMethod) => {
           return connectorAuthMethodHasGrantKind(type, authMethod, "auth-code");
         }),
       );
       expect(hasConnectorDeviceAuthGrant(type)).toBe(
-        authMethods.some((authMethod) => {
+        authMethodIds.some((authMethod) => {
           return connectorAuthMethodHasGrantKind(
             type,
             authMethod,
@@ -659,7 +711,7 @@ describe("connector selected auth method capability checks", () => {
           );
         }),
       );
-      for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
         expect(
           connectorAuthMethodHasGrantKind(type, authMethod, "auth-code"),
         ).toBe(
@@ -677,11 +729,12 @@ describe("connector selected auth method capability checks", () => {
 
   it("matches exactly the auth methods that declare refresh-token access", () => {
     expectTypeOf<"base44">().toMatchTypeOf<RefreshTokenAccessConnectorType>();
+    expectTypeOf<"lark">().toMatchTypeOf<RefreshTokenAccessConnectorType>();
     expectTypeOf<"notion">().toMatchTypeOf<RefreshTokenAccessConnectorType>();
     expectTypeOf<"github">().not.toMatchTypeOf<RefreshTokenAccessConnectorType>();
 
     for (const type of connectorTypeSchema.options) {
-      for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
         const hasRefreshTokenAccess =
           getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
           "refresh-token";
@@ -695,12 +748,55 @@ describe("connector selected auth method capability checks", () => {
     }
   });
 
+  it("types refresh provider auth clients from the selected auth method", () => {
+    type ClientBackedRefreshArgs = ConnectorAuthProviderRefreshArgs<
+      "test-oauth",
+      "oauth"
+    >;
+    type InputOnlyRefreshArgs = ConnectorAuthProviderRefreshArgs<
+      "test-oauth",
+      "api-token"
+    >;
+    type LarkRefreshArgs = ConnectorAuthProviderRefreshArgs<
+      "lark",
+      "api-token"
+    >;
+    type DefaultRefreshArgs = ConnectorAuthProviderRefreshArgs<"test-oauth">;
+    type DefaultInputOnlyRefreshArgs = Exclude<
+      DefaultRefreshArgs,
+      { readonly authClient: unknown }
+    >;
+
+    expectTypeOf<ClientBackedRefreshArgs["authClient"]>().toEqualTypeOf<
+      ConnectorAuthClientForMethod<"test-oauth", "oauth">
+    >();
+    expectTypeOf<"authClient">().not.toMatchTypeOf<
+      keyof InputOnlyRefreshArgs
+    >();
+    expectTypeOf<InputOnlyRefreshArgs["inputs"]>().toEqualTypeOf<{
+      readonly inputSecret: string;
+      readonly inputVariable: string;
+    }>();
+    expectTypeOf<"authClient">().not.toMatchTypeOf<
+      keyof DefaultInputOnlyRefreshArgs
+    >();
+    expectTypeOf<DefaultInputOnlyRefreshArgs["inputs"]>().toEqualTypeOf<{
+      readonly inputSecret: string;
+      readonly inputVariable: string;
+    }>();
+    expectTypeOf<"authClient">().not.toMatchTypeOf<keyof LarkRefreshArgs>();
+    expectTypeOf<LarkRefreshArgs["inputs"]>().toEqualTypeOf<{
+      readonly appId: string;
+      readonly appSecret: string;
+    }>();
+  });
+
   it("matches exactly the auth methods that declare token revoke", () => {
     expectTypeOf<"github">().toMatchTypeOf<TokenRevokeConnectorType>();
     expectTypeOf<"notion">().not.toMatchTypeOf<TokenRevokeConnectorType>();
 
     for (const type of connectorTypeSchema.options) {
-      for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
         const supportsTokenRevoke = connectorAuthMethodRefHasRevokeKind(
           {
             type,
@@ -774,12 +870,23 @@ describe("connector selected auth method capability checks", () => {
       ),
     ).toBe(true);
     expect(
+      connectorAuthMethodRefHasAccessKind(
+        { type: "test-oauth", authMethod: "api-token" },
+        "refresh-token",
+      ),
+    ).toBe(true);
+    expect(
       getConnectorAuthMethodIdsForAccessKind("test-oauth", "refresh-token"),
-    ).toStrictEqual(["oauth", "api"]);
+    ).toStrictEqual(["oauth", "api-token", "api"]);
     expect(
       getConnectorAuthMethodEnvBindings("test-oauth", "api"),
     ).toStrictEqual({
       TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
+    });
+    expect(
+      getConnectorAuthMethodEnvBindings("test-oauth", "api-token"),
+    ).toStrictEqual({
+      TEST_OAUTH_API_TOKEN: "$secrets.TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
     });
 
     const authClient = resolveConnectorAuthClientForMethod(
@@ -1036,6 +1143,7 @@ describe("connector selected auth method capability checks", () => {
       type: "test-oauth-device",
       authMethod: "oauth",
       authClient: oauthClient,
+      options: {},
     });
     expect(startResult).toStrictEqual({
       deviceCode: "test-device:test-oauth-device-client:read",
@@ -1145,6 +1253,537 @@ describe("connector selected auth method capability checks", () => {
       getConnectorAuthMethodGrantMetadata("test-oauth-device", "api")?.outputs
         .accessToken?.secretName,
     ).toBe(TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME);
+  });
+
+  it("passes validated start options to the test OAuth device API provider", async () => {
+    server.use(
+      http.post(
+        /\/api\/test\/oauth-provider\/device\/code$/,
+        async ({ request }) => {
+          const body = new URLSearchParams(await request.text());
+          expect(body.get("client_id")).toBe("test-oauth-device-api-client");
+          expect(body.get("scope")).toBe("read");
+          expect(body.get("mode")).toBe("live");
+          return HttpResponse.json({
+            device_code: `test-device:${body.get("client_id")}:${body.get("scope")}:${body.get("mode")}`,
+            user_code: "TEST-DEVICE",
+            verification_uri: "https://oauth-device.test/device",
+            verification_uri_complete:
+              "https://oauth-device.test/device?user_code=TEST-DEVICE",
+            expires_in: 600,
+            interval: 0,
+          });
+        },
+      ),
+    );
+
+    const apiClient = resolveConnectorAuthClientForMethod(
+      "test-oauth-device",
+      "api",
+      () => {
+        return undefined;
+      },
+    );
+    expect(apiClient).toBeDefined();
+
+    if (!apiClient) {
+      throw new Error("Expected test-oauth-device API client");
+    }
+
+    await expect(
+      startConnectorDeviceAuthorization({
+        type: "test-oauth-device",
+        authMethod: "api",
+        authClient: apiClient,
+        options: { mode: "live" },
+      }),
+    ).resolves.toMatchObject({
+      deviceCode: "test-device:test-oauth-device-api-client:read:live",
+    });
+  });
+
+  it("applies default start options in the device authorization dispatcher", async () => {
+    server.use(
+      http.post(
+        /\/api\/test\/oauth-provider\/device\/code$/,
+        async ({ request }) => {
+          const body = new URLSearchParams(await request.text());
+          expect(body.get("client_id")).toBe("test-oauth-device-api-client");
+          expect(body.get("scope")).toBe("read");
+          expect(body.get("mode")).toBe("test");
+          return HttpResponse.json({
+            device_code: `test-device:${body.get("client_id")}:${body.get("scope")}:${body.get("mode")}`,
+            user_code: "TEST-DEVICE",
+            verification_uri: "https://oauth-device.test/device",
+            verification_uri_complete:
+              "https://oauth-device.test/device?user_code=TEST-DEVICE",
+            expires_in: 600,
+            interval: 0,
+          });
+        },
+      ),
+    );
+
+    const apiClient = resolveConnectorAuthClientForMethod(
+      "test-oauth-device",
+      "api",
+      () => {
+        return undefined;
+      },
+    );
+    expect(apiClient).toBeDefined();
+
+    if (!apiClient) {
+      throw new Error("Expected test-oauth-device API client");
+    }
+
+    await expect(
+      startConnectorDeviceAuthorization({
+        type: "test-oauth-device",
+        authMethod: "api",
+        authClient: apiClient,
+        options: {},
+      }),
+    ).resolves.toMatchObject({
+      deviceCode: "test-device:test-oauth-device-api-client:read:test",
+    });
+  });
+
+  it("starts and polls the Stripe CLI Dashboard provider", async () => {
+    let startBody: URLSearchParams | undefined;
+    server.use(
+      http.post(STRIPE_CLI_AUTH_URL, async ({ request }) => {
+        expect(request.headers.get("content-type")).toContain(
+          "application/x-www-form-urlencoded",
+        );
+        startBody = new URLSearchParams(await request.text());
+        return HttpResponse.json({
+          browser_url: STRIPE_CLI_BROWSER_URL,
+          poll_url: `${STRIPE_CLI_AUTH_URL}?poll_token=test-poll`,
+          verification_code: "STRIPE-CLI",
+        });
+      }),
+      http.get(STRIPE_CLI_AUTH_URL, ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("poll_token") === "pending") {
+          return HttpResponse.json({
+            redeemed: false,
+            account_id: null,
+            account_display_name: null,
+            testmode_key_secret: null,
+            testmode_key_publishable: null,
+            livemode_key_secret: null,
+            livemode_key_publishable: null,
+          });
+        }
+        expect(url.searchParams.get("poll_token")).toBe("test-poll");
+        return HttpResponse.json({
+          redeemed: true,
+          account_id: "acct_test",
+          account_display_name: "Test Stripe Account",
+          testmode_key_secret: STRIPE_CLI_TEST_SECRET,
+          livemode_key_secret: STRIPE_CLI_LIVE_SECRET,
+        });
+      }),
+    );
+
+    const authClient = stripeCliAuthClient();
+    const startResult = await startConnectorDeviceAuthorization({
+      type: "stripe",
+      authMethod: "cli",
+      authClient,
+      options: { mode: "test" },
+    });
+    expect(startBody?.get("client_version")).toBeTruthy();
+    expect(startBody?.get("device_name")).toBe("vm0-stripe-connector");
+    expect(startResult).toMatchObject({
+      deviceCode: "stripe-cli-dashboard-auth",
+      pollState: expect.any(String),
+      userCode: "STRIPE-CLI",
+      verificationUri: STRIPE_CLI_BROWSER_URL,
+      verificationUriComplete: STRIPE_CLI_BROWSER_URL,
+      expiresIn: 600,
+      interval: 1,
+    });
+    expect(startResult.deviceCode).not.toContain("poll_token");
+
+    await expect(
+      pollConnectorDeviceAuthorization({
+        type: "stripe",
+        authMethod: "cli",
+        authClient,
+        deviceCode: startResult.deviceCode,
+        pollState: stripeCliProviderPollState({
+          mode: "test",
+          token: "pending",
+        }),
+      }),
+    ).resolves.toStrictEqual({ status: "pending", interval: 1 });
+
+    await expect(
+      pollConnectorDeviceAuthorization({
+        type: "stripe",
+        authMethod: "cli",
+        authClient,
+        deviceCode: startResult.deviceCode,
+        pollState: startResult.pollState,
+      }),
+    ).resolves.toStrictEqual({
+      status: "complete",
+      token: {
+        outputs: { token: STRIPE_CLI_TEST_SECRET },
+        expiresIn: 90 * 24 * 60 * 60,
+        scopes: [],
+        userInfo: {
+          id: "acct_test",
+          username: "Test Stripe Account",
+          email: null,
+        },
+      },
+    });
+  });
+
+  it("imports the Stripe CLI live key when live mode was selected", async () => {
+    server.use(
+      http.get(STRIPE_CLI_AUTH_URL, ({ request }) => {
+        expect(new URL(request.url).searchParams.get("poll_token")).toBe(
+          "live-poll",
+        );
+        return HttpResponse.json({
+          redeemed: true,
+          account_id: "acct_live",
+          livemode_key_secret: STRIPE_CLI_LIVE_SECRET,
+          testmode_key_secret: STRIPE_CLI_TEST_SECRET,
+        });
+      }),
+    );
+
+    await expect(
+      pollConnectorDeviceAuthorization({
+        type: "stripe",
+        authMethod: "cli",
+        authClient: stripeCliAuthClient(),
+        deviceCode: "stripe-cli-dashboard-auth",
+        pollState: stripeCliProviderPollState({
+          mode: "live",
+          token: "live-poll",
+        }),
+      }),
+    ).resolves.toMatchObject({
+      status: "complete",
+      token: {
+        outputs: { token: STRIPE_CLI_LIVE_SECRET },
+      },
+    });
+  });
+
+  it("rejects unexpected Stripe CLI Dashboard URLs without leaking poll URLs", async () => {
+    server.use(
+      http.post(STRIPE_CLI_AUTH_URL, () => {
+        return HttpResponse.json({
+          browser_url:
+            "https://evil.test/stripecli/confirm_auth?poll_token=secret-poll",
+          poll_url: `${STRIPE_CLI_AUTH_URL}?poll_token=secret-poll`,
+          verification_code: "STRIPE-CLI",
+        });
+      }),
+    );
+
+    await expect(
+      startConnectorDeviceAuthorization({
+        type: "stripe",
+        authMethod: "cli",
+        authClient: stripeCliAuthClient(),
+        options: { mode: "test" },
+      }),
+    ).rejects.toThrow("Stripe CLI auth returned an unexpected browser URL");
+  });
+
+  it("does not follow Stripe CLI start redirects", async () => {
+    let redirected = false;
+    server.use(
+      http.post(STRIPE_CLI_AUTH_URL, () => {
+        return new Response(null, {
+          status: 302,
+          headers: { Location: "https://evil.test/stripecli/auth" },
+        });
+      }),
+      http.get("https://evil.test/stripecli/auth", () => {
+        redirected = true;
+        return HttpResponse.json({
+          browser_url: STRIPE_CLI_BROWSER_URL,
+          poll_url: `${STRIPE_CLI_AUTH_URL}?poll_token=redirected`,
+          verification_code: "STRIPE-CLI",
+        });
+      }),
+    );
+
+    await expect(
+      startConnectorDeviceAuthorization({
+        type: "stripe",
+        authMethod: "cli",
+        authClient: stripeCliAuthClient(),
+        options: { mode: "test" },
+      }),
+    ).rejects.toThrow();
+    expect(redirected).toBe(false);
+  });
+
+  it("returns redacted Stripe CLI poll errors", async () => {
+    const unusualStripeKey = "sk_test_connector123.extra";
+    server.use(
+      http.get(STRIPE_CLI_AUTH_URL, () => {
+        return HttpResponse.text(
+          `${STRIPE_CLI_AUTH_URL}?poll_token=secret-poll ${STRIPE_CLI_TEST_SECRET} ${unusualStripeKey}`,
+          { status: 500 },
+        );
+      }),
+    );
+
+    const result = await pollConnectorDeviceAuthorization({
+      type: "stripe",
+      authMethod: "cli",
+      authClient: stripeCliAuthClient(),
+      deviceCode: "stripe-cli-dashboard-auth",
+      pollState: stripeCliProviderPollState({
+        mode: "test",
+        token: "secret-poll",
+      }),
+    });
+
+    expect(result).toMatchObject({
+      status: "error",
+      error: "stripe_cli_auth_error",
+    });
+    if (result.status !== "error") {
+      throw new Error("Expected Stripe CLI poll to return an error");
+    }
+    expect(result.errorDescription).toContain(
+      "https://dashboard.stripe.com/stripecli/[redacted]",
+    );
+    expect(result.errorDescription).toContain("[stripe-key]");
+    expect(result.errorDescription).not.toContain("secret-poll");
+    expect(result.errorDescription).not.toContain(STRIPE_CLI_TEST_SECRET);
+    expect(result.errorDescription).not.toContain(unusualStripeKey);
+  });
+
+  it("does not follow Stripe CLI poll redirects", async () => {
+    let redirected = false;
+    server.use(
+      http.get(STRIPE_CLI_AUTH_URL, () => {
+        return new Response(null, {
+          status: 302,
+          headers: { Location: "https://evil.test/stripecli/auth" },
+        });
+      }),
+      http.get("https://evil.test/stripecli/auth", () => {
+        redirected = true;
+        return HttpResponse.json({ redeemed: true });
+      }),
+    );
+
+    const result = await pollConnectorDeviceAuthorization({
+      type: "stripe",
+      authMethod: "cli",
+      authClient: stripeCliAuthClient(),
+      deviceCode: "stripe-cli-dashboard-auth",
+      pollState: stripeCliProviderPollState({
+        mode: "test",
+        token: "redirect-poll",
+      }),
+    });
+
+    expect(redirected).toBe(false);
+    expect(result).toMatchObject({
+      status: "error",
+      error: "stripe_cli_auth_error",
+    });
+  });
+
+  it("returns an error for malformed Stripe CLI poll responses", async () => {
+    server.use(
+      http.get(STRIPE_CLI_AUTH_URL, () => {
+        return HttpResponse.text(
+          `not json ${STRIPE_CLI_AUTH_URL}?poll_token=secret-poll ${STRIPE_CLI_TEST_SECRET}`,
+        );
+      }),
+    );
+
+    const result = await pollConnectorDeviceAuthorization({
+      type: "stripe",
+      authMethod: "cli",
+      authClient: stripeCliAuthClient(),
+      deviceCode: "stripe-cli-dashboard-auth",
+      pollState: stripeCliProviderPollState({
+        mode: "test",
+        token: "secret-poll",
+      }),
+    });
+
+    expect(result).toMatchObject({
+      status: "error",
+      error: "stripe_cli_auth_error",
+    });
+    if (result.status !== "error") {
+      throw new Error("Expected malformed Stripe CLI poll to return an error");
+    }
+    expect(result.errorDescription).not.toContain("secret-poll");
+    expect(result.errorDescription).not.toContain(STRIPE_CLI_TEST_SECRET);
+  });
+
+  it("returns an error when Stripe CLI poll omits the selected mode key", async () => {
+    server.use(
+      http.get(STRIPE_CLI_AUTH_URL, () => {
+        return HttpResponse.json({
+          redeemed: true,
+          account_id: "acct_test",
+          livemode_key_secret: STRIPE_CLI_LIVE_SECRET,
+        });
+      }),
+    );
+
+    await expect(
+      pollConnectorDeviceAuthorization({
+        type: "stripe",
+        authMethod: "cli",
+        authClient: stripeCliAuthClient(),
+        deviceCode: "stripe-cli-dashboard-auth",
+        pollState: stripeCliProviderPollState({
+          mode: "test",
+          token: "missing-test-key",
+        }),
+      }),
+    ).resolves.toStrictEqual({
+      status: "error",
+      error: "stripe_cli_auth_error",
+      errorDescription: "Stripe CLI auth did not return a test mode key",
+    });
+  });
+
+  it("returns an error when Stripe CLI poll returns a key for the wrong mode", async () => {
+    server.use(
+      http.get(STRIPE_CLI_AUTH_URL, () => {
+        return HttpResponse.json({
+          redeemed: true,
+          account_id: "acct_wrong_mode",
+          account_display_name: "Wrong Mode Stripe Account",
+          testmode_key_secret: STRIPE_CLI_LIVE_SECRET,
+        });
+      }),
+    );
+
+    await expect(
+      pollConnectorDeviceAuthorization({
+        type: "stripe",
+        authMethod: "cli",
+        authClient: stripeCliAuthClient(),
+        deviceCode: "stripe-cli-dashboard-auth",
+        pollState: stripeCliProviderPollState({
+          mode: "test",
+          token: "wrong-mode-key",
+        }),
+      }),
+    ).resolves.toStrictEqual({
+      status: "error",
+      error: "stripe_cli_auth_error",
+      errorDescription: "Stripe CLI auth returned an invalid test mode key",
+    });
+  });
+
+  it("returns an error for invalid Stripe CLI provider state", async () => {
+    await expect(
+      pollConnectorDeviceAuthorization({
+        type: "stripe",
+        authMethod: "cli",
+        authClient: stripeCliAuthClient(),
+        deviceCode: "stripe-cli-dashboard-auth",
+        pollState: JSON.stringify({
+          version: 1,
+          mode: "test",
+          pollUrl:
+            "https://dashboard.stripe.com/stripecli/authx?poll_token=secret-poll",
+        }),
+      }),
+    ).resolves.toStrictEqual({
+      status: "error",
+      error: "stripe_cli_auth_error",
+      errorDescription: "Stripe CLI auth returned an unexpected poll URL",
+    });
+
+    await expect(
+      pollConnectorDeviceAuthorization({
+        type: "stripe",
+        authMethod: "cli",
+        authClient: stripeCliAuthClient(),
+        deviceCode: "stripe-cli-dashboard-auth",
+        pollState: JSON.stringify({
+          version: 1,
+          mode: "test",
+          pollUrl:
+            "https://dashboard.stripe.com:444/stripecli/auth?poll_token=secret-poll",
+        }),
+      }),
+    ).resolves.toStrictEqual({
+      status: "error",
+      error: "stripe_cli_auth_error",
+      errorDescription: "Stripe CLI auth returned an unexpected poll URL",
+    });
+  });
+
+  it("refreshes an input-only connector access provider without an auth client", async () => {
+    await expect(
+      refreshConnectorAuthProviderAccessToken({
+        type: "test-oauth",
+        authMethod: "api-token",
+        inputs: {
+          inputSecret: "secret-input",
+          inputVariable: "variable-input",
+        },
+        signal: testRefreshSignal(),
+      }),
+    ).resolves.toStrictEqual({
+      outputs: {
+        accessToken: "fresh-test-oauth-api-token:secret-input:variable-input",
+      },
+      expiresIn: 3600,
+    });
+  });
+
+  it("refreshes Lark tenant access through the non-OAuth access provider", async () => {
+    server.use(
+      http.post(
+        "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal",
+        async ({ request }) => {
+          await expect(request.json()).resolves.toStrictEqual({
+            app_id: "lark-app-id",
+            app_secret: "lark-app-secret",
+          });
+          return HttpResponse.json({
+            code: 0,
+            msg: "ok",
+            tenant_access_token: "lark-tenant-access-token",
+            expire: 7200,
+          });
+        },
+      ),
+    );
+
+    await expect(
+      refreshConnectorAuthProviderAccessToken({
+        type: "lark",
+        authMethod: "api-token",
+        inputs: {
+          appId: "lark-app-id",
+          appSecret: "lark-app-secret",
+        },
+        signal: testRefreshSignal(),
+      }),
+    ).resolves.toStrictEqual({
+      outputs: {
+        accessToken: "lark-tenant-access-token",
+      },
+      expiresIn: 7200,
+    });
   });
 
   it("starts, polls, and refreshes the Base44 OAuth device provider", async () => {
@@ -1260,6 +1899,7 @@ describe("connector selected auth method capability checks", () => {
         type: "base44",
         authMethod: "oauth",
         authClient: oauthClient,
+        options: {},
       }),
     ).resolves.toStrictEqual({
       deviceCode: "base44-device-code",
@@ -1560,6 +2200,7 @@ describe("connector selected auth method capability checks", () => {
         type: "slock",
         authMethod: "oauth",
         authClient: oauthClient,
+        options: {},
       }),
     ).resolves.toStrictEqual({
       deviceCode: "slock-device-code",
@@ -1748,60 +2389,73 @@ describe("connector selected auth method capability checks", () => {
   });
 });
 
-describe("getConfiguredConnectorAuthMethods", () => {
+describe("getConfiguredConnectorAuthMethodIds", () => {
   it("returns configured auth methods without feature filtering", () => {
-    expect(getConfiguredConnectorAuthMethods("stripe")).toStrictEqual([
+    expect(getConfiguredConnectorAuthMethodIds("stripe")).toStrictEqual([
       "oauth",
+      "cli",
       "api-token",
     ]);
   });
 });
 
-describe("getAvailableConnectorAuthMethods", () => {
-  it("exposes Stripe API-token auth without CLI auth", () => {
-    expect(getAvailableConnectorAuthMethods("stripe", {})).toStrictEqual([
+describe("getAvailableConnectorAuthMethodIds", () => {
+  it("exposes Stripe API-token and CLI auth without gated auth methods", () => {
+    expect(getAvailableConnectorAuthMethodIds("stripe", {})).toStrictEqual([
+      "cli",
       "api-token",
     ]);
   });
 
-  it("exposes BentoML API-token auth only when its switch is enabled", () => {
-    expect(getAvailableConnectorAuthMethods("bentoml", {})).toStrictEqual([]);
+  it("exposes Stripe OAuth auth when the Stripe switch is enabled", () => {
     expect(
-      getAvailableConnectorAuthMethods("bentoml", {
+      getAvailableConnectorAuthMethodIds("stripe", {
+        [FeatureSwitchKey.StripeConnector]: true,
+      }),
+    ).toStrictEqual(["oauth", "cli", "api-token"]);
+  });
+
+  it("exposes BentoML API-token auth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("bentoml", {})).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("bentoml", {
         [FeatureSwitchKey.BentomlConnector]: true,
       }),
     ).toStrictEqual(["api-token"]);
   });
 
+  it("exposes Ashby API-token auth without a feature switch", () => {
+    expect(getAvailableConnectorAuthMethodIds("ashby", {})).toStrictEqual([
+      "api-token",
+    ]);
+  });
+
   it("exposes Base44 OAuth without a feature switch", () => {
-    expect(getAvailableConnectorAuthMethods("base44", {})).toStrictEqual([
+    expect(getAvailableConnectorAuthMethodIds("base44", {})).toStrictEqual([
       "oauth",
     ]);
   });
 
   it("exposes Slock OAuth without a feature switch", () => {
-    expect(getAvailableConnectorAuthMethods("slock", {})).toStrictEqual([
+    expect(getAvailableConnectorAuthMethodIds("slock", {})).toStrictEqual([
       "oauth",
     ]);
   });
 
-  it("exposes Lark API-token auth only when its switch is enabled", () => {
-    expect(getAvailableConnectorAuthMethods("lark", {})).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethods("lark", {
-        [FeatureSwitchKey.LarkConnector]: true,
-      }),
-    ).toStrictEqual(["api-token"]);
+  it("exposes Lark API-token auth without a feature switch", () => {
+    expect(getAvailableConnectorAuthMethodIds("lark", {})).toStrictEqual([
+      "api-token",
+    ]);
   });
 
   it("exposes Doubao API-token auth without a feature switch", () => {
-    expect(getAvailableConnectorAuthMethods("doubao", {})).toStrictEqual([
+    expect(getAvailableConnectorAuthMethodIds("doubao", {})).toStrictEqual([
       "api-token",
     ]);
   });
 
   it("exposes WeRead API-token auth without a feature switch", () => {
-    expect(getAvailableConnectorAuthMethods("weread", {})).toStrictEqual([
+    expect(getAvailableConnectorAuthMethodIds("weread", {})).toStrictEqual([
       "api-token",
     ]);
   });
@@ -1865,6 +2519,18 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       },
       platformSecrets: [],
     });
+  });
+
+  it("returns static access metadata for the Stripe CLI method", () => {
+    expect(getConnectorAuthMethodAccessMetadata("stripe", "cli")).toStrictEqual(
+      {
+        kind: "static",
+        envBindings: {
+          STRIPE_TOKEN: "$secrets.STRIPE_TOKEN",
+        },
+        platformSecrets: [],
+      },
+    );
   });
 
   it("returns platform-owned secret metadata for Google Ads", () => {
@@ -1943,6 +2609,93 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
     });
   });
 
+  it("supports input-only refresh metadata", () => {
+    expect(
+      getConnectorAuthMethodAccessMetadata("test-oauth", "api-token"),
+    ).toStrictEqual({
+      kind: "refresh-token",
+      inputs: {
+        inputSecret: {
+          valueRef: "$secrets.TEST_OAUTH_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "TEST_OAUTH_TOKEN",
+          },
+        },
+        inputVariable: {
+          valueRef: "$vars.TEST_OAUTH_API_TOKEN_INPUT_VAR",
+          source: {
+            kind: "connector-variable",
+            name: "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+          },
+        },
+      },
+      outputs: {
+        accessToken: {
+          valueRef: "$secrets.TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+          secretName: "TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+        },
+      },
+      refreshableSecrets: ["TEST_OAUTH_API_TOKEN_ACCESS_TOKEN"],
+      envBindings: {
+        TEST_OAUTH_API_TOKEN: "$secrets.TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+      },
+      platformSecrets: [],
+    });
+  });
+
+  it("returns Lark refresh-token access metadata for manual app credentials", () => {
+    expect(getApiTokenManualGrantFields("lark")).toStrictEqual({
+      LARK_APP_ID: {
+        label: "App ID",
+        required: true,
+        storage: "variable",
+      },
+      LARK_APP_SECRET: {
+        label: "App Secret",
+        required: true,
+        storage: "secret",
+      },
+    });
+    expect(
+      getConnectorAuthMethodAccessMetadata("lark", "api-token"),
+    ).toStrictEqual({
+      kind: "refresh-token",
+      inputs: {
+        appId: {
+          valueRef: "$vars.LARK_APP_ID",
+          source: {
+            kind: "connector-variable",
+            name: "LARK_APP_ID",
+          },
+        },
+        appSecret: {
+          valueRef: "$secrets.LARK_APP_SECRET",
+          source: {
+            kind: "connector-secret",
+            name: "LARK_APP_SECRET",
+          },
+        },
+      },
+      outputs: {
+        accessToken: {
+          valueRef: "$secrets.LARK_ACCESS_TOKEN",
+          secretName: "LARK_ACCESS_TOKEN",
+        },
+      },
+      refreshableSecrets: ["LARK_ACCESS_TOKEN"],
+      envBindings: {
+        LARK_TOKEN: "$secrets.LARK_ACCESS_TOKEN",
+      },
+      platformSecrets: [],
+    });
+    expect(
+      getConnectorAuthMethodEnvBindings("lark", "api-token"),
+    ).toStrictEqual({
+      LARK_TOKEN: "$secrets.LARK_ACCESS_TOKEN",
+    });
+  });
+
   it("returns undefined for an unknown auth method", () => {
     expect(
       getConnectorAuthMethodAccessMetadata("stripe", "missing"),
@@ -1951,7 +2704,7 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
 
   it("keeps platform-owned secrets referenced by selected env bindings", () => {
     for (const type of connectorTypeSchema.options) {
-      for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
         const accessMetadata = getConnectorAuthMethodAccessMetadata(
           type,
           authMethod,
@@ -2010,10 +2763,10 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
   });
 });
 
-describe("getConnectorAuthMethodStorageMetadata", () => {
+describe("getConnectorAuthMethodRuntimeMetadata", () => {
   it("returns static provider storage and runtime bindings", () => {
     expect(
-      getConnectorAuthMethodStorageMetadata("github", "oauth"),
+      getConnectorAuthMethodRuntimeMetadata("github", "oauth"),
     ).toStrictEqual({
       storage: {
         secrets: ["GITHUB_ACCESS_TOKEN"],
@@ -2023,6 +2776,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
         {
           envName: "GH_TOKEN",
           valueRef: "$secrets.GITHUB_ACCESS_TOKEN",
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "GITHUB_ACCESS_TOKEN",
@@ -2031,6 +2785,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
         {
           envName: "GITHUB_TOKEN",
           valueRef: "$secrets.GITHUB_ACCESS_TOKEN",
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "GITHUB_ACCESS_TOKEN",
@@ -2042,7 +2797,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
 
   it("keeps manual static API tokens role-free", () => {
     expect(
-      getConnectorAuthMethodStorageMetadata("stripe", "api-token"),
+      getConnectorAuthMethodRuntimeMetadata("stripe", "api-token"),
     ).toStrictEqual({
       storage: {
         secrets: ["STRIPE_TOKEN"],
@@ -2052,6 +2807,29 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
         {
           envName: "STRIPE_TOKEN",
           valueRef: "$secrets.STRIPE_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "STRIPE_TOKEN",
+          },
+        },
+      ],
+    });
+  });
+
+  it("keeps Stripe CLI runtime access on STRIPE_TOKEN", () => {
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("stripe", "cli"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["STRIPE_TOKEN"],
+        variables: [],
+      },
+      runtimeBindings: [
+        {
+          envName: "STRIPE_TOKEN",
+          valueRef: "$secrets.STRIPE_TOKEN",
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "STRIPE_TOKEN",
@@ -2063,7 +2841,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
 
   it("represents provider extra secrets as storage-owned runtime sources", () => {
     expect(
-      getConnectorAuthMethodStorageMetadata("slock", "oauth"),
+      getConnectorAuthMethodRuntimeMetadata("slock", "oauth"),
     ).toStrictEqual({
       storage: {
         secrets: [
@@ -2077,6 +2855,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
         {
           envName: "SLOCK_TOKEN",
           valueRef: "$secrets.SLOCK_ACCESS_TOKEN",
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "SLOCK_ACCESS_TOKEN",
@@ -2085,6 +2864,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
         {
           envName: "SLOCK_SERVER_ID",
           valueRef: "$secrets.SLOCK_SERVER_ID",
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "SLOCK_SERVER_ID",
@@ -2096,7 +2876,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
 
   it("represents platform secrets as platform runtime sources", () => {
     expect(
-      getConnectorAuthMethodStorageMetadata("google-ads", "oauth"),
+      getConnectorAuthMethodRuntimeMetadata("google-ads", "oauth"),
     ).toStrictEqual({
       storage: {
         secrets: ["GOOGLE_ADS_ACCESS_TOKEN", "GOOGLE_ADS_REFRESH_TOKEN"],
@@ -2106,6 +2886,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
         {
           envName: "GOOGLE_ADS_TOKEN",
           valueRef: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
+          optional: false,
           source: {
             kind: "connector-secret",
             name: "GOOGLE_ADS_ACCESS_TOKEN",
@@ -2114,6 +2895,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
         {
           envName: "GOOGLE_ADS_DEVELOPER_TOKEN",
           valueRef: "$secrets.GOOGLE_ADS_DEVELOPER_TOKEN",
+          optional: false,
           source: {
             kind: "platform-secret",
             name: "GOOGLE_ADS_DEVELOPER_TOKEN",
@@ -2121,6 +2903,100 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
         },
       ],
     });
+  });
+
+  it("preserves optional env binding availability as optional runtime metadata", () => {
+    expect(
+      getConnectorAuthMethodRuntimeMetadata("agora", "api-token"),
+    ).toMatchObject({
+      runtimeBindings: expect.arrayContaining([
+        {
+          envName: "AGORA_APP_CERTIFICATE",
+          valueRef: "$secrets.AGORA_APP_CERTIFICATE",
+          optional: true,
+          source: {
+            kind: "connector-secret",
+            name: "AGORA_APP_CERTIFICATE",
+          },
+        },
+      ]),
+    });
+  });
+
+  it("does not use legacy required metadata in connector envBindings", () => {
+    for (const type of connectorTypeSchema.options) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
+        const method = getConnectorAuthMethod(type, authMethod);
+        if (!method) {
+          continue;
+        }
+        if (method.access.kind === "none") {
+          continue;
+        }
+        for (const [envName, binding] of Object.entries(
+          method.access.envBindings,
+        )) {
+          if (typeof binding === "string") {
+            continue;
+          }
+          expect(
+            "required" in binding,
+            `${type}/${authMethod}: env binding ${envName} must use optional: true instead of required: false`,
+          ).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("keeps manual grant field requiredness separate from env binding availability", () => {
+    expect(getConnectorAuthMethod("gitlab", "api-token")?.grant).toMatchObject({
+      kind: "manual",
+      fields: {
+        GITLAB_HOST: {
+          required: false,
+          storage: "variable",
+        },
+      },
+    });
+  });
+
+  it("marks runtime bindings for optional manual fields as optional", () => {
+    for (const type of connectorTypeSchema.options) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
+        const method = getConnectorAuthMethod(type, authMethod);
+        const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
+          type,
+          authMethod,
+        );
+        if (!method || !runtimeMetadata || method.grant.kind !== "manual") {
+          continue;
+        }
+
+        for (const [fieldName, field] of Object.entries(method.grant.fields)) {
+          if (field.required !== false) {
+            continue;
+          }
+          const sourceKind =
+            field.storage === "variable"
+              ? "connector-variable"
+              : "connector-secret";
+          const runtimeBindings = runtimeMetadata.runtimeBindings.filter(
+            (binding) => {
+              return (
+                binding.source.kind === sourceKind &&
+                binding.source.name === fieldName
+              );
+            },
+          );
+          for (const binding of runtimeBindings) {
+            expect(
+              binding.optional,
+              `${type}/${authMethod}: optional field ${fieldName} must be marked as an optional runtime binding`,
+            ).toBe(true);
+          }
+        }
+      }
+    }
   });
 });
 
@@ -2160,15 +3036,15 @@ describe("getConnectorAuthMethodRevokeMetadata", () => {
   });
 });
 
-describe("getConnectorVariableNames", () => {
+describe("getConnectorOwnedVariableNames", () => {
   it("returns manual grant variable fields for the exact auth method", () => {
-    expect(new Set(getConnectorVariableNames("zendesk", "api-token"))).toEqual(
-      new Set(["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"]),
-    );
+    expect(
+      new Set(getConnectorOwnedVariableNames("zendesk", "api-token")),
+    ).toEqual(new Set(["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"]));
   });
 
   it("returns no variables for an auth method without variable fields", () => {
-    expect(getConnectorVariableNames("ahrefs", "oauth")).toEqual([]);
+    expect(getConnectorOwnedVariableNames("ahrefs", "oauth")).toEqual([]);
   });
 });
 
@@ -2197,6 +3073,12 @@ describe("getConnectorEnvBindingEntries", () => {
   it("returns correct env binding entries for API-token-only connector", () => {
     expect(envBindingsForSingleMethod("axiom", "api-token")).toEqual({
       AXIOM_TOKEN: "$secrets.AXIOM_TOKEN",
+    });
+  });
+
+  it("returns correct env binding entries for Ashby", () => {
+    expect(envBindingsForSingleMethod("ashby", "api-token")).toEqual({
+      ASHBY_TOKEN: "$secrets.ASHBY_TOKEN",
     });
   });
 
@@ -2282,11 +3164,11 @@ describe("getConnectorEnvBindingEntries", () => {
         "refresh-token",
       );
       const grantMetadata = getConnectorAuthMethodGrantMetadata(type, "oauth");
-      const storageMetadata = getConnectorAuthMethodStorageMetadata(
+      const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
         type,
         "oauth",
       );
-      if (!storageMetadata) {
+      if (!runtimeMetadata) {
         throw new Error(`${type}: missing OAuth storage metadata`);
       }
       if (!grantMetadata) {
@@ -2335,7 +3217,7 @@ describe("getConnectorEnvBindingEntries", () => {
         ).toContain(refreshSecretName);
       }
 
-      const runtimeSecretNames = storageMetadata.runtimeBindings.flatMap(
+      const runtimeSecretNames = runtimeMetadata.runtimeBindings.flatMap(
         (entry) => {
           return entry.source.kind === "connector-secret"
             ? [entry.source.name]
@@ -2393,15 +3275,22 @@ describe("getConnectorEnvBindingEntries", () => {
       // api-token (if exists): exactly one secret XXX_TOKEN
       const apiTokenFields = getApiTokenManualGrantFields(type);
       if (apiTokenFields) {
+        const apiTokenSecretFields = Object.entries(apiTokenFields)
+          .filter(([, field]) => {
+            return field.storage !== "variable";
+          })
+          .map(([name]) => {
+            return name;
+          });
         expect(
-          Object.keys(apiTokenFields),
-          `${type}: api-token must have exactly ["${prefix}_TOKEN"]`,
+          apiTokenSecretFields,
+          `${type}: api-token must have exactly one secret field ["${prefix}_TOKEN"]`,
         ).toEqual([`${prefix}_TOKEN`]);
       }
     }
   });
 
-  it("api-token-only connectors expose all secrets via envBindings with same name", () => {
+  it("static api-token-only connectors expose all fields via envBindings with same name", () => {
     for (const type of connectorTypeSchema.options) {
       if (hasConnectorAuthorizationGrant(type)) continue;
       const fields = getApiTokenManualGrantFields(type);
@@ -2409,6 +3298,20 @@ describe("getConnectorEnvBindingEntries", () => {
 
       const fieldNames = Object.keys(fields);
       const envBindings = envBindingsForSingleMethod(type, "api-token");
+      const accessMetadata = getConnectorAuthMethodAccessMetadata(
+        type,
+        "api-token",
+      );
+      if (accessMetadata?.kind === "refresh-token") {
+        const bindingRefs = new Set(Object.values(envBindings));
+        for (const refreshableSecretName of accessMetadata.refreshableSecrets) {
+          expect(
+            bindingRefs.has(`$secrets.${refreshableSecretName}`),
+            `${type}: refresh-token api-token envBindings must expose derived access secret ${refreshableSecretName}`,
+          ).toBe(true);
+        }
+        continue;
+      }
       const envBindingNames = Object.keys(envBindings);
 
       // envBindings names must be exactly the same set as secrets
@@ -2844,6 +3747,172 @@ describe("connector OAuth device authorization config", () => {
         clientRegistration: "static",
         clientType: "public",
         clientId: "test-oauth-device-api-client",
+      },
+    });
+  });
+
+  it("normalizes and rejects device authorization start options from connector config", () => {
+    expect(
+      getConnectorAuthMethodDeviceAuthStartOptionsConfig(
+        "test-oauth-device",
+        "oauth",
+      ),
+    ).toBeUndefined();
+    expect(
+      getConnectorAuthMethodDeviceAuthStartOptionsConfig(
+        "test-oauth-device",
+        "api",
+      ),
+    ).toStrictEqual({
+      mode: {
+        kind: "select",
+        label: "Mode",
+        required: true,
+        defaultValue: "test",
+        options: [
+          { value: "test", label: "Test" },
+          { value: "live", label: "Live" },
+        ],
+      },
+    });
+    expect(
+      getConnectorAuthMethodDeviceAuthStartOptionsConfig("stripe", "cli"),
+    ).toStrictEqual({
+      mode: {
+        kind: "select",
+        label: "Mode",
+        required: true,
+        defaultValue: "test",
+        options: [
+          { value: "test", label: "Test" },
+          { value: "live", label: "Live" },
+        ],
+      },
+    });
+
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "oauth",
+        options: undefined,
+      }),
+    ).toStrictEqual({ success: true, options: {} });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "oauth",
+        options: { mode: "live" },
+      }),
+    ).toStrictEqual({
+      success: false,
+      message:
+        "test-oauth-device oauth device-auth start options are not supported: mode",
+    });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: undefined,
+      }),
+    ).toStrictEqual({ success: true, options: { mode: "test" } });
+    const inheritedModeOptions: Record<string, string> = {};
+    Object.setPrototypeOf(inheritedModeOptions, { mode: "live" });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: inheritedModeOptions,
+      }),
+    ).toStrictEqual({ success: true, options: { mode: "test" } });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: { mode: "live" },
+      }),
+    ).toStrictEqual({ success: true, options: { mode: "live" } });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "stripe",
+        authMethod: "cli",
+        options: undefined,
+      }),
+    ).toStrictEqual({ success: true, options: { mode: "test" } });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "stripe",
+        authMethod: "cli",
+        options: { mode: "live" },
+      }),
+    ).toStrictEqual({ success: true, options: { mode: "live" } });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "stripe",
+        authMethod: "cli",
+        options: { mode: "production" },
+      }),
+    ).toStrictEqual({
+      success: false,
+      message:
+        "stripe cli device-auth start option mode must be one of: test, live",
+    });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: { mode: "production" },
+      }),
+    ).toStrictEqual({
+      success: false,
+      message:
+        "test-oauth-device api device-auth start option mode must be one of: test, live",
+    });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: { region: "us" },
+      }),
+    ).toStrictEqual({
+      success: false,
+      message:
+        "test-oauth-device api device-auth start option region is not supported",
+    });
+    expect(
+      parseConnectorDeviceAuthStartOptions({
+        type: "test-oauth-device",
+        authMethod: "api",
+        options: Object.fromEntries([["toString", "live"]]),
+      }),
+    ).toStrictEqual({
+      success: false,
+      message:
+        "test-oauth-device api device-auth start option toString is not supported",
+    });
+  });
+
+  it("declares the Stripe CLI connector as a device authorization flow", () => {
+    expect(hasConnectorDeviceAuthGrant("stripe")).toBe(true);
+    expect(
+      getConnectorAuthMethodDeviceAuthGrantConfig("stripe", "cli"),
+    ).toMatchObject({
+      kind: "device-auth",
+      scopes: [],
+      outputs: {
+        token: "$secrets.STRIPE_TOKEN",
+      },
+    });
+    expect(getConnectorAuthMethod("stripe", "cli")).toMatchObject({
+      label: "Sign in with Stripe",
+      client: {
+        clientRegistration: "dynamic",
+        clientType: "public",
+      },
+      access: {
+        kind: "static",
+        envBindings: {
+          STRIPE_TOKEN: "$secrets.STRIPE_TOKEN",
+        },
       },
     });
   });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import {
   isSupportedRunModel,
@@ -46,6 +47,7 @@ const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
 
 const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
   createdAt: z.string(),
+  artifactKind: hostedArtifactKindSchema.optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });
 
@@ -120,6 +122,12 @@ const chatThreadListItemSchema = z.object({
    */
   hasDraft: z.boolean().optional(),
   /**
+   * Number of schedules linked to this chat thread. Drives the stronger delete
+   * confirmation copy before removing a scheduled chat thread. Optional for
+   * back-compat with fixtures predating the field.
+   */
+  scheduleCount: z.number().int().nonnegative().optional(),
+  /**
    * ISO timestamp at which the user pinned this thread. Null/undefined means
    * unpinned. Pinned threads sort above unpinned in the sidebar; both groups
    * keep recency order. Optional for back-compat with fixtures that predate
@@ -151,6 +159,18 @@ const summaryEntrySchema = z.union([
   textSummaryEntrySchema,
 ]);
 
+const presentationGenerationTemplateRequestSchema = z.object({
+  type: z.literal("presentation"),
+  selection: z.object({
+    designSystemId: z.string().min(1),
+    templateId: z.string().min(1),
+  }),
+});
+
+const generationTemplateRequestSchema = z.discriminatedUnion("type", [
+  presentationGenerationTemplateRequestSchema,
+]);
+
 const pagedChatMessageBaseSchema = z.object({
   id: z.string(),
   content: z.string().nullable(),
@@ -159,6 +179,12 @@ const pagedChatMessageBaseSchema = z.object({
   interruptsRunId: z.string().optional(),
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
+  generationTemplate: generationTemplateRequestSchema.optional(),
+  // Present on user messages posted by a firing schedule. `scheduleId` links to
+  // the schedule detail page; `scheduleTitle` is the schedule name snapshot
+  // rendered in place of the prompt text.
+  scheduleId: z.string().optional(),
+  scheduleTitle: z.string().optional(),
   createdAt: z.string(),
 });
 
@@ -267,18 +293,6 @@ const modelSelectionRequestSchema = z
       });
     }
   });
-
-const presentationGenerationTemplateRequestSchema = z.object({
-  type: z.literal("presentation"),
-  selection: z.object({
-    designSystemId: z.string().min(1),
-    templateId: z.string().min(1),
-  }),
-});
-
-const generationTemplateRequestSchema = z.discriminatedUnion("type", [
-  presentationGenerationTemplateRequestSchema,
-]);
 
 /**
  * Chat threads list route contract (/api/chat-threads)
@@ -510,6 +524,29 @@ export const chatThreadRenameContract = c.router({
 });
 
 /**
+ * Update a chat thread's model pin. Kept separate from
+ * `chatThreadByIdContract.patch`, which intentionally remains draft-only.
+ */
+export const chatThreadModelSelectionContract = c.router({
+  update: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/model-selection",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    body: z.object({
+      modelSelection: modelSelectionRequestSchema.nullable(),
+    }),
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update a chat thread model selection",
+  },
+});
+
+/**
  * Chat messages contract (/api/zero/chat/messages)
  * Unified endpoint: create thread (if needed) + run + association in one call.
  */
@@ -571,6 +608,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
+        generationTemplate: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
         debugNoMockClaude: z.undefined().optional(),
@@ -587,6 +625,7 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         modelProvider: z.undefined().optional(),
         modelSelection: z.undefined().optional(),
+        generationTemplate: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
         debugNoMockClaude: z.undefined().optional(),
@@ -783,6 +822,8 @@ export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
+export type ChatThreadModelSelectionContract =
+  typeof chatThreadModelSelectionContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;

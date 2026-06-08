@@ -14,6 +14,8 @@ use guest_common::{log_info, log_warn};
 use crate::env;
 use crate::error::AgentError;
 
+use super::child_env;
+
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 /// Set up codex auth on the guest before invoking `codex exec`.
@@ -28,8 +30,8 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 ///
 /// - **API-key mode** (default): pipe `OPENAI_API_KEY` into
 ///   `codex login --with-api-key` to write `~/.codex/auth.json`. If
-///   `OPENAI_API_KEY` is empty, log and return Ok -- `codex exec` reads
-///   the env directly so the env path covers authn even when the login
+///   `OPENAI_API_KEY` is empty, log and return Ok -- `codex exec` receives
+///   the loaded user env so the env path covers authn even when the login
 ///   subcommand isn't available.
 ///
 /// Both paths are best-effort -- failure logs but does not abort init.
@@ -49,7 +51,9 @@ pub fn setup_codex() -> Result<(), AgentError> {
     }
 
     let login_start = Instant::now();
-    let result = std::process::Command::new("codex")
+    let mut cmd = std::process::Command::new("codex");
+    child_env::apply_to_std_command(&mut cmd);
+    let result = cmd
         .args(["login", "--with-api-key"])
         .env("CODEX_HOME", &codex_home)
         .stdin(Stdio::piped())

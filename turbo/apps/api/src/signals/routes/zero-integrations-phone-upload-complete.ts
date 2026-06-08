@@ -60,12 +60,14 @@ function agentPhoneRouteError(error: unknown) {
 function buildMetadata(params: {
   readonly body: PhoneUploadCompleteBody;
   readonly uploadId: string;
+  readonly s3Key: string;
   readonly sourceUrl: string;
   readonly agentphoneMessageId: string;
 }): Record<string, unknown> {
   return {
     toNumber: normalizeAgentPhoneHandle(params.body.toNumber, "sms"),
     uploadId: params.uploadId,
+    s3Key: params.s3Key,
     sourceUrl: params.sourceUrl,
     ...(params.body.caption ? { caption: params.body.caption } : {}),
     agentphoneMessage: { id: params.agentphoneMessageId },
@@ -163,6 +165,7 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
       metadata: buildMetadata({
         body,
         uploadId: body.uploadId,
+        s3Key: uploadedFile.key,
         sourceUrl: uploadedFile.fileUrl,
         agentphoneMessageId: sent.id,
       }),

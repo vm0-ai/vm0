@@ -15,7 +15,7 @@ import { exchangeConnectorAuthCode } from "@vm0/connectors/auth-providers";
 import {
   exchangeGitHubCode,
   fetchGitHubUserInfo,
-} from "@vm0/connectors/auth-providers/oauth/providers/github";
+} from "@vm0/connectors/auth-providers/connectors/github/oauth";
 
 import { requiredAuthContext$ } from "../auth/auth-context";
 import { queryOf } from "../context/request";
