@@ -5,6 +5,7 @@
 //! used by sandbox startup.
 
 use std::io::Read;
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -332,9 +333,7 @@ async fn create_setup_temp_file(path: &Path, label: &'static str) -> RunnerResul
         .map_err(|e| RunnerError::Internal(format!("create {label} {}: {e}", path.display())))?;
 
     #[cfg(unix)]
-    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(SETUP_TEMP_FILE_MODE))
-        .await
-        .map_err(|e| RunnerError::Internal(format!("chmod {label} {}: {e}", path.display())))?;
+    chmod_setup_file_fd(&file, label, path, SETUP_TEMP_FILE_MODE)?;
 
     Ok(file)
 }
@@ -364,10 +363,46 @@ fn create_setup_temp_file_sync(path: &Path, label: &'static str) -> RunnerResult
         .map_err(|e| RunnerError::Internal(format!("create {label} {}: {e}", path.display())))?;
 
     #[cfg(unix)]
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(SETUP_TEMP_FILE_MODE))
-        .map_err(|e| RunnerError::Internal(format!("chmod {label} {}: {e}", path.display())))?;
+    chmod_setup_file_fd(&file, label, path, SETUP_TEMP_FILE_MODE)?;
 
     Ok(file)
+}
+
+#[cfg(unix)]
+fn chmod_setup_file_fd(
+    file: &impl AsRawFd,
+    label: &str,
+    path: &Path,
+    mode: u32,
+) -> RunnerResult<()> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `stat` points to valid writable memory and `file` owns a live fd.
+    let stat_result = unsafe { libc::fstat(file.as_raw_fd(), stat.as_mut_ptr()) };
+    if stat_result != 0 {
+        return Err(RunnerError::Internal(format!(
+            "stat {label} {}: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        )));
+    }
+    // SAFETY: successful `fstat` initialized the full `stat` struct.
+    let stat = unsafe { stat.assume_init() };
+    if stat.st_mode & libc::S_IFMT != libc::S_IFREG {
+        return Err(RunnerError::Internal(format!(
+            "{label} {} is not a regular file",
+            path.display()
+        )));
+    }
+    // SAFETY: `fchmod` operates on the live fd and does not follow paths.
+    let chmod_result = unsafe { libc::fchmod(file.as_raw_fd(), mode as libc::mode_t) };
+    if chmod_result != 0 {
+        return Err(RunnerError::Internal(format!(
+            "chmod {label} {}: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        )));
+    }
+    Ok(())
 }
 
 /// Download a URL to a temp file. Cleans up on failure. Returns hex SHA256.
@@ -514,9 +549,7 @@ async fn verify_and_install(
 async fn atomic_rename(tmp_path: &Path, target: &Path, mode: Option<u32>) -> RunnerResult<()> {
     let result = async {
         if let Some(mode) = mode {
-            tokio::fs::set_permissions(tmp_path, std::fs::Permissions::from_mode(mode))
-                .await
-                .map_err(|e| RunnerError::Internal(format!("chmod {}: {e}", target.display())))?;
+            chmod_setup_file_path(tmp_path, "temp artifact", mode).await?;
         }
         tokio::fs::rename(tmp_path, target)
             .await
@@ -528,6 +561,25 @@ async fn atomic_rename(tmp_path: &Path, target: &Path, mode: Option<u32>) -> Run
         let _ = tokio::fs::remove_file(tmp_path).await;
     }
     result
+}
+
+#[cfg(unix)]
+async fn chmod_setup_file_path(path: &Path, label: &str, mode: u32) -> RunnerResult<()> {
+    let mut options = tokio::fs::OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK);
+    let file = options.open(path).await.map_err(|e| {
+        RunnerError::Internal(format!("open {label} {} for chmod: {e}", path.display()))
+    })?;
+    chmod_setup_file_fd(&file, label, path, mode)
+}
+
+#[cfg(not(unix))]
+async fn chmod_setup_file_path(path: &Path, label: &str, mode: u32) -> RunnerResult<()> {
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("chmod {label} {}: {e}", path.display())))
 }
 
 #[allow(clippy::unreachable)] // arch validated by check_architecture
@@ -617,9 +669,7 @@ async fn ensure_artifact_installed(
         return Ok(true);
     }
 
-    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
-        .await
-        .map_err(|e| RunnerError::Internal(format!("chmod {}: {e}", path.display())))?;
+    chmod_setup_file_path(path, "existing artifact", mode).await?;
 
     let metadata = tokio::fs::symlink_metadata(path)
         .await
@@ -1048,6 +1098,24 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn ensure_artifact_installed_repairs_matching_readonly_file_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.bin");
+        std::fs::write(&path, b"content").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let sha = file_sha256(&path).await.unwrap();
+
+        assert!(
+            ensure_artifact_installed(&path, &sha, Some(0o755))
+                .await
+                .unwrap()
+        );
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn ensure_artifact_installed_returns_false_for_untrusted_owner() {
         use nix::unistd::{Uid, chown};
 
@@ -1092,6 +1160,62 @@ mod tests {
         assert_eq!(std::fs::read(&target).unwrap(), b"kernel");
         let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, KERNEL_ARTIFACT_MODE);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn atomic_rename_rejects_tmp_symlink_without_chmodding_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp_path = dir.path().join("kernel.tmp");
+        let target = dir.path().join("vmlinux");
+        let outside = dir.path().join("outside");
+        std::fs::write(&outside, b"outside").unwrap();
+        std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::os::unix::fs::symlink(&outside, &tmp_path).unwrap();
+
+        let error = atomic_rename(&tmp_path, &target, Some(EXECUTABLE_ARTIFACT_MODE))
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("open temp artifact"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            std::fs::metadata(&outside).unwrap().permissions().mode() & 0o777,
+            0o644
+        );
+        assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
+        assert!(!target.exists());
+        assert!(
+            !tmp_path.exists(),
+            "failed install should clean temp symlink"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn chmod_setup_file_path_rejects_symlink_without_chmodding_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let link = dir.path().join("artifact");
+        let outside = dir.path().join("outside");
+        std::fs::write(&outside, b"outside").unwrap();
+        std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+
+        let error = chmod_setup_file_path(&link, "existing artifact", EXECUTABLE_ARTIFACT_MODE)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("open existing artifact"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            std::fs::metadata(&outside).unwrap().permissions().mode() & 0o777,
+            0o644
+        );
+        assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
     }
 
     #[tokio::test]
