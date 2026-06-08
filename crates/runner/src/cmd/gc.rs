@@ -795,12 +795,16 @@ async fn remove_unused_lock_after_probe(
     name: &str,
     dry_run: bool,
 ) -> bool {
+    if !lock_guard_matches_path(lock_path, lock) {
+        return false;
+    }
+
     if dry_run {
         info!("[dry-run] would remove unused lock {name}");
         return true;
     }
 
-    if remove_current_lock_file(lock_path, lock).await {
+    if remove_lock_file(lock_path).await {
         info!("removed unused lock {name}");
         true
     } else {
@@ -808,16 +812,18 @@ async fn remove_unused_lock_after_probe(
     }
 }
 
-async fn remove_current_lock_file(lock_path: &Path, lock: &Flock<std::fs::File>) -> bool {
+fn lock_guard_matches_path(lock_path: &Path, lock: &Flock<std::fs::File>) -> bool {
     match lock_probe_inode_is_current(lock, lock_path) {
-        Ok(true) => {}
-        Ok(false) => return false,
+        Ok(true) => true,
+        Ok(false) => false,
         Err(e) => {
             warn!("{e}");
-            return false;
+            false
         }
     }
+}
 
+async fn remove_lock_file(lock_path: &Path) -> bool {
     match tokio::fs::remove_file(lock_path).await {
         Ok(()) => true,
         Err(e) => {
@@ -1064,25 +1070,39 @@ async fn gc_versions(
             .and_then(|name| name.to_str())
             .unwrap_or("service lock")
             .to_string();
-        let service_lock_existed = match service_lock_path.try_exists() {
-            Ok(existed) => existed,
-            Err(e) => {
-                warn!(
-                    "version {name}: cannot check service lock {} before acquire ({e})",
-                    service_lock_path.display()
-                );
-                true
+        let service_lock = if dry_run {
+            match service_lock_path.try_exists() {
+                Ok(false) => None,
+                Ok(true) => match lock::try_acquire_or_busy(service_lock_path.clone()).await {
+                    Ok(lock::TryLock::Acquired(lock)) => Some(lock),
+                    Ok(lock::TryLock::Busy) => {
+                        info!("version {name}: service lock held, skipping");
+                        continue;
+                    }
+                    Err(e) => {
+                        warn!("version {name}: cannot acquire service lock ({e}), skipping");
+                        continue;
+                    }
+                },
+                Err(e) => {
+                    warn!(
+                        "version {name}: cannot check service lock {} before dry-run ({e}), skipping",
+                        service_lock_path.display()
+                    );
+                    continue;
+                }
             }
-        };
-        let service_lock = match lock::try_acquire_or_busy(service_lock_path.clone()).await {
-            Ok(lock::TryLock::Acquired(lock)) => lock,
-            Ok(lock::TryLock::Busy) => {
-                info!("version {name}: service lock held, skipping");
-                continue;
-            }
-            Err(e) => {
-                warn!("version {name}: cannot acquire service lock ({e}), skipping");
-                continue;
+        } else {
+            match lock::try_acquire_or_busy(service_lock_path.clone()).await {
+                Ok(lock::TryLock::Acquired(lock)) => Some(lock),
+                Ok(lock::TryLock::Busy) => {
+                    info!("version {name}: service lock held, skipping");
+                    continue;
+                }
+                Err(e) => {
+                    warn!("version {name}: cannot acquire service lock ({e}), skipping");
+                    continue;
+                }
             }
         };
 
@@ -1114,12 +1134,11 @@ async fn gc_versions(
 
         if dry_run {
             info!("[dry-run] would remove version {name}");
-            if !service_lock_existed
-                && remove_current_lock_file(&service_lock_path, &service_lock).await
-            {
-                tracing::debug!("removed service lock created by dry-run for version {name}");
-            }
         } else {
+            let Some(service_lock) = service_lock.as_ref() else {
+                warn!("version {name}: service lock missing before delete, skipping");
+                continue;
+            };
             // Best-effort uninstall the systemd service (may not exist).
             let _ = service::uninstall_service_unit(&unit).await;
 
@@ -1137,7 +1156,7 @@ async fn gc_versions(
             info!("removed version {name}");
             remove_unused_lock_after_probe(
                 &service_lock_path,
-                &service_lock,
+                service_lock,
                 &service_lock_name,
                 false,
             )
@@ -2446,6 +2465,28 @@ mod tests {
         assert!(
             !service_lock_path.exists(),
             "dry-run should not leave a service lock it created"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_versions_dry_run_preserves_existing_service_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let version = "v1.0.0";
+
+        std::fs::create_dir_all(bin_dir.join(version)).unwrap();
+        age_version_past_gc_min_age(&home, version);
+        let unit = service::unit_name(version).unwrap();
+        let service_lock_path = home.service_lock(&unit);
+        drop(lock::open_lock_file(&service_lock_path).unwrap());
+
+        let removed = gc_versions(&home, true, None, None).await.unwrap();
+
+        assert_eq!(removed, [version]);
+        assert!(
+            service_lock_path.exists(),
+            "dry-run must not remove an existing service lock"
         );
     }
 
