@@ -1,0 +1,237 @@
+name: Desktop Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Desktop version to build, without the v prefix"
+        required: true
+        type: string
+
+run-name: Desktop release ${{ inputs.version }}
+
+concurrency:
+  group: desktop-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-desktop-release:
+    name: build-desktop-release
+    runs-on: macos-latest
+    timeout-minutes: 60
+    environment: production
+    defaults:
+      run:
+        working-directory: turbo
+    env:
+      DESKTOP_VERSION: ${{ inputs.version }}
+      RELEASE_TAG: desktop-v${{ inputs.version }}
+      VM0_DESKTOP_SIGNING_IDENTITY: "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)"
+      MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+      APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: desktop-v${{ inputs.version }}
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: turbo/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --strict-peer-dependencies
+
+      - name: Verify Desktop release inputs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! [[ "$DESKTOP_VERSION" =~ ^[0-9]+[.][0-9]+[.][0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Desktop version must look like a semantic version, received: $DESKTOP_VERSION"
+            exit 1
+          fi
+
+          gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null
+
+          package_version=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "$package_version" != "$DESKTOP_VERSION" ]; then
+            echo "::error::Desktop package version $package_version does not match release version $DESKTOP_VERSION"
+            exit 1
+          fi
+
+      - name: Validate macOS release secrets
+        run: |
+          missing=0
+          for name in \
+            MACOS_CERTIFICATE_P12_BASE64 \
+            MACOS_CERTIFICATE_PASSWORD \
+            MACOS_KEYCHAIN_PASSWORD \
+            APP_STORE_CONNECT_API_KEY_BASE64 \
+            APP_STORE_CONNECT_API_KEY_ID \
+            APP_STORE_CONNECT_API_ISSUER_ID
+          do
+            if [ -z "${!name}" ]; then
+              echo "::error::${name} is required for signed Desktop releases"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Import Developer ID certificate
+        id: signing-certificate
+        run: |
+          certificate_path="$RUNNER_TEMP/developer-id-application.p12"
+          keychain_path="$RUNNER_TEMP/desktop-signing.keychain-db"
+
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 -D > "$certificate_path"
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" \
+            -k "$keychain_path" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$MACOS_KEYCHAIN_PASSWORD" \
+            "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          if ! security find-identity -p codesigning -v "$keychain_path" | grep -F "$VM0_DESKTOP_SIGNING_IDENTITY"; then
+            echo "::error::Developer ID Application identity not found in imported certificate"
+            exit 1
+          fi
+
+          echo "keychain_path=$keychain_path" >> "$GITHUB_OUTPUT"
+
+      - name: Write Apple notarization API key
+        id: notary-key
+        run: |
+          api_key_path="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 -D > "$api_key_path"
+          chmod 600 "$api_key_path"
+          echo "path=$api_key_path" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed and notarized macOS artifact
+        id: build-desktop
+        env:
+          VM0_DESKTOP_NOTARIZE: "true"
+          VM0_DESKTOP_NOTARIZE_API_KEY_PATH: ${{ steps.notary-key.outputs.path }}
+          VM0_DESKTOP_NOTARIZE_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          VM0_DESKTOP_NOTARIZE_API_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        run: |
+          rm -f apps/desktop/desktop-runtime-config.json
+          rm -rf apps/desktop/out
+
+          pnpm -F @vm0/desktop build
+          node apps/desktop/scripts/run-forge-make-with-retry.js --platform darwin --arch arm64
+
+          desktop_dir="$PWD/apps/desktop"
+          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
+          artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
+
+          if [ ! -f "$forge_zip" ]; then
+            echo "No Forge zip artifact found: $forge_zip"
+            find "$desktop_dir/out" -maxdepth 6 -type f -print || true
+            exit 1
+          fi
+
+          cp "$forge_zip" "$artifact_path"
+          echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
+
+      - name: Verify signed and notarized macOS artifact
+        run: |
+          artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
+          app_dir=apps/desktop/out/Zero-darwin-arm64/Zero.app
+          plist="$app_dir/Contents/Info.plist"
+
+          if [ ! -f "$artifact_path" ]; then
+            echo "No desktop zip artifact found"
+            find apps/desktop/out -maxdepth 5 -type f -print || true
+            exit 1
+          fi
+          if [ ! -d "$app_dir" ]; then
+            echo "No packaged app found: $app_dir"
+            find apps/desktop/out -maxdepth 4 -type d -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/desktop-runtime-config.json" ]; then
+            echo "Production artifact should not contain desktop runtime config"
+            exit 1
+          fi
+
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop"
+          codesign --verify --deep --strict --verbose=2 "$app_dir"
+          codesign --display --verbose=4 "$app_dir" 2>&1 | grep -F "Authority=$VM0_DESKTOP_SIGNING_IDENTITY"
+          xcrun stapler validate "$app_dir"
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/MacOS/Zero"
+
+      - name: Upload Desktop artifact to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$RELEASE_TAG" "${{ steps.build-desktop.outputs.path }}" --repo "${{ github.repository }}" --clobber
+
+      - name: Publish Desktop update manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MANIFEST_TAG: desktop-updates
+        run: |
+          manifest_dir="apps/desktop/out/update-manifest"
+          manifest_path="$manifest_dir/desktop-update-manifest.json"
+          zip_url="https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
+
+          mkdir -p "$manifest_dir"
+          if gh release view "$MANIFEST_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            if gh release view "$MANIFEST_TAG" \
+              --repo "${{ github.repository }}" \
+              --json assets \
+              --jq '.assets[].name' | grep -qx desktop-update-manifest.json; then
+              gh release download "$MANIFEST_TAG" \
+                --repo "${{ github.repository }}" \
+                --pattern desktop-update-manifest.json \
+                --dir "$manifest_dir" \
+                --clobber
+            fi
+          else
+            gh release create "$MANIFEST_TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Desktop Updates" \
+              --notes "Mutable manifest used by the Desktop auto-update feed." \
+              --latest=false
+          fi
+
+          node apps/desktop/scripts/update-desktop-release-manifest.mjs \
+            --manifest "$manifest_path" \
+            --version "$DESKTOP_VERSION" \
+            --zip-url "$zip_url" \
+            --channel stable \
+            --platform darwin \
+            --arch arm64
+
+          gh release upload "$MANIFEST_TAG" "$manifest_path" \
+            --repo "${{ github.repository }}" \
+            --clobber
+
+      - name: Delete temporary keychain
+        if: ${{ always() && steps.signing-certificate.outputs.keychain_path != '' }}
+        run: security delete-keychain "${{ steps.signing-certificate.outputs.keychain_path }}" || true
