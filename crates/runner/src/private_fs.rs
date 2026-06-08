@@ -274,7 +274,8 @@ fn ensure_private_dir_exists_without_symlinks(
         RunnerError::Config(format!("open private dir root for {}: {e}", path.display()))
     })?;
     let mut current_path = start.to_path_buf();
-    for component in path.components() {
+    let mut components = path.components().peekable();
+    while let Some(component) = components.next() {
         match component {
             Component::RootDir | Component::CurDir => {}
             Component::ParentDir => {
@@ -284,12 +285,14 @@ fn ensure_private_dir_exists_without_symlinks(
                 )));
             }
             Component::Normal(name) => {
+                let is_final = components.peek().is_none();
                 current = open_or_create_private_dir_component(
                     &current,
                     name,
                     &current_path,
                     path,
                     expected_uid,
+                    is_final,
                 )?;
                 current_path = private_dir_component_path(&current_path, name);
             }
@@ -313,6 +316,7 @@ fn open_or_create_private_dir_component(
     parent_path: &Path,
     full_path: &Path,
     expected_uid: u32,
+    is_final: bool,
 ) -> RunnerResult<OwnedFd> {
     use nix::errno::Errno;
     use nix::fcntl::openat;
@@ -322,18 +326,14 @@ fn open_or_create_private_dir_component(
     ensure_private_dir_parent_not_replaceable(parent, parent_path, full_path, expected_uid)?;
     match openat(parent, name, private_dir_open_flags(), Mode::empty()) {
         Ok(fd) => {
-            secure_existing_private_dir_component(&fd, &component_path, full_path, expected_uid)?;
-            Ok(fd)
-        }
-        Err(Errno::EACCES) => {
-            repair_private_dir_parent_for_traversal(parent, parent_path, full_path, expected_uid)?;
-            open_or_create_accessible_private_dir_component(
-                parent,
-                name,
-                parent_path,
+            secure_existing_private_dir_component(
+                &fd,
+                &component_path,
                 full_path,
                 expected_uid,
-            )
+                is_final,
+            )?;
+            Ok(fd)
         }
         Err(Errno::ENOENT) => create_and_open_private_dir_component(
             parent,
@@ -341,6 +341,7 @@ fn open_or_create_private_dir_component(
             parent_path,
             full_path,
             expected_uid,
+            is_final,
         ),
         Err(e) => Err(private_dir_component_error("open", name, full_path, e)),
     }
@@ -379,42 +380,13 @@ fn ensure_private_dir_parent_not_replaceable(
     Ok(())
 }
 
-#[cfg(unix)]
-fn open_or_create_accessible_private_dir_component(
-    parent: &(impl AsFd + AsRawFd),
-    name: &OsStr,
-    parent_path: &Path,
-    full_path: &Path,
-    expected_uid: u32,
-) -> RunnerResult<OwnedFd> {
-    use nix::errno::Errno;
-    use nix::fcntl::openat;
-    use nix::sys::stat::Mode;
-
-    let component_path = private_dir_component_path(parent_path, name);
-    match openat(parent, name, private_dir_open_flags(), Mode::empty()) {
-        Ok(fd) => {
-            secure_existing_private_dir_component(&fd, &component_path, full_path, expected_uid)?;
-            Ok(fd)
-        }
-        Err(Errno::ENOENT) => create_and_open_private_dir_component(
-            parent,
-            name,
-            parent_path,
-            full_path,
-            expected_uid,
-        ),
-        Err(e) => Err(private_dir_component_error("open", name, full_path, e)),
-    }
-}
-
-#[cfg(unix)]
 fn create_and_open_private_dir_component(
     parent: &(impl AsFd + AsRawFd),
     name: &OsStr,
     parent_path: &Path,
     full_path: &Path,
     expected_uid: u32,
+    is_final: bool,
 ) -> RunnerResult<OwnedFd> {
     use nix::errno::Errno;
     use nix::fcntl::openat;
@@ -430,9 +402,9 @@ fn create_and_open_private_dir_component(
         )));
     }
 
-    match mkdirat(parent, name, Mode::from_bits_truncate(PRIVATE_DIR_MODE)) {
-        Ok(()) => {}
-        Err(Errno::EEXIST) => {}
+    let created = match mkdirat(parent, name, Mode::from_bits_truncate(PRIVATE_DIR_MODE)) {
+        Ok(()) => true,
+        Err(Errno::EEXIST) => false,
         Err(e) => {
             return Err(RunnerError::Config(format!(
                 "create private dir component {} for {}: {e}",
@@ -443,7 +415,13 @@ fn create_and_open_private_dir_component(
     };
     let fd = openat(parent, name, private_dir_open_flags(), Mode::empty())
         .map_err(|e| private_dir_component_error("open", name, full_path, e))?;
-    secure_existing_private_dir_component(&fd, &component_path, full_path, expected_uid)?;
+    secure_existing_private_dir_component(
+        &fd,
+        &component_path,
+        full_path,
+        expected_uid,
+        created || is_final,
+    )?;
     Ok(fd)
 }
 
@@ -460,6 +438,7 @@ fn secure_existing_private_dir_component(
     component_path: &Path,
     full_path: &Path,
     expected_uid: u32,
+    enforce_private_mode: bool,
 ) -> RunnerResult<()> {
     use nix::sys::stat::{SFlag, fstat};
 
@@ -500,44 +479,10 @@ fn secure_existing_private_dir_component(
             full_path.display()
         )));
     }
-    if mode != PRIVATE_DIR_MODE {
+    if enforce_private_mode && mode != PRIVATE_DIR_MODE {
         chmod_open_private_dir(fd, component_path)?;
     }
     Ok(())
-}
-
-#[cfg(unix)]
-fn repair_private_dir_parent_for_traversal(
-    parent: &(impl AsFd + AsRawFd),
-    parent_path: &Path,
-    full_path: &Path,
-    expected_uid: u32,
-) -> RunnerResult<()> {
-    use nix::sys::stat::fstat;
-
-    let normalized_parent = normalize_private_dir_policy_path(parent_path)?;
-    if is_reserved_normalized_private_dir_path(&normalized_parent) {
-        return Err(RunnerError::Config(format!(
-            "{} requires traversing reserved system path {}; fix parent permissions before starting the runner",
-            full_path.display(),
-            parent_path.display()
-        )));
-    }
-
-    let stat = fstat(parent).map_err(|e| {
-        RunnerError::Config(format!(
-            "stat private dir parent for {}: {e}",
-            full_path.display()
-        ))
-    })?;
-    if stat.st_uid != expected_uid {
-        return Err(RunnerError::Config(format!(
-            "private dir parent for {} is owned by uid {}, but runner euid is {expected_uid}; fix ownership before starting the runner",
-            full_path.display(),
-            stat.st_uid
-        )));
-    }
-    chmod_open_private_dir(parent, full_path)
 }
 
 #[cfg(unix)]
@@ -830,7 +775,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ensure_private_dir_tightens_existing_intermediate_dir() {
+    async fn ensure_private_dir_preserves_existing_intermediate_dir_mode() {
         let dir = tempfile::tempdir().unwrap();
         let intermediate = dir.path().join("nested");
         let private_dir = intermediate.join("runner");
@@ -839,7 +784,7 @@ mod tests {
 
         ensure_private_dir(&private_dir).await.unwrap();
 
-        assert_eq!(mode(&intermediate), PRIVATE_DIR_MODE);
+        assert_eq!(mode(&intermediate), 0o755);
         assert_eq!(mode(&private_dir), PRIVATE_DIR_MODE);
     }
 
@@ -856,48 +801,6 @@ mod tests {
         assert_eq!(mode(&private_dir), PRIVATE_DIR_MODE);
     }
 
-    #[cfg(target_os = "linux")]
-    #[tokio::test]
-    async fn ensure_private_dir_repairs_unreadable_existing_intermediate_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        let intermediate = dir.path().join("nested");
-        let private_dir = intermediate.join("runner");
-        std::fs::create_dir(&intermediate).unwrap();
-        std::fs::set_permissions(&intermediate, std::fs::Permissions::from_mode(0o000)).unwrap();
-
-        ensure_private_dir(&private_dir).await.unwrap();
-
-        assert_eq!(mode(&intermediate), PRIVATE_DIR_MODE);
-        assert_eq!(mode(&private_dir), PRIVATE_DIR_MODE);
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn repair_private_dir_parent_rejects_reserved_parent() {
-        use nix::fcntl::open;
-        use nix::sys::stat::Mode;
-
-        let dir = tempfile::tempdir().unwrap();
-        let parent = dir.path().join("parent");
-        std::fs::create_dir(&parent).unwrap();
-        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o000)).unwrap();
-        let fd = open(&parent, private_dir_open_flags(), Mode::empty()).unwrap();
-
-        let error = repair_private_dir_parent_for_traversal(
-            &fd,
-            Path::new("/var/lib/vm0-runner/runners"),
-            &parent.join("runner"),
-            nix::unistd::geteuid().as_raw(),
-        )
-        .unwrap_err();
-
-        assert!(
-            error.to_string().contains("reserved system path"),
-            "unexpected error: {error}"
-        );
-        assert_eq!(mode(&parent), 0o000);
-    }
-
     #[test]
     fn create_private_dir_component_rejects_reserved_component() {
         use nix::fcntl::open;
@@ -912,6 +815,7 @@ mod tests {
             Path::new("/var/lib/vm0-runner"),
             Path::new("/var/lib/vm0-runner/runners/runner-01"),
             nix::unistd::geteuid().as_raw(),
+            true,
         )
         .unwrap_err();
 
@@ -1027,7 +931,10 @@ mod tests {
         let message = error.to_string();
 
         assert!(
-            message.contains("symlink component") || message.contains("not a directory"),
+            message.contains("symlink component")
+                || message.contains("not a directory")
+                || message.contains("EACCES")
+                || message.contains("Permission denied"),
             "unexpected error: {error}"
         );
         assert!(
