@@ -55,6 +55,32 @@ async function openUsageTab() {
   });
 }
 
+async function expectPopoverTokenTooltip(text: string) {
+  await waitFor(() => {
+    const tooltip = screen
+      .getAllByText(text)
+      .map((el) => {
+        let current: HTMLElement | null = el;
+        while (current) {
+          const style = current.getAttribute("style") ?? "";
+          if (
+            style.includes("background-color: hsl(var(--popover))") &&
+            style.includes("color: hsl(var(--popover-foreground))")
+          ) {
+            return current;
+          }
+          current = current.parentElement;
+        }
+        return null;
+      })
+      .find((el): el is HTMLElement => {
+        return el !== null;
+      });
+
+    expect(tooltip).toBeDefined();
+  });
+}
+
 describe("org usage tab - credit balance display", () => {
   it("should show credit balance for pro plan", async () => {
     setMockBillingStatus({
@@ -175,16 +201,36 @@ describe("org usage tab - credit balance display", () => {
     });
 
     await user.hover(screen.getByTestId("credit-grant-grant-pro"));
-    await waitFor(() => {
-      expect(
-        screen.getAllByText("Expires Apr 20, 2026").length,
-      ).toBeGreaterThan(0);
-    });
+    await expectPopoverTokenTooltip("Expires Apr 20, 2026");
 
     await user.click(screen.getByTestId("credit-grants-toggle"));
     expect(screen.getByTestId("credit-grants-section")).not.toHaveAttribute(
       "open",
     );
+  });
+
+  it("should use popover theme tokens for credit balance segment tooltips", async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    });
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 35_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      creditBreakdown: [
+        { category: "plan", label: "Pro plan", credits: 15_000, tier: "pro" },
+        { category: "payAsYouGo", label: "Pay as you go", credits: 20_000 },
+      ],
+      creditGrants: [],
+    });
+
+    setupMockAPIs([]);
+
+    await openUsageTab();
+
+    await user.hover(screen.getByTestId("credit-balance-segment-plan:pro"));
+    await expectPopoverTokenTooltip("Pro plan — 15,000");
   });
 
   it("should show non-expiring credit additions on hover", async () => {
@@ -221,9 +267,7 @@ describe("org usage tab - credit balance display", () => {
       "Added Mar 25, 2026",
     );
     await user.hover(screen.getByTestId("credit-grant-grant-payg"));
-    await waitFor(() => {
-      expect(screen.getAllByText("Never expires").length).toBeGreaterThan(0);
-    });
+    await expectPopoverTokenTooltip("Never expires");
   });
 });
 
