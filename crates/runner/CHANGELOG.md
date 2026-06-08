@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.108.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.15...runner-rs-v0.108.16) (2026-06-08)
+
+
+### Bug Fixes
+
+* handle concatenated zlib bodies ([#16578](https://github.com/vm0-ai/vm0/issues/16578)) ([9c86ca8](https://github.com/vm0-ai/vm0/commit/9c86ca81217c8931abd21179f936a944ef3a7ea4))
+
+
+### Refactoring
+
+* **runner:** consolidate finalization destroy bookkeeping ([#16554](https://github.com/vm0-ai/vm0/issues/16554)) ([f5fe9e1](https://github.com/vm0-ai/vm0/commit/f5fe9e183dda646494fdce8bb4f7f6d181cb923a))
+
 ## [0.108.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.14...runner-rs-v0.108.15) (2026-06-08)
 
 
