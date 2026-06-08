@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.412.7](https://github.com/vm0-ai/vm0/compare/web-v12.412.6...web-v12.412.7) (2026-06-08)
+
+
+### Documentation
+
+* retire web-testing.md and align API testing docs to apps/api ([#16651](https://github.com/vm0-ai/vm0/issues/16651)) ([28bc536](https://github.com/vm0-ai/vm0/commit/28bc536cd15ed852180a544485cb4afa182d8185))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.68.1
+    * @vm0/core bumped to 8.315.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.51.0
+
 ## [12.412.6](https://github.com/vm0-ai/vm0/compare/web-v12.412.5...web-v12.412.6) (2026-06-07)
 
 

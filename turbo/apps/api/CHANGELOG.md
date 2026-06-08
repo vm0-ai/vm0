@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.112.0](https://github.com/vm0-ai/vm0/compare/api-v1.111.1...api-v1.112.0) (2026-06-08)
+
+
+### Features
+
+* add presentation PPTX download ([#16515](https://github.com/vm0-ai/vm0/issues/16515)) ([983d5cc](https://github.com/vm0-ai/vm0/commit/983d5ccc406a0394a78dd0a7027f64d77f8e55c8))
+
+
+### Performance Improvements
+
+* defer chat callback terminal processing to background ([#16589](https://github.com/vm0-ai/vm0/issues/16589)) ([1360e3d](https://github.com/vm0-ai/vm0/commit/1360e3da069de6447050d1732d9eb10e99a90196))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.68.1
+    * @vm0/connectors bumped to 1.51.0
+    * @vm0/core bumped to 8.315.0
+    * @vm0/db bumped to 1.33.6
+
 ## [1.111.1](https://github.com/vm0-ai/vm0/compare/api-v1.111.0...api-v1.111.1) (2026-06-08)
 
 

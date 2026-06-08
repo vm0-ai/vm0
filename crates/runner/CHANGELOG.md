@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.108.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.16...runner-rs-v0.108.17) (2026-06-08)
+
+
+### Bug Fixes
+
+* default redact captured header values ([#16456](https://github.com/vm0-ai/vm0/issues/16456)) ([bad2803](https://github.com/vm0-ai/vm0/commit/bad2803f0accee54b96ccdc4e430e4c2ac4d8b7d))
+* harden runner private state files ([#16584](https://github.com/vm0-ai/vm0/issues/16584)) ([d399316](https://github.com/vm0-ai/vm0/commit/d399316c0333015029ccaa6b34545083dc23bbc0))
+* **mitm-addon:** bound tcp message retention ([#16648](https://github.com/vm0-ai/vm0/issues/16648)) ([166f3c9](https://github.com/vm0-ai/vm0/commit/166f3c9595ab705bcca3f143248460d72a7633c9))
+* serialize runner service unit updates ([#16505](https://github.com/vm0-ai/vm0/issues/16505)) ([1c6a723](https://github.com/vm0-ai/vm0/commit/1c6a723e528dd8166873be7bb5996e3c8b805df8))
+
+
+### Refactoring
+
+* share mitm authority primitives ([#16642](https://github.com/vm0-ai/vm0/issues/16642)) ([eb3a89c](https://github.com/vm0-ai/vm0/commit/eb3a89c305947d28ce1ac21401e7e07128a8635b))
+
+
+### Performance Improvements
+
+* **runner:** offload mitm jsonl log writes ([#16601](https://github.com/vm0-ai/vm0/issues/16601)) ([9028927](https://github.com/vm0-ai/vm0/commit/9028927ea210478982b5c40d774b10fcf17cdff4))
+
 ## [0.108.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.15...runner-rs-v0.108.16) (2026-06-08)
 
 

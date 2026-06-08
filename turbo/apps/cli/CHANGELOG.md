@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.182.6](https://github.com/vm0-ai/vm0/compare/cli-v9.182.5...cli-v9.182.6) (2026-06-08)
+
+
+### Bug Fixes
+
+* default redact captured header values ([#16456](https://github.com/vm0-ai/vm0/issues/16456)) ([bad2803](https://github.com/vm0-ai/vm0/commit/bad2803f0accee54b96ccdc4e430e4c2ac4d8b7d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.68.1
+    * @vm0/connectors bumped to 1.51.0
+    * @vm0/core bumped to 8.315.0
+
 ## [9.182.5](https://github.com/vm0-ai/vm0/compare/cli-v9.182.4...cli-v9.182.5) (2026-06-07)
 
 

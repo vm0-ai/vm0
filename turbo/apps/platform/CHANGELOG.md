@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.422.0](https://github.com/vm0-ai/vm0/compare/app-v0.421.1...app-v0.422.0) (2026-06-08)
+
+
+### Features
+
+* add presentation PPTX download ([#16515](https://github.com/vm0-ai/vm0/issues/16515)) ([983d5cc](https://github.com/vm0-ai/vm0/commit/983d5ccc406a0394a78dd0a7027f64d77f8e55c8))
+
+
+### Bug Fixes
+
+* default redact captured header values ([#16456](https://github.com/vm0-ai/vm0/issues/16456)) ([bad2803](https://github.com/vm0-ai/vm0/commit/bad2803f0accee54b96ccdc4e430e4c2ac4d8b7d))
+* move memory entry to account menu ([#16617](https://github.com/vm0-ai/vm0/issues/16617)) ([25825a4](https://github.com/vm0-ai/vm0/commit/25825a431d4d8d9182e8822210c5bb41d268f5e9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.68.1
+    * @vm0/connectors bumped to 1.51.0
+    * @vm0/core bumped to 8.315.0
+
 ## [0.421.1](https://github.com/vm0-ai/vm0/compare/app-v0.421.0...app-v0.421.1) (2026-06-07)
 
 
