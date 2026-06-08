@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.423.0](https://github.com/vm0-ai/vm0/compare/app-v0.422.0...app-v0.423.0) (2026-06-08)
+
+
+### Features
+
+* bump chat message font size from 14px to 15px ([#16043](https://github.com/vm0-ai/vm0/issues/16043)) ([2e37612](https://github.com/vm0-ai/vm0/commit/2e37612e0119dfb5ffc586e17628ca374d3daa19))
+
+
+### Refactoring
+
+* **zero:** drop secrets/vars/volumeVersions from schedule surface ([#16645](https://github.com/vm0-ai/vm0/issues/16645)) ([cc78c7b](https://github.com/vm0-ai/vm0/commit/cc78c7b4f6b0c309597cee236ed4e4b2b43d56f1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.69.0
+    * @vm0/core bumped to 8.316.0
+
 ## [0.422.0](https://github.com/vm0-ai/vm0/compare/app-v0.421.1...app-v0.422.0) (2026-06-08)
 
 

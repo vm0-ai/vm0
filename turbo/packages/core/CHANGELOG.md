@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.316.0](https://github.com/vm0-ai/vm0/compare/core-v8.315.0...core-v8.316.0) (2026-06-08)
+
+
+### Features
+
+* register chibi-hero styled template resource ([#15423](https://github.com/vm0-ai/vm0/issues/15423)) ([54f9e3a](https://github.com/vm0-ai/vm0/commit/54f9e3a4f86c05c419adb506ebf7e1949f51fecb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.69.0
+
 ## [8.315.0](https://github.com/vm0-ai/vm0/compare/core-v8.314.3...core-v8.315.0) (2026-06-08)
 
 

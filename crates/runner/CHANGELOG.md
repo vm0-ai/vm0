@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.108.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.17...runner-rs-v0.108.18) (2026-06-08)
+
+
+### Bug Fixes
+
+* **runner:** harden proxy and workspace state files ([#16668](https://github.com/vm0-ai/vm0/issues/16668)) ([7bf9851](https://github.com/vm0-ai/vm0/commit/7bf985137af718d843c086fc74f8c90a3f720783))
+* **runner:** serialize service unit installs ([#16539](https://github.com/vm0-ai/vm0/issues/16539)) ([453e1ef](https://github.com/vm0-ai/vm0/commit/453e1ef7ce3a2061de1536e3302e322d6651b0a3))
+
+
+### Refactoring
+
+* **runner:** split executor test support harness ([#16666](https://github.com/vm0-ai/vm0/issues/16666)) ([965d370](https://github.com/vm0-ai/vm0/commit/965d370563b2491ff9b8341e903c831509847cf1))
+
+
+### Performance Improvements
+
+* **runner:** avoid dns parser token allocation ([#16664](https://github.com/vm0-ai/vm0/issues/16664)) ([7274f04](https://github.com/vm0-ai/vm0/commit/7274f04f9ed5388bcc0b461209368f22c2326d11))
+
 ## [0.108.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.16...runner-rs-v0.108.17) (2026-06-08)
 
 

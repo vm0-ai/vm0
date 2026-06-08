@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.2.0...desktop-v0.3.0) (2026-06-08)
+
+
+### Features
+
+* add desktop auto-update feed ([#16656](https://github.com/vm0-ai/vm0/issues/16656)) ([4d91842](https://github.com/vm0-ai/vm0/commit/4d9184289f3e159b88f6b84946776c3187bd1358))
+
+
+### CI
+
+* split desktop release build workflow ([#16667](https://github.com/vm0-ai/vm0/issues/16667)) ([ee43a4b](https://github.com/vm0-ai/vm0/commit/ee43a4b216daf262c393d38aa56b9b12f9954d9e))
+
 ## [0.2.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.1.0...desktop-v0.2.0) (2026-06-08)
 
 

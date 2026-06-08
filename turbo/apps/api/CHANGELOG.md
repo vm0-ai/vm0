@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.113.0](https://github.com/vm0-ai/vm0/compare/api-v1.112.0...api-v1.113.0) (2026-06-08)
+
+
+### Features
+
+* add desktop auto-update feed ([#16656](https://github.com/vm0-ai/vm0/issues/16656)) ([4d91842](https://github.com/vm0-ai/vm0/commit/4d9184289f3e159b88f6b84946776c3187bd1358))
+
+
+### Refactoring
+
+* **zero:** drop secrets/vars/volumeVersions from schedule surface ([#16645](https://github.com/vm0-ai/vm0/issues/16645)) ([cc78c7b](https://github.com/vm0-ai/vm0/commit/cc78c7b4f6b0c309597cee236ed4e4b2b43d56f1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.69.0
+    * @vm0/core bumped to 8.316.0
+    * @vm0/db bumped to 1.33.7
+
 ## [1.112.0](https://github.com/vm0-ai/vm0/compare/api-v1.111.1...api-v1.112.0) (2026-06-08)
 
 
