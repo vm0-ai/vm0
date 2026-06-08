@@ -322,6 +322,140 @@ describe("external-code connector routes", () => {
     expect(decryptedProviderState).toContain('"authMethod":"cli"');
   });
 
+  it("rejects complete with the wrong session token", async () => {
+    const tokenRequests = mockAwsProvider();
+    setupUser({ enableAws: true });
+    const client = setupApp({ context })(
+      zeroConnectorExternalCodeSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "aws" },
+        body: { authMethod: "cli" },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+
+    const complete = await accept(
+      client.complete({
+        params: { type: "aws", sessionId: start.body.sessionId },
+        body: {
+          sessionToken: `wrong-${start.body.sessionToken}`,
+          code: "AWS-CODE",
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [404],
+    );
+
+    expect(complete.body.error.message).toBe(
+      "External-code authorization session not found",
+    );
+    expect(tokenRequests).toStrictEqual([]);
+  });
+
+  it("rejects cross-user and cross-org session completion", async () => {
+    const tokenRequests = mockAwsProvider();
+    setupUser({ enableAws: true });
+    const client = setupApp({ context })(
+      zeroConnectorExternalCodeSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "aws" },
+        body: { authMethod: "cli" },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+
+    setupUser();
+    const complete = await accept(
+      client.complete({
+        params: { type: "aws", sessionId: start.body.sessionId },
+        body: {
+          sessionToken: start.body.sessionToken,
+          code: "AWS-CODE",
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [404],
+    );
+
+    expect(complete.body.error.message).toBe(
+      "External-code authorization session not found",
+    );
+    expect(tokenRequests).toStrictEqual([]);
+  });
+
+  it("supersedes older pending sessions when a new session starts", async () => {
+    const { userId, orgId } = setupUser({ enableAws: true });
+    const client = setupApp({ context })(
+      zeroConnectorExternalCodeSessionContract,
+    );
+    const firstStart = await accept(
+      client.create({
+        params: { type: "aws" },
+        body: { authMethod: "cli" },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    const secondStart = await accept(
+      client.create({
+        params: { type: "aws" },
+        body: { authMethod: "cli" },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+
+    const firstComplete = await accept(
+      client.complete({
+        params: { type: "aws", sessionId: firstStart.body.sessionId },
+        body: {
+          sessionToken: firstStart.body.sessionToken,
+          code: "AWS-CODE",
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [400],
+    );
+    const sessionRows = await store
+      .set(writeDb$)
+      .select({
+        id: connectorExternalCodeSessions.id,
+        status: connectorExternalCodeSessions.status,
+        errorCode: connectorExternalCodeSessions.errorCode,
+      })
+      .from(connectorExternalCodeSessions)
+      .where(
+        and(
+          eq(connectorExternalCodeSessions.userId, userId),
+          eq(connectorExternalCodeSessions.orgId, orgId),
+        ),
+      );
+
+    expect(firstComplete.body.error.message).toBe(
+      "External-code authorization session was superseded",
+    );
+    expect(sessionRows).toStrictEqual(
+      expect.arrayContaining([
+        {
+          id: firstStart.body.sessionId,
+          status: "error",
+          errorCode: "session_superseded",
+        },
+        {
+          id: secondStart.body.sessionId,
+          status: "pending",
+          errorCode: null,
+        },
+      ]),
+    );
+  });
+
   it("completes a session, stores AWS secrets, and returns the connector on replay", async () => {
     const tokenRequests = mockAwsProvider();
     const { userId, orgId } = setupUser({ enableAws: true });
