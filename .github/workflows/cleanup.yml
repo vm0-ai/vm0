@@ -94,6 +94,24 @@ jobs:
           branch-name: "pr-${{ github.event.pull_request.number }}"
           action: "cleanup"
 
+  cleanup-stripe-webhook:
+    # Delete the per-PR Stripe webhook endpoint created for API preview.
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Delete Stripe webhook endpoint
+        env:
+          JOB_REF: pr-${{ github.event.pull_request.number }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        run: |
+          if [ -z "$STRIPE_SECRET_KEY" ]; then
+            echo "Stripe secret not available, skipping webhook cleanup"
+            exit 0
+          fi
+          bash .github/scripts/stripe-preview-webhook.sh cleanup
+
   cleanup-test-users:
     # Delete Clerk test users created by e2e browser tests for this PR
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
