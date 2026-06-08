@@ -6,7 +6,28 @@ const PRODUCTION_PLATFORM_HOSTNAME = "app.vm0.ai";
 const DEVELOPER_ID_APPLICATION_IDENTITY =
   "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)";
 const codeSigningIdentity =
-  process.env.CI === "true" ? "-" : DEVELOPER_ID_APPLICATION_IDENTITY;
+  process.env.VM0_DESKTOP_SIGNING_IDENTITY ??
+  (process.env.CI === "true" ? "-" : DEVELOPER_ID_APPLICATION_IDENTITY);
+
+function requiredEnv(name) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+  return value;
+}
+
+function desktopNotarizeOptions() {
+  if (process.env.VM0_DESKTOP_NOTARIZE !== "true") {
+    return undefined;
+  }
+
+  return {
+    appleApiKey: requiredEnv("VM0_DESKTOP_NOTARIZE_API_KEY_PATH"),
+    appleApiKeyId: requiredEnv("VM0_DESKTOP_NOTARIZE_API_KEY_ID"),
+    appleApiIssuer: requiredEnv("VM0_DESKTOP_NOTARIZE_API_ISSUER"),
+  };
+}
 
 function platformHostname(rawUrl) {
   if (!rawUrl || !rawUrl.trim()) {
@@ -25,6 +46,7 @@ function desktopIdentityForPlatformUrl(rawUrl) {
 const desktopIdentity = desktopIdentityForPlatformUrl(
   process.env.VM0_DESKTOP_PLATFORM_URL,
 );
+const osxNotarize = desktopNotarizeOptions();
 
 module.exports = {
   packagerConfig: {
@@ -41,6 +63,7 @@ module.exports = {
       identity: codeSigningIdentity,
       identityValidation: codeSigningIdentity !== "-",
     },
+    ...(osxNotarize ? { osxNotarize } : {}),
     protocols: [
       {
         name: desktopIdentity.authProtocolName,

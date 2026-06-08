@@ -124,3 +124,28 @@ removing quarantine locally:
 ```bash
 xattr -dr com.apple.quarantine Zero.app
 ```
+
+## Release artifacts
+
+Desktop releases are versioned by release-please. Changes under
+`turbo/apps/desktop` with release-worthy Conventional Commit types update
+`package.json`, this changelog, and the manifest entry, then create a
+`desktop-vX.Y.Z` GitHub Release.
+
+The release workflow builds the production `Zero.app`, signs it with the
+Developer ID Application certificate, notarizes it for direct distribution
+outside the Mac App Store, validates the stapled ticket, and uploads
+`Zero-darwin-arm64-X.Y.Z.zip` to the matching GitHub Release.
+
+This does not submit or publish the app to the Mac App Store. The App Store
+Connect API key is only used as notarytool authentication for Apple's
+notarization service.
+
+The release job requires these GitHub secrets:
+
+- `MACOS_CERTIFICATE_P12_BASE64`
+- `MACOS_CERTIFICATE_PASSWORD`
+- `MACOS_KEYCHAIN_PASSWORD`
+- `APP_STORE_CONNECT_API_KEY_BASE64`
+- `APP_STORE_CONNECT_API_KEY_ID`
+- `APP_STORE_CONNECT_API_ISSUER_ID`
