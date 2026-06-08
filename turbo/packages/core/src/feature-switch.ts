@@ -4,10 +4,11 @@
  * Provides centralized feature flag management with user-identity based overrides.
  * User IDs are stored as FNV-1a hashes to avoid exposing plain-text identifiers in source code.
  *
- * NOT AN AUTHORIZATION BOUNDARY. Any authenticated user can self-enable
- * switches via `POST /api/zero/feature-switches`. For money-granting,
- * credential, or privilege-escalation endpoints, gate with a hard identity check
- * instead of relying only on this system.
+ * NOT AN AUTHORIZATION BOUNDARY. Any authenticated user can self-enable any
+ * switch via `POST /api/zero/feature-switches` — overrides are read by
+ * `isFeatureEnabled` before the registry. For money-granting, credential,
+ * or privilege-escalation endpoints, gate with a hard identity check
+ * (e.g. `isStaffOrg()` from `./staff-org`) instead of this system.
  */
 
 import { FeatureSwitchKey } from "./feature-switch-key";
@@ -349,10 +350,6 @@ function evaluateSwitch(fs: FeatureSwitch, hashes: ResolvedHashes): boolean {
   return false;
 }
 
-function isKnownFeatureSwitchKey(key: string): key is FeatureSwitchKey {
-  return key in FEATURE_SWITCHES;
-}
-
 /**
  * Evaluate all feature switches at once for the given context.
  *
@@ -393,7 +390,7 @@ export function getAllFeatureStates(
 
   if (ctx?.overrides) {
     for (const [key, value] of Object.entries(ctx.overrides)) {
-      if (isKnownFeatureSwitchKey(key) && value !== undefined) {
+      if (key in FEATURE_SWITCHES && value !== undefined) {
         result[key as FeatureSwitchKey] = value;
       }
     }

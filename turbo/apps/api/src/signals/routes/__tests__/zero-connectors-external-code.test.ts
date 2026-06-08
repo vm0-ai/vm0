@@ -7,11 +7,9 @@ import {
   type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
 import { zeroConnectorExternalCodeSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectorExternalCodeSessions } from "@vm0/db/schema/connector-external-code-session";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
@@ -75,33 +73,6 @@ function deferred(): {
   return { promise, resolve: resolvePromise };
 }
 
-async function writeAwsConnectorOverride(userId: string, orgId: string) {
-  await store
-    .set(writeDb$)
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.AwsConnector]: true },
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: { switches: { [FeatureSwitchKey.AwsConnector]: true } },
-    });
-}
-
-async function disableAwsConnector(userId: string, orgId: string) {
-  await store
-    .set(writeDb$)
-    .delete(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.userId, userId),
-        eq(userFeatureSwitches.orgId, orgId),
-      ),
-    );
-}
-
 async function cleanupUser(userId: string, orgId: string) {
   const db = store.set(writeDb$);
   await db
@@ -118,7 +89,6 @@ async function cleanupUser(userId: string, orgId: string) {
   await db
     .delete(secrets)
     .where(and(eq(secrets.userId, userId), eq(secrets.orgId, orgId)));
-  await disableAwsConnector(userId, orgId);
 }
 
 async function storedSecret(args: {
@@ -246,30 +216,6 @@ describe("external-code connector routes", () => {
 
     expect(response.body.error.message).toBe(
       "External-code authorization is not enabled for this connector",
-    );
-  });
-
-  it("allows user overrides for AWS on non-staff orgs", async () => {
-    const { userId, orgId } = setupUser();
-    await writeAwsConnectorOverride(userId, orgId);
-    const client = setupApp({ context })(
-      zeroConnectorExternalCodeSessionContract,
-    );
-
-    const response = await accept(
-      client.create({
-        params: { type: "aws" },
-        body: { authMethod: "cli" },
-        headers: AUTH_HEADERS,
-      }),
-      [200],
-    );
-
-    expect(response.body).toMatchObject(
-      expect.objectContaining({
-        type: "aws",
-        status: "pending",
-      }),
     );
   });
 

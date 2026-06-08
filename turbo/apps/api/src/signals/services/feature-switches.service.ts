@@ -86,10 +86,7 @@ export const updateUserFeatureSwitches$ = command(
 
     const existing =
       (existingRow?.switches as Record<string, boolean> | undefined) ?? {};
-    const merged: Record<string, boolean> = {
-      ...existing,
-      ...args.switches,
-    };
+    const merged: Record<string, boolean> = { ...existing, ...args.switches };
     const now = nowDate();
 
     await writeDb
