@@ -74,6 +74,11 @@ export const hostedSiteUploadSchema = z.object({
   uploadUrl: z.string().url(),
 });
 
+export const hostedSiteRedeployPresentationHtmlRequestSchema = z.object({
+  url: z.string().url(),
+  html: z.string().min(1),
+});
+
 export const hostedSitePrepareResponseSchema = z.object({
   siteId: z.string().uuid(),
   deploymentId: z.string().uuid(),
@@ -127,11 +132,31 @@ export const zeroHostContract = c.router({
     },
     summary: "Complete a static hosted-site deployment",
   },
+  redeployPresentationHtml: {
+    method: "POST",
+    path: "/api/zero/host/presentation-html/redeploy",
+    headers: authHeadersSchema,
+    body: hostedSiteRedeployPresentationHtmlRequestSchema,
+    responses: {
+      200: hostedSiteCompleteResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      402: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Redeploy an existing presentation HTML hosted site",
+  },
 });
 
 export type ZeroHostContract = typeof zeroHostContract;
 export type HostedSitePrepareRequest = z.infer<
   typeof hostedSitePrepareRequestSchema
+>;
+export type HostedSiteRedeployPresentationHtmlRequest = z.infer<
+  typeof hostedSiteRedeployPresentationHtmlRequestSchema
 >;
 export type HostedSitePrepareResponse = z.infer<
   typeof hostedSitePrepareResponseSchema

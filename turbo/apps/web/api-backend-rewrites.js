@@ -759,6 +759,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/host/deployments/:deploymentId/complete",
   ],
   ["/api/zero/host/deployments/prepare", "/api/zero/host/deployments/prepare"],
+  [
+    "/api/zero/host/presentation-html/redeploy",
+    "/api/zero/host/presentation-html/redeploy",
+  ],
   [ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE, "/api/zero/me/model-providers"],
   [
     ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,

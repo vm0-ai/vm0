@@ -7,6 +7,7 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import {
   completeHostedSiteDeployment$,
   prepareHostedSiteDeployment$,
+  redeployPresentationHtml$,
 } from "../services/zero-host.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
@@ -62,6 +63,9 @@ const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const completeParams$ = pathParamsOf(zeroHostContract.complete);
+const redeployPresentationHtmlBody$ = bodyResultOf(
+  zeroHostContract.redeployPresentationHtml,
+);
 const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
@@ -97,6 +101,49 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result.body };
 });
 
+const redeployPresentationHtmlInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+
+    const bodyResult = await get(redeployPresentationHtmlBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
+    if (suspended) {
+      return suspended;
+    }
+
+    const result = await set(
+      redeployPresentationHtml$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        body: bodyResult.data,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "bad_request") {
+      return badRequestMessage(result.message);
+    }
+    if (result.status === "conflict") {
+      return conflict(result.message);
+    }
+    if (result.status === "not_found") {
+      return notFound(result.message);
+    }
+    if (result.status === "config_error") {
+      return internalError(result.message);
+    }
+
+    return { status: 200 as const, body: result.body };
+  },
+);
+
 export const zeroHostRoutes: readonly RouteEntry[] = [
   {
     route: zeroHostContract.prepare,
@@ -118,6 +165,17 @@ export const zeroHostRoutes: readonly RouteEntry[] = [
         missingOrganizationStatus: 401,
       },
       completeInner$,
+    ),
+  },
+  {
+    route: zeroHostContract.redeployPresentationHtml,
+    handler: authRoute(
+      {
+        requiredCapability: "host:write",
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+      },
+      redeployPresentationHtmlInner$,
     ),
   },
 ];

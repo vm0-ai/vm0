@@ -1,5 +1,6 @@
 import { computed, type Computed } from "ccstate";
 import {
+  CopyObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -345,6 +346,28 @@ export function putHostedSitesS3Object(
     body,
     contentType,
   );
+}
+
+function s3CopySource(bucket: string, key: string): string {
+  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+  return `${bucket}/${encodedKey}`;
+}
+
+export function copyHostedSitesS3Object(
+  bucket: string,
+  sourceKey: string,
+  destinationKey: string,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const client = get(hostedSitesS3Client$);
+    await client.send(
+      new CopyObjectCommand({
+        Bucket: bucket,
+        CopySource: s3CopySource(bucket, sourceKey),
+        Key: destinationKey,
+      }),
+    );
+  });
 }
 
 export function downloadManifest(
