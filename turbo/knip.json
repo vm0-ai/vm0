@@ -68,7 +68,6 @@
         "src/views/zero-page/zero-sidebar-upgrade.tsx"
       ],
       "ignoreDependencies": [
-        "dom-to-pptx",
         "idb",
         "katex",
         "tailwindcss",
