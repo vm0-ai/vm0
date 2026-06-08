@@ -200,6 +200,8 @@ class TestSanitizeHeadersForCapture:
             ("Accept-Encoding", "secret-token"),
             ("Accept-Encoding", "gzip;q=0.5, secret-token;q=0.1"),
             ("Accept-Encoding", "gzip, https://app.example/private/secret-token"),
+            ("Accept-Encoding", "gzip;q=0."),
+            ("Accept-Encoding", "gzip;q=1."),
             ("Date", "secret-token"),
             ("Date", "Mon, 08 Jun 2026 03:29:48 GMT secret-token"),
             ("Date", "Mon, 08 Jun 2026 03:29:48 GMT\r\n"),
@@ -230,6 +232,10 @@ class TestSanitizeHeadersForCapture:
     def test_non_allowlisted_header_values_are_redacted(self, headers, name):
         result = _sanitize_headers_for_capture(headers((name, "captured-value")))
         assert result[name] == "***"
+
+    def test_non_allowlisted_overlong_header_values_are_redacted(self, headers):
+        result = _sanitize_headers_for_capture(headers(("Authorization", "x" * 10_000)))
+        assert result["Authorization"] == "***"
 
     def test_overlong_allowlisted_header_values_are_redacted(self, headers):
         result = _sanitize_headers_for_capture(

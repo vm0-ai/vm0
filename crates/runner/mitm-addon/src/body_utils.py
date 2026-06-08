@@ -84,7 +84,7 @@ _HTTP_FIELD_NAME_PATTERN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 _HTTP_KNOWN_CONTENT_CODING_PATTERN = r"(?:br|compress|deflate|gzip|identity|zstd)"
 _HTTP_ENCODING_PATTERN = (
     rf"(?:{_HTTP_KNOWN_CONTENT_CODING_PATTERN}|\*)"
-    r"(?:\s*;\s*q=(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?))?"
+    r"(?:\s*;\s*q=(?:0(?:\.[0-9]{1,3})?|1(?:\.0{1,3})?))?"
 )
 _HTTP_IMF_FIXDATE_PATTERN = re.compile(
     r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), "
@@ -616,19 +616,28 @@ def _sanitize_content_type_for_capture(value: str) -> str | None:
 
 
 def _sanitize_allowed_capture_header_value(name: str, value: str) -> str | None:
+    normalized_name = name.strip().lower()
+
+    if normalized_name == "content-type":
+        if _UNSAFE_CAPTURE_HEADER_VALUE_CHARS.search(value) is not None:
+            return None
+        return _sanitize_content_type_for_capture(value)
+
+    pattern = _VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS.get(normalized_name)
+    if normalized_name != "date" and pattern is None:
+        return None
+
+    if len(value) > _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE:
+        return None
     if _UNSAFE_CAPTURE_HEADER_VALUE_CHARS.search(value) is not None:
         return None
-    normalized_name = name.strip().lower()
     normalized_value = value.strip()
-    if normalized_name == "content-type":
-        return _sanitize_content_type_for_capture(normalized_value)
-    if len(normalized_value) > _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE:
-        return None
     if normalized_name == "date":
         return normalized_value if _is_http_date_header_value(normalized_value) else None
 
-    pattern = _VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS.get(normalized_name)
-    if pattern is None or pattern.fullmatch(normalized_value) is None:
+    if pattern is None:
+        return None
+    if pattern.fullmatch(normalized_value) is None:
         return None
     return normalized_value
 
