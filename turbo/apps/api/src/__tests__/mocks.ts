@@ -51,6 +51,9 @@ export interface ApiTestMocks {
     readonly signInTokens: {
       readonly createSignInToken: AsyncMock;
     };
+    readonly m2m: {
+      readonly createToken: AsyncMock;
+    };
   };
   readonly googleGenAi: {
     readonly constructorArgs: SyncMock;
@@ -214,6 +217,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     signInTokens: {
       createSignInToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    m2m: {
+      createToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
   };
 
@@ -762,6 +768,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
   apiTestMocks.clerk.users.updateUser.mockReset();
   apiTestMocks.clerk.signInTokens.createSignInToken.mockReset();
+  apiTestMocks.clerk.m2m.createToken.mockReset();
   apiTestMocks.s3.send.mockReset();
   apiTestMocks.s3.getSignedUrl.mockReset();
   apiTestMocks.s3.getSignedUrl.mockResolvedValue(

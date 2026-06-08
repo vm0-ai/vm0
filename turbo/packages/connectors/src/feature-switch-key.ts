@@ -43,6 +43,7 @@ export enum FeatureSwitchKey {
   ZoomConnector = "zoomConnector",
   ApiKeys = "apiKeys",
   ApiBackend = "apiBackend",
+  OnboardingRedeemCode = "onboardingRedeemCode",
 
   ZapierConnector = "zapierConnector",
   SandboxIoLimiters = "sandboxIoLimiters",

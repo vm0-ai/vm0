@@ -18,6 +18,7 @@ import {
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
 import { isCurrentStripePreviewMetadata } from "./stripe-preview-metadata.service";
+import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
 import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
 
 const L = logger("WebhookStripe");
@@ -791,7 +792,7 @@ async function bindSubscriptionToCustomerOrg(
       | "checkout.session.completed"
       | "customer.subscription.created";
   },
-): Promise<void> {
+): Promise<readonly string[]> {
   if (
     args.source === "customer.subscription.created" &&
     !(await bindStripeCustomerFromMetadata(db, {
@@ -799,7 +800,7 @@ async function bindSubscriptionToCustomerOrg(
       subscriptionId: args.subscription.id,
     }))
   ) {
-    return;
+    return [];
   }
 
   const priceId = args.subscription.items.data[0]?.price?.id;
@@ -815,7 +816,7 @@ async function bindSubscriptionToCustomerOrg(
       tier: tierFromPriceId(priceId),
     })
   ) {
-    return;
+    return [];
   }
 
   const rows = await db
@@ -836,6 +837,9 @@ async function bindSubscriptionToCustomerOrg(
       source: args.source,
     });
   }
+  return rows.map((row) => {
+    return row.orgId;
+  });
 }
 
 function invoiceWouldReplaceWithSameOrLowerTier(args: {
@@ -1198,14 +1202,23 @@ async function processSubscriptionInvoicePaid(
 async function handleCheckoutCompleted(
   db: Db,
   session: CheckoutSessionInput,
-): Promise<string | null> {
+): Promise<{
+  readonly drainOrgId: string | null;
+  readonly orgIds: readonly string[];
+}> {
   const creditPurchaseResult = await handlePaidCheckoutPurpose(
     db,
     session,
     "credit_purchase",
   );
   if (creditPurchaseResult.handled) {
-    return creditPurchaseResult.drainOrgId;
+    return {
+      drainOrgId: creditPurchaseResult.drainOrgId,
+      orgIds:
+        creditPurchaseResult.drainOrgId === null
+          ? []
+          : [creditPurchaseResult.drainOrgId],
+    };
   }
 
   const oneTimePurchaseResult = await handlePaidCheckoutPurpose(
@@ -1214,38 +1227,44 @@ async function handleCheckoutCompleted(
     "one_time_purchase",
   );
   if (oneTimePurchaseResult.handled) {
-    return oneTimePurchaseResult.drainOrgId;
+    return {
+      drainOrgId: oneTimePurchaseResult.drainOrgId,
+      orgIds:
+        oneTimePurchaseResult.drainOrgId === null
+          ? []
+          : [oneTimePurchaseResult.drainOrgId],
+    };
   }
 
   const checkoutContext = checkoutSubscriptionContext(session);
   if (!checkoutContext) {
-    return null;
+    return { drainOrgId: null, orgIds: [] };
   }
   const { customerId, subscriptionId } = checkoutContext;
 
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-  await bindSubscriptionToCustomerOrg(db, {
+  const orgIds = await bindSubscriptionToCustomerOrg(db, {
     customerId,
     subscription,
     source: "checkout.session.completed",
   });
-  return null;
+  return { drainOrgId: null, orgIds };
 }
 
 async function handleSubscriptionCreated(
   db: Db,
   subscription: SubscriptionInput,
-): Promise<void> {
+): Promise<readonly string[]> {
   const customerId = customerIdFromSubscription(subscription);
   if (!customerId) {
     L.warn("customer.subscription.created without customer ID", {
       subscriptionId: subscription.id,
     });
-    return;
+    return [];
   }
 
-  await bindSubscriptionToCustomerOrg(db, {
+  return await bindSubscriptionToCustomerOrg(db, {
     customerId,
     subscription,
     source: "customer.subscription.created",
@@ -1327,7 +1346,7 @@ async function handleSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
-): Promise<void> {
+): Promise<readonly string[]> {
   const periodEnd = subscriptionWillCancel(subscription)
     ? subscriptionScheduledEnd(subscription)
     : null;
@@ -1347,7 +1366,7 @@ async function handleSubscriptionUpdated(
     previousTrialEnd !== null &&
     trialEnd < previousTrialEnd;
 
-  await db.transaction(async (tx) => {
+  return await db.transaction(async (tx) => {
     const rows = await tx
       .update(orgMetadata)
       .set({
@@ -1375,7 +1394,9 @@ async function handleSubscriptionUpdated(
       .returning({ orgId: orgMetadata.orgId });
 
     if (!trialShortened) {
-      return;
+      return rows.map((row) => {
+        return row.orgId;
+      });
     }
 
     for (const row of rows) {
@@ -1391,13 +1412,16 @@ async function handleSubscriptionUpdated(
           ),
         );
     }
+    return rows.map((row) => {
+      return row.orgId;
+    });
   });
 }
 
 async function handleSubscriptionScheduleReleased(
   db: Db,
   schedule: SubscriptionScheduleInput,
-): Promise<void> {
+): Promise<readonly string[]> {
   const rows = await db
     .update(orgMetadata)
     .set({
@@ -1418,12 +1442,15 @@ async function handleSubscriptionScheduleReleased(
       }),
     });
   }
+  return rows.map((row) => {
+    return row.orgId;
+  });
 }
 
 async function handleSubscriptionScheduleEnded(
   db: Db,
   schedule: SubscriptionScheduleInput,
-): Promise<void> {
+): Promise<readonly string[]> {
   const rows = await db
     .update(orgMetadata)
     .set({
@@ -1443,13 +1470,16 @@ async function handleSubscriptionScheduleEnded(
       }),
     });
   }
+  return rows.map((row) => {
+    return row.orgId;
+  });
 }
 
 async function handleSubscriptionDeleted(
   db: Db,
   subscription: SubscriptionDeletedInput,
-): Promise<void> {
-  await db
+): Promise<readonly string[]> {
+  const rows = await db
     .update(orgMetadata)
     .set({
       tier: "pro-suspend",
@@ -1462,13 +1492,18 @@ async function handleSubscriptionDeleted(
       pendingSubscriptionChangeAt: null,
       updatedAt: nowDate(),
     })
-    .where(eq(orgMetadata.stripeSubscriptionId, subscription.id));
+    .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
+    .returning({ orgId: orgMetadata.orgId });
+  return rows.map((row) => {
+    return row.orgId;
+  });
 }
 
 export const handleStripeWebhookEvent$ = command(
   async ({ set }, event: Stripe.Event, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
     let drainOrgId: string | null = null;
+    const billingChangedOrgIds = new Set<string>();
     L.debug("stripe webhook received", { type: event.type, id: event.id });
 
     if (!shouldHandleStripePreviewEvent(event)) {
@@ -1480,49 +1515,74 @@ export const handleStripeWebhookEvent$ = command(
     }
 
     switch (event.type) {
-      case "checkout.session.completed": {
-        drainOrgId = await handleCheckoutCompleted(db, event.data.object);
-        signal.throwIfAborted();
-        break;
-      }
+      case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
-        drainOrgId = await handleCheckoutCompleted(db, event.data.object);
+        const result = await handleCheckoutCompleted(db, event.data.object);
         signal.throwIfAborted();
+        drainOrgId = result.drainOrgId;
+        for (const orgId of result.orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       case "invoice.paid": {
-        drainOrgId = await handleInvoicePaid(db, event.data.object);
+        const paidDrainOrgId = await handleInvoicePaid(db, event.data.object);
         signal.throwIfAborted();
+        drainOrgId = paidDrainOrgId;
+        if (paidDrainOrgId) {
+          billingChangedOrgIds.add(paidDrainOrgId);
+        }
         break;
       }
       case "customer.subscription.created": {
-        await handleSubscriptionCreated(db, event.data.object);
+        const orgIds = await handleSubscriptionCreated(db, event.data.object);
         signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       case "customer.subscription.updated": {
-        await handleSubscriptionUpdated(
+        const orgIds = await handleSubscriptionUpdated(
           db,
           event.data.object,
           event.data.previous_attributes,
         );
         signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       case "customer.subscription.deleted": {
-        await handleSubscriptionDeleted(db, event.data.object);
+        const orgIds = await handleSubscriptionDeleted(db, event.data.object);
         signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       case "subscription_schedule.released": {
-        await handleSubscriptionScheduleReleased(db, event.data.object);
+        const orgIds = await handleSubscriptionScheduleReleased(
+          db,
+          event.data.object,
+        );
         signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       case "subscription_schedule.canceled":
       case "subscription_schedule.aborted": {
-        await handleSubscriptionScheduleEnded(db, event.data.object);
+        const orgIds = await handleSubscriptionScheduleEnded(
+          db,
+          event.data.object,
+        );
         signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       default: {
@@ -1531,6 +1591,11 @@ export const handleStripeWebhookEvent$ = command(
     }
 
     signal.throwIfAborted();
+    for (const orgId of billingChangedOrgIds) {
+      await publishBillingChangedForOrg(db, orgId);
+      signal.throwIfAborted();
+    }
+
     if (drainOrgId) {
       await set(drainOrgQueueToCapacity$, { orgId: drainOrgId }, signal);
       signal.throwIfAborted();

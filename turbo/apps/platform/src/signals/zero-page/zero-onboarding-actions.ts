@@ -1,4 +1,6 @@
 import { command, computed } from "ccstate";
+import { zeroBillingRedeemCodeContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   zeroNeedsOnboarding$,
   zeroOnboardingStep$,
@@ -20,7 +22,10 @@ import {
   updateSearchParams$,
 } from "../route.ts";
 import { rootSignal$ } from "../root-signal.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { setLoop } from "../utils.ts";
+import { zeroClient$ } from "../api-client.ts";
+import { accept } from "../../lib/accept.ts";
 
 import {
   completeCheckoutSession$,
@@ -414,6 +419,52 @@ const waitForCompletedOnboardingCheckout$ = command(
 
     signal.throwIfAborted();
     return resolvedAgentId;
+  },
+);
+
+const redeemedOnboardingReady$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    set(reloadOnboardingStatus$);
+    set(reloadBillingStatus$);
+    const status = await get(zeroOnboardingStatus$);
+    signal.throwIfAborted();
+    return !status.needsOnboarding && !!status.defaultAgentId;
+  },
+);
+
+export const redeemOnboardingCode$ = command(
+  async ({ get, set }, code: string, signal: AbortSignal): Promise<void> => {
+    const trimmedCode = code.trim();
+    if (!trimmedCode) {
+      toast.error("Enter a redeem code.");
+      throw new Error("Enter a redeem code.");
+    }
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingRedeemCodeContract, {
+      apiBase: "www",
+    });
+    await accept(
+      client.create({
+        body: { code: trimmedCode },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+
+    if (!(await set(redeemedOnboardingReady$, signal))) {
+      await set(
+        setAblyLoop$,
+        "billing:changed",
+        redeemedOnboardingReady$,
+        signal,
+      );
+    }
+
+    signal.throwIfAborted();
+    toast.success("Redeem code applied");
+    await set(onboardingContinueWeb$, signal);
   },
 );
 
