@@ -121,7 +121,7 @@ pub async fn read_private_file_to_string(path: &Path) -> RunnerResult<Option<Str
     let mut options = tokio::fs::OpenOptions::new();
     options
         .read(true)
-        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC);
+        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK);
     let mut file = match options.open(path).await {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),

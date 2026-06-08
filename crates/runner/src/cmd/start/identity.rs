@@ -70,6 +70,32 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn runner_id_rejects_fifo_without_blocking() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("runner_id");
+        let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(
+            result,
+            0,
+            "mkfifo failed: {}",
+            std::io::Error::last_os_error()
+        );
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            load_or_generate_runner_id(dir.path()),
+        )
+        .await
+        .expect("runner_id FIFO should not block");
+
+        assert!(result.is_err());
+    }
+
     #[tokio::test]
     async fn runner_id_rejects_invalid() {
         let dir = tempfile::tempdir().unwrap();
