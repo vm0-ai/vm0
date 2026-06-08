@@ -8,7 +8,7 @@ Exports:
   decompression for gzip, deflate, br, zstd.
 - Conservative request-body decoding for billing inspection.
 - UTF-8-safe truncation, text/binary content detection and encoding.
-- Header sanitization for sensitive names and location-bearing values.
+- Header value allowlisting for capture-mode persistent logs.
 - ``add_capture_fields`` — composes capture-mode log entry fields.
 """
 
@@ -78,60 +78,17 @@ _TEXT_CONTENT_TYPES = (
     "application/graphql",
 )
 
-# Header names containing any of these keywords (case-insensitive) are redacted.
-_SENSITIVE_HEADER_KEYWORDS = (
-    "auth",
-    "token",
-    "secret",
-    "api-key",
-    "apikey",
-    "credential",
-    "password",
-    "cookie",
-)
-# Captured location-bearing headers are redacted entirely because paths,
-# query parameters, origins, and forwarded hosts can carry persistent-log secrets.
-_LOCATION_BEARING_CAPTURE_HEADER_NAMES = frozenset(
+# Captured header values are untrusted persistent-log data by default. Preserve
+# only low-risk protocol metadata that is useful for debugging response shape.
+_VALUE_PRESERVING_CAPTURE_HEADER_NAMES = frozenset(
     {
-        "content-base",
-        "content-location",
-        "content-security-policy",
-        "content-security-policy-report-only",
-        "destination",
-        "expect-ct",
-        "feature-policy",
-        "forwarded",
-        "link",
-        "location",
-        "origin",
-        "path",
-        "permissions-policy",
-        "public-key-pins",
-        "public-key-pins-report-only",
-        "redirect",
-        "report-to",
-        "reporting-endpoints",
-        "refresh",
-        "referer",
-        "referrer",
-        "sourcemap",
-        "uri",
-        "url",
-        "x-accel-redirect",
-        "x-forwarded-prefix",
-        "x-lighttpd-send-file",
-        "x-sendfile",
-        "x-sourcemap",
+        "accept",
+        "accept-encoding",
+        "content-encoding",
+        "content-length",
+        "content-type",
+        "date",
     }
-)
-_LOCATION_BEARING_CAPTURE_HEADER_SUFFIXES = (
-    "-host",
-    "-location",
-    "-origin",
-    "-path",
-    "-redirect",
-    "-uri",
-    "-url",
 )
 
 
@@ -591,36 +548,10 @@ def _encode_body(content: bytes, content_type: str) -> tuple:
         return base64.b64encode(content).decode("ascii"), "base64"
 
 
-def _normalize_capture_header_name(name: str) -> str:
-    normalized: list[str] = []
-    previous_separator = False
-    for char in name.strip().lower():
-        if char.isascii() and char.isalnum():
-            normalized.append(char)
-            previous_separator = False
-        elif not previous_separator:
-            normalized.append("-")
-            previous_separator = True
-    return "".join(normalized).strip("-")
-
-
-def _is_sensitive_capture_header_name(normalized_name: str) -> bool:
-    return any(kw in normalized_name for kw in _SENSITIVE_HEADER_KEYWORDS)
-
-
-def _is_location_bearing_capture_header(normalized_name: str) -> bool:
-    return normalized_name in _LOCATION_BEARING_CAPTURE_HEADER_NAMES or normalized_name.endswith(
-        _LOCATION_BEARING_CAPTURE_HEADER_SUFFIXES
-    )
-
-
 def _sanitize_header_value_for_capture(name: str, value: str) -> str:
-    normalized_name = _normalize_capture_header_name(name)
-    if _is_sensitive_capture_header_name(normalized_name):
-        return _REDACTED_HEADER_VALUE
-    if _is_location_bearing_capture_header(normalized_name):
-        return _REDACTED_HEADER_VALUE
-    return value
+    if name.strip().lower() in _VALUE_PRESERVING_CAPTURE_HEADER_NAMES:
+        return value
+    return _REDACTED_HEADER_VALUE
 
 
 def _sanitize_headers_for_capture(headers) -> dict:
