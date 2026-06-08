@@ -21,6 +21,7 @@ import time
 import urllib.parse
 from collections.abc import Callable
 from pathlib import Path
+from typing import TypeVar
 
 from mitmproxy import ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
@@ -70,6 +71,9 @@ _BROWSER_USER_AGENT_MARKERS = (
 )
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
+_TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
+_TCP_REQUEST_SIZE = "_tcp_request_size"
+_TCP_RESPONSE_SIZE = "_tcp_response_size"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 # Network log size fields are consumed as JavaScript numbers downstream.
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
@@ -633,10 +637,10 @@ def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
         flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True
 
 
-_WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
+_ScheduledFlow = TypeVar("_ScheduledFlow", http.HTTPFlow, tcp.TCPFlow)
 
 
-def _call_soon(callback: _WebSocketTrimCallback, flow: http.HTTPFlow) -> None:
+def _call_soon(callback: Callable[[_ScheduledFlow], None], flow: _ScheduledFlow) -> None:
     asyncio.get_running_loop().call_soon(callback, flow)
 
 
@@ -1039,6 +1043,11 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
     flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
 
 
+def tcp_message(flow: tcp.TCPFlow) -> None:
+    """Schedule bounded retention cleanup for registered TCP flows."""
+    _schedule_tcp_message_drain(flow)
+
+
 def tcp_end(flow: tcp.TCPFlow) -> None:
     """Log TCP connection details when it closes."""
     _log_tcp(flow)
@@ -1047,6 +1056,86 @@ def tcp_end(flow: tcp.TCPFlow) -> None:
 def tcp_error(flow: tcp.TCPFlow) -> None:
     """Log TCP connection errors."""
     _log_tcp(flow)
+
+
+def _is_registered_tcp_log_flow(flow: tcp.TCPFlow) -> bool:
+    return bool(
+        flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+        and flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
+    )
+
+
+def _tcp_counter_value(flow: tcp.TCPFlow, key: str) -> int:
+    value = flow.metadata.get(key)
+    if type(value) is not int:
+        return 0
+    return max(0, min(value, _MAX_SAFE_NETWORK_LOG_SIZE))
+
+
+def _has_tcp_size_counters(flow: tcp.TCPFlow) -> bool:
+    return (
+        type(flow.metadata.get(_TCP_REQUEST_SIZE)) is int
+        or type(flow.metadata.get(_TCP_RESPONSE_SIZE)) is int
+    )
+
+
+def _add_tcp_size(flow: tcp.TCPFlow, key: str, delta: int) -> None:
+    flow.metadata[key] = min(
+        _MAX_SAFE_NETWORK_LOG_SIZE,
+        _tcp_counter_value(flow, key) + delta,
+    )
+
+
+def _schedule_tcp_message_drain(flow: tcp.TCPFlow) -> None:
+    if not _is_registered_tcp_log_flow(flow):
+        return
+    if flow.metadata.get(_TCP_MESSAGE_DRAIN_SCHEDULED, False):
+        return
+    flow.metadata[_TCP_MESSAGE_DRAIN_SCHEDULED] = True
+    _call_soon(_drain_tcp_messages, flow)
+
+
+def _drain_tcp_messages(flow: tcp.TCPFlow) -> None:
+    flow.metadata.pop(_TCP_MESSAGE_DRAIN_SCHEDULED, None)
+    if not _is_registered_tcp_log_flow(flow):
+        return
+    if not flow.messages:
+        return
+
+    for message in flow.messages:
+        key = _TCP_REQUEST_SIZE if message.from_client else _TCP_RESPONSE_SIZE
+        _add_tcp_size(flow, key, len(message.content))
+    flow.messages.clear()
+
+
+def _sum_tcp_messages(flow: tcp.TCPFlow) -> tuple[int, int]:
+    request_size = 0
+    response_size = 0
+    for message in flow.messages:
+        if message.from_client:
+            request_size = min(
+                _MAX_SAFE_NETWORK_LOG_SIZE,
+                request_size + len(message.content),
+            )
+        else:
+            response_size = min(
+                _MAX_SAFE_NETWORK_LOG_SIZE,
+                response_size + len(message.content),
+            )
+    return request_size, response_size
+
+
+def _tcp_log_sizes(flow: tcp.TCPFlow) -> tuple[int, int]:
+    if flow.metadata.get(_TCP_MESSAGE_DRAIN_SCHEDULED, False) or _has_tcp_size_counters(flow):
+        _drain_tcp_messages(flow)
+        return (
+            _tcp_counter_value(flow, _TCP_REQUEST_SIZE),
+            _tcp_counter_value(flow, _TCP_RESPONSE_SIZE),
+        )
+
+    request_size, response_size = _sum_tcp_messages(flow)
+    flow.messages.clear()
+    return request_size, response_size
 
 
 def _log_tcp(flow: tcp.TCPFlow) -> None:
@@ -1058,8 +1147,7 @@ def _log_tcp(flow: tcp.TCPFlow) -> None:
     start_time = flow.metadata.get(metadata_keys.TCP_START_MONOTONIC)
     latency_ms = _elapsed_ms(start_time)
 
-    request_size = sum(len(m.content) for m in flow.messages if m.from_client)
-    response_size = sum(len(m.content) for m in flow.messages if not m.from_client)
+    request_size, response_size = _tcp_log_sizes(flow)
 
     server_addr = flow.server_conn.address if flow.server_conn else None
     host = server_addr[0] if server_addr else "unknown"
@@ -1091,6 +1179,7 @@ addons = [
     response,
     error,
     tcp_start,
+    tcp_message,
     tcp_end,
     tcp_error,
 ]
