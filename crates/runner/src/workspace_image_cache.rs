@@ -32,6 +32,7 @@ const WORKSPACE_DRIVE_LAYOUT: &str = "workspace-drive-v1";
 const GIB: u64 = 1024 * 1024 * 1024;
 const MIN_FREE_BYTES_FLOOR: u64 = 50 * GIB;
 const MAX_ENTRY_BYTES_CAP: u64 = 32 * GIB;
+const WORKSPACE_METADATA_MAX_BYTES: u64 = 1024 * 1024;
 const WORKSPACE_IMAGE_COPY_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[cfg(test)]
@@ -1679,14 +1680,7 @@ impl SessionWorkspaceCache {
         &self,
         metadata_path: &Path,
     ) -> RunnerResult<WorkspaceCacheMetadata> {
-        let metadata = fs::symlink_metadata(metadata_path).await?;
-        if !metadata.is_file() {
-            return Err(RunnerError::Internal(format!(
-                "workspace image cache metadata is not a file: {}",
-                metadata_path.display()
-            )));
-        }
-        let bytes = fs::read(metadata_path).await?;
+        let bytes = read_workspace_metadata_bytes(metadata_path).await?;
         serde_json::from_slice(&bytes)
             .map_err(|e| RunnerError::Internal(format!("parse {}: {e}", metadata_path.display())))
     }
@@ -2613,6 +2607,54 @@ fn is_workspace_tmp_path_name(name: &str) -> bool {
 
 fn allocated_bytes(metadata: &std::fs::Metadata) -> u64 {
     metadata.blocks().saturating_mul(512)
+}
+
+async fn read_workspace_metadata_bytes(path: &Path) -> RunnerResult<Vec<u8>> {
+    let mut options = fs::OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK);
+    let file = options.open(path).await.map_err(|e| {
+        RunnerError::Internal(format!(
+            "open workspace image cache metadata {}: {e}",
+            path.display()
+        ))
+    })?;
+    let metadata = file.metadata().await.map_err(|e| {
+        RunnerError::Internal(format!(
+            "stat workspace image cache metadata {}: {e}",
+            path.display()
+        ))
+    })?;
+    if !metadata.is_file() {
+        return Err(RunnerError::Internal(format!(
+            "workspace image cache metadata is not a file: {}",
+            path.display()
+        )));
+    }
+    read_workspace_metadata_file_contents(file, path).await
+}
+
+async fn read_workspace_metadata_file_contents(
+    file: fs::File,
+    path: &Path,
+) -> RunnerResult<Vec<u8>> {
+    let mut limited = file.take(WORKSPACE_METADATA_MAX_BYTES + 1);
+    let mut bytes = Vec::new();
+    limited.read_to_end(&mut bytes).await.map_err(|e| {
+        RunnerError::Internal(format!(
+            "read workspace image cache metadata {}: {e}",
+            path.display()
+        ))
+    })?;
+    if bytes.len() as u64 > WORKSPACE_METADATA_MAX_BYTES {
+        return Err(RunnerError::Internal(format!(
+            "workspace image cache metadata {} exceeds {} bytes",
+            path.display(),
+            WORKSPACE_METADATA_MAX_BYTES
+        )));
+    }
+    Ok(bytes)
 }
 
 fn fs_stats_with_additional_available(stats: FsStats, bytes: u64) -> FsStats {
@@ -3674,6 +3716,62 @@ mod tests {
         let entry = &inspection.entries[0];
         assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
         assert_eq!(entry.reason.as_deref(), Some("missing or invalid metadata"));
+    }
+
+    #[tokio::test]
+    async fn read_metadata_file_rejects_large_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let metadata_path = paths.session_workspace_cache_metadata(&key);
+        fs::write(
+            &metadata_path,
+            vec![b'x'; (WORKSPACE_METADATA_MAX_BYTES + 1) as usize],
+        )
+        .await
+        .unwrap();
+
+        let error = cache.read_metadata_file(&metadata_path).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("exceeds"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_metadata_file_rejects_fifo_without_blocking() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let metadata_path = paths.session_workspace_cache_metadata(&key);
+        let c_path = std::ffi::CString::new(metadata_path.as_os_str().as_bytes()).unwrap();
+        let result = unsafe { nix::libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(
+            result,
+            0,
+            "mkfifo failed: {}",
+            std::io::Error::last_os_error()
+        );
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            cache.read_metadata_file(&metadata_path),
+        )
+        .await
+        .expect("metadata FIFO read should not block");
+
+        assert!(result.is_err(), "metadata FIFO should be rejected");
     }
 
     #[tokio::test]
