@@ -1653,6 +1653,58 @@ describe("POST /api/internal/callbacks/chat", () => {
     await clearAllDetached();
   });
 
+  it("starts a new session with prior web context when auto-sending after a model switch", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    const db = store.set(writeDb$);
+    await seedOrgDefaultModelProvider(fixture);
+    await db
+      .update(zeroRuns)
+      .set({ selectedModel: "claude-opus-4-7" })
+      .where(eq(zeroRuns.id, fixture.runId));
+    await setRunResult(fixture.runId, { agentSessionId: fixture.sessionId });
+    const queuedId = await insertQueuedMessage(fixture, {
+      content: "queued after model switch",
+    });
+    completedAssistantOutput("previous opus answer");
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const claimed = (await listMessages(fixture.threadId)).find((message) => {
+      return message.revokesMessageId === queuedId && message.runId !== null;
+    });
+    expect(claimed?.runId).toBeTruthy();
+    const [run] = await db
+      .select({
+        sessionId: agentRuns.sessionId,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(eq(agentRuns.id, claimed!.runId!))
+      .limit(1);
+    expect(run?.selectedModel).toBe("claude-sonnet-4-6");
+    expect(run?.continuedFromSessionId).toBeNull();
+    expect(run?.sessionId).not.toBe(fixture.sessionId);
+    expect(run?.appendSystemPrompt).toContain("# Web Chat Run Context");
+    expect(run?.appendSystemPrompt).toContain(`RUN_ID: ${fixture.runId}`);
+    expect(run?.appendSystemPrompt).toContain(
+      `LOG_COMMAND: zero logs ${fixture.runId} --all`,
+    );
+    expect(run?.appendSystemPrompt).toContain("User: test prompt");
+    expect(run?.appendSystemPrompt).toContain(
+      "Assistant: previous opus answer",
+    );
+    await clearAllDetached();
+  });
+
   it("preserves queued message attachments when auto-sending", async () => {
     const fixture = await track(seedChatCallbackFixture());
     await seedOrgDefaultModelProvider(fixture);
