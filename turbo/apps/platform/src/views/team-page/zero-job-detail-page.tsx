@@ -596,7 +596,7 @@ function addDefaultAllowExpirationChanges({
   );
   for (const [permission, expiresIn] of Object.entries(expiresInByPermission)) {
     if (
-      expiresIn === "forever" ||
+      expiresIn === "always" ||
       changes.has(permission) ||
       initialGrantPermissions.has(permission)
     ) {

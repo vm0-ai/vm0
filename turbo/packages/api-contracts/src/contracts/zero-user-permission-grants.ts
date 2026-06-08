@@ -13,7 +13,7 @@ export const userPermissionGrantExpiresInSchema = z.enum([
   "1h",
   "24h",
   "7d",
-  "forever",
+  "always",
 ]);
 
 export const userPermissionGrantResponseSchema = z.object({

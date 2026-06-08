@@ -15,7 +15,7 @@ export const USER_PERMISSION_GRANT_EXPIRES_IN_OPTIONS: readonly {
   { value: "1h", label: "1 hour" },
   { value: "24h", label: "24 hours" },
   { value: "7d", label: "7 days" },
-  { value: "forever", label: "Always" },
+  { value: "always", label: "Always" },
 ];
 
 export function parseUserPermissionGrantExpiresIn(
@@ -43,7 +43,7 @@ export function userPermissionGrantExpiresAt(
     case "7d": {
       return new Date(nowMs + 7 * DAY_MS).toISOString();
     }
-    case "forever":
+    case "always":
     case undefined: {
       return null;
     }

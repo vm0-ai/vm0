@@ -164,7 +164,7 @@ function resolveGrantExpiresAt(
     case "7d": {
       return new Date(timestamp.getTime() + 7 * DAY_MS);
     }
-    case "forever":
+    case "always":
     case undefined: {
       return null;
     }

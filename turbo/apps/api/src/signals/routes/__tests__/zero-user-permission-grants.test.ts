@@ -568,7 +568,7 @@ describe("zero user permission grants", () => {
     expect(stored?.expiresAt).toBeNull();
   });
 
-  it("clears active expiration only when expiresIn is forever", async () => {
+  it("clears active expiration only when expiresIn is always", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
@@ -595,7 +595,7 @@ describe("zero user permission grants", () => {
           connectorRef: SLACK_CONNECTOR,
           permission: SLACK_READ_PERMISSION,
           action: "allow",
-          expiresIn: "forever",
+          expiresIn: "always",
         },
         headers: AUTH_HEADERS,
       }),
@@ -698,20 +698,20 @@ describe("zero user permission grants", () => {
     );
     expect(sevenDays.body.expiresAt).toBe("2026-02-08T12:00:00.000Z");
 
-    const forever = await accept(
+    const always = await accept(
       client.upsert({
         body: {
           agentId,
           connectorRef: SLACK_CONNECTOR,
           permission: SLACK_READ_PERMISSION,
           action: "allow",
-          expiresIn: "forever",
+          expiresIn: "always",
         },
         headers: AUTH_HEADERS,
       }),
       [200],
     );
-    expect(forever.body.expiresAt).toBeNull();
+    expect(always.body.expiresAt).toBeNull();
 
     const stored = await readStoredGrant({
       orgId: fixture.orgId,

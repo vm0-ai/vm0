@@ -375,7 +375,7 @@ function hasGrantExpirationChanges({
         : (policies[permission] ?? grant?.action ?? "allow");
     if (
       currentAction === "allow" &&
-      (grant?.action === "allow" || (!grant && selected !== "forever"))
+      (grant?.action === "allow" || (!grant && selected !== "always"))
     ) {
       return true;
     }
@@ -398,9 +398,9 @@ function hasPendingGrantExpirationChange({
     return false;
   }
   if (grant?.action === "allow") {
-    return selected !== "forever" || Boolean(grant.expiresAt);
+    return selected !== "always" || Boolean(grant.expiresAt);
   }
-  return selected !== "forever";
+  return selected !== "always";
 }
 
 function hasPendingPermissionControlChange({
@@ -472,7 +472,7 @@ function GrantExpirationStatus({
   const expiryText =
     selectedStatus ?? permissionGrantExpiryText(expiresAt) ?? "Always";
   const hasExpiringGrant =
-    selected === undefined ? Boolean(expiresAt) : selected !== "forever";
+    selected === undefined ? Boolean(expiresAt) : selected !== "always";
 
   return (
     <span
@@ -497,7 +497,7 @@ const ALLOW_DURATION_MENU_OPTIONS: readonly {
   { value: "1h", label: "Allow for 1h", statusLabel: "Expires in 1h" },
   { value: "24h", label: "Allow for 24h", statusLabel: "Expires in 24h" },
   { value: "7d", label: "Allow for 7d", statusLabel: "Expires in 7d" },
-  { value: "forever", label: "Allow always", statusLabel: "Always" },
+  { value: "always", label: "Allow always", statusLabel: "Always" },
 ];
 
 function allowDurationStatusLabel(
@@ -541,7 +541,7 @@ function menuOptionExpiresIn(
   value: UserPermissionGrantExpiresIn,
   allowGrant: UserPermissionGrantResponse | undefined,
 ): UserPermissionGrantExpiresIn | null {
-  if (value === "forever" && !allowGrant?.expiresAt) {
+  if (value === "always" && !allowGrant?.expiresAt) {
     return null;
   }
   return value;
@@ -559,7 +559,7 @@ function isDurationMenuOptionActive({
   if (selected !== undefined) {
     return selected === value;
   }
-  return value === "forever" && allowAlwaysActive;
+  return value === "always" && allowAlwaysActive;
 }
 
 function PermissionGrantResetButton({
