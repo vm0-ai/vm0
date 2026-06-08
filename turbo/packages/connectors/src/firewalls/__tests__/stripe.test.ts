@@ -154,6 +154,31 @@ describe("stripe firewall", () => {
     );
   });
 
+  it("uses official Stripe API v2 docs for resource permissions without OpenAPI resource IDs", () => {
+    expectStripeRule("v2_core_account_read", "GET /v2/core/accounts/{id}");
+    expectStripeRule("v2_core_account_write", "POST /v2/core/accounts/{id}");
+    expectStripeRule(
+      "v2_core_account_person_token_read",
+      "GET /v2/core/accounts/{account_id}/person_tokens/{id}",
+    );
+    expectStripeRule(
+      "v2_core_account_person_token_write",
+      "POST /v2/core/accounts/{account_id}/person_tokens",
+    );
+    expectStripeRule(
+      "v2_core_event_destination_write",
+      "POST /v2/core/event_destinations/{id}/ping",
+    );
+    expectStripeRule(
+      "v2_billing_meter_event_write",
+      "POST /v2/billing/meter_event_stream",
+    );
+    expectStripeRule(
+      "v2_commerce_product_catalog_import_read",
+      "GET /v2/commerce/product_catalog/imports/{id}",
+    );
+  });
+
   it("reports generated mapping coverage without hiding unmapped operations", () => {
     const firewall = getConnectorFirewall("stripe");
     const permissionCount = firewall.apis.reduce((count, api) => {

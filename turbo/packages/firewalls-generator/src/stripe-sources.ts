@@ -20,6 +20,133 @@ export const STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES = [
       "/v1/forwarding/requests",
     ],
   },
+  {
+    url: "https://docs.stripe.com/api/v2/core/accounts/object.md",
+    product: "Core",
+    resource: "Accounts v2",
+    permissions: ["v2_core_account_read", "v2_core_account_write"],
+    apiDocUrls: ["https://docs.stripe.com/api/v2/core/accounts.md"],
+    requiredSnippets: ['"object": "v2.core.account"'],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/core/persons/object.md",
+    product: "Core",
+    resource: "Persons v2",
+    permissions: [
+      "v2_core_account_person_read",
+      "v2_core_account_person_write",
+    ],
+    apiDocUrls: ["https://docs.stripe.com/api/v2/core/persons.md"],
+    requiredSnippets: ['"object": "v2.core.account_person"'],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/core/person-tokens/object.md",
+    product: "Core",
+    resource: "Person Tokens v2",
+    permissions: [
+      "v2_core_account_person_token_read",
+      "v2_core_account_person_token_write",
+    ],
+    apiDocUrls: ["https://docs.stripe.com/api/v2/core/person-tokens.md"],
+    requiredSnippets: ['"object": "v2.core.account_person_token"'],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/core/account-links/object.md",
+    product: "Core",
+    resource: "Account Links v2",
+    permissions: ["v2_core_account_link_write"],
+    apiDocUrls: ["https://docs.stripe.com/api/v2/core/account-links.md"],
+    requiredSnippets: ['"object": "v2.core.account_link"'],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/core/account-tokens/object.md",
+    product: "Core",
+    resource: "Account Tokens v2",
+    permissions: ["v2_core_account_token_read", "v2_core_account_token_write"],
+    apiDocUrls: ["https://docs.stripe.com/api/v2/core/account-tokens.md"],
+    requiredSnippets: ['"object": "v2.core.account_token"'],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/core/events/object.md",
+    product: "Core",
+    resource: "Events v2",
+    permissions: ["v2_core_event_read"],
+    apiDocUrls: ["https://docs.stripe.com/api/v2/core/events.md"],
+    requiredSnippets: ['"object": "v2.core.event"'],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/core/event-destinations/object.md",
+    product: "Core",
+    resource: "Event Destinations v2",
+    permissions: [
+      "v2_core_event_destination_read",
+      "v2_core_event_destination_write",
+    ],
+    apiDocUrls: ["https://docs.stripe.com/api/v2/core/event-destinations.md"],
+    requiredSnippets: ['"object": "v2.core.event_destination"'],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/core/event-destinations/object.md",
+    product: "Core",
+    resource: "Event Destinations v2",
+    permissions: ["v2_core_event_destination_write"],
+    apiDocUrls: ["https://docs.stripe.com/api/v2/core/events.md"],
+    requiredSnippets: ['"object": "v2.core.event_destination"'],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/billing/meter-events/object.md",
+    product: "Billing",
+    resource: "Meter Events v2",
+    permissions: ["v2_billing_meter_event_write"],
+    apiDocUrls: ["https://docs.stripe.com/api/v2/meter-events.md"],
+    requiredSnippets: ['"object": "v2.billing.meter_event"'],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/billing/meter-event-sessions/create-async.md",
+    product: "Billing",
+    resource: "Meter Events v2",
+    permissions: ["v2_billing_meter_event_write"],
+    apiDocUrls: [
+      "https://docs.stripe.com/api/v2/billing/meter-event-sessions/create-async.md",
+    ],
+    requiredSnippets: [
+      "Creates meter events",
+      "/v2/billing/meter_event_stream",
+    ],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/billing/meter-event-adjustments/object.md",
+    product: "Billing",
+    resource: "Meter Event Adjustments v2",
+    permissions: ["v2_billing_meter_event_adjustment_write"],
+    apiDocUrls: [
+      "https://docs.stripe.com/api/v2/billing/meter-event-adjustments.md",
+    ],
+    requiredSnippets: ['"object": "v2.billing.meter_event_adjustment"'],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/meter-event-streams/meter-event-sessions/object.md",
+    product: "Billing",
+    resource: "Meter Event Sessions v2",
+    permissions: ["v2_billing_meter_event_session_write"],
+    apiDocUrls: [
+      "https://docs.stripe.com/api/v2/meter-event-streams/meter-event-sessions/create.md",
+    ],
+    requiredSnippets: ['"object": "v2.billing.meter_event_session"'],
+  },
+  {
+    url: "https://docs.stripe.com/api/v2/commerce/product-catalog-imports/object.md",
+    product: "Commerce",
+    resource: "Product Catalog Imports v2",
+    permissions: [
+      "v2_commerce_product_catalog_import_read",
+      "v2_commerce_product_catalog_import_write",
+    ],
+    apiDocUrls: [
+      "https://docs.stripe.com/api/v2/commerce/product-catalog-imports.md",
+    ],
+    requiredSnippets: ['"object": "v2.commerce.product_catalog_import"'],
+  },
 ] as const;
 
 const STRIPE_SKIPPED_API_DOC_ENDPOINT_URLS = new Set([

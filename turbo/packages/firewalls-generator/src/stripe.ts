@@ -632,12 +632,24 @@ function parseApiDocEndpointRules(markdown: string): Array<{
   methodUpper: string;
   apiPath: string;
 }> {
-  return [...markdown.matchAll(/- \[([A-Z]+) ([^\]]+)\]\(/g)].map((match) => {
-    return {
-      methodUpper: match[1]!,
-      apiPath: match[2]!,
-    };
-  });
+  const rules = new Map<string, { methodUpper: string; apiPath: string }>();
+
+  function addEndpoint(methodUpper: string, apiPath: string): void {
+    rules.set(`${methodUpper} ${apiPath}`, { methodUpper, apiPath });
+  }
+
+  for (const match of markdown.matchAll(/- \[([A-Z]+) ([^\]]+)\]\(/g)) {
+    addEndpoint(match[1]!, match[2]!);
+  }
+
+  for (const match of markdown.matchAll(
+    /curl(?:\s+-G)?(?:\s+-X\s+([A-Z]+))?\s+https:\/\/(?:api|meter-events)\.stripe\.com(\/[^\s\\]+)/g,
+  )) {
+    const methodUpper = match[1] ?? "GET";
+    addEndpoint(methodUpper, match[2]!);
+  }
+
+  return [...rules.values()];
 }
 
 async function buildApiDocsPermissionMap(
