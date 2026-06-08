@@ -568,7 +568,6 @@ describe("POST /api/zero/billing/downgrade", () => {
       subId,
       {
         cancel_at: finalEnd,
-        cancel_at_period_end: false,
       },
     );
     expect(

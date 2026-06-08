@@ -195,7 +195,6 @@ async function scheduleCancellationAtPeriodEnd(
         context.org.stripeSubscriptionId,
         {
           cancel_at: dateUnixSeconds(effectiveDate),
-          cancel_at_period_end: false,
         },
       );
     } else {
