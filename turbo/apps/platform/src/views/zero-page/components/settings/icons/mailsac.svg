@@ -1,6 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
-  <path d="M2 6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z" fill="#5865F2"/>
-  <path d="M2 6l10 7 10-7" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-  <circle cx="18" cy="8" r="4" fill="#FF6B6B"/>
-  <path d="M16.5 8h3M18 6.5v3" stroke="#fff" strokeWidth="1" strokeLinecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
+  <rect x="8" y="16" width="80" height="64" rx="9" fill="#F15B60" />
+  <path
+    d="M14 27.5 48 53l34-25.5V70c0 3.3-2.7 6-6 6H20c-3.3 0-6-2.7-6-6V27.5Z"
+    fill="#FFFFFF"
+  />
+  <path d="M14 27.5h68L48 53 14 27.5Z" fill="#F15B60" />
+  <text
+    x="48"
+    y="66"
+    fill="#F15B60"
+    font-family="Nunito, Arial Rounded MT Bold, Arial, sans-serif"
+    font-size="17"
+    font-weight="800"
+    text-anchor="middle"
+  >
+    mailsac
+  </text>
 </svg>
