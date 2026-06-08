@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../../__tests__/page-helper.ts";
