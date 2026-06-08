@@ -12,7 +12,9 @@
  * and that all Stripe APIs support restricted API keys. Stripe does not publish
  * a direct operation-to-permission map in the public GA OpenAPI spec, so this
  * generator first uses named official permissions, then maps remaining
- * operations through unambiguous OpenAPI x-resourceId schemas.
+ * operations through API docs endpoint lists, unambiguous OpenAPI x-resourceId
+ * schemas, and explicit multi-resource overrides for legacy ambiguous unions
+ * that are validated against the current OpenAPI response resource IDs.
  *
  * Token format (gitleaks: stripe-access-token):
  *   (sk|rk)_(test|live|prod)_ + 10-99 alphanumeric chars
