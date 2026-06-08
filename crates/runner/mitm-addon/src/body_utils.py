@@ -89,12 +89,9 @@ _HTTP_MEDIA_TYPE_PATTERN = (
     rf"{_HTTP_TCHAR_PATTERN}/{_HTTP_TCHAR_PATTERN}"
     rf"(?:\s*;\s*{_HTTP_PARAMETER_PATTERN})*"
 )
-_HTTP_MEDIA_RANGE_PATTERN = (
-    rf"(?:{_HTTP_TCHAR_PATTERN}|\*)/(?:{_HTTP_TCHAR_PATTERN}|\*)"
-    rf"(?:\s*;\s*{_HTTP_PARAMETER_PATTERN})*"
-)
+_HTTP_KNOWN_CONTENT_CODING_PATTERN = r"(?:br|compress|deflate|gzip|identity|zstd)"
 _HTTP_ENCODING_PATTERN = (
-    rf"(?:{_HTTP_TCHAR_PATTERN}|\*)"
+    rf"(?:{_HTTP_KNOWN_CONTENT_CODING_PATTERN}|\*)"
     r"(?:\s*;\s*q=(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?))?"
 )
 _HTTP_IMF_FIXDATE_PATTERN = re.compile(
@@ -109,9 +106,14 @@ _UNSAFE_CAPTURE_HEADER_VALUE_CHARS = re.compile(r"[\r\n]")
 # Captured header values are untrusted persistent-log data by default. Preserve
 # only low-risk protocol metadata that matches conservative HTTP value shapes.
 _VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS: dict[str, re.Pattern[str]] = {
-    "accept": re.compile(rf"{_HTTP_MEDIA_RANGE_PATTERN}(?:\s*,\s*{_HTTP_MEDIA_RANGE_PATTERN})*"),
-    "accept-encoding": re.compile(rf"{_HTTP_ENCODING_PATTERN}(?:\s*,\s*{_HTTP_ENCODING_PATTERN})*"),
-    "content-encoding": re.compile(rf"{_HTTP_TCHAR_PATTERN}(?:\s*,\s*{_HTTP_TCHAR_PATTERN})*"),
+    "accept-encoding": re.compile(
+        rf"{_HTTP_ENCODING_PATTERN}(?:\s*,\s*{_HTTP_ENCODING_PATTERN})*",
+        re.IGNORECASE,
+    ),
+    "content-encoding": re.compile(
+        rf"{_HTTP_KNOWN_CONTENT_CODING_PATTERN}(?:\s*,\s*{_HTTP_KNOWN_CONTENT_CODING_PATTERN})*",
+        re.IGNORECASE,
+    ),
     "content-length": re.compile(r"(?:0|[1-9][0-9]*)"),
     "content-type": re.compile(_HTTP_MEDIA_TYPE_PATTERN),
 }
