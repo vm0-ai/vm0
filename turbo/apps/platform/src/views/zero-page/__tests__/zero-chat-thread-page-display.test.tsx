@@ -456,6 +456,39 @@ describe("zero chat thread page display - permission action card", () => {
     });
   });
 
+  it("treats requested always as already applied for permanent allow permission actions", async () => {
+    mockPermissionAgent();
+    mockPermissionMessage("channels:write", "allow", "always");
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+        expiresAt: null,
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    expect(
+      within(card).queryByRole("combobox", { name: "Permission duration" }),
+    ).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button", card).find((element) => {
+        return element.textContent?.trim() === "Confirm";
+      }),
+    ).toBeUndefined();
+  });
+
   it("shows existing expiration for already-applied permission actions", async () => {
     mockPermissionAgent();
     mockPermissionMessage();

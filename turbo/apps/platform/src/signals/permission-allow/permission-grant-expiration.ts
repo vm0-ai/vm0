@@ -50,6 +50,22 @@ export function userPermissionGrantExpiresAt(
   }
 }
 
+export function requestedUserPermissionGrantExpirationAlreadyApplies({
+  expiresIn,
+  currentExpiresAt,
+}: {
+  expiresIn: UserPermissionGrantExpiresIn | null;
+  currentExpiresAt: string | null | undefined;
+}): boolean {
+  if (expiresIn === null) {
+    return true;
+  }
+  if (expiresIn === "always") {
+    return currentExpiresAt === null;
+  }
+  return false;
+}
+
 export function permissionGrantExpiryText(
   expiresAt: string | null,
   nowMs = Date.now(),

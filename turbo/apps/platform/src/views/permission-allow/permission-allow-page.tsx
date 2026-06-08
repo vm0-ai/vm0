@@ -29,6 +29,7 @@ import {
   DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
   permissionGrantExpiresInByScope$,
   permissionGrantExpiryText,
+  requestedUserPermissionGrantExpirationAlreadyApplies,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -387,9 +388,14 @@ function PermissionAllowDoctorPage({
       grant.action === action
     );
   });
-  const requestedExpirationChange =
-    expirationEnabled && action === "allow" && initialExpiresIn !== null;
-  if (effectivePolicy === action && !requestedExpirationChange) {
+  const requestedExpirationAlreadyApplies =
+    !expirationEnabled ||
+    action !== "allow" ||
+    requestedUserPermissionGrantExpirationAlreadyApplies({
+      expiresIn: initialExpiresIn,
+      currentExpiresAt: explicitGrant?.expiresAt,
+    });
+  if (effectivePolicy === action && requestedExpirationAlreadyApplies) {
     return (
       <ResultCard
         action={action}

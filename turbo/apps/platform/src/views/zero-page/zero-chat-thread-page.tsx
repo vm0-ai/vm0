@@ -116,6 +116,7 @@ import {
   DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
   permissionGrantExpiresInByScope$,
   permissionGrantExpiryText,
+  requestedUserPermissionGrantExpirationAlreadyApplies,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import {
@@ -3493,15 +3494,23 @@ function isPermissionActionAlreadyApplied(params: {
   hasAgent: boolean;
   userGrantPolicy: FirewallPolicyValue | undefined;
   action: "allow" | "deny";
-  requestedExpirationChange: boolean;
+  expirationAvailable: boolean;
+  requestedExpiresIn: UserPermissionGrantExpiresIn | null;
+  currentExpiresAt: string | null | undefined;
 }): boolean {
   if (!params.hasAgent) {
     return false;
   }
-  return (
-    params.userGrantPolicy === params.action &&
-    !params.requestedExpirationChange
-  );
+  if (params.userGrantPolicy !== params.action) {
+    return false;
+  }
+  if (!params.expirationAvailable || params.action !== "allow") {
+    return true;
+  }
+  return requestedUserPermissionGrantExpirationAlreadyApplies({
+    expiresIn: params.requestedExpiresIn,
+    currentExpiresAt: params.currentExpiresAt,
+  });
 }
 
 function findPermissionActionPermission(block: PermissionActionBlock) {
@@ -3588,7 +3597,8 @@ function createPermissionActionCardViewState(params: {
   agentLoadableState: string;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
-  requestedExpirationChange: boolean;
+  expirationAvailable: boolean;
+  currentGrantExpiresAt: string | null | undefined;
 }) {
   const focusedPermission = findPermissionActionPermission(params.block);
   const actionLabel = permissionActionVerb(params.block.action);
@@ -3611,7 +3621,9 @@ function createPermissionActionCardViewState(params: {
     hasAgent: params.hasAgent,
     userGrantPolicy,
     action: params.block.action,
-    requestedExpirationChange: params.requestedExpirationChange,
+    expirationAvailable: params.expirationAvailable,
+    requestedExpiresIn: params.block.expiresIn,
+    currentExpiresAt: params.currentGrantExpiresAt,
   });
   const saveDone = params.grantLoadableState === "hasData";
   const buttonState = createPermissionActionCardButtonState({
@@ -3770,8 +3782,6 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const expirationEnabled =
     features?.[FeatureSwitchKey.ExpiringPermissionGrants] ?? false;
   const expirationAvailable = expirationEnabled && block.action === "allow";
-  const requestedExpirationChange =
-    expirationAvailable && block.expiresIn !== null;
   const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
   const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
@@ -3790,15 +3800,16 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   );
   const hasAgent =
     agentLoadable.state === "hasData" && Boolean(agentLoadable.data);
+  const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
   const actionState = createPermissionActionCardViewState({
     block,
     hasAgent,
     agentLoadableState: agentLoadable.state,
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
-    requestedExpirationChange,
+    expirationAvailable,
+    currentGrantExpiresAt: existingGrant?.expiresAt,
   });
-  const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
   const grantExpiresAt =
     grantLoadable.state === "hasData"
       ? grantLoadable.data.expiresAt
