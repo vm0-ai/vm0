@@ -285,7 +285,7 @@ async function inlineFetchableImages(
   ]);
 }
 
-function createExportScript(options: DomToPptxOptions): string {
+function createExportBootstrapScript(options: DomToPptxOptions): string {
   return `
 (() => {
   const options = ${JSON.stringify(options)};
@@ -339,7 +339,11 @@ function createExportScript(options: DomToPptxOptions): string {
       document.head.append(script);
     });
   };
+`;
+}
 
+function createExportSlideScript(): string {
+  return `
   const selectSlideNodes = () => {
     for (const selector of slideSelectors) {
       const nodes = Array.from(document.querySelectorAll(selector));
@@ -402,7 +406,11 @@ function createExportScript(options: DomToPptxOptions): string {
       }),
     );
   };
+`;
+}
 
+function createExportReadinessScript(): string {
+  return `
   const getFiniteAnimations = (nodes) => {
     const animations = nodes.flatMap((node) => {
       if (typeof node.getAnimations !== "function") {
@@ -479,7 +487,11 @@ function createExportScript(options: DomToPptxOptions): string {
     freezeAnimationsAtFinalFrame(nodes);
     forceRevealAnimatedContent(nodes);
   };
+`;
+}
 
+function createExportRunnerScript(): string {
+  return `
   void (async () => {
     await loadScript(scriptUrl);
     if (!window.domToPptx?.exportToPptx) {
@@ -501,6 +513,15 @@ function createExportScript(options: DomToPptxOptions): string {
   });
 })();
 `;
+}
+
+function createExportScript(options: DomToPptxOptions): string {
+  return [
+    createExportBootstrapScript(options),
+    createExportSlideScript(),
+    createExportReadinessScript(),
+    createExportRunnerScript(),
+  ].join("");
 }
 
 async function htmlWithExportScript(

@@ -1,6 +1,8 @@
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { get as httpsGet } from "node:https";
 import { defineConfig, type PluginOption } from "vite";
 
 const DEV_ARTIFACT_FETCH_PROXY_PATH = "/__vm0-dev-artifact-fetch";
@@ -24,53 +26,67 @@ function isAllowedDevArtifactFetchUrl(url: URL): boolean {
   );
 }
 
+function sendBadGateway(res: ServerResponse): void {
+  res.statusCode = 502;
+  res.end("Bad gateway");
+}
+
+function handleDevArtifactFetchProxyRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
+  if (req.method !== "GET") {
+    res.statusCode = 405;
+    res.end("Method not allowed");
+    return;
+  }
+
+  try {
+    const requestUrl = new URL(req.url ?? "", "http://localhost");
+    const rawTarget = requestUrl.searchParams.get("url");
+    if (!rawTarget) {
+      res.statusCode = 400;
+      res.end("Missing url");
+      return;
+    }
+
+    if (!URL.canParse(rawTarget)) {
+      res.statusCode = 400;
+      res.end("Invalid url");
+      return;
+    }
+
+    const target = new URL(rawTarget);
+    if (!isAllowedDevArtifactFetchUrl(target)) {
+      res.statusCode = 403;
+      res.end("Forbidden");
+      return;
+    }
+
+    const upstreamRequest = httpsGet(target, (upstream) => {
+      res.statusCode = upstream.statusCode ?? 502;
+      for (const header of DEV_ARTIFACT_FETCH_PROXY_HEADERS) {
+        const value = upstream.headers[header];
+        if (value) {
+          res.setHeader(header, value);
+        }
+      }
+      upstream.pipe(res);
+    });
+    upstreamRequest.on("error", () => {
+      sendBadGateway(res);
+    });
+  } catch {
+    sendBadGateway(res);
+  }
+}
+
 function devArtifactFetchProxy(): PluginOption {
   return {
     name: "vm0-dev-artifact-fetch-proxy",
     configureServer(server) {
       server.middlewares.use(DEV_ARTIFACT_FETCH_PROXY_PATH, (req, res) => {
-        if (req.method !== "GET") {
-          res.statusCode = 405;
-          res.end("Method not allowed");
-          return;
-        }
-
-        void (async () => {
-          const requestUrl = new URL(req.url ?? "", "http://localhost");
-          const rawTarget = requestUrl.searchParams.get("url");
-          if (!rawTarget) {
-            res.statusCode = 400;
-            res.end("Missing url");
-            return;
-          }
-
-          if (!URL.canParse(rawTarget)) {
-            res.statusCode = 400;
-            res.end("Invalid url");
-            return;
-          }
-
-          const target = new URL(rawTarget);
-          if (!isAllowedDevArtifactFetchUrl(target)) {
-            res.statusCode = 403;
-            res.end("Forbidden");
-            return;
-          }
-
-          const upstream = await fetch(target);
-          res.statusCode = upstream.status;
-          for (const header of DEV_ARTIFACT_FETCH_PROXY_HEADERS) {
-            const value = upstream.headers.get(header);
-            if (value) {
-              res.setHeader(header, value);
-            }
-          }
-          res.end(new Uint8Array(await upstream.arrayBuffer()));
-        })().catch((error: unknown) => {
-          console.error("dev artifact fetch proxy failed", error);
-          res.statusCode = 502;
-          res.end("Bad gateway");
-        });
+        handleDevArtifactFetchProxyRequest(req, res);
       });
     },
   };

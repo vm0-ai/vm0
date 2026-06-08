@@ -2320,7 +2320,7 @@ describe("zero chat thread page display - artifact sidebar", () => {
     await user.click(await screen.findByText("Download (.pptx)"));
 
     const exportFrame = await screen.findByTitle("Presentation PPTX export");
-    expect(presentationHtmlRequested).toBe(true);
+    expect(presentationHtmlRequested).toBeTruthy();
     expect(exportFrame).toHaveAttribute(
       "sandbox",
       "allow-scripts allow-downloads",
