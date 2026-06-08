@@ -131,7 +131,7 @@ _VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS: dict[str, re.Pattern[str]] = {
         rf"{_HTTP_KNOWN_CONTENT_CODING_PATTERN}(?:\s*,\s*{_HTTP_KNOWN_CONTENT_CODING_PATTERN})*",
         re.IGNORECASE,
     ),
-    "content-length": re.compile(r"(?:0|[1-9][0-9]*)"),
+    "content-length": re.compile(r"(?:0|[1-9][0-9]{0,18})"),
 }
 
 
@@ -603,11 +603,10 @@ def _is_http_date_header_value(value: str) -> bool:
 
 def _sanitize_content_type_for_capture(value: str) -> str | None:
     parameter_start = value.find(";")
-    media_type = (
-        value[:parameter_start].strip().lower() if parameter_start != -1 else value.strip().lower()
-    )
-    if len(media_type) > _MAX_CAPTURE_CONTENT_TYPE_MEDIA_TYPE_LENGTH:
+    raw_media_type = value[:parameter_start].strip() if parameter_start != -1 else value.strip()
+    if len(raw_media_type) > _MAX_CAPTURE_CONTENT_TYPE_MEDIA_TYPE_LENGTH:
         return None
+    media_type = raw_media_type.lower()
     if media_type not in _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES:
         return None
     return media_type
