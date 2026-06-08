@@ -102,7 +102,7 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::network_log_manager::NetworkLogSession;
 use crate::paths::{HomePaths, LogPaths};
-use crate::proxy::ProxyRegistryHandle;
+use crate::proxy::{MitmJsonlFlushHandle, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::{
@@ -134,6 +134,7 @@ pub struct ExecutorConfig {
     pub log_paths: LogPaths,
     pub network_log_manager: NetworkLogManager,
     pub network_log_drain: NetworkLogDrainCoordinator,
+    pub mitm_jsonl_flush: Option<MitmJsonlFlushHandle>,
     pub home: HomePaths,
     pub workspace_cache: Option<SessionWorkspaceCache>,
 }

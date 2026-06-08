@@ -10,6 +10,7 @@ import pytest
 from mitmproxy.flow import Error
 
 import flow_metadata_keys as metadata_keys
+import logging_utils
 import mitm_addon
 import registry
 import usage
@@ -26,6 +27,7 @@ def wait_for_usage_flush_worker_to_stop(timeout: float = 1.0) -> None:
 
 def reset_runner_usage_flush_state() -> None:
     mitm_addon._usage_flush_requested.clear()
+    mitm_addon._last_jsonl_flush_request_id = None
     wait_for_usage_flush_worker_to_stop()
 
 
@@ -38,11 +40,13 @@ class TestDoneHook:
         with (
             patch.object(usage, "flush_usage_events") as flush_usage_events,
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(mitm_addon, "shutdown_log_writer") as shutdown_log_writer,
         ):
             mitm_addon.done()
         flush_usage_events.assert_called_once_with(trigger="shutdown")
         # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
         mock_executor.shutdown.assert_called_once_with(wait=True)
+        shutdown_log_writer.assert_called_once_with()
 
     def test_done_waits_for_runner_flush_before_executor_shutdown(self):
         """done() must not shut down the executor while a SIGUSR1 flush is enqueueing."""
@@ -93,6 +97,7 @@ class TestDoneHook:
             patch.object(mitm_addon, "_usage_flush_signal_lock", lock),
             patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(mitm_addon, "shutdown_log_writer", lambda: calls.append("jsonl:shutdown")),
         ):
             mitm_addon._handle_runner_usage_flush_signal(0, None)
             assert runner_flush_started.wait(timeout=1)
@@ -106,7 +111,7 @@ class TestDoneHook:
             done_thread.join(timeout=1)
 
         assert not done_thread.is_alive()
-        assert calls == ["flush:runner", "flush:shutdown", "shutdown:True"]
+        assert calls == ["flush:runner", "flush:shutdown", "shutdown:True", "jsonl:shutdown"]
 
     def test_done_shuts_down_executor_when_flush_fails(self):
         mock_executor = MagicMock()
@@ -118,12 +123,14 @@ class TestDoneHook:
                 side_effect=RuntimeError("flush failed"),
             ) as flush_usage_events,
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(mitm_addon, "shutdown_log_writer") as shutdown_log_writer,
             pytest.raises(RuntimeError, match="flush failed"),
         ):
             mitm_addon.done()
 
         flush_usage_events.assert_called_once_with(trigger="shutdown")
         mock_executor.shutdown.assert_called_once_with(wait=True)
+        shutdown_log_writer.assert_called_once_with()
 
 
 class TestRunnerUsageFlushSignal:
@@ -233,6 +240,196 @@ class TestRunnerUsageFlushSignal:
             )
         finally:
             usage.counters.decrement_pending_reports()
+            usage.set_pending_path("")
+
+    def test_signal_handler_acknowledges_jsonl_flush_request(self, tmp_path):
+        reset_runner_usage_flush_state()
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "jsonl-flush-request"
+        state_path = tmp_path / "jsonl-flush-state"
+        log_path = tmp_path / "network.jsonl"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "jsonl-request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                    "path": str(log_path),
+                }
+            )
+        )
+
+        try:
+            with (
+                patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+                patch.object(logging_utils.ctx, "log", MagicMock(), create=True),
+            ):
+                logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                wait_for_usage_flush_worker_to_stop()
+
+            entry = json.loads(log_path.read_text().strip())
+            assert entry["action"] == "ALLOW"
+            state = json.loads(state_path.read_text())
+            assert state == {
+                "pid": state["pid"],
+                "usageStateId": "runner-state",
+                "updatedAtMs": state["updatedAtMs"],
+                "flushRequestId": "jsonl-request-1",
+                "path": str(log_path),
+                "pending": 0,
+            }
+        finally:
+            usage.set_pending_path("")
+
+    def test_jsonl_flush_request_rejects_unsafe_request_id(self, tmp_path):
+        reset_runner_usage_flush_state()
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "jsonl-flush-request"
+        state_path = tmp_path / "jsonl-flush-state"
+        log_path = tmp_path / "network.jsonl"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "../jsonl-request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                    "path": str(log_path),
+                }
+            )
+        )
+
+        try:
+            with (
+                patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+                patch.object(mitm_addon, "flush_log_path") as flush_log_path,
+            ):
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                wait_for_usage_flush_worker_to_stop()
+
+            flush_log_path.assert_not_called()
+            assert not state_path.exists()
+        finally:
+            usage.set_pending_path("")
+
+    def test_jsonl_flush_failure_writes_pending_state(self, tmp_path):
+        reset_runner_usage_flush_state()
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "jsonl-flush-request"
+        state_path = tmp_path / "jsonl-flush-state"
+        log_path = tmp_path / "network.jsonl"
+        log = MagicMock()
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "jsonl-request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                    "path": str(log_path),
+                }
+            )
+        )
+
+        try:
+            with (
+                patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+                patch.object(mitm_addon, "flush_log_path", side_effect=RuntimeError("secret")),
+                patch.object(mitm_addon.ctx, "log", log, create=True),
+            ):
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                wait_for_usage_flush_worker_to_stop()
+
+            state = json.loads(state_path.read_text())
+            assert state == {
+                "pid": state["pid"],
+                "usageStateId": "runner-state",
+                "updatedAtMs": state["updatedAtMs"],
+                "flushRequestId": "jsonl-request-1",
+                "path": str(log_path),
+                "pending": 1,
+            }
+            log.warn.assert_called_once()
+            warning = log.warn.call_args.args[0]
+            assert "RuntimeError" in warning
+            assert "secret" not in warning
+        finally:
+            usage.set_pending_path("")
+
+    def test_signal_handler_does_not_reprocess_acknowledged_jsonl_flush_request(self, tmp_path):
+        reset_runner_usage_flush_state()
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "jsonl-flush-request"
+        log_path = tmp_path / "network.jsonl"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "jsonl-request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                    "path": str(log_path),
+                }
+            )
+        )
+
+        try:
+            with (
+                patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+                patch.object(mitm_addon, "flush_log_path") as flush_log_path,
+                patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            ):
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                wait_for_usage_flush_worker_to_stop()
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                wait_for_usage_flush_worker_to_stop()
+
+            flush_log_path.assert_called_once_with(str(log_path))
+        finally:
+            usage.set_pending_path("")
+
+    def test_jsonl_flush_failure_is_retryable(self, tmp_path):
+        reset_runner_usage_flush_state()
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "jsonl-flush-request"
+        state_path = tmp_path / "jsonl-flush-state"
+        log_path = tmp_path / "network.jsonl"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "jsonl-request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                    "path": str(log_path),
+                }
+            )
+        )
+
+        try:
+            with (
+                patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+                patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            ):
+                with patch.object(
+                    mitm_addon,
+                    "flush_log_path",
+                    side_effect=RuntimeError("flush failed"),
+                ) as failed_flush:
+                    mitm_addon._handle_runner_usage_flush_signal(0, None)
+                    wait_for_usage_flush_worker_to_stop()
+
+                with patch.object(mitm_addon, "flush_log_path") as retry_flush:
+                    mitm_addon._handle_runner_usage_flush_signal(0, None)
+                    wait_for_usage_flush_worker_to_stop()
+
+            failed_flush.assert_called_once_with(str(log_path))
+            retry_flush.assert_called_once_with(str(log_path))
+            state = json.loads(state_path.read_text())
+            assert state["pending"] == 0
+        finally:
             usage.set_pending_path("")
 
     def test_runner_flush_failure_warns_without_error_text(self):

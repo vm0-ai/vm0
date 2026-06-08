@@ -61,6 +61,12 @@ def set_pending_path(path: str, usage_state_id: str | None = None) -> None:
     _write_pending_state(pending_path, state)
 
 
+def current_usage_state_id() -> str:
+    """Return the current runner-generated usage state id."""
+    with _counter_lock:
+        return _usage_state_id
+
+
 def _pending_snapshot_locked(flush_request_id: str | None = None) -> tuple[str, dict[str, Any]]:
     state: dict[str, Any] = {
         "pid": os.getpid(),

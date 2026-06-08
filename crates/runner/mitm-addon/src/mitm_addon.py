@@ -14,12 +14,14 @@ This addon runs on the runner HOST (not inside VMs) and:
 import asyncio
 import functools
 import json
+import os
 import signal
 import tempfile
 import threading
 import time
 import urllib.parse
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 
 from mitmproxy import ctx, http, tcp, tls
@@ -49,7 +51,13 @@ from auth import (
     is_billable_firewall,
     request_force_refresh,
 )
-from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
+from logging_utils import (
+    add_firewall_metadata,
+    flush_log_path,
+    log_network_entry,
+    log_proxy_entry,
+    shutdown_log_writer,
+)
 from url_utils import AuthorityValidationError, get_trusted_authority
 
 # HTTP status boundaries used in response-phase classification.
@@ -75,19 +83,26 @@ _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
 _MAX_SAFE_NETWORK_LOG_SIZE_DIGITS = len(str(_MAX_SAFE_NETWORK_LOG_SIZE))
 
-# Runner-triggered usage drain protocol:
+# Runner-triggered flush protocols:
 # - Rust writes `usage-flush-request` with the active usageStateId and a fresh
 #   flushRequestId, then sends SIGUSR1 to this addon process.
 # - This addon flushes buffered usage and writes `usage-pending` with the
 #   matching flushRequestId so the runner can observe a fresh snapshot.
 # - Rust performs a bounded wait for the acknowledged snapshot to have zero
 #   flows, buffered events, and reports before stopping the proxy.
+# - Rust may also write `jsonl-flush-request` for a concrete network log path.
+#   This addon drains accepted JSONL writes for that path and acknowledges with
+#   `jsonl-flush-state` before the runner uploads the file.
 #
 # Keep this in sync with usage/counters.py and the Rust wait path in
 # crates/runner/src/proxy.rs plus crates/runner/src/cmd/start/mod.rs.
 _RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
 _usage_flush_requested = threading.Event()
 _usage_flush_signal_lock = threading.Lock()
+_jsonl_flush_state_write_lock = threading.Lock()
+_last_jsonl_flush_request_id: str | None = None
+_JSONL_FLUSH_REQUEST_FILE = "jsonl-flush-request"
+_JSONL_FLUSH_STATE_FILE = "jsonl-flush-state"
 
 # ============================================================================
 # Addon Configuration
@@ -143,11 +158,11 @@ def configure(updated: set[str]) -> None:
 
 
 def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
-    """Schedule runner-requested usage drain from the SIGUSR1 handler.
+    """Schedule runner-requested flush work from the SIGUSR1 handler.
 
     Keep this handler minimal: it may interrupt mitmproxy's event loop, so it
     only records that work is needed and lets the background worker perform
-    file I/O and usage flushing.
+    file I/O, usage flushing, and JSONL flushing.
     """
     del signum
     _usage_flush_requested.set()
@@ -155,13 +170,13 @@ def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
 
 
 def _start_usage_flush_worker() -> None:
-    """Start one usage-flush worker, coalescing repeated signals while active."""
+    """Start one flush worker, coalescing repeated signals while active."""
     if not _usage_flush_signal_lock.acquire(blocking=False):
         return
 
     thread = threading.Thread(
         target=_run_usage_flush_worker,
-        name="usage-flush-request",
+        name="runner-flush-request",
         daemon=True,
     )
     started = False
@@ -184,6 +199,7 @@ def _run_usage_flush_worker() -> None:
         while True:
             _usage_flush_requested.clear()
             _flush_usage_for_runner_request()
+            _flush_jsonl_for_runner_request()
             if not _usage_flush_requested.is_set():
                 return
     finally:
@@ -205,6 +221,82 @@ def _flush_usage_for_runner_request() -> None:
         ctx.log.warn(f"Failed to flush usage events after runner request ({type(exc).__name__})")
     finally:
         usage.write_pending_snapshot(flush_request_id=flush_request_id)
+
+
+def _flush_jsonl_for_runner_request() -> None:
+    global _last_jsonl_flush_request_id
+
+    request = _read_jsonl_flush_request()
+    if request is None:
+        return
+
+    log_path, flush_request_id = request
+    pending = 0
+    try:
+        flush_log_path(log_path)
+    except Exception as exc:
+        pending = 1
+        ctx.log.warn(f"Failed to flush JSONL logs after runner request ({type(exc).__name__})")
+    finally:
+        state_written = _write_jsonl_flush_state(log_path, flush_request_id, pending=pending)
+        if pending == 0 and state_written:
+            _last_jsonl_flush_request_id = flush_request_id
+
+
+def _read_jsonl_flush_request() -> tuple[str, str] | None:
+    marker_path = Path(__file__).resolve().parent / _JSONL_FLUSH_REQUEST_FILE
+    try:
+        marker = json.loads(marker_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(marker, dict):
+        return None
+    if marker.get("usageStateId") != usage.current_usage_state_id():
+        return None
+    flush_request_id = marker.get("flushRequestId")
+    if (
+        not isinstance(flush_request_id, str)
+        or not flush_request_id
+        or not _is_safe_jsonl_flush_request_id(flush_request_id)
+        or flush_request_id == _last_jsonl_flush_request_id
+    ):
+        return None
+    log_path = marker.get("path")
+    if not isinstance(log_path, str) or not log_path:
+        return None
+    return log_path, flush_request_id
+
+
+def _is_safe_jsonl_flush_request_id(flush_request_id: str) -> bool:
+    return all(
+        ("a" <= char <= "z") or ("A" <= char <= "Z") or ("0" <= char <= "9") or char in "-_"
+        for char in flush_request_id
+    )
+
+
+def _write_jsonl_flush_state(log_path: str, flush_request_id: str, *, pending: int = 0) -> bool:
+    state_path = Path(__file__).resolve().parent / _JSONL_FLUSH_STATE_FILE
+    state = {
+        "pid": os.getpid(),
+        "usageStateId": usage.current_usage_state_id(),
+        "updatedAtMs": int(time.time() * 1000),
+        "flushRequestId": flush_request_id,
+        "path": log_path,
+        "pending": pending,
+    }
+    tmp_path = state_path.with_name(f"{state_path.name}.{flush_request_id}.tmp")
+    with _jsonl_flush_state_write_lock:
+        try:
+            with tmp_path.open("w") as f:
+                json.dump(state, f, separators=(",", ":"))
+            tmp_path.replace(state_path)
+            return True
+        except OSError as exc:
+            with suppress(OSError):
+                tmp_path.unlink()
+            ctx.log.warn(f"Failed to write JSONL flush state: {type(exc).__name__}: {exc}")
+            return False
 
 
 def get_api_url() -> str:
@@ -1008,7 +1100,10 @@ def done():
         with _usage_flush_signal_lock:
             usage.flush_usage_events(trigger="shutdown")
     finally:
-        usage.webhook.usage_executor.shutdown(wait=True)
+        try:
+            usage.webhook.usage_executor.shutdown(wait=True)
+        finally:
+            shutdown_log_writer()
 
 
 # ============================================================================

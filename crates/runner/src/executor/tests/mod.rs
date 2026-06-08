@@ -299,6 +299,7 @@ async fn test_executor_config(dir: &std::path::Path) -> ExecutorConfig {
         log_paths: LogPaths::new(log_dir),
         network_log_manager: NetworkLogManager::new(),
         network_log_drain: NetworkLogDrainCoordinator::noop(),
+        mitm_jsonl_flush: None,
         home: HomePaths::with_root(dir.to_path_buf()),
         workspace_cache: None,
     }

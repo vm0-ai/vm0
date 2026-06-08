@@ -1,10 +1,13 @@
 """Tests for mitm addon logging utilities."""
 
 import json
+import queue
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import flow_metadata_keys as metadata_keys
+import jsonl_writer
 import logging_utils
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
@@ -61,6 +64,7 @@ class TestLogNetworkEntry:
 
         with patch.object(logging_utils.ctx, "log", log, create=True):
             logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
+            logging_utils.flush_log_path(str(log_path))
 
         log.warn.assert_called_once()
         warning = log.warn.call_args.args[0]
@@ -78,6 +82,106 @@ class TestLogNetworkEntry:
         warning = log.warn.call_args.args[0]
         assert "Failed to encode network log: TypeError:" in warning
         assert not log_path.exists()
+
+    def test_full_backlog_warns_without_creating_file(self, tmp_path):
+        log_path = tmp_path / "net.jsonl"
+        log = MagicMock()
+
+        with (
+            patch.object(jsonl_writer, "MAX_PENDING_JSONL_BYTES", 1),
+            patch.object(logging_utils.ctx, "log", log, create=True),
+        ):
+            logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
+
+        log.warn.assert_called_once()
+        warning = log.warn.call_args.args[0]
+        assert warning == "Dropping network log because the JSONL writer backlog is full"
+        assert not log_path.exists()
+
+    def test_full_write_queue_does_not_track_dropped_path_state(self, tmp_path):
+        log_path = str(tmp_path / "net.jsonl")
+        log = MagicMock()
+
+        with (
+            patch.object(jsonl_writer, "_ensure_worker_locked", return_value=True),
+            patch.object(jsonl_writer._queue, "put_nowait", side_effect=queue.Full),
+            patch.object(logging_utils.ctx, "log", log, create=True),
+        ):
+            logging_utils.log_network_entry(log_path, {"action": "ALLOW"})
+
+        log.warn.assert_called_once()
+        warning = log.warn.call_args.args[0]
+        assert warning == "Dropping network log because the JSONL writer backlog is full"
+        assert log_path not in jsonl_writer._accepted_by_path
+        assert log_path not in jsonl_writer._completed_by_path
+        assert log_path not in jsonl_writer._flush_waiters_by_path
+        assert not Path(log_path).exists()
+
+    def test_completed_write_prunes_path_state_without_explicit_flush(self, tmp_path):
+        log_path = str(tmp_path / "proxy.jsonl")
+
+        with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
+            logging_utils.log_proxy_entry(log_path, "info", "done")
+            jsonl_writer._queue.join()
+
+        assert log_path not in jsonl_writer._accepted_by_path
+        assert log_path not in jsonl_writer._completed_by_path
+        assert log_path not in jsonl_writer._flush_waiters_by_path
+        assert Path(log_path).read_text().splitlines()
+
+    def test_flush_prunes_completed_path_state(self, tmp_path):
+        log_path = str(tmp_path / "net.jsonl")
+
+        with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
+            logging_utils.log_network_entry(log_path, {"action": "ALLOW"})
+            logging_utils.flush_log_path(log_path)
+
+        assert log_path not in jsonl_writer._accepted_by_path
+        assert log_path not in jsonl_writer._completed_by_path
+
+    def test_concurrent_flushes_prune_after_all_waiters_complete(self, tmp_path):
+        log_path = str(tmp_path / "net.jsonl")
+        append_started = threading.Event()
+        release_append = threading.Event()
+        flush_threads: list[threading.Thread] = []
+        original_append_lines = jsonl_writer._append_lines
+
+        def append_lines(path: str, content: bytes) -> None:
+            append_started.set()
+            release_append.wait()
+            original_append_lines(path, content)
+
+        with (
+            patch.object(logging_utils.ctx, "log", MagicMock(), create=True),
+            patch.object(jsonl_writer, "_append_lines", side_effect=append_lines),
+        ):
+            try:
+                logging_utils.log_network_entry(log_path, {"action": "ALLOW"})
+                assert append_started.wait(timeout=1)
+
+                flush_threads = [
+                    threading.Thread(target=logging_utils.flush_log_path, args=(log_path,)),
+                    threading.Thread(target=logging_utils.flush_log_path, args=(log_path,)),
+                ]
+                for thread in flush_threads:
+                    thread.start()
+
+                with jsonl_writer._condition:
+                    assert jsonl_writer._condition.wait_for(
+                        lambda: jsonl_writer._flush_waiters_by_path.get(log_path, 0) == 2,
+                        timeout=1,
+                    )
+            finally:
+                release_append.set()
+                for thread in flush_threads:
+                    thread.join(timeout=1)
+
+        for thread in flush_threads:
+            assert not thread.is_alive()
+
+        assert log_path not in jsonl_writer._accepted_by_path
+        assert log_path not in jsonl_writer._completed_by_path
+        assert log_path not in jsonl_writer._flush_waiters_by_path
 
 
 class TestAddFirewallMetadata:

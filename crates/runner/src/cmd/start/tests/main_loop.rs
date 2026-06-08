@@ -49,6 +49,7 @@ async fn install_usage_flush_child(config: &mut RunConfig) {
     use std::os::unix::fs::PermissionsExt;
     use tokio::io::AsyncBufReadExt;
 
+    std::fs::create_dir_all(config.paths.base_dir.join("mitm-addon")).unwrap();
     let script = config.paths.base_dir.join("usage-flush-child.sh");
     std::fs::write(
         &script,
@@ -58,6 +59,8 @@ fifo="$0.fifo"
 base_dir="$(dirname "$0")"
 request="$base_dir/mitm-addon/usage-flush-request"
 pending="$base_dir/mitm-addon/usage-pending"
+jsonl_request="$base_dir/mitm-addon/jsonl-flush-request"
+jsonl_state="$base_dir/mitm-addon/jsonl-flush-state"
 write_pending_snapshot() {
   [[ -f "$request" ]] || return 0
   flush_id="$(sed -n 's/.*"flushRequestId":"\([^"]*\)".*/\1/p' "$request")"
@@ -66,9 +69,22 @@ write_pending_snapshot() {
   now_ms="$(date +%s%3N)"
   printf '{"pid":%s,"usageStateId":"%s","updatedAtMs":%s,"flows":0,"buffered":0,"reports":0,"flushRequestId":"%s"}' "$$" "$state_id" "$now_ms" "$flush_id" > "$pending"
 }
+write_jsonl_flush_state() {
+  [[ -f "$jsonl_request" ]] || return 0
+  flush_id="$(sed -n 's/.*"flushRequestId":"\([^"]*\)".*/\1/p' "$jsonl_request")"
+  state_id="$(sed -n 's/.*"usageStateId":"\([^"]*\)".*/\1/p' "$jsonl_request")"
+  path="$(sed -n 's/.*"path":"\([^"]*\)".*/\1/p' "$jsonl_request")"
+  [[ -n "$flush_id" && -n "$state_id" && -n "$path" ]] || return 0
+  now_ms="$(date +%s%3N)"
+  printf '{"pid":%s,"usageStateId":"%s","updatedAtMs":%s,"flushRequestId":"%s","path":"%s","pending":0}' "$$" "$state_id" "$now_ms" "$flush_id" "$path" > "$jsonl_state"
+}
+handle_flush_request() {
+  write_pending_snapshot
+  write_jsonl_flush_state
+}
 mkfifo "$fifo"
 exec 3<>"$fifo"
-trap write_pending_snapshot USR1
+trap handle_flush_request USR1
 trap 'exit 0' TERM
 echo ready
 while true; do read -r _ <&3 || true; done
@@ -203,13 +219,21 @@ async fn deferred_network_log_upload_drains_on_graceful_shutdown() {
 
     let (mut config, env) =
         mock_run_config_with_api_url(test_profiles(), 8, 32768, 4, &server.base_url());
+    install_usage_flush_child(&mut config).await;
+    let addon_dir = config.paths.base_dir.join("mitm-addon");
+    config.proxy.mitm.set_addon_dir_for_test(addon_dir.clone());
+    let mitm_jsonl_flush = config
+        .proxy
+        .mitm
+        .jsonl_flush_handle(config.usage_flush_tx.clone());
     let write_started = Arc::new(tokio::sync::Notify::new());
     let release_write = Arc::new(tokio::sync::Semaphore::new(0));
     let network_log_manager =
         NetworkLogManager::new_with_write_gate(write_started.clone(), release_write.clone());
-    Arc::get_mut(&mut config.exec_config)
-        .expect("test config should not share exec_config before run starts")
-        .network_log_manager = network_log_manager.clone();
+    let exec_config = Arc::get_mut(&mut config.exec_config)
+        .expect("test config should not share exec_config before run starts");
+    exec_config.network_log_manager = network_log_manager.clone();
+    exec_config.mitm_jsonl_flush = Some(mitm_jsonl_flush);
 
     // Seed a network log file so `upload_network_logs` has a payload to POST
     // (otherwise it early-returns on NotFound and the assertion below would
@@ -264,6 +288,22 @@ async fn deferred_network_log_upload_drains_on_graceful_shutdown() {
     let shutdown_elapsed = shutdown_start.elapsed();
 
     network_log_mock.assert_calls_async(1).await;
+    let jsonl_request: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(addon_dir.join("jsonl-flush-request")).unwrap(),
+    )
+    .unwrap();
+    let jsonl_state: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(addon_dir.join("jsonl-flush-state")).unwrap(),
+    )
+    .unwrap();
+    let network_log_path_string = network_log_path.to_string_lossy().to_string();
+    assert_eq!(jsonl_request["path"], network_log_path_string);
+    assert_eq!(
+        jsonl_state["flushRequestId"],
+        jsonl_request["flushRequestId"]
+    );
+    assert_eq!(jsonl_state["path"], network_log_path_string);
+    assert_eq!(jsonl_state["pending"], 0);
 
     // Stronger invariant: drain must actually WAIT for the deferred work.
     // With a 400 ms mock delay, a well-behaved drain takes ≥ the delay;

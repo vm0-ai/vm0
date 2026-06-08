@@ -162,6 +162,7 @@ fn build_mock_run_config_with_runtime(
     std::fs::create_dir_all(&log_dir).unwrap();
 
     let (mitm, mitm_crash_rx) = proxy::MitmProxy::noop();
+    let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
     let min_vcpu = profiles_min_vcpu(&profiles);
     let min_memory_mb = profiles_min_memory(&profiles);
     let idle_pool: SharedIdlePool =
@@ -232,6 +233,7 @@ fn build_mock_run_config_with_runtime(
             log_paths: crate::paths::LogPaths::new(log_dir),
             network_log_manager: NetworkLogManager::new(),
             network_log_drain: NetworkLogDrainCoordinator::noop(),
+            mitm_jsonl_flush: None,
             home,
             workspace_cache: None,
         }),
@@ -240,6 +242,8 @@ fn build_mock_run_config_with_runtime(
             dns_handle: crate::dns::DnsProxy::noop(),
             memory_prefetch: prefetch::MemoryPrefetchTasks::empty(),
         },
+        usage_flush_tx,
+        usage_flush_rx,
         signals: SignalState {
             signal_source: SignalSource::Override(SignalController {
                 mode_rx,
