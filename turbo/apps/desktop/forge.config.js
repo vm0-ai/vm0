@@ -3,6 +3,10 @@ const path = require("node:path");
 const desktopIdentities = require("./src/desktop-identities.json");
 
 const PRODUCTION_PLATFORM_HOSTNAME = "app.vm0.ai";
+const DEVELOPER_ID_APPLICATION_IDENTITY =
+  "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)";
+const codeSigningIdentity =
+  process.env.CI === "true" ? "-" : DEVELOPER_ID_APPLICATION_IDENTITY;
 
 function platformHostname(rawUrl) {
   if (!rawUrl || !rawUrl.trim()) {
@@ -34,14 +38,8 @@ module.exports = {
     asar: false,
     extraResource: [path.join(__dirname, "native", "dist", "native")],
     osxSign: {
-      hardenedRuntime: false,
-      identity: "-",
-      identityValidation: false,
-      optionsForFile: () => ({
-        hardenedRuntime: false,
-      }),
-      preAutoEntitlements: false,
-      preEmbedProvisioningProfile: false,
+      identity: codeSigningIdentity,
+      identityValidation: codeSigningIdentity !== "-",
     },
     protocols: [
       {

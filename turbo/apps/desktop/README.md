@@ -36,6 +36,10 @@ pnpm desktop:dev
 
 This packages and runs `Zero Dev.app` with `VM0_DESKTOP_PLATFORM_URL` set to the
 local proxy. Use it for sign-in callback, URL scheme, and permission testing.
+Non-CI packaged desktop builds require the `Developer ID Application: Max &
+Zoe, Inc. (C5UWSXYB67)` signing identity in the local keychain. This keeps the
+app's code requirement stable across rebuilds so macOS Accessibility and Screen
+Recording permissions are not reset by ad-hoc signatures.
 
 The desktop build compiles both Electron entrypoints and the Swift native helper:
 
@@ -106,15 +110,16 @@ oracle independent from `vm0-computer` output.
 
 ## Internal macOS artifacts
 
-The `Desktop` GitHub Actions workflow builds unsigned macOS artifacts for
-internal testing. Run the workflow manually from GitHub Actions, then download
-the `zero-desktop-macos-arm64-unsigned` artifact.
+The `Desktop` GitHub Actions workflow builds macOS artifacts for internal
+testing. Run the workflow manually from GitHub Actions, then download the
+`zero-desktop-macos-arm64-unsigned` artifact.
 
 The downloaded GitHub artifact contains `Zero-darwin-arm64.zip`. Unzip both
 layers, then open `Zero.app`.
 
-These artifacts are intentionally unsigned and unnotarized. macOS Gatekeeper may
-require right-clicking the app and choosing Open, or removing quarantine locally:
+These artifacts are ad-hoc signed, not Developer ID signed, and not notarized.
+macOS Gatekeeper may require right-clicking the app and choosing Open, or
+removing quarantine locally:
 
 ```bash
 xattr -dr com.apple.quarantine Zero.app
