@@ -190,6 +190,7 @@ class TestSanitizeHeadersForCapture:
             ("Content-Type", "https://app.example/private/secret-token"),
             ("Content-Type", "secret-token/secret-token"),
             ("Content-Type", "application/x-secret-token"),
+            ("Content-Type", "application/" + ("x" * 300)),
             ("Content-Type", "application/json\r\n"),
             ("Content-Length", "secret-token"),
             ("Content-Encoding", "secret-token"),

@@ -80,8 +80,6 @@ _TEXT_CONTENT_TYPES = (
     "application/graphql",
 )
 
-_HTTP_TCHAR_PATTERN = r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+"
-_HTTP_MEDIA_TYPE_NAME_PATTERN = re.compile(rf"{_HTTP_TCHAR_PATTERN}/{_HTTP_TCHAR_PATTERN}")
 _HTTP_KNOWN_CONTENT_CODING_PATTERN = r"(?:br|compress|deflate|gzip|identity|zstd)"
 _HTTP_ENCODING_PATTERN = (
     rf"(?:{_HTTP_KNOWN_CONTENT_CODING_PATTERN}|\*)"
@@ -117,6 +115,9 @@ _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES = frozenset(
         "text/plain",
         "text/xml",
     }
+)
+_MAX_CAPTURE_CONTENT_TYPE_MEDIA_TYPE_LENGTH = max(
+    len(media_type) for media_type in _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES
 )
 
 # Captured header values are untrusted persistent-log data by default. Preserve
@@ -601,8 +602,11 @@ def _is_http_date_header_value(value: str) -> bool:
 
 
 def _sanitize_content_type_for_capture(value: str) -> str | None:
-    media_type = value.partition(";")[0].strip().lower()
-    if _HTTP_MEDIA_TYPE_NAME_PATTERN.fullmatch(media_type) is None:
+    parameter_start = value.find(";")
+    media_type = (
+        value[:parameter_start].strip().lower() if parameter_start != -1 else value.strip().lower()
+    )
+    if len(media_type) > _MAX_CAPTURE_CONTENT_TYPE_MEDIA_TYPE_LENGTH:
         return None
     if media_type not in _VALUE_PRESERVING_CAPTURE_CONTENT_TYPES:
         return None
