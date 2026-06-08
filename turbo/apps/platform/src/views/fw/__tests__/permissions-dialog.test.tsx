@@ -285,7 +285,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
           connectorRef: "notion",
           permission: "insert_comments",
           action: "allow",
-          expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
         }),
       ],
     });
@@ -303,7 +303,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     await openPermissionsDrawer("Notion");
 
     await waitFor(() => {
-      expect(screen.getByText("Expires in 2 hours")).toBeInTheDocument();
+      expect(screen.getByText("< 1 hour")).toBeInTheDocument();
     });
     const row = getPermissionRow("insert_comments");
     const allowButton = getPolicyButton(row, "Allow");
@@ -312,7 +312,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
 
     await selectAllowDuration(row, "insert_comments", "Allow for 7d");
     expect(allowButton).toHaveTextContent(/^Allow$/);
-    expect(within(row).getByText("Expires in 7d")).toBeInTheDocument();
+    expect(within(row).getByText("7d")).toBeInTheDocument();
     expect(screen.getByText("Apply")).toBeEnabled();
 
     click(screen.getByText("Apply"));
@@ -357,7 +357,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
 
     await selectAllowDuration(row, "insert_comments", "Allow for 24h");
     expect(allowButton).toHaveTextContent(/^Allow$/);
-    expect(within(row).getByText("Expires in 24h")).toBeInTheDocument();
+    expect(within(row).getByText("24h")).toBeInTheDocument();
     expect(screen.getByText("Apply")).toBeEnabled();
     click(screen.getByText("Apply"));
 
@@ -401,7 +401,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     await openPermissionsDrawer("Notion");
 
     const row = getPermissionRow("insert_comments");
-    expect(screen.queryByText("Expires in 2 hours")).not.toBeInTheDocument();
+    expect(screen.queryByText("2 hours")).not.toBeInTheDocument();
     expect(within(row).queryByText("Always")).not.toBeInTheDocument();
     click(getPolicyButton(row, "Allow"));
     expect(getPolicyButton(row, "Allow")).toHaveTextContent(/^Allow$/);
@@ -497,7 +497,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     click(allowFor24h);
 
     expect(getPolicyButton(row, "Allow")).toHaveTextContent(/^Allow$/);
-    expect(within(row).getByText("Expires in 24h")).toBeInTheDocument();
+    expect(within(row).getByText("24h")).toBeInTheDocument();
     expect(screen.getByText("Apply")).toBeEnabled();
 
     click(getResetChangesButton(row, "insert_comments"));
@@ -654,9 +654,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     expect(getPolicyButton(channelsReadRow, "Allow")).toHaveTextContent(
       /^Allow$/,
     );
-    expect(
-      within(channelsReadRow).getByText("Expires in 24h"),
-    ).toBeInTheDocument();
+    expect(within(channelsReadRow).getByText("24h")).toBeInTheDocument();
 
     click(getResetChangesButton(readGroup, "Read"));
     expect(getPolicyButton(channelsReadRow, "Allow")).toHaveTextContent(

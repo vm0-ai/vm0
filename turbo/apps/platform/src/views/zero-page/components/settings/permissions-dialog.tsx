@@ -470,7 +470,7 @@ function GrantExpirationStatus({
 }) {
   const selectedStatus = allowDurationStatusLabel(selected);
   const expiryText =
-    selectedStatus ?? permissionGrantExpiryText(expiresAt) ?? "Always";
+    selectedStatus ?? compactGrantExpirationText(expiresAt) ?? "Always";
   const hasExpiringGrant =
     selected === undefined ? Boolean(expiresAt) : selected !== "always";
 
@@ -494,11 +494,19 @@ const ALLOW_DURATION_MENU_OPTIONS: readonly {
   readonly label: string;
   readonly statusLabel: string;
 }[] = [
-  { value: "1h", label: "Allow for 1h", statusLabel: "Expires in 1h" },
-  { value: "24h", label: "Allow for 24h", statusLabel: "Expires in 24h" },
-  { value: "7d", label: "Allow for 7d", statusLabel: "Expires in 7d" },
+  { value: "1h", label: "Allow for 1h", statusLabel: "1h" },
+  { value: "24h", label: "Allow for 24h", statusLabel: "24h" },
+  { value: "7d", label: "Allow for 7d", statusLabel: "7d" },
   { value: "always", label: "Allow always", statusLabel: "Always" },
 ];
+
+function compactGrantExpirationText(expiresAt: string | null): string | null {
+  const text = permissionGrantExpiryText(expiresAt);
+  if (text === "Expires in less than 1 hour") {
+    return "< 1 hour";
+  }
+  return text?.replace(/^Expires in /, "") ?? null;
+}
 
 function allowDurationStatusLabel(
   selected: UserPermissionGrantExpiresIn | undefined,
