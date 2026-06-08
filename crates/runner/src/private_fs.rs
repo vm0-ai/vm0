@@ -202,7 +202,6 @@ pub async fn read_private_file_to_string_with_max(
 #[cfg(unix)]
 pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()> {
     use std::ffi::OsString;
-    use std::os::unix::fs::PermissionsExt;
     use tokio::io::AsyncWriteExt;
 
     let file_name = path.file_name().ok_or_else(|| {
@@ -222,11 +221,7 @@ pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()>
         let mut file = options.open(&tmp).await.map_err(|e| {
             RunnerError::Config(format!("open private file tmp {}: {e}", tmp.display()))
         })?;
-        tokio::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))
-            .await
-            .map_err(|e| {
-                RunnerError::Config(format!("chmod private file tmp {}: {e}", tmp.display()))
-            })?;
+        chmod_private_file_fd(&file, &tmp)?;
         file.write_all(content).await.map_err(|e| {
             RunnerError::Config(format!("write private file tmp {}: {e}", tmp.display()))
         })?;
@@ -238,11 +233,6 @@ pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()>
         tokio::fs::rename(&tmp, path).await.map_err(|e| {
             RunnerError::Config(format!("rename private file {}: {e}", path.display()))
         })?;
-        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))
-            .await
-            .map_err(|e| {
-                RunnerError::Config(format!("chmod private file {}: {e}", path.display()))
-            })?;
         Ok(())
     }
     .await;
@@ -638,6 +628,11 @@ fn secure_open_private_file<Fd: std::os::fd::AsRawFd>(file: &Fd, path: &Path) ->
     if mode == PRIVATE_FILE_MODE {
         return Ok(());
     }
+    chmod_private_file_fd(file, path)
+}
+
+#[cfg(unix)]
+fn chmod_private_file_fd<Fd: std::os::fd::AsRawFd>(file: &Fd, path: &Path) -> RunnerResult<()> {
     // SAFETY: `fchmod` operates on the live fd and does not affect Rust aliasing.
     let result =
         unsafe { nix::libc::fchmod(file.as_raw_fd(), PRIVATE_FILE_MODE as nix::libc::mode_t) };

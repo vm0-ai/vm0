@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1022,7 +1024,7 @@ async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> Runner
             .open(&tmp)
             .await
             .map_err(|e| RunnerError::Internal(format!("open registry tmp: {e}")))?;
-        set_private_registry_file_permissions(&tmp, "registry tmp").await?;
+        set_private_registry_file_permissions(&file, "registry tmp")?;
         file.write_all(content.as_bytes())
             .await
             .map_err(|e| RunnerError::Internal(format!("write registry tmp: {e}")))?;
@@ -1033,8 +1035,7 @@ async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> Runner
 
         tokio::fs::rename(&tmp, path)
             .await
-            .map_err(|e| RunnerError::Internal(format!("rename registry: {e}")))?;
-        set_private_registry_file_permissions(path, "registry").await
+            .map_err(|e| RunnerError::Internal(format!("rename registry: {e}")))
     }
     .await;
 
@@ -1044,19 +1045,20 @@ async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> Runner
     result
 }
 
-async fn set_private_registry_file_permissions(
-    path: &std::path::Path,
-    label: &str,
-) -> RunnerResult<()> {
+fn set_private_registry_file_permissions(file: &tokio::fs::File, label: &str) -> RunnerResult<()> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-            .await
-            .map_err(|e| RunnerError::Internal(format!("chmod {label}: {e}")))?;
+        // SAFETY: `fchmod` operates on the live fd and does not follow paths.
+        let result = unsafe { nix::libc::fchmod(file.as_raw_fd(), 0o600) };
+        if result != 0 {
+            return Err(RunnerError::Internal(format!(
+                "chmod {label}: {}",
+                std::io::Error::last_os_error()
+            )));
+        }
     }
     #[cfg(not(unix))]
-    let _ = (path, label);
+    let _ = (file, label);
     Ok(())
 }
 
