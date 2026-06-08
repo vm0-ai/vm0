@@ -147,7 +147,7 @@ function buildIntegrationToolsPrompt(
     "Local filesystem paths are only visible to the agent runtime. Users cannot open local paths directly.",
     "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime; users cannot rely on them as a way to view the result directly.",
     "Local dev servers are useful for agent-side verification, but they are not by themselves a user-facing deliverable.",
-    "Publish static HTML with `zero host <dir> --site <slug> [--spa]`; for presentations add `--artifact-kind presentation-html`.",
+    "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open; for HTML presentations, include `--artifact-kind presentation-html`.",
     "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime, `zero host` may not be sufficient; use the project's own deployment workflow or hosting platform to make the change visible to users.",
     "A local file needs separate delivery only when it is the requested artifact or the only available user-accessible copy. If the artifact is already available through a hosted URL, email, cloud document, or another user-accessible destination, duplicate file upload is usually unnecessary unless the user asks for the file itself.",
   ];
