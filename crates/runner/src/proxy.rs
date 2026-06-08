@@ -204,7 +204,16 @@ impl MitmProxy {
         // Write addon scripts to directory.
         // Remove-and-recreate to purge stale files from previous binary versions
         // (e.g. a renamed module would leave an orphan .py that Python could import).
-        let _ = tokio::fs::remove_dir_all(&config.addon_dir).await;
+        match tokio::fs::remove_dir_all(&config.addon_dir).await {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(RunnerError::Internal(format!(
+                    "remove addon dir {}: {e}",
+                    config.addon_dir.display()
+                )));
+            }
+        }
         tokio::fs::create_dir_all(&config.addon_dir)
             .await
             .map_err(|e| RunnerError::Internal(format!("create addon dir: {e}")))?;
@@ -1564,6 +1573,68 @@ PY
         .unwrap();
 
         assert_eq!(file_mode(&registry_path), 0o600);
+    }
+
+    #[tokio::test]
+    async fn mitm_proxy_new_purges_stale_addon_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let addon_dir = dir.path().join("addon");
+        let stale_addon = addon_dir.join("old_module.py");
+        std::fs::create_dir(&addon_dir).unwrap();
+        std::fs::write(&stale_addon, b"stale").unwrap();
+
+        let (_proxy, _crash_rx) = MitmProxy::new(ProxyConfig {
+            mitmdump_bin: dir.path().join("mitmdump"),
+            ca_dir: dir.path().join("ca"),
+            addon_dir: addon_dir.clone(),
+            registry_path: dir.path().join("proxy-registry.json"),
+            registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            api_url: None,
+        })
+        .await
+        .unwrap();
+
+        assert!(
+            !stale_addon.exists(),
+            "stale addon files should be purged before writing embedded addons"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn mitm_proxy_new_returns_error_when_addon_dir_removal_fails() {
+        if nix::unistd::geteuid().is_root() {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let addon_dir = dir.path().join("addon");
+        let blocked_dir = addon_dir.join("blocked");
+        std::fs::create_dir(&addon_dir).unwrap();
+        std::fs::create_dir(&blocked_dir).unwrap();
+        std::fs::write(blocked_dir.join("stale.py"), b"stale").unwrap();
+        std::fs::set_permissions(&blocked_dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+
+        let result = MitmProxy::new(ProxyConfig {
+            mitmdump_bin: dir.path().join("mitmdump"),
+            ca_dir: dir.path().join("ca"),
+            addon_dir: addon_dir.clone(),
+            registry_path: dir.path().join("proxy-registry.json"),
+            registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            api_url: None,
+        })
+        .await;
+
+        if blocked_dir.exists() {
+            std::fs::set_permissions(&blocked_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        match result {
+            Ok(_) => panic!("MitmProxy::new should fail when addon dir removal fails"),
+            Err(error) => assert!(
+                error.to_string().contains("remove addon dir"),
+                "unexpected error: {error}"
+            ),
+        }
     }
 
     #[tokio::test]
