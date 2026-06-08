@@ -174,6 +174,7 @@ const CONNECTOR_ICON_COLORFUL = {
   mem0: true,
   meshy: true,
   "meta-ads": true,
+  metabase: true,
   minimax: true,
   minio: true,
   modal: true,
