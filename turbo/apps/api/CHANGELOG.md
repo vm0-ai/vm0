@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.111.1](https://github.com/vm0-ai/vm0/compare/api-v1.111.0...api-v1.111.1) (2026-06-08)
+
+
+### CI
+
+* manage stripe preview webhooks per pr ([#16524](https://github.com/vm0-ai/vm0/issues/16524)) ([8c8d9e9](https://github.com/vm0-ai/vm0/commit/8c8d9e988d23ee4505692dedcff17c0f914c1ef8))
+
 ## [1.111.0](https://github.com/vm0-ai/vm0/compare/api-v1.110.0...api-v1.111.0) (2026-06-07)
 
 

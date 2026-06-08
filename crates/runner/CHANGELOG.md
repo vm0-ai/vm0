@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.108.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.14...runner-rs-v0.108.15) (2026-06-08)
+
+
+### Bug Fixes
+
+* **runner:** clean workspace holders before unmount retry ([#16523](https://github.com/vm0-ai/vm0/issues/16523)) ([493ec5b](https://github.com/vm0-ai/vm0/commit/493ec5b00fe0771ae208cfa26be9e4a0f041b7ba))
+
 ## [0.108.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.13...runner-rs-v0.108.14) (2026-06-08)
 
 

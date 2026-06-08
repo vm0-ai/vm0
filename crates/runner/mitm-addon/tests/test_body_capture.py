@@ -1064,6 +1064,21 @@ class TestDecompression:
         add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "hello world"}'
 
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_concatenated_zlib_members_decompressed(self, real_flow, encoding):
+        original = b'{"result": "hello world"}'
+        if encoding == "gzip":
+            compressed = gzip.compress(b"") + gzip.compress(original)
+        else:
+            compressed = zlib.compress(b"") + zlib.compress(original)
+
+        flow = self._make_flow_with_compressed_buffer(real_flow, compressed, encoding)
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["response_body"] == '{"result": "hello world"}'
+        assert entry["response_body_encoding"] == "utf-8"
+
     def test_brotli_decompressed(self, real_flow):
         original = b'{"result": "hello world"}'
         flow = self._make_flow_with_compressed_buffer(real_flow, brotli.compress(original), "br")
@@ -1705,6 +1720,73 @@ class TestDecompressBody:
         result = decompress_body(compressed, hdrs, max_output=64 * 1024)
         assert len(result) <= 64 * 1024
         assert result == plaintext[: len(result)]
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_concatenated_zlib_members_after_empty_prefix(self, headers, encoding):
+        plaintext = b'{"ok":true}'
+        if encoding == "gzip":
+            compressed = gzip.compress(b"") + gzip.compress(plaintext)
+        else:
+            compressed = zlib.compress(b"") + zlib.compress(plaintext)
+
+        hdrs = headers(("Content-Encoding", encoding))
+        result = decompress_body(compressed, hdrs, max_output=64 * 1024)
+
+        assert result == plaintext
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_concatenated_zlib_members_share_max_output_cap(self, headers, encoding):
+        first = b"A" * 8
+        second = b"B" * 8
+        if encoding == "gzip":
+            compressed = gzip.compress(first) + gzip.compress(second)
+        else:
+            compressed = zlib.compress(first) + zlib.compress(second)
+
+        hdrs = headers(("Content-Encoding", encoding))
+        result = decompress_body(compressed, hdrs, max_output=12)
+
+        assert result == first + second[:4]
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_concatenated_zlib_empty_member_before_garbage_returns_empty(self, headers, encoding):
+        if encoding == "gzip":
+            compressed = gzip.compress(b"") + b"garbage"
+        else:
+            compressed = zlib.compress(b"") + b"garbage"
+
+        hdrs = headers(("Content-Encoding", encoding))
+        result = decompress_body(compressed, hdrs, max_output=64 * 1024)
+
+        assert result == b""
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_concatenated_zlib_member_before_garbage_returns_decoded_prefix(
+        self, headers, encoding
+    ):
+        if encoding == "gzip":
+            compressed = gzip.compress(b"prefix") + b"garbage"
+        else:
+            compressed = zlib.compress(b"prefix") + b"garbage"
+
+        hdrs = headers(("Content-Encoding", encoding))
+        result = decompress_body(compressed, hdrs, max_output=64 * 1024)
+
+        assert result == b"prefix"
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_invalid_zlib_first_member_returns_original_data(self, headers, encoding):
+        if encoding == "gzip":
+            corrupted = bytearray(gzip.compress(b"payload"))
+        else:
+            corrupted = bytearray(zlib.compress(b"payload"))
+        corrupted[-1] ^= 0xFF
+        compressed = bytes(corrupted)
+
+        hdrs = headers(("Content-Encoding", encoding))
+        result = decompress_body(compressed, hdrs, max_output=64 * 1024)
+
+        assert result == compressed
 
     def test_zstd_respects_max_output(self, headers):
         # Bug #10128: before the fix the zstd branch used
