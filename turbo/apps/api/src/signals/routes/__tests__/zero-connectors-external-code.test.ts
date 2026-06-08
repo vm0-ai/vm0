@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import {
+  DecryptCommand,
+  type DecryptCommandOutput,
+  GenerateDataKeyCommand,
+  type GenerateDataKeyCommandOutput,
+} from "@aws-sdk/client-kms";
 import { zeroConnectorExternalCodeSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectorExternalCodeSessions } from "@vm0/db/schema/connector-external-code-session";
@@ -17,6 +23,7 @@ import { clearMockedEnv, mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
+import { completeConnectorExternalCodeSession$ } from "../../services/connector-external-code.service";
 import {
   decryptPersistentSecretValue,
   decryptStoredSecretValue,
@@ -146,6 +153,35 @@ function mockAwsProvider(): z.infer<typeof awsTokenRequestSchema>[] {
     }),
   );
   return tokenRequests;
+}
+
+function kmsClientThatAbortsOnTokenSecretEncryption(args: {
+  readonly controller: AbortController;
+}) {
+  const kms = fakeKmsClient();
+  let aborted = false;
+
+  function send(
+    command: GenerateDataKeyCommand,
+  ): Promise<GenerateDataKeyCommandOutput>;
+  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
+  function send(
+    command: GenerateDataKeyCommand | DecryptCommand,
+  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
+    if (command instanceof GenerateDataKeyCommand && !aborted) {
+      aborted = true;
+      const error = new Error("Request aborted after AWS code exchange");
+      error.name = "AbortError";
+      args.controller.abort(error);
+    }
+
+    if (command instanceof GenerateDataKeyCommand) {
+      return kms.client.send(command);
+    }
+    return kms.client.send(command);
+  }
+
+  return { send };
 }
 
 describe("external-code connector routes", () => {
@@ -356,6 +392,58 @@ describe("external-code connector routes", () => {
         externalId: "123456789012",
       }),
     );
+  });
+
+  it("commits a completed AWS session when the request aborts after provider success", async () => {
+    const tokenRequests = mockAwsProvider();
+    const { userId, orgId } = setupUser({ enableAws: true });
+    const client = setupApp({ context })(
+      zeroConnectorExternalCodeSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "aws" },
+        body: { authMethod: "cli" },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    const controller = new AbortController();
+    setSecretKmsClientForTests(
+      kmsClientThatAbortsOnTokenSecretEncryption({ controller }),
+    );
+
+    const complete = await store.set(
+      completeConnectorExternalCodeSession$,
+      {
+        orgId,
+        userId,
+        type: "aws",
+        sessionId: start.body.sessionId,
+        sessionToken: start.body.sessionToken,
+        code: "AWS-CODE",
+      },
+      controller.signal,
+    );
+
+    expect(controller.signal.aborted).toBeTruthy();
+    expect(complete.status).toBe(200);
+    expect(tokenRequests).toHaveLength(1);
+    await expect(
+      storedSecret({ orgId, userId, name: "AWS_ACCESS_KEY_ID" }),
+    ).resolves.toBe("aws-external-code-access-key-id");
+
+    const [session] = await store
+      .set(writeDb$)
+      .select({
+        status: connectorExternalCodeSessions.status,
+        completedAt: connectorExternalCodeSessions.completedAt,
+      })
+      .from(connectorExternalCodeSessions)
+      .where(eq(connectorExternalCodeSessions.id, start.body.sessionId))
+      .limit(1);
+    expect(session).toMatchObject({ status: "complete" });
+    expect(session?.completedAt).toBeInstanceOf(Date);
   });
 
   it("rejects complete when the AWS connector is not available", async () => {

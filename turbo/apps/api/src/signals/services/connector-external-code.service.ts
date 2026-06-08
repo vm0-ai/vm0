@@ -418,6 +418,7 @@ async function persistClaimedConnector(
     readonly signal: AbortSignal;
     readonly persistConnector: (args: {
       readonly token: ConnectorAuthProviderGrantResult;
+      readonly signal: AbortSignal;
     }) => Promise<ConnectorResponse>;
   },
 ): Promise<CompleteSuccess> {
@@ -439,7 +440,10 @@ async function persistClaimedConnector(
       );
     }
 
-    const connector = await args.persistConnector({ token: args.token });
+    const connector = await args.persistConnector({
+      token: args.token,
+      signal: args.signal,
+    });
     args.signal.throwIfAborted();
 
     return await markClaimComplete({
@@ -495,6 +499,7 @@ async function completeClaimedExternalCodeSession(
     readonly signal: AbortSignal;
     readonly persistConnector: (args: {
       readonly token: ConnectorAuthProviderGrantResult;
+      readonly signal: AbortSignal;
     }) => Promise<ConnectorResponse>;
   },
 ) {
@@ -537,12 +542,15 @@ async function completeClaimedExternalCodeSession(
     throw providerResult.error;
   }
 
+  // The provider code may already be consumed; finish DB commit even if the
+  // client disconnects after provider success.
+  const commitSignal = new AbortController().signal;
   const persistedConnector = await settle(
     persistClaimedConnector({
       ...args,
       token: providerResult.value,
+      signal: commitSignal,
     }),
-    args.signal,
   );
   if (!persistedConnector.ok) {
     await markClaimError({
@@ -550,7 +558,7 @@ async function completeClaimedExternalCodeSession(
       session: args.session,
       claimStartedAt: args.claimStartedAt,
       errorMessage: errorMessage(persistedConnector.error),
-      signal: args.signal,
+      signal: commitSignal,
     });
     throw persistedConnector.error;
   }
@@ -802,7 +810,7 @@ export const completeConnectorExternalCodeSession$ = command(
       session: claimedSession,
       claimStartedAt,
       signal,
-      persistConnector: async ({ token }) => {
+      persistConnector: async ({ token, signal: persistSignal }) => {
         const connectorResult = await set(
           upsertConnectorTokenConnection$,
           {
@@ -816,7 +824,7 @@ export const completeConnectorExternalCodeSession$ = command(
             expiresIn: token.expiresIn,
             extraConnectorSecrets: token.extraConnectorSecrets,
           },
-          signal,
+          persistSignal,
         );
         return connectorResult.connector;
       },
