@@ -679,6 +679,22 @@ fn decide_gate(status: &RunnerStatusSnapshot) -> GateDecision {
 /// Returns an error on any I/O or parse failure — the caller should log the
 /// reason and fall through to forceful stop (status unknown → cannot protect
 /// jobs).
+async fn read_private_status_json(path: &Path) -> std::io::Result<String> {
+    match crate::private_fs::read_private_file_to_string_with_max(
+        path,
+        crate::private_fs::PRIVATE_STATUS_FILE_READ_MAX_BYTES,
+    )
+    .await
+    {
+        Ok(Some(content)) => Ok(content),
+        Ok(None) => Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("{} not found", path.display()),
+        )),
+        Err(error) => Err(std::io::Error::other(error.to_string())),
+    }
+}
+
 async fn read_runner_status(
     base_dir: &Path,
 ) -> Result<RunnerStatusSnapshot, RunnerStatusReadError> {
@@ -695,7 +711,7 @@ async fn read_runner_status(
     }
     let path = base_dir.join("status.json");
     let content =
-        tokio::fs::read_to_string(&path)
+        read_private_status_json(&path)
             .await
             .map_err(|error| RunnerStatusReadError::Read {
                 path: path.clone(),
@@ -1797,6 +1813,33 @@ mod tests {
             .await
             .unwrap();
         assert!(read_runner_status(dir.path()).await.is_err());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_runner_status_rejects_fifo_without_blocking() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let c_path = CString::new(path.as_os_str().as_bytes()).unwrap();
+        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(
+            result,
+            0,
+            "mkfifo failed: {}",
+            std::io::Error::last_os_error()
+        );
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            read_runner_status(dir.path()),
+        )
+        .await;
+
+        assert!(result.is_ok(), "FIFO read should not block");
+        assert!(result.unwrap().is_err(), "FIFO status should be rejected");
     }
 
     #[tokio::test]
