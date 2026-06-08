@@ -847,7 +847,7 @@ def response(flow: http.HTTPFlow) -> None:
         if firewall_base:
             add_firewall_metadata(flow, log_entry)
 
-        # Add request headers, request body, and response body when capture is enabled
+        # Add captured header names, selected safe header values, and bodies when enabled
         if flow.metadata.get(metadata_keys.CAPTURE_BODY):
             body_utils.add_capture_fields(flow, log_entry)
 
