@@ -1278,7 +1278,7 @@ export function PermissionsDrawer({
         return !open && handleClose();
       }}
     >
-      <SheetContent side="right" className="w-[90vw] sm:max-w-[600px]">
+      <SheetContent side="right" className="w-[90vw] sm:max-w-[560px]">
         <SheetHeader>
           <div className="flex items-center gap-3">
             <ConnectorIcon type={connectorType} size={24} />
