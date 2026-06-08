@@ -1,17 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
-  <!-- LangSmith brand icon: interlocking chain links in brand orange #F96F28 -->
-  <rect width="100" height="100" rx="18" fill="#F96F28"/>
-  <!-- Left chain link -->
-  <path d="M35 28 C20 28 12 36 12 48 C12 60 20 68 35 68 L42 68 L42 58 L35 58 C26 58 22 54 22 48 C22 42 26 38 35 38 L42 38 L42 28 Z" fill="white"/>
-  <!-- Right chain link -->
-  <path d="M65 32 C80 32 88 40 88 52 C88 64 80 72 65 72 L58 72 L58 62 L65 62 C74 62 78 58 78 52 C78 46 74 42 65 42 L58 42 L58 32 Z" fill="white"/>
-  <!-- Connecting bar top -->
-  <rect x="38" y="28" width="24" height="10" rx="2" fill="white"/>
-  <!-- Connecting bar bottom -->
-  <rect x="38" y="62" width="24" height="10" rx="2" fill="white"/>
-  <!-- Center overlap fill -->
-  <rect x="38" y="38" width="24" height="24" fill="#F96F28"/>
-  <!-- Center chain link rings -->
-  <rect x="38" y="38" width="10" height="24" fill="white"/>
-  <rect x="52" y="38" width="10" height="24" fill="white"/>
+<svg
+  width="40"
+  height="40"
+  viewBox="0 0 40 40"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <rect width="40" height="40" rx="8" fill="#7FC8FF" />
+  <g clip-path="url(#clip0_4635_3127)">
+    <path
+      d="M19.333 23.8802C21.7953 23.8802 23.7913 21.8841 23.7913 19.4219C23.7913 16.9597 21.7953 14.9636 19.333 14.9636C16.8708 14.9636 14.8748 16.9597 14.8748 19.4219C14.8748 21.8841 16.8708 23.8802 19.333 23.8802Z"
+      fill="#030710"
+    />
+    <path
+      d="M7.66589 19.4214C7.66589 19.4214 13.4141 25.4416 19.2574 25.4401C25.0978 25.4401 30.8489 19.4214 30.8489 19.4214L34.1183 23.8797C26.4769 33.355 12.038 33.355 4.39648 23.8797L7.66589 19.4214Z"
+      fill="#030710"
+    />
+    <path
+      d="M7.66589 19.4217C7.66589 19.4217 13.4141 13.4015 19.2574 13.403C25.0978 13.403 30.8489 19.4217 30.8489 19.4217L34.1183 14.9634C26.4769 5.4881 12.038 5.4881 4.39648 14.9634L7.66589 19.4217Z"
+      fill="#030710"
+    />
+  </g>
+  <defs>
+    <clipPath id="clip0_4635_3127">
+      <rect
+        width="29.7219"
+        height="23.1296"
+        fill="white"
+        transform="translate(4.39648 7.85693)"
+      />
+    </clipPath>
+  </defs>
 </svg>
