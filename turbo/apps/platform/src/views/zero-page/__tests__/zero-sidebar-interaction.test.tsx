@@ -274,6 +274,86 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     expect(screen.queryByText("Lab")).not.toBeInTheDocument();
   });
 
+  it("shows Memory above Settings in the account dropdown when MemoryViewer is on", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Test User")).toBeInTheDocument();
+    });
+    expect(
+      within(screen.getByRole("navigation", { name: "Sidebar" })).queryByText(
+        "Memory",
+      ),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByText("Test User"));
+
+    const menu = await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(within(menu).getByText("Memory")).toBeInTheDocument();
+      expect(within(menu).getByText("Settings")).toBeInTheDocument();
+    });
+    const itemLabels = queryAllByRoleFast("menuitem", menu).map((element) => {
+      return element.textContent ?? "";
+    });
+    const memoryIndex = itemLabels.findIndex((label) => {
+      return label.includes("Memory");
+    });
+    const settingsIndex = itemLabels.findIndex((label) => {
+      return label.includes("Settings");
+    });
+    expect(memoryIndex).toBeGreaterThanOrEqual(0);
+    expect(settingsIndex).toBeGreaterThan(memoryIndex);
+  });
+
+  it("hides Memory in the account dropdown when MemoryViewer is off", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Test User")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Test User"));
+
+    const menu = await screen.findByRole("menu");
+    await waitFor(() => {
+      expect(within(menu).getByText("Settings")).toBeInTheDocument();
+    });
+    expect(within(menu).queryByText("Memory")).not.toBeInTheDocument();
+  });
+
+  it("navigates to Memory from the account dropdown", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Test User")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Test User"));
+
+    const menu = await screen.findByRole("menu");
+    click(within(menu).getByText("Memory"));
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/memory");
+    });
+  });
+
   it("hides Lab entry in account dropdown during onboarding even when FeatureSwitchKey.Lab is on", async () => {
     server.use(
       mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
