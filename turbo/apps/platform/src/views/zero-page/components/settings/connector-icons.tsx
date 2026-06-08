@@ -183,6 +183,7 @@ const CONNECTOR_ICON_COLORFUL = {
   n8n: true,
   neon: true,
   netdata: true,
+  nyne: true,
   openweather: true,
   pandadoc: true,
   pdf4me: true,
