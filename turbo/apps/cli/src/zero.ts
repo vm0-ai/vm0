@@ -10,6 +10,7 @@ import { zeroCreditCommand } from "./commands/zero/credit";
 import { zeroDoctorCommand } from "./commands/zero/doctor";
 import { zeroPreferenceCommand } from "./commands/zero/preference";
 import { zeroScheduleCommand } from "./commands/zero/schedule";
+import { zeroAutomationCommand } from "./commands/zero/automation";
 import { zeroSecretCommand } from "./commands/zero/secret";
 import { zeroGithubCommand } from "./commands/zero/github";
 import { zeroSlackCommand } from "./commands/zero/slack";
@@ -49,6 +50,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   skill: "agent:read",
   connector: "connector:read",
   schedule: "schedule:read",
+  automation: "schedule:read",
   doctor: null,
   credit: "billing:write",
   model: null,
@@ -79,6 +81,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroDoctorCommand,
   zeroPreferenceCommand,
   zeroScheduleCommand,
+  zeroAutomationCommand,
   zeroSecretCommand,
   zeroGithubCommand,
   zeroSlackCommand,
