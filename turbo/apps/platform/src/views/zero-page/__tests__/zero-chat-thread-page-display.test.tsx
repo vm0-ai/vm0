@@ -229,6 +229,66 @@ describe("zero chat thread page display - schedule menu", () => {
   });
 });
 
+describe("zero chat thread page display - scheduled run card", () => {
+  it("collapses a scheduled run into a status card and opens assistant details", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          id: "msg-scheduled-user",
+          role: "user",
+          content: "Run the daily report",
+          runId: "run-scheduled-report",
+          scheduleId: "schedule-report",
+          scheduleTitle: "Daily report",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-scheduled-assistant",
+          role: "assistant",
+          content: "I checked the latest numbers and prepared the report.",
+          runId: "run-scheduled-report",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:10Z",
+        },
+        {
+          id: "msg-scheduled-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-scheduled-report",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-03-10T00:00:11Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const card = await screen.findByLabelText(
+      "Open scheduled run details for Daily report",
+    );
+    expect(card).toHaveTextContent("Triggered at");
+    expect(card).toHaveTextContent("Daily report");
+    expect(card).toHaveTextContent("Succeeded");
+    expect(
+      screen.queryByText(
+        "I checked the latest numbers and prepared the report.",
+      ),
+    ).not.toBeInTheDocument();
+
+    await user.click(card);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Scheduled run")).toBeInTheDocument();
+    expect(within(dialog).getByText("Succeeded")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "I checked the latest numbers and prepared the report.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("zero chat thread page display - permission action card", () => {
   function mockPermissionAgent() {
     server.use(

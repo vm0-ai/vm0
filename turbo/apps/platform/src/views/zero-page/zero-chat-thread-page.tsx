@@ -55,6 +55,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@vm0/ui/components/ui/dialog";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
   ChatThreadArtifactFile,
@@ -2104,6 +2111,79 @@ function useGithubPrTrackingOpen(
   );
 }
 
+interface ScheduledRunDisplay {
+  userMessage: EnrichedChatMessage & { role: "user" };
+  assistantMessages: (EnrichedChatMessage & { role: "assistant" })[];
+}
+
+type ChatThreadDisplayEntry =
+  | { type: "group"; group: GroupedChatMessageGroup }
+  | { type: "scheduled-run"; run: ScheduledRunDisplay };
+
+function appendDisplayGroup(
+  entries: ChatThreadDisplayEntry[],
+  message: EnrichedChatMessage,
+): void {
+  const last = entries[entries.length - 1];
+  if (last?.type === "group" && last.group.role === message.role) {
+    last.group.messages.push(message);
+    return;
+  }
+  entries.push({
+    type: "group",
+    group: {
+      beginMessageId: message.id,
+      role: message.role,
+      messages: [message],
+    },
+  });
+}
+
+function buildChatThreadDisplayEntries(
+  groups: readonly GroupedChatMessageGroup[],
+): ChatThreadDisplayEntry[] {
+  const entries: ChatThreadDisplayEntry[] = [];
+  const messages = groups.flatMap((group) => {
+    return group.messages;
+  });
+
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index]!;
+    if (message.role === "user" && message.scheduleTitle) {
+      const assistantMessages: (EnrichedChatMessage & {
+        role: "assistant";
+      })[] = [];
+      let nextIndex = index + 1;
+      while (nextIndex < messages.length) {
+        const nextMessage = messages[nextIndex]!;
+        if (
+          message.runId !== undefined &&
+          nextMessage.role === "assistant" &&
+          nextMessage.runId === message.runId
+        ) {
+          assistantMessages.push(nextMessage);
+          nextIndex++;
+          continue;
+        }
+        break;
+      }
+      entries.push({
+        type: "scheduled-run",
+        run: {
+          userMessage: message,
+          assistantMessages,
+        },
+      });
+      index = nextIndex - 1;
+      continue;
+    }
+
+    appendDisplayGroup(entries, message);
+  }
+
+  return entries;
+}
+
 function ChatThreadMessagesMain({
   thread,
   groups,
@@ -2130,6 +2210,9 @@ function ChatThreadMessagesMain({
     groups.length === 0 &&
     !messagesLoading &&
     !skeletonVisible;
+  const displayEntries = buildChatThreadDisplayEntries(activeGroups);
+  const suppressThinkingIndicator =
+    displayEntries[displayEntries.length - 1]?.type === "scheduled-run";
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
@@ -2172,16 +2255,27 @@ function ChatThreadMessagesMain({
             </p>
           </div>
         )}
-        {activeGroups.map((group) => {
+        {displayEntries.map((entry) => {
+          if (entry.type === "scheduled-run") {
+            return (
+              <ScheduledRunCard
+                key={entry.run.userMessage.id}
+                run={entry.run}
+                thread={thread}
+              />
+            );
+          }
           return (
             <PagedGroupRow
-              key={group.beginMessageId}
-              group={group}
+              key={entry.group.beginMessageId}
+              group={entry.group}
               thread={thread}
             />
           );
         })}
-        <ThinkingIndicator thread={thread} groups={activeGroups} />
+        {!suppressThinkingIndicator && (
+          <ThinkingIndicator thread={thread} groups={activeGroups} />
+        )}
       </div>
     </main>
   );
@@ -4156,6 +4250,213 @@ function PagedUserGroup({
   );
 }
 
+type ScheduledRunStatus = "running" | "succeeded" | "failed";
+
+function scheduledRunTitle(run: ScheduledRunDisplay): string {
+  return run.userMessage.scheduleTitle?.trim() || "Scheduled run";
+}
+
+function formatScheduledRunTriggerTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function resolveScheduledRunStatus(
+  run: ScheduledRunDisplay,
+): ScheduledRunStatus {
+  const failed = run.assistantMessages.some((message) => {
+    return (
+      message.runLifecycleEvent === "failed" ||
+      message.runLifecycleEvent === "cancelled" ||
+      message.status === "failed" ||
+      message.status === "cancelled" ||
+      message.error !== undefined
+    );
+  });
+  if (failed) {
+    return "failed";
+  }
+
+  const succeeded = run.assistantMessages.some((message) => {
+    return (
+      message.runLifecycleEvent === "completed" ||
+      message.status === "completed"
+    );
+  });
+  return succeeded ? "succeeded" : "running";
+}
+
+function scheduledRunStatusLabel(status: ScheduledRunStatus): string {
+  switch (status) {
+    case "failed": {
+      return "Failed";
+    }
+    case "running": {
+      return "Running";
+    }
+    case "succeeded": {
+      return "Succeeded";
+    }
+  }
+}
+
+function scheduledRunStatusClassName(status: ScheduledRunStatus): string {
+  switch (status) {
+    case "failed": {
+      return "bg-destructive/10 text-destructive";
+    }
+    case "running": {
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+    }
+    case "succeeded": {
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+    }
+  }
+}
+
+function ScheduledRunStatusIcon({ status }: { status: ScheduledRunStatus }) {
+  if (status === "running") {
+    return <IconLoader2 size={16} stroke={1.8} className="animate-spin" />;
+  }
+  if (status === "failed") {
+    return <IconAlertCircle size={16} stroke={1.8} />;
+  }
+  return <IconCheck size={16} stroke={1.8} />;
+}
+
+function hasRenderableAssistantContent(message: EnrichedChatMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    (message.error !== undefined ||
+      message.blocks.length > 0 ||
+      (message.content?.trim().length ?? 0) > 0)
+  );
+}
+
+function ScheduledRunTranscript({
+  run,
+  thread,
+}: {
+  run: ScheduledRunDisplay;
+  thread: ChatThreadSignals;
+}) {
+  const messages = run.assistantMessages.filter(hasRenderableAssistantContent);
+
+  if (messages.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
+        No assistant messages yet
+      </div>
+    );
+  }
+
+  return (
+    <div className="@container">
+      <PagedAssistantGroup
+        group={{
+          beginMessageId: messages[0]!.id,
+          role: "assistant",
+          messages,
+        }}
+        thread={thread}
+      />
+    </div>
+  );
+}
+
+function ScheduledRunCard({
+  run,
+  thread,
+}: {
+  run: ScheduledRunDisplay;
+  thread: ChatThreadSignals;
+}) {
+  const status = resolveScheduledRunStatus(run);
+  const title = scheduledRunTitle(run);
+  const statusLabel = scheduledRunStatusLabel(status);
+  const triggerTime = formatScheduledRunTriggerTime(run.userMessage.createdAt);
+
+  return (
+    <div
+      data-role="scheduled-run"
+      className="flex justify-center animate-in fade-in slide-in-from-bottom-2 duration-300"
+    >
+      <Dialog>
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            className="group flex w-full max-w-[640px] items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Open scheduled run details for ${title}`}
+          >
+            <span
+              className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                scheduledRunStatusClassName(status),
+              )}
+            >
+              <ScheduledRunStatusIcon status={status} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-foreground">
+                Triggered at {triggerTime}
+              </span>
+              <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <IconClock size={13} stroke={1.8} className="shrink-0" />
+                <span className="min-w-0 truncate">{title}</span>
+              </span>
+            </span>
+            <span
+              className={cn(
+                "shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium",
+                scheduledRunStatusClassName(status),
+              )}
+            >
+              {statusLabel}
+            </span>
+            <IconChevronRight
+              size={16}
+              stroke={1.8}
+              className="shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground"
+            />
+          </button>
+        </DialogTrigger>
+        <DialogContent
+          className="max-w-3xl gap-0 overflow-hidden p-0"
+          aria-describedby={undefined}
+        >
+          <DialogHeader className="border-b border-border px-5 py-4">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <DialogTitle className="text-base">Scheduled run</DialogTitle>
+                <p className="mt-1 truncate text-sm text-muted-foreground">
+                  Triggered at {triggerTime} · {title}
+                </p>
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium",
+                  scheduledRunStatusClassName(status),
+                )}
+              >
+                {statusLabel}
+              </span>
+            </div>
+          </DialogHeader>
+          <div className="max-h-[68vh] overflow-y-auto bg-muted/20 px-5 py-4">
+            <ScheduledRunTranscript run={run} thread={thread} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function resolveAttachments(
   message: PagedChatMessage,
   parsed: { filename: string; url: string }[],
@@ -4519,46 +4820,6 @@ function UserMessageGenerationTemplate({
   );
 }
 
-function ScheduleUserMessage({
-  scheduleId,
-  scheduleTitle,
-}: {
-  scheduleId: string | undefined;
-  scheduleTitle: string;
-}) {
-  const cardClassName =
-    "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
-  const body = (
-    <>
-      <IconClock size={15} className="shrink-0" />
-      <span className="min-w-0 truncate font-medium text-foreground">
-        {scheduleTitle}
-      </span>
-    </>
-  );
-  return (
-    <div data-role="user" className="group">
-      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
-        <div className="flex flex-col items-end w-full">
-          {scheduleId ? (
-            <Link
-              pathname="/schedules/:scheduleId"
-              options={{ pathParams: { scheduleId } }}
-              className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
-              aria-label={`Open schedule ${scheduleTitle}`}
-            >
-              {body}
-            </Link>
-          ) : (
-            <div className={cardClassName}>{body}</div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function PagedUserMessage({
   message,
   thread,
@@ -4610,17 +4871,6 @@ function PagedUserMessage({
       Reason.DomCallback,
     );
   };
-
-  // Schedule-posted user messages don't show the prompt — they render the
-  // schedule's title behind a clock icon and link to the schedule detail page.
-  if (message.scheduleTitle) {
-    return (
-      <ScheduleUserMessage
-        scheduleId={message.scheduleId}
-        scheduleTitle={message.scheduleTitle}
-      />
-    );
-  }
 
   return (
     <div data-role="user" className="group">
