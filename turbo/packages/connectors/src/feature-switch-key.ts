@@ -23,6 +23,7 @@ export enum FeatureSwitchKey {
   OutlookCalendarConnector = "outlookCalendarConnector",
   MetaAdsConnector = "metaAdsConnector",
   StripeConnector = "stripeConnector",
+  AwsConnector = "awsConnector",
   PosthogConnector = "posthogConnector",
   MailchimpConnector = "mailchimpConnector",
   ResendConnector = "resendConnector",

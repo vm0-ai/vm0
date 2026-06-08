@@ -42,6 +42,7 @@ import { atlassian } from "./connectors/atlassian";
 import { attio } from "./connectors/attio";
 import { atlascloud } from "./connectors/atlascloud";
 import { aviationstack } from "./connectors/aviationstack";
+import { aws } from "./connectors/aws";
 import { axiom } from "./connectors/axiom";
 import { base44 } from "./connectors/base44";
 import { bentoml } from "./connectors/bentoml";
@@ -325,6 +326,7 @@ export type PublicConnectorAuthClientConfig =
 export type ConnectorGrantKind =
   | "manual"
   | "auth-code"
+  | "external-code"
   | "device-auth"
   | "managed";
 
@@ -335,6 +337,12 @@ export interface ConnectorManualGrantConfig {
 
 export interface ConnectorAuthCodeGrantConfig {
   readonly kind: "auth-code";
+  readonly scopes: string[];
+  readonly outputs: ConnectorGrantOutputBindings;
+}
+
+export interface ConnectorExternalCodeGrantConfig {
+  readonly kind: "external-code";
   readonly scopes: string[];
   readonly outputs: ConnectorGrantOutputBindings;
 }
@@ -380,6 +388,7 @@ export interface ConnectorManagedGrantConfig {
 export type ConnectorGrantConfig =
   | ConnectorManualGrantConfig
   | ConnectorAuthCodeGrantConfig
+  | ConnectorExternalCodeGrantConfig
   | ConnectorDeviceAuthGrantConfig
   | ConnectorManagedGrantConfig;
 
@@ -490,6 +499,12 @@ export type ConnectorAuthMethodConfig =
   | (ConnectorAuthMethodConfigBase & {
       readonly client: ConnectorAuthClientConfig;
       readonly grant: ConnectorAuthCodeGrantConfig;
+      readonly access: ConnectorAccessConfig;
+      readonly revoke: ConnectorRevokeConfig;
+    })
+  | (ConnectorAuthMethodConfigBase & {
+      readonly client: ConnectorAuthClientConfig;
+      readonly grant: ConnectorExternalCodeGrantConfig;
       readonly access: ConnectorAccessConfig;
       readonly revoke: ConnectorRevokeConfig;
     })
@@ -856,7 +871,7 @@ type ValidatedConnectorGrantConfig<Grant, Storage> = Grant extends {
       };
     }
   : Grant extends {
-        readonly kind: "auth-code" | "device-auth";
+        readonly kind: "auth-code" | "external-code" | "device-auth";
         readonly outputs: infer Outputs;
       }
     ? Grant & {
@@ -992,6 +1007,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...attio,
   ...atlascloud,
   ...aviationstack,
+  ...aws,
   ...axiom,
   ...base44,
   ...bentoml,
@@ -1242,7 +1258,7 @@ type ConnectorGrantOutputsFor<
   Method extends ConnectorAuthMethodIds<Type>,
 > = ConnectorAuthMethodsOf<Type>[Method] extends {
   readonly grant: {
-    readonly kind: "auth-code" | "device-auth";
+    readonly kind: "auth-code" | "external-code" | "device-auth";
     readonly outputs: infer Outputs;
   };
 }
@@ -1399,14 +1415,19 @@ export type ConnectorTypesByRevokeKind<Kind extends ConnectorRevokeKind> = {
 }[ConnectorType];
 
 export type AuthGrantConnectorType = ConnectorTypesByGrantKind<
-  "auth-code" | "device-auth"
+  "auth-code" | "external-code" | "device-auth"
 >;
 export type AuthCodeGrantConnectorType = ConnectorTypesByGrantKind<"auth-code">;
+export type ExternalCodeGrantConnectorType =
+  ConnectorTypesByGrantKind<"external-code">;
 export type DeviceAuthGrantConnectorType =
   ConnectorTypesByGrantKind<"device-auth">;
 export type ConnectorAuthCodeGrantAuthMethodId<
   Type extends AuthCodeGrantConnectorType = AuthCodeGrantConnectorType,
 > = ConnectorAuthMethodIdsByGrantKind<Type, "auth-code">;
+export type ConnectorExternalCodeGrantAuthMethodId<
+  Type extends ExternalCodeGrantConnectorType = ExternalCodeGrantConnectorType,
+> = ConnectorAuthMethodIdsByGrantKind<Type, "external-code">;
 export type ConnectorDeviceAuthGrantAuthMethodId<
   Type extends DeviceAuthGrantConnectorType = DeviceAuthGrantConnectorType,
 > = ConnectorAuthMethodIdsByGrantKind<Type, "device-auth">;

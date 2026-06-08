@@ -2279,11 +2279,18 @@ function getOwnConnectorOwner(
     : undefined;
 }
 
-function isSelectedAccessSecretKey(
+function isConnectorRuntimeSecretKey(
   key: string,
   connectorAccess: ConnectorAccessState,
 ): boolean {
-  const secretName = connectorAccessSecretName(key, connectorAccess);
+  return connectorRuntimeSecretName(key, connectorAccess) !== undefined;
+}
+
+function isRefreshableConnectorRuntimeSecretKey(
+  key: string,
+  connectorAccess: ConnectorAccessState,
+): boolean {
+  const secretName = connectorRuntimeSecretName(key, connectorAccess);
   if (!secretName) {
     return false;
   }
@@ -2295,7 +2302,7 @@ function isSelectedAccessSecretKey(
     : true;
 }
 
-function connectorAccessSecretName(
+function connectorRuntimeSecretName(
   key: string,
   connectorAccess: ConnectorAccessState,
 ): string | undefined {
@@ -2372,7 +2379,7 @@ function referencedModelProviderAccessMap(args: {
   return refreshable;
 }
 
-async function syncStaticConnectorAccessSecrets(args: {
+async function syncStoredConnectorRuntimeSecrets(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -2402,10 +2409,20 @@ async function syncStaticConnectorAccessSecrets(args: {
       return [];
     }
     const connectorAccess = args.connectorAccessByType.get(connectorType);
-    if (connectorAccess?.accessMetadata.kind !== "static") {
+    if (!connectorAccess) {
       return [];
     }
-    const secretName = connectorAccessSecretName(key, connectorAccess);
+    const secretName = connectorRuntimeSecretName(key, connectorAccess);
+    if (
+      secretName &&
+      connectorAccess.accessMetadata.kind === "refresh-token" &&
+      connectorRefreshMetadataHasRefreshableSecret(
+        connectorAccess.accessMetadata,
+        secretName,
+      )
+    ) {
+      return [];
+    }
     return secretName ? [{ key, secretName }] : [];
   });
   if (lookups.length === 0) {
@@ -2482,7 +2499,7 @@ function canResolveMissingAccessSecret(args: {
   if (connectorAccess?.accessMetadata.kind !== "refresh-token") {
     return false;
   }
-  return isSelectedAccessSecretKey(args.key, connectorAccess);
+  return isRefreshableConnectorRuntimeSecretKey(args.key, connectorAccess);
 }
 
 function referencedConnectorTypes(args: {
@@ -2550,7 +2567,9 @@ function hasUnavailableAccessSource(args: {
     }
 
     const connectorAccess = args.connectorAccessByType.get(connectorType);
-    return !connectorAccess || !isSelectedAccessSecretKey(key, connectorAccess);
+    return (
+      !connectorAccess || !isConnectorRuntimeSecretKey(key, connectorAccess)
+    );
   });
 }
 
@@ -2595,7 +2614,10 @@ function connectorAccessSourcesWithReconnectRequiredStatus(args: {
       continue;
     }
     const connectorAccess = args.connectorAccessByType.get(connectorType);
-    if (!connectorAccess || !isSelectedAccessSecretKey(key, connectorAccess)) {
+    if (
+      !connectorAccess ||
+      !isConnectorRuntimeSecretKey(key, connectorAccess)
+    ) {
       continue;
     }
     if (
@@ -2711,7 +2733,7 @@ async function prepareFirewallAuthResolutionContext(args: {
       response: connectorReconnectRequired(reconnectRequiredConnectorTypes),
     };
   }
-  await syncStaticConnectorAccessSecrets({
+  await syncStoredConnectorRuntimeSecrets({
     db: args.db,
     orgId: args.orgId,
     userId: args.auth.userId,

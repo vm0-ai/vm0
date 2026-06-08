@@ -4,11 +4,14 @@ import type {
   ConnectorAuthMethodIds,
   ConnectorAuthCodeGrantAuthMethodId,
   ConnectorDeviceAuthGrantAuthMethodId,
+  ConnectorExternalCodeGrantAuthMethodId,
+  ConnectorExternalCodeGrantConfig,
   ConnectorAuthMethodIdsByRevokeKind,
   ConnectorDeviceAuthStartOptions,
   ConnectorRevokeInputValues,
   ConnectorType,
   DeviceAuthGrantConnectorType,
+  ExternalCodeGrantConnectorType,
   TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import type {
@@ -51,6 +54,18 @@ interface OAuthDeviceAuthStartFlowArgs {
 interface OAuthDeviceAuthPollFlowArgs {
   readonly deviceCode: string;
   readonly pollState?: string;
+}
+
+interface ExternalCodeCompleteFlowArgs {
+  readonly code: string;
+  readonly providerState: string;
+  readonly signal: AbortSignal;
+}
+
+export interface ExternalCodeAuthorizationStartResult {
+  readonly authorizationUrl: string;
+  readonly providerState: string;
+  readonly expiresIn: number;
 }
 
 export interface OAuthDeviceAuthStartResult {
@@ -157,6 +172,23 @@ export type ConnectorAuthCodeExchangeArgs<
 > = OAuthExchangeFlowArgs &
   ConnectorAuthMethodClientArgs<T, Method> & {
     readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
+  };
+
+export type ConnectorExternalCodeAuthorizationStartArgs<
+  T extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<T> =
+    ConnectorExternalCodeGrantAuthMethodId<T>,
+> = ConnectorAuthMethodClientIdentityArgs<T, Method> & {
+  readonly externalCodeGrant: ConnectorExternalCodeGrantConfig;
+};
+
+export type ConnectorExternalCodeAuthorizationCompleteArgs<
+  T extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<T> =
+    ConnectorExternalCodeGrantAuthMethodId<T>,
+> = ExternalCodeCompleteFlowArgs &
+  ConnectorAuthMethodClientArgs<T, Method> & {
+    readonly externalCodeGrant: ConnectorExternalCodeGrantConfig;
   };
 
 export type ConnectorAuthProviderRevokeArgs<

@@ -1307,6 +1307,7 @@ function connectorTokenOutputMetadataForAuthMethod(args: {
 
   switch (method.grant.kind) {
     case "auth-code":
+    case "external-code":
     case "device-auth": {
       const outputSecretNames = Object.fromEntries(
         Object.entries(grantMetadata.outputs).map(([outputName, output]) => {

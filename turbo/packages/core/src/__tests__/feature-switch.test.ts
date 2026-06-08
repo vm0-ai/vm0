@@ -108,6 +108,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.AwsConnector]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -120,6 +121,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.AwsConnector]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -148,6 +150,15 @@ describe("getAllFeatureStates", () => {
     });
 
     expect("removedFeature" in states).toBe(false);
+  });
+
+  it("should ignore user overrides for non-overridable switches", () => {
+    const states = getAllFeatureStates({
+      orgId: "org_nonexistent",
+      overrides: { [FeatureSwitchKey.AwsConnector]: true },
+    });
+
+    expect(states[FeatureSwitchKey.AwsConnector]).toBe(false);
   });
 });
 
@@ -198,5 +209,14 @@ describe("overrides", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.Dummy, { userId: "any-user" }),
     ).toBe(true);
+  });
+
+  it("should ignore overrides for non-overridable switches", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.AwsConnector, {
+        orgId: "org_nonexistent",
+        overrides: { [FeatureSwitchKey.AwsConnector]: true },
+      }),
+    ).toBe(false);
   });
 });

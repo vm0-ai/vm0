@@ -723,6 +723,7 @@ export function groupPermissionsByCategory<T extends { name: string }>(
  */
 export type NonFirewallConnectorType =
   // Signature-based auth — requires computing signatures, not simple header injection
+  | "aws" // AWS Signature V4 + broad service surface
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
   // Other

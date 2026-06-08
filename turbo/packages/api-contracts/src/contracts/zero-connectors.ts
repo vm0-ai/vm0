@@ -9,6 +9,9 @@ import {
   connectorOauthDeviceAuthSessionPollRequestSchema,
   connectorOauthDeviceAuthSessionPollResponseSchema,
   connectorOauthDeviceAuthSessionStartResponseSchema,
+  connectorExternalCodeSessionCompleteRequestSchema,
+  connectorExternalCodeSessionCompleteResponseSchema,
+  connectorExternalCodeSessionStartResponseSchema,
   connectorOauthStartResponseSchema,
   connectorListResponseSchema,
   connectorResponseSchema,
@@ -168,6 +171,45 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
   },
 });
 
+export const zeroConnectorExternalCodeSessionContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/connectors/:type/external-code/sessions",
+    headers: authHeadersSchema,
+    pathParams: z.object({ type: connectorTypeSchema }),
+    body: z.object({
+      authMethod: connectorAuthMethodIdSchema,
+    }),
+    responses: {
+      200: connectorExternalCodeSessionStartResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Create connector external-code authorization session",
+  },
+  complete: {
+    method: "POST",
+    path: "/api/zero/connectors/:type/external-code/sessions/:sessionId/complete",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      type: connectorTypeSchema,
+      sessionId: z.uuid(),
+    }),
+    body: connectorExternalCodeSessionCompleteRequestSchema,
+    responses: {
+      200: connectorExternalCodeSessionCompleteResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Complete connector external-code authorization session",
+  },
+});
+
 export type ConnectorSearchAuthMethod = z.infer<
   typeof connectorAuthMethodIdSchema
 >;
@@ -215,4 +257,6 @@ export type ZeroConnectorManualGrantContract =
   typeof zeroConnectorManualGrantContract;
 export type ZeroConnectorOauthDeviceAuthSessionContract =
   typeof zeroConnectorOauthDeviceAuthSessionContract;
+export type ZeroConnectorExternalCodeSessionContract =
+  typeof zeroConnectorExternalCodeSessionContract;
 export type ZeroConnectorsSearchContract = typeof zeroConnectorsSearchContract;

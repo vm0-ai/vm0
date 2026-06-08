@@ -13,6 +13,7 @@ import userEvent from "@testing-library/user-event";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
+  zeroConnectorExternalCodeSessionContract,
   zeroConnectorManualGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
@@ -36,17 +37,27 @@ import {
 
 const context = testContext();
 const mockApi = createMockApi(context);
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 async function openConnectModal(
   connectorType: ConnectorType,
   options: {
     featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+    orgId?: string;
   } = {},
 ) {
   detachedSetupPage({
     context,
     path: "/connectors",
-    ...options,
+    featureSwitches: options.featureSwitches,
+    ...(options.orgId
+      ? {
+          org: {
+            activeOrg: { id: options.orgId, name: "Test Org" },
+            memberships: [{ id: options.orgId }],
+          },
+        }
+      : {}),
   });
   await waitFor(() => {
     expect(
@@ -427,6 +438,171 @@ describe("connect modal - content by auth method", () => {
     expect(
       screen.queryByTestId("connector-oauth-device-code"),
     ).not.toBeInTheDocument();
+  });
+
+  it("runs AWS external-code sign-in after showing the authorization page", async () => {
+    let submittedStartBody:
+      | {
+          readonly authMethod: string;
+        }
+      | undefined;
+    server.use(
+      mockApi(
+        zeroConnectorExternalCodeSessionContract.create,
+        ({ body, params, respond }) => {
+          submittedStartBody = body;
+          return respond(200, {
+            sessionId: "00000000-0000-4000-8000-000000000201",
+            sessionToken: "aws-external-code-session-token",
+            type: params.type,
+            status: "pending",
+            authorizationUrl: "https://oauth.test/aws/external-code",
+            expiresIn: 600,
+          });
+        },
+      ),
+    );
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue(createMockAuthWindow(false) as unknown as Window);
+
+    await openConnectModal("aws", { featureSwitches: {}, orgId: STAFF_ORG_ID });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "AWS" })).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(
+        "Sign in with AWS and paste the authorization code that AWS displays.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /vm0 can call AWS APIs allowed by the selected AWS identity/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Start AWS sign-in")).toBeInTheDocument();
+    expect(open).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByText("Start AWS sign-in"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Open AWS sign-in")).toBeInTheDocument();
+    });
+    expect(submittedStartBody).toStrictEqual({ authMethod: "cli" });
+    expect(open).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByText("Open AWS sign-in"));
+
+    await waitFor(() => {
+      expect(open).toHaveBeenCalledWith(
+        "https://oauth.test/aws/external-code",
+        "_blank",
+        "noopener,noreferrer",
+      );
+    });
+
+    await userEvent.type(
+      screen.getByTestId("connector-external-code-input"),
+      "AWS-CODE",
+    );
+    await userEvent.click(
+      screen.getByTestId("connector-external-code-complete"),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/You've successfully connected with\s+AWS/),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("connector-external-code-input"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps AWS external-code sign-in usable when noopener returns no window handle", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+
+    await openConnectModal("aws", { featureSwitches: {}, orgId: STAFF_ORG_ID });
+    await userEvent.click(await screen.findByText("Start AWS sign-in"));
+    await userEvent.click(await screen.findByText("Open AWS sign-in"));
+
+    expect(open).toHaveBeenCalledWith(
+      "https://oauth.test/aws/external-code",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(screen.queryByText(/Could not open/)).not.toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByTestId("connector-external-code-input"),
+      "AWS-CODE",
+    );
+    await userEvent.click(
+      screen.getByTestId("connector-external-code-complete"),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/You've successfully connected with\s+AWS/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("aborts an in-flight AWS external-code completion when the dialog closes", async () => {
+    let completeStarted = false;
+    let completeAborted = false;
+    server.use(
+      mockApi(
+        zeroConnectorExternalCodeSessionContract.create,
+        ({ body, params, respond }) => {
+          expect(body).toStrictEqual({ authMethod: "cli" });
+          return respond(200, {
+            sessionId: "00000000-0000-4000-8000-000000000202",
+            sessionToken: "aws-external-code-session-token",
+            type: params.type,
+            status: "pending",
+            authorizationUrl: "https://oauth.test/aws/external-code",
+            expiresIn: 600,
+          });
+        },
+      ),
+      mockApi(
+        zeroConnectorExternalCodeSessionContract.complete,
+        ({ signal, never }) => {
+          completeStarted = true;
+          signal.addEventListener(
+            "abort",
+            () => {
+              completeAborted = true;
+            },
+            { once: true },
+          );
+          return never();
+        },
+      ),
+    );
+
+    await openConnectModal("aws", { featureSwitches: {}, orgId: STAFF_ORG_ID });
+    await userEvent.click(await screen.findByText("Start AWS sign-in"));
+    await userEvent.type(
+      await screen.findByTestId("connector-external-code-input"),
+      "AWS-CODE",
+    );
+    await userEvent.click(
+      screen.getByTestId("connector-external-code-complete"),
+    );
+
+    await waitFor(() => {
+      expect(completeStarted).toBeTruthy();
+    });
+
+    click(screen.getByLabelText(/close/i));
+
+    await waitFor(() => {
+      expect(completeAborted).toBeTruthy();
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("shows manual grant form for api-token connectors (CONN-C-019)", async () => {

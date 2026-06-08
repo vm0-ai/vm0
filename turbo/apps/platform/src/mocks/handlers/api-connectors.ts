@@ -4,11 +4,13 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type {
+  ConnectorExternalCodeSessionStartResponse,
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorOauthDeviceAuthSessionStartResponse,
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
+  zeroConnectorExternalCodeSessionContract,
   zeroConnectorManualGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsByTypeContract,
@@ -30,6 +32,10 @@ let mockOauthDeviceAuthSessionStartResponse:
   | undefined;
 let mockOauthDeviceAuthSessionPollResponses: ConnectorOauthDeviceAuthSessionPollResponse[] =
   [];
+
+let mockExternalCodeSessionStartResponse:
+  | Partial<ConnectorExternalCodeSessionStartResponse>
+  | undefined;
 
 function createMockOauthDeviceAuthConnector(
   type: ConnectorType,
@@ -85,6 +91,39 @@ function createMockManualGrantConnector(
   };
 }
 
+function createMockExternalCodeConnector(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): ConnectorResponse {
+  const now = "2026-01-01T00:00:00.000Z";
+  return {
+    id: crypto.randomUUID(),
+    type,
+    authMethod,
+    externalId: `mock-${type}-account`,
+    externalUsername: `arn:aws:iam::000000000000:user/mock-${type}`,
+    externalEmail: null,
+    oauthScopes: ["openid"],
+    connectionStatus: "connected",
+    tokenExpiresAt: new Date(Date.parse(now) + 15 * 60 * 1000).toISOString(),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function defaultExternalCodeSessionStartResponse(
+  type: ConnectorType,
+): ConnectorExternalCodeSessionStartResponse {
+  return {
+    sessionId: "00000000-0000-4000-8000-000000000002",
+    sessionToken: `mock-${type}-external-code-session-token`,
+    type,
+    status: "pending",
+    authorizationUrl: `https://oauth.test/${type}/external-code`,
+    expiresIn: 600,
+  };
+}
+
 export function setMockConnectors(connectors: ConnectorResponse[]): void {
   mockConnectors = connectors;
 }
@@ -106,6 +145,7 @@ function upsertMockConnector(connector: ConnectorResponse): void {
 function resetMockOauthDeviceAuth(): void {
   mockOauthDeviceAuthSessionStartResponse = undefined;
   mockOauthDeviceAuthSessionPollResponses = [];
+  mockExternalCodeSessionStartResponse = undefined;
 }
 
 export function setMockOauthDeviceAuthSessionStartResponse(
@@ -202,6 +242,31 @@ export const apiConnectorsHandlers = [
         upsertMockConnector(response.connector);
       }
       return respond(200, response);
+    },
+  ),
+
+  mockApi(
+    zeroConnectorExternalCodeSessionContract.create,
+    ({ params, respond }) => {
+      return respond(200, {
+        ...defaultExternalCodeSessionStartResponse(params.type),
+        ...mockExternalCodeSessionStartResponse,
+        type: mockExternalCodeSessionStartResponse?.type ?? params.type,
+      });
+    },
+  ),
+
+  mockApi(
+    zeroConnectorExternalCodeSessionContract.complete,
+    ({ body, params, respond }) => {
+      if (!body.code) {
+        return respond(400, {
+          error: { message: "Missing authorization code", code: "BAD_REQUEST" },
+        });
+      }
+      const connector = createMockExternalCodeConnector(params.type, "cli");
+      upsertMockConnector(connector);
+      return respond(200, { status: "complete", connector });
     },
   ),
 ];

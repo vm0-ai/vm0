@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
@@ -77,7 +78,7 @@ describe("GET /api/zero/feature-switches", () => {
     });
   });
 
-  it("returns persisted feature switch overrides", async () => {
+  it("returns persisted feature switch overrides that can be stored", async () => {
     const fixture = await track(
       store.set(
         seedFeatureSwitches$,
@@ -183,6 +184,33 @@ describe("POST /api/zero/feature-switches", () => {
 
     expect(response.body).toStrictEqual({ switches: { dummy: true } });
 
+    await expect(getRowSwitches(orgId, userId)).resolves.toStrictEqual({
+      dummy: true,
+    });
+  });
+
+  it("ignores switches that cannot be user-overridden", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    await track(Promise.resolve({ orgId, userId }));
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroFeatureSwitchesContract);
+
+    const response = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          switches: {
+            dummy: true,
+            [FeatureSwitchKey.AwsConnector]: true,
+          },
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ switches: { dummy: true } });
     await expect(getRowSwitches(orgId, userId)).resolves.toStrictEqual({
       dummy: true,
     });

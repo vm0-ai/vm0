@@ -18,10 +18,12 @@ import {
   getConnectorTags,
   hasRequiredConnectorAuthMethodScopes,
   hasConnectorDeviceAuthGrant,
+  hasConnectorExternalCodeGrant,
 } from "@vm0/connectors/connector-utils";
 import { shouldShowGoogleSecurityWarningNotice } from "../../../lib/google-security-warning.ts";
 import {
   zeroConnectorScopeDiffContract,
+  zeroConnectorExternalCodeSessionContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
   zeroConnectorManualGrantContract,
@@ -117,6 +119,7 @@ function getAvailableConnectorConnectAuthMethods(
         break;
       }
       case "auth-code":
+      case "external-code":
       case "device-auth":
       case "manual": {
         break;
@@ -557,6 +560,19 @@ type ActiveConnectorOAuthDeviceAuthState = {
   readonly errorMessage: string | null;
 };
 
+type ActiveConnectorExternalCodeState = {
+  readonly connectorType: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly requestId: string;
+  readonly sessionId: string;
+  readonly sessionToken: string;
+  readonly authorizationUrl: string;
+  readonly expiresAtMs: number;
+  readonly authorizationOpened: boolean;
+  readonly code: string;
+  readonly errorMessage: string | null;
+};
+
 export type ConnectorOAuthDeviceAuthState =
   | {
       readonly status: "idle";
@@ -578,6 +594,27 @@ export type ConnectorOAuthDeviceAuthState =
       readonly message: string;
     };
 
+export type ConnectorExternalCodeState =
+  | {
+      readonly status: "idle";
+      readonly connectorType: ConnectorType | null;
+    }
+  | {
+      readonly status: "starting";
+      readonly connectorType: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+      readonly requestId: string;
+    }
+  | (ActiveConnectorExternalCodeState & {
+      readonly status: "pending" | "completing";
+    })
+  | {
+      readonly status: "expired" | "error";
+      readonly connectorType: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+      readonly message: string;
+    };
+
 type ConnectorConnectFlowState = {
   readonly type: ConnectorType;
   readonly id: string;
@@ -593,7 +630,18 @@ const internalConnectorOAuthDeviceAuthState$ =
   state<ConnectorOAuthDeviceAuthState>(
     createIdleConnectorOAuthDeviceAuthState(),
   );
+
+function createIdleConnectorExternalCodeState(
+  connectorType: ConnectorType | null = null,
+): ConnectorExternalCodeState {
+  return { status: "idle", connectorType };
+}
+
+const internalConnectorExternalCodeState$ = state<ConnectorExternalCodeState>(
+  createIdleConnectorExternalCodeState(),
+);
 const resetConnectorOAuthDeviceAuthFlowSignal$ = resetSignal();
+const resetConnectorExternalCodeFlowSignal$ = resetSignal();
 const connectorOAuthDeviceAuthStartOptionValues$ = state<
   Record<string, Record<string, string>>
 >({});
@@ -612,11 +660,23 @@ export const setSelectedConnectorType$ = command(
         createIdleConnectorOAuthDeviceAuthState(type),
       );
     }
+    const externalCodeCurrent = get(internalConnectorExternalCodeState$);
+    if (type !== externalCodeCurrent.connectorType) {
+      set(resetConnectorExternalCodeFlowSignal$);
+      set(
+        internalConnectorExternalCodeState$,
+        createIdleConnectorExternalCodeState(type),
+      );
+    }
   },
 );
 
 export const connectorOAuthDeviceAuthState$ = computed((get) => {
   return get(internalConnectorOAuthDeviceAuthState$);
+});
+
+export const connectorExternalCodeState$ = computed((get) => {
+  return get(internalConnectorExternalCodeState$);
 });
 
 function connectorOAuthDeviceAuthStartOptionsKey(
@@ -1341,6 +1401,332 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
 );
 
 // ---------------------------------------------------------------------------
+// External-code authorization flow state
+// ---------------------------------------------------------------------------
+
+type ConnectConnectorExternalCodeParams = {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+};
+
+type CompleteConnectorExternalCodeParams = {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly options: PostConnectOptions;
+};
+
+function createConnectorExternalCodeRequestId(type: ConnectorType): string {
+  return `${type}-external-code-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function externalCodeErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Connection failed";
+}
+
+function isCurrentConnectorExternalCodeRequest(
+  state: ConnectorExternalCodeState,
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+  requestId: string,
+): state is ActiveConnectorExternalCodeState & {
+  readonly status: "pending" | "completing";
+} {
+  return (
+    (state.status === "pending" || state.status === "completing") &&
+    state.connectorType === type &&
+    state.authMethod === authMethod &&
+    state.requestId === requestId
+  );
+}
+
+export const clearConnectorExternalCode$ = command(({ set }) => {
+  set(resetConnectorExternalCodeFlowSignal$);
+  set(
+    internalConnectorExternalCodeState$,
+    createIdleConnectorExternalCodeState(),
+  );
+});
+
+export const setConnectorExternalCodeAuthorizationCode$ = command(
+  (
+    { get, set },
+    args: {
+      readonly type: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+      readonly code: string;
+    },
+  ) => {
+    const current = get(internalConnectorExternalCodeState$);
+    if (
+      (current.status !== "pending" && current.status !== "completing") ||
+      current.connectorType !== args.type ||
+      current.authMethod !== args.authMethod
+    ) {
+      return false;
+    }
+    set(internalConnectorExternalCodeState$, {
+      ...current,
+      code: args.code,
+      errorMessage: null,
+    });
+    return true;
+  },
+);
+
+export const openConnectorExternalCodeAuthorizationPage$ = command(
+  (
+    { get, set },
+    type: ConnectorType,
+    authMethod: ConnectorAuthMethodId,
+  ): boolean => {
+    const current = get(internalConnectorExternalCodeState$);
+    if (
+      current.status !== "pending" ||
+      current.connectorType !== type ||
+      current.authMethod !== authMethod
+    ) {
+      return false;
+    }
+
+    const authWindow = window.open(
+      current.authorizationUrl,
+      "_blank",
+      "noopener,noreferrer",
+    );
+    if (authWindow) {
+      authWindow.opener = null;
+    }
+
+    set(internalConnectorExternalCodeState$, {
+      ...current,
+      authorizationOpened: true,
+      errorMessage: null,
+    });
+    return true;
+  },
+);
+
+export const connectConnectorExternalCode$ = command(
+  async (
+    { get, set },
+    args: ConnectConnectorExternalCodeParams,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const { type, authMethod } = args;
+    if (!hasConnectorExternalCodeGrant(type)) {
+      throw new Error(`${type} does not use external-code authorization`);
+    }
+    assertConnectorUsesExternalCodeMethod(type, authMethod);
+
+    const flow = createConnectorConnectFlowState(type);
+    set(internalConnectFlowState$, flow);
+    let requestId: string | null = null;
+    return await withCleanup(
+      (async () => {
+        requestId = createConnectorExternalCodeRequestId(type);
+        const flowSignal = set(resetConnectorExternalCodeFlowSignal$, signal);
+        set(internalConnectorExternalCodeState$, {
+          status: "starting",
+          connectorType: type,
+          authMethod,
+          requestId,
+        });
+
+        const createClient = get(zeroClient$);
+        const client = createClient(zeroConnectorExternalCodeSessionContract);
+        const startSettled = await settle(
+          accept(
+            client.create({
+              params: { type },
+              body: { authMethod },
+              fetchOptions: { signal: flowSignal },
+            }),
+            [200],
+            { toast: false },
+          ),
+          flowSignal,
+        );
+        const startResult = startSettled.ok ? startSettled.value.body : null;
+        if (!startSettled.ok) {
+          if (flowSignal.aborted) {
+            return false;
+          }
+          set(internalConnectorExternalCodeState$, {
+            status: "error",
+            connectorType: type,
+            authMethod,
+            message: externalCodeErrorMessage(startSettled.error),
+          });
+        }
+        flowSignal.throwIfAborted();
+        if (!startResult) {
+          return false;
+        }
+
+        set(internalConnectorExternalCodeState$, {
+          status: "pending",
+          connectorType: type,
+          authMethod,
+          requestId,
+          sessionId: startResult.sessionId,
+          sessionToken: startResult.sessionToken,
+          authorizationUrl: startResult.authorizationUrl,
+          expiresAtMs:
+            Date.now() + secondsToMilliseconds(startResult.expiresIn),
+          authorizationOpened: false,
+          code: "",
+          errorMessage: null,
+        });
+        return true;
+      })(),
+      () => {
+        set(internalConnectFlowState$, (current) => {
+          return current?.id === flow.id ? null : current;
+        });
+        set(internalConnectorExternalCodeState$, (current) => {
+          if (
+            !signal.aborted ||
+            requestId === null ||
+            current.connectorType !== type ||
+            (current.status !== "starting" &&
+              current.status !== "pending" &&
+              current.status !== "completing") ||
+            current.authMethod !== authMethod ||
+            current.requestId !== requestId
+          ) {
+            return current;
+          }
+          return createIdleConnectorExternalCodeState(type);
+        });
+      },
+    );
+  },
+);
+
+const completeConnectorExternalCode$ = command(
+  async (
+    { get, set },
+    args: CompleteConnectorExternalCodeParams,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const { type, authMethod, options } = args;
+    assertConnectorUsesExternalCodeMethod(type, authMethod);
+
+    const current = get(internalConnectorExternalCodeState$);
+    if (
+      current.status !== "pending" ||
+      current.connectorType !== type ||
+      current.authMethod !== authMethod
+    ) {
+      return false;
+    }
+    if (Date.now() > current.expiresAtMs) {
+      set(internalConnectorExternalCodeState$, {
+        status: "expired",
+        connectorType: type,
+        authMethod,
+        message: "Connection session expired. Start again to retry.",
+      });
+      return false;
+    }
+
+    const code = current.code.trim();
+    if (!code) {
+      const connectorLabel = CONNECTOR_TYPES[type].label;
+      set(internalConnectorExternalCodeState$, {
+        ...current,
+        errorMessage: `Enter the authorization code from ${connectorLabel}.`,
+      });
+      return false;
+    }
+
+    set(internalConnectorExternalCodeState$, {
+      ...current,
+      status: "completing",
+      code,
+      errorMessage: null,
+    });
+
+    const flowSignal = set(resetConnectorExternalCodeFlowSignal$, signal);
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroConnectorExternalCodeSessionContract);
+    const completeSettled = await settle(
+      accept(
+        client.complete({
+          params: { type, sessionId: current.sessionId },
+          body: {
+            sessionToken: current.sessionToken,
+            code,
+          },
+          fetchOptions: { signal: flowSignal },
+        }),
+        [200],
+        { toast: false },
+      ),
+      flowSignal,
+    );
+    signal.throwIfAborted();
+    flowSignal.throwIfAborted();
+    const latest = get(internalConnectorExternalCodeState$);
+    if (
+      !isCurrentConnectorExternalCodeRequest(
+        latest,
+        type,
+        authMethod,
+        current.requestId,
+      )
+    ) {
+      return false;
+    }
+
+    if (!completeSettled.ok) {
+      if (flowSignal.aborted) {
+        return false;
+      }
+      set(internalConnectorExternalCodeState$, {
+        ...latest,
+        status: "pending",
+        errorMessage: externalCodeErrorMessage(completeSettled.error),
+      });
+      return false;
+    }
+
+    set(finishConnectorConnection$, type, {
+      ...options,
+      clearSelectedConnector: true,
+    });
+    set(
+      internalConnectorExternalCodeState$,
+      createIdleConnectorExternalCodeState(),
+    );
+    return true;
+  },
+);
+
+export const completeConnectorExternalCodeAndSettle$ = command(
+  async (
+    { set },
+    args: CompleteConnectorExternalCodeParams & {
+      readonly onSuccess: () => void | Promise<void>;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const connected = await set(
+      completeConnectorExternalCode$,
+      {
+        type: args.type,
+        authMethod: args.authMethod,
+        options: args.options,
+      },
+      signal,
+    );
+    if (connected) {
+      await args.onSuccess();
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Standalone mode detection
 // ---------------------------------------------------------------------------
 
@@ -1440,6 +1826,21 @@ function assertConnectorUsesDeviceAuthMethod(
   }
   if (method.grant.kind !== "device-auth") {
     throw new Error(`${type} ${authMethod} does not use a device-auth grant`);
+  }
+}
+
+function assertConnectorUsesExternalCodeMethod(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): void {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    throw new Error(`${type} does not have ${authMethod} auth method`);
+  }
+  if (method.grant.kind !== "external-code") {
+    throw new Error(
+      `${type} ${authMethod} does not use an external-code grant`,
+    );
   }
 }
 

@@ -31,13 +31,19 @@ import {
   allConnectorTypes$,
   connectFlowType$,
   pollingOAuthAuthCodeConnectorType$,
+  connectorExternalCodeState$,
   connectorOAuthDeviceAuthState$,
   connectConnectorOAuthAuthCodeAndSettle$,
   connectConnectorOAuthDeviceAuthAndSettle$,
+  connectConnectorExternalCode$,
+  completeConnectorExternalCodeAndSettle$,
+  openConnectorExternalCodeAuthorizationPage$,
   openConnectorOAuthDeviceAuthVerificationPage$,
+  clearConnectorExternalCode$,
   clearConnectorOAuthDeviceAuth$,
   connectorOAuthDeviceAuthStartOptionValuesFor$,
   setConnectorOAuthDeviceAuthStartOptionValue$,
+  setConnectorExternalCodeAuthorizationCode$,
   runConnectorConnectSuccess$,
   submitManualGrant$,
   setManualGrantFormValue$,
@@ -47,6 +53,7 @@ import {
   isStandaloneMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
+  type ConnectorExternalCodeState,
   type ConnectorOAuthDeviceAuthState,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
@@ -75,6 +82,9 @@ function connectedStatusText(item: ConnectorTypeWithStatus): string {
     return expiryText;
   }
   if (item.connector?.externalUsername) {
+    if (item.connector.externalUsername.startsWith("arn:")) {
+      return `Connected as ${item.connector.externalUsername}`;
+    }
     return `Connected as @${item.connector.externalUsername}`;
   }
   return "Connected";
@@ -111,6 +121,24 @@ type ConnectOAuthDeviceAuthAndSettleFn = (
   signal: AbortSignal,
 ) => Promise<void>;
 
+type ConnectExternalCodeFn = (
+  args: {
+    readonly type: ConnectorType;
+    readonly authMethod: ConnectorAuthMethodId;
+  },
+  signal: AbortSignal,
+) => Promise<void>;
+
+type CompleteExternalCodeAndSettleFn = (
+  args: {
+    readonly type: ConnectorType;
+    readonly authMethod: ConnectorAuthMethodId;
+    readonly onSuccess: () => void | Promise<void>;
+    readonly options: PostConnectOptions;
+  },
+  signal: AbortSignal,
+) => Promise<void>;
+
 type ConnectModalContentProps = {
   item: ConnectorTypeWithStatus;
   onSuccess: () => void | Promise<void>;
@@ -122,6 +150,8 @@ type ConnectMethodContentProps = ConnectModalContentProps & {
   method: ConnectorAuthMethodConfig;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
+  connectExternalCode: ConnectExternalCodeFn;
+  completeExternalCodeAndSettle: CompleteExternalCodeAndSettleFn;
   submitManualGrant: SubmitManualGrantFn;
   manualGrantSubmitting: boolean;
   signal: AbortSignal;
@@ -154,11 +184,34 @@ function connectorOAuthDeviceAuthFlowIsActive(
   );
 }
 
+function connectorExternalCodeFlowIsActive(
+  state: ConnectorExternalCodeState,
+  type: ConnectorType,
+): boolean {
+  return (
+    state.connectorType === type &&
+    (state.status === "starting" ||
+      state.status === "pending" ||
+      state.status === "completing")
+  );
+}
+
 function connectorOAuthDeviceAuthStateForMethod(
   state: ConnectorOAuthDeviceAuthState,
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): ConnectorOAuthDeviceAuthState | null {
+  if (state.connectorType !== type || state.status === "idle") {
+    return null;
+  }
+  return state.authMethod === authMethod ? state : null;
+}
+
+function connectorExternalCodeStateForMethod(
+  state: ConnectorExternalCodeState,
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): ConnectorExternalCodeState | null {
   if (state.connectorType !== type || state.status === "idle") {
     return null;
   }
@@ -652,6 +705,203 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   );
 }
 
+type PendingConnectorExternalCodeState = Extract<
+  ConnectorExternalCodeState,
+  { readonly status: "pending" | "completing" }
+>;
+type ExternalCodeButtonHandler = (event: unknown) => void;
+
+function AwsExternalCodeWarning({ type }: { type: ConnectorType }) {
+  if (type !== "aws") {
+    return null;
+  }
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+      vm0 can call AWS APIs allowed by the selected AWS identity. This temporary
+      login may require reconnect after the AWS session expires.
+    </div>
+  );
+}
+
+function ExternalCodeStartContent({
+  type,
+  method,
+  current,
+  starting,
+  onStart,
+}: {
+  type: ConnectorType;
+  method: ConnectorAuthMethodConfig;
+  current: ConnectorExternalCodeState | null;
+  starting: boolean;
+  onStart: ExternalCodeButtonHandler;
+}) {
+  const terminalMessage =
+    current?.status === "expired" || current?.status === "error"
+      ? current.message
+      : null;
+  return (
+    <div className="flex flex-col gap-3">
+      {method.helpText && <ConnectorHelpText text={method.helpText} />}
+      <AwsExternalCodeWarning type={type} />
+      {terminalMessage ? (
+        <p className="text-sm text-destructive" role="alert">
+          {terminalMessage}
+        </p>
+      ) : null}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onStart}
+        disabled={starting}
+        className="w-full"
+      >
+        {starting
+          ? "Starting..."
+          : `Start ${CONNECTOR_TYPES[type].label} sign-in`}
+      </Button>
+    </div>
+  );
+}
+
+function ExternalCodePendingContent({
+  type,
+  current,
+  onOpen,
+  onCodeChange,
+  onComplete,
+}: {
+  type: ConnectorType;
+  current: PendingConnectorExternalCodeState;
+  onOpen: ExternalCodeButtonHandler;
+  onCodeChange: (code: string) => void;
+  onComplete: ExternalCodeButtonHandler;
+}) {
+  const completing = current.status === "completing";
+  const connectorLabel = CONNECTOR_TYPES[type].label;
+  return (
+    <div className="flex flex-col gap-3">
+      <AwsExternalCodeWarning type={type} />
+      <p className="text-sm text-muted-foreground">
+        Open {connectorLabel} sign-in, then paste the authorization code
+        displayed by {connectorLabel}.
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="min-w-0 flex-1"
+          onClick={onOpen}
+        >
+          Open {connectorLabel} sign-in
+        </Button>
+        <CopyButton
+          type="button"
+          text={current.authorizationUrl}
+          className="p-2 hover:bg-accent"
+        />
+      </div>
+      <Input
+        value={current.code}
+        onChange={(event) => {
+          onCodeChange(event.target.value);
+        }}
+        placeholder="Authorization code"
+        autoComplete="one-time-code"
+        data-testid="connector-external-code-input"
+      />
+      {current.errorMessage && (
+        <p className="text-xs text-destructive" role="alert">
+          {current.errorMessage}
+        </p>
+      )}
+      <Button
+        type="button"
+        onClick={onComplete}
+        disabled={completing || current.code.trim().length === 0}
+        className="w-full"
+        data-testid="connector-external-code-complete"
+      >
+        {completing ? "Connecting..." : "Complete connection"}
+      </Button>
+    </div>
+  );
+}
+
+function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
+  const state = useGet(connectorExternalCodeState$);
+  const setCode = useSet(setConnectorExternalCodeAuthorizationCode$);
+  const openAuthorizationPage = useSet(
+    openConnectorExternalCodeAuthorizationPage$,
+  );
+  const current = connectorExternalCodeStateForMethod(
+    state,
+    props.item.type,
+    props.authMethod,
+  );
+  const starting = current?.status === "starting";
+
+  const start = onDomEventFn(async () => {
+    await props.connectExternalCode(
+      {
+        type: props.item.type,
+        authMethod: props.authMethod,
+      },
+      props.signal,
+    );
+  });
+
+  const complete = onDomEventFn(async () => {
+    await props.completeExternalCodeAndSettle(
+      {
+        type: props.item.type,
+        authMethod: props.authMethod,
+        onSuccess: props.onSuccess,
+        options: {
+          showPermissionDialog: props.showPermissionDialogOnConnect,
+        },
+      },
+      props.signal,
+    );
+  });
+
+  if (starting) {
+    return (
+      <p className="text-sm text-muted-foreground">Starting connection...</p>
+    );
+  }
+
+  if (current?.status === "pending" || current?.status === "completing") {
+    return (
+      <ExternalCodePendingContent
+        type={props.item.type}
+        current={current}
+        onOpen={() => {
+          openAuthorizationPage(props.item.type, props.authMethod);
+        }}
+        onCodeChange={(code) => {
+          setCode({
+            type: props.item.type,
+            authMethod: props.authMethod,
+            code,
+          });
+        }}
+        onComplete={complete}
+      />
+    );
+  }
+
+  return (
+    <ExternalCodeStartContent
+      type={props.item.type}
+      method={props.method}
+      current={current}
+      starting={starting}
+      onStart={start}
+    />
+  );
+}
+
 function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
   if (props.method.grant.kind !== "manual") {
     return null;
@@ -679,6 +929,9 @@ function getConnectMethodContentComponent(
     }
     case "device-auth": {
       return OAuthDeviceAuthConnectMethodContent;
+    }
+    case "external-code": {
+      return ExternalCodeConnectMethodContent;
     }
     case "manual": {
       return ManualGrantConnectMethodContent;
@@ -786,6 +1039,8 @@ function StandardConnectMethodsContent({
   showPermissionDialogOnConnect,
   connectOAuthAuthCodeAndSettle,
   connectOAuthDeviceAuthAndSettle,
+  connectExternalCode,
+  completeExternalCodeAndSettle,
   submitManualGrant,
   manualGrantSubmitting,
   signal,
@@ -793,6 +1048,8 @@ function StandardConnectMethodsContent({
 }: ConnectModalContentProps & {
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
+  connectExternalCode: ConnectExternalCodeFn;
+  completeExternalCodeAndSettle: CompleteExternalCodeAndSettleFn;
   submitManualGrant: SubmitManualGrantFn;
   manualGrantSubmitting: boolean;
   signal: AbortSignal;
@@ -819,6 +1076,8 @@ function StandardConnectMethodsContent({
           showPermissionDialogOnConnect,
           connectOAuthAuthCodeAndSettle,
           connectOAuthDeviceAuthAndSettle,
+          connectExternalCode,
+          completeExternalCodeAndSettle,
           submitManualGrant,
           manualGrantSubmitting,
           signal,
@@ -838,6 +1097,12 @@ function ConnectModalContent({
   );
   const [, connectOAuthDeviceAuthAndSettle] = useLoadableSet(
     connectConnectorOAuthDeviceAuthAndSettle$,
+  );
+  const [, connectExternalCodeCommand] = useLoadableSet(
+    connectConnectorExternalCode$,
+  );
+  const [, completeExternalCodeAndSettleCommand] = useLoadableSet(
+    completeConnectorExternalCodeAndSettle$,
   );
   const [manualGrantLoadable, submitManualGrantCommand] =
     useLoadableSet(submitManualGrant$);
@@ -888,6 +1153,15 @@ function ConnectModalContent({
         signal,
       );
     };
+  const connectExternalCode: ConnectExternalCodeFn = async (args, signal) => {
+    await connectExternalCodeCommand(args, signal);
+  };
+  const completeExternalCodeAndSettle: CompleteExternalCodeAndSettleFn = async (
+    args,
+    signal,
+  ) => {
+    await completeExternalCodeAndSettleCommand(args, signal);
+  };
 
   const progressContent = hasAuthCodeGrant(item.type, item.availableAuthMethods)
     ? getOAuthAuthCodeProgressContent({
@@ -906,6 +1180,8 @@ function ConnectModalContent({
       showPermissionDialogOnConnect={showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={connectOAuthAuthCodeAndSettle}
       connectOAuthDeviceAuthAndSettle={connectOAuthDeviceAuthAndSettleCommandFn}
+      connectExternalCode={connectExternalCode}
+      completeExternalCodeAndSettle={completeExternalCodeAndSettle}
       submitManualGrant={submitManualGrant}
       manualGrantSubmitting={manualGrantSubmitting}
       signal={pageSignal}
@@ -930,9 +1206,11 @@ export function ConnectModal({
   const selectedType = useGet(selectedConnectorType$);
   const connectorTypes = useLastResolved(allConnectorTypes$);
   const clearConnectorOAuthDeviceAuth = useSet(clearConnectorOAuthDeviceAuth$);
+  const clearConnectorExternalCode = useSet(clearConnectorExternalCode$);
   const connectFlowType = useGet(connectFlowType$);
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const connectorOAuthDeviceAuthState = useGet(connectorOAuthDeviceAuthState$);
+  const connectorExternalCodeState = useGet(connectorExternalCodeState$);
 
   const item = connectorTypes?.find((c) => {
     return c.type === selectedType;
@@ -949,7 +1227,8 @@ export function ConnectModal({
     connectorOAuthDeviceAuthFlowIsActive(
       connectorOAuthDeviceAuthState,
       selectedType,
-    );
+    ) ||
+    connectorExternalCodeFlowIsActive(connectorExternalCodeState, selectedType);
 
   return (
     <Dialog
@@ -957,6 +1236,7 @@ export function ConnectModal({
       onOpenChange={(open) => {
         if (!open) {
           clearConnectorOAuthDeviceAuth();
+          clearConnectorExternalCode();
           onClose();
         }
       }}
@@ -991,6 +1271,7 @@ export function ConnectModal({
           onSuccess={async () => {
             await onSuccess?.();
             clearConnectorOAuthDeviceAuth();
+            clearConnectorExternalCode();
             onClose();
           }}
         />

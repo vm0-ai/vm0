@@ -78,6 +78,7 @@ const CONNECTOR_ICON_COLORFUL = {
   asana: true,
   ashby: true,
   atlassian: true,
+  aws: true,
   aviationstack: true,
   azure: true,
   base44: true,

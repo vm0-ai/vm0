@@ -115,12 +115,17 @@ export async function setupPage(options: {
   // Reading featureSwitch$ is synchronous, so the cache must be in place
   // before bootstrap runs (especially for `detachedSetupPage`, which does
   // not await the bootstrap-driven SWR refresh).
+  const defaultOrgId = "org_default";
+  const activeOrgId = options.org ? options.org.activeOrg?.id : defaultOrgId;
   options.context.store.set(clearFeatureSwitchCacheForTest$);
   if (options.featureSwitches) {
     setMockFeatureSwitches(options.featureSwitches);
     options.context.store.set(
       setFeatureSwitchCacheForTest$,
-      getAllFeatureStates({ overrides: options.featureSwitches }),
+      getAllFeatureStates({
+        orgId: activeOrgId,
+        overrides: options.featureSwitches,
+      }),
     );
   }
 
@@ -143,8 +148,8 @@ export async function setupPage(options: {
     mockOrganization(options.org);
   } else {
     mockOrganization({
-      activeOrg: { id: "org_default", name: "Default Org" },
-      memberships: [{ id: "org_default" }],
+      activeOrg: { id: defaultOrgId, name: "Default Org" },
+      memberships: [{ id: defaultOrgId }],
     });
   }
   options.context.signal.addEventListener("abort", () => {
