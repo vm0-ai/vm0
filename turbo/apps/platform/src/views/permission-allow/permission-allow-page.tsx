@@ -387,7 +387,9 @@ function PermissionAllowDoctorPage({
       grant.action === action
     );
   });
-  if (effectivePolicy === action) {
+  const requestedExpirationChange =
+    expirationEnabled && action === "allow" && initialExpiresIn !== null;
+  if (effectivePolicy === action && !requestedExpirationChange) {
     return (
       <ResultCard
         action={action}

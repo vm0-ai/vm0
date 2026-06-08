@@ -212,6 +212,52 @@ describe("permission allow page", () => {
     expect(screen.getByText("Expires in 1 hour")).toBeInTheDocument();
   });
 
+  it("confirms a requested duration when an allow grant already matches", async () => {
+    let grantBody: unknown;
+    mockAgent();
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: AGENT_ID,
+        connectorRef: "slack",
+        permission: "chat:write",
+        action: "allow",
+      }),
+    ]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            ...body,
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=chat:write&action=allow&expiresIn=1h`,
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Research agent")).toBeInTheDocument();
+      expect(
+        screen.getByRole("combobox", { name: "Permission duration" }),
+      ).toHaveTextContent("1 hour");
+      expect(getButtonByText("Confirm")).toBeEnabled();
+    });
+
+    await click(getButtonByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({ expiresIn: "1h" });
+    });
+    expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+  });
+
   it("submits the selected duration when expiring grants are enabled", async () => {
     let grantBody: unknown;
     mockAgent();
