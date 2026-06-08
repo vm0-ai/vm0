@@ -60,7 +60,7 @@ describe("stripe firewall", () => {
     });
     expect(
       firewall.apis.some((api) => {
-        return api.base.includes("dashboard.stripe.com");
+        return new URL(api.base).hostname === "dashboard.stripe.com";
       }),
     ).toBe(false);
     expect(extractSecretNamesFromApis([...firewall.apis])).toStrictEqual([
