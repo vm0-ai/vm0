@@ -80,6 +80,19 @@ describe("stripe firewall", () => {
       "payment_records_write",
       "POST /v1/payment_records/report_payment",
     );
+    expectStripeRule("payment_links_read", "GET /v1/payment_links");
+    expectStripeRule(
+      "payment_links_write",
+      "POST /v1/payment_links/{payment_link}",
+    );
+    expectStripeRule(
+      "billing_clock_read",
+      "GET /v1/test_helpers/test_clocks/{test_clock}",
+    );
+    expectStripeRule(
+      "billing_clock_write",
+      "POST /v1/test_helpers/test_clocks/{test_clock}/advance",
+    );
     expectStripeRule(
       "terminal_reader_read",
       "GET /v1/terminal/readers/{reader}",
