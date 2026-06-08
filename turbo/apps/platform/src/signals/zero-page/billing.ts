@@ -24,11 +24,13 @@ import {
 
 export type BillingTier = "free" | "pro-suspend" | "pro" | "team";
 type CompletedBillingCheckoutTier = "pro" | "team";
+type DowngradeTargetTier = "pro-suspend" | "pro";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
 
 const RESTORE_PAYMENT_PENDING_KEY = "vm0:billing:restore-payment-pending";
+const DOWNGRADE_PAYMENT_PENDING_KEY = "vm0:billing:downgrade-payment-pending";
 const RESTORE_SUCCESS_TOAST =
   "Plan restored. Your subscription will renew normally.";
 
@@ -75,6 +77,69 @@ function rememberPendingRestorePayment(): void {
 
 function clearPendingRestorePayment(): void {
   pendingRestoreStorage()?.removeItem(RESTORE_PAYMENT_PENDING_KEY);
+}
+
+function downgradeSuccessToastMessage(
+  targetTier: DowngradeTargetTier,
+  effectiveDateValue: string | null,
+): string {
+  const effectiveDate = formatEffectiveDate(effectiveDateValue);
+  if (targetTier === "pro-suspend") {
+    return effectiveDate
+      ? `Cancellation scheduled. Your current plan stays active until ${effectiveDate}.`
+      : "Cancellation scheduled. Your current plan stays active until the billing period ends.";
+  }
+
+  return effectiveDate
+    ? `Downgrade scheduled. Your current plan stays active until ${effectiveDate}.`
+    : "Downgrade scheduled. Your current plan stays active until the billing period ends.";
+}
+
+function rememberPendingDowngradePayment(
+  targetTier: DowngradeTargetTier,
+): void {
+  pendingRestoreStorage()?.setItem(DOWNGRADE_PAYMENT_PENDING_KEY, targetTier);
+}
+
+function clearPendingDowngradePayment(): void {
+  pendingRestoreStorage()?.removeItem(DOWNGRADE_PAYMENT_PENDING_KEY);
+}
+
+function pendingDowngradeTargetTier(
+  value: string | null,
+): DowngradeTargetTier | null {
+  if (value === "pro" || value === "pro-suspend") {
+    return value;
+  }
+  return null;
+}
+
+function maybeShowPendingDowngradeToast(status: BillingStatusResponse): void {
+  const storage = pendingRestoreStorage();
+  const targetTier = pendingDowngradeTargetTier(
+    storage?.getItem(DOWNGRADE_PAYMENT_PENDING_KEY) ?? null,
+  );
+  if (!targetTier) {
+    return;
+  }
+
+  const scheduledChange = status.scheduledChange;
+  const scheduled =
+    targetTier === "pro"
+      ? scheduledChange?.type === "downgrade" &&
+        scheduledChange.targetTier === "pro"
+      : scheduledChange?.type === "cancel" || status.cancelAtPeriodEnd;
+  if (!scheduled) {
+    return;
+  }
+
+  storage?.removeItem(DOWNGRADE_PAYMENT_PENDING_KEY);
+  toast.success(
+    downgradeSuccessToastMessage(
+      targetTier,
+      scheduledChange?.effectiveDate ?? status.currentPeriodEnd,
+    ),
+  );
 }
 
 function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
@@ -162,6 +227,7 @@ export const billingStatusAsync$ = computed(async (get) => {
   const client = createClient(zeroBillingStatusContract);
   const result = await accept(client.get(), [200]);
   maybeShowPendingRestoreToast(result.body);
+  maybeShowPendingDowngradeToast(result.body);
   return result.body;
 });
 
@@ -337,32 +403,29 @@ export const confirmDowngrade$ = command(
     const client = createClient(zeroBillingDowngradeContract);
     const result = await accept(
       client.create({
-        body: { targetTier },
+        body: { targetTier, returnUrl: window.location.href },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
+    const response = result.body;
+    if (!("success" in response)) {
+      rememberPendingDowngradePayment(targetTier);
+      set(internalDowngradeDialogOpen$, false);
+      window.location.assign(response.checkoutUrl);
+      return;
+    }
+
+    clearPendingDowngradePayment();
     set(internalDowngradeDialogOpen$, false);
     // Reload billing status to reflect the change
     set(billingReload$, (x) => {
       return x + 1;
     });
-    if (targetTier === "pro-suspend") {
-      const effectiveDate = formatEffectiveDate(result.body.effectiveDate);
-      toast.success(
-        effectiveDate
-          ? `Cancellation scheduled. Your current plan stays active until ${effectiveDate}.`
-          : "Cancellation scheduled. Your current plan stays active until the billing period ends.",
-      );
-    } else {
-      const effectiveDate = formatEffectiveDate(result.body.effectiveDate);
-      toast.success(
-        effectiveDate
-          ? `Downgrade scheduled. Your current plan stays active until ${effectiveDate}.`
-          : "Downgrade scheduled. Your current plan stays active until the billing period ends.",
-      );
-    }
+    toast.success(
+      downgradeSuccessToastMessage(targetTier, response.effectiveDate),
+    );
   },
 );
 

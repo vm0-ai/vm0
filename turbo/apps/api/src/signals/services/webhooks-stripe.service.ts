@@ -22,12 +22,18 @@ import {
   subscriptionScheduleCancellationEnd,
   subscriptionScheduleId,
 } from "./stripe-subscription-schedules.service";
+import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
+import {
+  BILLING_DOWNGRADE_PURPOSE,
+  BILLING_RESTORE_PURPOSE,
+} from "./zero-billing-payment-method.service";
 import { restoreSubscriptionForOrg } from "./zero-billing-restore.service";
 import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
 import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
 
 const L = logger("WebhookStripe");
-const BILLING_RESTORE_PURPOSE = "billing_restore";
+
+type BillingDowngradeCheckoutTargetTier = "pro-suspend" | "pro";
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -705,29 +711,60 @@ function billingRestoreCheckoutMetadata(
   return { orgId, subscriptionId };
 }
 
-async function handleBillingRestoreCheckoutCompleted(
+function billingDowngradeTargetTier(
+  value: string | undefined,
+): BillingDowngradeCheckoutTargetTier | null {
+  if (value === "pro" || value === "pro-suspend") {
+    return value;
+  }
+  return null;
+}
+
+function billingDowngradeCheckoutMetadata(session: CheckoutSessionInput): {
+  readonly orgId: string;
+  readonly subscriptionId: string;
+  readonly targetTier: BillingDowngradeCheckoutTargetTier;
+} | null {
+  if (session.metadata?.purpose !== BILLING_DOWNGRADE_PURPOSE) {
+    return null;
+  }
+
+  const orgId = session.metadata.orgId;
+  const subscriptionId = session.metadata.subscriptionId;
+  const targetTier = billingDowngradeTargetTier(session.metadata.targetTier);
+  if (!orgId || !subscriptionId || !targetTier) {
+    L.warn("billing downgrade checkout missing metadata", {
+      sessionId: session.id,
+      orgId: orgId ?? null,
+      subscriptionId: subscriptionId ?? null,
+      targetTier: session.metadata.targetTier ?? null,
+    });
+    return null;
+  }
+  return { orgId, subscriptionId, targetTier };
+}
+
+async function applyBillingSetupPaymentMethod(
   db: Db,
   session: CheckoutSessionInput,
-): Promise<BillingRestoreCheckoutOutcome> {
-  const metadata = billingRestoreCheckoutMetadata(session);
-  if (!metadata) {
-    return { handled: false, orgId: null };
-  }
+  metadata: { readonly orgId: string; readonly subscriptionId: string },
+  logContext: string,
+): Promise<boolean> {
   if (session.mode !== "setup") {
-    L.warn("billing restore checkout completed with unexpected mode", {
+    L.warn(`billing ${logContext} checkout completed with unexpected mode`, {
       sessionId: session.id,
       mode: session.mode ?? null,
     });
-    return { handled: true, orgId: null };
+    return false;
   }
 
   const customerId = checkoutCustomerId(session);
   if (!customerId) {
-    L.warn("billing restore checkout completed without customer", {
+    L.warn(`billing ${logContext} checkout completed without customer`, {
       sessionId: session.id,
       orgId: metadata.orgId,
     });
-    return { handled: true, orgId: null };
+    return false;
   }
 
   const [org] = await db
@@ -744,30 +781,53 @@ async function handleBillingRestoreCheckoutCompleted(
     org.stripeSubscriptionId !== metadata.subscriptionId ||
     (org.stripeCustomerId !== null && org.stripeCustomerId !== customerId)
   ) {
-    L.warn("billing restore checkout no longer matches org billing state", {
-      sessionId: session.id,
-      orgId: metadata.orgId,
-      customerId,
-      metadataSubscriptionId: metadata.subscriptionId,
-      orgStripeCustomerId: org?.stripeCustomerId ?? null,
-      orgStripeSubscriptionId: org?.stripeSubscriptionId ?? null,
-    });
-    return { handled: true, orgId: null };
+    L.warn(
+      `billing ${logContext} checkout no longer matches org billing state`,
+      {
+        sessionId: session.id,
+        orgId: metadata.orgId,
+        customerId,
+        metadataSubscriptionId: metadata.subscriptionId,
+        orgStripeCustomerId: org?.stripeCustomerId ?? null,
+        orgStripeSubscriptionId: org?.stripeSubscriptionId ?? null,
+      },
+    );
+    return false;
   }
 
   const stripe = getStripeClient();
   const paymentMethodId = await checkoutSetupPaymentMethodId(stripe, session);
   if (!paymentMethodId) {
-    L.warn("billing restore checkout has no setup payment method", {
+    L.warn(`billing ${logContext} checkout has no setup payment method`, {
       sessionId: session.id,
       orgId: metadata.orgId,
     });
-    return { handled: true, orgId: null };
+    return false;
   }
 
   await stripe.customers.update(customerId, {
     invoice_settings: { default_payment_method: paymentMethodId },
   });
+  return true;
+}
+
+async function handleBillingRestoreCheckoutCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<BillingRestoreCheckoutOutcome> {
+  const metadata = billingRestoreCheckoutMetadata(session);
+  if (!metadata) {
+    return { handled: false, orgId: null };
+  }
+  const paymentMethodSet = await applyBillingSetupPaymentMethod(
+    db,
+    session,
+    metadata,
+    "restore",
+  );
+  if (!paymentMethodSet) {
+    return { handled: true, orgId: null };
+  }
 
   const restoreResult = await restoreSubscriptionForOrg(db, {
     orgId: metadata.orgId,
@@ -778,6 +838,41 @@ async function handleBillingRestoreCheckoutCompleted(
       sessionId: session.id,
       orgId: metadata.orgId,
       reason: restoreResult.reason,
+    });
+    return { handled: true, orgId: null };
+  }
+
+  return { handled: true, orgId: metadata.orgId };
+}
+
+async function handleBillingDowngradeCheckoutCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<BillingRestoreCheckoutOutcome> {
+  const metadata = billingDowngradeCheckoutMetadata(session);
+  if (!metadata) {
+    return { handled: false, orgId: null };
+  }
+  const paymentMethodSet = await applyBillingSetupPaymentMethod(
+    db,
+    session,
+    metadata,
+    "downgrade",
+  );
+  if (!paymentMethodSet) {
+    return { handled: true, orgId: null };
+  }
+
+  const downgradeResult = await downgradeSubscriptionForOrg(db, {
+    orgId: metadata.orgId,
+    targetTier: metadata.targetTier,
+    requirePaymentMethod: false,
+  });
+  if (!downgradeResult.ok) {
+    L.warn("billing downgrade checkout could not downgrade subscription", {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+      reason: downgradeResult.reason,
     });
     return { handled: true, orgId: null };
   }
@@ -1377,6 +1472,20 @@ async function handleCheckoutCompleted(
       drainOrgId: null,
       orgIds:
         billingRestoreResult.orgId === null ? [] : [billingRestoreResult.orgId],
+    };
+  }
+
+  const billingDowngradeResult = await handleBillingDowngradeCheckoutCompleted(
+    db,
+    session,
+  );
+  if (billingDowngradeResult.handled) {
+    return {
+      drainOrgId: null,
+      orgIds:
+        billingDowngradeResult.orgId === null
+          ? []
+          : [billingDowngradeResult.orgId],
     };
   }
 

@@ -38,11 +38,13 @@ vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
 const context = testContext();
 const mockApi = createMockApi(context);
 const restorePaymentPendingKey = "vm0:billing:restore-payment-pending";
+const downgradePaymentPendingKey = "vm0:billing:downgrade-payment-pending";
 
 beforeEach(() => {
   vi.mocked(toast.error).mockClear();
   vi.mocked(toast.success).mockClear();
   window.sessionStorage.removeItem(restorePaymentPendingKey);
+  window.sessionStorage.removeItem(downgradePaymentPendingKey);
 });
 
 async function openBillingTab() {
@@ -1844,11 +1846,107 @@ describe("org billing tab - downgrade flow", () => {
     click(cancelSubscriptionBtn!);
 
     await waitFor(() => {
-      expect(capturedBody).toStrictEqual({ targetTier: "pro-suspend" });
+      expect(capturedBody).toStrictEqual(
+        expect.objectContaining({
+          targetTier: "pro-suspend",
+          returnUrl: expect.any(String),
+        }),
+      );
       expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
         "Cancellation scheduled. Your current plan stays active until the billing period ends.",
       );
     });
+  });
+
+  it("should redirect to setup checkout when downgrade requires a payment method", async () => {
+    const checkoutUrl = "https://checkout.stripe.com/setup/downgrade";
+    const assignSpy = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => {});
+    let capturedBody: unknown = null;
+    server.use(
+      mockApi(zeroBillingDowngradeContract.create, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
+          status: "payment_method_required",
+          checkoutUrl,
+        });
+      }),
+    );
+
+    setMockBillingStatus({
+      tier: "team",
+      credits: 120_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Team plan")).toBeInTheDocument();
+    });
+
+    const downgradeButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Downgrade";
+    });
+    expect(downgradeButton).toBeDefined();
+    click(downgradeButton!);
+
+    const confirmDialog = await waitFor(() => {
+      return screen.getByRole("dialog", { name: "Downgrade plan" });
+    });
+    const proOption = findButtonByText(confirmDialog, /Pro\s*\$20\/month/);
+    expect(proOption).toBeDefined();
+    click(proOption!);
+
+    const confirmButton = findButtonByText(confirmDialog, "Downgrade to Pro");
+    expect(confirmButton).toBeDefined();
+    click(confirmButton!);
+
+    await waitFor(() => {
+      expect(capturedBody).toStrictEqual(
+        expect.objectContaining({
+          targetTier: "pro",
+          returnUrl: expect.any(String),
+        }),
+      );
+      expect(assignSpy).toHaveBeenCalledWith(checkoutUrl);
+    });
+    expect(window.sessionStorage.getItem(downgradePaymentPendingKey)).toBe(
+      "pro",
+    );
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    assignSpy.mockRestore();
+  });
+
+  it("should toast when setup checkout downgrade completes through billing refresh", async () => {
+    const periodEnd = "2026-07-04T00:00:00.000Z";
+    window.sessionStorage.setItem(downgradePaymentPendingKey, "pro");
+    setMockBillingStatus({
+      tier: "team",
+      credits: 120_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      scheduledChange: {
+        type: "downgrade",
+        targetTier: "pro",
+        effectiveDate: periodEnd,
+      },
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Team plan")).toBeInTheDocument();
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        "Downgrade scheduled. Your current plan stays active until Jul 4, 2026.",
+      );
+    });
+    expect(
+      window.sessionStorage.getItem(downgradePaymentPendingKey),
+    ).toBeNull();
   });
 
   it("should ignore stale pro target when current plan is pro", async () => {
@@ -1894,7 +1992,12 @@ describe("org billing tab - downgrade flow", () => {
     click(cancelSubscriptionBtn!);
 
     await waitFor(() => {
-      expect(capturedBody).toStrictEqual({ targetTier: "pro-suspend" });
+      expect(capturedBody).toStrictEqual(
+        expect.objectContaining({
+          targetTier: "pro-suspend",
+          returnUrl: expect.any(String),
+        }),
+      );
     });
   });
 

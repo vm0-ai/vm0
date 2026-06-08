@@ -358,12 +358,19 @@ export type ZeroBillingInvoicesContract = typeof zeroBillingInvoicesContract;
 
 const downgradeRequestSchema = z.object({
   targetTier: z.enum(["pro-suspend", "pro"]),
+  returnUrl: z.string().url().optional(),
 });
 
-const downgradeResponseSchema = z.object({
-  success: z.boolean(),
-  effectiveDate: z.string().nullable(),
-});
+const downgradeResponseSchema = z.union([
+  z.object({
+    success: z.boolean(),
+    effectiveDate: z.string().nullable(),
+  }),
+  z.object({
+    status: z.literal("payment_method_required"),
+    checkoutUrl: z.string().url(),
+  }),
+]);
 
 const restoreRequestSchema = z.object({
   returnUrl: z.string().url().optional(),

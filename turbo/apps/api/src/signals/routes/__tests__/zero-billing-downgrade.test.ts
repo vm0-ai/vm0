@@ -170,6 +170,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const periodStart = 1_782_809_751;
     const periodEnd = 1_785_401_751;
     const scheduleId = `sched-team-pro-${randomUUID().slice(0, 8)}`;
+    const discountId = `di-team-pro-${randomUUID().slice(0, 8)}`;
     const fixture = await track(
       store.set(
         seedInvoicesOrg$,
@@ -185,6 +186,8 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: subId,
+      default_payment_method: "pm_card",
+      discounts: [discountId],
       items: {
         data: [
           {
@@ -240,12 +243,14 @@ describe("POST /api/zero/billing/downgrade", () => {
           end_date: periodEnd,
           items: [{ price: TEST_PRICE_TEAM, quantity: 1 }],
           proration_behavior: "none",
+          discounts: [{ discount: discountId }],
         },
         {
           start_date: periodEnd,
           duration: { interval: "month", interval_count: 1 },
           items: [{ price: TEST_PRICE_PRO, quantity: 1 }],
           proration_behavior: "none",
+          discounts: [{ discount: discountId }],
         },
       ],
     });
@@ -297,6 +302,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: subId,
       schedule: scheduleId,
+      default_payment_method: "pm_card",
       items: {
         data: [
           {
@@ -370,6 +376,100 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(row?.pendingSubscriptionChangeAt?.toISOString()).toBe(
       new Date(periodEnd * 1000).toISOString(),
     );
+  });
+
+  it("returns setup checkout URL when team to pro needs a payment method", async () => {
+    const subId = `sub-team-pro-no-card-${randomUUID().slice(0, 8)}`;
+    const customerId = `cus-team-pro-${randomUUID().slice(0, 8)}`;
+    const periodStart = 1_782_809_751;
+    const periodEnd = 1_785_401_751;
+    const checkoutUrl = "https://checkout.stripe.com/setup/downgrade";
+    const returnUrl = "https://app.vm0.ai/settings?settings=billing";
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: subId,
+          subscriptionStatus: "active",
+          tier: "team",
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subId,
+      customer: customerId,
+      default_payment_method: null,
+      default_source: null,
+      discounts: [],
+      items: {
+        data: [
+          {
+            id: "si_item_1",
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+            quantity: 1,
+            price: {
+              id: TEST_PRICE_TEAM,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      invoice_settings: { default_payment_method: null },
+      default_source: null,
+    });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      id: "cs_setup_downgrade",
+      url: checkoutUrl,
+    });
+
+    const client = setupApp({ context })(zeroBillingDowngradeContract);
+    const response = await accept(
+      client.create({
+        body: { targetTier: "pro", returnUrl },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      status: "payment_method_required",
+      checkoutUrl,
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
+      mode: "setup",
+      customer: customerId,
+      currency: "usd",
+      success_url: returnUrl,
+      cancel_url: returnUrl,
+      metadata: {
+        purpose: "billing_downgrade",
+        orgId: fixture.orgId,
+        subscriptionId: subId,
+        targetTier: "pro",
+      },
+      setup_intent_data: {
+        metadata: {
+          purpose: "billing_downgrade",
+          orgId: fixture.orgId,
+          subscriptionId: subId,
+          targetTier: "pro",
+        },
+      },
+    });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.create,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).not.toHaveBeenCalled();
   });
 
   it("downgrades pro to pro-suspend via cancel at period end", async () => {
@@ -773,6 +873,7 @@ describe("POST /api/zero/billing/downgrade", () => {
   it("replaces a pending team to pro schedule with cancellation at period end", async () => {
     const subId = `sub-team-schedule-suspend-${randomUUID().slice(0, 8)}`;
     const scheduleId = `sched-team-suspend-${randomUUID().slice(0, 8)}`;
+    const discountId = `di-team-suspend-${randomUUID().slice(0, 8)}`;
     const periodStart = 1_782_809_751;
     const periodEnd = 1_785_401_751;
     const currentPeriodEnd = new Date(periodEnd * 1000);
@@ -796,6 +897,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: subId,
       schedule: scheduleId,
+      discounts: [discountId],
       items: {
         data: [
           {
@@ -839,6 +941,7 @@ describe("POST /api/zero/billing/downgrade", () => {
           end_date: periodEnd,
           items: [{ price: TEST_PRICE_TEAM, quantity: 1 }],
           proration_behavior: "none",
+          discounts: [{ discount: discountId }],
         },
       ],
     });
