@@ -177,6 +177,7 @@ const CONNECTOR_ICON_COLORFUL = {
   minimax: true,
   minio: true,
   miro: true,
+  mixpanel: true,
   modal: true,
   monday: true,
   moss: true,
