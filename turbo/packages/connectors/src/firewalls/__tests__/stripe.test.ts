@@ -69,6 +69,23 @@ describe("stripe firewall", () => {
     expectStripeRule("checkout_session_write", "POST /v1/checkout/sessions");
   });
 
+  it("maps documented Stripe permission aliases without guessing ambiguous resources", () => {
+    expectStripeRule("charge_read", "GET /v1/refunds");
+    expectStripeRule("charge_write", "POST /v1/refunds");
+    expectStripeRule(
+      "customer_portal_read",
+      "GET /v1/billing_portal/configurations",
+    );
+    expectStripeRule(
+      "payment_records_write",
+      "POST /v1/payment_records/report_payment",
+    );
+    expectStripeRule(
+      "terminal_reader_read",
+      "GET /v1/terminal/readers/{reader}",
+    );
+  });
+
   it("reports generated mapping coverage without hiding unmapped operations", () => {
     const firewall = getConnectorFirewall("stripe");
     const permissionCount = firewall.apis.reduce((count, api) => {

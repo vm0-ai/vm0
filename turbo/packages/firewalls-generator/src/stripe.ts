@@ -38,6 +38,36 @@ const PLACEHOLDER_VALUE = "sk_live_CoffeeSafeLocalCoffeeSafeLocalCoff";
 const READ_METHODS = new Set(["get", "head"]);
 const WRITE_METHODS = new Set(["post", "put", "patch", "delete"]);
 
+// These aliases come from the official Stripe permissions reference rows where
+// the published permission stem differs from the OpenAPI schema x-resourceId.
+// Do not add path guesses here; keep unmapped operations visible unless an
+// official permission row explicitly names the same resource family.
+const RESOURCE_ID_PERMISSION_STEM_ALIASES = new Map<string, string>([
+  ["apps.secret", "secret"],
+  ["billing_portal.configuration", "customer_portal"],
+  ["billing_portal.session", "customer_portal"],
+  ["login_link", "edit_link"],
+  ["payment_record", "payment_records"],
+  ["price", "plan"],
+  ["refund", "charge"],
+  ["reporting.report_run", "report_runs_and_report_types"],
+  ["reporting.report_type", "report_runs_and_report_types"],
+  ["tax.calculation", "tax_calculations_and_transactions"],
+  ["tax.registration", "tax_settings"],
+  ["tax.settings", "tax_settings"],
+  ["tax.transaction", "tax_calculations_and_transactions"],
+  ["terminal.configuration", "terminal_configuration"],
+  ["terminal.location", "terminal_location"],
+  ["terminal.reader", "terminal_reader"],
+  ["topup", "top_up"],
+  ["webhook_endpoint", "webhook"],
+]);
+
+const ACCESS_RESOURCE_ID_PERMISSION_STEM_ALIASES = new Map<
+  string,
+  Partial<Record<"read" | "write", string>>
+>([["account", { read: "connected_account" }]]);
+
 const REPRESENTATIVE_RULES: ReadonlyArray<{
   permission: string;
   rule: string;
@@ -59,6 +89,26 @@ const REPRESENTATIVE_RULES: ReadonlyArray<{
   {
     permission: "checkout_session_write",
     rule: "POST /v1/checkout/sessions",
+  },
+];
+
+const REPRESENTATIVE_ALIAS_RULES: ReadonlyArray<{
+  permission: string;
+  rule: string;
+}> = [
+  { permission: "charge_read", rule: "GET /v1/refunds" },
+  { permission: "charge_write", rule: "POST /v1/refunds" },
+  {
+    permission: "customer_portal_read",
+    rule: "GET /v1/billing_portal/configurations",
+  },
+  {
+    permission: "payment_records_write",
+    rule: "POST /v1/payment_records/report_payment",
+  },
+  {
+    permission: "terminal_reader_read",
+    rule: "GET /v1/terminal/readers/{reader}",
   },
 ];
 
@@ -216,6 +266,121 @@ function permissionNameForResource(
   return `${resourceId.replace(/\./g, "_")}_${access}`;
 }
 
+function aliasStemForResource(
+  resourceId: string,
+  access: "read" | "write",
+): string | null {
+  const accessAlias =
+    ACCESS_RESOURCE_ID_PERMISSION_STEM_ALIASES.get(resourceId)?.[access];
+  if (accessAlias) return accessAlias;
+
+  return RESOURCE_ID_PERMISSION_STEM_ALIASES.get(resourceId) ?? null;
+}
+
+function pushPermissionNameForStem(
+  names: Set<string>,
+  stem: string,
+  access: "read" | "write",
+  permissionDefinitions: Map<string, StripePermissionDefinition>,
+): void {
+  const permissionName = permissionNameForResource(stem, access);
+  if (permissionDefinitions.has(permissionName)) {
+    names.add(permissionName);
+  }
+}
+
+function permissionNamesForResource(
+  resourceId: string,
+  access: "read" | "write",
+  permissionDefinitions: Map<string, StripePermissionDefinition>,
+): string[] {
+  const names = new Set<string>();
+
+  pushPermissionNameForStem(names, resourceId, access, permissionDefinitions);
+  const aliasStem = aliasStemForResource(resourceId, access);
+  if (aliasStem) {
+    pushPermissionNameForStem(names, aliasStem, access, permissionDefinitions);
+  }
+
+  if (access === "write" && resourceId.startsWith("deleted_")) {
+    const underlyingResourceId = resourceId.slice("deleted_".length);
+    pushPermissionNameForStem(
+      names,
+      underlyingResourceId,
+      access,
+      permissionDefinitions,
+    );
+    const underlyingAliasStem = aliasStemForResource(
+      underlyingResourceId,
+      access,
+    );
+    if (underlyingAliasStem) {
+      pushPermissionNameForStem(
+        names,
+        underlyingAliasStem,
+        access,
+        permissionDefinitions,
+      );
+    }
+  }
+
+  return [...names].sort();
+}
+
+function chooseSingleResourcePermission(
+  resourceId: string,
+  access: "read" | "write",
+  permissionDefinitions: Map<string, StripePermissionDefinition>,
+): string | null {
+  const names = permissionNamesForResource(
+    resourceId,
+    access,
+    permissionDefinitions,
+  );
+  if (names.length > 1) {
+    throw new Error(
+      `Stripe resource "${resourceId}" maps to multiple ${access} permissions: ${names.join(", ")}`,
+    );
+  }
+  return names[0] ?? null;
+}
+
+function resourceIdWithoutDeletedPrefix(resourceId: string): string {
+  return resourceId.startsWith("deleted_")
+    ? resourceId.slice("deleted_".length)
+    : resourceId;
+}
+
+function chooseAmbiguousResourcePermission(
+  resourceIds: string[],
+  access: "read" | "write",
+  permissionDefinitions: Map<string, StripePermissionDefinition>,
+): string | null {
+  const candidatesByResource = resourceIds.map((resourceId) => {
+    return permissionNamesForResource(
+      resourceId,
+      access,
+      permissionDefinitions,
+    );
+  });
+  const candidates = new Set(candidatesByResource.flat());
+  if (candidates.size !== 1) return null;
+
+  const allResourcesKnown = candidatesByResource.every((names) => {
+    return names.length === 1;
+  });
+  if (allResourcesKnown) return [...candidates][0]!;
+
+  const normalizedResourceIds = new Set(
+    resourceIds.map(resourceIdWithoutDeletedPrefix),
+  );
+  if (normalizedResourceIds.size === 1) {
+    return [...candidates][0]!;
+  }
+
+  return null;
+}
+
 function cleanPermissionName(value: string): string {
   return value.replace(/`/g, "").trim();
 }
@@ -298,6 +463,20 @@ function validateRepresentativeRules(
       );
     }
   }
+
+  for (const { permission, rule } of REPRESENTATIVE_ALIAS_RULES) {
+    if (!permissionDefinitions.has(permission)) {
+      throw new Error(
+        `Representative Stripe alias permission "${permission}" is missing from official permissions reference`,
+      );
+    }
+    const rules = byName.get(permission)?.rules ?? [];
+    if (!rules.includes(rule)) {
+      throw new Error(
+        `Representative Stripe alias rule "${rule}" is missing from permission "${permission}"`,
+      );
+    }
+  }
 }
 
 function buildGroups(
@@ -335,18 +514,24 @@ function buildGroups(
       const operation = op as Record<string, unknown>;
       const resourceIds = resourceIdsForOperation(spec, operation);
 
-      if (resourceIds.length !== 1) {
+      const permissionName =
+        resourceIds.length === 1
+          ? chooseSingleResourcePermission(
+              resourceIds[0]!,
+              access,
+              permissionDefinitions,
+            )
+          : chooseAmbiguousResourcePermission(
+              resourceIds,
+              access,
+              permissionDefinitions,
+            );
+      if (!permissionName) {
         if (resourceIds.length > 1) {
           ambiguousRules.push(rule);
         } else {
           unmappedRules.push(rule);
         }
-        continue;
-      }
-
-      const permissionName = permissionNameForResource(resourceIds[0]!, access);
-      if (!permissionDefinitions.has(permissionName)) {
-        unmappedRules.push(rule);
         continue;
       }
 
