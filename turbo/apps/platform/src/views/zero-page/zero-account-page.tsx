@@ -198,7 +198,8 @@ function CaptureNetworkBodiesSettings() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Capture HTTP request headers and bodies in network logs for debugging.
+        Capture HTTP header names, selected safe header values, and bodies in
+        network logs for debugging.
       </p>
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">

@@ -184,7 +184,8 @@ export const storedExecutionContextSchema = z.object({
   debugNoMockClaude: z.boolean().optional(),
   // Debug flag to force real Codex in mock environments (internal use only)
   debugNoMockCodex: z.boolean().optional(),
-  // Capture HTTP request headers, request bodies, and response bodies in network logs
+  // Capture HTTP header names, selected safe header values, request bodies, and response bodies
+  // in network logs
   captureNetworkBodies: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics, as Unix epoch milliseconds
   apiStartTime: apiStartTimeSchema.optional(),
@@ -248,7 +249,8 @@ export const executionContextSchema = z.object({
   debugNoMockClaude: z.boolean().optional(),
   // Debug flag to force real Codex in mock environments (internal use only)
   debugNoMockCodex: z.boolean().optional(),
-  // Capture HTTP request headers, request bodies, and response bodies in network logs
+  // Capture HTTP header names, selected safe header values, request bodies, and response bodies
+  // in network logs
   captureNetworkBodies: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics, as Unix epoch milliseconds
   apiStartTime: apiStartTimeSchema.optional(),

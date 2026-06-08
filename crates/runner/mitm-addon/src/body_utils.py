@@ -14,8 +14,10 @@ Exports:
 
 import base64
 import contextlib
+import re
 import zlib
 from collections.abc import Callable
+from email.utils import parsedate_to_datetime
 from typing import IO, Literal, NamedTuple
 
 import brotli  # type: ignore[import-untyped]
@@ -78,18 +80,33 @@ _TEXT_CONTENT_TYPES = (
     "application/graphql",
 )
 
-# Captured header values are untrusted persistent-log data by default. Preserve
-# only low-risk protocol metadata that is useful for debugging response shape.
-_VALUE_PRESERVING_CAPTURE_HEADER_NAMES = frozenset(
-    {
-        "accept",
-        "accept-encoding",
-        "content-encoding",
-        "content-length",
-        "content-type",
-        "date",
-    }
+_HTTP_TCHAR_PATTERN = r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+"
+_HTTP_QUOTED_VALUE_PATTERN = rf'"{_HTTP_TCHAR_PATTERN}"'
+_HTTP_PARAMETER_PATTERN = (
+    rf"{_HTTP_TCHAR_PATTERN}=(?:{_HTTP_TCHAR_PATTERN}|{_HTTP_QUOTED_VALUE_PATTERN})"
 )
+_HTTP_MEDIA_TYPE_PATTERN = (
+    rf"{_HTTP_TCHAR_PATTERN}/{_HTTP_TCHAR_PATTERN}"
+    rf"(?:\s*;\s*{_HTTP_PARAMETER_PATTERN})*"
+)
+_HTTP_MEDIA_RANGE_PATTERN = (
+    rf"(?:{_HTTP_TCHAR_PATTERN}|\*)/(?:{_HTTP_TCHAR_PATTERN}|\*)"
+    rf"(?:\s*;\s*{_HTTP_PARAMETER_PATTERN})*"
+)
+_HTTP_ENCODING_PATTERN = (
+    rf"(?:{_HTTP_TCHAR_PATTERN}|\*)"
+    r"(?:\s*;\s*q=(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?))?"
+)
+
+# Captured header values are untrusted persistent-log data by default. Preserve
+# only low-risk protocol metadata that matches conservative HTTP value shapes.
+_VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS: dict[str, re.Pattern[str]] = {
+    "accept": re.compile(rf"{_HTTP_MEDIA_RANGE_PATTERN}(?:\s*,\s*{_HTTP_MEDIA_RANGE_PATTERN})*"),
+    "accept-encoding": re.compile(rf"{_HTTP_ENCODING_PATTERN}(?:\s*,\s*{_HTTP_ENCODING_PATTERN})*"),
+    "content-encoding": re.compile(rf"{_HTTP_TCHAR_PATTERN}(?:\s*,\s*{_HTTP_TCHAR_PATTERN})*"),
+    "content-length": re.compile(r"(?:0|[1-9][0-9]*)"),
+    "content-type": re.compile(_HTTP_MEDIA_TYPE_PATTERN),
+}
 
 
 def _log_streaming_decode_error(encoding_label: str, exc: Exception) -> None:
@@ -548,8 +565,26 @@ def _encode_body(content: bytes, content_type: str) -> tuple:
         return base64.b64encode(content).decode("ascii"), "base64"
 
 
+def _is_http_date_header_value(value: str) -> bool:
+    try:
+        parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return False
+    return True
+
+
+def _can_preserve_capture_header_value(name: str, value: str) -> bool:
+    normalized_name = name.strip().lower()
+    normalized_value = value.strip()
+    if normalized_name == "date":
+        return _is_http_date_header_value(normalized_value)
+
+    pattern = _VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS.get(normalized_name)
+    return pattern is not None and pattern.fullmatch(normalized_value) is not None
+
+
 def _sanitize_header_value_for_capture(name: str, value: str) -> str:
-    if name.strip().lower() in _VALUE_PRESERVING_CAPTURE_HEADER_NAMES:
+    if _can_preserve_capture_header_value(name, value):
         return value
     return _REDACTED_HEADER_VALUE
 

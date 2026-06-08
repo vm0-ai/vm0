@@ -127,7 +127,8 @@ const unifiedRunRequestSchema = z
     // Debug flag to force real Codex in mock environments (internal use only)
     debugNoMockCodex: z.boolean().optional(),
 
-    // Capture HTTP request headers, request bodies, and response bodies in network logs
+    // Capture HTTP header names, selected safe header values, request bodies, and response bodies
+    // in network logs
     captureNetworkBodies: z.boolean().optional(),
 
     // Required

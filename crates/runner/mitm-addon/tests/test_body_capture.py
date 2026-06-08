@@ -171,6 +171,24 @@ class TestSanitizeHeadersForCapture:
         assert result[name] == value
 
     @pytest.mark.parametrize(
+        ("name", "value"),
+        [
+            ("Content-Type", "https://app.example/private/secret-token"),
+            ("Content-Type", 'application/json; profile="https://app.example/secret-token"'),
+            ("Content-Length", "secret-token"),
+            ("Content-Encoding", "gzip, https://app.example/private/secret-token"),
+            ("Accept", 'application/json; profile="https://app.example/secret-token"'),
+            ("Accept-Encoding", "gzip, https://app.example/private/secret-token"),
+            ("Date", "secret-token"),
+        ],
+    )
+    def test_allowlisted_header_names_with_unexpected_values_are_redacted(
+        self, headers, name, value
+    ):
+        result = _sanitize_headers_for_capture(headers((name, value)))
+        assert result[name] == "***"
+
+    @pytest.mark.parametrize(
         "name",
         [
             "Authorization",
