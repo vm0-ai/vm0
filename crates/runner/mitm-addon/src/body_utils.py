@@ -82,9 +82,12 @@ _TEXT_CONTENT_TYPES = (
 
 _HTTP_FIELD_NAME_PATTERN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 _HTTP_KNOWN_CONTENT_CODING_PATTERN = r"(?:br|compress|deflate|gzip|identity|zstd)"
+_HTTP_OPTIONAL_WHITESPACE_PATTERN = r"[ \t]*"
 _HTTP_ENCODING_PATTERN = (
     rf"(?:{_HTTP_KNOWN_CONTENT_CODING_PATTERN}|\*)"
-    r"(?:\s*;\s*q=(?:0(?:\.[0-9]{1,3})?|1(?:\.0{1,3})?))?"
+    rf"(?:{_HTTP_OPTIONAL_WHITESPACE_PATTERN};"
+    rf"{_HTTP_OPTIONAL_WHITESPACE_PATTERN}q="
+    r"(?:0(?:\.[0-9]{1,3})?|1(?:\.0{1,3})?))?"
 )
 _HTTP_IMF_FIXDATE_PATTERN = re.compile(
     r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), "
@@ -93,7 +96,7 @@ _HTTP_IMF_FIXDATE_PATTERN = re.compile(
     r"[0-9]{4} "
     r"(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9] GMT"
 )
-_UNSAFE_CAPTURE_HEADER_VALUE_CHARS = re.compile(r"[\r\n]")
+_UNSAFE_CAPTURE_HEADER_VALUE_CHARS = re.compile(r"[\x00-\x08\x0A-\x1F\x7F]")
 _HTTP_OPTIONAL_WHITESPACE = " \t"
 _MAX_CAPTURE_HEADER_NAME_LENGTH = 256
 _MAX_CAPTURE_HEADER_VALUE_TO_PRESERVE = 256
@@ -128,11 +131,15 @@ _MAX_CAPTURE_CONTENT_TYPE_MEDIA_TYPE_LENGTH = max(
 # only low-risk protocol metadata that matches conservative HTTP value shapes.
 _VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS: dict[str, re.Pattern[str]] = {
     "accept-encoding": re.compile(
-        rf"{_HTTP_ENCODING_PATTERN}(?:\s*,\s*{_HTTP_ENCODING_PATTERN})*",
+        rf"{_HTTP_ENCODING_PATTERN}"
+        rf"(?:{_HTTP_OPTIONAL_WHITESPACE_PATTERN},"
+        rf"{_HTTP_OPTIONAL_WHITESPACE_PATTERN}{_HTTP_ENCODING_PATTERN})*",
         re.IGNORECASE,
     ),
     "content-encoding": re.compile(
-        rf"{_HTTP_KNOWN_CONTENT_CODING_PATTERN}(?:\s*,\s*{_HTTP_KNOWN_CONTENT_CODING_PATTERN})*",
+        rf"{_HTTP_KNOWN_CONTENT_CODING_PATTERN}"
+        rf"(?:{_HTTP_OPTIONAL_WHITESPACE_PATTERN},"
+        rf"{_HTTP_OPTIONAL_WHITESPACE_PATTERN}{_HTTP_KNOWN_CONTENT_CODING_PATTERN})*",
         re.IGNORECASE,
     ),
     "content-length": re.compile(r"(?:0|[1-9][0-9]{0,18})"),
