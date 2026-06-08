@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::os::unix::fs::{PermissionsExt, symlink};
+use std::path::Path;
 use std::path::PathBuf;
 
 use agent_diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
@@ -21,6 +23,10 @@ use super::super::{
 use super::support::{minimal_context, sandbox_exec_error, test_executor_config};
 use crate::ids::RunId;
 use crate::paths::LogPaths;
+
+fn mode(path: &Path) -> u32 {
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
 
 #[test]
 fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
@@ -395,6 +401,40 @@ async fn copy_guest_logs_writes_files_to_host() {
 }
 
 #[tokio::test]
+async fn copy_guest_logs_skips_unsafe_destination_and_continues_other_logs() {
+    let dir = tempfile::tempdir().unwrap();
+    let log_paths = LogPaths::new(dir.path().to_path_buf());
+    let sandbox = MockSandbox::new("test");
+    let ctx = minimal_context();
+    let unsafe_target = dir.path().join("unsafe-target.log");
+    symlink(&unsafe_target, log_paths.system_log(ctx.run_id)).unwrap();
+
+    sandbox.push_copy_file_result(Ok(b"{\"cpu\":0.5}\n".to_vec()));
+    sandbox.push_copy_file_result(Ok(b"{\"action_type\":\"cleanup\"}\n".to_vec()));
+
+    copy_guest_logs(&sandbox, &ctx, &log_paths, false).await;
+
+    assert!(!unsafe_target.exists());
+    assert_eq!(
+        tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
+            .await
+            .unwrap(),
+        "{\"cpu\":0.5}\n"
+    );
+    assert_eq!(
+        tokio::fs::read_to_string(log_paths.sandbox_ops_log(ctx.run_id))
+            .await
+            .unwrap(),
+        "{\"action_type\":\"cleanup\"}\n"
+    );
+
+    let calls = sandbox.copy_file_calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].host_path, log_paths.metrics_log(ctx.run_id));
+    assert_eq!(calls[1].host_path, log_paths.sandbox_ops_log(ctx.run_id));
+}
+
+#[tokio::test]
 async fn copy_guest_logs_keeps_existing_logs_when_sandbox_ops_missing() {
     let dir = tempfile::tempdir().unwrap();
     let log_paths = LogPaths::new(dir.path().to_path_buf());
@@ -529,6 +569,7 @@ async fn drain_stdout_writes_chunks_to_file() {
     let content = tokio::fs::read_to_string(&path).await.unwrap();
     assert_eq!(content, "chunk 1\nchunk 2\n");
     assert!(!report.chunk_truncated);
+    assert_eq!(mode(&path), 0o600);
 }
 
 #[tokio::test]
@@ -612,4 +653,5 @@ async fn append_stdout_stream_diagnostics_writes_markers() {
     expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
     expected.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
     assert_eq!(content, expected);
+    assert_eq!(mode(&path), 0o600);
 }

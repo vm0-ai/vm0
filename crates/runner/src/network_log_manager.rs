@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -373,17 +372,14 @@ impl NetworkLogManager {
 }
 
 fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
-    std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .mode(0o644)
-        .open(path)
-        .and_then(|mut f| f.write_all(line.as_bytes()))
+    crate::log_file::open_append(path, false).and_then(|mut f| f.write_all(line.as_bytes()))
 }
 
 #[cfg(test)]
 mod tests {
     use std::future::{Future, poll_fn};
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::path::Path;
     use std::task::Poll;
     use std::time::Duration;
 
@@ -393,6 +389,10 @@ mod tests {
     use crate::network_log_drain::{NetworkLogDrainCoordinator, NetworkLogDrainProducer};
 
     use super::*;
+
+    fn mode(path: &Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
 
     fn read_json_lines(path: &Path) -> Vec<serde_json::Value> {
         std::fs::read_to_string(path)
@@ -449,6 +449,30 @@ mod tests {
         assert_eq!(lines[0]["type"], "dns");
         assert_eq!(lines[0]["host"], "example.com");
         assert_eq!(lines[0]["port"], 53);
+        assert_eq!(mode(&path), 0o600);
+    }
+
+    #[tokio::test]
+    async fn append_for_ip_flushes_after_rejecting_unsafe_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.jsonl");
+        let path = dir.path().join("network.jsonl");
+        symlink(&target, &path).unwrap();
+        let manager = NetworkLogManager::new();
+
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        assert!(
+            manager
+                .append_for_ip(
+                    "10.200.0.2",
+                    json!({"type":"dns","host":"example.com","port":53}),
+                )
+                .await
+        );
+
+        manager.flush_path(&path).await;
+
+        assert!(!target.exists());
     }
 
     #[tokio::test]

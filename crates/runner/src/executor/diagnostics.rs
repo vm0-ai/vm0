@@ -397,11 +397,7 @@ pub(super) async fn drain_stdout_to_file(
     mut rx: ProcessOutputReceiver,
     path: PathBuf,
 ) -> Result<StdoutDrainReport, StdoutDrainError> {
-    let file = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .await;
+    let file = crate::log_file::open_append(&path, false).map(tokio::fs::File::from_std);
     let mut file = match file {
         Ok(f) => f,
         Err(e) => {
@@ -454,12 +450,7 @@ pub(super) async fn append_stdout_stream_diagnostics(
         return Ok(());
     }
 
-    let mut file = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .read(true)
-        .open(path)
-        .await?;
+    let mut file = tokio::fs::File::from_std(crate::log_file::open_append(path, true)?);
 
     if file.metadata().await?.len() > 0 {
         file.seek(SeekFrom::End(-1)).await?;
@@ -523,6 +514,17 @@ pub(super) async fn copy_guest_logs(
     };
 
     for (guest_path, host_path) in &files {
+        if let Err(e) = crate::log_file::validate_copy_destination(host_path) {
+            warn!(
+                run_id = %run_id,
+                error = %e,
+                guest_path = %guest_path,
+                host_path = %host_path.display(),
+                "skipping unsafe guest log destination"
+            );
+            continue;
+        }
+
         if let Err(e) = sandbox
             .copy_file(
                 guest_path,
