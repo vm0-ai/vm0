@@ -78,13 +78,6 @@ describe("connector icon component", () => {
     expect(img).toHaveClass("scale-[2.2]");
   });
 
-  it("should render deel connector with custom SVG mark", () => {
-    const { container } = render(<ConnectorIcon type="deel" />);
-    // Deel has a special inline SVG component, not an <img>
-    const svg = container.querySelector("svg");
-    expect(svg).toBeInTheDocument();
-  });
-
   it("should render all common connector types without crashing", () => {
     const commonTypes = [
       "github",

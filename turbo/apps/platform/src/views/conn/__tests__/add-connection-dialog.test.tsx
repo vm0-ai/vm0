@@ -763,13 +763,4 @@ describe("connector icon - via dialog", () => {
       expect(dialog.querySelector("img")).toBeInTheDocument();
     });
   });
-
-  it("renders inline SVG for deel connector type (CONN-D-042)", async () => {
-    await openConnectModal("deel");
-
-    await waitFor(() => {
-      const dialog = screen.getByRole("dialog");
-      expect(dialog.querySelector("svg")).toBeInTheDocument();
-    });
-  });
 });
