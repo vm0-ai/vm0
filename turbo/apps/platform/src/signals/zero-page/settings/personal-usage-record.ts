@@ -6,6 +6,20 @@ import {
 import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
 
+export type CreditBalanceTab = "mine" | "team";
+
+const creditBalanceTabState$ = state<CreditBalanceTab>("mine");
+
+export const creditBalanceTab$ = computed((get) => {
+  return get(creditBalanceTabState$);
+});
+
+export const setCreditBalanceTab$ = command(
+  ({ set }, tab: CreditBalanceTab) => {
+    set(creditBalanceTabState$, tab);
+  },
+);
+
 const PAGE_STEP = 20;
 
 // How many rows to request. "Load more" grows this and the async computed

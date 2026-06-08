@@ -92,12 +92,13 @@ function recordWith(userIdLit: string, orgIdLit: string): string {
         (CASE WHEN r.trigger_source = 'web' THEN 'chat' ELSE r.trigger_source END) AS source,
         NULL::text AS thread_id,
         r.run_id::text AS run_id,
-        LEFT(COALESCE(NULLIF(r.summary, ''), r.prompt), 120) AS title,
-        r.credits::bigint AS credits,
-        r.tokens::bigint AS tokens,
-        r.created_at AS last_activity
+        LEFT(COALESCE(NULLIF(MAX(r.summary), ''), MAX(r.prompt)), 120) AS title,
+        COALESCE(SUM(r.credits), 0)::bigint AS credits,
+        COALESCE(SUM(r.tokens), 0)::bigint AS tokens,
+        MAX(r.created_at) AS last_activity
       FROM runs r
       WHERE r.chat_thread_id IS NULL
+      GROUP BY r.run_id, r.trigger_source
     ),
     record AS (
       SELECT * FROM threaded
