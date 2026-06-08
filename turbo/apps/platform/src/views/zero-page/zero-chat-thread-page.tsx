@@ -2981,7 +2981,7 @@ function ThinkingLabel({
 
   if (isQueued) {
     return (
-      <p className="zero-shimmer-text text-[0.9375rem] truncate">
+      <p className="zero-shimmer-text text-[0.8125rem] truncate">
         Waiting in{" "}
         <button
           type="button"
@@ -2997,7 +2997,7 @@ function ThinkingLabel({
   }
 
   return (
-    <p className="zero-shimmer-text text-[0.9375rem] truncate">
+    <p className="zero-shimmer-text text-[0.8125rem] truncate">
       {rotatingLabel}
     </p>
   );
