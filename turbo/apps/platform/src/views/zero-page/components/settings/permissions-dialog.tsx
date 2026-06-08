@@ -359,11 +359,15 @@ function hasGrantExpirationChanges({
   }
   for (const permission of Object.keys(selections)) {
     const grant = explicitGrants.get(permission);
+    const selected = selections[permission];
     const currentAction =
       permission === UNKNOWN_PERMISSION_GRANT
         ? unknownPolicy
-        : (policies[permission] ?? grant?.action);
-    if (grant?.action === "allow" && currentAction === "allow") {
+        : (policies[permission] ?? grant?.action ?? "allow");
+    if (
+      currentAction === "allow" &&
+      (grant?.action === "allow" || (!grant && selected !== "forever"))
+    ) {
       return true;
     }
   }
@@ -413,21 +417,14 @@ function UnknownEndpointsToggle({
   );
 }
 
-function GrantExpirationStatus({
-  grant,
-}: {
-  grant: UserPermissionGrantResponse | undefined;
-}) {
-  if (!grant) {
-    return null;
-  }
-  const expiryText = permissionGrantExpiryText(grant.expiresAt) ?? "Always";
+function GrantExpirationStatus({ expiresAt }: { expiresAt: string | null }) {
+  const expiryText = permissionGrantExpiryText(expiresAt) ?? "Always";
 
   return (
     <span
       className={cn(
         "inline-flex h-6 max-w-[150px] items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium",
-        grant.expiresAt
+        expiresAt
           ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400"
           : "border-border bg-muted/40 text-muted-foreground",
       )}
@@ -443,7 +440,6 @@ function PermissionExpirationControl({
   action,
   grant,
   selected,
-  policyChanged,
   expirationEnabled,
   readOnly,
   saving,
@@ -453,7 +449,6 @@ function PermissionExpirationControl({
   action: FirewallPolicyValue;
   grant: UserPermissionGrantResponse | undefined;
   selected: UserPermissionGrantExpiresIn | undefined;
-  policyChanged: boolean;
   expirationEnabled: boolean;
   readOnly?: boolean;
   saving: boolean;
@@ -463,11 +458,7 @@ function PermissionExpirationControl({
   ) => void;
 }) {
   const allowGrant = grant?.action === "allow" ? grant : undefined;
-  if (
-    !expirationEnabled ||
-    action !== "allow" ||
-    (!allowGrant && !policyChanged)
-  ) {
+  if (!expirationEnabled || action !== "allow") {
     return null;
   }
 
@@ -477,7 +468,7 @@ function PermissionExpirationControl({
 
   return (
     <div className="flex shrink-0 flex-col items-end gap-1.5">
-      <GrantExpirationStatus grant={allowGrant} />
+      <GrantExpirationStatus expiresAt={allowGrant?.expiresAt ?? null} />
       {showSetting && (
         <PermissionGrantDurationSelect
           value={settingValue}
@@ -501,7 +492,6 @@ function PermissionRows({
   groups,
   permissions,
   policies,
-  initialPolicies,
   expandedGroups,
   explicitGrants,
   expirationSelections,
@@ -516,7 +506,6 @@ function PermissionRows({
   groups: { category: string; permissions: ConnectorPermission[] }[] | null;
   permissions: ConnectorPermission[];
   policies: Record<string, PermissionPolicy>;
-  initialPolicies: Record<string, PermissionPolicy>;
   expandedGroups: Set<string>;
   explicitGrants: Map<string, UserPermissionGrantResponse>;
   expirationSelections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
@@ -575,7 +564,6 @@ function PermissionRows({
                   showSeparator={idx > 0}
                   indent
                   policies={policies}
-                  initialPolicies={initialPolicies}
                   explicitGrants={explicitGrants}
                   expirationSelections={expirationSelections}
                   expirationEnabled={expirationEnabled}
@@ -598,7 +586,6 @@ function PermissionRows({
         permission={perm}
         showSeparator={idx > 0}
         policies={policies}
-        initialPolicies={initialPolicies}
         explicitGrants={explicitGrants}
         expirationSelections={expirationSelections}
         expirationEnabled={expirationEnabled}
@@ -616,7 +603,6 @@ function PermissionRow({
   showSeparator,
   indent,
   policies,
-  initialPolicies,
   explicitGrants,
   expirationSelections,
   expirationEnabled,
@@ -629,7 +615,6 @@ function PermissionRow({
   showSeparator: boolean;
   indent?: boolean;
   policies: Record<string, PermissionPolicy>;
-  initialPolicies: Record<string, PermissionPolicy>;
   explicitGrants: Map<string, UserPermissionGrantResponse>;
   expirationSelections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
   expirationEnabled: boolean;
@@ -642,7 +627,6 @@ function PermissionRow({
   ) => void;
 }) {
   const policy = policies[permission.name] ?? "allow";
-  const initialPolicy = initialPolicies[permission.name] ?? "allow";
   return (
     <div>
       {showSeparator && <div className="mx-3 border-t border-border/40" />}
@@ -664,7 +648,6 @@ function PermissionRow({
           action={policy}
           grant={explicitGrants.get(permission.name)}
           selected={expirationSelections[permission.name]}
-          policyChanged={policy !== initialPolicy}
           expirationEnabled={expirationEnabled}
           readOnly={readOnly}
           saving={saving}
@@ -862,7 +845,6 @@ export function PermissionsDrawer({
                 groups={groups}
                 permissions={permissions}
                 policies={policies}
-                initialPolicies={initialPolicyState[ref] ?? {}}
                 expandedGroups={expandedGroups}
                 explicitGrants={explicitGrants}
                 expirationSelections={expirationSelections}
@@ -885,7 +867,6 @@ export function PermissionsDrawer({
                   action={unknownPolicy}
                   grant={explicitGrants.get(UNKNOWN_PERMISSION_GRANT)}
                   selected={expirationSelections[UNKNOWN_PERMISSION_GRANT]}
-                  policyChanged={unknownPolicy !== initialUnknownPolicy}
                   expirationEnabled={expirationEnabled}
                   readOnly={readOnly}
                   saving={saving}

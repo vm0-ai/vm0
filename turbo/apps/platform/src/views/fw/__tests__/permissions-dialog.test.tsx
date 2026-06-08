@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
@@ -276,6 +276,47 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     });
   });
 
+  it("treats default allow permissions as always and saves selected expiration", async () => {
+    const grantBodies: unknown[] = [];
+    mockAPIs({ connectorType: "notion" });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    expect(within(row).getAllByText("Always").length).toBeGreaterThan(0);
+    const durationSelect = within(row).getByRole("combobox", {
+      name: "insert_comments grant duration",
+    });
+    expect(durationSelect).toHaveTextContent("Always");
+    expect(screen.getByText("Apply")).toBeDisabled();
+
+    click(durationSelect);
+    click(await screen.findByRole("option", { name: "24 hours" }));
+    expect(screen.getByText("Apply")).toBeEnabled();
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+      permission: "insert_comments",
+      action: "allow",
+      expiresIn: "24h",
+    });
+  });
+
   it("does not keep deny expiration when an existing grant action changes", async () => {
     const grantBodies: unknown[] = [];
     mockAPIs({
@@ -392,11 +433,11 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     const row = getPermissionRow("insert_comments");
     click(getPolicyButton(row, "Deny"));
     expect(
-      screen.queryByRole("combobox", {
+      within(row).queryByRole("combobox", {
         name: "insert_comments grant duration",
       }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("Always")).not.toBeInTheDocument();
+    expect(within(row).queryByText("Always")).not.toBeInTheDocument();
     click(screen.getByText("Apply"));
 
     await waitFor(() => {

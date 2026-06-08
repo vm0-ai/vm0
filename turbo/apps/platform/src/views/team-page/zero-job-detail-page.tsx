@@ -572,6 +572,55 @@ function addExpirationOnlyChanges({
   }
 }
 
+function addDefaultAllowExpirationChanges({
+  changes,
+  connectorType,
+  initialGrants,
+  current,
+  expiresInByPermission,
+}: {
+  changes: Map<string, ChangedUserGrantPolicy>;
+  connectorType: ConnectorType;
+  initialGrants: readonly UserPermissionGrantResponse[];
+  current: FirewallPolicies[ConnectorType] | undefined;
+  expiresInByPermission: GrantExpirationSelections;
+}): void {
+  const initialGrantPermissions = new Set(
+    initialGrants
+      .filter((grant) => {
+        return grant.connectorRef === connectorType;
+      })
+      .map((grant) => {
+        return grant.permission;
+      }),
+  );
+  for (const [permission, expiresIn] of Object.entries(expiresInByPermission)) {
+    if (
+      expiresIn === "forever" ||
+      changes.has(permission) ||
+      initialGrantPermissions.has(permission)
+    ) {
+      continue;
+    }
+    const currentPolicy =
+      permission === UNKNOWN_PERMISSION_GRANT
+        ? current?.unknownPolicy
+        : current?.policies[permission];
+    if (currentPolicy === "ask") {
+      continue;
+    }
+    const action = userGrantAction(currentPolicy ?? "allow");
+    if (action !== "allow") {
+      continue;
+    }
+    changes.set(permission, {
+      permission,
+      action,
+      expiresIn,
+    });
+  }
+}
+
 function changedUserGrantPolicies({
   connectorType,
   initialPolicies,
@@ -610,6 +659,13 @@ function changedUserGrantPolicies({
 
   if (expirationEnabled) {
     addExpirationOnlyChanges({
+      changes,
+      connectorType,
+      initialGrants,
+      current,
+      expiresInByPermission,
+    });
+    addDefaultAllowExpirationChanges({
       changes,
       connectorType,
       initialGrants,
