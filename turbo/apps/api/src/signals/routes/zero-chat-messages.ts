@@ -75,7 +75,7 @@ import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
 
-interface NormalSendBody {
+export interface NormalSendBody {
   readonly agentId: string;
   readonly prompt: string;
   readonly threadId?: string;
@@ -163,7 +163,7 @@ type IncomingModelSelection = NormalSendBody["modelSelection"];
 type IncomingGenerationTemplate = NormalSendBody["generationTemplate"];
 type OrganizationAuthContext = AuthContext & { readonly orgId: string };
 
-interface NormalSendArgs {
+export interface NormalSendArgs {
   readonly body: NormalSendBody;
   readonly auth: OrganizationAuthContext;
   readonly userId: string;
@@ -2366,7 +2366,7 @@ const createNormalChatRun$ = command(
   },
 );
 
-const sendNormalMessage$ = command(
+export const sendNormalMessage$ = command(
   async ({ set }, args: NormalSendArgs, signal: AbortSignal) => {
     const prepared = await set(prepareNormalSend$, args, signal);
     signal.throwIfAborted();
