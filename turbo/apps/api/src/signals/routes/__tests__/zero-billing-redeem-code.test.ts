@@ -135,6 +135,62 @@ describe("POST /api/zero/billing/redeem-code", () => {
     expect(context.mocks.clerk.m2m.createToken).not.toHaveBeenCalled();
   });
 
+  it("returns 503 when Atom Clerk M2M auth fails", async () => {
+    let calledAtom = false;
+    server.use(
+      http.post(`${ATOM_URL}/api/redeem-codes/consume`, () => {
+        calledAtom = true;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    context.mocks.clerk.m2m.createToken.mockRejectedValueOnce(
+      new Error("M2M unavailable"),
+    );
+    setAdminSession();
+
+    const client = setupApp({ context })(zeroBillingRedeemCodeContract);
+    const response = await accept(
+      client.create({
+        body: { code: "YUMA-123" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Redeem service authentication unavailable",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+    expect(calledAtom).toBeFalsy();
+  });
+
+  it("returns 503 when Atom cannot be reached", async () => {
+    server.use(
+      http.post(`${ATOM_URL}/api/redeem-codes/consume`, () => {
+        return HttpResponse.error();
+      }),
+    );
+    setAdminSession();
+
+    const client = setupApp({ context })(zeroBillingRedeemCodeContract);
+    const response = await accept(
+      client.create({
+        body: { code: "YUMA-123" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Redeem service unavailable",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+  });
+
   it("returns 400 when Atom rejects the redeem code", async () => {
     server.use(
       http.post(`${ATOM_URL}/api/redeem-codes/consume`, () => {
@@ -212,6 +268,34 @@ describe("POST /api/zero/billing/redeem-code", () => {
       });
     },
   );
+
+  it("falls back to the status message when Atom returns malformed JSON", async () => {
+    server.use(
+      http.post(`${ATOM_URL}/api/redeem-codes/consume`, () => {
+        return new Response("{", {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    setAdminSession();
+
+    const client = setupApp({ context })(zeroBillingRedeemCodeContract);
+    const response = await accept(
+      client.create({
+        body: { code: "YUMA-123" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Invalid redeem code",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
 
   it("redeems a code through Atom", async () => {
     const fixture = setAdminSession();
