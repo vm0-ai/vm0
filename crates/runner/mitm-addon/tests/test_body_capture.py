@@ -176,6 +176,7 @@ class TestSanitizeHeadersForCapture:
         ("value", "expected"),
         [
             ("application/json; charset=utf-8", "application/json"),
+            (" application/json ", "application/json"),
             (" application/json ; charset=utf-8", "application/json"),
             ('application/json; profile="https://app.example/secret-token"', "application/json"),
             ("multipart/form-data; boundary=secret-token", "multipart/form-data"),
@@ -193,6 +194,7 @@ class TestSanitizeHeadersForCapture:
             ("Content-Type", "secret-token/secret-token"),
             ("Content-Type", "application/x-secret-token"),
             ("Content-Type", "application/" + ("x" * 300)),
+            ("Content-Type", "application/x-secret-token; boundary=" + ("x" * 10_000)),
             ("Content-Type", "application/json\r\n"),
             ("Content-Type", "application/json; boundary=\r\nsecret-token"),
             ("Content-Length", "secret-token"),
