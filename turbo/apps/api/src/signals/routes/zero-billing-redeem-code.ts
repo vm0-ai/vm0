@@ -1,7 +1,5 @@
 import { command } from "ccstate";
 import { zeroBillingRedeemCodeContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
@@ -10,23 +8,12 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { clerk$ } from "../external/clerk";
 import type { RouteEntry } from "../route";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 
 const adminRequired = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
     error: Object.freeze({
       message: "Only org admins can manage billing",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-const featureRequired = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Onboarding redeem codes are not enabled",
       code: "FORBIDDEN",
     }),
   }),
@@ -156,20 +143,6 @@ const redeemCodeAuthed$ = command(async ({ get }, signal: AbortSignal) => {
     return adminRequired;
   }
   signal.throwIfAborted();
-
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isFeatureEnabled(FeatureSwitchKey.OnboardingRedeemCode, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return featureRequired;
-  }
 
   const bodyResult = await get(
     bodyResultOf(zeroBillingRedeemCodeContract.create),

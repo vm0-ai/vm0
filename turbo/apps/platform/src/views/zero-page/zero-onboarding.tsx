@@ -7,7 +7,6 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
@@ -59,7 +58,6 @@ import {
   onboardingNextLabel$,
   onboardingStepNext$,
   onboardingIsAdmin$,
-  redeemOnboardingCode$,
 } from "../../signals/zero-page/zero-onboarding-actions.ts";
 import {
   allConnectorTypes$,
@@ -76,7 +74,6 @@ import {
 } from "../../signals/zero-page/settings/connectors.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   IconCheck,
   IconCircleCheck,
@@ -432,64 +429,6 @@ const PRO_TRIAL_BENEFITS: readonly string[] = [
   "Unlimited workspace members",
 ];
 
-function RedeemCodeForm() {
-  const featureSwitches = useLastResolved(featureSwitch$);
-  const pageSignal = useGet(pageSignal$);
-  const [redeemLoadable, redeem] = useLoadableSet(redeemOnboardingCode$);
-  const redeeming = redeemLoadable.state === "loading";
-
-  if (!featureSwitches?.[FeatureSwitchKey.OnboardingRedeemCode]) {
-    return null;
-  }
-
-  return (
-    <form
-      data-testid="onboarding-redeem-code-form"
-      className="zero-border rounded-xl bg-background px-4 py-4 mb-6"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const codeValue = new FormData(event.currentTarget).get("code");
-        const submittedCode =
-          typeof codeValue === "string" ? codeValue.trim() : "";
-        detach(redeem(submittedCode, pageSignal), Reason.DomCallback);
-      }}
-    >
-      <label
-        htmlFor="onboarding-redeem-code-input"
-        className="block text-sm font-semibold text-foreground mb-2"
-      >
-        Redeem code
-      </label>
-      <div className="flex flex-col sm:flex-row gap-2">
-        <Input
-          id="onboarding-redeem-code-input"
-          name="code"
-          data-testid="onboarding-redeem-code-input"
-          placeholder="Code"
-          autoComplete="off"
-          required
-          disabled={redeeming}
-          className="h-10"
-        />
-        <Button
-          type="submit"
-          variant="outline"
-          className="h-10 rounded-lg sm:w-[104px]"
-          disabled={redeeming}
-          aria-busy={redeeming}
-          data-testid="onboarding-redeem-code-button"
-        >
-          {redeeming ? (
-            <IconLoader size={16} className="animate-spin" />
-          ) : (
-            "Redeem"
-          )}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
 /** Step 4: what Pro unlocks + the 7-day trial framing. */
 function TrialStepContent() {
   const selectedConnectors =
@@ -545,8 +484,6 @@ function TrialStepContent() {
           Zero.
         </p>
       </div>
-
-      <RedeemCodeForm />
 
       <p className="text-sm font-semibold text-foreground mb-3">
         Plus, everything your agent can do

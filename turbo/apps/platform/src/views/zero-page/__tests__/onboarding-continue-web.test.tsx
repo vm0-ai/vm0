@@ -17,7 +17,6 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingRedeemCodeContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockRedeemCodeHandler } from "../../../mocks/handlers/api-billing.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
@@ -60,9 +59,8 @@ function mockAdminOnboarding() {
   );
 }
 
-// Step 1 (name workspace) → step 2 (choose tools, pick a connector) → step 4
-// (Pro trial). "Get Started" on step 4 starts Stripe checkout.
-async function walkAdminToContinue() {
+// Step 1 (name workspace) → step 2 (choose tools, pick a connector).
+async function walkAdminToTools() {
   await waitFor(() => {
     expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
   });
@@ -83,6 +81,12 @@ async function walkAdminToContinue() {
   await waitFor(() => {
     expect(screen.getByText("Next")).toBeInTheDocument();
   });
+}
+
+// Step 1 (name workspace) → step 2 (choose tools, pick a connector) → step 4
+// (Pro trial). "Get Started" on step 4 starts Stripe checkout.
+async function walkAdminToContinue() {
+  await walkAdminToTools();
   click(screen.getByText("Next"));
 
   await waitFor(() => {
@@ -228,7 +232,6 @@ describe("prompt param forwarding", () => {
     detachedSetupPage({
       context,
       path: "/onboarding",
-      featureSwitches: { [FeatureSwitchKey.OnboardingRedeemCode]: false },
     });
     await walkAdminToContinue();
 
@@ -271,13 +274,10 @@ describe("prompt param forwarding", () => {
 
     detachedSetupPage({
       context,
-      path: "/onboarding",
-      featureSwitches: { [FeatureSwitchKey.OnboardingRedeemCode]: true },
+      path: "/onboarding?redeemCode=YUMA-123",
     });
-    await walkAdminToContinue();
-
-    await fill(screen.getByTestId("onboarding-redeem-code-input"), "YUMA-123");
-    click(screen.getByTestId("onboarding-redeem-code-button"));
+    await walkAdminToTools();
+    click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(redeemedCode).toBe("YUMA-123");
@@ -316,32 +316,29 @@ describe("prompt param forwarding", () => {
 
     detachedSetupPage({
       context,
-      path: "/onboarding",
-      featureSwitches: { [FeatureSwitchKey.OnboardingRedeemCode]: true },
+      path: "/onboarding?redeemCode=YUMA-123",
     });
     await walkAdminToContinue();
-
-    await fill(screen.getByTestId("onboarding-redeem-code-input"), "YUMA-123");
-    click(screen.getByTestId("onboarding-redeem-code-button"));
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
         "Redeem service unavailable",
       );
     });
+    expect(screen.getByTestId("onboarding-step-trial")).toBeInTheDocument();
+    expect(screen.getByText(/Get Started/)).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(
       screen.queryByText("Waiting for subscription confirmation..."),
     ).toBeNull();
   });
 
-  it("hides the redeem code form when the feature switch is disabled", async () => {
+  it("does not render a redeem code form on the trial step", async () => {
     mockAdminOnboarding();
 
     detachedSetupPage({
       context,
       path: "/onboarding",
-      featureSwitches: { [FeatureSwitchKey.OnboardingRedeemCode]: false },
     });
     await walkAdminToContinue();
 

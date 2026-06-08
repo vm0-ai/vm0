@@ -23,7 +23,7 @@ import {
 } from "../route.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { setLoop } from "../utils.ts";
+import { setLoop, settle } from "../utils.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -215,6 +215,10 @@ export const onboardingStepNext$ = command(
         break;
       }
       case "2": {
+        if (await set(redeemOnboardingSearchParamCode$, signal)) {
+          break;
+        }
+        signal.throwIfAborted();
         set(setZeroStep$, "4");
         break;
       }
@@ -432,26 +436,59 @@ const redeemedOnboardingReady$ = command(
   },
 );
 
-export const redeemOnboardingCode$ = command(
-  async ({ get, set }, code: string, signal: AbortSignal): Promise<void> => {
+const ONBOARDING_REDEEM_CODE_SEARCH_PARAMS = [
+  "redeemCode",
+  "redeem_code",
+  "code",
+] as const;
+
+function onboardingRedeemCodeFromSearchParams(
+  searchParams: URLSearchParams,
+): string | null {
+  for (const param of ONBOARDING_REDEEM_CODE_SEARCH_PARAMS) {
+    const value = searchParams.get(param)?.trim();
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function withoutOnboardingRedeemCodeSearchParams(
+  searchParams: URLSearchParams,
+): URLSearchParams {
+  const cleaned = new URLSearchParams(searchParams);
+  for (const param of ONBOARDING_REDEEM_CODE_SEARCH_PARAMS) {
+    cleaned.delete(param);
+  }
+  return cleaned;
+}
+
+const redeemOnboardingCode$ = command(
+  async ({ get, set }, code: string, signal: AbortSignal): Promise<boolean> => {
     const trimmedCode = code.trim();
     if (!trimmedCode) {
-      toast.error("Enter a redeem code.");
-      throw new Error("Enter a redeem code.");
+      return false;
     }
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingRedeemCodeContract, {
       apiBase: "www",
     });
-    await accept(
-      client.create({
-        body: { code: trimmedCode },
-        fetchOptions: { signal },
-      }),
-      [200],
+    const accepted = await settle(
+      accept(
+        client.create({
+          body: { code: trimmedCode },
+          fetchOptions: { signal },
+        }),
+        [200],
+      ),
+      signal,
     );
     signal.throwIfAborted();
+    if (!accepted.ok) {
+      return false;
+    }
 
     if (!(await set(redeemedOnboardingReady$, signal))) {
       await set(
@@ -465,6 +502,23 @@ export const redeemOnboardingCode$ = command(
     signal.throwIfAborted();
     toast.success("Redeem code applied");
     await set(onboardingContinueWeb$, signal);
+    return true;
+  },
+);
+
+const redeemOnboardingSearchParamCode$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    const searchParams = get(searchParams$);
+    const code = onboardingRedeemCodeFromSearchParams(searchParams);
+    if (!code) {
+      return false;
+    }
+
+    set(
+      updateSearchParams$,
+      withoutOnboardingRedeemCodeSearchParams(searchParams),
+    );
+    return await set(redeemOnboardingCode$, code, signal);
   },
 );
 

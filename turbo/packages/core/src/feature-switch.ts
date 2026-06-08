@@ -243,12 +243,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.OnboardingRedeemCode]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show the onboarding redeem-code form and enable the redeem-code onboarding API route.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "ethan@vm0.ai",
     description:

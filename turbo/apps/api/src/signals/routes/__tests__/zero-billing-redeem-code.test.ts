@@ -1,23 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroBillingRedeemCodeContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { writeDb$ } from "../../external/db";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const ATOM_URL = "https://atom.example.test";
@@ -29,20 +20,6 @@ interface SessionFixture {
   readonly orgId: string;
 }
 
-const trackFeatureSwitchOverride = createFixtureTracker<SessionFixture>(
-  async (fixture) => {
-    const writeDb = store.set(writeDb$);
-    await writeDb
-      .delete(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, fixture.orgId),
-          eq(userFeatureSwitches.userId, fixture.userId),
-        ),
-      );
-  },
-);
-
 function setAdminSession(): SessionFixture {
   const fixture = {
     userId: `user_${randomUUID()}`,
@@ -50,19 +27,6 @@ function setAdminSession(): SessionFixture {
   };
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
   return fixture;
-}
-
-async function setRedeemCodeSwitch(
-  fixture: SessionFixture,
-  enabled: boolean,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.OnboardingRedeemCode]: enabled },
-  });
-  await trackFeatureSwitchOverride(Promise.resolve(fixture));
 }
 
 describe("POST /api/zero/billing/redeem-code", () => {
@@ -129,7 +93,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
   it("returns 503 when ATOM_URL is not configured", async () => {
     mockOptionalEnv("ATOM_URL", undefined);
     mockEnv("ENV", "production");
-    await setRedeemCodeSwitch(setAdminSession(), true);
+    setAdminSession();
 
     const client = setupApp({ context })(zeroBillingRedeemCodeContract);
     const response = await accept(
@@ -151,7 +115,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
 
   it("returns 503 when Atom Clerk M2M auth is not configured", async () => {
     mockOptionalEnv("VM0_MACHINE_SECRET_KEY", undefined);
-    await setRedeemCodeSwitch(setAdminSession(), true);
+    setAdminSession();
 
     const client = setupApp({ context })(zeroBillingRedeemCodeContract);
     const response = await accept(
@@ -171,42 +135,13 @@ describe("POST /api/zero/billing/redeem-code", () => {
     expect(context.mocks.clerk.m2m.createToken).not.toHaveBeenCalled();
   });
 
-  it("returns 403 when the feature switch is disabled", async () => {
-    let calledAtom = false;
-    server.use(
-      http.post(`${ATOM_URL}/api/redeem-codes/consume`, () => {
-        calledAtom = true;
-        return HttpResponse.json({ ok: true });
-      }),
-    );
-    await setRedeemCodeSwitch(setAdminSession(), false);
-
-    const client = setupApp({ context })(zeroBillingRedeemCodeContract);
-    const response = await accept(
-      client.create({
-        body: { code: "YUMA-123" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Onboarding redeem codes are not enabled",
-        code: "FORBIDDEN",
-      },
-    });
-    expect(calledAtom).toBeFalsy();
-    expect(context.mocks.clerk.m2m.createToken).not.toHaveBeenCalled();
-  });
-
   it("returns 400 when Atom rejects the redeem code", async () => {
     server.use(
       http.post(`${ATOM_URL}/api/redeem-codes/consume`, () => {
         return HttpResponse.json({ error: "invalid code" }, { status: 404 });
       }),
     );
-    await setRedeemCodeSwitch(setAdminSession(), true);
+    setAdminSession();
 
     const client = setupApp({ context })(zeroBillingRedeemCodeContract);
     const response = await accept(
@@ -258,7 +193,7 @@ describe("POST /api/zero/billing/redeem-code", () => {
           return HttpResponse.json(body, { status });
         }),
       );
-      await setRedeemCodeSwitch(setAdminSession(), true);
+      setAdminSession();
 
       const client = setupApp({ context })(zeroBillingRedeemCodeContract);
       const response = await accept(
@@ -289,7 +224,6 @@ describe("POST /api/zero/billing/redeem-code", () => {
         return HttpResponse.json({ ok: true });
       }),
     );
-    await setRedeemCodeSwitch(fixture, true);
 
     const client = setupApp({ context })(zeroBillingRedeemCodeContract);
     const response = await accept(
