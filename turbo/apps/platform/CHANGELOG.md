@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.425.0](https://github.com/vm0-ai/vm0/compare/app-v0.424.0...app-v0.425.0) (2026-06-08)
+
+
+### Features
+
+* consolidate usage into Credit balance with per-source records ([#16192](https://github.com/vm0-ai/vm0/issues/16192)) ([b6c0795](https://github.com/vm0-ai/vm0/commit/b6c07954d332b99ca7b207fe8a9e608c64d98c7a))
+
+
+### Bug Fixes
+
+* move chat session switching to server ([#16702](https://github.com/vm0-ai/vm0/issues/16702)) ([0eac1be](https://github.com/vm0-ai/vm0/commit/0eac1be1b6e9368c417f5ba384e8c79d2de8123a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.0
+    * @vm0/core bumped to 8.317.1
+
 ## [0.424.0](https://github.com/vm0-ai/vm0/compare/app-v0.423.0...app-v0.424.0) (2026-06-08)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.23](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.22...vsock-host-v0.17.23) (2026-06-08)
+
+
+### Bug Fixes
+
+* harden runner lock and log files ([#16707](https://github.com/vm0-ai/vm0/issues/16707)) ([2c18cef](https://github.com/vm0-ai/vm0/commit/2c18cefaedb8333369a52c17c0f26314aeebb7a0))
+
 ## [0.17.22](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.21...vsock-host-v0.17.22) (2026-06-07)
 
 

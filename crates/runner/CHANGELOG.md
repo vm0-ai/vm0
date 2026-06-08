@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.108.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.19...runner-rs-v0.108.20) (2026-06-08)
+
+
+### Bug Fixes
+
+* harden runner lock and log files ([#16707](https://github.com/vm0-ai/vm0/issues/16707)) ([2c18cef](https://github.com/vm0-ai/vm0/commit/2c18cefaedb8333369a52c17c0f26314aeebb7a0))
+
 ## [0.108.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.18...runner-rs-v0.108.19) (2026-06-08)
 
 

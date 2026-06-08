@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.415.0](https://github.com/vm0-ai/vm0/compare/web-v12.414.0...web-v12.415.0) (2026-06-08)
+
+
+### Features
+
+* consolidate usage into Credit balance with per-source records ([#16192](https://github.com/vm0-ai/vm0/issues/16192)) ([b6c0795](https://github.com/vm0-ai/vm0/commit/b6c07954d332b99ca7b207fe8a9e608c64d98c7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.0
+    * @vm0/core bumped to 8.317.1
+
 ## [12.414.0](https://github.com/vm0-ai/vm0/compare/web-v12.413.0...web-v12.414.0) (2026-06-08)
 
 
