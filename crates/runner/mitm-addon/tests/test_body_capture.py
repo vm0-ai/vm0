@@ -189,6 +189,21 @@ class TestSanitizeHeadersForCapture:
         assert result["Content-Type"] == expected
 
     @pytest.mark.parametrize(
+        ("name", "value", "expected"),
+        [
+            ("Accept-Encoding", "\tgzip, br ", "gzip, br"),
+            ("Content-Encoding", " gzip\t", "gzip"),
+            ("Content-Length", "\t123 ", "123"),
+            ("Date", "\tMon, 08 Jun 2026 03:29:48 GMT ", "Mon, 08 Jun 2026 03:29:48 GMT"),
+        ],
+    )
+    def test_allowlisted_header_values_accept_http_optional_whitespace(
+        self, headers, name, value, expected
+    ):
+        result = _sanitize_headers_for_capture(headers((name, value)))
+        assert result[name] == expected
+
+    @pytest.mark.parametrize(
         ("name", "value"),
         [
             ("Content-Type", "https://app.example/private/secret-token"),
@@ -209,9 +224,13 @@ class TestSanitizeHeadersForCapture:
             ("Accept-Encoding", "gzip;q=1."),
             ("Accept-Encoding", "gzip\v, br"),
             ("Accept-Encoding", "gzip\u2028, br"),
+            ("Accept-Encoding", "\u2028gzip"),
+            ("Accept-Encoding", "gzip\u2028"),
             ("Content-Length", "\v123"),
             ("Content-Length", "123\x00"),
+            ("Content-Length", "\u2028123"),
             ("Date", "secret-token"),
+            ("Date", "\u2028Mon, 08 Jun 2026 03:29:48 GMT"),
             ("Date", "Mon, 08 Jun 2026 03:29:48 GMT secret-token"),
             ("Date", "Mon, 08 Jun 2026 03:29:48 GMT\r\n"),
             ("Date", "Mon, 08 Jun 2026 03:29:48 GMT\r\nSet-Cookie: session=secret"),

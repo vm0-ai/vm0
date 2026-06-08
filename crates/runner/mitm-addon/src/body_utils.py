@@ -672,7 +672,7 @@ def _sanitize_allowed_capture_header_value(name: str, value: str) -> str | None:
         return None
     if _UNSAFE_CAPTURE_HEADER_VALUE_CHARS.search(value) is not None:
         return None
-    normalized_value = value.strip()
+    normalized_value = value.strip(_HTTP_OPTIONAL_WHITESPACE)
     if normalized_name == "date":
         return normalized_value if _is_http_date_header_value(normalized_value) else None
 
