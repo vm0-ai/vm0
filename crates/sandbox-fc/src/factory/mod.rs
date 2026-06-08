@@ -16,6 +16,7 @@ use tracing::{info, warn};
 
 use crate::command;
 use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
+use crate::cow_cleanup::CowCleanupOutcome;
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
 use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
 use crate::factory::create_transaction::{
@@ -28,7 +29,6 @@ use crate::paths::{FactoryPaths, RuntimePaths, SockPaths};
 use crate::prerequisites;
 use crate::sandbox::{FirecrackerSandbox, FirecrackerSandboxInit};
 
-pub(crate) use cow_cleanup::cow_destroy_retry_policy;
 pub(crate) use invariant::InvariantConfig;
 pub use invariant::{PREWARM_SCRIPT, config_hash};
 
@@ -588,23 +588,24 @@ async fn destroy_firecracker_sandbox(mut sandbox: FirecrackerSandbox, netns_pool
         cow_device.log_status().await;
     }
 
-    // Destroy the NBD COW device (flushes data, disconnects, removes COW file).
+    // Destroy the NBD COW device and classify whether backing files can be
+    // deleted. Storage cleanup may fail after the device is already released.
     //
     // After kill_process_group + child.wait(), the kernel may still be
     // releasing file descriptors (particularly the NBD device fd).
     // Retry a few times to let it finish.
-    let cow_destroyed = match sandbox.cow_device.take() {
+    let cow_cleanup_outcome = match sandbox.cow_device.take() {
         Some(cow_device) => {
             // If shutdown aborts this task while the COW finalizer is running,
             // Drop-based leak cleanup must not delete the backing workspace.
             sandbox.preserve_workspace_on_leak_cleanup();
-            let cow_destroyed = destroy_cow_device_with_retries(&sandbox_id, cow_device).await;
-            if cow_destroyed {
+            let outcome = destroy_cow_device_with_retries(&sandbox_id, cow_device).await;
+            if outcome.backing_files_safe_to_delete() {
                 sandbox.allow_workspace_delete_on_leak_cleanup();
             }
-            cow_destroyed
+            outcome
         }
-        None => true,
+        None => CowCleanupOutcome::BackingFilesSafeToDelete,
     };
 
     // Return the network namespace to the pool.
@@ -618,10 +619,12 @@ async fn destroy_firecracker_sandbox(mut sandbox: FirecrackerSandbox, netns_pool
         warn!(id = %sandbox_id, error = %e, "failed to delete sock dir");
     }
 
-    // Delete the workspace directory only if the COW device was fully torn
-    // down.  When destroy() failed, the NBD device may still reference
-    // the COW file — keep the workspace intact for debugging.
-    if cow_destroyed && let Err(e) = tokio::fs::remove_dir_all(&workspace).await {
+    // Delete the workspace directory only if the COW device no longer
+    // references backing files. When device cleanup failed, keep the
+    // workspace intact for debugging.
+    if cow_cleanup_outcome.backing_files_safe_to_delete()
+        && let Err(e) = tokio::fs::remove_dir_all(&workspace).await
+    {
         warn!(id = %sandbox_id, error = %e, "failed to delete workspace");
     }
 

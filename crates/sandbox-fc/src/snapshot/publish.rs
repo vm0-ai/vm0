@@ -7,12 +7,13 @@ use nbd_cow::{KeptCow, PooledNbdCowDevice};
 use sandbox::{PendingSnapshotPublish, SnapshotOutput};
 
 use crate::config::SnapshotConfig;
+use crate::cow_cleanup::cow_destroy_retry_policy;
 use crate::paths::SnapshotOutputPaths;
 
 use super::SnapshotError;
 use super::cow::{
     cleanup_snapshot_attempt_dir_for_cow, cleanup_snapshot_attempt_dir_for_cow_sync,
-    cow_destroy_retry_policy, destroy_snapshot_cow_and_cleanup_attempt_dir,
+    destroy_snapshot_cow_and_cleanup_attempt_dir,
 };
 use super::output::{
     cleanup_remove_file_result, publish_snapshot_complete_marker, remove_dir_all_if_exists_sync,

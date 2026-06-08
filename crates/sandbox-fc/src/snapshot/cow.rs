@@ -3,15 +3,15 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use nbd_cow::{DestroyRetryPolicy, PooledNbdCowDevice};
+use nbd_cow::PooledNbdCowDevice;
 use tokio::task::JoinHandle;
+
+use crate::cow_cleanup::{
+    CowCleanupOutcome, classify_cow_destroy_result, cow_destroy_retry_policy,
+};
 
 use super::SnapshotError;
 use super::output::cleanup_remove_dir_result;
-
-pub(super) fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
-    crate::factory::cow_destroy_retry_policy()
-}
 
 pub(super) struct SnapshotCowCleanupFinalizer {
     handle: Option<JoinHandle<nbd_cow::error::Result<()>>>,
@@ -96,18 +96,22 @@ pub(super) fn destroy_snapshot_cow_and_cleanup_attempt_dir(
 ) -> SnapshotCowCleanupFinalizer {
     let cow_file = cow_device.cow_file().to_path_buf();
     SnapshotCowCleanupFinalizer::new(tokio::spawn(async move {
-        match cow_device
+        let result = cow_device
             .destroy_with_retries_detailed(cow_destroy_retry_policy())
-            .await
-        {
-            Ok(()) => {}
-            Err(e) if e.backing_files_safe_to_delete() => {
+            .await;
+        let outcome = classify_cow_destroy_result(&result);
+
+        match (result, outcome) {
+            (Ok(()), _) => {}
+            (Err(e), CowCleanupOutcome::BackingFilesSafeToDelete) => {
                 tracing::warn!(
                     error = %e,
                     "snapshot COW device released but file cleanup failed; continuing attempt-dir cleanup"
                 );
             }
-            Err(e) => return Err(e.into_inner()),
+            (Err(e), CowCleanupOutcome::DeviceMayStillReferenceBackingFiles) => {
+                return Err(e.into_inner());
+            }
         }
         cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
         Ok(())
