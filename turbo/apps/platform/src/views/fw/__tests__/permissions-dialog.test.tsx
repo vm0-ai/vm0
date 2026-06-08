@@ -231,7 +231,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
           agentId: AGENT_ID,
           connectorRef: "notion",
           permission: "insert_comments",
-          action: "deny",
+          action: "allow",
           expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
         }),
       ],
@@ -271,12 +271,12 @@ describe("permissions dialog - flat list connector (Notion)", () => {
       agentId: AGENT_ID,
       connectorRef: "notion",
       permission: "insert_comments",
-      action: "deny",
+      action: "allow",
       expiresIn: "7d",
     });
   });
 
-  it("keeps current expiration when an existing grant action changes", async () => {
+  it("does not keep deny expiration when an existing grant action changes", async () => {
     const grantBodies: unknown[] = [];
     mockAPIs({
       connectorType: "notion",
@@ -304,12 +304,18 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     await openPermissionsDrawer("Notion");
 
     const row = getPermissionRow("insert_comments");
+    expect(screen.queryByText("Expires in 2 hours")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", {
+        name: "insert_comments grant duration",
+      }),
+    ).not.toBeInTheDocument();
+    click(getPolicyButton(row, "Allow"));
     expect(
       screen.getByRole("combobox", {
         name: "insert_comments grant duration",
       }),
-    ).toHaveTextContent("Keep current");
-    click(getPolicyButton(row, "Allow"));
+    ).toHaveTextContent("Always");
     click(screen.getByText("Apply"));
 
     await waitFor(() => {
@@ -328,6 +334,47 @@ describe("permissions dialog - flat list connector (Notion)", () => {
 
   it("saves selected expiration for a newly changed grant", async () => {
     const grantBodies: unknown[] = [];
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
+    });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    click(getPolicyButton(row, "Allow"));
+    click(
+      screen.getByRole("combobox", {
+        name: "insert_comments grant duration",
+      }),
+    );
+    click(await screen.findByRole("option", { name: "24 hours" }));
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+      permission: "insert_comments",
+      action: "allow",
+      expiresIn: "24h",
+    });
+  });
+
+  it("does not show expiration controls for deny changes", async () => {
+    const grantBodies: unknown[] = [];
     mockAPIs({ connectorType: "notion" });
     server.use(
       mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
@@ -344,12 +391,12 @@ describe("permissions dialog - flat list connector (Notion)", () => {
 
     const row = getPermissionRow("insert_comments");
     click(getPolicyButton(row, "Deny"));
-    click(
-      screen.getByRole("combobox", {
+    expect(
+      screen.queryByRole("combobox", {
         name: "insert_comments grant duration",
       }),
-    );
-    click(await screen.findByRole("option", { name: "24 hours" }));
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Always")).not.toBeInTheDocument();
     click(screen.getByText("Apply"));
 
     await waitFor(() => {
@@ -360,7 +407,9 @@ describe("permissions dialog - flat list connector (Notion)", () => {
       connectorRef: "notion",
       permission: "insert_comments",
       action: "deny",
-      expiresIn: "24h",
+    });
+    expect(grantBodies[0]).not.toMatchObject({
+      expiresIn: expect.any(String),
     });
   });
 });

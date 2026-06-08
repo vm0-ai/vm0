@@ -242,6 +242,7 @@ function ConfirmGrantCard({
     expiresInByScope[durationScope] ??
     initialExpiresIn ??
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
+  const expirationAvailable = expirationEnabled && action === "allow";
   const [grantLoadable, upsertGrant] = useLoadableSet(
     upsertUserPermissionGrant$,
   );
@@ -252,7 +253,7 @@ function ConfirmGrantCard({
       <ResultCard
         action={action}
         expiresAt={grantLoadable.data.expiresAt}
-        showExpiry={expirationEnabled}
+        showExpiry={expirationAvailable}
       />
     );
   }
@@ -265,7 +266,7 @@ function ConfirmGrantCard({
           connectorRef,
           permission: permission.name,
           action,
-          ...(expirationEnabled ? { expiresIn } : {}),
+          ...(expirationAvailable ? { expiresIn } : {}),
         },
         pageSignal,
       ),
@@ -296,7 +297,7 @@ function ConfirmGrantCard({
               action={action}
             />
           </div>
-          {expirationEnabled && (
+          {expirationAvailable && (
             <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2">
               <span className="text-sm font-medium text-foreground">
                 Duration
@@ -391,7 +392,7 @@ function PermissionAllowDoctorPage({
       <ResultCard
         action={action}
         expiresAt={explicitGrant?.expiresAt}
-        showExpiry={expirationEnabled}
+        showExpiry={expirationEnabled && action === "allow"}
       />
     );
   }

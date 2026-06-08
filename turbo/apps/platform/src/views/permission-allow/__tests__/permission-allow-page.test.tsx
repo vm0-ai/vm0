@@ -240,4 +240,41 @@ describe("permission allow page", () => {
       expect(grantBody).toMatchObject({ expiresIn: "7d" });
     });
   });
+
+  it("does not show or submit duration for deny grants", async () => {
+    let grantBody: unknown;
+    mockAgent();
+    setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Research agent")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("combobox", { name: "Permission duration" }),
+      ).not.toBeInTheDocument();
+    });
+
+    await click(getButtonByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        permission: "channels:read",
+        action: "deny",
+      });
+    });
+    expect(grantBody).not.toMatchObject({ expiresIn: expect.any(String) });
+    expect(screen.getByText("Permissions denied")).toBeInTheDocument();
+    expect(screen.queryByText(/Expires in/)).not.toBeInTheDocument();
+  });
 });

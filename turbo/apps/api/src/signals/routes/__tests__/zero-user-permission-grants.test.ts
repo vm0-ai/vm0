@@ -455,7 +455,7 @@ describe("zero user permission grants", () => {
     expect(permissionGrantsToFirewallPolicies([])).toBeNull();
   });
 
-  it("updates action and preserves active expiration when expiresIn is omitted", async () => {
+  it("preserves active allow expiration when expiresIn is omitted", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
@@ -500,13 +500,13 @@ describe("zero user permission grants", () => {
           agentId,
           connectorRef: SLACK_CONNECTOR,
           permission: SLACK_READ_PERMISSION,
-          action: "deny",
+          action: "allow",
         },
         headers: AUTH_HEADERS,
       }),
       [200],
     );
-    expect(second.body.action).toBe("deny");
+    expect(second.body.action).toBe("allow");
     expect(second.body.expiresAt).toBe(oldExpiresAt.toISOString());
 
     const stored = await readStoredGrant({
@@ -516,10 +516,56 @@ describe("zero user permission grants", () => {
       connectorRef: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
     });
-    expect(stored?.action).toBe("deny");
+    expect(stored?.action).toBe("allow");
     expect(stored?.createdAt.getTime()).toBe(oldTimestamp.getTime());
     expect(stored?.updatedAt.getTime()).toBeGreaterThan(oldTimestamp.getTime());
     expect(stored?.expiresAt?.getTime()).toBe(oldExpiresAt.getTime());
+  });
+
+  it("clears active expiration when action changes to deny", async () => {
+    const fixture = await createFixture();
+    const agentId = await seedAgent(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+
+    await accept(
+      client.upsert({
+        body: {
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          permission: SLACK_READ_PERMISSION,
+          action: "allow",
+          expiresIn: "1h",
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+
+    const denied = await accept(
+      client.upsert({
+        body: {
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          permission: SLACK_READ_PERMISSION,
+          action: "deny",
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    expect(denied.body.action).toBe("deny");
+    expect(denied.body.expiresAt).toBeNull();
+
+    const stored = await readStoredGrant({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+    });
+    expect(stored?.action).toBe("deny");
+    expect(stored?.expiresAt).toBeNull();
   });
 
   it("clears active expiration only when expiresIn is forever", async () => {
@@ -695,6 +741,29 @@ describe("zero user permission grants", () => {
         permission: SLACK_READ_PERMISSION,
         action: "allow",
         expiresIn: "2h",
+      }),
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects expiration options for deny grants", async () => {
+    const fixture = await createFixture();
+    const agentId = await seedAgent(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const app = createApp({ signal: context.signal });
+
+    const response = await app.request("/api/zero/user-permission-grants", {
+      method: "PUT",
+      headers: {
+        authorization: AUTH_HEADERS.authorization,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+        action: "deny",
+        expiresIn: "1h",
       }),
     });
     expect(response.status).toBe(400);

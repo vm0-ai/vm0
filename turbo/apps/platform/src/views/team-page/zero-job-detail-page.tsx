@@ -452,8 +452,12 @@ function selectedGrantExpiresIn(
   expirationEnabled: boolean,
   expiresInByPermission: GrantExpirationSelections,
   permission: string,
+  action: UserPermissionGrantAction,
 ): UserPermissionGrantExpiresIn | undefined {
-  return expirationEnabled ? expiresInByPermission[permission] : undefined;
+  if (!expirationEnabled || action !== "allow") {
+    return undefined;
+  }
+  return expiresInByPermission[permission];
 }
 
 function setChangedGrantPolicy(
@@ -465,7 +469,7 @@ function setChangedGrantPolicy(
   changes.set(permission, {
     permission,
     action,
-    ...(expiresIn ? { expiresIn } : {}),
+    ...(action === "allow" && expiresIn ? { expiresIn } : {}),
   });
 }
 
@@ -484,14 +488,16 @@ function addNamedPolicyChanges({
 }): void {
   for (const [permission, action] of Object.entries(current?.policies ?? {})) {
     if (initial?.policies[permission] !== action) {
+      const grantAction = userGrantAction(action);
       setChangedGrantPolicy(
         changes,
         permission,
-        userGrantAction(action),
+        grantAction,
         selectedGrantExpiresIn(
           expirationEnabled,
           expiresInByPermission,
           permission,
+          grantAction,
         ),
       );
     }
@@ -515,14 +521,16 @@ function addUnknownPolicyChange({
   if (unknownPolicy === undefined || initial?.unknownPolicy === unknownPolicy) {
     return;
   }
+  const grantAction = userGrantAction(unknownPolicy);
   setChangedGrantPolicy(
     changes,
     UNKNOWN_PERMISSION_GRANT,
-    userGrantAction(unknownPolicy),
+    grantAction,
     selectedGrantExpiresIn(
       expirationEnabled,
       expiresInByPermission,
       UNKNOWN_PERMISSION_GRANT,
+      grantAction,
     ),
   );
 }
@@ -552,9 +560,13 @@ function addExpirationOnlyChanges({
       grant.permission === UNKNOWN_PERMISSION_GRANT
         ? current?.unknownPolicy
         : current?.policies[grant.permission];
+    const action = userGrantAction(currentPolicy ?? grant.action);
+    if (grant.action !== "allow" || action !== "allow") {
+      continue;
+    }
     changes.set(grant.permission, {
       permission: grant.permission,
-      action: userGrantAction(currentPolicy ?? grant.action),
+      action,
       expiresIn,
     });
   }
@@ -644,7 +656,7 @@ async function saveUserGrantPolicies({
         connectorRef: connectorType,
         permission,
         action,
-        ...(expiresIn ? { expiresIn } : {}),
+        ...(action === "allow" && expiresIn ? { expiresIn } : {}),
       },
       pageSignal,
     );

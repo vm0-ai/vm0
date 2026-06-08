@@ -164,11 +164,24 @@ export const upsertUserPermissionGrant$ = command(
     signal: AbortSignal,
   ): Promise<UserPermissionGrantResponse> => {
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
+    const body =
+      params.action === "allow"
+        ? {
+            agentId: params.agentId,
+            connectorRef: params.connectorRef,
+            permission: params.permission,
+            action: "allow" as const,
+            ...(params.expiresIn ? { expiresIn: params.expiresIn } : {}),
+          }
+        : {
+            agentId: params.agentId,
+            connectorRef: params.connectorRef,
+            permission: params.permission,
+            action: "deny" as const,
+          };
     const result = await accept(
       client.upsert({
-        body: {
-          ...params,
-        },
+        body,
         fetchOptions: { signal },
       }),
       [200],

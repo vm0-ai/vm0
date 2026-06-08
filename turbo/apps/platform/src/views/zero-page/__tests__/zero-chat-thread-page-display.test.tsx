@@ -249,12 +249,15 @@ describe("zero chat thread page display - permission action card", () => {
     );
   }
 
-  function mockPermissionMessage(permission = "channels:write") {
+  function mockPermissionMessage(
+    permission = "channels:write",
+    action: "allow" | "deny" = "allow",
+  ) {
     mockChatLifecycle({
       chatMessages: [
         {
           role: "assistant",
-          content: `https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=${encodeURIComponent(permission)}&action=allow`,
+          content: `https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=${encodeURIComponent(permission)}&action=${action}`,
           runId: "run-user-grant-permission-action",
           status: "completed",
           createdAt: "2026-03-10T00:00:00Z",
@@ -340,6 +343,41 @@ describe("zero chat thread page display - permission action card", () => {
         expiresIn: "1h",
       });
     });
+  });
+
+  it("does not show or submit duration for deny permission action cards", async () => {
+    let grantBody: unknown;
+    mockPermissionAgent();
+    mockPermissionMessage("channels:read", "deny");
+    setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(
+      within(card).queryByRole("combobox", { name: "Permission duration" }),
+    ).not.toBeInTheDocument();
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        permission: "channels:read",
+        action: "deny",
+      });
+    });
+    expect(grantBody).not.toMatchObject({ expiresIn: expect.any(String) });
   });
 
   it("uses current-user grants for already-applied permission actions", async () => {

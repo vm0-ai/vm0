@@ -141,9 +141,10 @@ export function parsePermissionActionUrl(
   const method = url.searchParams.get("method");
   const path = url.searchParams.get("path");
   const reason = url.searchParams.get("reason");
-  const expiresIn = parseUserPermissionGrantExpiresIn(
-    url.searchParams.get("expiresIn"),
-  );
+  const expiresIn =
+    action === "allow"
+      ? parseUserPermissionGrantExpiresIn(url.searchParams.get("expiresIn"))
+      : null;
 
   if (
     !agentId ||

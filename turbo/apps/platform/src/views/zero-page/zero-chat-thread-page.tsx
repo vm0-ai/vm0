@@ -3637,7 +3637,7 @@ function createPermissionActionHandler(params: {
   focusedPermission: { name: string } | undefined;
   state: PermissionActionButtonState;
   finished: boolean;
-  expirationEnabled: boolean;
+  expirationAvailable: boolean;
   expiresIn: UserPermissionGrantExpiresIn;
   upsertGrant: UpsertUserPermissionGrantFn;
 }): () => void {
@@ -3657,7 +3657,7 @@ function createPermissionActionHandler(params: {
               connectorRef: params.block.connectorRef,
               permission: permissionName,
               action: params.block.action,
-              ...(params.expirationEnabled
+              ...(params.expirationAvailable
                 ? { expiresIn: params.expiresIn }
                 : {}),
             },
@@ -3676,7 +3676,7 @@ function PermissionActionCardContent({
   actionLabel,
   permissionName,
   buttonState,
-  expirationEnabled,
+  expirationAvailable,
   expiresIn,
   onExpiresInChange,
   expiresAt,
@@ -3687,17 +3687,17 @@ function PermissionActionCardContent({
   actionLabel: string;
   permissionName: string;
   buttonState: PermissionActionButtonState;
-  expirationEnabled: boolean;
+  expirationAvailable: boolean;
   expiresIn: UserPermissionGrantExpiresIn;
   onExpiresInChange: (value: UserPermissionGrantExpiresIn) => void;
   expiresAt: string | null;
   onClick: () => void;
 }) {
-  const expiryText = expirationEnabled
+  const expiryText = expirationAvailable
     ? permissionGrantExpiryText(expiresAt)
     : null;
   const showDurationSelect =
-    expirationEnabled && !buttonState.alreadyApplied && !buttonState.saveDone;
+    expirationAvailable && !buttonState.alreadyApplied && !buttonState.saveDone;
   return (
     <div
       data-testid="permission-action-card"
@@ -3746,6 +3746,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const features = useLastResolved(featureSwitch$);
   const expirationEnabled =
     features?.[FeatureSwitchKey.ExpiringPermissionGrants] ?? false;
+  const expirationAvailable = expirationEnabled && block.action === "allow";
   const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
   const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
@@ -3779,7 +3780,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? block.permission}
       buttonState={actionState.buttonState}
-      expirationEnabled={expirationEnabled}
+      expirationAvailable={expirationAvailable}
       expiresIn={expiresIn}
       onExpiresInChange={(value) => {
         setExpiresInForScope(durationScope, value);
@@ -3794,7 +3795,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
         focusedPermission: actionState.focusedPermission,
         state: actionState.buttonState,
         finished: actionState.finished,
-        expirationEnabled,
+        expirationAvailable,
         expiresIn,
         upsertGrant,
       })}

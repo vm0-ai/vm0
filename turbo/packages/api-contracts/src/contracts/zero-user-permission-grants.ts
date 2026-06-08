@@ -30,13 +30,25 @@ export const listUserPermissionGrantsQuerySchema = z.object({
   agentId: agentIdSchema,
 });
 
-export const upsertUserPermissionGrantRequestSchema = z.object({
+const upsertUserPermissionGrantBaseRequestSchema = z.object({
   agentId: agentIdSchema,
   connectorRef: connectorRefSchema,
   permission: permissionSchema,
-  action: userPermissionGrantActionSchema,
-  expiresIn: userPermissionGrantExpiresInSchema.optional(),
 });
+
+export const upsertUserPermissionGrantRequestSchema = z.discriminatedUnion(
+  "action",
+  [
+    upsertUserPermissionGrantBaseRequestSchema.extend({
+      action: z.literal("allow"),
+      expiresIn: userPermissionGrantExpiresInSchema.optional(),
+    }),
+    upsertUserPermissionGrantBaseRequestSchema.extend({
+      action: z.literal("deny"),
+      expiresIn: z.never().optional(),
+    }),
+  ],
+);
 
 export const zeroUserPermissionGrantsContract = c.router({
   list: {

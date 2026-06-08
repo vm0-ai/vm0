@@ -344,17 +344,26 @@ function hasPermissionPolicyChanges({
 function hasGrantExpirationChanges({
   expirationEnabled,
   explicitGrants,
+  policies,
+  unknownPolicy,
   selections,
 }: {
   expirationEnabled: boolean;
   explicitGrants: Map<string, UserPermissionGrantResponse>;
+  policies: Record<string, PermissionPolicy>;
+  unknownPolicy: FirewallPolicyValue;
   selections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
 }): boolean {
   if (!expirationEnabled) {
     return false;
   }
   for (const permission of Object.keys(selections)) {
-    if (explicitGrants.has(permission)) {
+    const grant = explicitGrants.get(permission);
+    const currentAction =
+      permission === UNKNOWN_PERMISSION_GRANT
+        ? unknownPolicy
+        : (policies[permission] ?? grant?.action);
+    if (grant?.action === "allow" && currentAction === "allow") {
       return true;
     }
   }
@@ -431,6 +440,7 @@ function GrantExpirationStatus({
 
 function PermissionExpirationControl({
   permission,
+  action,
   grant,
   selected,
   policyChanged,
@@ -440,6 +450,7 @@ function PermissionExpirationControl({
   onChange,
 }: {
   permission: string;
+  action: FirewallPolicyValue;
   grant: UserPermissionGrantResponse | undefined;
   selected: UserPermissionGrantExpiresIn | undefined;
   policyChanged: boolean;
@@ -451,17 +462,22 @@ function PermissionExpirationControl({
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => void;
 }) {
-  if (!expirationEnabled || (!grant && !policyChanged)) {
+  const allowGrant = grant?.action === "allow" ? grant : undefined;
+  if (
+    !expirationEnabled ||
+    action !== "allow" ||
+    (!allowGrant && !policyChanged)
+  ) {
     return null;
   }
 
   const showSetting = !readOnly;
-  const showKeepCurrent = grant !== undefined;
+  const showKeepCurrent = allowGrant !== undefined;
   const settingValue = selected ?? (showKeepCurrent ? null : "forever");
 
   return (
     <div className="flex shrink-0 flex-col items-end gap-1.5">
-      <GrantExpirationStatus grant={grant} />
+      <GrantExpirationStatus grant={allowGrant} />
       {showSetting && (
         <PermissionGrantDurationSelect
           value={settingValue}
@@ -645,6 +661,7 @@ function PermissionRow({
         </div>
         <PermissionExpirationControl
           permission={permission.name}
+          action={policy}
           grant={explicitGrants.get(permission.name)}
           selected={expirationSelections[permission.name]}
           policyChanged={policy !== initialPolicy}
@@ -722,6 +739,8 @@ export function PermissionsDrawer({
   const hasExpirationChanges = hasGrantExpirationChanges({
     expirationEnabled,
     explicitGrants,
+    policies,
+    unknownPolicy,
     selections: expirationSelections,
   });
   const canApply = canApplyPermissionPolicies({
@@ -863,6 +882,7 @@ export function PermissionsDrawer({
               expirationControl={
                 <PermissionExpirationControl
                   permission={UNKNOWN_PERMISSION_GRANT}
+                  action={unknownPolicy}
                   grant={explicitGrants.get(UNKNOWN_PERMISSION_GRANT)}
                   selected={expirationSelections[UNKNOWN_PERMISSION_GRANT]}
                   policyChanged={unknownPolicy !== initialUnknownPolicy}

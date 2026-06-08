@@ -22,13 +22,17 @@ function isActiveGrant(grant: UserPermissionGrantResponse, checkedAt: Date) {
 
 function resolvedMockExpiresAt(
   existing: UserPermissionGrantResponse | undefined,
+  action: UserPermissionGrantResponse["action"],
   expiresIn: Parameters<typeof userPermissionGrantExpiresAt>[0],
   now: Date,
 ): string | null {
+  if (action !== "allow") {
+    return null;
+  }
   if (expiresIn !== undefined) {
     return userPermissionGrantExpiresAt(expiresIn, now.getTime());
   }
-  if (existing && isActiveGrant(existing, now)) {
+  if (existing?.action === "allow" && isActiveGrant(existing, now)) {
     return existing.expiresAt;
   }
   return null;
@@ -83,7 +87,12 @@ export const apiUserPermissionGrantsHandlers = [
       connectorRef: body.connectorRef,
       permission: body.permission,
       action: body.action,
-      expiresAt: resolvedMockExpiresAt(existing, body.expiresIn, now),
+      expiresAt: resolvedMockExpiresAt(
+        existing,
+        body.action,
+        body.expiresIn,
+        now,
+      ),
       createdAt: existing?.createdAt ?? now.toISOString(),
       updatedAt: now.toISOString(),
     };

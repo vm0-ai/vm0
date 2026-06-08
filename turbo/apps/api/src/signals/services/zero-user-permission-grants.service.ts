@@ -132,6 +132,17 @@ function validateGrantTarget(
   return null;
 }
 
+function validateGrantExpiration(
+  grant: UpsertUserPermissionGrantRequest,
+): ValidationErrorResponse | null {
+  if (grant.action === "allow" || grant.expiresIn === undefined) {
+    return null;
+  }
+  return validationError(
+    "Permission grant expiration is only supported for allow grants",
+  );
+}
+
 function activeGrantCondition(checkedAt: Date) {
   return or(
     isNull(userPermissionGrants.expiresAt),
@@ -274,9 +285,14 @@ async function upsertVisibleGrantRow(
       .limit(1);
 
     const expiresAt =
-      args.grant.expiresIn === undefined
-        ? preservedActiveGrantExpiresAt(existing?.expiresAt ?? null, timestamp)
-        : resolveGrantExpiresAt(args.grant.expiresIn, timestamp);
+      args.grant.action === "allow"
+        ? args.grant.expiresIn === undefined
+          ? preservedActiveGrantExpiresAt(
+              existing?.action === "allow" ? existing.expiresAt : null,
+              timestamp,
+            )
+          : resolveGrantExpiresAt(args.grant.expiresIn, timestamp)
+        : null;
 
     const [row] = existing
       ? await tx
@@ -353,6 +369,10 @@ export const upsertUserPermissionGrant$ = command(
     );
     if (validation) {
       return validation;
+    }
+    const expirationValidation = validateGrantExpiration(args.grant);
+    if (expirationValidation) {
+      return expirationValidation;
     }
 
     const writeDb = set(writeDb$);
