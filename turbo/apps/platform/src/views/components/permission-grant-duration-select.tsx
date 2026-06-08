@@ -12,33 +12,23 @@ import {
   USER_PERMISSION_GRANT_EXPIRES_IN_OPTIONS,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 
-const KEEP_CURRENT_EXPIRATION_VALUE = "keep-current";
-
 export function PermissionGrantDurationSelect({
   value,
   onValueChange,
-  onClear,
   disabled,
   ariaLabel,
   className,
-  showKeepCurrent,
 }: {
-  value: UserPermissionGrantExpiresIn | null;
+  value: UserPermissionGrantExpiresIn;
   onValueChange: (value: UserPermissionGrantExpiresIn) => void;
-  onClear?: () => void;
   disabled?: boolean;
   ariaLabel: string;
   className?: string;
-  showKeepCurrent?: boolean;
 }) {
   return (
     <Select
-      value={value ?? KEEP_CURRENT_EXPIRATION_VALUE}
+      value={value}
       onValueChange={(nextValue) => {
-        if (nextValue === KEEP_CURRENT_EXPIRATION_VALUE) {
-          onClear?.();
-          return;
-        }
         const parsed = parseUserPermissionGrantExpiresIn(nextValue);
         if (parsed) {
           onValueChange(parsed);
@@ -53,11 +43,6 @@ export function PermissionGrantDurationSelect({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {showKeepCurrent && (
-          <SelectItem value={KEEP_CURRENT_EXPIRATION_VALUE}>
-            Keep current
-          </SelectItem>
-        )}
         {USER_PERMISSION_GRANT_EXPIRES_IN_OPTIONS.map((option) => {
           return (
             <SelectItem key={option.value} value={option.value}>

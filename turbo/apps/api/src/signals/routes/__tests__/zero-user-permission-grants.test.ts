@@ -635,13 +635,13 @@ describe("zero user permission grants", () => {
           agentId,
           connectorRef: SLACK_CONNECTOR,
           permission: SLACK_READ_PERMISSION,
-          action: "deny",
+          action: "allow",
         },
         headers: AUTH_HEADERS,
       }),
       [200],
     );
-    expect(revived.body.action).toBe("deny");
+    expect(revived.body.action).toBe("allow");
     expect(revived.body.expiresAt).toBeNull();
   });
 
