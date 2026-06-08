@@ -148,6 +148,7 @@ const CONNECTOR_ICON_COLORFUL = {
   gumroad: true,
   helicone: true,
   heygen: true,
+  hitem3d: true,
   honcho: true,
   hubspot: true,
   "hugging-face": true,
