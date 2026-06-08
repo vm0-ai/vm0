@@ -134,13 +134,13 @@ _VALUE_PRESERVING_CAPTURE_HEADER_PATTERNS: dict[str, re.Pattern[str]] = {
         rf"{_HTTP_ENCODING_PATTERN}"
         rf"(?:{_HTTP_OPTIONAL_WHITESPACE_PATTERN},"
         rf"{_HTTP_OPTIONAL_WHITESPACE_PATTERN}{_HTTP_ENCODING_PATTERN})*",
-        re.IGNORECASE,
+        re.IGNORECASE | re.ASCII,
     ),
     "content-encoding": re.compile(
         rf"{_HTTP_KNOWN_CONTENT_CODING_PATTERN}"
         rf"(?:{_HTTP_OPTIONAL_WHITESPACE_PATTERN},"
         rf"{_HTTP_OPTIONAL_WHITESPACE_PATTERN}{_HTTP_KNOWN_CONTENT_CODING_PATTERN})*",
-        re.IGNORECASE,
+        re.IGNORECASE | re.ASCII,
     ),
     "content-length": re.compile(r"(?:0|[1-9][0-9]{0,18})"),
 }
