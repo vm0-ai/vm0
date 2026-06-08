@@ -333,7 +333,7 @@ fn is_current_inode(lock: &Flock<File>, path: &Path) -> bool {
     let Ok(lock_meta) = lock.metadata() else {
         return true;
     };
-    let Ok(path_meta) = std::fs::metadata(path) else {
+    let Ok(path_meta) = std::fs::symlink_metadata(path) else {
         return false;
     };
     lock_meta.dev() == path_meta.dev() && lock_meta.ino() == path_meta.ino()
@@ -504,6 +504,20 @@ mod tests {
             "unexpected error: {error}"
         );
         assert_eq!(file_mode(&target), 0o644);
+    }
+
+    #[test]
+    fn current_inode_rejects_symlink_replacement_to_same_inode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let target = dir.path().join("held.lock");
+        std::fs::write(&path, b"lock").unwrap();
+        let file = open_lock_file(&path).unwrap();
+        let lock = Flock::lock(file, FlockArg::LockExclusiveNonblock).unwrap();
+        std::fs::rename(&path, &target).unwrap();
+        symlink(&target, &path).unwrap();
+
+        assert!(!is_current_inode(&lock, &path));
     }
 
     #[tokio::test]
