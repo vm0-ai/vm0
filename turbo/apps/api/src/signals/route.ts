@@ -3,6 +3,7 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
+import { automationsRoutes } from "./routes/automations";
 import { agentComposesMetadataRoutes } from "./routes/agent-composes-metadata";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
@@ -192,6 +193,7 @@ export const ROUTES: readonly RouteEntry[] = [
     handler: apiHealth$,
   },
   ...authMeRoutes,
+  ...automationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,

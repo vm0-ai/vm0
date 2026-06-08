@@ -311,6 +311,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ZeroAutomations]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Expose the Automations API surface (/api/automations) over the shared automation service. When disabled, the new endpoints 404 and only the legacy /api/zero/schedules surface is reachable.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {
