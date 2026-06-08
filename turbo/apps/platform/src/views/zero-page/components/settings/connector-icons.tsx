@@ -177,7 +177,6 @@ const CONNECTOR_ICON_COLORFUL = {
   minio: true,
   modal: true,
   monday: true,
-  moss: true,
   n8n: true,
   neon: true,
   openweather: true,
