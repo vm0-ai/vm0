@@ -32,10 +32,7 @@ import { Link } from "../../../router/link.tsx";
 
 const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
 
-const SOURCE_META: Record<
-  UsageRecordSource,
-  { label: string; Icon: typeof IconMessageCircle }
-> = {
+const SOURCE_META = {
   chat: { label: "Chat", Icon: IconMessageCircle },
   schedule: { label: "Schedule", Icon: IconClock },
   slack: { label: "Slack", Icon: IconBrandSlack },
@@ -45,15 +42,18 @@ const SOURCE_META: Record<
   github: { label: "GitHub", Icon: IconBrandGithub },
   cli: { label: "CLI", Icon: IconTerminal2 },
   agent: { label: "Agent", Icon: IconRobot },
-};
+} as const satisfies Record<
+  UsageRecordSource,
+  { label: string; Icon: typeof IconMessageCircle }
+>;
 
 // Sources offered in the filter. Others still appear under "All sources".
-const FILTER_OPTIONS: UsageRecordSource[] = [
+const FILTER_OPTIONS = [
   "chat",
   "schedule",
   "slack",
   "telegram",
-];
+] as const satisfies readonly UsageRecordSource[];
 
 const ROW_CLASS =
   "flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-[hsl(var(--gray-50))] [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/50";
