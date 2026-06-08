@@ -251,6 +251,13 @@ impl HomePaths {
         self.debootstrap_dir().join(".lock")
     }
 
+    /// Lock file for persistent service unit lifecycle operations.
+    ///
+    /// Callers should pass full unit names produced by `service::unit_name`.
+    pub fn service_lock(&self, unit: &str) -> PathBuf {
+        self.locks_dir().join(format!("service-{unit}.lock"))
+    }
+
     pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
         let hash = hex::encode(Sha256::digest(base_dir.as_os_str().as_encoded_bytes()));
         self.locks_dir().join(format!("base-dir-{hash}.lock"))
@@ -274,11 +281,6 @@ impl HomePaths {
 
     pub fn snapshot_lock(&self, hash: &str) -> PathBuf {
         self.locks_dir().join(format!("snapshot-{hash}.lock"))
-    }
-
-    /// Per-systemd-unit flock path. Pass a full name produced by `service::unit_name`.
-    pub fn service_lock(&self, unit: &str) -> PathBuf {
-        self.locks_dir().join(format!("service-{unit}.lock"))
     }
 
     /// Root directory for the runner-side storage archive cache.
@@ -578,6 +580,17 @@ mod tests {
     }
 
     #[test]
+    fn service_lock_path() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        let service_lock = home.service_lock("vm0-runner-v1.2.3");
+        assert_eq!(
+            service_lock,
+            PathBuf::from("/test/locks/service-vm0-runner-v1.2.3.lock")
+        );
+        assert_eq!(service_lock.parent(), Some(home.locks_dir().as_path()));
+    }
+
+    #[test]
     fn base_dir_lock_is_deterministic() {
         let home = HomePaths::with_root(PathBuf::from("/test"));
         let lock1 = home.base_dir_lock(Path::new("/data/runner-01"));
@@ -667,16 +680,6 @@ mod tests {
         let home = HomePaths::with_root(PathBuf::from("/test"));
         let lock = home.snapshot_lock("bbb");
         assert_eq!(lock, PathBuf::from("/test/locks/snapshot-bbb.lock"));
-    }
-
-    #[test]
-    fn service_lock_path() {
-        let home = HomePaths::with_root(PathBuf::from("/test"));
-        let lock = home.service_lock("vm0-runner-v0.2.0");
-        assert_eq!(
-            lock,
-            PathBuf::from("/test/locks/service-vm0-runner-v0.2.0.lock")
-        );
     }
 
     #[test]
