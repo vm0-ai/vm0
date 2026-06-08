@@ -6,7 +6,7 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
 use crate::ids::RunId;
@@ -135,6 +135,9 @@ pub async fn run_service(args: ServiceArgs) -> RunnerResult<()> {
 const UNIT_PREFIX: &str = "vm0-runner-";
 const UNIT_STAGING_MARKER: &str = ".tmp@";
 const UNIT_STAGING_MAX_ATTEMPTS: u64 = 32;
+// Older runner binaries created dot-UUID staging files without holding the
+// service lock, so only age them out after the rolling-upgrade window.
+const LEGACY_UNIT_STAGING_MIN_AGE: Duration = Duration::from_secs(10 * 60);
 #[cfg(unix)]
 const UNIT_FILE_MODE: u32 = 0o600;
 static UNIT_STAGING_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -404,21 +407,29 @@ fn is_generated_unit_staging_suffix(value: &str) -> bool {
         && attempt.parse::<u64>().is_ok()
 }
 
-fn is_unit_staging_file_name(
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UnitStagingFileKind {
+    Current,
+    Legacy,
+}
+
+fn unit_staging_file_kind(
     name: &str,
     staging_prefix: &str,
     legacy_staging_prefix: &str,
-) -> bool {
+) -> Option<UnitStagingFileKind> {
     if let Some(suffix) = name.strip_prefix(staging_prefix) {
-        return is_generated_unit_staging_suffix(suffix);
+        return is_generated_unit_staging_suffix(suffix).then_some(UnitStagingFileKind::Current);
     }
     if let Some(suffix) = name.strip_prefix(legacy_staging_prefix) {
-        return uuid::Uuid::parse_str(suffix).is_ok();
+        return uuid::Uuid::parse_str(suffix)
+            .is_ok()
+            .then_some(UnitStagingFileKind::Legacy);
     }
-    false
+    None
 }
 
-fn remove_stale_unit_staging_file(path: &Path) -> RunnerResult<()> {
+fn remove_stale_unit_staging_file(path: &Path, min_age: Option<Duration>) -> RunnerResult<()> {
     let meta = match std::fs::symlink_metadata(path) {
         Ok(meta) => meta,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -432,6 +443,21 @@ fn remove_stale_unit_staging_file(path: &Path) -> RunnerResult<()> {
     let file_type = meta.file_type();
     if !meta.is_file() && !file_type.is_symlink() {
         return Ok(());
+    }
+    if let Some(min_age) = min_age {
+        let modified = meta.modified().map_err(|e| {
+            RunnerError::Internal(format!(
+                "stat stale unit staging file mtime {}: {e}",
+                path.display()
+            ))
+        })?;
+        if SystemTime::now()
+            .duration_since(modified)
+            .unwrap_or_default()
+            < min_age
+        {
+            return Ok(());
+        }
     }
     std::fs::remove_file(path).map_err(|e| {
         RunnerError::Internal(format!(
@@ -466,8 +492,14 @@ fn cleanup_unit_staging_files(path: &Path) -> RunnerResult<()> {
         let Some(name) = file_name.to_str() else {
             continue;
         };
-        if is_unit_staging_file_name(name, &prefix, &legacy_prefix) {
-            remove_stale_unit_staging_file(&entry.path())?;
+        match unit_staging_file_kind(name, &prefix, &legacy_prefix) {
+            Some(UnitStagingFileKind::Current) => {
+                remove_stale_unit_staging_file(&entry.path(), None)?;
+            }
+            Some(UnitStagingFileKind::Legacy) => {
+                remove_stale_unit_staging_file(&entry.path(), Some(LEGACY_UNIT_STAGING_MIN_AGE))?;
+            }
+            None => {}
         }
     }
     Ok(())
@@ -2132,7 +2164,11 @@ mod tests {
         let path = dir.path().join("vm0-runner-test.service");
         let legacy_tmp = path.with_extension("tmp");
         let stale_unique = dir.path().join("vm0-runner-test.service.tmp@123.456.0");
-        let legacy_unique = dir.path().join(format!(
+        let old_legacy_unique = dir.path().join(format!(
+            ".vm0-runner-test.service.tmp.{}",
+            uuid::Uuid::new_v4()
+        ));
+        let recent_legacy_unique = dir.path().join(format!(
             ".vm0-runner-test.service.tmp.{}",
             uuid::Uuid::new_v4()
         ));
@@ -2146,11 +2182,18 @@ mod tests {
         std::fs::write(&path, "current").unwrap();
         std::fs::write(&legacy_tmp, "legacy").unwrap();
         std::fs::write(&stale_unique, "stale").unwrap();
-        std::fs::write(&legacy_unique, "legacy unique").unwrap();
+        std::fs::write(&old_legacy_unique, "old legacy unique").unwrap();
+        std::fs::write(&recent_legacy_unique, "recent legacy unique").unwrap();
         std::fs::write(&invalid_staging, "manual").unwrap();
         std::fs::write(&other_unit_staging, "other").unwrap();
         std::fs::write(&colliding_unit_staging, "colliding").unwrap();
         std::fs::create_dir(&staging_dir).unwrap();
+        let old_legacy_mtime =
+            SystemTime::now() - LEGACY_UNIT_STAGING_MIN_AGE - Duration::from_secs(60);
+        std::fs::File::open(&old_legacy_unique)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(old_legacy_mtime))
+            .unwrap();
 
         cleanup_unit_staging_files(&path).unwrap();
 
@@ -2161,8 +2204,12 @@ mod tests {
         );
         assert!(!stale_unique.exists(), "unique staging must be removed");
         assert!(
-            !legacy_unique.exists(),
-            "legacy dot-prefixed unique staging must be removed"
+            !old_legacy_unique.exists(),
+            "old legacy dot-prefixed unique staging must be removed"
+        );
+        assert!(
+            recent_legacy_unique.exists(),
+            "recent legacy dot-prefixed staging may be in use by an older runner binary"
         );
         assert!(
             invalid_staging.exists(),
