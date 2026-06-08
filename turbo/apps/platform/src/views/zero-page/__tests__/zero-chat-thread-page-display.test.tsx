@@ -2256,6 +2256,17 @@ describe("zero chat thread page display - artifact sidebar", () => {
     const user = userEvent.setup();
     const fileUrl = "https://demo-deck.sites.vm0.io";
     let presentationHtmlRequested = false;
+    const presentationHtml = `
+      <!doctype html>
+      <html>
+        <head><title>Demo deck</title></head>
+        <body>
+          <section data-vm0-slide>
+            <h1>Demo deck</h1>
+          </section>
+        </body>
+      </html>
+    `;
     mockChatLifecycle({
       chatMessages: [
         {
@@ -2290,17 +2301,15 @@ describe("zero chat thread page display - artifact sidebar", () => {
       }),
       http.get(fileUrl, () => {
         presentationHtmlRequested = true;
-        return HttpResponse.html(`
-          <!doctype html>
-          <html>
-            <head><title>Demo deck</title></head>
-            <body>
-              <section data-vm0-slide>
-                <h1>Demo deck</h1>
-              </section>
-            </body>
-          </html>
-        `);
+        return HttpResponse.html(presentationHtml);
+      }),
+      http.get("/__vm0-dev-artifact-fetch", ({ request }) => {
+        const requestUrl = new URL(request.url);
+        if (requestUrl.searchParams.get("url") !== fileUrl) {
+          return new HttpResponse(null, { status: 404 });
+        }
+        presentationHtmlRequested = true;
+        return HttpResponse.html(presentationHtml);
       }),
     );
 
@@ -2319,8 +2328,14 @@ describe("zero chat thread page display - artifact sidebar", () => {
     await user.click(await screen.findByLabelText("Download artifact"));
     await user.click(await screen.findByText("Download (.pptx)"));
 
-    const exportFrame = await screen.findByTitle("Presentation PPTX export");
-    expect(presentationHtmlRequested).toBeTruthy();
+    await waitFor(() => {
+      expect(presentationHtmlRequested).toBeTruthy();
+    });
+    const exportFrame = await waitFor(() => {
+      const frame = screen.getByTitle("Presentation PPTX export");
+      expect(frame).toBeInTheDocument();
+      return frame;
+    });
     expect(exportFrame).toHaveAttribute(
       "sandbox",
       "allow-scripts allow-downloads",
