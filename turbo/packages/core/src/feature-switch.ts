@@ -270,6 +270,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatScheduledRunCard]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Collapse schedule-triggered chat runs into a status card that opens the assistant transcript in a dialog.",
+    enabled: true,
+  },
   [FeatureSwitchKey.ChatTemplatePicker]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -308,6 +314,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@vm0.ai",
     description:
       "Show duration controls for explicit current-user permission grants.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ZeroAutomations]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Expose the Automations API surface (/api/automations) over the shared automation service. When disabled, the new endpoints 404 and only the legacy /api/zero/schedules surface is reachable.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

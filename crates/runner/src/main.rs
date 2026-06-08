@@ -30,6 +30,7 @@ mod proxy;
 mod r2_cache;
 mod resource_budget;
 mod retry;
+mod run_cancellation;
 mod run_resolution;
 mod runner_dirname;
 mod runtime_overrides;

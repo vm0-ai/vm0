@@ -16,11 +16,10 @@ import {
 import type { RouteEntry } from "../route";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
-import { calculateNextRun } from "../services/zero-schedules.service";
+import { TimeTrigger } from "../services/automations/time-trigger";
 
 const MAX_CONSECUTIVE_FAILURES = 3;
 
-type ScheduleRow = typeof zeroAgentSchedules.$inferSelect;
 type SchedulePayload =
   | { readonly kind: "cron"; readonly data: ScheduleCronCallbackPayload }
   | { readonly kind: "loop"; readonly data: ScheduleLoopCallbackPayload };
@@ -55,27 +54,6 @@ function parseLoopPayload(payload: unknown): SchedulePayload | null {
   return { kind: "loop", data: result.data };
 }
 
-function nextRunAtForSchedule(
-  payload: SchedulePayload,
-  schedule: ScheduleRow,
-  completedAt: Date,
-): Date | null {
-  if (payload.kind === "cron") {
-    return payload.data.cronExpression
-      ? calculateNextRun(
-          payload.data.cronExpression,
-          schedule.timezone,
-          completedAt,
-        )
-      : null;
-  }
-
-  if (schedule.intervalSeconds === null) {
-    throw new Error("Loop schedule is missing intervalSeconds");
-  }
-  return new Date(completedAt.getTime() + schedule.intervalSeconds * 1000);
-}
-
 function createScheduleCallbackHandler(
   parsePayload: (payload: unknown) => SchedulePayload | null,
 ) {
@@ -106,9 +84,15 @@ function createScheduleCallbackHandler(
     const consecutiveFailures =
       callback.status === "completed" ? 0 : schedule.consecutiveFailures + 1;
     const shouldDisable = consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
-    const nextRunAt = shouldDisable
-      ? null
-      : nextRunAtForSchedule(payload, schedule, completedAt);
+    const nextRunAt = new TimeTrigger().advanceAfterCompletion({
+      triggerType: payload.kind,
+      cronExpression:
+        payload.kind === "cron" ? payload.data.cronExpression : undefined,
+      intervalSeconds: schedule.intervalSeconds,
+      timezone: schedule.timezone,
+      completedAt,
+      shouldDisable,
+    });
 
     await writeDb
       .update(zeroAgentSchedules)

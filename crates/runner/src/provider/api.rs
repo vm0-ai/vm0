@@ -1,7 +1,6 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -17,6 +16,7 @@ use super::{ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobPr
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::ids::RunId;
+use crate::run_cancellation::SharedRunCancellationMap;
 use crate::types::{
     CompleteRequest, ExecutionContext, HeartbeatState, HeldSessionState, Job,
     MAX_HELD_SESSION_STATES, PollResponse, SandboxReuseResult,
@@ -85,7 +85,7 @@ impl ApiProvider {
         profiles: Vec<String>,
         runner_id: String,
         cancel: CancellationToken,
-        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
         let poll_wakeups = Arc::new(PollWakeups::new(false));

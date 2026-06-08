@@ -181,10 +181,17 @@ const pagedChatMessageBaseSchema = z.object({
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
   // Present on user messages posted by a firing schedule. `scheduleId` links to
-  // the schedule detail page; `scheduleTitle` is the schedule name snapshot
-  // rendered in place of the prompt text.
+  // the schedule detail page; `scheduleSnapshot` preserves the schedule label
+  // and description at send time. `scheduleTitle` is legacy fallback data.
   scheduleId: z.string().optional(),
   scheduleTitle: z.string().optional(),
+  scheduleSnapshot: z
+    .object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string().nullable(),
+    })
+    .optional(),
   createdAt: z.string(),
 });
 

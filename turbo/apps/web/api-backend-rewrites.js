@@ -53,6 +53,13 @@ const ZERO_SCHEDULES_DISABLE_PATH_RE =
   /^\/api\/zero\/schedules\/[^/]+\/disable$/;
 const ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE = "/api/zero/schedules/:name/enable";
 const ZERO_SCHEDULES_ENABLE_PATH_RE = /^\/api\/zero\/schedules\/[^/]+\/enable$/;
+const AUTOMATIONS_RUN_REWRITE_SOURCE = "/api/automations/run";
+const AUTOMATIONS_BY_NAME_REWRITE_SOURCE = "/api/automations/:name";
+const AUTOMATIONS_BY_NAME_PATH_RE = /^\/api\/automations\/[^/]+$/;
+const AUTOMATIONS_DISABLE_REWRITE_SOURCE = "/api/automations/:name/disable";
+const AUTOMATIONS_DISABLE_PATH_RE = /^\/api\/automations\/[^/]+\/disable$/;
+const AUTOMATIONS_ENABLE_REWRITE_SOURCE = "/api/automations/:name/enable";
+const AUTOMATIONS_ENABLE_PATH_RE = /^\/api\/automations\/[^/]+\/enable$/;
 const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
 const ZERO_SKILLS_BY_NAME_PATH_RE = /^\/api\/zero\/skills\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
@@ -1107,6 +1114,23 @@ export const API_BACKEND_REWRITES = [
     ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE,
     "/api/zero/schedules/:name/enable",
     ZERO_SCHEDULES_ENABLE_PATH_RE,
+  ],
+  ["/api/automations", "/api/automations"],
+  [AUTOMATIONS_RUN_REWRITE_SOURCE, "/api/automations/run"],
+  [
+    AUTOMATIONS_DISABLE_REWRITE_SOURCE,
+    "/api/automations/:name/disable",
+    AUTOMATIONS_DISABLE_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_ENABLE_REWRITE_SOURCE,
+    "/api/automations/:name/enable",
+    AUTOMATIONS_ENABLE_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_BY_NAME_REWRITE_SOURCE,
+    "/api/automations/:name",
+    AUTOMATIONS_BY_NAME_PATH_RE,
   ],
   ["/api/zero/memory", "/api/zero/memory"],
   ["/api/zero/memory/activity", "/api/zero/memory/activity"],
