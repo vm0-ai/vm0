@@ -15,6 +15,14 @@ export interface AwsCallerIdentity {
   readonly userId: string;
 }
 
+const AWS_STS_IDENTITY_XML_TAGS = {
+  Account: /<Account>([^<]+)<\/Account>/,
+  Arn: /<Arn>([^<]+)<\/Arn>/,
+  UserId: /<UserId>([^<]+)<\/UserId>/,
+} as const;
+
+type AwsStsIdentityXmlTag = keyof typeof AWS_STS_IDENTITY_XML_TAGS;
+
 export async function getAwsCallerIdentity(args: {
   readonly credentials: AwsSigV4Credentials;
   readonly region: string;
@@ -162,8 +170,8 @@ function parseGetCallerIdentityResponse(xml: string): AwsCallerIdentity {
   return { account, arn, userId };
 }
 
-function xmlElement(xml: string, tagName: string): string | null {
-  const match = new RegExp(`<${tagName}>([^<]+)</${tagName}>`).exec(xml);
+function xmlElement(xml: string, tagName: AwsStsIdentityXmlTag): string | null {
+  const match = AWS_STS_IDENTITY_XML_TAGS[tagName].exec(xml);
   return match?.[1] ? decodeXmlText(match[1]) : null;
 }
 

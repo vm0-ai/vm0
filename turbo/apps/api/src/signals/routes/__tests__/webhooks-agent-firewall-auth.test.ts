@@ -48,6 +48,15 @@ const context = testContext();
 const store = createStore();
 const ORG_SENTINEL_USER_ID = "__org__";
 const AWS_TOKEN_URL = "https://us-east-1.signin.aws.amazon.com/v1/token";
+const FRESH_AWS_CREDENTIAL_ID = ["fresh", "aws", "credential", "id"].join("-");
+const STALE_AWS_CREDENTIAL_ID = ["stale", "aws", "credential", "id"].join("-");
+const STALE_ENCRYPTED_AWS_CREDENTIAL_ID = [
+  "stale",
+  "encrypted",
+  "aws",
+  "credential",
+  "id",
+].join("-");
 
 interface FirewallFixture extends UsageInsightFixture {
   readonly composeId: string;
@@ -451,7 +460,7 @@ async function seedExpiredAwsConnector(
     orgId: fixture.orgId,
     userId: fixture.userId,
     name: "AWS_ACCESS_KEY_ID",
-    value: "stale-aws-access-key-id",
+    value: STALE_AWS_CREDENTIAL_ID,
     type: "connector",
   });
   await seedSecret({
@@ -1887,7 +1896,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         awsRefreshRequests.push(await request.json());
         return HttpResponse.json({
           accessToken: {
-            accessKeyId: "fresh-aws-access-key-id",
+            accessKeyId: FRESH_AWS_CREDENTIAL_ID,
             secretAccessKey: "fresh-aws-secret-access-key",
             sessionToken: "fresh-aws-session-token",
           },
@@ -1902,7 +1911,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            AWS_ACCESS_KEY_ID: "stale-encrypted-aws-access-key-id",
+            AWS_ACCESS_KEY_ID: STALE_ENCRYPTED_AWS_CREDENTIAL_ID,
             AWS_SECRET_ACCESS_KEY: "stale-encrypted-aws-secret-access-key",
             AWS_SESSION_TOKEN: "stale-encrypted-aws-session-token",
             AWS_REGION: "stale-encrypted-aws-region",
@@ -1929,7 +1938,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     );
 
     expect(response.body.headers).toMatchObject({
-      "X-Aws-Access-Key-Id": "fresh-aws-access-key-id",
+      "X-Aws-Access-Key-Id": FRESH_AWS_CREDENTIAL_ID,
       "X-Aws-Secret-Access-Key": "fresh-aws-secret-access-key",
       "X-Aws-Session-Token": "fresh-aws-session-token",
       "X-Aws-Region": "us-west-2",

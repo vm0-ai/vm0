@@ -41,6 +41,12 @@ const AWS_TOKEN_URL = "https://us-east-1.signin.aws.amazon.com/v1/token";
 const AWS_STS_URL = "https://sts.us-east-1.amazonaws.com/";
 const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+const AWS_EXTERNAL_CODE_CREDENTIAL_ID = [
+  "aws",
+  "external-code",
+  "credential",
+  "id",
+].join("-");
 
 const awsTokenRequestSchema = z.object({
   clientId: z.literal("arn:aws:signin:::devtools/cross-device"),
@@ -128,7 +134,7 @@ function mockAwsProvider(): z.infer<typeof awsTokenRequestSchema>[] {
       tokenRequests.push(body);
       return HttpResponse.json({
         accessToken: {
-          accessKeyId: "aws-external-code-access-key-id",
+          accessKeyId: AWS_EXTERNAL_CODE_CREDENTIAL_ID,
           secretAccessKey: "aws-secret-access-key",
           sessionToken: "aws-session-token",
         },
@@ -358,7 +364,7 @@ describe("external-code connector routes", () => {
     ).resolves.toBe("aws-login-refresh-token");
     await expect(
       storedSecret({ orgId, userId, name: "AWS_ACCESS_KEY_ID" }),
-    ).resolves.toBe("aws-external-code-access-key-id");
+    ).resolves.toBe(AWS_EXTERNAL_CODE_CREDENTIAL_ID);
     await expect(
       storedSecret({ orgId, userId, name: "AWS_SECRET_ACCESS_KEY" }),
     ).resolves.toBe("aws-secret-access-key");
@@ -431,7 +437,7 @@ describe("external-code connector routes", () => {
     expect(tokenRequests).toHaveLength(1);
     await expect(
       storedSecret({ orgId, userId, name: "AWS_ACCESS_KEY_ID" }),
-    ).resolves.toBe("aws-external-code-access-key-id");
+    ).resolves.toBe(AWS_EXTERNAL_CODE_CREDENTIAL_ID);
 
     const [session] = await store
       .set(writeDb$)

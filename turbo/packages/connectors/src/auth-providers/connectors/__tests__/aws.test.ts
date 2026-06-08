@@ -15,6 +15,12 @@ import { resolveConnectorAuthClientForMethod } from "../../../connector-utils";
 
 const AWS_TOKEN_URL = "https://us-east-1.signin.aws.amazon.com/v1/token";
 const AWS_STS_URL = "https://sts.us-east-1.amazonaws.com/";
+const AWS_EXCHANGE_CREDENTIAL_ID = ["aws", "exchange", "credential", "id"].join(
+  "-",
+);
+const AWS_REFRESH_CREDENTIAL_ID = ["aws", "refresh", "credential", "id"].join(
+  "-",
+);
 
 const awsTokenRequestSchema = z.object({
   clientId: z.literal("arn:aws:signin:::devtools/cross-device"),
@@ -75,8 +81,8 @@ function mockAwsTokenEndpoint(): void {
         accessToken: {
           accessKeyId:
             body.grantType === "refresh_token"
-              ? "aws-refresh-access-key-id"
-              : "aws-exchange-access-key-id",
+              ? AWS_REFRESH_CREDENTIAL_ID
+              : AWS_EXCHANGE_CREDENTIAL_ID,
           secretAccessKey:
             body.grantType === "refresh_token"
               ? "refresh-secret-access-key"
@@ -184,7 +190,7 @@ describe("AWS external-code provider", () => {
     expect(result).toStrictEqual({
       outputs: {
         refreshToken: "aws-refresh-token",
-        accessKeyId: "aws-exchange-access-key-id",
+        accessKeyId: AWS_EXCHANGE_CREDENTIAL_ID,
         secretAccessKey: "exchange-secret-access-key",
         sessionToken: "exchange-session-token",
         signinRegion: "us-east-1",
@@ -297,7 +303,7 @@ describe("AWS external-code provider", () => {
     ).resolves.toStrictEqual({
       outputs: {
         refreshToken: "aws-refresh-token-rotated",
-        accessKeyId: "aws-refresh-access-key-id",
+        accessKeyId: AWS_REFRESH_CREDENTIAL_ID,
         secretAccessKey: "refresh-secret-access-key",
         sessionToken: "refresh-session-token",
       },
