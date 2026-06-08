@@ -73,9 +73,8 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     usage = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
     if not usage or not isinstance(usage, dict):
         return False
-    message_id = _string_or_none(usage.get("message_id")) or flow.id
     provider = _reported_model(flow, usage)
-    events = _build_usage_events(run_id, message_id, provider, usage, USAGE_EVENT_NAMESPACE_MODEL)
+    events = _build_usage_events(run_id, flow.id, provider, usage, USAGE_EVENT_NAMESPACE_MODEL)
     if not events:
         return False
     sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
@@ -109,11 +108,10 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
     usage = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
     if not usage or not isinstance(usage, dict):
         return False
-    message_id = _string_or_none(usage.get("message_id")) or flow.id
     model = _reported_model(flow, usage)
     events = _build_usage_events(
         run_id,
-        message_id,
+        flow.id,
         model,
         usage,
         USAGE_OBSERVATION_NAMESPACE_MODEL,
@@ -143,7 +141,7 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
 
 
 def _build_usage_events(
-    run_id: str, message_id: str, provider: str, usage: dict, namespace: uuid.UUID
+    run_id: str, source_id: str, provider: str, usage: dict, namespace: uuid.UUID
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for category in MODEL_USAGE_CATEGORIES:
@@ -152,7 +150,7 @@ def _build_usage_events(
             continue
         events.append(
             {
-                "idempotencyKey": _derive_idempotency_key(namespace, run_id, message_id, category),
+                "idempotencyKey": _derive_idempotency_key(namespace, run_id, source_id, category),
                 "kind": MODEL_USAGE_KIND,
                 "provider": provider,
                 "category": category,
@@ -163,12 +161,12 @@ def _build_usage_events(
 
 
 def _derive_idempotency_key(
-    namespace: uuid.UUID, run_id: str, message_id: str, category: str
+    namespace: uuid.UUID, run_id: str, source_id: str, category: str
 ) -> str:
     return str(
         uuid.uuid5(
             namespace,
-            encode_uuid_name((run_id, message_id, category)),
+            encode_uuid_name((run_id, source_id, category)),
         )
     )
 

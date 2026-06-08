@@ -95,10 +95,10 @@ class TestUsageReportingIdempotency:
         events = webhook.usage_events()
         assert [event["category"] for event in events] == ["tokens.output"]
 
-    def test_uses_flow_id_when_message_id_missing(
+    def test_reports_usage_without_provider_message_id(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
-        """Missing message_id in model_provider_usage falls back to flow.id.
+        """Missing message_id in model_provider_usage still reports usage.
 
         Without a stable per-flow source key, duplicate response/error
         observations could be aggregated twice before the webhook payload is
@@ -148,11 +148,10 @@ class TestUsageReportingIdempotency:
         uuid.UUID(observation_key)
         assert observation_key != billing_key
 
-    def test_preserves_message_id_from_response(
+    def test_reports_usage_with_provider_message_id(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
-        """When model_provider_usage already has a message_id, flow.id fallback
-        must not override it."""
+        """Provider message_id metadata must not block ordinary usage reporting."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.id = "flow-should-not-win"
         log_path = str(tmp_path / "network.jsonl")
