@@ -1,5 +1,6 @@
 const path = require("node:path");
 
+const packageMetadata = require("./package.json");
 const desktopIdentities = require("./src/desktop-identities.json");
 
 const PRODUCTION_PLATFORM_HOSTNAME = "app.vm0.ai";
@@ -48,7 +49,43 @@ const desktopIdentity = desktopIdentityForPlatformUrl(
 );
 const osxNotarize = desktopNotarizeOptions();
 
+// Forge 7 bundles Packager 18, whose CommonJS signing adapter cannot call osx-sign v2.
+async function signPackagedDarwinApps(_forgeConfig, packageResult) {
+  if (packageResult.platform !== "darwin") {
+    return;
+  }
+
+  const { sign } = await import("@electron/osx-sign");
+  const notarizeModule = osxNotarize
+    ? await import("@electron/notarize")
+    : undefined;
+
+  for (const outputPath of packageResult.outputPaths) {
+    const appPath = path.join(outputPath, `${desktopIdentity.displayName}.app`);
+
+    await sign({
+      app: appPath,
+      batchCodesignCalls: true,
+      identity: codeSigningIdentity,
+      identityValidation: codeSigningIdentity !== "-",
+      platform: "darwin",
+      version: packageMetadata.devDependencies.electron,
+      ...(codeSigningIdentity === "-" ? { timestamp: "none" } : {}),
+    });
+
+    if (notarizeModule) {
+      await notarizeModule.notarize({
+        appPath,
+        ...osxNotarize,
+      });
+    }
+  }
+}
+
 module.exports = {
+  hooks: {
+    postPackage: signPackagedDarwinApps,
+  },
   packagerConfig: {
     name: desktopIdentity.displayName,
     executableName: desktopIdentity.displayName,
@@ -59,11 +96,6 @@ module.exports = {
     },
     asar: false,
     extraResource: [path.join(__dirname, "native", "dist", "native")],
-    osxSign: {
-      identity: codeSigningIdentity,
-      identityValidation: codeSigningIdentity !== "-",
-    },
-    ...(osxNotarize ? { osxNotarize } : {}),
     protocols: [
       {
         name: desktopIdentity.authProtocolName,
