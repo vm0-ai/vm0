@@ -89,8 +89,11 @@ list_matching_endpoint_ids() {
     ids="$(jq -r --arg job_ref "$JOB_REF" --arg url "$webhook_url" '
       .data[]
       | select(
-          (.metadata.job_ref // "") == $job_ref
-          or ($url != "" and .url == $url)
+          (.metadata.managed_by // "") == "github-actions"
+          and (
+            (.metadata.job_ref // "") == $job_ref
+            or ($url != "" and .url == $url)
+          )
         )
       | .id
     ' <<<"$response")"
