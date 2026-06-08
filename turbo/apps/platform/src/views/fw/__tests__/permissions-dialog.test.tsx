@@ -172,6 +172,17 @@ function getUnknownEndpointsRow(): HTMLElement {
   return row;
 }
 
+function getPermissionGroupHeader(category: string): HTMLElement {
+  const label = screen.getByText((text) => {
+    return text.startsWith(`${category} (`);
+  });
+  const row = label.closest("button")?.parentElement;
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`Permission group header not found: ${category}`);
+  }
+  return row;
+}
+
 function getAllowOptionsButton(
   row: HTMLElement,
   permission: string,
@@ -616,6 +627,35 @@ describe("permissions dialog - grouped connector (Slack)", () => {
         screen.queryByText("channels:read"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("sets and resets expiration from grouped permission controls", async () => {
+    mockAPIs({ connectorType: "slack" });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Slack");
+
+    const readGroup = getPermissionGroupHeader("Read");
+    await selectAllowDuration(readGroup, "Read", "Allow for 24h");
+    expect(screen.getByText("Apply")).toBeEnabled();
+
+    click(screen.getByText(/Read \(\d+\)/i));
+    await waitFor(() => {
+      expect(screen.getByText("channels:read")).toBeInTheDocument();
+    });
+    const channelsReadRow = getPermissionRow("channels:read");
+    expect(getPolicyButton(channelsReadRow, "Allow")).toHaveTextContent(
+      "Allow · 24h",
+    );
+
+    click(getResetChangesButton(readGroup, "Read"));
+    expect(getPolicyButton(channelsReadRow, "Allow")).toHaveTextContent(
+      "Allow",
+    );
+    expect(screen.getByText("Apply")).toBeDisabled();
   });
 
   it("saves changed grants and closes drawer when Apply is clicked (FW-D-036)", async () => {
