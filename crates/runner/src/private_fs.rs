@@ -153,7 +153,13 @@ async fn read_private_file_contents(
 ) -> RunnerResult<String> {
     use tokio::io::AsyncReadExt;
 
-    let mut limited = file.take(max_bytes + 1);
+    let read_limit = max_bytes.checked_add(1).ok_or_else(|| {
+        RunnerError::Config(format!(
+            "private file {} read limit is too large",
+            path.display()
+        ))
+    })?;
+    let mut limited = file.take(read_limit);
     let mut contents = Vec::new();
     limited
         .read_to_end(&mut contents)
@@ -472,9 +478,10 @@ fn secure_existing_private_dir_component(
     }
 
     let mode = (stat.st_mode as u32) & 0o7777;
-    if mode & GROUP_OR_OTHER_WRITE_BITS != 0 && mode & STICKY_BIT == 0 {
+    let group_or_other_writable = mode & GROUP_OR_OTHER_WRITE_BITS != 0;
+    if group_or_other_writable && (enforce_private_mode || mode & STICKY_BIT == 0) {
         return Err(RunnerError::Config(format!(
-            "private dir component {} for {} is group/other writable without the sticky bit; fix permissions before starting the runner",
+            "private dir component {} for {} is group/other writable; fix permissions before starting the runner",
             component_path.display(),
             full_path.display()
         )));
@@ -570,6 +577,12 @@ fn secure_open_private_file<Fd: std::os::fd::AsRawFd>(file: &Fd, path: &Path) ->
         )));
     }
     let mode = stat.st_mode & 0o7777;
+    if mode & GROUP_OR_OTHER_WRITE_BITS != 0 {
+        return Err(RunnerError::Config(format!(
+            "{} is group/other writable; fix permissions before starting the runner",
+            path.display()
+        )));
+    }
     if mode == PRIVATE_FILE_MODE {
         return Ok(());
     }
@@ -728,6 +741,38 @@ mod tests {
 
         assert!(
             error.to_string().contains("exceeds"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_private_file_rejects_group_writable_file_without_chmodding() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("runner_id");
+        std::fs::write(&path, b"x").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o660)).unwrap();
+
+        let error = read_private_file_to_string(&path).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("group/other writable"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(mode(&path), 0o660);
+    }
+
+    #[tokio::test]
+    async fn read_private_file_rejects_overflowing_read_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("runner_id");
+        std::fs::write(&path, b"x").unwrap();
+
+        let error = read_private_file_to_string_with_max(&path, u64::MAX)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("read limit is too large"),
             "unexpected error: {error}"
         );
     }
@@ -992,6 +1037,22 @@ mod tests {
         ensure_private_dir(&private_dir).await.unwrap();
 
         assert_eq!(mode(&private_dir), PRIVATE_DIR_MODE);
+    }
+
+    #[tokio::test]
+    async fn ensure_private_dir_rejects_sticky_group_writable_final_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let private_dir = dir.path().join("runner");
+        std::fs::create_dir(&private_dir).unwrap();
+        std::fs::set_permissions(&private_dir, std::fs::Permissions::from_mode(0o1777)).unwrap();
+
+        let error = ensure_private_dir(&private_dir).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("group/other writable"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(mode(&private_dir), 0o777);
     }
 
     #[test]
