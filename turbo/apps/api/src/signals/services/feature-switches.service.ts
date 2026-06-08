@@ -1,23 +1,10 @@
 import { command, computed, type Computed } from "ccstate";
-import {
-  shouldPersistUserFeatureSwitchOverride,
-  type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq } from "drizzle-orm";
 
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
-
-function persistableUserSwitchOverrides(
-  switches: Record<string, boolean>,
-): Record<string, boolean> {
-  return Object.fromEntries(
-    Object.entries(switches).filter(([key]) => {
-      return shouldPersistUserFeatureSwitchOverride(key);
-    }),
-  );
-}
 
 async function loadUserFeatureSwitchOverrides(
   db: ReadonlyDb,
@@ -35,7 +22,7 @@ async function loadUserFeatureSwitchOverrides(
     )
     .limit(1);
 
-  return persistableUserSwitchOverrides(row?.switches ?? {});
+  return row?.switches ?? {};
 }
 
 export function userFeatureSwitchOverrides(
@@ -97,12 +84,11 @@ export const updateUserFeatureSwitches$ = command(
       .limit(1);
     signal.throwIfAborted();
 
-    const existing = persistableUserSwitchOverrides(
-      (existingRow?.switches as Record<string, boolean> | undefined) ?? {},
-    );
+    const existing =
+      (existingRow?.switches as Record<string, boolean> | undefined) ?? {};
     const merged: Record<string, boolean> = {
       ...existing,
-      ...persistableUserSwitchOverrides(args.switches),
+      ...args.switches,
     };
     const now = nowDate();
 

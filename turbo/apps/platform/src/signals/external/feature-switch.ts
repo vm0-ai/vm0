@@ -1,8 +1,5 @@
 import { command, computed } from "ccstate";
-import {
-  getAllFeatureStates,
-  isFeatureSwitchUserOverridable,
-} from "@vm0/core/feature-switch";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { clerk$ } from "../auth";
@@ -39,7 +36,7 @@ function applySwitches(
   }
   for (const key of Object.values(FeatureSwitchKey)) {
     const value = overrides[key];
-    if (value !== undefined && isFeatureSwitchUserOverridable(key)) {
+    if (value !== undefined) {
       result[key] = Boolean(value);
     }
   }

@@ -152,13 +152,13 @@ describe("getAllFeatureStates", () => {
     expect("removedFeature" in states).toBe(false);
   });
 
-  it("should ignore user overrides for non-overridable switches", () => {
+  it("should allow user overrides for AWS outside the staff org rollout", () => {
     const states = getAllFeatureStates({
       orgId: "org_nonexistent",
       overrides: { [FeatureSwitchKey.AwsConnector]: true },
     });
 
-    expect(states[FeatureSwitchKey.AwsConnector]).toBe(false);
+    expect(states[FeatureSwitchKey.AwsConnector]).toBe(true);
   });
 });
 
@@ -211,12 +211,12 @@ describe("overrides", () => {
     ).toBe(true);
   });
 
-  it("should ignore overrides for non-overridable switches", () => {
+  it("should allow overrides for AWS outside the staff org rollout", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.AwsConnector, {
         orgId: "org_nonexistent",
         overrides: { [FeatureSwitchKey.AwsConnector]: true },
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

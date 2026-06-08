@@ -249,7 +249,7 @@ describe("external-code connector routes", () => {
     );
   });
 
-  it("ignores user overrides for AWS on non-staff orgs", async () => {
+  it("allows user overrides for AWS on non-staff orgs", async () => {
     const { userId, orgId } = setupUser();
     await writeAwsConnectorOverride(userId, orgId);
     const client = setupApp({ context })(
@@ -262,11 +262,14 @@ describe("external-code connector routes", () => {
         body: { authMethod: "cli" },
         headers: AUTH_HEADERS,
       }),
-      [403],
+      [200],
     );
 
-    expect(response.body.error.message).toBe(
-      "External-code authorization is not enabled for this connector",
+    expect(response.body).toMatchObject(
+      expect.objectContaining({
+        type: "aws",
+        status: "pending",
+      }),
     );
   });
 
@@ -703,7 +706,6 @@ describe("external-code connector routes", () => {
 
   it("rejects complete when the AWS connector is not available", async () => {
     const { userId, orgId } = setupUser();
-    await writeAwsConnectorOverride(userId, orgId);
     const client = setupApp({ context })(
       zeroConnectorExternalCodeSessionContract,
     );

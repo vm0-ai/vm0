@@ -189,7 +189,7 @@ describe("POST /api/zero/feature-switches", () => {
     });
   });
 
-  it("ignores switches that cannot be user-overridden", async () => {
+  it("stores AWS connector overrides like other user feature switches", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     await track(Promise.resolve({ orgId, userId }));
@@ -210,9 +210,12 @@ describe("POST /api/zero/feature-switches", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ switches: { dummy: true } });
+    expect(response.body).toStrictEqual({
+      switches: { dummy: true, [FeatureSwitchKey.AwsConnector]: true },
+    });
     await expect(getRowSwitches(orgId, userId)).resolves.toStrictEqual({
       dummy: true,
+      [FeatureSwitchKey.AwsConnector]: true,
     });
   });
 

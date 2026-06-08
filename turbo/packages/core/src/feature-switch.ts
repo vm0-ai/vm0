@@ -4,12 +4,10 @@
  * Provides centralized feature flag management with user-identity based overrides.
  * User IDs are stored as FNV-1a hashes to avoid exposing plain-text identifiers in source code.
  *
- * NOT AN AUTHORIZATION BOUNDARY. Any authenticated user can self-enable any
- * switch via `POST /api/zero/feature-switches` unless a switch opts out with
- * `userOverridable: false`. For money-granting, credential, or
- * privilege-escalation endpoints, gate with a hard identity check
- * (e.g. `isStaffOrg()` from `./staff-org`) instead of relying only on this
- * system.
+ * NOT AN AUTHORIZATION BOUNDARY. Any authenticated user can self-enable
+ * switches via `POST /api/zero/feature-switches`. For money-granting,
+ * credential, or privilege-escalation endpoints, gate with a hard identity check
+ * instead of relying only on this system.
  */
 
 import { FeatureSwitchKey } from "./feature-switch-key";
@@ -19,8 +17,6 @@ export interface FeatureSwitch {
   readonly maintainer: string;
   readonly description?: string;
   readonly enabled: boolean;
-  /** Defaults to true. Set false when user-level overrides must not enable it. */
-  readonly userOverridable?: boolean;
   readonly enabledUserHashes?: readonly string[];
   readonly enabledEmailHashes?: readonly string[];
   readonly enabledOrgIdHashes?: readonly string[];
@@ -136,7 +132,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description: "Enable the temporary AWS remote login connector",
     enabled: false,
-    userOverridable: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PosthogConnector]: {
@@ -358,20 +353,6 @@ function isKnownFeatureSwitchKey(key: string): key is FeatureSwitchKey {
   return key in FEATURE_SWITCHES;
 }
 
-function featureSwitchAllowsUserOverride(key: FeatureSwitchKey): boolean {
-  return FEATURE_SWITCHES[key].userOverridable !== false;
-}
-
-export function isFeatureSwitchUserOverridable(
-  key: string,
-): key is FeatureSwitchKey {
-  return isKnownFeatureSwitchKey(key) && featureSwitchAllowsUserOverride(key);
-}
-
-export function shouldPersistUserFeatureSwitchOverride(key: string): boolean {
-  return !isKnownFeatureSwitchKey(key) || featureSwitchAllowsUserOverride(key);
-}
-
 /**
  * Evaluate all feature switches at once for the given context.
  *
@@ -412,7 +393,7 @@ export function getAllFeatureStates(
 
   if (ctx?.overrides) {
     for (const [key, value] of Object.entries(ctx.overrides)) {
-      if (isFeatureSwitchUserOverridable(key) && value !== undefined) {
+      if (isKnownFeatureSwitchKey(key) && value !== undefined) {
         result[key as FeatureSwitchKey] = value;
       }
     }
@@ -448,9 +429,7 @@ export function isFeatureEnabled(
   key: FeatureSwitchKey,
   ctx: FeatureSwitchContext,
 ): boolean {
-  const override = isFeatureSwitchUserOverridable(key)
-    ? ctx.overrides?.[key]
-    : undefined;
+  const override = ctx.overrides?.[key];
   if (override !== undefined) {
     return override;
   }
