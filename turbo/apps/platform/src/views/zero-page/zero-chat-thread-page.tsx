@@ -3161,7 +3161,7 @@ function FinishedRunRow({
       <div className="flex h-5 flex-col justify-center gap-1.5">
         <div className="h-px w-full bg-border/40" />
         <div className="flex items-center gap-2">
-          <p className="text-[11px] italic text-muted-foreground/40 font-serif shrink-0">
+          <p className="text-[13px] italic text-muted-foreground/50 font-serif shrink-0">
             {label}
           </p>
           <div className="h-px flex-1 bg-border/40" />

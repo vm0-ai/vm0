@@ -692,11 +692,6 @@
   margin-bottom: 8px;
 }
 
-.zero-chat-bubble-assistant .wmde-markdown li + li,
-.zero-chat-bubble-user .wmde-markdown li + li {
-  margin-top: 6px;
-}
-
 .wmde-markdown h1,
 .wmde-markdown h2,
 .wmde-markdown h3,
