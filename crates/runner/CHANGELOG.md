@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.108.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.13...runner-rs-v0.108.14) (2026-06-08)
+
+
+### Bug Fixes
+
+* **runner:** preserve systemctl service query errors ([#16508](https://github.com/vm0-ai/vm0/issues/16508)) ([230822c](https://github.com/vm0-ai/vm0/commit/230822cd5c0ef4207379b3a4ef4facc565d6dc8d))
+
 ## [0.108.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.12...runner-rs-v0.108.13) (2026-06-07)
 
 
