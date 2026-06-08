@@ -50,6 +50,8 @@ import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
+import { IN_VITEST } from "../../../env.ts";
+
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
@@ -942,7 +944,7 @@ function secondsToMilliseconds(value: number): number {
 // OAuth device authorization flow state
 // ---------------------------------------------------------------------------
 
-const OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS = 1000;
+const OAUTH_DEVICE_AUTH_MIN_POLL_INTERVAL_MS = IN_VITEST ? 10 : 1000;
 
 type PollConnectorOAuthDeviceAuthArgs = {
   readonly type: ConnectorType;
