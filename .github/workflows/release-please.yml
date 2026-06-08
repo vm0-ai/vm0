@@ -185,7 +185,7 @@ jobs:
           rm -rf apps/desktop/out
 
           pnpm -F @vm0/desktop build
-          pnpm --dir apps/desktop exec electron-forge make --platform darwin --arch arm64
+          node apps/desktop/scripts/run-forge-make-with-retry.js --platform darwin --arch arm64
 
           desktop_dir="$PWD/apps/desktop"
           forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero-darwin-arm64-$DESKTOP_VERSION.zip"

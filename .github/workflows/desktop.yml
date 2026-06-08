@@ -85,7 +85,7 @@ jobs:
           rm -rf apps/desktop/out
 
           pnpm -F @vm0/desktop build
-          pnpm --dir apps/desktop exec electron-forge make --platform darwin --arch arm64
+          node apps/desktop/scripts/run-forge-make-with-retry.js --platform darwin --arch arm64
 
           desktop_dir="$PWD/apps/desktop"
           version=$(node -p "require('./apps/desktop/package.json').version")
@@ -191,7 +191,7 @@ jobs:
           NODE
 
           pnpm -F @vm0/desktop build
-          pnpm --dir apps/desktop exec electron-forge make --platform darwin --arch arm64
+          node apps/desktop/scripts/run-forge-make-with-retry.js --platform darwin --arch arm64
 
           desktop_dir="$PWD/apps/desktop"
           version=$(node -p "require('./apps/desktop/package.json').version")
