@@ -61,6 +61,20 @@ function sessionTokenHash(sessionToken: string): string {
   return createHash("sha256").update(sessionToken).digest("hex");
 }
 
+function deferred(): {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+} {
+  let resolvePromise: (() => void) | undefined;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  if (!resolvePromise) {
+    throw new Error("Failed to create deferred promise");
+  }
+  return { promise, resolve: resolvePromise };
+}
+
 async function writeAwsConnectorOverride(userId: string, orgId: string) {
   await store
     .set(writeDb$)
@@ -450,6 +464,107 @@ describe("external-code connector routes", () => {
       .limit(1);
     expect(session).toMatchObject({ status: "complete" });
     expect(session?.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("does not supersede an in-flight completion when a new session starts", async () => {
+    const tokenRequestStarted = deferred();
+    const releaseTokenResponse = deferred();
+    const tokenRequests: z.infer<typeof awsTokenRequestSchema>[] = [];
+    server.use(
+      http.post(AWS_TOKEN_URL, async ({ request }) => {
+        const body = awsTokenRequestSchema.parse(await request.json());
+        tokenRequests.push(body);
+        tokenRequestStarted.resolve();
+        await releaseTokenResponse.promise;
+        return HttpResponse.json({
+          accessToken: {
+            accessKeyId: AWS_EXTERNAL_CODE_CREDENTIAL_ID,
+            secretAccessKey: "aws-secret-access-key",
+            sessionToken: "aws-session-token",
+          },
+          expiresIn: 900,
+          refreshToken: "aws-login-refresh-token",
+          tokenType: "urn:aws:params:oauth:token-type:access_token_sigv4",
+          idToken: "aws-id-token",
+        });
+      }),
+      http.get(AWS_STS_URL, () => {
+        return HttpResponse.xml(
+          [
+            "<GetCallerIdentityResponse>",
+            "<GetCallerIdentityResult>",
+            "<UserId>AIDAEXTERNALUSER</UserId>",
+            "<Account>123456789012</Account>",
+            "<Arn>arn:aws:iam::123456789012:user/external-code</Arn>",
+            "</GetCallerIdentityResult>",
+            "</GetCallerIdentityResponse>",
+          ].join(""),
+        );
+      }),
+    );
+    const { userId, orgId } = setupUser({ enableAws: true });
+    const client = setupApp({ context })(
+      zeroConnectorExternalCodeSessionContract,
+    );
+    const firstStart = await accept(
+      client.create({
+        params: { type: "aws" },
+        body: { authMethod: "cli" },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+
+    const firstComplete = accept(
+      client.complete({
+        params: { type: "aws", sessionId: firstStart.body.sessionId },
+        body: {
+          sessionToken: firstStart.body.sessionToken,
+          code: "AWS-CODE",
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    await tokenRequestStarted.promise;
+
+    const secondStart = await accept(
+      client.create({
+        params: { type: "aws" },
+        body: { authMethod: "cli" },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    releaseTokenResponse.resolve();
+
+    const complete = await firstComplete;
+
+    expect(tokenRequests).toHaveLength(1);
+    expect(complete.body.connector).toMatchObject({
+      type: "aws",
+      authMethod: "cli",
+      externalId: "123456789012",
+    });
+    const sessionRows = await store
+      .set(writeDb$)
+      .select({
+        id: connectorExternalCodeSessions.id,
+        status: connectorExternalCodeSessions.status,
+      })
+      .from(connectorExternalCodeSessions)
+      .where(
+        and(
+          eq(connectorExternalCodeSessions.userId, userId),
+          eq(connectorExternalCodeSessions.orgId, orgId),
+        ),
+      );
+    expect(sessionRows).toStrictEqual(
+      expect.arrayContaining([
+        { id: firstStart.body.sessionId, status: "complete" },
+        { id: secondStart.body.sessionId, status: "pending" },
+      ]),
+    );
   });
 
   it("rejects complete when the AWS connector is not available", async () => {

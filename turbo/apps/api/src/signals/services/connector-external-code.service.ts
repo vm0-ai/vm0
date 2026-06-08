@@ -46,10 +46,7 @@ import {
   zeroConnectorByType,
 } from "./zero-connector-data.service";
 
-const ACTIVE_EXTERNAL_CODE_SESSION_STATUSES = [
-  "pending",
-  "completing",
-] as const;
+const SUPERSEDABLE_EXTERNAL_CODE_SESSION_STATUSES = ["pending"] as const;
 const SUPERSEDED_SESSION_ERROR_CODE = "session_superseded";
 const SUPERSEDED_SESSION_ERROR_MESSAGE =
   "External-code authorization session was superseded";
@@ -178,7 +175,7 @@ async function lockExternalCodeSessionOwner(
   );
 }
 
-async function markActiveSessionsSuperseded(
+async function markPendingSessionsSuperseded(
   args: ExternalCodeSessionOwner & {
     readonly writeDb: Db;
     readonly now: Date;
@@ -200,7 +197,7 @@ async function markActiveSessionsSuperseded(
         eq(connectorExternalCodeSessions.connectorType, args.type),
         eq(connectorExternalCodeSessions.authMethod, args.authMethod),
         inArray(connectorExternalCodeSessions.status, [
-          ...ACTIVE_EXTERNAL_CODE_SESSION_STATUSES,
+          ...SUPERSEDABLE_EXTERNAL_CODE_SESSION_STATUSES,
         ]),
       ),
     );
@@ -662,7 +659,7 @@ export const startConnectorExternalCodeSession$ = command(
         orgId: args.orgId,
         userId: args.userId,
       });
-      await markActiveSessionsSuperseded({
+      await markPendingSessionsSuperseded({
         ...resolvedMethod,
         writeDb: tx,
         orgId: args.orgId,
