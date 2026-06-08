@@ -8,7 +8,6 @@ import {
   ScheduleListResponse,
   ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import type {
   ScheduleCronCallbackPayload,
   ScheduleLoopCallbackPayload,
@@ -29,8 +28,6 @@ import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { isValidTimeZone, settle } from "../utils";
-import { decryptStoredSecretsMap } from "./crypto.utils";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { resolveModelFirstProviderAdmission } from "./zero-model-selection.service";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
@@ -46,15 +43,10 @@ const OPENROUTER_CHAT_COMPLETIONS_URL =
 const LIGHTWEIGHT_MODEL = "google/gemini-3.1-flash-lite-preview";
 const MAX_CONSECUTIVE_FAILURES = 3;
 
-async function scheduleResponse(
+function scheduleResponse(
   schedule: typeof zeroAgentSchedules.$inferSelect,
   displayName: string | null,
-  featureSwitchContext: FeatureSwitchContext,
-): Promise<ScheduleResponse> {
-  const secrets = await decryptStoredSecretsMap(
-    schedule.encryptedSecrets,
-    featureSwitchContext,
-  );
+): ScheduleResponse {
   return {
     id: schedule.id,
     agentId: schedule.agentId,
@@ -69,9 +61,6 @@ async function scheduleResponse(
     prompt: schedule.prompt,
     description: schedule.description,
     appendSystemPrompt: schedule.appendSystemPrompt,
-    vars: schedule.vars,
-    secretNames: secrets ? Object.keys(secrets) : null,
-    volumeVersions: schedule.volumeVersions,
     enabled: schedule.enabled,
     nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
     lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
@@ -521,9 +510,6 @@ async function updateExistingSchedule(
       prompt: args.request.prompt,
       description: args.request.description ?? null,
       appendSystemPrompt: args.request.appendSystemPrompt ?? null,
-      vars: null,
-      encryptedSecrets: null,
-      volumeVersions: args.request.volumeVersions ?? null,
       nextRunAt: args.nextRunAt,
       consecutiveFailures: 0,
       updatedAt: args.currentTime,
@@ -594,9 +580,6 @@ async function insertNewSchedule(
         prompt: args.request.prompt,
         description: args.request.description ?? null,
         appendSystemPrompt: args.request.appendSystemPrompt ?? null,
-        vars: null,
-        encryptedSecrets: null,
-        volumeVersions: args.request.volumeVersions ?? null,
         chatThreadId,
         enabled: args.request.enabled ?? false,
         nextRunAt: args.nextRunAt,
@@ -617,7 +600,7 @@ async function insertNewSchedule(
 
 export const deploySchedule$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly userId: string;
       readonly orgId: string;
@@ -721,19 +704,11 @@ export const deploySchedule$ = command(
     );
     signal.throwIfAborted();
 
-    const featureSwitchOverrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
     return {
       kind: "ok",
       status: existing ? 200 : 201,
       response: {
-        schedule: await scheduleResponse(schedule, agent.displayName, {
-          orgId: args.orgId,
-          userId: args.userId,
-          overrides: featureSwitchOverrides,
-        }),
+        schedule: scheduleResponse(schedule, agent.displayName),
         created: !existing,
       },
     };
@@ -742,7 +717,7 @@ export const deploySchedule$ = command(
 
 export const disableSchedule$ = command(
   async (
-    { get, set },
+    { set },
     args: ScheduleMutationArgs,
     signal: AbortSignal,
   ): Promise<DisableScheduleResult> => {
@@ -779,17 +754,9 @@ export const disableSchedule$ = command(
     );
     signal.throwIfAborted();
 
-    const featureSwitchOverrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
     return {
       kind: "ok",
-      response: await scheduleResponse(updated, ownership.displayName, {
-        orgId: args.orgId,
-        userId: args.userId,
-        overrides: featureSwitchOverrides,
-      }),
+      response: scheduleResponse(updated, ownership.displayName),
     };
   },
 );
@@ -834,7 +801,7 @@ export const deleteSchedule$ = command(
 
 export const enableSchedule$ = command(
   async (
-    { get, set },
+    { set },
     args: ScheduleMutationArgs,
     signal: AbortSignal,
   ): Promise<EnableScheduleResult> => {
@@ -892,17 +859,9 @@ export const enableSchedule$ = command(
     );
     signal.throwIfAborted();
 
-    const featureSwitchOverrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
     return {
       kind: "ok",
-      response: await scheduleResponse(updated, displayName, {
-        orgId: args.orgId,
-        userId: args.userId,
-        overrides: featureSwitchOverrides,
-      }),
+      response: scheduleResponse(updated, displayName),
     };
   },
 );
@@ -1382,29 +1341,14 @@ export function zeroScheduleList(args: {
       }),
     );
 
-    const featureSwitchOverrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    );
-    const featureSwitchContext = {
-      orgId: args.orgId,
-      userId: args.userId,
-      overrides: featureSwitchOverrides,
-    } satisfies FeatureSwitchContext;
-
-    const responses = await Promise.all(
-      schedules.flatMap((schedule) => {
-        if (!agentMap.has(schedule.agentId)) {
-          return [];
-        }
-        return [
-          scheduleResponse(
-            schedule,
-            agentMap.get(schedule.agentId) ?? null,
-            featureSwitchContext,
-          ),
-        ];
-      }),
-    );
+    const responses = schedules.flatMap((schedule) => {
+      if (!agentMap.has(schedule.agentId)) {
+        return [];
+      }
+      return [
+        scheduleResponse(schedule, agentMap.get(schedule.agentId) ?? null),
+      ];
+    });
 
     return {
       schedules: responses,

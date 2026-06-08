@@ -25,7 +25,6 @@ export async function deployZeroSchedule(body: {
   prompt: string;
   description?: string;
   appendSystemPrompt?: string;
-  volumeVersions?: Record<string, string>;
   enabled?: boolean;
   chatThreadId?: string;
 }): Promise<DeployScheduleResponse> {
