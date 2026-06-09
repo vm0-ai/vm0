@@ -411,6 +411,26 @@ describe("chat lifecycle", () => {
         updatedAt: "2026-01-01T00:00:00Z",
       },
     ]);
+    context.mocks.data.githubIntegration(
+      context.mocks.data.defaultGithubIntegration({
+        labelListeners: [
+          {
+            id: "b0000000-0000-4000-a000-000000000701",
+            labelName: "needs-review",
+            triggerMode: "created_by_me",
+            prompt: "Review the labeled pull request.",
+            enabled: true,
+            canManage: true,
+            agent: {
+              id: AGENT_ID,
+              name: "zero",
+            },
+            createdAt: "2026-06-09T10:00:00Z",
+            updatedAt: "2026-06-09T10:00:00Z",
+          },
+        ],
+      }),
+    );
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes: ["github"] });
     });
@@ -464,6 +484,15 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Conflicts")).toBeInTheDocument();
       expect(screen.getByText("unit tests")).toBeInTheDocument();
       expect(screen.getByText("deploy preview")).toBeInTheDocument();
+    });
+
+    click(await screen.findByLabelText("Add label to PR 123"));
+    click(await screen.findByText("needs-review"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('add label "needs-review" to pr 123'),
+      ).toBeInTheDocument();
     });
 
     click(await screen.findByText("Fix conflict"));
