@@ -39,6 +39,7 @@ const THREAD_ID = "thread-test-1";
 const SCHEDULE_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
 const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
 const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
+const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
@@ -110,6 +111,24 @@ function selectTextForInlineFeedback(element: HTMLElement): void {
   selection.removeAllRanges();
   selection.addRange(range);
   document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+}
+
+function buttonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function queryButtonByText(text: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("button").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
 }
 
 describe("chat lifecycle", () => {
@@ -474,6 +493,63 @@ describe("chat lifecycle", () => {
     expect(
       screen.queryByPlaceholderText("What should change about this?"),
     ).not.toBeInTheDocument();
+  });
+
+  it("sends a recommended follow-up from the latest assistant reply", async () => {
+    const assistantReply = "I can turn this into a launch package.";
+    const followupPrompt = "Create a presentation outline";
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Launch package",
+      chatMessages: [
+        {
+          id: "msg-followup-user",
+          role: "user",
+          content: "Package this launch plan",
+          runId: undefined,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-followup-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: undefined,
+          recommendedFollowups: [
+            {
+              prompt: followupPrompt,
+              kind: "generate",
+              generationType: "presentation",
+            },
+            {
+              prompt: "Draft launch copy",
+              kind: "talk",
+            },
+          ],
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatRecommendedFollowups]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(assistantReply)).toBeInTheDocument();
+      expect(screen.getByText("Keep going")).toBeInTheDocument();
+      expect(buttonByText(followupPrompt)).toBeInTheDocument();
+    });
+
+    click(buttonByText(followupPrompt));
+
+    await waitFor(() => {
+      expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
+      expect(screen.getByText(followupPrompt)).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
   });
 
   it("switches sessions without stale running or completed messages", async () => {

@@ -219,12 +219,15 @@ type MockPagedMessage =
       id?: string;
     });
 
-function isRecallMessageBody(body: { revokesMessageId?: string }): body is {
+function isRecallMessageBody(body: {
+  revokesMessageId?: string;
+  prompt?: string;
+}): body is {
   revokesMessageId: string;
   threadId: string;
   clientMessageId?: string;
 } {
-  return body.revokesMessageId !== undefined;
+  return body.revokesMessageId !== undefined && body.prompt === undefined;
 }
 
 function isInterruptMessageBody(body: { interruptsRunId?: string }): body is {
