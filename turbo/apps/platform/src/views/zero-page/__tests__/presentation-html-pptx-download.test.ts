@@ -81,6 +81,20 @@ function presentationHtmlResponse(html: string) {
   });
 }
 
+function isRequestedPresentationUrl(
+  requestedUrl: string | null,
+  fileUrl: string,
+): boolean {
+  if (!requestedUrl) {
+    return false;
+  }
+  const actual = new URL(requestedUrl);
+  const expected = new URL(fileUrl);
+  return (
+    actual.origin === expected.origin && actual.pathname === expected.pathname
+  );
+}
+
 test("downloads presentation HTML as PPTX through an export iframe", async () => {
   const fileUrl = "https://demo-deck.sites.vm0.io";
   let presentationHtmlRequested = false;
@@ -215,7 +229,7 @@ test("injects presentation speaker notes into the downloaded PPTX blob", async (
           : request.url;
       if (
         requestUrl.hostname !== "demo-deck.sites.vm0.io" &&
-        !requestedUrl?.startsWith(fileUrl)
+        !isRequestedPresentationUrl(requestedUrl, fileUrl)
       ) {
         return new HttpResponse(null, { status: 404 });
       }
@@ -321,7 +335,7 @@ test("maps speaker notes using presentation slide order instead of slide file nu
           : request.url;
       if (
         requestUrl.hostname !== "demo-deck.sites.vm0.io" &&
-        !requestedUrl?.startsWith(fileUrl)
+        !isRequestedPresentationUrl(requestedUrl, fileUrl)
       ) {
         return new HttpResponse(null, { status: 404 });
       }

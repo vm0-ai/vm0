@@ -727,9 +727,14 @@ async function zipText(zip: JSZip, path: string): Promise<string | null> {
 }
 
 function xmlTagAttribute(tag: string, attribute: string): string | null {
-  const escapedAttribute = attribute.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = new RegExp(`\\b${escapedAttribute}="([^"]+)"`).exec(tag);
-  return match?.[1] ?? null;
+  const prefix = `${attribute}="`;
+  const start = tag.indexOf(prefix);
+  if (start < 0) {
+    return null;
+  }
+  const valueStart = start + prefix.length;
+  const valueEnd = tag.indexOf('"', valueStart);
+  return valueEnd < 0 ? null : tag.slice(valueStart, valueEnd);
 }
 
 async function presentationSlideNumbers(
