@@ -48,7 +48,6 @@ export enum FeatureSwitchKey {
   SandboxIoLimiters = "sandboxIoLimiters",
   SessionWorkspaceImageCache = "sessionWorkspaceImageCache",
   ChatGithubPrTracking = "chatGithubPrTracking",
-  ChatScheduledRunCard = "chatScheduledRunCard",
   ChatTemplatePicker = "chatTemplatePicker",
   MemoryViewer = "memoryViewer",
   MemoryDevRefresh = "memoryDevRefresh",

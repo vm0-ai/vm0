@@ -2160,14 +2160,7 @@ function appendDisplayGroup(
 
 function buildChatThreadDisplayEntries(
   groups: readonly GroupedChatMessageGroup[],
-  scheduledRunCardEnabled: boolean,
 ): ChatThreadDisplayEntry[] {
-  if (!scheduledRunCardEnabled) {
-    return groups.map((group) => {
-      return { type: "group", group };
-    });
-  }
-
   const entries: ChatThreadDisplayEntry[] = [];
   const messages = groups.flatMap((group) => {
     return group.messages;
@@ -2233,13 +2226,7 @@ function ChatThreadMessagesMain({
     groups.length === 0 &&
     !messagesLoading &&
     !skeletonVisible;
-  const features = useLastResolved(featureSwitch$);
-  const scheduledRunCardEnabled =
-    features?.[FeatureSwitchKey.ChatScheduledRunCard] ?? true;
-  const displayEntries = buildChatThreadDisplayEntries(
-    activeGroups,
-    scheduledRunCardEnabled,
-  );
+  const displayEntries = buildChatThreadDisplayEntries(activeGroups);
   const suppressThinkingIndicator =
     displayEntries[displayEntries.length - 1]?.type === "scheduled-run";
 
