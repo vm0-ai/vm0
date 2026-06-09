@@ -158,4 +158,4 @@ test_regular_file_bucket_counts
 test_ignores_incomplete_and_non_regular_entries
 test_missing_textfile_dir_fails
 
-echo "workspace image cache metrics tests passed"
+echo "vm0 monitoring collector tests passed"
