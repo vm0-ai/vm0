@@ -7,7 +7,11 @@ import {
   getDefaultFirewallPolicies,
   isFirewallConnectorType,
 } from "../index";
-import { stripeGenerationStats } from "../stripe.generated";
+import {
+  stripeCategories,
+  stripeCategoryOrder,
+  stripeGenerationStats,
+} from "../stripe.generated";
 
 function getStripePermission(name: string) {
   const firewall = getConnectorFirewall("stripe");
@@ -258,6 +262,17 @@ describe("stripe firewall", () => {
     expect(stripeGenerationStats.ambiguousOperations).toBe(0);
     expect(stripeGenerationStats.permissionCount).toBe(236);
     expect(stripeGenerationStats.permissionCount).toBe(permissionCount);
+  });
+
+  it("groups Stripe permissions by product area", () => {
+    expect(stripeCategories.customer_read).toBe("Core");
+    expect(stripeCategories.invoice_write).toBe("Billing");
+    expect(stripeCategories.forwarding_request_write).toBe("Payments");
+    expect(stripeCategories.treasury_financial_account_write).toBe("Treasury");
+    expect(stripeCategories.v2_core_account_write).toBe("Core");
+    expect(stripeCategoryOrder).toContain("Core");
+    expect(stripeCategoryOrder).toContain("Billing");
+    expect(stripeCategoryOrder).toContain("Treasury");
   });
 
   it("keeps Stripe permissions default-allowed with unknown policy compatibility", () => {

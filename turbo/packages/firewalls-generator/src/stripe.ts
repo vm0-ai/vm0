@@ -26,6 +26,7 @@ import {
   escapeString,
   fetchSpec,
   logStats,
+  renderCategories,
   renderPermissions,
   sanitizeAndSortRules,
   writeOutput,
@@ -78,6 +79,92 @@ const ACCESS_RESOURCE_ID_PERMISSION_STEM_ALIASES = new Map<
   string,
   Partial<Record<"read" | "write", string>>
 >([["account", { read: "connected_account" }]]);
+
+const STRIPE_CATEGORY_ORDER = [
+  "Core",
+  "Billing",
+  "Checkout Sessions",
+  "Payments",
+  "Connect",
+  "Accounts",
+  "Commerce",
+  "Financial Connections",
+  "Identity",
+  "Issuing",
+  "Money Management",
+  "Orders",
+  "Climate",
+  "Provisioning",
+  "Radar",
+  "Reporting",
+  "Stripe Apps",
+  "Tax",
+  "Terminal",
+  "Treasury",
+  "Webhook Endpoints",
+] as const;
+
+const OPENAPI_RESOURCE_CATEGORY_PREFIXES: ReadonlyArray<{
+  prefix: string;
+  category: string;
+}> = [
+  { prefix: "billing.", category: "Billing" },
+  { prefix: "v2.billing.", category: "Billing" },
+  { prefix: "climate.", category: "Climate" },
+  { prefix: "entitlements.", category: "Billing" },
+  { prefix: "financial_connections.", category: "Financial Connections" },
+  { prefix: "identity.", category: "Identity" },
+  { prefix: "issuing.", category: "Issuing" },
+  { prefix: "radar.", category: "Radar" },
+  { prefix: "reporting.", category: "Reporting" },
+  { prefix: "sigma.", category: "Reporting" },
+  { prefix: "tax.", category: "Tax" },
+  { prefix: "terminal.", category: "Terminal" },
+  { prefix: "treasury.", category: "Treasury" },
+  { prefix: "v2.account.", category: "Accounts" },
+  { prefix: "v2.core.", category: "Core" },
+];
+
+const OPENAPI_RESOURCE_CATEGORY_BY_ID = new Map<string, string>([
+  ["account", "Core"],
+  ["account_session", "Accounts"],
+  ["balance_settings", "Core"],
+  ["balance_transaction", "Core"],
+  ["bank_account", "Accounts"],
+  ["capability", "Accounts"],
+  ["card", "Core"],
+  ["cash_balance", "Core"],
+  ["country_spec", "Accounts"],
+  ["customer_balance_transaction", "Core"],
+  ["customer_cash_balance_transaction", "Core"],
+  ["discount", "Billing"],
+  ["ephemeral_key", "Core"],
+  ["exchange_rate", "Core"],
+  ["external_account", "Accounts"],
+  ["fee_refund", "Connect"],
+  ["file_link", "Core"],
+  ["funding_instructions", "Core"],
+  ["invoice_payment", "Billing"],
+  ["invoice_rendering_template", "Billing"],
+  ["invoiceitem", "Billing"],
+  ["item", "Orders"],
+  ["line_item", "Billing"],
+  ["mandate", "Core"],
+  ["payment_attempt_record", "Core"],
+  ["payment_source", "Core"],
+  ["person", "Accounts"],
+  ["product_feature", "Core"],
+  ["scheduled_query_run", "Reporting"],
+  ["setup_attempt", "Core"],
+  ["source_mandate_notification", "Core"],
+  ["source_transaction", "Core"],
+  ["subscription_item", "Billing"],
+  ["subscription_schedule", "Billing"],
+  ["tax_code", "Tax"],
+  ["tax_id", "Tax"],
+  ["terminal_refund", "Terminal"],
+  ["transfer_reversal", "Connect"],
+]);
 
 const REPRESENTATIVE_RULES: ReadonlyArray<{
   permission: string;
@@ -251,6 +338,7 @@ interface StripeOpenApiSpec {
 interface StripePermissionDefinition {
   name: string;
   description: string;
+  category: string;
 }
 
 interface StripePermissionRow {
@@ -275,6 +363,7 @@ interface BuildStats {
 
 interface BuildResult {
   permissions: PermissionGroup[];
+  categories: Record<string, string>;
   stats: BuildStats;
   unmappedRules: string[];
   ambiguousRules: string[];
@@ -528,6 +617,19 @@ function resourceIdForOpenApiPermission(
   return resourceId;
 }
 
+function categoryForOpenApiResourceId(resourceId: string): string {
+  const exact = OPENAPI_RESOURCE_CATEGORY_BY_ID.get(resourceId);
+  if (exact) return exact;
+
+  for (const { prefix, category } of OPENAPI_RESOURCE_CATEGORY_PREFIXES) {
+    if (resourceId.startsWith(prefix)) {
+      return category;
+    }
+  }
+
+  throw new Error(`No Stripe category for OpenAPI resource "${resourceId}"`);
+}
+
 function chooseOpenApiResourcePermission(
   resourceIds: string[],
   access: "read" | "write",
@@ -545,6 +647,7 @@ function chooseOpenApiResourcePermission(
   return {
     name: permissionNameForResource(resourceId, access),
     description: `Stripe API resource ${resourceId}`,
+    category: categoryForOpenApiResourceId(resourceId),
   };
 }
 
@@ -559,6 +662,7 @@ function openApiResourcePermissionDefinition(
   return {
     name: permissionNameForResource(normalizedResourceId, access),
     description: `Stripe API resource ${normalizedResourceId}`,
+    category: categoryForOpenApiResourceId(normalizedResourceId),
   };
 }
 
@@ -731,6 +835,7 @@ function buildPermissionDefinitions(
 
   for (const row of rows) {
     const description = `${row.product} - ${row.resource}`;
+    const category = row.product;
     for (const name of row.permissions) {
       if (!name) continue;
 
@@ -740,7 +845,7 @@ function buildPermissionDefinitions(
           `Duplicate Stripe permission "${name}" has conflicting descriptions`,
         );
       }
-      definitions.set(name, { name, description });
+      definitions.set(name, { name, description, category });
     }
   }
 
@@ -965,6 +1070,11 @@ function buildGroups(
       return [name, definition.description] as const;
     }),
   );
+  const permissionCategories = new Map(
+    [...permissionDefinitions.entries()].map(([name, definition]) => {
+      return [name, definition.category] as const;
+    }),
+  );
   const unmappedRules: string[] = [];
   const ambiguousRules: string[] = [];
   const usedLegacyAmbiguousOverrideRules = new Set<string>();
@@ -1065,6 +1175,9 @@ function buildGroups(
         if (!permissionDescriptions.has(definition.name)) {
           permissionDescriptions.set(definition.name, definition.description);
         }
+        if (!permissionCategories.has(definition.name)) {
+          permissionCategories.set(definition.name, definition.category);
+        }
       }
 
       for (const mappedPermissionName of sortUniqueStrings(
@@ -1111,6 +1224,15 @@ function buildGroups(
       rules: sanitizeAndSortRules([...ruleSet]),
     }));
 
+  const categories: Record<string, string> = {};
+  for (const permission of permissions) {
+    const category = permissionCategories.get(permission.name);
+    if (!category) {
+      throw new Error(`No Stripe category for permission "${permission.name}"`);
+    }
+    categories[permission.name] = category;
+  }
+
   validateRepresentativeRules(permissions, permissionDefinitions);
 
   const stats: BuildStats = {
@@ -1127,6 +1249,7 @@ function buildGroups(
 
   return {
     permissions,
+    categories,
     stats,
     unmappedRules,
     ambiguousRules,
@@ -1151,8 +1274,25 @@ function renderStats(stats: BuildStats): string[] {
   ];
 }
 
+function stripeCategoryDisplayOrder(
+  categories: Record<string, string>,
+): string[] {
+  const remaining = new Set(Object.values(categories));
+  const ordered: string[] = [];
+
+  for (const category of STRIPE_CATEGORY_ORDER) {
+    if (remaining.delete(category)) {
+      ordered.push(category);
+    }
+  }
+
+  ordered.push(...[...remaining].sort());
+  return ordered;
+}
+
 function generateTypeScript(
   permissions: PermissionGroup[],
+  categories: Record<string, string>,
   stats: BuildStats,
 ): string {
   const lines: string[] = [
@@ -1169,6 +1309,7 @@ function generateTypeScript(
     "// DO NOT EDIT THIS FILE MANUALLY.",
     "",
     'import type { FirewallConfig } from "../firewall-types";',
+    'import type { PermissionNamesOf } from "./index";',
     "",
     "export const stripeFirewall = {",
     '  name: "stripe",',
@@ -1193,6 +1334,12 @@ function generateTypeScript(
   lines.push("    },");
   lines.push("  ],");
   lines.push("} as const satisfies FirewallConfig;");
+  lines.push(
+    ...renderCategories("stripeCategories", "stripeFirewall", {
+      categories,
+      displayOrder: stripeCategoryDisplayOrder(categories),
+    }),
+  );
   lines.push(...renderStats(stats));
 
   return lines.join("\n");
@@ -1237,15 +1384,12 @@ export async function generate(): Promise<void> {
     logUnmapped("conflicting API docs", conflictRules);
   }
 
-  const { permissions, stats, unmappedRules, ambiguousRules } = buildGroups(
-    spec,
-    permissionDefinitions,
-    permissionsByRule,
-  );
+  const { permissions, categories, stats, unmappedRules, ambiguousRules } =
+    buildGroups(spec, permissionDefinitions, permissionsByRule);
   logUnmapped("unmapped", unmappedRules);
   logUnmapped("ambiguous", ambiguousRules);
 
-  const ts = generateTypeScript(permissions, stats);
+  const ts = generateTypeScript(permissions, categories, stats);
 
   logStats(permissions);
   writeOutput("stripe", ts, import.meta.dirname);
