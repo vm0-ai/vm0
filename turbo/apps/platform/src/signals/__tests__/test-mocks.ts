@@ -60,6 +60,46 @@ interface ClipboardWriteMock {
   writes: string[];
 }
 
+interface Bb0BluetoothRequestDeviceOptions {
+  readonly acceptAllDevices?: boolean;
+  readonly filters?: readonly {
+    readonly services?: readonly string[];
+    readonly namePrefix?: string;
+  }[];
+  readonly optionalServices?: readonly string[];
+}
+
+interface Bb0BluetoothRemoteGATTCharacteristic extends EventTarget {
+  value?: DataView;
+  readValue(): Promise<DataView>;
+  startNotifications(): Promise<Bb0BluetoothRemoteGATTCharacteristic>;
+  writeValueWithResponse(value: BufferSource): Promise<void>;
+}
+
+interface Bb0BluetoothRemoteGATTService {
+  getCharacteristic(
+    uuid: string,
+  ): Promise<Bb0BluetoothRemoteGATTCharacteristic>;
+}
+
+interface Bb0BluetoothRemoteGATTServer {
+  readonly connected: boolean;
+  connect(): Promise<Bb0BluetoothRemoteGATTServer>;
+  disconnect(): void;
+  getPrimaryService(uuid: string): Promise<Bb0BluetoothRemoteGATTService>;
+}
+
+interface Bb0BluetoothDevice extends EventTarget {
+  readonly name: string;
+  readonly gatt: Bb0BluetoothRemoteGATTServer;
+}
+
+interface Bb0Bluetooth {
+  requestDevice(
+    options: Bb0BluetoothRequestDeviceOptions,
+  ): Promise<Bb0BluetoothDevice>;
+}
+
 interface MockWindow extends Window {
   closed: boolean;
   close: () => void;
@@ -211,6 +251,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       webBluetoothSupport: (): void => {
         mockSupportedWebBluetooth(getSignal());
       },
+      bb0Device: (): void => {
+        mockBb0BluetoothDevice(getSignal());
+      },
     },
     upload: {
       success: (...args: Parameters<typeof mockUploadSuccess>) => {
@@ -326,6 +369,120 @@ function mockSupportedWebBluetooth(signal: AbortSignal): void {
     restoreWindowProperty(navigator, "userAgentData", userAgentDataDescriptor);
     restoreWindowProperty(navigator, "bluetooth", bluetoothDescriptor);
   });
+}
+
+class MockBb0Characteristic
+  extends EventTarget
+  implements Bb0BluetoothRemoteGATTCharacteristic
+{
+  value?: DataView;
+
+  constructor(private readonly readTextValue: string) {
+    super();
+  }
+
+  readValue(): Promise<DataView> {
+    return Promise.resolve(encodeDataView(this.readTextValue));
+  }
+
+  startNotifications(): Promise<Bb0BluetoothRemoteGATTCharacteristic> {
+    return Promise.resolve(this);
+  }
+
+  writeValueWithResponse(value: BufferSource): Promise<void> {
+    this.value = bufferSourceDataView(value);
+    return Promise.resolve();
+  }
+}
+
+class MockBb0GattServer implements Bb0BluetoothRemoteGATTServer {
+  private connectionState = true;
+
+  constructor(private readonly service: Bb0BluetoothRemoteGATTService) {}
+
+  get connected(): boolean {
+    return this.connectionState;
+  }
+
+  connect(): Promise<Bb0BluetoothRemoteGATTServer> {
+    this.connectionState = true;
+    return Promise.resolve(this);
+  }
+
+  disconnect(): void {
+    this.connectionState = false;
+  }
+
+  getPrimaryService(_uuid: string): Promise<Bb0BluetoothRemoteGATTService> {
+    return Promise.resolve(this.service);
+  }
+}
+
+class MockBb0Device extends EventTarget implements Bb0BluetoothDevice {
+  readonly name = "Zero-Buddy-Test";
+  readonly gatt: Bb0BluetoothRemoteGATTServer;
+
+  constructor() {
+    super();
+    const info = new MockBb0Characteristic(
+      JSON.stringify({
+        protocol: "bb0-provisioning-v1",
+        device_id: "bb0-test",
+        device_code: "ABCD-2345",
+        ble_session_nonce: "bb0-session-nonce",
+        firmware_version: "1.2.3",
+        provisioning_state: "setup",
+      }),
+    );
+    const config = new MockBb0Characteristic("");
+    const service: Bb0BluetoothRemoteGATTService = {
+      getCharacteristic: (uuid: string) => {
+        return Promise.resolve(uuid.includes("0002") ? info : config);
+      },
+    };
+    this.gatt = new MockBb0GattServer(service);
+  }
+}
+
+function mockBb0BluetoothDevice(signal: AbortSignal): void {
+  const secureContextDescriptor = defineWindowProperty(
+    window,
+    "isSecureContext",
+    true,
+  );
+  const userAgentDataDescriptor = defineWindowProperty(
+    navigator,
+    "userAgentData",
+    { brands: [{ brand: "Chromium", version: "120" }] },
+  );
+  const bluetooth: Bb0Bluetooth = {
+    requestDevice: () => {
+      return Promise.resolve(new MockBb0Device());
+    },
+  };
+  const bluetoothDescriptor = defineWindowProperty(
+    navigator,
+    "bluetooth",
+    bluetooth,
+  );
+
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(window, "isSecureContext", secureContextDescriptor);
+    restoreWindowProperty(navigator, "userAgentData", userAgentDataDescriptor);
+    restoreWindowProperty(navigator, "bluetooth", bluetoothDescriptor);
+  });
+}
+
+function encodeDataView(value: string): DataView {
+  const encoded = new TextEncoder().encode(value);
+  return new DataView(encoded.buffer);
+}
+
+function bufferSourceDataView(value: BufferSource): DataView {
+  if (value instanceof ArrayBuffer) {
+    return new DataView(value);
+  }
+  return new DataView(value.buffer, value.byteOffset, value.byteLength);
 }
 
 function defineWindowProperty(
