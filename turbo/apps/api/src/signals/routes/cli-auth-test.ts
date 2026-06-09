@@ -17,6 +17,7 @@ import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodGrantMetadata,
   getConnectorAuthMethodRuntimeMetadata,
+  type ConnectorOutputTarget,
 } from "@vm0/connectors/connector-utils";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
@@ -79,6 +80,10 @@ function connectorTypeHasSelectedAuthGrant(
   return grantKind === "auth-code" || grantKind === "device-auth";
 }
 
+function connectorOutputTargetKey(target: ConnectorOutputTarget): string {
+  return `${target.kind}:${target.name}`;
+}
+
 function testConnectorTokenOutputs(args: {
   readonly connectorType: AuthGrantConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
@@ -99,15 +104,15 @@ function testConnectorTokenOutputs(args: {
     );
   }
 
-  const outputNameBySecretName = new Map(
+  const outputNameByTargetKey = new Map(
     Object.entries(grantMetadata.outputs).map(([outputName, output]) => {
-      return [output.secretName, outputName];
+      return [connectorOutputTargetKey(output.target), outputName];
     }),
   );
   const accessOutputName = runtimeMetadata.runtimeBindings
     .flatMap((binding) => {
       return binding.source.kind === "connector-secret"
-        ? [outputNameBySecretName.get(binding.source.name)]
+        ? [outputNameByTargetKey.get(connectorOutputTargetKey(binding.source))]
         : [];
     })
     .find((outputName) => {
@@ -122,6 +127,15 @@ function testConnectorTokenOutputs(args: {
   const outputs: Record<string, string> = {
     [accessOutputName]: args.accessToken,
   };
+  for (const [outputName, output] of Object.entries(grantMetadata.outputs)) {
+    if (
+      output.target.kind === "connector-variable" &&
+      outputs[outputName] === undefined
+    ) {
+      outputs[outputName] =
+        `${args.connectorType}-${args.authMethod}-${outputName}`;
+    }
+  }
   if (!args.refreshToken) {
     return outputs;
   }
@@ -137,7 +151,7 @@ function testConnectorTokenOutputs(args: {
   const refreshOutputName = Object.values(accessMetadata.inputs)
     .flatMap((input) => {
       return input.source.kind === "connector-secret"
-        ? [outputNameBySecretName.get(input.source.name)]
+        ? [outputNameByTargetKey.get(connectorOutputTargetKey(input.source))]
         : [];
     })
     .find((outputName) => {

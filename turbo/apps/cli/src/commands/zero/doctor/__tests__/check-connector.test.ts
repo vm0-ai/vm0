@@ -115,6 +115,7 @@ describe("zero doctor check-connector command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
+    vi.unstubAllEnvs();
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("GH_TOKEN", "");
@@ -1044,8 +1045,15 @@ describe("zero doctor check-connector command", () => {
                 name: "test-oauth",
                 apis: [
                   {
-                    base: "https://{pr}.vm6.ai/api/test/oauth-provider",
-                    permissions: [],
+                    base: "https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
+                    permissions: [
+                      {
+                        name: "echo",
+                        description:
+                          "Test echo endpoint used to verify token injection",
+                        rules: ["GET /echo"],
+                      },
+                    ],
                   },
                 ],
               },
@@ -1066,13 +1074,13 @@ describe("zero doctor check-connector command", () => {
         "node",
         "cli",
         "--url",
-        "https://pr-123.vm6.ai/api/test/oauth-provider/echo?debug=1#fragment",
+        "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/echo?debug=1#fragment",
       ]);
 
       const output = getOutput();
       expect(output).toContain("matches the Test OAuth (internal) connector");
       expect(output).toContain(
-        "Matched base URL: https://{pr}.vm6.ai/api/test/oauth-provider",
+        "Matched base URL: https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
       );
       expect(output).toContain("Relative path:    /echo");
       expect(output).toContain("Matched permissions: [echo]");

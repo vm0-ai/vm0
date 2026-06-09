@@ -21,6 +21,7 @@ import {
   type ConnectorAuthMethodRef,
   type ConnectorAuthMethodRefByRevokeKind,
   type ConnectorManualGrantFieldNames,
+  type ConnectorOutputTarget,
 } from "@vm0/connectors/connector-utils";
 import { revokeConnectorAuthMethodAccessToken } from "@vm0/connectors/auth-providers";
 import {
@@ -88,7 +89,7 @@ interface PreparedManualGrantField {
 }
 
 interface ConnectorTokenOutputMetadata {
-  readonly outputSecretNames: Readonly<Record<string, string>>;
+  readonly outputTargets: Readonly<Record<string, ConnectorOutputTarget>>;
   readonly requiredOutputNames: readonly string[];
   readonly requiredExtraSecretNames: readonly string[];
   readonly isRefreshable: boolean;
@@ -129,7 +130,17 @@ interface EncryptedConnectorTokenSecret {
   readonly description: string;
 }
 
-interface ConnectorTokenSecretRequirements {
+interface PreparedConnectorTokenVariable {
+  readonly name: string;
+  readonly value: string;
+}
+
+interface PreparedConnectorTokenState {
+  readonly secrets: readonly EncryptedConnectorTokenSecret[];
+  readonly variables: readonly PreparedConnectorTokenVariable[];
+}
+
+interface ConnectorTokenOutputRequirements {
   readonly requiredOutputNames: readonly string[];
   readonly requiredExtraSecretNames: readonly string[];
 }
@@ -848,7 +859,7 @@ async function upsertManualGrantConnectorSecret(
     });
 }
 
-async function upsertManualGrantConnectorVariable(
+async function upsertConnectorVariable(
   db: Db,
   args: {
     readonly orgId: string;
@@ -1176,7 +1187,7 @@ export const connectManualGrantConnector$ = command(
       }
 
       for (const field of preparedResult.prepared.variableValues) {
-        await upsertManualGrantConnectorVariable(tx, {
+        await upsertConnectorVariable(tx, {
           orgId: args.orgId,
           userId: args.userId,
           name: field.name,
@@ -1309,20 +1320,20 @@ function connectorTokenOutputMetadataForAuthMethod(args: {
     case "auth-code":
     case "external-code":
     case "device-auth": {
-      const outputSecretNames = Object.fromEntries(
+      const outputTargets = Object.fromEntries(
         Object.entries(grantMetadata.outputs).map(([outputName, output]) => {
-          return [outputName, output.secretName];
+          return [outputName, output.target];
         }),
       );
-      const secretRequirements = requiredConnectorTokenSecretRequirements({
+      const outputRequirements = requiredConnectorTokenOutputRequirements({
         type: args.type,
         authMethod: args.authMethod,
-        outputSecretNames,
+        outputTargets,
       });
       return {
-        outputSecretNames,
-        requiredOutputNames: secretRequirements.requiredOutputNames,
-        requiredExtraSecretNames: secretRequirements.requiredExtraSecretNames,
+        outputTargets,
+        requiredOutputNames: outputRequirements.requiredOutputNames,
+        requiredExtraSecretNames: outputRequirements.requiredExtraSecretNames,
         isRefreshable: method.access.kind === "refresh-token",
       };
     }
@@ -1334,11 +1345,11 @@ function connectorTokenOutputMetadataForAuthMethod(args: {
   }
 }
 
-function requiredConnectorTokenSecretRequirements(args: {
+function requiredConnectorTokenOutputRequirements(args: {
   readonly type: ConnectorType;
   readonly authMethod: string;
-  readonly outputSecretNames: Readonly<Record<string, string>>;
-}): ConnectorTokenSecretRequirements {
+  readonly outputTargets: Readonly<Record<string, ConnectorOutputTarget>>;
+}): ConnectorTokenOutputRequirements {
   const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
     args.type,
     args.authMethod,
@@ -1347,9 +1358,9 @@ function requiredConnectorTokenSecretRequirements(args: {
     return { requiredOutputNames: [], requiredExtraSecretNames: [] };
   }
 
-  const outputNameBySecretName = new Map(
-    Object.entries(args.outputSecretNames).map(([outputName, secretName]) => {
-      return [secretName, outputName];
+  const outputNameByTargetKey = new Map(
+    Object.entries(args.outputTargets).map(([outputName, target]) => {
+      return [connectorOutputTargetKey(target), outputName];
     }),
   );
   const requiredOutputNames = new Set<string>();
@@ -1358,14 +1369,30 @@ function requiredConnectorTokenSecretRequirements(args: {
     if (binding.optional) {
       continue;
     }
-    if (binding.source.kind !== "connector-secret") {
-      continue;
-    }
-    const outputName = outputNameBySecretName.get(binding.source.name);
-    if (outputName) {
-      requiredOutputNames.add(outputName);
-    } else {
-      requiredExtraSecretNames.add(binding.source.name);
+    switch (binding.source.kind) {
+      case "connector-secret": {
+        const outputName = outputNameByTargetKey.get(
+          connectorOutputTargetKey(binding.source),
+        );
+        if (outputName) {
+          requiredOutputNames.add(outputName);
+        } else {
+          requiredExtraSecretNames.add(binding.source.name);
+        }
+        break;
+      }
+      case "connector-variable": {
+        const outputName = outputNameByTargetKey.get(
+          connectorOutputTargetKey(binding.source),
+        );
+        if (outputName) {
+          requiredOutputNames.add(outputName);
+        }
+        break;
+      }
+      case "platform-secret": {
+        break;
+      }
     }
   }
   return {
@@ -1374,7 +1401,11 @@ function requiredConnectorTokenSecretRequirements(args: {
   };
 }
 
-function validateRequiredConnectorTokenSecrets(args: {
+function connectorOutputTargetKey(target: ConnectorOutputTarget): string {
+  return `${target.kind}:${target.name}`;
+}
+
+function validateConnectorTokenOutputRequirements(args: {
   readonly type: AuthGrantConnectorType;
   readonly outputs: ConnectorTokenOutputValues;
   readonly requiredOutputNames: readonly string[];
@@ -1416,16 +1447,16 @@ function allowedConnectorTokenSecretNames(
 
 function isPrimaryConnectorTokenSecret(args: {
   readonly name: string;
-  readonly outputSecretNames: ReadonlySet<string>;
+  readonly primaryOutputSecretNames: ReadonlySet<string>;
 }): boolean {
-  return args.outputSecretNames.has(args.name);
+  return args.primaryOutputSecretNames.has(args.name);
 }
 
 function validateExtraConnectorTokenSecrets(args: {
   readonly type: AuthGrantConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
   readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
-  readonly outputSecretNames: Readonly<Record<string, string>>;
+  readonly outputTargets: Readonly<Record<string, ConnectorOutputTarget>>;
 }): readonly (readonly [string, string])[] {
   const extraSecrets = Object.entries(args.extraConnectorSecrets ?? {});
   if (extraSecrets.length === 0) {
@@ -1436,12 +1467,14 @@ function validateExtraConnectorTokenSecrets(args: {
     args.type,
     args.authMethod,
   );
-  const outputSecretNames = new Set(Object.values(args.outputSecretNames));
+  const primaryOutputSecretNames = connectorOutputSecretNames(
+    args.outputTargets,
+  );
   for (const [name] of extraSecrets) {
     if (
       isPrimaryConnectorTokenSecret({
         name,
-        outputSecretNames,
+        primaryOutputSecretNames,
       })
     ) {
       throw new Error(
@@ -1456,6 +1489,18 @@ function validateExtraConnectorTokenSecrets(args: {
   }
 
   return extraSecrets;
+}
+
+function connectorOutputSecretNames(
+  outputTargets: Readonly<Record<string, ConnectorOutputTarget>>,
+): Set<string> {
+  const secretNames = new Set<string>();
+  for (const target of Object.values(outputTargets)) {
+    if (target.kind === "connector-secret") {
+      secretNames.add(target.name);
+    }
+  }
+  return secretNames;
 }
 
 async function encryptExtraConnectorTokenSecrets(args: {
@@ -1479,17 +1524,17 @@ async function encryptExtraConnectorTokenSecrets(args: {
   return encryptedSecrets;
 }
 
-async function encryptConnectorTokenSecretSet(args: {
+async function prepareConnectorTokenState(args: {
   readonly type: AuthGrantConnectorType;
-  readonly outputSecretNames: Readonly<Record<string, string>>;
+  readonly outputTargets: Readonly<Record<string, ConnectorOutputTarget>>;
   readonly requiredOutputNames: readonly string[];
   readonly requiredExtraSecretNames: readonly string[];
   readonly outputs: ConnectorTokenOutputValues;
   readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
-}): Promise<readonly EncryptedConnectorTokenSecret[]> {
-  validateRequiredConnectorTokenSecrets({
+}): Promise<PreparedConnectorTokenState> {
+  validateConnectorTokenOutputRequirements({
     type: args.type,
     outputs: args.outputs,
     requiredOutputNames: args.requiredOutputNames,
@@ -1498,24 +1543,29 @@ async function encryptConnectorTokenSecretSet(args: {
   });
 
   const encryptedConnectorTokenSecrets: EncryptedConnectorTokenSecret[] = [];
+  const connectorTokenVariables: PreparedConnectorTokenVariable[] = [];
   for (const [outputName, value] of Object.entries(args.outputs)) {
     if (!value) {
       continue;
     }
-    const secretName = args.outputSecretNames[outputName];
-    if (!secretName) {
+    const target = args.outputTargets[outputName];
+    if (!target) {
       throw new Error(
         `${args.type} connector provider returned undeclared token output ${outputName}`,
       );
     }
-    encryptedConnectorTokenSecrets.push(
-      await encryptedConnectorTokenSecret({
-        name: secretName,
-        value,
-        description: `Connector token output for ${args.type}: ${secretName}`,
-        featureSwitchContext: args.featureSwitchContext,
-      }),
-    );
+    if (target.kind === "connector-secret") {
+      encryptedConnectorTokenSecrets.push(
+        await encryptedConnectorTokenSecret({
+          name: target.name,
+          value,
+          description: `Connector token output for ${args.type}: ${target.name}`,
+          featureSwitchContext: args.featureSwitchContext,
+        }),
+      );
+    } else {
+      connectorTokenVariables.push({ name: target.name, value });
+    }
     args.signal.throwIfAborted();
   }
 
@@ -1527,7 +1577,10 @@ async function encryptConnectorTokenSecretSet(args: {
       signal: args.signal,
     })),
   );
-  return encryptedConnectorTokenSecrets;
+  return {
+    secrets: encryptedConnectorTokenSecrets,
+    variables: connectorTokenVariables,
+  };
 }
 
 async function upsertConnectorTokenSecrets(args: {
@@ -1551,6 +1604,47 @@ async function upsertConnectorTokenSecrets(args: {
     });
     args.signal.throwIfAborted();
   }
+}
+
+async function upsertConnectorTokenVariables(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly variables: readonly PreparedConnectorTokenVariable[];
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  for (const variable of args.variables) {
+    await upsertConnectorVariable(args.db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      name: variable.name,
+      value: variable.value,
+    });
+    args.signal.throwIfAborted();
+  }
+}
+
+async function upsertPreparedConnectorTokenState(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly state: PreparedConnectorTokenState;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await upsertConnectorTokenSecrets({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    secrets: args.state.secrets,
+    signal: args.signal,
+  });
+  await upsertConnectorTokenVariables({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    variables: args.state.variables,
+    signal: args.signal,
+  });
 }
 
 async function loadExistingConnectorAuthMethod(
@@ -1722,25 +1816,23 @@ export const upsertConnectorTokenConnection$ = command(
       type: args.type,
       authMethod: args.authMethod,
       extraConnectorSecrets: args.extraConnectorSecrets,
-      outputSecretNames: outputMetadata.outputSecretNames,
+      outputTargets: outputMetadata.outputTargets,
     });
     const featureSwitchContext = await get(
       userFeatureSwitchContext(args.orgId, args.userId),
     );
     signal.throwIfAborted();
 
-    const encryptedConnectorTokenSecrets = await encryptConnectorTokenSecretSet(
-      {
-        type: args.type,
-        outputSecretNames: outputMetadata.outputSecretNames,
-        requiredOutputNames: outputMetadata.requiredOutputNames,
-        requiredExtraSecretNames: outputMetadata.requiredExtraSecretNames,
-        outputs: args.outputs,
-        extraSecrets,
-        featureSwitchContext,
-        signal,
-      },
-    );
+    const connectorTokenState = await prepareConnectorTokenState({
+      type: args.type,
+      outputTargets: outputMetadata.outputTargets,
+      requiredOutputNames: outputMetadata.requiredOutputNames,
+      requiredExtraSecretNames: outputMetadata.requiredExtraSecretNames,
+      outputs: args.outputs,
+      extraSecrets,
+      featureSwitchContext,
+      signal,
+    });
     signal.throwIfAborted();
 
     let postCommitAbort: unknown = null;
@@ -1759,11 +1851,11 @@ export const upsertConnectorTokenConnection$ = command(
         signal,
       });
 
-      await upsertConnectorTokenSecrets({
+      await upsertPreparedConnectorTokenState({
         db: tx,
         orgId: args.orgId,
         userId: args.userId,
-        secrets: encryptedConnectorTokenSecrets,
+        state: connectorTokenState,
         signal,
       });
       signal.throwIfAborted();

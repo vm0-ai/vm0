@@ -390,6 +390,27 @@ async function readSecret(args: {
   return row ? decryptSecretForTests(row.encryptedValue) : null;
 }
 
+async function readConnectorVariable(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+}): Promise<string | null> {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select({ value: variables.value })
+    .from(variables)
+    .where(
+      and(
+        eq(variables.orgId, args.orgId),
+        eq(variables.userId, args.userId),
+        eq(variables.name, args.name),
+        eq(variables.type, "connector"),
+      ),
+    )
+    .limit(1);
+  return row?.value ?? null;
+}
+
 async function seedNotionConnector(
   fixture: FirewallFixture,
   args: {
@@ -534,6 +555,12 @@ async function seedExpiredTestOAuthConnector(
     value: "test-oauth-refresh-token",
     type: "connector",
   });
+  await seedVariable({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "TEST_OAUTH_API_TENANT_ID",
+    value: "test-oauth-tenant-123",
+  });
 }
 
 async function seedExpiredTestOAuthApiConnector(
@@ -631,6 +658,13 @@ async function seedTestOAuthApiTokenConnector(
       value: inputVariable,
     });
   }
+
+  await seedVariable({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "TEST_OAUTH_API_TENANT_ID",
+    value: "test-oauth-api-token-tenant-123",
+  });
 
   if (args.accessToken !== undefined) {
     await seedSecret({
@@ -811,6 +845,7 @@ type TestOAuthApiRefreshOutputs = {
   readonly refreshedAccessToken: string;
   readonly refreshedRefreshToken?: string;
   readonly secondaryToken?: string;
+  readonly refreshedTenantId?: string;
 };
 
 function useDynamicTestOAuthRefresh(): {
@@ -905,6 +940,7 @@ function configureDynamicTestOAuthApiRefresh(
   outputs: TestOAuthApiRefreshOutputs = {
     refreshedAccessToken: "fresh-test-oauth-api-token",
     secondaryToken: "fresh-test-oauth-api-secondary-token",
+    refreshedTenantId: "fresh-test-oauth-api-tenant-id",
   },
 ): () => void {
   const method = getConnectorAuthMethod("test-oauth", "api");
@@ -2612,6 +2648,55 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         type: "connector",
       }),
     ).resolves.toBe("test-oauth-api-refresh-token");
+    await expect(
+      readConnectorVariable({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "TEST_OAUTH_API_TENANT_ID",
+      }),
+    ).resolves.toBe("fresh-test-oauth-api-tenant-id");
+  });
+
+  it("refreshes connector access when an optional variable output is omitted", async () => {
+    const dynamicOAuth = useDynamicTestOAuthApiRefresh({
+      outputs: {
+        refreshedAccessToken: "fresh-test-oauth-api-token",
+        secondaryToken: "fresh-test-oauth-api-secondary-token",
+      },
+    });
+    restoreDynamicTestOAuthRefresh = dynamicOAuth.restore;
+    const fixture = await track(seedFixture());
+    await seedExpiredTestOAuthApiConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            TEST_OAUTH_TOKEN: "stale-test-oauth-api-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_TOKEN: "test-oauth",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-test-oauth-api-token",
+    );
+    expect(response.body.refreshedSecrets).toStrictEqual(["TEST_OAUTH_TOKEN"]);
+    await expect(
+      readConnectorVariable({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "TEST_OAUTH_API_TENANT_ID",
+      }),
+    ).resolves.toBe("tenant-123");
   });
 
   it("resolves a missing input-only connector access secret through refresh metadata", async () => {
