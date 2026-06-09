@@ -201,6 +201,7 @@ const CONNECTOR_ICON_COLORFUL = {
   podchaser: true,
   porkbun: true,
   posthog: true,
+  productlane: true,
   printful: true,
   qdrant: true,
   qiita: true,
