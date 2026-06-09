@@ -48,12 +48,12 @@ interface RunCallback {
 /**
  * The run-identity metadata an interpreter attaches to its produced run. A time
  * fire tags the originating schedule; a webhook fire tags the originating
- * automation. Open for the run-create layer to thread either into
- * `zeroRunMetadata`.
+ * automation plus the trigger that fired it (run provenance). Open for the
+ * run-create layer to thread either into `zeroRunMetadata`.
  */
 type ZeroRunInputMetadata =
   | { readonly scheduleId: string }
-  | { readonly automationId: string };
+  | { readonly automationId: string; readonly triggerId: string };
 
 /**
  * The automation-derived portion of a Zero agent-run request: the parts the
@@ -86,12 +86,14 @@ interface TimeTriggerEvent {
 
 /**
  * Trigger event for a webhook fire: the inbound request reduced to the parts the
- * interpreter renders into the run context. `headers` is the request header map;
- * `body` is the parsed JSON payload (an object/array/primitive) or the raw
+ * interpreter renders into the run context. `triggerId` is the firing
+ * `automation_triggers` row (run provenance); `headers` is the request header
+ * map; `body` is the parsed JSON payload (an object/array/primitive) or the raw
  * string when the body is not JSON.
  */
 export interface WebhookTriggerEvent {
   readonly kind: "webhook";
+  readonly triggerId: string;
   readonly headers: Record<string, string>;
   readonly body: unknown;
 }
@@ -269,7 +271,8 @@ function buildScheduleCallbacks(automation: Automation): RunCallback[] {
  * - `prompt` is always the automation's user instruction.
  * - A webhook fire (raw inbound payload) renders headers + body into the run
  *   context as a fenced JSON block, and tags the run with the originating
- *   automation. No reschedule callback (webhooks don't recur).
+ *   automation + trigger (run provenance). No reschedule callback (webhooks
+ *   don't recur).
  * - A time fire (no raw payload) is instruction-only: it renders the schedule
  *   integration context plus any user append prompt, attaches the recurrence
  *   reschedule callback, and tags the run with the originating schedule.
@@ -290,7 +293,10 @@ export class DefaultInterpreter {
         chatThreadId: automation.chatThreadId,
         appendSystemPrompt: buildWebhookAppendSystemPrompt(triggerEvent),
         callbacks: [buildChatCallback(automation)],
-        zeroRunMetadata: { automationId: automation.id },
+        zeroRunMetadata: {
+          automationId: automation.id,
+          triggerId: triggerEvent.triggerId,
+        },
       });
     }
 

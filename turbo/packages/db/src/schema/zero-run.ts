@@ -11,6 +11,7 @@ import { agentRuns } from "./agent-run";
 import { agentComposes } from "./agent-compose";
 import { zeroAgentSchedules } from "./zero-agent-schedule";
 import { chatThreads } from "./chat-thread";
+import { automations, automationTriggers } from "./automation";
 
 /**
  * Zero Runs table
@@ -33,6 +34,21 @@ export const zeroRuns = pgTable(
     scheduleId: uuid("schedule_id").references(
       (): AnyPgColumn => {
         return zeroAgentSchedules.id;
+      },
+      { onDelete: "set null" },
+    ),
+    // Run provenance: the automation and the trigger that fired this run.
+    // Set for runs created by an automation (e.g. an inbound webhook); null for
+    // legacy schedule fires until schedules become automations (post-cutover).
+    automationId: uuid("automation_id").references(
+      (): AnyPgColumn => {
+        return automations.id;
+      },
+      { onDelete: "set null" },
+    ),
+    triggerId: uuid("trigger_id").references(
+      (): AnyPgColumn => {
+        return automationTriggers.id;
       },
       { onDelete: "set null" },
     ),
@@ -68,6 +84,12 @@ export const zeroRuns = pgTable(
       index("idx_zero_runs_chat_thread_id")
         .on(table.chatThreadId)
         .where(sql`chat_thread_id IS NOT NULL`),
+      index("idx_zero_runs_automation")
+        .on(table.automationId)
+        .where(sql`automation_id IS NOT NULL`),
+      index("idx_zero_runs_trigger")
+        .on(table.triggerId)
+        .where(sql`trigger_id IS NOT NULL`),
     ];
   },
 );

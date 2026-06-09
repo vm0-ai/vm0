@@ -392,18 +392,29 @@ describe("Webhook automations management API", () => {
     );
     expect(inbound.status).toBe(200);
 
-    // The inbound dispatch created a webhook-sourced run on the linked thread.
+    // The inbound dispatch created a webhook-sourced run on the linked thread,
+    // tagged with the automation + trigger that fired it (run provenance).
     const db = store.set(writeDb$);
+    const [trigger] = await db
+      .select({ id: automationTriggers.id })
+      .from(automationTriggers)
+      .where(
+        eq(automationTriggers.webhookToken, created.automation.webhookToken),
+      );
     const [run] = await db
       .select({
         triggerSource: zeroRuns.triggerSource,
         chatThreadId: zeroRuns.chatThreadId,
+        automationId: zeroRuns.automationId,
+        triggerId: zeroRuns.triggerId,
       })
       .from(zeroRuns)
       .where(eq(zeroRuns.chatThreadId, created.automation.chatThreadId));
     expect(run).toStrictEqual({
       triggerSource: "webhook",
       chatThreadId: created.automation.chatThreadId,
+      automationId: created.automation.id,
+      triggerId: trigger?.id,
     });
   });
 });

@@ -95,6 +95,7 @@ export const dispatchAutomationWebhook$ = command(
     const [row] = await db
       .select({
         automationId: automations.id,
+        triggerId: automationTriggers.id,
         agentId: automations.agentId,
         chatThreadId: automations.chatThreadId,
         instruction: automations.instruction,
@@ -164,6 +165,7 @@ export const dispatchAutomationWebhook$ = command(
     });
     const triggerEvent: WebhookTriggerEvent = {
       kind: "webhook",
+      triggerId: row.triggerId,
       headers: args.headers,
       body: safeJsonParse(args.rawBody) ?? args.rawBody,
     };

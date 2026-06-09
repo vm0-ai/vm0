@@ -6,7 +6,7 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { afterEach } from "vitest";
 
@@ -176,13 +176,30 @@ describe("POST /api/automations/webhooks/:token", () => {
       .select({
         triggerSource: zeroRuns.triggerSource,
         chatThreadId: zeroRuns.chatThreadId,
+        automationId: zeroRuns.automationId,
+        triggerId: zeroRuns.triggerId,
       })
       .from(zeroRuns)
       .where(eq(zeroRuns.chatThreadId, fixture.threadId));
+    // Run provenance: the run is attributed to the automation + trigger that
+    // fired it, and is queryable by both.
     expect(zeroRun).toStrictEqual({
       triggerSource: "webhook",
       chatThreadId: fixture.threadId,
+      automationId: fixture.automationId,
+      triggerId: fixture.triggerId,
     });
+
+    const [byProvenance] = await db
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .where(
+        and(
+          eq(zeroRuns.automationId, fixture.automationId),
+          eq(zeroRuns.triggerId, fixture.triggerId),
+        ),
+      );
+    expect(byProvenance?.id).toBeDefined();
 
     const [run] = await db
       .select({
