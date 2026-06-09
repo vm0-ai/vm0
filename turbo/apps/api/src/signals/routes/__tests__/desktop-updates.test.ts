@@ -31,7 +31,7 @@ function stableManifest(
 function darwinArm64Release(version: string, url: string) {
   return {
     version,
-    name: `Zero ${version}`,
+    name: `Zero Computer Use ${version}`,
     notes: `Release ${version}`,
     pubDate: "2026-06-08T00:00:00.000Z",
     platforms: {
@@ -69,7 +69,7 @@ describe("desktop update routes", () => {
         {
           version: "0.2.1",
           updateTo: {
-            name: "Zero 0.2.1",
+            name: "Zero Computer Use 0.2.1",
             version: "0.2.1",
             pub_date: "2026-06-08T00:00:00.000Z",
             url: zipUrl,

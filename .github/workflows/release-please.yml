@@ -201,7 +201,7 @@ jobs:
           node apps/desktop/scripts/run-forge-make-with-retry.js --platform darwin --arch arm64
 
           desktop_dir="$PWD/apps/desktop"
-          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
+          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero Computer Use-darwin-arm64-$DESKTOP_VERSION.zip"
           artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
 
           if [ ! -f "$forge_zip" ]; then
@@ -216,7 +216,7 @@ jobs:
       - name: Verify signed and notarized macOS artifact
         run: |
           artifact_path="apps/desktop/out/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
-          app_dir=apps/desktop/out/Zero-darwin-arm64/Zero.app
+          app_dir="apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
           plist="$app_dir/Contents/Info.plist"
 
           if [ ! -f "$artifact_path" ]; then
@@ -234,14 +234,14 @@ jobs:
             exit 1
           fi
 
-          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero Computer Use"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero Computer Use"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero Computer Use"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop"
           codesign --verify --deep --strict --verbose=2 "$app_dir"
           codesign --display --verbose=4 "$app_dir" 2>&1 | grep -F "Authority=$VM0_DESKTOP_SIGNING_IDENTITY"
           xcrun stapler validate "$app_dir"
-          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/MacOS/Zero"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/MacOS/Zero Computer Use"
 
       - name: Upload Desktop artifact to GitHub Release
         env:

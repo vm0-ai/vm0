@@ -2,7 +2,7 @@
   "name": "@vm0/desktop",
   "version": "0.3.1",
   "private": true,
-  "productName": "Zero",
+  "productName": "Zero Computer Use",
   "description": "Zero desktop shell",
   "main": "dist/main.js",
   "bin": {

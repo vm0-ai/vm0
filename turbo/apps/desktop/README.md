@@ -53,7 +53,7 @@ Create a macOS artifact with:
 pnpm desktop:make
 ```
 
-This builds the production `Zero.app`, signs it with the local Developer ID
+This builds the production `Zero Computer Use.app`, signs it with the local Developer ID
 Application identity, submits it to Apple's notary service, staples the
 notarization ticket, and writes the zip artifact under `apps/desktop/out/make`.
 Local notarized builds use the `notarytool` Keychain profile
@@ -125,14 +125,14 @@ testing. Run the workflow manually from GitHub Actions, then download the
 `zero-desktop-macos-arm64-unsigned` artifact.
 
 The downloaded GitHub artifact contains `Zero-darwin-arm64.zip`. Unzip both
-layers, then open `Zero.app`.
+layers, then open `Zero Computer Use.app`.
 
 These artifacts are ad-hoc signed, not Developer ID signed, and not notarized.
 macOS Gatekeeper may require right-clicking the app and choosing Open, or
 removing quarantine locally:
 
 ```bash
-xattr -dr com.apple.quarantine Zero.app
+xattr -dr com.apple.quarantine "Zero Computer Use.app"
 ```
 
 ## Release artifacts
@@ -144,9 +144,9 @@ Desktop releases are versioned by release-please. Changes under
 
 When release-please creates the `desktop-vX.Y.Z` GitHub Release, the
 `build-desktop-release` job in the release-please workflow checks out the
-matching tag, builds the production `Zero.app`, signs it with the Developer ID
-Application certificate, notarizes it for direct distribution outside the Mac
-App Store, validates the stapled ticket, uploads
+matching tag, builds the production `Zero Computer Use.app`, signs it with the
+Developer ID Application certificate, notarizes it for direct distribution
+outside the Mac App Store, validates the stapled ticket, uploads
 `Zero-darwin-arm64-X.Y.Z.zip` to the matching GitHub Release, and updates the
 Desktop update manifest.
 

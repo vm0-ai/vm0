@@ -28,7 +28,8 @@ async function promptToRestartForUpdate(
     cancelId: 1,
     title: "Update Ready",
     message: info.releaseName,
-    detail: "A new version has been downloaded. Restart Zero to install it.",
+    detail:
+      "A new version has been downloaded. Restart Zero Computer Use to install it.",
   });
 
   if (result.response !== 0) {

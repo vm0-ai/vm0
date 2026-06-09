@@ -76,7 +76,7 @@ platforms[platform] = platformAssets;
 manifest.releases[version] = {
   ...currentRelease,
   version,
-  name: currentRelease.name ?? `Zero ${version}`,
+  name: currentRelease.name ?? `Zero Computer Use ${version}`,
   notes: currentRelease.notes ?? "",
   pubDate,
   platforms,
