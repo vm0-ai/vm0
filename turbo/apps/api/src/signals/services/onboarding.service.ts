@@ -4,6 +4,7 @@ import type { OnboardingStatusResponse } from "@vm0/api-contracts/contracts/onbo
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -176,6 +177,16 @@ async function updateOrgNameAndSlug(
   }
 
   await client.organizations.updateOrganization(orgId, { name });
+}
+
+async function updateOrgNameAndSlugAndRefreshCache(
+  client: ReturnType<typeof clerk$.read>,
+  db: Db,
+  orgId: string,
+  workspaceName: string,
+): Promise<void> {
+  await updateOrgNameAndSlug(client, orgId, workspaceName);
+  await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
 }
 
 async function existingDefaultAgentId(
@@ -600,7 +611,12 @@ export const setupOnboarding$ = command(
     if (args.workspaceName?.trim()) {
       const client = get(clerk$);
       await tapError(
-        updateOrgNameAndSlug(client, args.orgId, args.workspaceName),
+        updateOrgNameAndSlugAndRefreshCache(
+          client,
+          writeDb,
+          args.orgId,
+          args.workspaceName,
+        ),
         (error) => {
           L.warn("Failed to update org name/slug (non-blocking)", {
             orgId: args.orgId,

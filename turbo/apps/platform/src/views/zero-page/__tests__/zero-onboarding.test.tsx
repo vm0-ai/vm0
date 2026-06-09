@@ -153,6 +153,10 @@ describe("zero onboarding - organization switcher", () => {
     await waitFor(() => {
       expect(screen.getByText("Current Org")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("onboarding-org-switcher-slot")).toHaveClass(
+      "top-6",
+      "left-4",
+    );
 
     click(screen.getByText("Current Org"));
 

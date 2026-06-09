@@ -11,6 +11,7 @@ import { and, eq } from "drizzle-orm";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -92,6 +93,8 @@ const deleteOnboardingSetupFixture$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
+    await db.delete(orgCache).where(eq(orgCache.orgId, fixture.orgId));
+    signal.throwIfAborted();
     await db
       .delete(userConnectors)
       .where(eq(userConnectors.orgId, fixture.orgId));
@@ -159,6 +162,28 @@ async function readOrgMetadata(orgId: string) {
     })
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, orgId));
+  return row;
+}
+
+async function seedOrgCache(orgId: string): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(orgCache).values({
+    orgId,
+    slug: "stale-workspace",
+    name: "Stale Workspace",
+  });
+}
+
+async function readOrgCache(orgId: string) {
+  const db = store.set(writeDb$);
+  const [row] = await db
+    .select({
+      slug: orgCache.slug,
+      name: orgCache.name,
+    })
+    .from(orgCache)
+    .where(eq(orgCache.orgId, orgId))
+    .limit(1);
   return row;
 }
 
@@ -524,9 +549,10 @@ describe("POST /api/zero/onboarding/setup", () => {
     });
   });
 
-  it("updates Clerk org name and slug for valid Latin workspace names", async () => {
+  it("updates Clerk org name and slug and refreshes org identity cache", async () => {
     const fixture = await track(createFixture());
     mockAdminSession(fixture);
+    await seedOrgCache(fixture.orgId);
 
     const response = await accept(
       apiClient().setup({
@@ -546,6 +572,7 @@ describe("POST /api/zero/onboarding/setup", () => {
       name: "My Workspace",
       slug: "my-workspace",
     });
+    await expect(readOrgCache(fixture.orgId)).resolves.toBeUndefined();
   });
 
   it("updates Clerk org name only for non-Latin workspace names", async () => {
