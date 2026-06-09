@@ -196,15 +196,15 @@ function getAllowOptionsButton(
   return button;
 }
 
-function getResetChangesButton(
+function getUndoChangesButton(
   row: HTMLElement,
   permission: string,
 ): HTMLElement {
   const button = queryAllByRoleFast("button", row).find((el) => {
-    return el.getAttribute("aria-label") === `Reset ${permission} changes`;
+    return el.getAttribute("aria-label") === `Undo ${permission} changes`;
   });
   if (!(button instanceof HTMLElement)) {
-    throw new Error(`Reset changes button not found: ${permission}`);
+    throw new Error(`Undo changes button not found: ${permission}`);
   }
   return button;
 }
@@ -500,7 +500,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     expect(within(row).getByText("24h")).toBeInTheDocument();
     expect(screen.getByText("Apply")).toBeEnabled();
 
-    click(getResetChangesButton(row, "insert_comments"));
+    click(getUndoChangesButton(row, "insert_comments"));
 
     expect(getPolicyButton(row, "Deny")).toHaveAttribute(
       "aria-pressed",
@@ -656,7 +656,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     );
     expect(within(channelsReadRow).getByText("24h")).toBeInTheDocument();
 
-    click(getResetChangesButton(readGroup, "Read"));
+    click(getUndoChangesButton(readGroup, "Read"));
     expect(getPolicyButton(channelsReadRow, "Allow")).toHaveTextContent(
       "Allow",
     );

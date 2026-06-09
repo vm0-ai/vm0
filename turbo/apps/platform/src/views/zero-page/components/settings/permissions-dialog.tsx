@@ -590,7 +590,7 @@ function PermissionGrantResetButton({
               <button
                 type="button"
                 disabled={disabled}
-                aria-label={`Reset ${permission} changes`}
+                aria-label={`Undo ${permission} changes`}
                 onClick={() => {
                   onReset();
                 }}
@@ -603,7 +603,7 @@ function PermissionGrantResetButton({
                 <IconArrowBackUp size={13} stroke={2.2} />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="top">Reset changes</TooltipContent>
+            <TooltipContent side="top">Undo changes</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )}
