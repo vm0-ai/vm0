@@ -1,4 +1,41 @@
-use super::*;
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use agent_diagnostics::FailureDiagnostic;
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+use api_contracts::generated::types::runners::storage::StorageManifest;
+use sandbox::{
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ProcessControlMode, ProcessExit, ProcessOutputChunk,
+    ProcessOutputMode, Sandbox, SandboxError, SandboxFactory, SandboxId,
+};
+use sandbox_mock::{MockSandbox, MockSandboxFactory};
+
+use super::super::agent_run::RunStart;
+use super::super::env::{guest_user_env_dir_path, guest_user_env_file_path};
+use super::super::sandbox_run::{
+    PreparedSandboxRun, execute_new_sandbox, execute_prepared_sandbox_run, execute_reused_sandbox,
+    register_proxy,
+};
+use super::super::{
+    AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT, EXIT_SIGKILL, JobParams, NewSandboxDispatch,
+    STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER, USER_ENV_FILE_ENV_KEY, execute_job,
+    execute_job_reuse,
+};
+use super::support::{
+    DestroyPanicFactory, QueuedCopyFileSandbox, api_storage, assert_proxy_registry_empty,
+    create_overridden_sandbox, default_params, make_reusable_idle_sandbox, minimal_context,
+    run_execute_inner, sandbox_create_error, sandbox_exec_error, sandbox_write_file_error,
+    seed_workspace_image_cache, set_session_workspace_image_cache_flag, test_budget_lease,
+    test_device_rate_limits, test_executor_config, test_telemetry,
+};
+use crate::ids::RunId;
+use crate::paths::RunnerPaths;
+use crate::types::{ResumeSession, SandboxReuseResult};
+use crate::workspace_image_cache::{
+    SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
+    WorkspaceImagePrepareRequest,
+};
 
 #[tokio::test]
 async fn execute_inner_happy_path() {

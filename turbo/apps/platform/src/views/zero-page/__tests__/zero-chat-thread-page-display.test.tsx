@@ -21,7 +21,10 @@ import {
 import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import {
+  type UserPermissionGrantExpiresIn,
+  zeroUserPermissionGrantsContract,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
@@ -229,6 +232,51 @@ describe("zero chat thread page display - schedule menu", () => {
   });
 });
 
+describe("zero chat thread page display - scheduled run inline display", () => {
+  it("uses the original inline schedule display", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          id: "msg-scheduled-user",
+          role: "user",
+          content: "Run the daily report",
+          runId: "run-scheduled-report",
+          scheduleId: "schedule-report",
+          scheduleTitle: "Daily report",
+          scheduleSnapshot: {
+            id: "schedule-report",
+            title: "Daily report",
+            description: "Daily revenue summary",
+          },
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-scheduled-assistant",
+          role: "assistant",
+          content: "I checked the latest numbers and prepared the report.",
+          runId: "run-scheduled-report",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:10Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    const scheduleLink = await screen.findByLabelText(
+      "Open schedule Daily revenue summary",
+    );
+    expect(scheduleLink).toBeInTheDocument();
+    const assistantMessage = await screen.findByText(
+      "I checked the latest numbers and prepared the report.",
+    );
+    expect(assistantMessage).toBeInTheDocument();
+  });
+});
+
 describe("zero chat thread page display - permission action card", () => {
   function mockPermissionAgent() {
     server.use(
@@ -249,12 +297,17 @@ describe("zero chat thread page display - permission action card", () => {
     );
   }
 
-  function mockPermissionMessage(permission = "channels:write") {
+  function mockPermissionMessage(
+    permission = "channels:write",
+    action: "allow" | "deny" = "allow",
+    expiresIn?: UserPermissionGrantExpiresIn,
+  ) {
+    const expiresInQuery = expiresIn ? `&expiresIn=${expiresIn}` : "";
     mockChatLifecycle({
       chatMessages: [
         {
           role: "assistant",
-          content: `https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=${encodeURIComponent(permission)}&action=allow`,
+          content: `https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=${encodeURIComponent(permission)}&action=${action}${expiresInQuery}`,
           runId: "run-user-grant-permission-action",
           status: "completed",
           createdAt: "2026-03-10T00:00:00Z",
@@ -301,9 +354,80 @@ describe("zero chat thread page display - permission action card", () => {
         action: "allow",
       });
     });
+    expect(grantBody).not.toMatchObject({ expiresIn: expect.any(String) });
     const status = within(card).getByText("Permissions updated");
     expect(status).toBeInTheDocument();
     expect(status.closest("button")).toBeNull();
+  });
+
+  it("submits the default duration from permission action cards when enabled", async () => {
+    let grantBody: unknown;
+    mockPermissionAgent();
+    mockPermissionMessage();
+    setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(
+      within(card).getByRole("combobox", { name: "Permission duration" }),
+    ).toHaveTextContent("1 hour");
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        permission: "channels:write",
+        action: "allow",
+        expiresIn: "1h",
+      });
+    });
+  });
+
+  it("does not show or submit duration for deny permission action cards", async () => {
+    let grantBody: unknown;
+    mockPermissionAgent();
+    mockPermissionMessage("channels:read", "deny");
+    setMockUserPermissionGrants([]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(
+      within(card).queryByRole("combobox", { name: "Permission duration" }),
+    ).not.toBeInTheDocument();
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        permission: "channels:read",
+        action: "deny",
+      });
+    });
+    expect(grantBody).not.toMatchObject({ expiresIn: expect.any(String) });
   });
 
   it("uses current-user grants for already-applied permission actions", async () => {
@@ -332,6 +456,111 @@ describe("zero chat thread page display - permission action card", () => {
         return element.textContent?.trim() === "Confirm";
       }),
     ).toBeUndefined();
+  });
+
+  it("confirms requested expiration changes for already-applied permission actions", async () => {
+    let grantBody: unknown;
+    mockPermissionAgent();
+    mockPermissionMessage("channels:write", "allow", "24h");
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+      }),
+    ]);
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(
+      within(card).getByRole("combobox", { name: "Permission duration" }),
+    ).toHaveTextContent("24 hours");
+
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        permission: "channels:write",
+        action: "allow",
+        expiresIn: "24h",
+      });
+    });
+  });
+
+  it("treats requested always as already applied for permanent allow permission actions", async () => {
+    mockPermissionAgent();
+    mockPermissionMessage("channels:write", "allow", "always");
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+        expiresAt: null,
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    expect(
+      within(card).queryByRole("combobox", { name: "Permission duration" }),
+    ).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button", card).find((element) => {
+        return element.textContent?.trim() === "Confirm";
+      }),
+    ).toBeUndefined();
+  });
+
+  it("shows existing expiration for already-applied permission actions", async () => {
+    mockPermissionAgent();
+    mockPermissionMessage();
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+        expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    expect(within(card).getByText("Expires in 2 hours")).toBeInTheDocument();
+    expect(
+      within(card).queryByRole("combobox", { name: "Permission duration" }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not write grants for unknown permission actions", async () => {

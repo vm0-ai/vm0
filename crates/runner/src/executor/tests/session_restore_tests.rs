@@ -1,4 +1,8 @@
-use super::*;
+use sandbox_mock::MockSandbox;
+
+use super::super::session_restore::{is_valid_session_id, restore_session};
+use super::support::{minimal_context, sandbox_exec_error, sandbox_write_file_error};
+use crate::types::ResumeSession;
 
 #[test]
 fn session_id_validation_rejects_path_traversal() {

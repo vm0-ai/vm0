@@ -148,7 +148,11 @@ function isPaidTier(tier: BillingTier): boolean {
 }
 
 function formatBillingDate(value: string): string {
-  return new Date(value).toLocaleDateString("en-US");
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function scheduledEffectiveDate(

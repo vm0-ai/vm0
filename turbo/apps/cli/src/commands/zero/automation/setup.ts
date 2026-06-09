@@ -1,0 +1,783 @@
+import { Command } from "commander";
+import { readFileSync } from "node:fs";
+import chalk from "chalk";
+import {
+  isInteractive,
+  promptText,
+  promptSelect,
+  promptConfirm,
+} from "../../../lib/utils/prompt-utils";
+import {
+  generateCronExpression,
+  detectTimezone,
+  validateTimeFormat,
+  validateDateFormat,
+  getTomorrowDateLocal,
+  getCurrentTimeLocal,
+  toISODateTime,
+  type ScheduleFrequency,
+} from "../../../lib/domain/schedule-utils";
+import {
+  resolveCompose,
+  deployZeroAutomation,
+  listZeroAutomations,
+  enableZeroAutomation,
+  getZeroUserPreferences,
+  ApiRequestError,
+} from "../../../lib/api";
+import { withErrorHandler } from "../../../lib/command";
+
+const FREQUENCY_CHOICES = [
+  { title: "Daily", value: "daily" as const, description: "Run every day" },
+  {
+    title: "Weekly",
+    value: "weekly" as const,
+    description: "Run once per week",
+  },
+  {
+    title: "Monthly",
+    value: "monthly" as const,
+    description: "Run once per month",
+  },
+  {
+    title: "One-time",
+    value: "once" as const,
+    description: "Run once at specific time",
+  },
+  {
+    title: "Loop",
+    value: "loop" as const,
+    description: "Run repeatedly at fixed intervals",
+  },
+];
+
+const DAY_OF_WEEK_CHOICES = [
+  { title: "Monday", value: 1 },
+  { title: "Tuesday", value: 2 },
+  { title: "Wednesday", value: 3 },
+  { title: "Thursday", value: 4 },
+  { title: "Friday", value: 5 },
+  { title: "Saturday", value: 6 },
+  { title: "Sunday", value: 0 },
+];
+
+function parseDayOption(
+  day: string,
+  frequency: ScheduleFrequency,
+): number | undefined {
+  if (frequency === "weekly") {
+    const dayMap: Record<string, number> = {
+      sun: 0,
+      mon: 1,
+      tue: 2,
+      wed: 3,
+      thu: 4,
+      fri: 5,
+      sat: 6,
+    };
+    return dayMap[day.toLowerCase()];
+  } else if (frequency === "monthly") {
+    const num = parseInt(day, 10);
+    if (num >= 1 && num <= 31) {
+      return num;
+    }
+  }
+  return undefined;
+}
+
+function formatInTimezone(isoDate: string, timezone: string): string {
+  const date = new Date(isoDate);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const get = (type: string) => {
+    return (
+      parts.find((p) => {
+        return p.type === type;
+      })?.value ?? ""
+    );
+  };
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
+}
+
+function parseFrequencyFromCron(
+  cron: string,
+): { frequency: ScheduleFrequency; day?: number; time: string } | null {
+  const parts = cron.split(" ");
+  if (parts.length !== 5) return null;
+
+  const [minute, hour, dayOfMonth, , dayOfWeek] = parts;
+  const time = `${hour!.padStart(2, "0")}:${minute!.padStart(2, "0")}`;
+
+  if (dayOfMonth === "*" && dayOfWeek === "*") {
+    return { frequency: "daily", time };
+  } else if (dayOfMonth === "*" && dayOfWeek !== "*") {
+    return { frequency: "weekly", day: parseInt(dayOfWeek!, 10), time };
+  } else if (dayOfMonth !== "*" && dayOfWeek === "*") {
+    return { frequency: "monthly", day: parseInt(dayOfMonth!, 10), time };
+  }
+
+  return null;
+}
+
+interface SetupOptions {
+  name?: string;
+  frequency?: string;
+  time?: string;
+  day?: string;
+  interval?: string;
+  timezone?: string;
+  prompt?: string;
+  promptFile?: string;
+  enable?: boolean;
+}
+
+interface ExistingAutomationDefaults {
+  frequency?: ScheduleFrequency;
+  day?: number;
+  time?: string;
+  intervalSeconds?: number;
+}
+
+interface AutomationListItem {
+  name: string;
+  agentId: string;
+  triggerType?: "cron" | "once" | "loop";
+  cronExpression?: string | null;
+  atTime?: string | null;
+  intervalSeconds?: number | null;
+  timezone: string;
+  prompt: string;
+  enabled?: boolean;
+}
+
+function getExistingDefaults(
+  existingAutomation: AutomationListItem | undefined,
+): ExistingAutomationDefaults {
+  const defaults: ExistingAutomationDefaults = {};
+
+  if (existingAutomation?.triggerType === "loop") {
+    defaults.frequency = "loop";
+    defaults.intervalSeconds = existingAutomation.intervalSeconds ?? undefined;
+  } else if (existingAutomation?.cronExpression) {
+    const parsed = parseFrequencyFromCron(existingAutomation.cronExpression);
+    if (parsed) {
+      defaults.frequency = parsed.frequency;
+      defaults.day = parsed.day;
+      defaults.time = parsed.time;
+    }
+  } else if (existingAutomation?.atTime) {
+    defaults.frequency = "once";
+  }
+
+  return defaults;
+}
+
+async function gatherFrequency(
+  optionFrequency: string | undefined,
+  existingFrequency: ScheduleFrequency | undefined,
+): Promise<ScheduleFrequency | null> {
+  let frequency = optionFrequency as ScheduleFrequency | undefined;
+
+  if (
+    frequency &&
+    ["daily", "weekly", "monthly", "once", "loop"].includes(frequency)
+  ) {
+    return frequency;
+  }
+
+  if (!isInteractive()) {
+    throw new Error("--frequency is required (daily|weekly|monthly|once|loop)");
+  }
+
+  const defaultIndex = existingFrequency
+    ? FREQUENCY_CHOICES.findIndex((c) => {
+        return c.value === existingFrequency;
+      })
+    : 0;
+
+  frequency = await promptSelect<ScheduleFrequency>(
+    "Automation frequency",
+    FREQUENCY_CHOICES,
+    defaultIndex >= 0 ? defaultIndex : 0,
+  );
+
+  return frequency || null;
+}
+
+async function gatherDay(
+  frequency: ScheduleFrequency,
+  optionDay: string | undefined,
+  existingDay: number | undefined,
+): Promise<number | null> {
+  if (frequency !== "weekly" && frequency !== "monthly") {
+    return null;
+  }
+
+  if (optionDay) {
+    const day = parseDayOption(optionDay, frequency);
+    if (day === undefined) {
+      throw new Error(
+        `Invalid day: ${optionDay}. Use mon-sun for weekly or 1-31 for monthly.`,
+      );
+    }
+    return day;
+  }
+
+  if (!isInteractive()) {
+    throw new Error("--day is required for weekly/monthly");
+  }
+
+  if (frequency === "weekly") {
+    const defaultDayIndex =
+      existingDay !== undefined
+        ? DAY_OF_WEEK_CHOICES.findIndex((c) => {
+            return c.value === existingDay;
+          })
+        : 0;
+    const day = await promptSelect(
+      "Day of week",
+      DAY_OF_WEEK_CHOICES,
+      defaultDayIndex >= 0 ? defaultDayIndex : 0,
+    );
+    return day ?? null;
+  }
+
+  const dayStr = await promptText(
+    "Day of month (1-31)",
+    existingDay?.toString() || "1",
+  );
+  if (!dayStr) return null;
+
+  const day = parseInt(dayStr, 10);
+  if (isNaN(day) || day < 1 || day > 31) {
+    throw new Error("Day must be between 1 and 31");
+  }
+  return day;
+}
+
+async function gatherRecurringTime(
+  optionTime: string | undefined,
+  existingTime: string | undefined,
+): Promise<string | undefined> {
+  if (optionTime) {
+    const validation = validateTimeFormat(optionTime);
+    if (validation !== true) {
+      throw new Error(`Invalid time: ${validation}`);
+    }
+    return optionTime;
+  }
+
+  if (!isInteractive()) {
+    throw new Error("--time is required (HH:MM format)");
+  }
+
+  return await promptText(
+    "Time (HH:MM)",
+    existingTime || "09:00",
+    validateTimeFormat,
+  );
+}
+
+async function gatherOneTimeSchedule(
+  optionDay: string | undefined,
+  optionTime: string | undefined,
+  existingTime: string | undefined,
+): Promise<string | null> {
+  if (optionDay && optionTime) {
+    if (!validateDateFormat(optionDay)) {
+      throw new Error(
+        `Invalid date format: ${optionDay}. Use YYYY-MM-DD format.`,
+      );
+    }
+    if (!validateTimeFormat(optionTime)) {
+      throw new Error(`Invalid time format: ${optionTime}. Use HH:MM format.`);
+    }
+    return `${optionDay} ${optionTime}`;
+  }
+
+  if (!isInteractive()) {
+    throw new Error("One-time automations require interactive mode", {
+      cause: new Error(
+        "Or provide --day (YYYY-MM-DD) and --time (HH:MM) flags",
+      ),
+    });
+  }
+
+  const tomorrowDate = getTomorrowDateLocal();
+  const date = await promptText(
+    "Date (YYYY-MM-DD, default tomorrow)",
+    tomorrowDate,
+    validateDateFormat,
+  );
+  if (!date) return null;
+
+  const currentTime = getCurrentTimeLocal();
+  const time = await promptText(
+    "Time (HH:MM)",
+    existingTime || currentTime,
+    validateTimeFormat,
+  );
+  if (!time) return null;
+
+  return `${date} ${time}`;
+}
+
+async function gatherTimezone(
+  optionTimezone: string | undefined,
+  existingTimezone: string | undefined | null,
+): Promise<string | undefined> {
+  if (optionTimezone) return optionTimezone;
+
+  let userTimezone: string | null = null;
+  try {
+    const prefs = await getZeroUserPreferences();
+    userTimezone = prefs.timezone;
+  } catch {
+    console.log(
+      chalk.dim("Could not fetch timezone preference, using detected timezone"),
+    );
+  }
+
+  const defaultTimezone = userTimezone || detectTimezone();
+
+  if (!isInteractive()) {
+    return defaultTimezone;
+  }
+
+  return await promptText("Timezone", existingTimezone || defaultTimezone);
+}
+
+async function gatherPromptText(
+  optionPrompt: string | undefined,
+  optionPromptFile: string | undefined,
+  existingPrompt: string | undefined | null,
+): Promise<string | undefined> {
+  if (optionPrompt && optionPromptFile) {
+    throw new Error("Cannot use --prompt and --prompt-file together");
+  }
+
+  if (optionPromptFile) {
+    return readFileSync(optionPromptFile, "utf-8");
+  }
+
+  if (optionPrompt) return optionPrompt;
+
+  if (!isInteractive()) {
+    throw new Error("--prompt or --prompt-file is required");
+  }
+
+  return await promptText(
+    "Prompt to run",
+    existingPrompt || "let's start working.",
+  );
+}
+
+async function gatherInterval(
+  optionInterval: string | undefined,
+  existingInterval: number | undefined,
+): Promise<number | null> {
+  if (optionInterval) {
+    const val = parseInt(optionInterval, 10);
+    if (isNaN(val) || val < 0) {
+      throw new Error(
+        "Invalid interval. Must be a non-negative integer (seconds)",
+      );
+    }
+    return val;
+  }
+
+  if (!isInteractive()) {
+    throw new Error("--interval is required for loop automations (seconds)");
+  }
+
+  const defaultVal =
+    existingInterval !== undefined ? String(existingInterval) : "300";
+  const result = await promptText(
+    "Interval in seconds (time between runs)",
+    defaultVal,
+    (v: string) => {
+      const n = parseInt(v, 10);
+      if (isNaN(n) || n < 0) return "Must be a non-negative integer";
+      return true;
+    },
+  );
+  if (!result) return null;
+  return parseInt(result, 10);
+}
+
+async function gatherTiming(
+  frequency: ScheduleFrequency,
+  options: SetupOptions,
+  defaults: ExistingAutomationDefaults,
+): Promise<{
+  day: number | undefined;
+  time: string | undefined;
+  atTime: string | undefined;
+  intervalSeconds: number | undefined;
+} | null> {
+  if (frequency === "loop") {
+    const intervalSeconds = await gatherInterval(
+      options.interval,
+      defaults.intervalSeconds,
+    );
+    if (intervalSeconds === null) return null;
+    return {
+      day: undefined,
+      time: undefined,
+      atTime: undefined,
+      intervalSeconds,
+    };
+  }
+
+  if (frequency === "once") {
+    const result = await gatherOneTimeSchedule(
+      options.day,
+      options.time,
+      defaults.time,
+    );
+    if (!result) return null;
+    return {
+      day: undefined,
+      time: undefined,
+      atTime: result,
+      intervalSeconds: undefined,
+    };
+  }
+
+  const day =
+    (await gatherDay(frequency, options.day, defaults.day)) ?? undefined;
+  if (day === null && (frequency === "weekly" || frequency === "monthly")) {
+    return null;
+  }
+
+  const time = await gatherRecurringTime(options.time, defaults.time);
+  if (!time) return null;
+
+  return { day, time, atTime: undefined, intervalSeconds: undefined };
+}
+
+async function findExistingAutomation(
+  agentId: string,
+  automationName: string,
+): Promise<AutomationListItem | undefined> {
+  const { automations } = await listZeroAutomations();
+  return automations.find((a) => {
+    return a.agentId === agentId && a.name === automationName;
+  });
+}
+
+interface DeployResult {
+  created: boolean;
+  automation: {
+    triggerType?: "cron" | "once" | "loop";
+    timezone: string;
+    cronExpression?: string | null;
+    nextRunAt?: string | null;
+    atTime?: string | null;
+    intervalSeconds?: number | null;
+  };
+}
+
+async function buildAndDeploy(params: {
+  automationName: string;
+  agentId: string;
+  agentName: string;
+  frequency: ScheduleFrequency;
+  time: string | undefined;
+  day: number | undefined;
+  atTime: string | undefined;
+  intervalSeconds: number | undefined;
+  timezone: string;
+  prompt: string;
+  existingEnabled: boolean | undefined;
+  chatThreadId: string | undefined;
+  isUpdate: boolean;
+}): Promise<DeployResult> {
+  let cronExpression: string | undefined;
+  let atTimeISO: string | undefined;
+
+  if (params.frequency === "loop") {
+    // Loop mode: intervalSeconds is passed directly
+  } else if (params.atTime) {
+    atTimeISO = toISODateTime(params.atTime);
+  } else if (params.time && params.frequency !== "once") {
+    cronExpression = generateCronExpression(
+      params.frequency,
+      params.time,
+      params.day,
+    );
+  }
+
+  console.log(
+    `\nDeploying automation for agent ${chalk.cyan(params.agentName)}...`,
+  );
+
+  // Preserve enabled state on update so loop automations don't lose nextRunAt.
+  // On create, existingEnabled is undefined → omit the field so the server
+  // applies its default (disabled; enable happens later via the enable flow).
+  return await deployZeroAutomation(
+    {
+      name: params.automationName,
+      agentId: params.agentId,
+      cronExpression,
+      atTime: atTimeISO,
+      intervalSeconds: params.intervalSeconds,
+      timezone: params.timezone,
+      prompt: params.prompt,
+      ...(params.existingEnabled !== undefined && {
+        enabled: params.existingEnabled,
+      }),
+      ...(params.chatThreadId !== undefined && {
+        chatThreadId: params.chatThreadId,
+      }),
+    },
+    { update: params.isUpdate },
+  );
+}
+
+function displayDeployResult(
+  automationName: string,
+  deployResult: DeployResult,
+): void {
+  if (deployResult.created) {
+    console.log(chalk.green(`✓ Automation "${automationName}" created`));
+  } else {
+    console.log(chalk.green(`✓ Automation "${automationName}" updated`));
+  }
+
+  console.log(chalk.dim(`  Timezone: ${deployResult.automation.timezone}`));
+
+  if (
+    deployResult.automation.triggerType === "loop" &&
+    deployResult.automation.intervalSeconds != null
+  ) {
+    console.log(
+      chalk.dim(
+        `  Mode: Loop (interval ${deployResult.automation.intervalSeconds}s)`,
+      ),
+    );
+  } else if (deployResult.automation.cronExpression) {
+    console.log(chalk.dim(`  Cron: ${deployResult.automation.cronExpression}`));
+    if (deployResult.automation.nextRunAt) {
+      const nextRun = formatInTimezone(
+        deployResult.automation.nextRunAt,
+        deployResult.automation.timezone,
+      );
+      console.log(chalk.dim(`  Next run: ${nextRun}`));
+    }
+  } else if (deployResult.automation.atTime) {
+    const atTimeFormatted = formatInTimezone(
+      deployResult.automation.atTime,
+      deployResult.automation.timezone,
+    );
+    console.log(chalk.dim(`  At: ${atTimeFormatted}`));
+  }
+}
+
+async function tryEnableAutomation(
+  automationName: string,
+  agentId: string,
+  agentName: string,
+): Promise<void> {
+  try {
+    await enableZeroAutomation({ name: automationName, agentId });
+    console.log(chalk.green(`✓ Automation "${automationName}" enabled`));
+  } catch (error) {
+    console.error(chalk.yellow("⚠ Failed to enable automation"));
+    if (error instanceof ApiRequestError) {
+      if (error.code === "SCHEDULE_PAST") {
+        console.error(chalk.dim("  Scheduled time has already passed"));
+      } else {
+        console.error(chalk.dim(`  ${error.message}`));
+      }
+    } else if (error instanceof Error) {
+      console.error(chalk.dim(`  ${error.message}`));
+    }
+    console.log(
+      `  To enable manually: ${chalk.cyan(`zero automation enable ${agentName}`)}`,
+    );
+  }
+}
+
+function showEnableHint(agentName: string): void {
+  console.log();
+  console.log(
+    `  To enable: ${chalk.cyan(`zero automation enable ${agentName}`)}`,
+  );
+}
+
+async function handleAutomationEnabling(params: {
+  automationName: string;
+  agentId: string;
+  agentName: string;
+  enableFlag: boolean;
+  shouldPromptEnable: boolean;
+}): Promise<void> {
+  const { automationName, agentId, agentName, enableFlag, shouldPromptEnable } =
+    params;
+
+  if (enableFlag) {
+    await tryEnableAutomation(automationName, agentId, agentName);
+    return;
+  }
+
+  if (shouldPromptEnable && isInteractive()) {
+    const enableNow = await promptConfirm("Enable this automation?", true);
+    if (enableNow) {
+      await tryEnableAutomation(automationName, agentId, agentName);
+    } else {
+      showEnableHint(agentName);
+    }
+    return;
+  }
+
+  if (shouldPromptEnable) {
+    showEnableHint(agentName);
+  }
+}
+
+export const setupCommand = new Command()
+  .name("setup")
+  .description("Create or edit an automation for a zero agent")
+  .argument("<agent-id>", "Agent ID")
+  .option(
+    "-n, --name <automation-name>",
+    'Automation name (default: "default")',
+  )
+  .option("-f, --frequency <type>", "Frequency: daily|weekly|monthly|once|loop")
+  .option("-t, --time <HH:MM>", "Time to run (24-hour format)")
+  .option("-d, --day <day>", "Day of week (mon-sun) or day of month (1-31)")
+  .option("-i, --interval <seconds>", "Interval in seconds for loop mode")
+  .option("-z, --timezone <tz>", "IANA timezone")
+  .option("-p, --prompt <text>", "Prompt to run")
+  .option(
+    "--prompt-file <path>",
+    "Read prompt from file (cannot be used with --prompt)",
+  )
+  .option("-e, --enable", "Enable automation immediately after creation")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  Daily at 9am:          zero automation setup <agent-id> -f daily -t 09:00 -p "run report"
+  Weekly on Monday:      zero automation setup <agent-id> -f weekly -d mon -t 10:00 -p "weekly sync"
+  Monthly on the 1st:    zero automation setup <agent-id> -f monthly -d 1 -t 08:00 -p "monthly review"
+  One-time:              zero automation setup <agent-id> -f once -d 2026-04-01 -t 14:00 -p "one-off task"
+  Loop every 5 minutes:  zero automation setup <agent-id> -f loop -i 300 -p "poll for updates"
+  Prompt from file:      zero automation setup <agent-id> -f daily -t 09:00 --prompt-file ./prompt.md
+  Create and enable:     zero automation setup <agent-id> -f daily -t 09:00 -p "run report" --enable
+
+Notes:
+  - Re-running setup with the same agent updates the existing "default" automation
+  - Use -n to manage multiple named automations for the same agent
+  - All flags are required in non-interactive mode; interactive mode prompts for missing values
+  - If the user wants to be notified when an automation completes, ask them where they want to receive the notification: web chat or Slack, then include it in the prompt`,
+  )
+  .action(
+    withErrorHandler(async (agentIdentifier: string, options: SetupOptions) => {
+      // 1. Resolve agent identifier (UUID or name) to compose ID
+      const compose = await resolveCompose(agentIdentifier);
+      if (!compose) {
+        throw new Error(`Agent not found: ${agentIdentifier}`);
+      }
+      const agentId = compose.id;
+      const automationName = options.name || "default";
+
+      // 2. Check for existing automation
+      const existingAutomation = await findExistingAutomation(
+        agentId,
+        automationName,
+      );
+
+      const agentName = compose.name;
+      console.log(
+        chalk.dim(
+          existingAutomation
+            ? `Editing existing automation for agent ${agentName}`
+            : `Creating new automation for agent ${agentName}`,
+        ),
+      );
+
+      const defaults = getExistingDefaults(existingAutomation);
+
+      // 3. Gather frequency
+      const frequency = await gatherFrequency(
+        options.frequency,
+        defaults.frequency,
+      );
+      if (!frequency) {
+        console.log(chalk.dim("Cancelled"));
+        return;
+      }
+
+      // 4. Gather day and time
+      const timing = await gatherTiming(frequency, options, defaults);
+      if (!timing) {
+        console.log(chalk.dim("Cancelled"));
+        return;
+      }
+      const { day, time, atTime, intervalSeconds } = timing;
+
+      // 5. Gather timezone
+      const timezone = await gatherTimezone(
+        options.timezone,
+        existingAutomation?.timezone,
+      );
+      if (!timezone) {
+        console.log(chalk.dim("Cancelled"));
+        return;
+      }
+
+      // 6. Gather prompt
+      const promptText_ = await gatherPromptText(
+        options.prompt,
+        options.promptFile,
+        existingAutomation?.prompt,
+      );
+      if (!promptText_) {
+        console.log(chalk.dim("Cancelled"));
+        return;
+      }
+
+      // 7. Build trigger and deploy
+      const deployResult = await buildAndDeploy({
+        automationName,
+        agentId,
+        agentName,
+        frequency,
+        time,
+        day,
+        atTime,
+        intervalSeconds,
+        timezone,
+        prompt: promptText_,
+        existingEnabled: existingAutomation?.enabled,
+        chatThreadId: process.env.ZERO_CHAT_THREAD_ID,
+        isUpdate: existingAutomation !== undefined,
+      });
+
+      // 8. Display deployment result
+      displayDeployResult(automationName, deployResult);
+
+      // 9. Handle automation enabling
+      const shouldPromptEnable =
+        deployResult.created ||
+        (existingAutomation !== undefined && !existingAutomation.enabled);
+
+      await handleAutomationEnabling({
+        automationName,
+        agentId,
+        agentName,
+        enableFlag: options.enable ?? false,
+        shouldPromptEnable,
+      });
+    }),
+  );

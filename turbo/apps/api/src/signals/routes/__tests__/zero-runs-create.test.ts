@@ -5,6 +5,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
@@ -220,6 +221,10 @@ const seedSession$ = command(
 
 function zeroRunsClient() {
   return setupApp({ context })(zeroRunsMainContract);
+}
+
+function userPermissionGrantsClient() {
+  return setupApp({ context })(zeroUserPermissionGrantsContract);
 }
 
 const track = createFixtureTracker<UsageInsightFixture>((fixture) => {
@@ -640,6 +645,7 @@ describe("POST /api/zero/runs", () => {
       "zero credit <credits>",
       "zero doctor permission-deny --help",
       "zero doctor permission-change --help",
+      "--duration 1h|24h|7d|always",
       "zero skill --help",
       "zero developer-support --help",
       "zero maps --help",
@@ -2774,6 +2780,31 @@ describe("POST /api/zero/runs", () => {
       action: "allow",
       expiresAt: new Date("2999-01-01T00:00:00.000Z"),
     });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("applies finite grants created through the user grant API", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+
+    await accept(
+      userPermissionGrantsClient().upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentId: agent.agentId,
+          connectorRef: SLACK_CONNECTOR,
+          permission: SLACK_WRITE_PERMISSION,
+          action: "allow",
+          expiresIn: "1h",
+        },
+      }),
+      [200],
+    );
 
     const policy = await createZeroRunNetworkPolicy(agent.agentId);
 

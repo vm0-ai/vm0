@@ -45,4 +45,6 @@ vi.stubEnv("AXIOM_TOKEN_SESSIONS", "xaat-test-sessions");
 vi.stubEnv("AXIOM_TOKEN_TELEMETRY", "xaat-test-telemetry");
 vi.stubEnv("AXIOM_DATASET_SUFFIX", "dev");
 vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_dummy_for_unit_tests");
+vi.stubEnv("ATOM_URL", "https://atom.example.test");
+vi.stubEnv("VM0_MACHINE_SECRET_KEY", "msk_test_dummy_for_unit_tests");
 vi.stubEnv("ABLY_API_KEY", "test-ably-key");

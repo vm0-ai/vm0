@@ -181,10 +181,17 @@ const pagedChatMessageBaseSchema = z.object({
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
   // Present on user messages posted by a firing schedule. `scheduleId` links to
-  // the schedule detail page; `scheduleTitle` is the schedule name snapshot
-  // rendered in place of the prompt text.
+  // the schedule detail page; `scheduleSnapshot` preserves the schedule label
+  // and description at send time. `scheduleTitle` is legacy fallback data.
   scheduleId: z.string().optional(),
   scheduleTitle: z.string().optional(),
+  scheduleSnapshot: z
+    .object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string().nullable(),
+    })
+    .optional(),
   createdAt: z.string(),
 });
 
@@ -578,17 +585,6 @@ export const chatMessagesContract = c.router({
         // Lets the client render an optimistic row and reconcile with the
         // server row by id — no temp-id swap, no React remount.
         clientMessageId: z.string().uuid().optional(),
-        /**
-         * Force a new CLI session for this run instead of resuming the
-         * thread's latest session. Set by the web composer when the user
-         * picks a different `selectedModel` than the one pinned on the
-         * thread — the persisted CLI session history was produced by the
-         * previous model and is not safe to replay through a different one.
-         * Server skips `getLatestSessionIdForThread`, allows the thread pin
-         * to be rewritten, and injects prior chat messages into the system
-         * prompt so the agent still has the conversation context.
-         */
-        forceNewSession: z.boolean().optional(),
         // Test-only escape hatch: when the host runner has USE_MOCK_CODEX
         // set (CI default), allow the request to bypass the mock and execute
         // the real codex CLI. Mirrors `debugNoMockClaude` / `debugNoMockCodex`
@@ -614,7 +610,6 @@ export const chatMessagesContract = c.router({
         debugNoMockClaude: z.undefined().optional(),
         debugNoMockCodex: z.undefined().optional(),
         interruptsRunId: z.undefined().optional(),
-        forceNewSession: z.undefined().optional(),
       }),
       z.object({
         agentId: z.string().min(1),
@@ -631,7 +626,6 @@ export const chatMessagesContract = c.router({
         debugNoMockClaude: z.undefined().optional(),
         debugNoMockCodex: z.undefined().optional(),
         revokesMessageId: z.undefined().optional(),
-        forceNewSession: z.undefined().optional(),
       }),
     ]),
     responses: {

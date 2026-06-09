@@ -61,25 +61,6 @@ function printRunConfiguration(
       );
     }
   }
-
-  if (schedule.vars && Object.keys(schedule.vars).length > 0) {
-    console.log(
-      `${"Variables:".padEnd(16)}${Object.keys(schedule.vars).join(", ")}`,
-    );
-  }
-
-  if (schedule.secretNames && schedule.secretNames.length > 0) {
-    console.log(`${"Secrets:".padEnd(16)}${schedule.secretNames.join(", ")}`);
-  }
-
-  if (
-    schedule.volumeVersions &&
-    Object.keys(schedule.volumeVersions).length > 0
-  ) {
-    console.log(
-      `${"Volumes:".padEnd(16)}${Object.keys(schedule.volumeVersions).join(", ")}`,
-    );
-  }
 }
 
 /**

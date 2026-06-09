@@ -51,6 +51,9 @@ export interface ApiTestMocks {
     readonly signInTokens: {
       readonly createSignInToken: AsyncMock;
     };
+    readonly m2m: {
+      readonly createToken: AsyncMock;
+    };
   };
   readonly googleGenAi: {
     readonly constructorArgs: SyncMock;
@@ -115,6 +118,7 @@ export interface ApiTestMocks {
     readonly customers: {
       readonly retrieve: AsyncMock;
       readonly create: AsyncMock;
+      readonly update: AsyncMock;
     };
     readonly subscriptions: {
       readonly list: AsyncMock;
@@ -123,6 +127,7 @@ export interface ApiTestMocks {
       readonly cancel: AsyncMock;
     };
     readonly subscriptionSchedules: {
+      readonly retrieve: AsyncMock;
       readonly create: AsyncMock;
       readonly update: AsyncMock;
       readonly release: AsyncMock;
@@ -215,6 +220,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     signInTokens: {
       createSignInToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
+    m2m: {
+      createToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
   };
 
   const slack = {
@@ -266,6 +274,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     customers: {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     subscriptions: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -274,6 +283,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       cancel: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     subscriptionSchedules: {
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       release: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -568,6 +578,7 @@ vi.mock("stripe", async (importOriginal) => {
         customers: {
           retrieve: apiTestMocks.stripe.customers.retrieve,
           create: apiTestMocks.stripe.customers.create,
+          update: apiTestMocks.stripe.customers.update,
         },
         subscriptions: {
           list: apiTestMocks.stripe.subscriptions.list,
@@ -576,6 +587,7 @@ vi.mock("stripe", async (importOriginal) => {
           cancel: apiTestMocks.stripe.subscriptions.cancel,
         },
         subscriptionSchedules: {
+          retrieve: apiTestMocks.stripe.subscriptionSchedules.retrieve,
           create: apiTestMocks.stripe.subscriptionSchedules.create,
           update: apiTestMocks.stripe.subscriptionSchedules.update,
           release: apiTestMocks.stripe.subscriptionSchedules.release,
@@ -771,6 +783,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
   apiTestMocks.clerk.users.updateUser.mockReset();
   apiTestMocks.clerk.signInTokens.createSignInToken.mockReset();
+  apiTestMocks.clerk.m2m.createToken.mockReset();
   apiTestMocks.s3.send.mockReset();
   apiTestMocks.s3.getSignedUrl.mockReset();
   apiTestMocks.s3.getSignedUrl.mockResolvedValue(
@@ -803,11 +816,13 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.invoiceItems.create.mockReset();
   apiTestMocks.stripe.customers.retrieve.mockReset();
   apiTestMocks.stripe.customers.create.mockReset();
+  apiTestMocks.stripe.customers.update.mockReset();
   apiTestMocks.stripe.subscriptions.list.mockReset();
   apiTestMocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
   apiTestMocks.stripe.subscriptions.retrieve.mockReset();
   apiTestMocks.stripe.subscriptions.update.mockReset();
   apiTestMocks.stripe.subscriptions.cancel.mockReset();
+  apiTestMocks.stripe.subscriptionSchedules.retrieve.mockReset();
   apiTestMocks.stripe.subscriptionSchedules.create.mockReset();
   apiTestMocks.stripe.subscriptionSchedules.update.mockReset();
   apiTestMocks.stripe.subscriptionSchedules.release.mockReset();

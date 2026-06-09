@@ -268,19 +268,6 @@ export async function encryptStoredSecretsMap(
   return await encryptStoredSecretValue(JSON.stringify(secrets), ctx);
 }
 
-export async function decryptStoredSecretsMap(
-  encryptedData: string | null,
-  ctx: FeatureSwitchContext = {},
-): Promise<Record<string, string> | null> {
-  if (!encryptedData) {
-    return null;
-  }
-
-  return secretsMapSchema.parse(
-    JSON.parse(await decryptStoredSecretValue(encryptedData, ctx)) as unknown,
-  );
-}
-
 export async function encryptPersistentSecretValue(
   plaintext: string,
   ctx: FeatureSwitchContext,

@@ -1,5 +1,53 @@
 # Changelog
 
+## [12.415.0](https://github.com/vm0-ai/vm0/compare/web-v12.414.0...web-v12.415.0) (2026-06-08)
+
+
+### Features
+
+* consolidate usage into Credit balance with per-source records ([#16192](https://github.com/vm0-ai/vm0/issues/16192)) ([b6c0795](https://github.com/vm0-ai/vm0/commit/b6c07954d332b99ca7b207fe8a9e608c64d98c7a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.0
+    * @vm0/core bumped to 8.317.1
+
+## [12.414.0](https://github.com/vm0-ai/vm0/compare/web-v12.413.0...web-v12.414.0) (2026-06-08)
+
+
+### Features
+
+* add onboarding redeem code flow ([#16614](https://github.com/vm0-ai/vm0/issues/16614)) ([b09c0e1](https://github.com/vm0-ai/vm0/commit/b09c0e10a3ff53ebb694a8fc23a6e24ee0370eb0))
+* **zero:** add Automations API over the shared schedule service ([#16674](https://github.com/vm0-ai/vm0/issues/16674)) ([5a01efc](https://github.com/vm0-ai/vm0/commit/5a01efcef4af070adcb0a2daaeb5debec7305e95))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.70.0
+    * @vm0/core bumped to 8.317.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.52.0
+
+## [12.413.0](https://github.com/vm0-ai/vm0/compare/web-v12.412.7...web-v12.413.0) (2026-06-08)
+
+
+### Features
+
+* add desktop auto-update feed ([#16656](https://github.com/vm0-ai/vm0/issues/16656)) ([4d91842](https://github.com/vm0-ai/vm0/commit/4d9184289f3e159b88f6b84946776c3187bd1358))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.69.0
+    * @vm0/core bumped to 8.316.0
+
 ## [12.412.7](https://github.com/vm0-ai/vm0/compare/web-v12.412.6...web-v12.412.7) (2026-06-08)
 
 

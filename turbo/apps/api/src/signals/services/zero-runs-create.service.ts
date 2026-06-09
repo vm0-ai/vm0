@@ -214,7 +214,7 @@ function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
     '- When the user asks to generate anything (supported generation content: image, video, presentation, voice/audio, and connector-backed text, code, document, or website), run `zero generate -h`. Use `zero generate <type>` (no --prompt) to list every provider available for that type; then run `zero generate <type> --provider built-in --prompt "..."` to execute via vm0, or `zero generate <type> --provider <connector>` to get connector skill-invocation guidance. Do not claim support for other generated content.',
     "- If you choose a Zero generation command, wait for it to finish and use its returned artifact. Do not abandon it, switch to your own generation approach, or recreate the output yourself just because generation takes a long time.",
     "- Troubleshoot permission denials: `zero doctor permission-deny --help` to identify which permission covers a blocked request.",
-    "- Request permission changes: `zero doctor permission-change --help` to enable or disable a permission.",
+    "- Request permission changes: `zero doctor permission-change --help` to enable or disable a permission. For enable requests, pass `--duration 1h|24h|7d|always`: default to `--duration 1h` for one-off work, use `24h` or `7d` for longer user-approved work, and use `always` only when the user explicitly asks for persistent access.",
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `zero agent edit --help`.",
     "- Manage custom skills: `zero skill --help`.",

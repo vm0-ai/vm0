@@ -54,6 +54,7 @@ describe("zero doctor permission-deny command", () => {
         "zero doctor permission-change slack --permission",
       );
       expect(logCalls).toContain("--enable");
+      expect(logCalls).toContain("--duration 1h");
       expect(logCalls).not.toContain("--reason");
       expect(mockConsoleDebug).not.toHaveBeenCalled();
     });
@@ -117,7 +118,7 @@ describe("zero doctor permission-deny command", () => {
       );
       expect(logCalls).toContain('covered by the "chat:write"');
       expect(logCalls).toContain(
-        "zero doctor permission-change slack --permission chat:write --enable",
+        "zero doctor permission-change slack --permission chat:write --enable --duration 1h",
       );
     });
   });
@@ -136,7 +137,9 @@ describe("zero doctor permission-deny command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('covered by the "gmail.send"');
-      expect(logCalls).toContain("--permission gmail.send --enable");
+      expect(logCalls).toContain(
+        "--permission gmail.send --enable --duration 1h",
+      );
     });
   });
 
@@ -155,7 +158,7 @@ describe("zero doctor permission-deny command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       // The suggested command should contain the ref, permission, and --enable.
       expect(logCalls).toMatch(
-        /zero doctor permission-change slack --permission \S+ --enable/,
+        /zero doctor permission-change slack --permission \S+ --enable --duration 1h/,
       );
       expect(logCalls).not.toContain("--reason");
     });

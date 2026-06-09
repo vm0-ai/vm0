@@ -135,7 +135,10 @@ function CreditGrantRow({ grant }: { grant: CreditGrant }) {
       <TooltipContent
         side="top"
         sideOffset={8}
-        style={{ backgroundColor: "white", color: "inherit" }}
+        style={{
+          backgroundColor: "hsl(var(--popover))",
+          color: "hsl(var(--popover-foreground))",
+        }}
         className="border shadow-md"
       >
         <div className="font-medium text-foreground">{expiresLabel(grant)}</div>
@@ -239,6 +242,7 @@ function CreditBalanceChart({
                   <Tooltip key={segmentKey(s)}>
                     <TooltipTrigger asChild>
                       <div
+                        data-testid={`credit-balance-segment-${segmentKey(s)}`}
                         className={`h-2.5 ${color} cursor-default first:rounded-l-full last:rounded-r-full ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
                         style={{
                           width: `${(s.credits / total) * 100}%`,
@@ -248,7 +252,10 @@ function CreditBalanceChart({
                     <TooltipContent
                       side="top"
                       sideOffset={8}
-                      style={{ backgroundColor: "white", color: "inherit" }}
+                      style={{
+                        backgroundColor: "hsl(var(--popover))",
+                        color: "hsl(var(--popover-foreground))",
+                      }}
                       className="border shadow-md"
                     >
                       <div className="font-medium text-foreground">
@@ -285,6 +292,46 @@ function CreditBalanceChart({
         </div>
       )}
       <CreditGrantList grants={billing.creditGrants} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Credit balance card
+// ---------------------------------------------------------------------------
+
+/**
+ * The org credit balance summary card (total, breakdown bar, grants). Lives at
+ * the top of the Credit balance section — above the Mine/Team tabs — so it stays
+ * visible regardless of the active tab. Also reused standalone in the org-manage
+ * dialog's Credit balance page.
+ */
+export function CreditBalanceCard({
+  onComparePlans,
+}: {
+  onComparePlans?: () => void;
+}) {
+  const billingLoadable = useLoadable(billingStatusAsync$);
+  const billing =
+    billingLoadable.state === "hasData" ? billingLoadable.data : null;
+  const billingLoading = billingLoadable.state === "loading";
+
+  return (
+    <div className="overflow-hidden rounded-xl bg-card zero-border">
+      {billingLoading && !billing ? (
+        <div className="px-5 py-4 space-y-2">
+          <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
+          <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
+        </div>
+      ) : billing ? (
+        <CreditBalanceChart billing={billing} onComparePlans={onComparePlans} />
+      ) : (
+        <div className="px-5 py-4">
+          <p className="text-sm text-muted-foreground">
+            Credit balance unavailable.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -338,14 +385,19 @@ function LoadingSkeleton() {
 // Overview section
 // ---------------------------------------------------------------------------
 
-function OverviewSection({ onComparePlans }: { onComparePlans?: () => void }) {
+function OverviewSection({
+  onComparePlans,
+  showCreditBalance = true,
+}: {
+  onComparePlans?: () => void;
+  showCreditBalance?: boolean;
+}) {
   const usageLoadable = useLoadable(usageMembersAsync$);
   const membersLoadable = useLoadable(orgMembers$);
   const billingLoadable = useLoadable(billingStatusAsync$);
 
   const billing =
     billingLoadable.state === "hasData" ? billingLoadable.data : null;
-  const billingLoading = billingLoadable.state === "loading";
   const currentTier = apiTierToBillingTier(billing?.tier);
 
   const usageLoading = usageLoadable.state === "loading";
@@ -368,27 +420,11 @@ function OverviewSection({ onComparePlans }: { onComparePlans?: () => void }) {
 
   return (
     <div className="flex flex-col gap-8">
-      <section className="flex flex-col gap-3">
-        <div className="overflow-hidden rounded-xl bg-card zero-border">
-          {billingLoading && !billing ? (
-            <div className="px-5 py-4 space-y-2">
-              <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
-              <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
-            </div>
-          ) : billing ? (
-            <CreditBalanceChart
-              billing={billing}
-              onComparePlans={onComparePlans}
-            />
-          ) : (
-            <div className="px-5 py-4">
-              <p className="text-sm text-muted-foreground">
-                Credit balance unavailable.
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
+      {showCreditBalance && (
+        <section className="flex flex-col gap-3">
+          <CreditBalanceCard onComparePlans={onComparePlans} />
+        </section>
+      )}
 
       {/* Members — only for paid plans */}
       {(currentTier === "pro" || currentTier === "team") && (
@@ -494,8 +530,15 @@ function MembersTable({
 
 export function OrgUsageTab({
   onComparePlans,
+  showCreditBalance = true,
 }: {
   onComparePlans?: () => void;
+  showCreditBalance?: boolean;
 }) {
-  return <OverviewSection onComparePlans={onComparePlans} />;
+  return (
+    <OverviewSection
+      onComparePlans={onComparePlans}
+      showCreditBalance={showCreditBalance}
+    />
+  );
 }

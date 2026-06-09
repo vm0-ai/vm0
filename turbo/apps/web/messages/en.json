@@ -87,7 +87,17 @@
     "contact": "Schedule a demo",
     "joinWaitlist": "Sign up",
     "security": "Security",
+    "explore": "Explore",
     "useCases": "Use Cases",
+    "useCasesDesc": "Real workflows, ready to remix",
+    "reports": "Reports",
+    "reportsDesc": "Data reports you can remix",
+    "presentations": "Presentations",
+    "presentationsDesc": "Slide decks you can remix",
+    "illustrations": "Illustrations",
+    "illustrationsDesc": "Illustrations you can remix",
+    "webDesign": "Website Designs",
+    "webDesignDesc": "Website designs you can remix",
     "models": "Models",
     "signOut": "Sign out",
     "openApp": "Open app",
@@ -341,6 +351,255 @@
       "submitYourCase": "Submit your case →"
     },
     "content": {
+      "landing-page-builder": {
+        "title": "Launch a Landing Page From a One-Line Brief",
+        "description": "Describe the page you need and Zero builds the full structure, writes every section, opens a GitHub PR, and ships a preview link you can review before it goes live.",
+        "timeSaved": "~3 hours saved per page",
+        "scenario": "A campaign is ready to run but the landing page is not. You know the offer, the audience, and roughly what the page should say, but turning that into a real page means a brief for design, a ticket for engineering, a few rounds of copy edits, and a wait for the next deploy window. By the time the page is live, the moment has cooled. Zero collapses that. You tell it who the page is for and what you want a visitor to do, and it builds the whole structure (hero, value props, social proof, FAQ, call to action), writes the copy, opens a PR, and gives you a preview URL. You review the real page on real infrastructure, not a mockup, and request changes in plain language.",
+        "promptVariants": [
+          {
+            "label": "Full page",
+            "prompt": "@Zero build a landing page for our new team plan aimed at startup founders. Hero, three value props, a short FAQ, and a sign-up call to action. Open a PR and send me the preview link."
+          },
+          {
+            "label": "From a brief",
+            "prompt": "@Zero read the campaign brief in Google Drive, build a matching landing page, open a PR, and share the preview link so I can review before we publish."
+          },
+          {
+            "label": "Iterate",
+            "prompt": "@Zero on the landing page preview, tighten the hero headline, move pricing above the FAQ, and redeploy the preview."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Maya",
+            "text": "@Zero build a landing page for our new team plan aimed at startup founders. Hero, three value props, a short FAQ, and a sign-up CTA. Open a PR and send me the preview link."
+          },
+          {
+            "name": "Zero",
+            "text": "On it. Built a 5-section page: hero, value props, social proof, FAQ, CTA.\n\nPR #482: feat: team-plan landing page\nPreview: deploy building, link in ~2 min.\n\nThe hero leads on time saved rather than features. Want me to add a pricing table or a logo strip next?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero turns your brief into a page structure",
+            "description": "Zero takes your goal and your audience and lays out the sections a converting page needs: a hero with a clear headline, value propositions, social proof, an FAQ that handles objections, and a single primary call to action."
+          },
+          {
+            "title": "Zero writes the copy and builds the page",
+            "description": "Zero drafts every section in your product voice, assembles the page inside your codebase, and commits it to a new branch. It follows your existing design system so the page looks native, not bolted on."
+          },
+          {
+            "title": "Zero opens a PR with a preview deploy",
+            "description": "Zero opens a GitHub pull request and waits for the preview deployment. You get a live URL that shows the real page on real infrastructure, so what you review is what visitors will see."
+          },
+          {
+            "title": "You iterate in plain language",
+            "description": "Reply with the changes you want, a sharper headline, a reordered FAQ, a different call to action, and Zero updates the branch and redeploys the preview until it is ready to merge."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Wire up analytics",
+            "description": "Add page-level tracking so you can measure performance from day one",
+            "examplePrompt": "@Zero add Plausible tracking to the new landing page and tell me which events you are capturing."
+          },
+          {
+            "title": "Spin up a variant to test",
+            "description": "Create a second version of the page to A/B against the first",
+            "examplePrompt": "@Zero clone the landing page into a variant with a benefit-led headline instead of the feature-led one, and open a PR."
+          },
+          {
+            "title": "Make it routine",
+            "description": "Hand Zero each new campaign brief and let it produce the page",
+            "examplePrompt": "@Zero whenever I drop a campaign brief in this channel, build the matching landing page, open a PR, and send me the preview link."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero commits the page to a new branch and opens the pull request. Required for building and shipping the page."
+          },
+          {
+            "description": "Zero reads the preview deployment so it can hand you a live URL for the exact page in the PR. Required for the preview link."
+          },
+          {
+            "description": "Zero adds and reads page analytics so you can measure how the page performs after launch. Optional."
+          }
+        ],
+        "tips": [
+          "Lead your brief with the visitor action you want, sign up, book a demo, start a trial. A clear goal produces a sharper page than a list of features.",
+          "Point Zero at an existing page you like as a reference so the new page inherits a proven structure and your design system.",
+          "Turn on analytics from day one so you can iterate on real visitor behavior instead of guesses."
+        ]
+      },
+      "support-driven-bug-fixes": {
+        "title": "Fix a Customer-Reported Bug From Your Phone",
+        "description": "Forward a bug report to Zero from anywhere and it opens a pull request with the fix and replies with a preview link, so support can ship a fix without waiting on an engineering handoff.",
+        "timeSaved": "~1 day saved per bug",
+        "scenario": "A customer writes in about a layout bug on a Saturday, and you are away from your laptop. The old path: the email sits until Monday, gets forwarded to engineering, waits for someone to pick it up, gets fixed, then comes back to you so you can finally reply to the customer. A small fix turns into a multi-day round trip across three people. Instead, you open Slack on your phone, drop in the customer's screenshot, and ask Zero to fix it. Zero finds the cause in the code, opens a PR with the change, and replies with a preview link so you and your team can see exactly what changed before it ships.",
+        "promptVariants": [
+          {
+            "label": "From a screenshot",
+            "prompt": "@Zero fix this customer-reported layout bug through a PR, then share the preview link with me."
+          },
+          {
+            "label": "From the inbox",
+            "prompt": "@Zero check my inbox for the latest customer bug report, reproduce it, open a PR with the fix, and send me the preview link."
+          },
+          {
+            "label": "Hand it off",
+            "prompt": "@Zero this customer bug is bigger than a quick fix. Open a GitHub issue with the repro steps and the customer's screenshot, and tag the frontend team."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Nadia",
+            "text": "@Zero fix this customer-reported layout bug through a PR, then share the preview link with me."
+          },
+          {
+            "name": "Zero",
+            "text": "Found it. The mobile nav was overlapping the status bar on notched devices because the header was missing a safe-area inset.\n\nPR #1893: fix(mobile): add safe-area inset to header\nPreview: link building, ready in ~2 min.\n\nWant me to draft the reply to the customer once this merges?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads the bug report",
+            "description": "Zero takes the screenshot or email you forward, reads the customer's description, and works out what is broken and on which screen."
+          },
+          {
+            "title": "Zero finds the cause in the code",
+            "description": "Zero searches the repository, locates the component responsible, and determines the change needed to fix it."
+          },
+          {
+            "title": "Zero opens a PR with a preview",
+            "description": "Zero commits the fix to a new branch, opens a pull request, and waits for the preview deployment so you get a live link showing the bug resolved."
+          },
+          {
+            "title": "You review and ship",
+            "description": "You open the preview on the same phone, confirm the fix, and merge. Your team sees the PR and the before-and-after in the channel, so everyone stays in the loop."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Close the loop with the customer",
+            "description": "Have Zero draft the reply so support can update the customer the moment the fix ships",
+            "examplePrompt": "@Zero draft a reply to the customer letting them know the layout bug is fixed and will be live shortly."
+          },
+          {
+            "title": "Capture it for the team",
+            "description": "Turn the fix into a tracked issue so the pattern is documented",
+            "examplePrompt": "@Zero open a Linear issue summarizing this bug and the fix so we have a record."
+          },
+          {
+            "title": "Make it routine",
+            "description": "Let Zero watch where customer feedback lands and fix the clear ones automatically",
+            "examplePrompt": "@Zero whenever a customer bug report lands in this channel or my support inbox, reproduce it, open a PR with a fix, and post the preview link here for approval."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Where you send the bug to Zero and where it returns the PR and preview link so the team can see it. Required."
+          },
+          {
+            "description": "Zero commits the fix to a new branch and opens the pull request. Required."
+          },
+          {
+            "description": "Zero reads the preview deployment so you can confirm the fix on a live URL before merging. Required."
+          },
+          {
+            "description": "Zero reads the customer's bug report straight from your inbox so you do not have to forward it. Optional."
+          }
+        ],
+        "tips": [
+          "Attach the customer's screenshot or paste the exact error text. The more concrete the report, the more precisely Zero can locate and fix the cause.",
+          "Always review the preview link before merging. Zero ships the fix to a branch and a preview deploy, never straight to production, so you stay in control.",
+          "Start with small, well-scoped bugs like layout and copy issues. For anything that touches core logic, have Zero open an issue and hand it to engineering instead."
+        ]
+      },
+      "smart-deadline-guardian": {
+        "title": "Catch Slipping Deadlines Before They Slip",
+        "description": "Zero watches your Linear issues, GitHub PRs, and calendar, then warns you in Slack when something is trending toward a missed deadline, while there is still time to act.",
+        "timeSaved": "~30 min saved daily",
+        "scenario": "The deadlines that hurt are the ones nobody saw coming. A ticket marked on track quietly stalls, a PR sits in review for three days, a launch date on the calendar creeps closer while the work behind it slips. By the time it surfaces in standup, the miss is already baked in. Catching it earlier means cross-referencing Linear, GitHub, and the calendar every day and holding it all in your head. Zero does that pass for you. It connects what is due to what is actually moving, and pings you the moment a deadline starts to look at risk, not after it is already missed.",
+        "promptVariants": [
+          {
+            "label": "Daily watch",
+            "prompt": "@Zero every weekday at 9am, cross-check our Linear deadlines against GitHub PR progress and my calendar. Flag anything trending toward a miss in #team and tell me why."
+          },
+          {
+            "label": "One milestone",
+            "prompt": "@Zero watch the Q3 launch milestone in Linear. If any blocking issue has no movement for two days or its PR is still in review, warn me in Slack."
+          },
+          {
+            "label": "Right now",
+            "prompt": "@Zero look at everything due this week across Linear and GitHub. Tell me which items are at risk and what is blocking each one."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero every weekday at 9am, cross-check our Linear deadlines against GitHub PR progress and my calendar. Flag anything trending toward a miss and tell me why."
+          },
+          {
+            "name": "Zero",
+            "text": "Scheduled, weekdays at 09:00. This morning:\n\n🔴 ENG-412 Billing migration, due Thu. PR #1771 open 3 days, 0 reviews. At risk.\n🟡 ENG-398 Onboarding redesign, due Fri. In progress, no PR yet.\n🟢 4 other items on track.\n\nWant me to nudge the reviewer on #1771?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero maps what is due",
+            "description": "Zero pulls deadlines from Linear issues and milestones and from dated events on your calendar, building a single picture of what is supposed to land and when."
+          },
+          {
+            "title": "Zero checks what is actually moving",
+            "description": "For each item, Zero looks at the real signals: is the issue progressing, is there an open PR, how long has it been in review, has anything stalled."
+          },
+          {
+            "title": "Zero flags what is trending late",
+            "description": "Zero weighs the work remaining against the time left and surfaces the items at risk, each with a short reason: no reviews, no PR yet, blocked, or no movement."
+          },
+          {
+            "title": "Zero warns you in time to act",
+            "description": "Zero posts a ranked Slack brief while there is still room to react, so a slipping deadline becomes a nudge today instead of a surprise next week."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Act on a flag",
+            "description": "Ask Zero to chase the blocker directly from the brief",
+            "examplePrompt": "@Zero nudge the reviewer on PR #1771 and ask if they can get to it today."
+          },
+          {
+            "title": "Tune the sensitivity",
+            "description": "Adjust how early and how loudly Zero warns you",
+            "examplePrompt": "@Zero only flag deadlines as at risk when they are due within three days and have no open PR. Keep everything else quiet."
+          },
+          {
+            "title": "Make it routine",
+            "description": "Lock in the daily watch so nothing slips unseen",
+            "examplePrompt": "@Zero keep running this deadline check every weekday morning and only ping me when something moves from on track to at risk."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero reads issues, milestones, and due dates to know what is supposed to land. Required."
+          },
+          {
+            "description": "Zero reads PR status and review activity to judge whether the work is actually moving. Required."
+          },
+          {
+            "description": "Zero reads dated launches and commitments so calendar deadlines are watched alongside tickets. Required."
+          },
+          {
+            "description": "Where Zero posts the daily at-risk brief and any follow-up nudges. Required."
+          }
+        ],
+        "tips": [
+          "Set due dates on your Linear issues and milestones. Zero can only guard deadlines it can see, so the more complete your dates, the better the coverage.",
+          "Tune the threshold to your team's rhythm. A two-day no-movement window suits fast teams; longer cycles may want three days or more.",
+          "Pair this with your daily engineering brief so the morning view covers both what happened overnight and what is about to slip."
+        ]
+      },
       "auto-merge-releases": {
         "title": "Auto-Merge Release PRs on a Schedule",
         "description": "Tell Zero when to ship release PRs and which to skip. It runs checks on your cadence, skips risky changes, and merges the rest automatically.",

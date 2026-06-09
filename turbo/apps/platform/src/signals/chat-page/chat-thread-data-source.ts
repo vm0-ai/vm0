@@ -40,7 +40,6 @@ export interface AppendQueuedMessageArgs {
   hasTextContent: boolean;
   modelSelection: ModelSelectionRequest | null;
   generationTemplate: GenerationTemplateRequest | undefined;
-  forceNewSession?: boolean;
 }
 
 export interface RecallMessageArgs {

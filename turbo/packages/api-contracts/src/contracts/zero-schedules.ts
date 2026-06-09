@@ -21,9 +21,6 @@ export const scheduleResponseSchema = z.object({
   prompt: z.string(),
   description: z.string().nullable(),
   appendSystemPrompt: z.string().nullable(),
-  vars: z.record(z.string(), z.string()).nullable(),
-  secretNames: z.array(z.string()).nullable(),
-  volumeVersions: z.record(z.string(), z.string()).nullable(),
   enabled: z.boolean(),
   nextRunAt: z.string().nullable(),
   lastRunAt: z.string().nullable(),
@@ -59,7 +56,6 @@ const zeroDeployScheduleRequestSchema = z
     prompt: z.string().min(1, "Prompt required"),
     description: z.string().optional(),
     appendSystemPrompt: z.string().optional(),
-    volumeVersions: z.record(z.string(), z.string()).optional(),
     agentId: z.string().uuid("Invalid agent ID"),
     enabled: z.boolean().optional(),
     // Chat-thread linkage, honored only on creation of a new schedule. When

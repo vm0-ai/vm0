@@ -1,5 +1,76 @@
 # Changelog
 
+## [1.115.0](https://github.com/vm0-ai/vm0/compare/api-v1.114.0...api-v1.115.0) (2026-06-08)
+
+
+### Features
+
+* consolidate usage into Credit balance with per-source records ([#16192](https://github.com/vm0-ai/vm0/issues/16192)) ([b6c0795](https://github.com/vm0-ai/vm0/commit/b6c07954d332b99ca7b207fe8a9e608c64d98c7a))
+
+
+### Bug Fixes
+
+* move chat session switching to server ([#16702](https://github.com/vm0-ai/vm0/issues/16702)) ([0eac1be](https://github.com/vm0-ai/vm0/commit/0eac1be1b6e9368c417f5ba384e8c79d2de8123a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.0
+    * @vm0/core bumped to 8.317.1
+    * @vm0/db bumped to 1.34.1
+
+## [1.114.0](https://github.com/vm0-ai/vm0/compare/api-v1.113.0...api-v1.114.0) (2026-06-08)
+
+
+### Features
+
+* add onboarding redeem code flow ([#16614](https://github.com/vm0-ai/vm0/issues/16614)) ([b09c0e1](https://github.com/vm0-ai/vm0/commit/b09c0e10a3ff53ebb694a8fc23a6e24ee0370eb0))
+* collapse scheduled chat runs into cards ([#16579](https://github.com/vm0-ai/vm0/issues/16579)) ([068db4e](https://github.com/vm0-ai/vm0/commit/068db4efd32eb1e7651be7096bbd519079a106a8))
+* **zero:** add Automations API over the shared schedule service ([#16674](https://github.com/vm0-ai/vm0/issues/16674)) ([5a01efc](https://github.com/vm0-ai/vm0/commit/5a01efcef4af070adcb0a2daaeb5debec7305e95))
+
+
+### Bug Fixes
+
+* reuse web chat send path for v1 messages ([#16701](https://github.com/vm0-ai/vm0/issues/16701)) ([e5a1b9a](https://github.com/vm0-ai/vm0/commit/e5a1b9a59c5eb24fd49a6d25dc0d0a537cfbfcfb))
+
+
+### Refactoring
+
+* **zero:** extract TimeTrigger and route poller + callbacks through it ([#16673](https://github.com/vm0-ai/vm0/issues/16673)) ([4a47a6e](https://github.com/vm0-ai/vm0/commit/4a47a6e0d50bec176a910ef52a381cc4064cfa78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.70.0
+    * @vm0/connectors bumped to 1.52.0
+    * @vm0/core bumped to 8.317.0
+    * @vm0/db bumped to 1.34.0
+
+## [1.113.0](https://github.com/vm0-ai/vm0/compare/api-v1.112.0...api-v1.113.0) (2026-06-08)
+
+
+### Features
+
+* add desktop auto-update feed ([#16656](https://github.com/vm0-ai/vm0/issues/16656)) ([4d91842](https://github.com/vm0-ai/vm0/commit/4d9184289f3e159b88f6b84946776c3187bd1358))
+
+
+### Refactoring
+
+* **zero:** drop secrets/vars/volumeVersions from schedule surface ([#16645](https://github.com/vm0-ai/vm0/issues/16645)) ([cc78c7b](https://github.com/vm0-ai/vm0/commit/cc78c7b4f6b0c309597cee236ed4e4b2b43d56f1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.69.0
+    * @vm0/core bumped to 8.316.0
+    * @vm0/db bumped to 1.33.7
+
 ## [1.112.0](https://github.com/vm0-ai/vm0/compare/api-v1.111.1...api-v1.112.0) (2026-06-08)
 
 

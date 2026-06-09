@@ -99,7 +99,7 @@ The workflow automatically pushes database schema to preview branches using:
 pnpm db:push
 ```
 
-This uses Drizzle Kit to push your schema defined in `turbo/apps/web/src/db/schema/` to the Neon database branch.
+This uses Drizzle Kit to push your schema defined in `turbo/packages/db/src/schema/` to the Neon database branch.
 
 ## Environment Variables Details
 

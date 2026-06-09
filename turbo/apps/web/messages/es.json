@@ -87,7 +87,17 @@
     "contact": "Agendar demo",
     "joinWaitlist": "Registrarse",
     "security": "Seguridad",
+    "explore": "Explorar",
     "useCases": "Casos de uso",
+    "useCasesDesc": "Flujos reales, listos para remezclar",
+    "reports": "Informes",
+    "reportsDesc": "Informes de datos para remezclar",
+    "presentations": "Presentaciones",
+    "presentationsDesc": "Diapositivas para remezclar",
+    "illustrations": "Ilustraciones",
+    "illustrationsDesc": "Ilustraciones para remezclar",
+    "webDesign": "Diseños web",
+    "webDesignDesc": "Diseños de sitios web para remezclar",
     "models": "Modelos",
     "signOut": "Cerrar sesión",
     "openApp": "Abrir app",
@@ -341,6 +351,255 @@
       "submitYourCase": "Envía tu caso →"
     },
     "content": {
+      "landing-page-builder": {
+        "title": "Lanza una landing page a partir de un brief de una línea",
+        "description": "Describe la página que necesitas y Zero construye toda la estructura, redacta cada sección, abre un PR en GitHub y entrega un enlace de previsualización que puedes revisar antes de publicarla.",
+        "timeSaved": "~3 horas ahorradas por página",
+        "scenario": "La campaña está lista para salir, pero la landing page no. Conoces la oferta, la audiencia y, más o menos, lo que debería decir la página, pero convertir eso en una página real significa un brief para diseño, un ticket para ingeniería, varias rondas de ajustes de copy y esperar a la próxima ventana de despliegue. Para cuando la página está en vivo, el momento ya se enfrió. Zero elimina todo eso. Le dices para quién es la página y qué quieres que haga el visitante, y él construye toda la estructura (hero, propuestas de valor, prueba social, FAQ, llamada a la acción), redacta el copy, abre un PR y te da una URL de previsualización. Revisas la página real sobre infraestructura real, no una maqueta, y pides cambios en lenguaje natural.",
+        "promptVariants": [
+          {
+            "label": "Página completa",
+            "prompt": "@Zero construye una landing page para nuestro nuevo plan de equipo dirigido a fundadores de startups. Hero, tres propuestas de valor, un FAQ corto y una llamada a la acción de registro. Abre un PR y envíame el enlace de previsualización."
+          },
+          {
+            "label": "Desde un brief",
+            "prompt": "@Zero lee el brief de campaña en Google Drive, construye una landing page acorde, abre un PR y comparte el enlace de previsualización para que pueda revisarla antes de publicar."
+          },
+          {
+            "label": "Iterar",
+            "prompt": "@Zero en la previsualización de la landing page, ajusta el titular del hero, mueve los precios por encima del FAQ y vuelve a desplegar la previsualización."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Maya",
+            "text": "@Zero construye una landing page para nuestro nuevo plan de equipo dirigido a fundadores de startups. Hero, tres propuestas de valor, un FAQ corto y un CTA de registro. Abre un PR y envíame el enlace de previsualización."
+          },
+          {
+            "name": "Zero",
+            "text": "En ello. Construí una página de 5 secciones: hero, propuestas de valor, prueba social, FAQ y CTA.\n\nPR #482: feat: team-plan landing page\nPreview: desplegando, el enlace estará listo en ~2 min.\n\nEl hero arranca con el tiempo ahorrado en lugar de las funciones. ¿Quieres que agregue una tabla de precios o una fila de logos a continuación?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero convierte tu brief en una estructura de página",
+            "description": "Zero toma tu objetivo y tu audiencia y organiza las secciones que necesita una página que convierte: un hero con un titular claro, propuestas de valor, prueba social, un FAQ que resuelve objeciones y una única llamada a la acción principal."
+          },
+          {
+            "title": "Zero redacta el copy y construye la página",
+            "description": "Zero escribe cada sección con la voz de tu producto, arma la página dentro de tu base de código y la confirma en una rama nueva. Sigue tu sistema de diseño existente para que la página se vea nativa, no improvisada."
+          },
+          {
+            "title": "Zero abre un PR con un despliegue de previsualización",
+            "description": "Zero abre un pull request en GitHub y espera el despliegue de previsualización. Recibes una URL en vivo que muestra la página real sobre infraestructura real, así que lo que revisas es lo que verán los visitantes."
+          },
+          {
+            "title": "Iteras en lenguaje natural",
+            "description": "Responde con los cambios que quieras, un titular más afilado, un FAQ reordenado, una llamada a la acción distinta, y Zero actualiza la rama y vuelve a desplegar la previsualización hasta que esté lista para fusionar."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Conecta la analítica",
+            "description": "Agrega seguimiento a nivel de página para medir el rendimiento desde el primer día",
+            "examplePrompt": "@Zero agrega seguimiento de Plausible a la nueva landing page y dime qué eventos estás capturando."
+          },
+          {
+            "title": "Crea una variante para testear",
+            "description": "Genera una segunda versión de la página para hacer un A/B contra la primera",
+            "examplePrompt": "@Zero clona la landing page en una variante con un titular centrado en el beneficio en lugar del centrado en la función, y abre un PR."
+          },
+          {
+            "title": "Conviértelo en rutina",
+            "description": "Entrégale a Zero cada nuevo brief de campaña y deja que genere la página",
+            "examplePrompt": "@Zero cada vez que deje un brief de campaña en este canal, construye la landing page acorde, abre un PR y envíame el enlace de previsualización."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero confirma la página en una rama nueva y abre el pull request. Necesario para construir y publicar la página."
+          },
+          {
+            "description": "Zero lee el despliegue de previsualización para poder entregarte una URL en vivo de la página exacta del PR. Necesario para el enlace de previsualización."
+          },
+          {
+            "description": "Zero agrega y lee la analítica de la página para que puedas medir su rendimiento tras el lanzamiento. Opcional."
+          }
+        ],
+        "tips": [
+          "Empieza tu brief con la acción que quieres del visitante: registrarse, agendar una demo, iniciar una prueba. Un objetivo claro produce una página más afilada que una lista de funciones.",
+          "Señálale a Zero una página existente que te guste como referencia para que la nueva página herede una estructura probada y tu sistema de diseño.",
+          "Activa la analítica desde el primer día para iterar sobre el comportamiento real de los visitantes en lugar de suposiciones."
+        ]
+      },
+      "support-driven-bug-fixes": {
+        "title": "Corrige un bug reportado por un cliente desde tu teléfono",
+        "description": "Reenvíale un reporte de bug a Zero desde donde sea y abrirá un pull request con la corrección y te responderá con un enlace de previsualización, para que soporte pueda enviar un fix sin esperar a un traspaso a ingeniería.",
+        "timeSaved": "~1 día ahorrado por bug",
+        "scenario": "Un cliente escribe sobre un bug de maquetación un sábado y tú estás lejos de tu laptop. El camino de siempre: el correo se queda hasta el lunes, se reenvía a ingeniería, espera a que alguien lo tome, se corrige y luego vuelve a ti para que por fin puedas responderle al cliente. Una corrección pequeña se convierte en una ida y vuelta de varios días entre tres personas. En cambio, abres Slack en tu teléfono, sueltas la captura del cliente y le pides a Zero que lo corrija. Zero encuentra la causa en el código, abre un PR con el cambio y responde con un enlace de previsualización para que tú y tu equipo vean exactamente qué cambió antes de enviarlo.",
+        "promptVariants": [
+          {
+            "label": "Desde una captura",
+            "prompt": "@Zero corrige este bug de maquetación reportado por un cliente mediante un PR y luego comparte conmigo el enlace de previsualización."
+          },
+          {
+            "label": "Desde la bandeja",
+            "prompt": "@Zero revisa mi bandeja de entrada en busca del último reporte de bug de un cliente, reprodúcelo, abre un PR con la corrección y envíame el enlace de previsualización."
+          },
+          {
+            "label": "Derivarlo",
+            "prompt": "@Zero este bug del cliente es más grande que una corrección rápida. Abre un issue en GitHub con los pasos para reproducirlo y la captura del cliente, y etiqueta al equipo de frontend."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Nadia",
+            "text": "@Zero corrige este bug de maquetación reportado por un cliente mediante un PR y luego comparte conmigo el enlace de previsualización."
+          },
+          {
+            "name": "Zero",
+            "text": "Lo encontré. La navegación móvil se superponía con la barra de estado en dispositivos con notch porque al header le faltaba un inset de área segura.\n\nPR #1893: fix(mobile): add safe-area inset to header\nPreview: el enlace se está desplegando, listo en ~2 min.\n\n¿Quieres que redacte la respuesta al cliente en cuanto esto se fusione?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero lee el reporte del bug",
+            "description": "Zero toma la captura o el correo que reenvías, lee la descripción del cliente y determina qué está fallando y en qué pantalla."
+          },
+          {
+            "title": "Zero encuentra la causa en el código",
+            "description": "Zero busca en el repositorio, localiza el componente responsable y determina el cambio necesario para corregirlo."
+          },
+          {
+            "title": "Zero abre un PR con una previsualización",
+            "description": "Zero confirma la corrección en una rama nueva, abre un pull request y espera el despliegue de previsualización para que recibas un enlace en vivo que muestra el bug resuelto."
+          },
+          {
+            "title": "Revisas y envías",
+            "description": "Abres la previsualización en el mismo teléfono, confirmas la corrección y la fusionas. Tu equipo ve el PR y el antes y después en el canal, así que todos quedan al tanto."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Cierra el ciclo con el cliente",
+            "description": "Pídele a Zero que redacte la respuesta para que soporte avise al cliente en cuanto se envíe la corrección",
+            "examplePrompt": "@Zero redacta una respuesta al cliente avisándole que el bug de maquetación está corregido y estará en vivo en breve."
+          },
+          {
+            "title": "Regístralo para el equipo",
+            "description": "Convierte la corrección en un issue rastreable para que el patrón quede documentado",
+            "examplePrompt": "@Zero abre un issue en Linear resumiendo este bug y la corrección para que tengamos un registro."
+          },
+          {
+            "title": "Conviértelo en rutina",
+            "description": "Deja que Zero vigile dónde llega el feedback de los clientes y corrija los casos claros automáticamente",
+            "examplePrompt": "@Zero cada vez que llegue un reporte de bug de un cliente a este canal o a mi bandeja de soporte, reprodúcelo, abre un PR con una corrección y publica aquí el enlace de previsualización para aprobación."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Donde le envías el bug a Zero y donde él devuelve el PR y el enlace de previsualización para que el equipo lo vea. Necesario."
+          },
+          {
+            "description": "Zero confirma la corrección en una rama nueva y abre el pull request. Necesario."
+          },
+          {
+            "description": "Zero lee el despliegue de previsualización para que puedas confirmar la corrección en una URL en vivo antes de fusionar. Necesario."
+          },
+          {
+            "description": "Zero lee el reporte de bug del cliente directamente desde tu bandeja de entrada para que no tengas que reenviarlo. Opcional."
+          }
+        ],
+        "tips": [
+          "Adjunta la captura del cliente o pega el texto exacto del error. Cuanto más concreto sea el reporte, con más precisión puede Zero localizar y corregir la causa.",
+          "Revisa siempre el enlace de previsualización antes de fusionar. Zero envía la corrección a una rama y a un despliegue de previsualización, nunca directo a producción, así que mantienes el control.",
+          "Empieza con bugs pequeños y bien acotados, como problemas de maquetación y de copy. Para cualquier cosa que toque la lógica central, mejor pídele a Zero que abra un issue y lo derive a ingeniería."
+        ]
+      },
+      "smart-deadline-guardian": {
+        "title": "Detecta plazos que se te escapan antes de que se escapen",
+        "description": "Zero vigila tus issues de Linear, tus PRs de GitHub y tu calendario, y te avisa en Slack cuando algo va camino de incumplir un plazo, mientras todavía hay tiempo de actuar.",
+        "timeSaved": "~30 min ahorrados al día",
+        "scenario": "Los plazos que duelen son los que nadie vio venir. Un ticket marcado como en marcha se estanca en silencio, un PR lleva tres días en revisión, una fecha de lanzamiento en el calendario se acerca mientras el trabajo detrás se retrasa. Para cuando aparece en el standup, el incumplimiento ya está cocinado. Detectarlo antes implica cruzar Linear, GitHub y el calendario todos los días y tenerlo todo en la cabeza. Zero hace esa pasada por ti. Conecta lo que vence con lo que realmente está avanzando, y te avisa en cuanto un plazo empieza a verse en riesgo, no después de que ya se incumplió.",
+        "promptVariants": [
+          {
+            "label": "Vigilancia diaria",
+            "prompt": "@Zero cada día laborable a las 9am, cruza nuestros plazos de Linear con el progreso de los PRs de GitHub y mi calendario. Marca en #team cualquier cosa que vaya camino de incumplirse y dime por qué."
+          },
+          {
+            "label": "Un hito",
+            "prompt": "@Zero vigila el hito de lanzamiento Q3 en Linear. Si algún issue bloqueante no se mueve durante dos días o su PR sigue en revisión, avísame en Slack."
+          },
+          {
+            "label": "Ahora mismo",
+            "prompt": "@Zero revisa todo lo que vence esta semana en Linear y GitHub. Dime qué elementos están en riesgo y qué está bloqueando cada uno."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero cada día laborable a las 9am, cruza nuestros plazos de Linear con el progreso de los PRs de GitHub y mi calendario. Marca cualquier cosa que vaya camino de incumplirse y dime por qué."
+          },
+          {
+            "name": "Zero",
+            "text": "Agendado, días laborables a las 09:00. Esta mañana:\n\n🔴 ENG-412 Migración de facturación, vence el jueves. PR #1771 abierto hace 3 días, 0 revisiones. En riesgo.\n🟡 ENG-398 Rediseño del onboarding, vence el viernes. En progreso, todavía sin PR.\n🟢 Otros 4 elementos en marcha.\n\n¿Quieres que le dé un toque al revisor del #1771?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero mapea lo que vence",
+            "description": "Zero extrae los plazos de los issues y hitos de Linear y de los eventos con fecha de tu calendario, construyendo una imagen única de qué debe entregarse y cuándo."
+          },
+          {
+            "title": "Zero verifica qué está avanzando de verdad",
+            "description": "Para cada elemento, Zero observa las señales reales: ¿el issue avanza?, ¿hay un PR abierto?, ¿cuánto lleva en revisión?, ¿algo se estancó?"
+          },
+          {
+            "title": "Zero marca lo que va camino de retrasarse",
+            "description": "Zero sopesa el trabajo restante frente al tiempo que queda y destaca los elementos en riesgo, cada uno con un motivo breve: sin revisiones, todavía sin PR, bloqueado o sin movimiento."
+          },
+          {
+            "title": "Zero te avisa a tiempo de actuar",
+            "description": "Zero publica un resumen priorizado en Slack mientras todavía hay margen para reaccionar, así un plazo que se escapa se convierte en un aviso hoy en lugar de una sorpresa la próxima semana."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Actúa sobre una alerta",
+            "description": "Pídele a Zero que persiga el bloqueo directamente desde el resumen",
+            "examplePrompt": "@Zero dale un toque al revisor del PR #1771 y pregúntale si puede atenderlo hoy."
+          },
+          {
+            "title": "Ajusta la sensibilidad",
+            "description": "Regula con cuánta antelación y con cuánta insistencia te avisa Zero",
+            "examplePrompt": "@Zero marca los plazos como en riesgo solo cuando venzan dentro de tres días y no tengan un PR abierto. Mantén todo lo demás en silencio."
+          },
+          {
+            "title": "Conviértelo en rutina",
+            "description": "Fija la vigilancia diaria para que nada se escape sin verse",
+            "examplePrompt": "@Zero sigue ejecutando esta revisión de plazos cada mañana de día laborable y avísame solo cuando algo pase de en marcha a en riesgo."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero lee issues, hitos y fechas de vencimiento para saber qué debe entregarse. Necesario."
+          },
+          {
+            "description": "Zero lee el estado de los PRs y la actividad de revisión para juzgar si el trabajo realmente está avanzando. Necesario."
+          },
+          {
+            "description": "Zero lee lanzamientos y compromisos con fecha para que los plazos del calendario se vigilen junto con los tickets. Necesario."
+          },
+          {
+            "description": "Donde Zero publica el resumen diario de riesgos y cualquier toque de seguimiento. Necesario."
+          }
+        ],
+        "tips": [
+          "Pon fechas de vencimiento en tus issues y hitos de Linear. Zero solo puede proteger los plazos que ve, así que cuanto más completas sean tus fechas, mejor será la cobertura.",
+          "Ajusta el umbral al ritmo de tu equipo. Una ventana de dos días sin movimiento le sienta bien a los equipos rápidos; los ciclos más largos quizá quieran tres días o más.",
+          "Combínalo con tu resumen diario de ingeniería para que la vista matutina cubra tanto lo que pasó durante la noche como lo que está a punto de escaparse."
+        ]
+      },
       "auto-merge-releases": {
         "title": "Merge automático de PRs de release con horario",
         "description": "Indique a Zero cuándo hacer merge de PRs de release. Ejecuta verificaciones en su cadencia, omite cambios riesgosos y fusiona el resto automáticamente.",

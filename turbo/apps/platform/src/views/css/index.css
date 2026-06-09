@@ -680,6 +680,18 @@
   margin-bottom: 6px;
 }
 
+/* Chat bubbles: relax line-height so 15px text doesn't read cramped */
+.zero-chat-bubble-assistant .wmde-markdown,
+.zero-chat-bubble-user .wmde-markdown {
+  line-height: 1.7;
+}
+
+.zero-chat-bubble-assistant .wmde-markdown p,
+.zero-chat-bubble-user .wmde-markdown p {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
 .wmde-markdown h1,
 .wmde-markdown h2,
 .wmde-markdown h3,

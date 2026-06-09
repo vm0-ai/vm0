@@ -58,6 +58,7 @@ import {
   onboardingNextLabel$,
   onboardingStepNext$,
   onboardingIsAdmin$,
+  redeemingOnboardingSearchParamCode$,
 } from "../../signals/zero-page/zero-onboarding-actions.ts";
 import {
   allConnectorTypes$,
@@ -1002,7 +1003,8 @@ function OnboardingFooterNav() {
   // submit and so e2e drivers can see the in-flight state.
   const [nextLoadable, stepNext] = useLoadableSet(onboardingStepNext$);
   const pageSignal = useGet(pageSignal$);
-  const nextLoading = nextLoadable.state === "loading";
+  const redeemingCode = useGet(redeemingOnboardingSearchParamCode$);
+  const nextLoading = nextLoadable.state === "loading" || redeemingCode;
   const nextError =
     nextLoadable.state === "hasError" ? String(nextLoadable.error) : null;
   return (

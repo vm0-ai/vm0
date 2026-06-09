@@ -3328,6 +3328,19 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
       path: "illustration-template/ink-storefront",
     },
   },
+  {
+    id: "image-style:chibi-hero",
+    kind: "image-style",
+    name: "Chibi Hero",
+    description:
+      "Chibi mobile-RPG mascot illustration — oversized-head super-deformed character, warm-dark hand-drawn outlines, cel-shaded flat fills, mid-action pose, transparent background.",
+    desc: 'Chibi mobile-RPG mascot illustration style — single full-body hero character with super-deformed proportions (head ~1:1 head-to-body ratio, head dominates the silhouette), bold warm dark brown outline (NOT pure black) of confident even weight, cel-shaded flat color fills with exactly one tier of subtle shadow per surface, always isolated on a transparent background with no scene or ground line. Pose is always mid-action and dynamic (sprint, lunge, mid-cast, low sneak, leap, raised prayer, mid-stumble) — never a static T-pose. Face is simplified and expressive (slit/narrow eyes by default, tiny mouth or none, no fine detail), 3/4 angle view at eye level. Square 1024x1024 canvas. Six dials per brief: archetype (ninja, mage, knight, ranger, alchemist, bard, cleric, rogue, monk, summoner, beastmaster, paladin, druid, necromancer), palette (warm earthy / cool arcane / forest scout / steel + crimson / tinkerer mustard + teal + copper / devout gold + ivory + cyan / desert ochre / ice wraith), hero prop (spear, longbow, staff, dual daggers, tome, hammer, sword + kite shield, smoking flask, lute, scythe, mace, war horn, summoning crystal), pose energy (the verb), outfit complexity (L1 simple tunic / L2 layered cloak + belt + 1-2 accessories / L3 full kit with pauldrons, pouches, sashes, scabbard, trinkets, goggles, capes), and mood (determined, fierce, stoic, focused, mischievous, gleeful, weary, smug, serene-focused). Trigger when user says /chibi-hero, asks for a "chibi hero", a "chibi RPG mascot", a "pocket adventurer character", a "super-deformed hero illustration", or briefs with an archetype + palette + weapon + pose in this style.',
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/chibi-hero",
+    },
+  },
 ];
 
 function filterByKind(kind: ResourceKind): readonly RegistryEntry[] {

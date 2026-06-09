@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -12,13 +13,33 @@ import {
   onboardingSetupContract,
 } from "@vm0/api-contracts/contracts/onboarding";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
-import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
+import {
+  zeroBillingCheckoutContract,
+  zeroBillingRedeemCodeContract,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { setMockRedeemCodeHandler } from "../../../mocks/handlers/api-billing.ts";
+import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
+import { pathname$ } from "../../../signals/route.ts";
+
+vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
+  const actual =
+    (await importOriginal()) as typeof import("@vm0/ui/components/ui/sonner");
+  return {
+    ...actual,
+    toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
+  };
+});
 
 const context = testContext();
 const mockApi = createMockApi(context);
 
 const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
+
+beforeEach(() => {
+  vi.mocked(toast.error).mockClear();
+  vi.mocked(toast.success).mockClear();
+});
 
 function mockAdminOnboarding() {
   server.use(
@@ -38,9 +59,8 @@ function mockAdminOnboarding() {
   );
 }
 
-// Step 1 (name workspace) → step 2 (choose tools, pick a connector) → step 4
-// (Pro trial). "Get Started" on step 4 starts Stripe checkout.
-async function walkAdminToContinue() {
+// Step 1 (name workspace) → step 2 (choose tools, pick a connector).
+async function walkAdminToTools() {
   await waitFor(() => {
     expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
   });
@@ -61,6 +81,12 @@ async function walkAdminToContinue() {
   await waitFor(() => {
     expect(screen.getByText("Next")).toBeInTheDocument();
   });
+}
+
+// Step 1 (name workspace) → step 2 (choose tools, pick a connector) → step 4
+// (Pro trial). "Get Started" on step 4 starts Stripe checkout.
+async function walkAdminToContinue() {
+  await walkAdminToTools();
   click(screen.getByText("Next"));
 
   await waitFor(() => {
@@ -203,7 +229,10 @@ describe("prompt param forwarding", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/onboarding" });
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+    });
     await walkAdminToContinue();
 
     click(screen.getByText(/Get Started/));
@@ -216,5 +245,156 @@ describe("prompt param forwarding", () => {
     const cancelUrl = new URL(String(checkoutBody!.cancelUrl));
     expect(successUrl.searchParams.get("prompt")).toBeNull();
     expect(cancelUrl.searchParams.get("prompt")).toBeNull();
+  });
+
+  it("redeems a code and completes onboarding after billing changes", async () => {
+    let setupComplete = false;
+    let billingComplete = false;
+    let redeemedCode: string | null = null;
+
+    server.use(
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+        return respond(200, {
+          needsOnboarding: !billingComplete,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: setupComplete,
+          defaultAgentId: setupComplete ? MOCK_AGENT_ID : null,
+          defaultAgentMetadata: null,
+        });
+      }),
+      mockApi(onboardingSetupContract.setup, ({ respond }) => {
+        setupComplete = true;
+        return respond(200, { agentId: MOCK_AGENT_ID });
+      }),
+    );
+    setMockRedeemCodeHandler((code) => {
+      redeemedCode = code;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?redeemCode=YUMA-123",
+    });
+    await walkAdminToTools();
+    click(screen.getByText("Next"));
+
+    await waitFor(() => {
+      expect(redeemedCode).toBe("YUMA-123");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).toHaveAttribute(
+        "aria-busy",
+        "true",
+      );
+    });
+    await waitFor(() => {
+      expect(hasSubscription("billing:changed")).toBeTruthy();
+    });
+
+    billingComplete = true;
+    triggerAblyEvent("billing:changed");
+
+    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe(
+        `/agents/${MOCK_AGENT_ID}/chat`,
+      );
+    });
+    await waitFor(() => {
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        "Redeem code applied",
+      );
+    });
+  });
+
+  it("redeems a code from a direct trial-step link", async () => {
+    let billingComplete = false;
+    let redeemedCode: string | null = null;
+
+    server.use(
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+        return respond(200, {
+          needsOnboarding: !billingComplete,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: MOCK_AGENT_ID,
+          defaultAgentMetadata: null,
+        });
+      }),
+    );
+    setMockRedeemCodeHandler((code) => {
+      redeemedCode = code;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?redeemCode=YUMA-123",
+    });
+
+    await waitFor(() => {
+      expect(redeemedCode).toBe("YUMA-123");
+    });
+    await waitFor(() => {
+      expect(hasSubscription("billing:changed")).toBeTruthy();
+    });
+
+    billingComplete = true;
+    triggerAblyEvent("billing:changed");
+
+    await waitFor(() => {
+      expect(context.store.get(pathname$)).toBe(
+        `/agents/${MOCK_AGENT_ID}/chat`,
+      );
+    });
+    await waitFor(() => {
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        "Redeem code applied",
+      );
+    });
+  });
+
+  it("shows redeem failures in a toast without inline status copy", async () => {
+    mockAdminOnboarding();
+    server.use(
+      mockApi(zeroBillingRedeemCodeContract.create, ({ respond }) => {
+        return respond(503, {
+          error: {
+            message: "Redeem service unavailable",
+            code: "PROVIDER_UNAVAILABLE",
+          },
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?redeemCode=YUMA-123",
+    });
+    await walkAdminToContinue();
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        "Redeem service unavailable",
+      );
+    });
+    expect(screen.getByTestId("onboarding-step-trial")).toBeInTheDocument();
+    expect(screen.getByText(/Get Started/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.queryByText("Waiting for subscription confirmation..."),
+    ).toBeNull();
+  });
+
+  it("does not render a redeem code form on the trial step", async () => {
+    mockAdminOnboarding();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+    });
+    await walkAdminToContinue();
+
+    expect(screen.queryByTestId("onboarding-redeem-code-form")).toBeNull();
   });
 });

@@ -1,11 +1,8 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::idle_pool::ParkingGate;
-use crate::ids::RunId;
+use crate::run_cancellation::SharedRunCancellationMap;
 use crate::status::RunnerMode;
 
 /// Pre-registered signal streams.
@@ -230,7 +227,7 @@ impl SignalController {
     /// construct a controller with no real handler task.
     pub(super) fn spawn(
         cancel: CancellationToken,
-        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        cancel_tokens: SharedRunCancellationMap,
         signals: EarlySignals,
         parking_gate: ParkingGate,
     ) -> Self {
@@ -308,7 +305,7 @@ pub(super) fn handle_resume_signal(lifecycle: &LifecycleController) {
 pub(super) async fn handle_stopping_signal(
     name: &str,
     cancel: &CancellationToken,
-    cancel_tokens: &Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    cancel_tokens: &SharedRunCancellationMap,
     lifecycle: &LifecycleController,
 ) {
     if lifecycle.current_mode() == RunnerMode::Stopping {
@@ -322,22 +319,31 @@ pub(super) async fn handle_stopping_signal(
     // post-insert `mode_rx.borrow()` check catches any job claimed after
     // our iteration but before send would otherwise publish the state.
     lifecycle.hard_stop();
-    let tokens = cancel_tokens.lock().await;
-    let count = tokens.len();
-    for (run_id, token) in tokens.iter() {
+    let handles = {
+        let tokens = cancel_tokens.lock().await;
+        tokens
+            .iter()
+            .map(|(run_id, handle)| (*run_id, handle.clone()))
+            .collect::<Vec<_>>()
+    };
+    let count = handles.len();
+    for (run_id, handle) in handles {
         info!(run_id = %run_id, "cancelling active job for hard shutdown");
-        token.cancel();
+        handle.cancel().await;
     }
-    drop(tokens);
     info!(active_jobs = count, "dispatched per-job cancellations");
     cancel.cancel();
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
     use std::time::Duration;
 
     use super::*;
+    use crate::ids::RunId;
+    use crate::run_cancellation::RunCancellationHandle;
 
     /// Regression test for issue #10416: SIGUSR1 arriving between
     /// `EarlySignals::register()` and `SignalController::spawn` must still
@@ -540,8 +546,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::watch::channel(RunnerMode::Running);
         let lifecycle = LifecycleController::new(tx, gate.clone());
         let cancel = CancellationToken::new();
-        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
-            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let tokens: SharedRunCancellationMap = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
         // First call: transitions, cancels main cancel.
         handle_stopping_signal("SIGTERM", &cancel, &tokens, &lifecycle).await;
@@ -551,18 +556,16 @@ mod tests {
 
         // Insert a sentinel token *after* the first call so we can prove
         // the repeat did not re-iterate the map.
-        let sentinel = CancellationToken::new();
-        tokens
-            .lock()
-            .await
-            .insert(RunId::new_v4(), sentinel.clone());
+        let sentinel = RunCancellationHandle::new();
+        let sentinel_token = sentinel.token();
+        tokens.lock().await.insert(RunId::new_v4(), sentinel);
 
         // Repeat call: must early-return on the already-Stopping guard.
         handle_stopping_signal("SIGTERM", &cancel, &tokens, &lifecycle).await;
         assert_eq!(lifecycle.current_mode(), RunnerMode::Stopping);
         assert_eq!(gate.state(), ParkingState::Closed);
         assert!(
-            !sentinel.is_cancelled(),
+            !sentinel_token.is_cancelled(),
             "repeat must not re-iterate cancel_tokens and cancel late-inserted sentinel",
         );
     }

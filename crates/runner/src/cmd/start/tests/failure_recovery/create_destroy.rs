@@ -1,7 +1,7 @@
 use super::super::super::*;
 use super::super::support::{
     context_with_session, minimal_context, mock_run_config_with_overrides, push_job, shutdown,
-    status_idle_sessions_and_active_runs, test_profiles, wait_budget_count, wait_cancel_token,
+    status_idle_sessions_and_active_runs, test_profiles, wait_budget_count, wait_cancel_handle,
     wait_cancel_token_removed,
 };
 
@@ -93,9 +93,9 @@ async fn cancelled_job_not_parked() {
     );
 
     // Wait for the job to be claimed (cancel token inserted).
-    let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+    let cancel_handle = wait_cancel_handle(&cancel_tokens, run_id, Duration::from_secs(5)).await;
     // Cancel the job — executor's select! takes the cancelled branch.
-    token.cancel();
+    cancel_handle.cancel().await;
 
     let c = env
         .handle

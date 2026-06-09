@@ -62,7 +62,11 @@ import type {
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type {
+  UserPermissionGrantExpiresIn,
+  UserPermissionGrantResponse,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { IN_VITEST } from "../../env.ts";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -107,7 +111,15 @@ import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
+import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
+  permissionGrantExpiresInByScope$,
+  permissionGrantExpiryText,
+  requestedUserPermissionGrantExpirationAlreadyApplies,
+  setPermissionGrantExpiresIn$,
+} from "../../signals/permission-allow/permission-grant-expiration.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -3072,7 +3084,7 @@ function FinishedRunRow({
       <div className="flex h-5 flex-col justify-center gap-1.5">
         <div className="h-px w-full bg-border/40" />
         <div className="flex items-center gap-2">
-          <p className="text-[11px] italic text-muted-foreground/40 font-serif shrink-0">
+          <p className="text-[13px] italic text-muted-foreground/50 font-serif shrink-0">
             {label}
           </p>
           <div className="h-px flex-1 bg-border/40" />
@@ -3403,9 +3415,10 @@ type UpsertUserPermissionGrantFn = (
     connectorRef: string;
     permission: string;
     action: PermissionAction;
+    expiresIn?: UserPermissionGrantExpiresIn;
   },
   signal: AbortSignal,
-) => Promise<void>;
+) => Promise<UserPermissionGrantResponse>;
 
 function loadableData<T>(loadable: LoadableLike<T>): T | undefined {
   return loadable.state === "hasData" ? loadable.data : undefined;
@@ -3510,11 +3523,23 @@ function isPermissionActionAlreadyApplied(params: {
   hasAgent: boolean;
   userGrantPolicy: FirewallPolicyValue | undefined;
   action: "allow" | "deny";
+  expirationAvailable: boolean;
+  requestedExpiresIn: UserPermissionGrantExpiresIn | null;
+  currentExpiresAt: string | null | undefined;
 }): boolean {
   if (!params.hasAgent) {
     return false;
   }
-  return params.userGrantPolicy === params.action;
+  if (params.userGrantPolicy !== params.action) {
+    return false;
+  }
+  if (!params.expirationAvailable || params.action !== "allow") {
+    return true;
+  }
+  return requestedUserPermissionGrantExpirationAlreadyApplies({
+    expiresIn: params.requestedExpiresIn,
+    currentExpiresAt: params.currentExpiresAt,
+  });
 }
 
 function findPermissionActionPermission(block: PermissionActionBlock) {
@@ -3536,6 +3561,23 @@ function permissionActionUserGrantPolicy(
     block.connectorRef,
     block.permission,
   );
+}
+
+function permissionActionUserGrant(
+  loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
+  block: PermissionActionBlock,
+): PermissionActionUserGrant | undefined {
+  const grants = loadableData(loadable);
+  if (!grants) {
+    return undefined;
+  }
+  return grants.find((grant) => {
+    return (
+      grant.connectorRef === block.connectorRef &&
+      grant.permission === block.permission &&
+      grant.action === block.action
+    );
+  });
 }
 
 function createPermissionActionButtonState(params: {
@@ -3584,6 +3626,8 @@ function createPermissionActionCardViewState(params: {
   agentLoadableState: string;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
+  expirationAvailable: boolean;
+  currentGrantExpiresAt: string | null | undefined;
 }) {
   const focusedPermission = findPermissionActionPermission(params.block);
   const actionLabel = permissionActionVerb(params.block.action);
@@ -3606,6 +3650,9 @@ function createPermissionActionCardViewState(params: {
     hasAgent: params.hasAgent,
     userGrantPolicy,
     action: params.block.action,
+    expirationAvailable: params.expirationAvailable,
+    requestedExpiresIn: params.block.expiresIn,
+    currentExpiresAt: params.currentGrantExpiresAt,
   });
   const saveDone = params.grantLoadableState === "hasData";
   const buttonState = createPermissionActionCardButtonState({
@@ -3654,6 +3701,8 @@ function createPermissionActionHandler(params: {
   focusedPermission: { name: string } | undefined;
   state: PermissionActionButtonState;
   finished: boolean;
+  expirationAvailable: boolean;
+  expiresIn: UserPermissionGrantExpiresIn;
   upsertGrant: UpsertUserPermissionGrantFn;
 }): () => void {
   return () => {
@@ -3672,6 +3721,9 @@ function createPermissionActionHandler(params: {
               connectorRef: params.block.connectorRef,
               permission: permissionName,
               action: params.block.action,
+              ...(params.expirationAvailable
+                ? { expiresIn: params.expiresIn }
+                : {}),
             },
             params.pageSignal,
           ),
@@ -3688,6 +3740,10 @@ function PermissionActionCardContent({
   actionLabel,
   permissionName,
   buttonState,
+  expirationAvailable,
+  expiresIn,
+  onExpiresInChange,
+  expiresAt,
   onClick,
 }: {
   block: PermissionActionBlock;
@@ -3695,8 +3751,17 @@ function PermissionActionCardContent({
   actionLabel: string;
   permissionName: string;
   buttonState: PermissionActionButtonState;
+  expirationAvailable: boolean;
+  expiresIn: UserPermissionGrantExpiresIn;
+  onExpiresInChange: (value: UserPermissionGrantExpiresIn) => void;
+  expiresAt: string | null;
   onClick: () => void;
 }) {
+  const expiryText = expirationAvailable
+    ? permissionGrantExpiryText(expiresAt)
+    : null;
+  const showDurationSelect =
+    expirationAvailable && !buttonState.alreadyApplied && !buttonState.saveDone;
   return (
     <div
       data-testid="permission-action-card"
@@ -3713,13 +3778,28 @@ function PermissionActionCardContent({
           <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
             {actionLabel} {permissionName}
           </div>
+          {expiryText && (
+            <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              {expiryText}
+            </div>
+          )}
         </div>
       </div>
-      <PermissionActionButton
-        state={buttonState}
-        action={block.action}
-        onClick={onClick}
-      />
+      <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+        {showDurationSelect && (
+          <PermissionGrantDurationSelect
+            value={expiresIn}
+            onValueChange={onExpiresInChange}
+            disabled={buttonState.loading || buttonState.saving}
+            ariaLabel="Permission duration"
+          />
+        )}
+        <PermissionActionButton
+          state={buttonState}
+          action={block.action}
+          onClick={onClick}
+        />
+      </div>
     </div>
   );
 }
@@ -3727,6 +3807,17 @@ function PermissionActionCardContent({
 function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const pageSignal = useGet(pageSignal$);
   const config = CONNECTOR_TYPES[block.connectorRef];
+  const features = useLastResolved(featureSwitch$);
+  const expirationEnabled =
+    features?.[FeatureSwitchKey.ExpiringPermissionGrants] ?? false;
+  const expirationAvailable = expirationEnabled && block.action === "allow";
+  const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
+  const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
+  const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
+  const expiresIn =
+    expiresInByScope[durationScope] ??
+    block.expiresIn ??
+    DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
   const agentLoadable = useLastLoadable(agentById(block.agentId));
   const [grantLoadable, upsertGrant] = useLoadableSet(
     upsertUserPermissionGrant$,
@@ -3738,13 +3829,20 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   );
   const hasAgent =
     agentLoadable.state === "hasData" && Boolean(agentLoadable.data);
+  const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
   const actionState = createPermissionActionCardViewState({
     block,
     hasAgent,
     agentLoadableState: agentLoadable.state,
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
+    expirationAvailable,
+    currentGrantExpiresAt: existingGrant?.expiresAt,
   });
+  const grantExpiresAt =
+    grantLoadable.state === "hasData"
+      ? grantLoadable.data.expiresAt
+      : (existingGrant?.expiresAt ?? null);
 
   return (
     <PermissionActionCardContent
@@ -3753,6 +3851,12 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? block.permission}
       buttonState={actionState.buttonState}
+      expirationAvailable={expirationAvailable}
+      expiresIn={expiresIn}
+      onExpiresInChange={(value) => {
+        setExpiresInForScope(durationScope, value);
+      }}
+      expiresAt={grantExpiresAt}
       onClick={createPermissionActionHandler({
         block,
         pageSignal,
@@ -3760,6 +3864,8 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
         focusedPermission: actionState.focusedPermission,
         state: actionState.buttonState,
         finished: actionState.finished,
+        expirationAvailable,
+        expiresIn,
         upsertGrant,
       })}
     />
@@ -4194,6 +4300,28 @@ function PagedUserGroup({
   );
 }
 
+function isScheduleUserMessage(
+  message: EnrichedChatMessage,
+): message is EnrichedChatMessage & { role: "user" } {
+  return (
+    message.role === "user" &&
+    (message.scheduleSnapshot !== undefined ||
+      message.scheduleTitle !== undefined ||
+      message.scheduleId !== undefined)
+  );
+}
+
+function scheduleMessageLabel(
+  message: EnrichedChatMessage & { role: "user" },
+): string {
+  return (
+    message.scheduleSnapshot?.description?.trim() ||
+    message.scheduleSnapshot?.title?.trim() ||
+    message.scheduleTitle?.trim() ||
+    "Scheduled run"
+  );
+}
+
 function resolveAttachments(
   message: PagedChatMessage,
   parsed: { filename: string; url: string }[],
@@ -4559,10 +4687,10 @@ function UserMessageGenerationTemplate({
 
 function ScheduleUserMessage({
   scheduleId,
-  scheduleTitle,
+  scheduleLabel,
 }: {
   scheduleId: string | undefined;
-  scheduleTitle: string;
+  scheduleLabel: string;
 }) {
   const cardClassName =
     "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
@@ -4570,7 +4698,7 @@ function ScheduleUserMessage({
     <>
       <IconClock size={15} className="shrink-0" />
       <span className="min-w-0 truncate font-medium text-foreground">
-        {scheduleTitle}
+        {scheduleLabel}
       </span>
     </>
   );
@@ -4578,13 +4706,13 @@ function ScheduleUserMessage({
     <div data-role="user" className="group">
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
-        <div className="flex flex-col items-end w-full">
+        <div className="flex w-full flex-col items-end">
           {scheduleId ? (
             <Link
               pathname="/schedules/:scheduleId"
               options={{ pathParams: { scheduleId } }}
               className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
-              aria-label={`Open schedule ${scheduleTitle}`}
+              aria-label={`Open schedule ${scheduleLabel}`}
             >
               {body}
             </Link>
@@ -4649,13 +4777,11 @@ function PagedUserMessage({
     );
   };
 
-  // Schedule-posted user messages don't show the prompt — they render the
-  // schedule's title behind a clock icon and link to the schedule detail page.
-  if (message.scheduleTitle) {
+  if (isScheduleUserMessage(message)) {
     return (
       <ScheduleUserMessage
         scheduleId={message.scheduleId}
-        scheduleTitle={message.scheduleTitle}
+        scheduleLabel={scheduleMessageLabel(message)}
       />
     );
   }

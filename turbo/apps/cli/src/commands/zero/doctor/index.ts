@@ -20,7 +20,7 @@ Examples:
   Check credits?         zero doctor credit
   Check with permission? zero doctor check-connector --env-name SLACK_TOKEN --check-permission chat:write
   Permission denied?     zero doctor permission-deny github --method GET --path /repos/owner/repo
-  Change a permission?   zero doctor permission-change github --permission contents:read --enable
+  Change a permission?   zero doctor permission-change github --permission contents:read --enable --duration 1h
 
 Notes:
   - Use zero doctor credit when a run or generation fails because the org has insufficient credits, when a user asks how to recharge, or before trying to buy credits

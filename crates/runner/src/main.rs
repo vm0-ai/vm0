@@ -9,6 +9,7 @@ mod executor;
 mod group;
 mod host;
 mod host_env;
+mod host_file;
 mod http;
 mod idle_pool;
 mod ids;
@@ -17,6 +18,7 @@ mod io_limits;
 mod kmsg_log;
 mod local_queue;
 mod lock;
+mod log_file;
 mod network_log_drain;
 mod network_log_manager;
 mod network_logs;
@@ -30,9 +32,11 @@ mod proxy;
 mod r2_cache;
 mod resource_budget;
 mod retry;
+mod run_cancellation;
 mod run_resolution;
 mod runner_dirname;
 mod runtime_overrides;
+mod state_file;
 mod status;
 mod storage_cache;
 mod telemetry;
@@ -152,7 +156,7 @@ fn init_tracing_with_file(
 ) -> Result<tracing_appender::non_blocking::WorkerGuard, Box<dyn std::error::Error>> {
     let home = paths::HomePaths::new()?;
     let log_dir = home.logs_dir();
-    std::fs::create_dir_all(&log_dir).map_err(|e| format!("create {}: {e}", log_dir.display()))?;
+    log_file::ensure_log_dir(&log_dir).map_err(|e| format!("create {}: {e}", log_dir.display()))?;
 
     let name = runner_name_from_config(config_path);
     let prefix = format!("runner-{name}");

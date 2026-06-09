@@ -161,6 +161,8 @@ runs:
           user_artifacts_access_key_id="$(repo_secret R2_USER_ARTIFACTS_ACCESS_KEY_ID)"
           user_artifacts_secret_access_key="$(repo_secret R2_USER_ARTIFACTS_SECRET_ACCESS_KEY)"
           public_artifacts_base_url="$(repo_var PUBLIC_ARTIFACTS_BASE_URL)"
+          atom_url="$(repo_var ATOM_URL)"
+          machine_secret_key="$(repo_secret VM0_MACHINE_SECRET_KEY)"
         else
           web_url="$INPUT_WEB_URL"
           app_url="$INPUT_APP_URL"
@@ -184,6 +186,8 @@ runs:
           user_artifacts_access_key_id="$(first_non_empty "$(repo_secret R2_USER_ARTIFACTS_ACCESS_KEY_ID)" "$(repo_secret R2_ACCESS_KEY_ID)")"
           user_artifacts_secret_access_key="$(first_non_empty "$(repo_secret R2_USER_ARTIFACTS_SECRET_ACCESS_KEY)" "$(repo_secret R2_SECRET_ACCESS_KEY)")"
           public_artifacts_base_url="$(first_non_empty "$(repo_var PUBLIC_ARTIFACTS_BASE_URL_DEV)" "$(repo_var PUBLIC_ARTIFACTS_BASE_URL)" "https://cdn.vm7.io")"
+          atom_url="https://tunnel-yuma-atom-api.vm7.ai"
+          machine_secret_key="$(repo_secret VM0_MACHINE_SECRET_KEY)"
         fi
 
         add_env VM0_API_URL "$api_url"
@@ -195,6 +199,12 @@ runs:
           add_env ENV "$deploy_env"
           if [[ "$INPUT_ENVIRONMENT" == "preview" && -n "$INPUT_JOB_REF" ]]; then
             add_env VM0_PREVIEW_JOB_REF "$INPUT_JOB_REF"
+          fi
+          if [[ -n "$atom_url" ]]; then
+            add_env ATOM_URL "$atom_url"
+          fi
+          if [[ -n "$machine_secret_key" ]]; then
+            add_env VM0_MACHINE_SECRET_KEY "$machine_secret_key"
           fi
         fi
         # Inject the workflow head commit explicitly so OTel / Sentry can tag

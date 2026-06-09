@@ -68,6 +68,10 @@ const checkoutCompleteResponseSchema = z.object({
   completed: z.boolean(),
 });
 
+const redeemCodeResponseSchema = z.object({
+  redeemed: z.literal(true),
+});
+
 const portalResponseSchema = z.object({
   url: z.string(),
 });
@@ -166,6 +170,10 @@ const autoRechargeUpdateRequestSchema = z
 const redeemRequestSchema = z.object({
   successUrl: z.string().url(),
   cancelUrl: z.string().url(),
+});
+
+const redeemCodeRequestSchema = z.object({
+  code: z.string().trim().min(1),
 });
 
 // ---------------------------------------------------------------------------
@@ -350,16 +358,33 @@ export type ZeroBillingInvoicesContract = typeof zeroBillingInvoicesContract;
 
 const downgradeRequestSchema = z.object({
   targetTier: z.enum(["pro-suspend", "pro"]),
+  returnUrl: z.string().url().optional(),
 });
 
-const downgradeResponseSchema = z.object({
-  success: z.boolean(),
-  effectiveDate: z.string().nullable(),
+const downgradeResponseSchema = z.union([
+  z.object({
+    success: z.boolean(),
+    effectiveDate: z.string().nullable(),
+  }),
+  z.object({
+    status: z.literal("payment_method_required"),
+    checkoutUrl: z.string().url(),
+  }),
+]);
+
+const restoreRequestSchema = z.object({
+  returnUrl: z.string().url().optional(),
 });
 
-const restoreResponseSchema = z.object({
-  success: z.boolean(),
-});
+const restoreResponseSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("restored"),
+  }),
+  z.object({
+    status: z.literal("payment_method_required"),
+    checkoutUrl: z.string().url(),
+  }),
+]);
 
 /**
  * Zero contract for POST /api/zero/billing/downgrade
@@ -393,7 +418,7 @@ export const zeroBillingRestoreContract = c.router({
     method: "POST",
     path: "/api/zero/billing/restore",
     headers: authHeadersSchema,
-    body: z.object({}),
+    body: restoreRequestSchema,
     responses: {
       200: restoreResponseSchema,
       401: apiErrorSchema,
@@ -437,10 +462,39 @@ export const zeroBillingRedeemContract = c.router({
 
 export type ZeroBillingRedeemContract = typeof zeroBillingRedeemContract;
 
+/**
+ * Zero contract for POST /api/zero/billing/redeem-code
+ *
+ * Proxies onboarding invite codes to the Atom redeem endpoint. The platform
+ * waits for billing status to update through realtime before completing
+ * onboarding.
+ */
+export const zeroBillingRedeemCodeContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/billing/redeem-code",
+    headers: authHeadersSchema,
+    body: redeemCodeRequestSchema,
+    responses: {
+      200: redeemCodeResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Redeem an onboarding billing code",
+  },
+});
+
+export type ZeroBillingRedeemCodeContract =
+  typeof zeroBillingRedeemCodeContract;
+
 // Inferred types from Zod schemas
 export type BillingStatusResponse = z.infer<typeof billingStatusResponseSchema>;
 export type AutoRechargeConfig = z.infer<typeof autoRechargeSchema>;
 export type CheckoutResponse = z.infer<typeof checkoutResponseSchema>;
+export type RedeemCodeResponse = z.infer<typeof redeemCodeResponseSchema>;
 export type CreditCheckoutRequest = z.infer<typeof creditCheckoutRequestSchema>;
 export type PortalResponse = z.infer<typeof portalResponseSchema>;
 export type BillingInvoice = z.infer<typeof invoiceSchema>;
@@ -450,4 +504,5 @@ export type BillingInvoicesResponse = z.infer<
 export type DowngradeResponse = z.infer<typeof downgradeResponseSchema>;
 export type RestoreResponse = z.infer<typeof restoreResponseSchema>;
 export type RedeemRequest = z.infer<typeof redeemRequestSchema>;
+export type RedeemCodeRequest = z.infer<typeof redeemCodeRequestSchema>;
 export type RedeemResponse = z.infer<typeof redeemResponseSchema>;

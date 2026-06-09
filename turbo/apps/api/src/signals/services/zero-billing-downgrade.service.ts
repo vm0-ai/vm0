@@ -8,7 +8,16 @@ import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { getStripeClient } from "../external/stripe-client";
+import {
+  subscriptionScheduleFinalEnd,
+  subscriptionScheduleId,
+} from "./stripe-subscription-schedules.service";
 import { activePriceId } from "./zero-billing-checkout.service";
+import {
+  BILLING_DOWNGRADE_PURPOSE,
+  billingDefaultPaymentMethodStatus,
+  createBillingSetupCheckout,
+} from "./zero-billing-payment-method.service";
 
 const L = logger("BillingDowngrade");
 
@@ -20,7 +29,16 @@ const TIER_RANK = Object.freeze<Record<OrgTier, number>>({
 });
 
 type DowngradeResult =
-  | { readonly ok: true; readonly effectiveDate: string | null }
+  | {
+      readonly ok: true;
+      readonly status: "scheduled";
+      readonly effectiveDate: string | null;
+    }
+  | {
+      readonly ok: true;
+      readonly status: "payment_method_required";
+      readonly checkoutUrl: string;
+    }
   | { readonly ok: false; readonly reason: "no_subscription" }
   | {
       readonly ok: false;
@@ -32,13 +50,23 @@ type DowngradeResult =
 interface DowngradeArgs {
   readonly orgId: string;
   readonly targetTier: "pro-suspend" | "pro";
+  readonly returnUrl: string;
+}
+
+interface DowngradeSubscriptionForOrgArgs {
+  readonly orgId: string;
+  readonly targetTier: "pro-suspend" | "pro";
+  readonly returnUrl?: string;
+  readonly requirePaymentMethod?: boolean;
 }
 
 interface DowngradeOrg {
   readonly tier: string;
+  readonly stripeCustomerId: string | null;
   readonly stripeSubscriptionId: string;
   readonly currentPeriodEnd: Date | null;
   readonly pendingSubscriptionScheduleId: string | null;
+  readonly pendingSubscriptionTargetTier: string | null;
 }
 
 interface DowngradeContext {
@@ -46,7 +74,7 @@ interface DowngradeContext {
   readonly stripe: ReturnType<typeof getStripeClient>;
   readonly orgId: string;
   readonly org: DowngradeOrg;
-  readonly signal: AbortSignal;
+  readonly signal?: AbortSignal;
 }
 
 function subscriptionPhaseRange(
@@ -89,6 +117,44 @@ function schedulePhaseItem(
   };
 }
 
+function stripeObjectId(
+  value: string | { readonly id: string } | null,
+): string | null {
+  if (typeof value === "string") {
+    return value;
+  }
+  return value?.id ?? null;
+}
+
+function subscriptionSchedulePhaseDiscounts(
+  subscription: Stripe.Subscription,
+): Stripe.SubscriptionScheduleUpdateParams.Phase.Discount[] {
+  const discounts =
+    (
+      subscription as {
+        readonly discounts?: readonly (string | Stripe.Discount)[];
+      }
+    ).discounts ?? [];
+  return discounts.flatMap((discount) => {
+    const discountId = stripeObjectId(discount);
+    return discountId ? [{ discount: discountId }] : [];
+  });
+}
+
+function phaseWithDiscounts(
+  phase: Stripe.SubscriptionScheduleUpdateParams.Phase,
+  discounts: Stripe.SubscriptionScheduleUpdateParams.Phase.Discount[],
+): Stripe.SubscriptionScheduleUpdateParams.Phase {
+  if (discounts.length === 0) {
+    return phase;
+  }
+
+  return {
+    ...phase,
+    discounts,
+  };
+}
+
 function subscriptionCurrentItem(
   subscription: Stripe.Subscription,
 ): Stripe.SubscriptionItem {
@@ -97,16 +163,6 @@ function subscriptionCurrentItem(
     throw new Error("Subscription has no items");
   }
   return currentItem;
-}
-
-function subscriptionScheduleId(
-  subscription: Stripe.Subscription,
-): string | null {
-  const schedule = subscription.schedule;
-  if (typeof schedule === "string") {
-    return schedule;
-  }
-  return schedule?.id ?? null;
 }
 
 function subscriptionItemPhaseRange(
@@ -122,46 +178,100 @@ function subscriptionItemPhaseRange(
   return { startDate, endDate };
 }
 
+function subscriptionCancelAt(subscription: Stripe.Subscription): Date | null {
+  return typeof subscription.cancel_at === "number"
+    ? new Date(subscription.cancel_at * 1000)
+    : null;
+}
+
+function dateUnixSeconds(date: Date): number {
+  return Math.floor(date.getTime() / 1000);
+}
+
+function shouldReplacePendingDowngradeSchedule(
+  context: DowngradeContext,
+  scheduleId: string,
+): boolean {
+  return (
+    context.org.tier === "team" &&
+    context.org.pendingSubscriptionScheduleId === scheduleId &&
+    context.org.pendingSubscriptionTargetTier === "pro"
+  );
+}
+
 async function scheduleCancellationAtPeriodEnd(
   context: DowngradeContext,
 ): Promise<string> {
   const subscription = await context.stripe.subscriptions.retrieve(
     context.org.stripeSubscriptionId,
   );
-  context.signal.throwIfAborted();
+  context.signal?.throwIfAborted();
 
   const scheduleId =
     context.org.pendingSubscriptionScheduleId ??
     subscriptionScheduleId(subscription);
   const currentItem = subscriptionCurrentItem(subscription);
   const currentPhaseRange = subscriptionItemPhaseRange(currentItem);
-  const effectiveDate =
+  let effectiveDate =
     context.org.currentPeriodEnd ?? new Date(currentPhaseRange.endDate * 1000);
 
   if (scheduleId) {
-    await context.stripe.subscriptionSchedules.update(scheduleId, {
-      end_behavior: "cancel",
-      proration_behavior: "none",
-      phases: [
-        {
-          start_date: currentPhaseRange.startDate,
-          end_date: currentPhaseRange.endDate,
-          items: [
-            schedulePhaseItem(currentItem.price.id, currentItem.quantity),
-          ],
-          proration_behavior: "none",
-        },
-      ],
-    });
+    if (shouldReplacePendingDowngradeSchedule(context, scheduleId)) {
+      const discounts = subscriptionSchedulePhaseDiscounts(subscription);
+      await context.stripe.subscriptionSchedules.update(scheduleId, {
+        end_behavior: "cancel",
+        proration_behavior: "none",
+        phases: [
+          phaseWithDiscounts(
+            {
+              start_date: currentPhaseRange.startDate,
+              end_date: currentPhaseRange.endDate,
+              items: [
+                schedulePhaseItem(currentItem.price.id, currentItem.quantity),
+              ],
+              proration_behavior: "none",
+            },
+            discounts,
+          ),
+        ],
+      });
+    } else {
+      const schedule =
+        await context.stripe.subscriptionSchedules.retrieve(scheduleId);
+      effectiveDate =
+        subscriptionScheduleFinalEnd(schedule) ??
+        context.org.currentPeriodEnd ??
+        new Date(currentPhaseRange.endDate * 1000);
+      await context.stripe.subscriptionSchedules.update(scheduleId, {
+        end_behavior: "cancel",
+        proration_behavior: "none",
+      });
+    }
   } else {
-    await context.stripe.subscriptions.update(
-      context.org.stripeSubscriptionId,
-      {
-        cancel_at_period_end: true,
-      },
-    );
+    const cancelAt = subscriptionCancelAt(subscription);
+    if (cancelAt) {
+      effectiveDate = cancelAt;
+    } else if (
+      context.org.currentPeriodEnd &&
+      dateUnixSeconds(context.org.currentPeriodEnd) > currentPhaseRange.endDate
+    ) {
+      effectiveDate = context.org.currentPeriodEnd;
+      await context.stripe.subscriptions.update(
+        context.org.stripeSubscriptionId,
+        {
+          cancel_at: dateUnixSeconds(effectiveDate),
+        },
+      );
+    } else {
+      await context.stripe.subscriptions.update(
+        context.org.stripeSubscriptionId,
+        {
+          cancel_at_period_end: true,
+        },
+      );
+    }
   }
-  context.signal.throwIfAborted();
+  context.signal?.throwIfAborted();
 
   await context.db
     .update(orgMetadata)
@@ -174,7 +284,7 @@ async function scheduleCancellationAtPeriodEnd(
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.orgId, context.orgId));
-  context.signal.throwIfAborted();
+  context.signal?.throwIfAborted();
 
   const effectiveDateIso = effectiveDate.toISOString();
   L.debug("subscription cancellation initiated", {
@@ -188,12 +298,8 @@ async function scheduleCancellationAtPeriodEnd(
 async function scheduleDowngradeToPro(
   context: DowngradeContext,
   currentTier: OrgTier,
+  subscription: Stripe.Subscription,
 ): Promise<string> {
-  const subscription = await context.stripe.subscriptions.retrieve(
-    context.org.stripeSubscriptionId,
-  );
-  context.signal.throwIfAborted();
-
   const currentItem = subscriptionCurrentItem(subscription);
   const proPriceId = activePriceId("pro");
   if (!proPriceId) {
@@ -208,7 +314,7 @@ async function scheduleDowngradeToPro(
     : await context.stripe.subscriptionSchedules.create({
         from_subscription: context.org.stripeSubscriptionId,
       });
-  context.signal.throwIfAborted();
+  context.signal?.throwIfAborted();
 
   const scheduleId = existingScheduleId ?? createdSchedule?.id;
   if (!scheduleId) {
@@ -220,26 +326,33 @@ async function scheduleDowngradeToPro(
     : subscriptionItemPhaseRange(currentItem);
   const currentPriceId = currentItem.price.id;
   const quantity = currentItem.quantity;
+  const discounts = subscriptionSchedulePhaseDiscounts(subscription);
 
   await context.stripe.subscriptionSchedules.update(scheduleId, {
     end_behavior: "release",
     proration_behavior: "none",
     phases: [
-      {
-        start_date: startDate,
-        end_date: endDate,
-        items: [schedulePhaseItem(currentPriceId, quantity)],
-        proration_behavior: "none",
-      },
-      {
-        start_date: endDate,
-        duration: phaseDuration(currentItem.price),
-        items: [schedulePhaseItem(proPriceId, quantity)],
-        proration_behavior: "none",
-      },
+      phaseWithDiscounts(
+        {
+          start_date: startDate,
+          end_date: endDate,
+          items: [schedulePhaseItem(currentPriceId, quantity)],
+          proration_behavior: "none",
+        },
+        discounts,
+      ),
+      phaseWithDiscounts(
+        {
+          start_date: endDate,
+          duration: phaseDuration(currentItem.price),
+          items: [schedulePhaseItem(proPriceId, quantity)],
+          proration_behavior: "none",
+        },
+        discounts,
+      ),
     ],
   });
-  context.signal.throwIfAborted();
+  context.signal?.throwIfAborted();
 
   const effectiveDate = new Date(endDate * 1000);
   await context.db
@@ -253,7 +366,7 @@ async function scheduleDowngradeToPro(
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.orgId, context.orgId));
-  context.signal.throwIfAborted();
+  context.signal?.throwIfAborted();
 
   const effectiveDateIso = effectiveDate.toISOString();
   L.debug("subscription downgrade scheduled", {
@@ -267,11 +380,107 @@ async function scheduleDowngradeToPro(
 
 /**
  * Downgrade an org's Stripe subscription. Two branches:
- * - `* → pro-suspend`: schedules cancel-at-period-end and flips local
- *   `cancelAtPeriodEnd` flag. effectiveDate = currentPeriodEnd ISO string.
+ * - `* → pro-suspend`: schedules cancellation and flips the local
+ *   `cancelAtPeriodEnd` flag. Existing `cancel_at`, fixed-term paid-through
+ *   dates, and external schedule final ends are preserved.
  * - `team → pro`: schedules a period-end phase change to Pro. effectiveDate
  *   is the current phase end ISO string.
  */
+export async function downgradeSubscriptionForOrg(
+  db: Db,
+  args: DowngradeSubscriptionForOrgArgs,
+  signal?: AbortSignal,
+): Promise<DowngradeResult> {
+  const [org] = await db
+    .select({
+      tier: orgMetadata.tier,
+      stripeCustomerId: orgMetadata.stripeCustomerId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      currentPeriodEnd: orgMetadata.currentPeriodEnd,
+      pendingSubscriptionScheduleId: orgMetadata.pendingSubscriptionScheduleId,
+      pendingSubscriptionTargetTier: orgMetadata.pendingSubscriptionTargetTier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, args.orgId))
+    .limit(1);
+  signal?.throwIfAborted();
+
+  if (!org?.stripeSubscriptionId) {
+    return { ok: false, reason: "no_subscription" };
+  }
+
+  const currentTier = org.tier as OrgTier;
+  if (TIER_RANK[args.targetTier] >= TIER_RANK[currentTier]) {
+    return {
+      ok: false,
+      reason: "invalid_target_tier",
+      currentTier,
+      targetTier: args.targetTier,
+    };
+  }
+
+  const stripe = getStripeClient();
+  const downgradeOrg: DowngradeOrg = {
+    tier: org.tier,
+    stripeCustomerId: org.stripeCustomerId,
+    stripeSubscriptionId: org.stripeSubscriptionId,
+    currentPeriodEnd: org.currentPeriodEnd,
+    pendingSubscriptionScheduleId: org.pendingSubscriptionScheduleId,
+    pendingSubscriptionTargetTier: org.pendingSubscriptionTargetTier,
+  };
+  const context = {
+    db,
+    stripe,
+    orgId: args.orgId,
+    org: downgradeOrg,
+    signal,
+  };
+
+  if (args.targetTier === "pro-suspend") {
+    const effectiveDate = await scheduleCancellationAtPeriodEnd(context);
+    return { ok: true, status: "scheduled", effectiveDate };
+  }
+
+  const subscription = await stripe.subscriptions.retrieve(
+    org.stripeSubscriptionId,
+  );
+  signal?.throwIfAborted();
+
+  if (args.requirePaymentMethod !== false) {
+    const paymentMethod = await billingDefaultPaymentMethodStatus({
+      stripe,
+      org: downgradeOrg,
+      subscription,
+    });
+    if (!paymentMethod.ready) {
+      if (!paymentMethod.customerId) {
+        throw new Error("Stripe subscription has no customer for downgrade");
+      }
+      if (!args.returnUrl) {
+        throw new Error("returnUrl is required to collect a payment method");
+      }
+
+      const checkoutUrl = await createBillingSetupCheckout({
+        stripe,
+        purpose: BILLING_DOWNGRADE_PURPOSE,
+        orgId: args.orgId,
+        customerId: paymentMethod.customerId,
+        subscriptionId: org.stripeSubscriptionId,
+        returnUrl: args.returnUrl,
+        metadata: { targetTier: args.targetTier },
+      });
+      return { ok: true, status: "payment_method_required", checkoutUrl };
+    }
+  }
+
+  const effectiveDate = await scheduleDowngradeToPro(
+    context,
+    currentTier,
+    subscription,
+  );
+  return { ok: true, status: "scheduled", effectiveDate };
+}
+
 export const downgradeSubscription$ = command(
   async (
     { set },
@@ -279,53 +488,6 @@ export const downgradeSubscription$ = command(
     signal: AbortSignal,
   ): Promise<DowngradeResult> => {
     const writeDb = set(writeDb$);
-
-    const [org] = await writeDb
-      .select({
-        tier: orgMetadata.tier,
-        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-        currentPeriodEnd: orgMetadata.currentPeriodEnd,
-        pendingSubscriptionScheduleId:
-          orgMetadata.pendingSubscriptionScheduleId,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, args.orgId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!org?.stripeSubscriptionId) {
-      return { ok: false, reason: "no_subscription" };
-    }
-
-    const currentTier = org.tier as OrgTier;
-    if (TIER_RANK[args.targetTier] >= TIER_RANK[currentTier]) {
-      return {
-        ok: false,
-        reason: "invalid_target_tier",
-        currentTier,
-        targetTier: args.targetTier,
-      };
-    }
-
-    const stripe = getStripeClient();
-    const downgradeOrg: DowngradeOrg = {
-      tier: org.tier,
-      stripeSubscriptionId: org.stripeSubscriptionId,
-      currentPeriodEnd: org.currentPeriodEnd,
-      pendingSubscriptionScheduleId: org.pendingSubscriptionScheduleId,
-    };
-    const context = {
-      db: writeDb,
-      stripe,
-      orgId: args.orgId,
-      org: downgradeOrg,
-      signal,
-    };
-    const effectiveDate =
-      args.targetTier === "pro-suspend"
-        ? await scheduleCancellationAtPeriodEnd(context)
-        : await scheduleDowngradeToPro(context, currentTier);
-
-    return { ok: true, effectiveDate };
+    return await downgradeSubscriptionForOrg(writeDb, args, signal);
   },
 );

@@ -45,7 +45,30 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).toContain("ref=slack");
     expect(logCalls).toContain("permission=channels%3Aread");
     expect(logCalls).toContain("action=allow");
+    expect(logCalls).toContain("expiresIn=1h");
+    expect(logCalls).toContain("Requested duration: 1h");
     expect(logCalls).not.toContain("admin approval");
+  });
+
+  it("outputs an allow grant link with an explicit duration", async () => {
+    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+    await permissionChangeCommand.parseAsync([
+      "node",
+      "cli",
+      "slack",
+      "--permission",
+      "channels:read",
+      "--enable",
+      "--duration",
+      "24h",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("action=allow");
+    expect(logCalls).toContain("expiresIn=24h");
+    expect(logCalls).toContain("Requested duration: 24h");
   });
 
   it("outputs a deny grant link for --disable", async () => {
@@ -67,6 +90,8 @@ describe("zero doctor permission-change command", () => {
     );
     expect(logCalls).toContain("[Manage Slack permissions]");
     expect(logCalls).toContain("action=deny");
+    expect(logCalls).not.toContain("expiresIn=");
+    expect(logCalls).not.toContain("Requested duration");
     expect(logCalls).not.toContain("admin approval");
   });
 
@@ -214,6 +239,25 @@ describe("zero doctor permission-change command", () => {
 
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining("Either --enable or --disable is required"),
+    );
+  });
+
+  it("exits with an error when --duration is used with --disable", async () => {
+    await expect(async () => {
+      await permissionChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        "channels:read",
+        "--disable",
+        "--duration",
+        "1h",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("--duration is only supported with --enable"),
     );
   });
 });

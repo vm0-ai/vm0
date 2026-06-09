@@ -2,7 +2,8 @@ use super::super::super::*;
 use super::super::support::{
     context_with_session, context_with_workspace_image_cache_enabled,
     mock_run_config_with_overrides, push_job, seed_idle_pool, shutdown, test_profiles,
-    wait_budget_count, wait_cancel_token, wait_cancel_token_removed, wait_workspace_cache_sessions,
+    wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
+    wait_workspace_cache_sessions,
 };
 use super::support::assert_no_completion_for_run;
 
@@ -213,7 +214,7 @@ async fn assert_workspace_cache_after_late_cancellation(
     let run_id = RunId::new_v4();
     let context = context_with_workspace_image_cache_enabled(run_id, session_id);
     push_job(&env, run_id, "vm0/default", Some(context));
-    let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+    let cancel_handle = wait_cancel_handle(&cancel_tokens, run_id, Duration::from_secs(5)).await;
 
     wait_gate
         .wait_entered(1, Duration::from_secs(5))
@@ -242,7 +243,7 @@ async fn assert_workspace_cache_after_late_cancellation(
 
     match cancellation_point {
         LateCancellationPoint::DuringPark => {
-            token.cancel();
+            cancel_handle.cancel().await;
             park_gate.release_one();
         }
         LateCancellationPoint::BeforeIdlePoolTransfer => {
@@ -251,7 +252,7 @@ async fn assert_workspace_cache_after_late_cancellation(
             env.start_observer
                 .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(5))
                 .await;
-            token.cancel();
+            cancel_handle.cancel().await;
             drop(pool_guard);
         }
     }
@@ -494,7 +495,7 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
         "vm0/default",
         Some(context_with_session(run_id, "sess-cancel-while-locking")),
     );
-    let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+    let cancel_handle = wait_cancel_handle(&cancel_tokens, run_id, Duration::from_secs(5)).await;
 
     assert_eq!(
         park_gate
@@ -508,7 +509,7 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
     env.start_observer
         .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(5))
         .await;
-    token.cancel();
+    cancel_handle.cancel().await;
     drop(pool_guard);
 
     assert_eq!(
@@ -572,7 +573,7 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
         "vm0/default",
         Some(context_with_session(run_id, "sess-cancel-while-parking")),
     );
-    let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+    let cancel_handle = wait_cancel_handle(&cancel_tokens, run_id, Duration::from_secs(5)).await;
 
     assert_eq!(
         park_gate
@@ -583,7 +584,7 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
     );
     assert_eq!(counter.park_call_count(), 1);
 
-    token.cancel();
+    cancel_handle.cancel().await;
     park_gate.release_one();
 
     assert_eq!(

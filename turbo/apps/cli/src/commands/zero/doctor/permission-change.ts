@@ -1,4 +1,5 @@
 import { Command, Option } from "commander";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import {
   getConnectorFirewall,
@@ -6,6 +7,14 @@ import {
 } from "@vm0/connectors/firewalls";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
+
+const DEFAULT_PERMISSION_GRANT_DURATION: UserPermissionGrantExpiresIn = "1h";
+const PERMISSION_GRANT_DURATIONS = [
+  "1h",
+  "24h",
+  "7d",
+  "always",
+] as const satisfies readonly UserPermissionGrantExpiresIn[];
 
 function findPermissionInConfig(ref: string, permissionName: string): boolean {
   if (!isFirewallConnectorType(ref)) return false;
@@ -63,17 +72,24 @@ function printPermissionActionMessage(args: {
   readonly permission: string;
   readonly label: string;
   readonly url: string;
+  readonly duration: UserPermissionGrantExpiresIn | undefined;
 }): void {
   const grantAction = args.action === "enable" ? "allow" : "deny";
   console.log(
     `You can ${grantAction} the "${args.permission}" permission for your connector access: [Manage ${args.label} permissions](${args.url})`,
   );
+  if (args.duration) {
+    console.log(
+      `Requested duration: ${args.duration}. Use --duration 1h|24h|7d|always to choose a different grant lifetime.`,
+    );
+  }
 }
 
 async function outputPermissionChangeMessage(
   connectorRef: string,
   permission: string,
   action: PermissionAction,
+  duration: UserPermissionGrantExpiresIn | undefined,
 ): Promise<void> {
   const { label } =
     CONNECTOR_TYPES[connectorRef as keyof typeof CONNECTOR_TYPES];
@@ -86,6 +102,9 @@ async function outputPermissionChangeMessage(
     permission,
     action: action === "enable" ? "allow" : "deny",
   });
+  if (action === "enable") {
+    urlParams.set("expiresIn", duration ?? DEFAULT_PERMISSION_GRANT_DURATION);
+  }
 
   const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
   const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
@@ -96,6 +115,10 @@ async function outputPermissionChangeMessage(
     permission,
     label,
     url,
+    duration:
+      action === "enable"
+        ? (duration ?? DEFAULT_PERMISSION_GRANT_DURATION)
+        : undefined,
   });
 }
 
@@ -122,6 +145,12 @@ export const permissionChangeCommand = new Command()
     ).conflicts("enable"),
   )
   .addOption(
+    new Option(
+      "--duration <duration>",
+      "Requested allow duration: 1h, 24h, 7d, or always (default: 1h)",
+    ).choices([...PERMISSION_GRANT_DURATIONS]),
+  )
+  .addOption(
     new Option("--reason <text>", "Brief reason for the permission change"),
   )
   .addHelpText(
@@ -129,10 +158,13 @@ export const permissionChangeCommand = new Command()
     `
 Examples:
   zero doctor permission-change github --permission contents:read --enable
+  zero doctor permission-change github --permission contents:write --enable --duration 24h
   zero doctor permission-change slack --permission chat:write --disable
 
 Notes:
   - Outputs a platform URL for the user to adjust the permission
+  - Enable requests default to --duration 1h; use 24h or 7d for longer user-approved work
+  - Use --duration always only when the user explicitly asks for persistent access
   - Permission changes update the current user's connector grants`,
   )
   .action(
@@ -143,11 +175,15 @@ Notes:
           permission: string;
           enable?: boolean;
           disable?: boolean;
+          duration?: UserPermissionGrantExpiresIn;
           reason?: string;
         },
       ) => {
         if (!opts.enable && !opts.disable) {
           throw new Error("Either --enable or --disable is required");
+        }
+        if (opts.disable && opts.duration !== undefined) {
+          throw new Error("--duration is only supported with --enable");
         }
 
         if (!isFirewallConnectorType(connectorRef)) {
@@ -165,6 +201,7 @@ Notes:
           connectorRef,
           opts.permission,
           action,
+          opts.duration,
         );
       },
     ),

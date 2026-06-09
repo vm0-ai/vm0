@@ -271,7 +271,16 @@ impl MitmProxy {
         // Write addon scripts to directory.
         // Remove-and-recreate to purge stale files from previous binary versions
         // (e.g. a renamed module would leave an orphan .py that Python could import).
-        let _ = tokio::fs::remove_dir_all(&config.addon_dir).await;
+        match tokio::fs::remove_dir_all(&config.addon_dir).await {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(RunnerError::Internal(format!(
+                    "remove stale addon dir {}: {e}",
+                    config.addon_dir.display()
+                )));
+            }
+        }
         tokio::fs::create_dir_all(&config.addon_dir)
             .await
             .map_err(|e| RunnerError::Internal(format!("create addon dir: {e}")))?;
@@ -782,8 +791,8 @@ pub async fn wait_usage_flush_requesting(
     let deadline = started_at + timeout;
     let mut next_flush_request_at = started_at + USAGE_FLUSH_REQUEST_INTERVAL;
     loop {
-        let (not_ready, snapshot) = match tokio::fs::read_to_string(&path).await {
-            Ok(content) => match parse_usage_pending_state(&content) {
+        let (not_ready, snapshot) = match read_addon_state_file(&path).await {
+            Ok(Some(content)) => match parse_usage_pending_state(&content) {
                 Ok(state) => {
                     let snapshot = Some(UsagePendingSnapshot::from(&state));
                     match validate_usage_pending_state(&state, request, now_millis()) {
@@ -804,6 +813,7 @@ pub async fn wait_usage_flush_requesting(
                 }
                 Err(reason) => (reason, None),
             },
+            Ok(None) => (format!("cannot read {}: not found", path.display()), None),
             Err(e) => (format!("cannot read {}: {e}", path.display()), None),
         };
         let now = tokio::time::Instant::now();
@@ -863,8 +873,8 @@ async fn wait_jsonl_flush_requesting(
     let deadline = started_at + timeout;
     let mut next_flush_request_at = started_at + JSONL_FLUSH_REQUEST_INTERVAL;
     loop {
-        let (not_ready, snapshot) = match tokio::fs::read_to_string(&path).await {
-            Ok(content) => match parse_jsonl_flush_state(&content) {
+        let (not_ready, snapshot) = match read_addon_state_file(&path).await {
+            Ok(Some(content)) => match parse_jsonl_flush_state(&content) {
                 Ok(state) => {
                     let snapshot = Some(JsonlFlushSnapshot::from(&state));
                     match validate_jsonl_flush_state(&state, request, now_millis()) {
@@ -879,6 +889,7 @@ async fn wait_jsonl_flush_requesting(
                 }
                 Err(reason) => (reason, None),
             },
+            Ok(None) => (format!("cannot read {}: not found", path.display()), None),
             Err(e) => (format!("cannot read {}: {e}", path.display()), None),
         };
         let now = tokio::time::Instant::now();
@@ -1202,11 +1213,24 @@ fn find_available_port() -> RunnerResult<u16> {
     Ok(port)
 }
 
+async fn read_addon_state_file(path: &Path) -> RunnerResult<Option<String>> {
+    crate::state_file::read_to_string(
+        path,
+        crate::state_file::USAGE_PENDING_MAX_BYTES,
+        crate::state_file::OwnerCheck::None,
+    )
+    .await
+}
+
 /// Read the proxy registry JSON file.
 async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyRegistry> {
-    let content = tokio::fs::read_to_string(path)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("read registry: {e}")))?;
+    let content = crate::state_file::read_to_string(
+        path,
+        crate::state_file::PROXY_REGISTRY_MAX_BYTES,
+        crate::state_file::OwnerCheck::CurrentEuid,
+    )
+    .await?
+    .ok_or_else(|| RunnerError::Internal(format!("read registry {}: not found", path.display())))?;
     serde_json::from_str(&content)
         .map_err(|e| RunnerError::Internal(format!("parse registry: {e}")))
 }
@@ -1217,13 +1241,20 @@ async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyRegistry> {
 async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> RunnerResult<()> {
     let content = serde_json::to_string(value)
         .map_err(|e| RunnerError::Internal(format!("serialize registry: {e}")))?;
+    remove_legacy_registry_tmp(path).await?;
+    crate::state_file::write_private_atomic(path, content.as_bytes()).await
+}
+
+async fn remove_legacy_registry_tmp(path: &Path) -> RunnerResult<()> {
     let tmp = path.with_extension("json.tmp");
-    tokio::fs::write(&tmp, content)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("write registry tmp: {e}")))?;
-    tokio::fs::rename(&tmp, path)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("rename registry: {e}")))
+    match tokio::fs::remove_file(&tmp).await {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "remove stale registry tmp {}: {e}",
+            tmp.display()
+        ))),
+    }
 }
 
 /// Lightweight, cloneable handle for proxy registry operations.
@@ -1373,6 +1404,18 @@ PY
         let mut perms = std::fs::metadata(path).unwrap().permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    fn make_fifo(path: &Path) {
+        let c_path = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
+        // SAFETY: `c_path` is a valid nul-terminated path for `mkfifo`.
+        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(
+            result,
+            0,
+            "mkfifo failed: {}",
+            std::io::Error::last_os_error()
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -1530,6 +1573,56 @@ PY
     }
 
     #[tokio::test]
+    async fn mitm_proxy_new_fails_when_stale_addon_dir_cleanup_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let addon_dir = dir.path().join("addon");
+        tokio::fs::write(&addon_dir, b"not a directory")
+            .await
+            .unwrap();
+        let config = ProxyConfig {
+            mitmdump_bin: dir.path().join("mitmdump"),
+            ca_dir: dir.path().join("ca"),
+            addon_dir: addon_dir.clone(),
+            registry_path: dir.path().join("proxy-registry.json"),
+            registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            api_url: None,
+        };
+
+        let result = MitmProxy::new(config).await;
+
+        let error = result.err().expect("expected addon cleanup failure");
+        assert!(
+            error.to_string().contains("remove stale addon dir"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            tokio::fs::read(&addon_dir).await.unwrap(),
+            b"not a directory"
+        );
+    }
+
+    #[tokio::test]
+    async fn mitm_proxy_new_succeeds_when_addon_dir_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let addon_dir = dir.path().join("addon");
+        let registry_path = dir.path().join("proxy-registry.json");
+        let config = ProxyConfig {
+            mitmdump_bin: dir.path().join("mitmdump"),
+            ca_dir: dir.path().join("ca"),
+            addon_dir: addon_dir.clone(),
+            registry_path: registry_path.clone(),
+            registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            api_url: None,
+        };
+
+        let (_proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
+
+        assert!(addon_dir.join("mitm_addon.py").is_file());
+        let registry = read_registry(&registry_path).await.unwrap();
+        assert!(registry.vms.is_empty());
+    }
+
+    #[tokio::test]
     async fn registry_register_and_unregister() {
         let dir = tempfile::tempdir().unwrap();
         let registry_path = dir.path().join("proxy-registry.json");
@@ -1578,6 +1671,168 @@ PY
         assert!(
             !loaded.vms.contains_key("10.200.0.2"),
             "VM should be removed from registry"
+        );
+    }
+
+    #[tokio::test]
+    async fn write_registry_writes_private_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let empty = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+
+        write_registry(&registry_path, &empty).await.unwrap();
+
+        assert_eq!(
+            std::fs::metadata(&registry_path)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    #[tokio::test]
+    async fn write_registry_repairs_existing_wide_file_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        std::fs::write(&registry_path, r#"{"vms":{},"updatedAt":0}"#).unwrap();
+        let mut permissions = std::fs::metadata(&registry_path).unwrap().permissions();
+        permissions.set_mode(0o644);
+        std::fs::set_permissions(&registry_path, permissions).unwrap();
+        let empty = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+
+        write_registry(&registry_path, &empty).await.unwrap();
+
+        assert_eq!(
+            std::fs::metadata(&registry_path)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    #[tokio::test]
+    async fn write_registry_removes_stale_fixed_tmp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let legacy_tmp = registry_path.with_extension("json.tmp");
+        std::fs::write(&legacy_tmp, b"stale").unwrap();
+        let empty = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+
+        write_registry(&registry_path, &empty).await.unwrap();
+
+        assert!(
+            !legacy_tmp.exists(),
+            "stale fixed registry tmp was not removed"
+        );
+        read_registry(&registry_path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn write_registry_removes_stale_fixed_tmp_symlink_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let legacy_tmp = registry_path.with_extension("json.tmp");
+        let outside = dir.path().join("outside-target");
+        std::fs::write(&outside, b"outside").unwrap();
+        std::os::unix::fs::symlink(&outside, &legacy_tmp).unwrap();
+        let empty = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+
+        write_registry(&registry_path, &empty).await.unwrap();
+
+        assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
+        assert!(
+            std::fs::symlink_metadata(&legacy_tmp).is_err(),
+            "stale fixed registry tmp symlink was not removed"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_registry_rejects_symlink_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let outside = dir.path().join("outside-registry.json");
+        std::fs::write(&outside, r#"{"vms":{},"updatedAt":0}"#).unwrap();
+        std::os::unix::fs::symlink(&outside, &registry_path).unwrap();
+
+        let error = read_registry(&registry_path)
+            .await
+            .err()
+            .expect("expected symlink registry rejection");
+
+        assert!(
+            error.to_string().contains("open state file"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_registry_rejects_fifo_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        make_fifo(&registry_path);
+
+        let error = read_registry(&registry_path)
+            .await
+            .err()
+            .expect("expected fifo registry rejection");
+
+        assert!(
+            error.to_string().contains("not a regular state file"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_registry_rejects_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        std::fs::create_dir(&registry_path).unwrap();
+
+        let error = read_registry(&registry_path)
+            .await
+            .err()
+            .expect("expected directory registry rejection");
+
+        assert!(
+            error.to_string().contains("not a regular state file"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_registry_rejects_oversized_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        std::fs::write(
+            &registry_path,
+            vec![b' '; crate::state_file::PROXY_REGISTRY_MAX_BYTES as usize + 1],
+        )
+        .unwrap();
+
+        let error = read_registry(&registry_path)
+            .await
+            .err()
+            .expect("expected oversized registry rejection");
+
+        assert!(
+            error.to_string().contains("exceeds"),
+            "unexpected error: {error}"
         );
     }
 
@@ -2514,6 +2769,28 @@ while True:
     }
 
     #[tokio::test(start_paused = true)]
+    async fn wait_jsonl_flush_rejects_state_symlink_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("network.jsonl");
+        let request = jsonl_request(&log_path);
+        let outside = dir.path().join("outside-jsonl-flush-state");
+        std::fs::write(&outside, jsonl_state(&log_path, 0)).unwrap();
+        std::os::unix::fs::symlink(&outside, dir.path().join("jsonl-flush-state")).unwrap();
+
+        assert!(!wait_jsonl_flush(dir.path(), Duration::from_millis(50), &request).await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_jsonl_flush_rejects_fifo_state_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("network.jsonl");
+        let request = jsonl_request(&log_path);
+        make_fifo(&dir.path().join("jsonl-flush-state"));
+
+        assert!(!wait_jsonl_flush(dir.path(), Duration::from_millis(50), &request).await);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn wait_jsonl_flush_requests_flush_when_pending() {
         let dir = tempfile::tempdir().unwrap();
         let log_path = dir.path().join("network.jsonl");
@@ -2742,6 +3019,39 @@ while True:
             usage_state_with_request(0, 0, 0, Some("old-request")),
         )
         .unwrap();
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_rejects_state_symlink_without_following_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        let outside = dir.path().join("outside-usage-pending");
+        std::fs::write(&outside, usage_state(0, 0, 0)).unwrap();
+        std::os::unix::fs::symlink(&outside, dir.path().join("usage-pending")).unwrap();
+
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_rejects_fifo_state_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        make_fifo(&dir.path().join("usage-pending"));
+
+        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_usage_flush_rejects_oversized_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = usage_request();
+        std::fs::write(
+            dir.path().join("usage-pending"),
+            vec![b' '; crate::state_file::USAGE_PENDING_MAX_BYTES as usize + 1],
+        )
+        .unwrap();
+
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
 

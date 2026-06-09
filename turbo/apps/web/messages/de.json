@@ -87,7 +87,17 @@
     "contact": "Demo vereinbaren",
     "joinWaitlist": "Registrieren",
     "security": "Sicherheit",
+    "explore": "Entdecken",
     "useCases": "Anwendungsfälle",
+    "useCasesDesc": "Echte Workflows zum Remixen",
+    "reports": "Berichte",
+    "reportsDesc": "Datenberichte zum Remixen",
+    "presentations": "Präsentationen",
+    "presentationsDesc": "Folien zum Remixen",
+    "illustrations": "Illustrationen",
+    "illustrationsDesc": "Illustrationen zum Remixen",
+    "webDesign": "Webdesigns",
+    "webDesignDesc": "Website-Designs zum Remixen",
     "models": "Modelle",
     "signOut": "Abmelden",
     "openApp": "App öffnen",
@@ -341,6 +351,255 @@
       "submitYourCase": "Ihren Fall einreichen →"
     },
     "content": {
+      "landing-page-builder": {
+        "title": "Eine Landingpage aus einem einzigen Briefing-Satz starten",
+        "description": "Beschreibe die Seite, die du brauchst, und Zero baut die komplette Struktur, schreibt jeden Abschnitt, öffnet einen GitHub-PR und liefert einen Vorschaulink, den du prüfen kannst, bevor die Seite live geht.",
+        "timeSaved": "ca. 3 Stunden gespart pro Seite",
+        "scenario": "Die Kampagne ist startklar, nur die Landingpage fehlt. Du kennst das Angebot, die Zielgruppe und ungefähr, was auf der Seite stehen soll. Aber daraus eine echte Seite zu machen bedeutet: ein Briefing fürs Design, ein Ticket fürs Engineering, ein paar Runden Texterei und das Warten auf das nächste Deploy-Fenster. Bis die Seite live ist, ist der Moment längst verpufft. Zero verkürzt das radikal. Du sagst, für wen die Seite gedacht ist und was ein Besucher tun soll, und Zero baut die gesamte Struktur (Hero, Nutzenargumente, Social Proof, FAQ, Call to Action), schreibt den Text, öffnet einen PR und gibt dir eine Vorschau-URL. Du prüfst die echte Seite auf echter Infrastruktur, kein Mockup, und änderst alles per einfacher Anweisung in normaler Sprache.",
+        "promptVariants": [
+          {
+            "label": "Komplette Seite",
+            "prompt": "@Zero baue eine Landingpage für unseren neuen Team-Plan, gerichtet an Startup-Gründer. Hero, drei Nutzenargumente, eine kurze FAQ und einen Call to Action zur Anmeldung. Öffne einen PR und schick mir den Vorschaulink."
+          },
+          {
+            "label": "Aus Briefing",
+            "prompt": "@Zero lies das Kampagnen-Briefing in Google Drive, baue eine dazu passende Landingpage, öffne einen PR und teile den Vorschaulink, damit ich vor der Veröffentlichung prüfen kann."
+          },
+          {
+            "label": "Anpassen",
+            "prompt": "@Zero straffe in der Landingpage-Vorschau die Hero-Headline, verschiebe das Pricing über die FAQ und deploye die Vorschau neu."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Maya",
+            "text": "@Zero baue eine Landingpage für unseren neuen Team-Plan, gerichtet an Startup-Gründer. Hero, drei Nutzenargumente, eine kurze FAQ und einen Anmelde-CTA. Öffne einen PR und schick mir den Vorschaulink."
+          },
+          {
+            "name": "Zero",
+            "text": "Mache ich. Habe eine Seite mit 5 Abschnitten gebaut: Hero, Nutzenargumente, Social Proof, FAQ, CTA.\n\nPR #482: feat: team-plan landing page\nVorschau: Deploy läuft, Link in ca. 2 Min.\n\nDer Hero stellt die gesparte Zeit in den Vordergrund statt der Features. Soll ich als Nächstes eine Preistabelle oder eine Logo-Leiste ergänzen?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero macht aus deinem Briefing eine Seitenstruktur",
+            "description": "Zero nimmt dein Ziel und deine Zielgruppe und legt die Abschnitte fest, die eine konvertierende Seite braucht: einen Hero mit klarer Headline, Nutzenargumente, Social Proof, eine FAQ, die Einwände abräumt, und einen einzigen primären Call to Action."
+          },
+          {
+            "title": "Zero schreibt den Text und baut die Seite",
+            "description": "Zero formuliert jeden Abschnitt in der Stimme deines Produkts, fügt die Seite in deiner Codebasis zusammen und committet sie in einen neuen Branch. Dabei folgt es deinem bestehenden Designsystem, damit die Seite wirkt, als gehöre sie schon immer dazu."
+          },
+          {
+            "title": "Zero öffnet einen PR mit Vorschau-Deploy",
+            "description": "Zero öffnet einen GitHub-Pull-Request und wartet auf den Vorschau-Deploy. Du bekommst eine Live-URL, die die echte Seite auf echter Infrastruktur zeigt, sodass das, was du prüfst, genau das ist, was Besucher zu sehen bekommen."
+          },
+          {
+            "title": "Du passt alles in normaler Sprache an",
+            "description": "Antworte mit den gewünschten Änderungen, einer prägnanteren Headline, einer umsortierten FAQ, einem anderen Call to Action, und Zero aktualisiert den Branch und deployt die Vorschau neu, bis sie bereit zum Mergen ist."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Analytics einrichten",
+            "description": "Tracking auf Seitenebene hinzufügen, damit du die Performance ab Tag eins messen kannst",
+            "examplePrompt": "@Zero füge der neuen Landingpage Plausible-Tracking hinzu und sag mir, welche Events du erfasst."
+          },
+          {
+            "title": "Eine Variante zum Testen aufsetzen",
+            "description": "Eine zweite Version der Seite erstellen, um sie gegen die erste zu A/B-testen",
+            "examplePrompt": "@Zero klone die Landingpage in eine Variante mit einer nutzenorientierten Headline statt der feature-orientierten und öffne einen PR."
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Übergib Zero jedes neue Kampagnen-Briefing und lass es die Seite erstellen",
+            "examplePrompt": "@Zero immer wenn ich ein Kampagnen-Briefing in diesen Channel lege, baue die passende Landingpage, öffne einen PR und schick mir den Vorschaulink."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero committet die Seite in einen neuen Branch und öffnet den Pull-Request. Erforderlich, um die Seite zu bauen und auszuliefern."
+          },
+          {
+            "description": "Zero liest den Vorschau-Deploy, um dir eine Live-URL für genau die Seite im PR zu geben. Erforderlich für den Vorschaulink."
+          },
+          {
+            "description": "Zero richtet Seiten-Analytics ein und liest sie aus, damit du nach dem Launch messen kannst, wie die Seite performt. Optional."
+          }
+        ],
+        "tips": [
+          "Stelle in deinem Briefing die gewünschte Besucheraktion an den Anfang: anmelden, Demo buchen, Testversion starten. Ein klares Ziel führt zu einer schärferen Seite als eine Liste von Features.",
+          "Verweise Zero auf eine bestehende Seite, die dir gefällt, als Referenz, damit die neue Seite eine bewährte Struktur und dein Designsystem übernimmt.",
+          "Schalte Analytics ab Tag eins ein, damit du auf Basis von echtem Besucherverhalten iterieren kannst statt auf Vermutungen."
+        ]
+      },
+      "support-driven-bug-fixes": {
+        "title": "Einen vom Kunden gemeldeten Bug vom Handy aus beheben",
+        "description": "Leite einen Bug-Report von überall an Zero weiter, und es öffnet einen Pull-Request mit dem Fix und antwortet mit einem Vorschaulink, sodass der Support einen Fix ausliefern kann, ohne auf eine Übergabe ans Engineering zu warten.",
+        "timeSaved": "ca. 1 Tag gespart pro Bug",
+        "scenario": "Ein Kunde meldet sich an einem Samstag wegen eines Layout-Bugs, und du bist weit weg vom Laptop. Der alte Weg: Die E-Mail bleibt bis Montag liegen, wird ans Engineering weitergeleitet, wartet, bis sie jemand übernimmt, wird gefixt und landet dann wieder bei dir, damit du dem Kunden endlich antworten kannst. Aus einem kleinen Fix wird ein mehrtägiger Hin und Her über drei Personen. Stattdessen öffnest du Slack auf dem Handy, lädst den Screenshot des Kunden hoch und bittest Zero, den Bug zu beheben. Zero findet die Ursache im Code, öffnet einen PR mit der Änderung und antwortet mit einem Vorschaulink, damit du und dein Team genau sehen, was sich geändert hat, bevor es ausgeliefert wird.",
+        "promptVariants": [
+          {
+            "label": "Aus Screenshot",
+            "prompt": "@Zero behebe diesen vom Kunden gemeldeten Layout-Bug über einen PR und teile mir dann den Vorschaulink."
+          },
+          {
+            "label": "Aus dem Postfach",
+            "prompt": "@Zero prüfe mein Postfach auf den neuesten Bug-Report eines Kunden, reproduziere ihn, öffne einen PR mit dem Fix und schick mir den Vorschaulink."
+          },
+          {
+            "label": "Übergeben",
+            "prompt": "@Zero dieser Kunden-Bug ist größer als ein schneller Fix. Öffne ein GitHub-Issue mit den Reproduktionsschritten und dem Screenshot des Kunden und markiere das Frontend-Team."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Nadia",
+            "text": "@Zero behebe diesen vom Kunden gemeldeten Layout-Bug über einen PR und teile mir dann den Vorschaulink."
+          },
+          {
+            "name": "Zero",
+            "text": "Gefunden. Die mobile Navigation hat auf Geräten mit Notch die Statusleiste überlappt, weil dem Header der Safe-Area-Inset fehlte.\n\nPR #1893: fix(mobile): add safe-area inset to header\nVorschau: Link wird erstellt, fertig in ca. 2 Min.\n\nSoll ich die Antwort an den Kunden entwerfen, sobald das gemergt ist?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero liest den Bug-Report",
+            "description": "Zero nimmt den Screenshot oder die E-Mail, die du weiterleitest, liest die Beschreibung des Kunden und arbeitet heraus, was kaputt ist und auf welchem Screen."
+          },
+          {
+            "title": "Zero findet die Ursache im Code",
+            "description": "Zero durchsucht das Repository, lokalisiert die verantwortliche Komponente und ermittelt die Änderung, die nötig ist, um den Bug zu beheben."
+          },
+          {
+            "title": "Zero öffnet einen PR mit Vorschau",
+            "description": "Zero committet den Fix in einen neuen Branch, öffnet einen Pull-Request und wartet auf den Vorschau-Deploy, sodass du einen Live-Link bekommst, der den behobenen Bug zeigt."
+          },
+          {
+            "title": "Du prüfst und lieferst aus",
+            "description": "Du öffnest die Vorschau auf demselben Handy, bestätigst den Fix und mergst. Dein Team sieht den PR und das Vorher-Nachher im Channel, sodass alle auf dem Laufenden bleiben."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Den Kreis zum Kunden schließen",
+            "description": "Lass Zero die Antwort entwerfen, damit der Support den Kunden in dem Moment informieren kann, in dem der Fix live geht",
+            "examplePrompt": "@Zero entwirf eine Antwort an den Kunden, die ihm mitteilt, dass der Layout-Bug behoben ist und in Kürze live geht."
+          },
+          {
+            "title": "Für das Team festhalten",
+            "description": "Den Fix in ein nachverfolgbares Issue verwandeln, damit das Muster dokumentiert ist",
+            "examplePrompt": "@Zero öffne ein Linear-Issue, das diesen Bug und den Fix zusammenfasst, damit wir einen Nachweis haben."
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Lass Zero beobachten, wo Kundenfeedback eintrifft, und die eindeutigen Fälle automatisch fixen",
+            "examplePrompt": "@Zero immer wenn ein Bug-Report eines Kunden in diesem Channel oder in meinem Support-Postfach landet, reproduziere ihn, öffne einen PR mit einem Fix und poste den Vorschaulink hier zur Freigabe."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Hier sendest du den Bug an Zero, und hier liefert es den PR und den Vorschaulink zurück, damit das Team ihn sehen kann. Erforderlich."
+          },
+          {
+            "description": "Zero committet den Fix in einen neuen Branch und öffnet den Pull-Request. Erforderlich."
+          },
+          {
+            "description": "Zero liest den Vorschau-Deploy, damit du den Fix vor dem Mergen auf einer Live-URL bestätigen kannst. Erforderlich."
+          },
+          {
+            "description": "Zero liest den Bug-Report des Kunden direkt aus deinem Postfach, sodass du ihn nicht weiterleiten musst. Optional."
+          }
+        ],
+        "tips": [
+          "Hänge den Screenshot des Kunden an oder füge den exakten Fehlertext ein. Je konkreter der Report, desto präziser kann Zero die Ursache lokalisieren und beheben.",
+          "Prüfe immer den Vorschaulink, bevor du mergst. Zero liefert den Fix in einen Branch und einen Vorschau-Deploy, nie direkt in die Produktion, sodass du die Kontrolle behältst.",
+          "Beginne mit kleinen, klar abgegrenzten Bugs wie Layout- und Textproblemen. Bei allem, was die Kernlogik berührt, lass Zero ein Issue öffnen und es ans Engineering übergeben."
+        ]
+      },
+      "smart-deadline-guardian": {
+        "title": "Rutschende Deadlines abfangen, bevor sie rutschen",
+        "description": "Zero beobachtet deine Linear-Issues, GitHub-PRs und deinen Kalender und warnt dich in Slack, wenn etwas auf eine verpasste Deadline zusteuert, solange noch Zeit zum Handeln ist.",
+        "timeSaved": "ca. 30 Min täglich gespart",
+        "scenario": "Die Deadlines, die wehtun, sind die, die niemand kommen sah. Ein als planmäßig markiertes Ticket bleibt unbemerkt stehen, ein PR liegt drei Tage im Review, ein Launch-Termin im Kalender rückt näher, während die Arbeit dahinter ins Stocken gerät. Bis es im Standup auftaucht, ist das Verfehlen schon besiegelt. Es früher zu erkennen, hieße bisher, jeden Tag Linear, GitHub und den Kalender abzugleichen und alles im Kopf zu behalten. Zero übernimmt diesen Durchgang für dich. Es verbindet, was fällig ist, mit dem, was sich tatsächlich bewegt, und meldet sich in dem Moment, in dem eine Deadline gefährdet aussieht, nicht erst, wenn sie bereits verpasst ist.",
+        "promptVariants": [
+          {
+            "label": "Tägliche Kontrolle",
+            "prompt": "@Zero gleiche an jedem Werktag um 9am unsere Linear-Deadlines mit dem Fortschritt der GitHub-PRs und meinem Kalender ab. Markiere alles, was auf ein Verfehlen zusteuert, in #team und sag mir, warum."
+          },
+          {
+            "label": "Ein Meilenstein",
+            "prompt": "@Zero beobachte den Q3-Launch-Meilenstein in Linear. Wenn ein blockierendes Issue zwei Tage keine Bewegung zeigt oder sein PR noch im Review ist, warne mich in Slack."
+          },
+          {
+            "label": "Sofort",
+            "prompt": "@Zero schau dir alles an, was diese Woche in Linear und GitHub fällig ist. Sag mir, welche Punkte gefährdet sind und was jeden einzelnen blockiert."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero gleiche an jedem Werktag um 9am unsere Linear-Deadlines mit dem Fortschritt der GitHub-PRs und meinem Kalender ab. Markiere alles, was auf ein Verfehlen zusteuert, und sag mir, warum."
+          },
+          {
+            "name": "Zero",
+            "text": "Eingeplant, werktags um 09:00. Heute Morgen:\n\n🔴 ENG-412 Billing-Migration, fällig Do. PR #1771 seit 3 Tagen offen, 0 Reviews. Gefährdet.\n🟡 ENG-398 Onboarding-Redesign, fällig Fr. In Arbeit, noch kein PR.\n🟢 4 weitere Punkte planmäßig.\n\nSoll ich den Reviewer bei #1771 anstupsen?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero erfasst, was fällig ist",
+            "description": "Zero zieht Deadlines aus Linear-Issues und -Meilensteinen sowie aus terminierten Ereignissen in deinem Kalender und baut daraus ein einziges Bild davon, was wann landen soll."
+          },
+          {
+            "title": "Zero prüft, was sich tatsächlich bewegt",
+            "description": "Für jeden Punkt betrachtet Zero die echten Signale: Kommt das Issue voran, gibt es einen offenen PR, wie lange liegt er schon im Review, ist irgendwo etwas ins Stocken geraten."
+          },
+          {
+            "title": "Zero markiert, was in Verzug gerät",
+            "description": "Zero wägt die verbleibende Arbeit gegen die verbleibende Zeit ab und hebt die gefährdeten Punkte hervor, jeweils mit einer kurzen Begründung: keine Reviews, noch kein PR, blockiert oder keine Bewegung."
+          },
+          {
+            "title": "Zero warnt dich rechtzeitig zum Handeln",
+            "description": "Zero postet ein priorisiertes Slack-Briefing, solange noch Spielraum zum Reagieren bleibt, sodass aus einer rutschenden Deadline ein Anstoß heute statt einer Überraschung nächste Woche wird."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Auf eine Markierung reagieren",
+            "description": "Bitte Zero, dem Blocker direkt aus dem Briefing nachzugehen",
+            "examplePrompt": "@Zero stupse den Reviewer bei PR #1771 an und frag, ob er es heute schaffen kann."
+          },
+          {
+            "title": "Die Empfindlichkeit feinjustieren",
+            "description": "Einstellen, wie früh und wie deutlich Zero dich warnt",
+            "examplePrompt": "@Zero markiere Deadlines nur dann als gefährdet, wenn sie innerhalb von drei Tagen fällig sind und keinen offenen PR haben. Halte alles andere still."
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Die tägliche Kontrolle fest verankern, damit nichts unbemerkt rutscht",
+            "examplePrompt": "@Zero führe diese Deadline-Prüfung jeden Werktagmorgen weiter aus und meld dich nur, wenn etwas von planmäßig auf gefährdet wechselt."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero liest Issues, Meilensteine und Fälligkeitsdaten, um zu wissen, was landen soll. Erforderlich."
+          },
+          {
+            "description": "Zero liest den PR-Status und die Review-Aktivität, um zu beurteilen, ob die Arbeit tatsächlich vorankommt. Erforderlich."
+          },
+          {
+            "description": "Zero liest terminierte Launches und Zusagen, sodass Kalender-Deadlines neben den Tickets mitbeobachtet werden. Erforderlich."
+          },
+          {
+            "description": "Hier postet Zero das tägliche Briefing über gefährdete Punkte und alle Folge-Anstöße. Erforderlich."
+          }
+        ],
+        "tips": [
+          "Setze Fälligkeitsdaten für deine Linear-Issues und -Meilensteine. Zero kann nur die Deadlines bewachen, die es sieht, also gilt: je vollständiger deine Daten, desto besser die Abdeckung.",
+          "Stelle den Schwellenwert auf den Rhythmus deines Teams ein. Ein Fenster von zwei Tagen ohne Bewegung passt zu schnellen Teams; längere Zyklen wollen vielleicht drei Tage oder mehr.",
+          "Kombiniere das mit deinem täglichen Engineering-Briefing, sodass der Blick am Morgen sowohl abdeckt, was über Nacht passiert ist, als auch das, was gleich zu rutschen droht."
+        ]
+      },
       "auto-merge-releases": {
         "title": "Release-PRs automatisch nach Zeitplan mergen",
         "description": "Legen Sie fest, wann Release-PRs gemergt werden sollen. Zero prüft nach Ihrem Zeitplan, überspringt riskante Änderungen und mergt den Rest automatisch.",

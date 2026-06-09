@@ -132,10 +132,13 @@ Desktop releases are versioned by release-please. Changes under
 `package.json`, this changelog, and the manifest entry, then create a
 `desktop-vX.Y.Z` GitHub Release.
 
-The release workflow builds the production `Zero.app`, signs it with the
-Developer ID Application certificate, notarizes it for direct distribution
-outside the Mac App Store, validates the stapled ticket, and uploads
-`Zero-darwin-arm64-X.Y.Z.zip` to the matching GitHub Release.
+After release-please creates the `desktop-vX.Y.Z` GitHub Release, run the
+`Desktop Release` GitHub Actions workflow manually with version `X.Y.Z`. The
+workflow checks out the matching `desktop-vX.Y.Z` tag, builds the production
+`Zero.app`, signs it with the Developer ID Application certificate, notarizes
+it for direct distribution outside the Mac App Store, validates the stapled
+ticket, and uploads `Zero-darwin-arm64-X.Y.Z.zip` to the matching GitHub
+Release.
 
 This does not submit or publish the app to the Mac App Store. The App Store
 Connect API key is only used as notarytool authentication for Apple's
