@@ -391,6 +391,30 @@ class TestLoadRegistry:
         assert log.warn.call_count == 1
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
 
+    def test_json_recursion_error_after_success_marks_registry_unavailable(self, registry_file):
+        loaded = registry.load_registry(str(registry_file))
+        assert loaded["10.200.0.1"]["runId"] == "run-abc-123"
+
+        registry_file.write_text('{"vms":' + "[" * 10000 + "0" + "]" * 10000 + "}")
+
+        log = MagicMock()
+        with (
+            patch.object(registry.ctx, "log", log, create=True),
+            patch.object(registry.json, "loads", wraps=registry.json.loads) as spy,
+        ):
+            state1 = registry.load_registry_state(str(registry_file))
+            state2 = registry.load_registry_state(str(registry_file))
+            vm_info = registry.get_vm_info("10.200.0.1", str(registry_file))
+
+        assert isinstance(state1, registry.RegistryUnavailable)
+        assert isinstance(state2, registry.RegistryUnavailable)
+        assert state1.reason == "parse_failed"
+        assert state2.reason == "parse_failed"
+        assert vm_info is None
+        assert spy.call_count == 1
+        assert log.warn.call_count == 1
+        assert "Failed to parse" in log.warn.call_args_list[0].args[0]
+
     def test_non_object_vms_after_success_marks_registry_unavailable(self, registry_file):
         registry.load_registry(str(registry_file))
         registry_file.write_text(json.dumps({"vms": ["broken"], "updatedAt": 0}))
