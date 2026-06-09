@@ -134,6 +134,18 @@ describe("organization model providers settings", () => {
         screen.queryByTestId("org-model-policy-row-claude-opus-4-7"),
       ).not.toBeInTheDocument();
     });
+
+    click(buttonByText("Add model"));
+    click(screen.getByRole("radio", { name: /Claude subscription/u }));
+    click(buttonByText("Add model"));
+
+    const oauthRow = await screen.findByTestId(
+      "org-model-policy-row-claude-opus-4-7",
+    );
+    expect(within(oauthRow).getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(
+      within(oauthRow).getByText("Claude Code (OAuth token)"),
+    ).toBeInTheDocument();
   });
 
   it("opens device login from a stale workspace provider banner", async () => {
