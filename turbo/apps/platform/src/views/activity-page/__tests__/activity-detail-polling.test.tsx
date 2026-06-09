@@ -196,7 +196,22 @@ function checkoutNetworkLogs(): NetworkLogEntry[] {
       response_size: 512,
       firewall_name: "payments",
       firewall_permission: "checkout-write",
+      firewall_rule_match: "POST /v1/checkout",
+      firewall_params: { tenant: "acme" },
+      firewall_billable: true,
+      auth_resolved_secrets: ["PAYMENTS_API_KEY"],
       browser_user_agent: false,
+      request_headers: {
+        authorization: "Bearer sk_test",
+        "content-type": "application/json",
+      },
+      request_body: '{"cartId":"cart_123","retry":true}',
+      response_headers: {
+        "content-type": "application/json",
+      },
+      response_body: "eyJzdGF0dXMiOiJvayJ9",
+      response_body_encoding: "base64",
+      response_body_truncated: true,
     },
   ];
 }
@@ -369,5 +384,23 @@ describe("activity detail polling", () => {
     expect(screen.getByText("200")).toBeInTheDocument();
     expect(screen.getByText("245ms")).toBeInTheDocument();
     expect(screen.getByText("payments")).toBeInTheDocument();
+
+    click(screen.getByText("https://payments.example.test/v1/checkout"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Rule Match")).toBeInTheDocument();
+      expect(screen.getByText("POST /v1/checkout")).toBeInTheDocument();
+      expect(screen.getByText("PAYMENTS_API_KEY")).toBeInTheDocument();
+      expect(screen.getByText("Request Headers (2)")).toBeInTheDocument();
+      expect(screen.getByText("Request Body")).toBeInTheDocument();
+      expect(screen.getByText("Response Body")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText('{"cartId":"cart_123","retry":true}'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("[Binary data, 15B base64-encoded]"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("truncated")).toBeInTheDocument();
   });
 });
