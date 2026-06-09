@@ -56,5 +56,6 @@ export enum FeatureSwitchKey {
   PresentationHtmlPptxDownload = "presentationHtmlPptxDownload",
   ChatInlineFeedback = "chatInlineFeedback",
   ExpiringPermissionGrants = "expiringPermissionGrants",
+  ConnectorPermissionReset = "connectorPermissionReset",
   ZeroAutomations = "zeroAutomations",
 }

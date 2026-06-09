@@ -324,6 +324,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ConnectorPermissionReset]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Show staged connector-level reset controls for current-user permission grants.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZeroAutomations]: {
     maintainer: "lancy@vm0.ai",
     description:

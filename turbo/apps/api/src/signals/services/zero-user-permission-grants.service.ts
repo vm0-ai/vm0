@@ -8,6 +8,7 @@ import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import type {
+  ResetUserPermissionGrantsQuery,
   UpsertUserPermissionGrantRequest,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
@@ -29,6 +30,12 @@ interface UpsertUserPermissionGrantArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly grant: UpsertUserPermissionGrantRequest;
+}
+
+interface ResetUserPermissionGrantsArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly reset: ResetUserPermissionGrantsQuery;
 }
 
 type NotFoundResponse = ReturnType<typeof notFound>;
@@ -54,6 +61,13 @@ type UpsertUserPermissionGrantResult =
   | {
       readonly kind: "ok";
       readonly grant: UserPermissionGrantResponse;
+    }
+  | NotFoundResponse
+  | ValidationErrorResponse;
+
+type ResetUserPermissionGrantsResult =
+  | {
+      readonly kind: "ok";
     }
   | NotFoundResponse
   | ValidationErrorResponse;
@@ -130,6 +144,15 @@ function validateGrantTarget(
   }
 
   return null;
+}
+
+function validateConnectorRef(
+  connectorRef: string,
+): ValidationErrorResponse | null {
+  if (isFirewallConnectorType(connectorRef)) {
+    return null;
+  }
+  return validationError(`Unknown connector ref: ${connectorRef}`);
 }
 
 function validateGrantExpiration(
@@ -334,6 +357,34 @@ async function upsertVisibleGrantRow(
   });
 }
 
+async function resetVisibleConnectorGrantRows(
+  db: Db,
+  args: ResetUserPermissionGrantsArgs,
+): Promise<NotFoundResponse | null> {
+  return await db.transaction(async (tx) => {
+    const visibleAgent = await lockVisibleAgentForUpdate(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: args.reset.agentId,
+    });
+    if (!visibleAgent) {
+      return notFound(`Agent not found: ${args.reset.agentId}`);
+    }
+
+    await tx
+      .delete(userPermissionGrants)
+      .where(
+        and(
+          eq(userPermissionGrants.orgId, args.orgId),
+          eq(userPermissionGrants.userId, args.userId),
+          eq(userPermissionGrants.agentId, args.reset.agentId),
+          eq(userPermissionGrants.connectorRef, args.reset.connectorRef),
+        ),
+      );
+    return null;
+  });
+}
+
 export const listUserPermissionGrants$ = command(
   async (
     { get },
@@ -387,5 +438,28 @@ export const upsertUserPermissionGrant$ = command(
       kind: "ok" as const,
       grant: formatUserPermissionGrant(row),
     };
+  },
+);
+
+export const resetUserPermissionGrants$ = command(
+  async (
+    { set },
+    args: ResetUserPermissionGrantsArgs,
+    signal: AbortSignal,
+  ): Promise<ResetUserPermissionGrantsResult> => {
+    const validation = validateConnectorRef(args.reset.connectorRef);
+    if (validation) {
+      return validation;
+    }
+
+    const writeDb = set(writeDb$);
+    const error = await resetVisibleConnectorGrantRows(writeDb, args);
+    signal.throwIfAborted();
+
+    if (error) {
+      return error;
+    }
+
+    return { kind: "ok" as const };
   },
 );

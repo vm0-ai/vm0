@@ -209,6 +209,20 @@ function getUndoChangesButton(
   return button;
 }
 
+function queryButtonByText(text: string): HTMLElement | undefined {
+  return queryAllByRoleFast("button").find((el) => {
+    return el.textContent?.trim() === text;
+  });
+}
+
+function getButtonByText(text: string): HTMLElement {
+  const button = queryButtonByText(text);
+  if (!(button instanceof HTMLElement)) {
+    throw new Error(`Button not found: ${text}`);
+  }
+  return button;
+}
+
 async function selectAllowDuration(
   row: HTMLElement,
   permission: string,
@@ -226,6 +240,164 @@ async function selectAllowDuration(
 }
 
 describe("permissions dialog - flat list connector (Notion)", () => {
+  it("hides connector reset when the reset feature switch is disabled", async () => {
+    mockAPIs({ connectorType: "notion" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
+    await openPermissionsDrawer("Notion");
+
+    expect(queryButtonByText("Reset")).toBeUndefined();
+  });
+
+  it("stages connector reset and persists it only after Apply", async () => {
+    const resetQueries: unknown[] = [];
+    const upsertBodies: unknown[] = [];
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
+    });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.reset, ({ query, respond }) => {
+        resetQueries.push(query);
+        return respond(204);
+      }),
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        upsertBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    expect(getPolicyButton(row, "Deny")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    click(getButtonByText("Reset"));
+    await waitFor(() => {
+      expect(getPolicyButton(row, "Allow")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    expect(resetQueries).toHaveLength(0);
+    expect(screen.getByText("Apply")).toBeEnabled();
+
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(resetQueries).toHaveLength(1);
+    });
+    expect(resetQueries[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+    });
+    expect(upsertBodies).toHaveLength(0);
+  });
+
+  it("discards staged connector reset when Cancel is clicked", async () => {
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
+    });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    click(getButtonByText("Reset"));
+    click(screen.getByText("Cancel"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: /Notion permissions/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    await openPermissionsDrawer("Notion");
+    expect(
+      getPolicyButton(getPermissionRow("insert_comments"), "Deny"),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("clears pending expiration selections during connector reset", async () => {
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [
+        createMockUserPermissionGrantResponse({
+          agentId: AGENT_ID,
+          connectorRef: "notion",
+          permission: "insert_comments",
+          action: "allow",
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        }),
+      ],
+    });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorPermissionReset]: true,
+        [FeatureSwitchKey.ExpiringPermissionGrants]: true,
+      },
+    });
+    await openPermissionsDrawer("Notion");
+    await waitFor(() => {
+      expect(screen.getByText("< 1 hour")).toBeInTheDocument();
+    });
+
+    click(getButtonByText("Reset"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("< 1 hour")).not.toBeInTheDocument();
+    });
+  });
+
+  it("resets first and then upserts final edits after connector reset", async () => {
+    const events: string[] = [];
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
+    });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.reset, ({ respond }) => {
+        events.push("reset");
+        return respond(204);
+      }),
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        events.push(`upsert:${body.permission}:${body.action}`);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    click(getButtonByText("Reset"));
+    await waitFor(() => {
+      expect(getPolicyButton(row, "Allow")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    click(getPolicyButton(row, "Deny"));
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(events).toStrictEqual(["reset", "upsert:insert_comments:deny"]);
+    });
+  });
+
   it("renders permission names and descriptions in flat list (FW-D-031)", async () => {
     mockAPIs({ connectorType: "notion" });
     detachedSetupPage({ context, path: "/agents/my-agent" });
@@ -549,6 +721,38 @@ describe("permissions dialog - flat list connector (Notion)", () => {
 });
 
 describe("permissions dialog - grouped connector (Slack)", () => {
+  it("resets grouped permissions to selective connector defaults", async () => {
+    mockAPIs({
+      connectorType: "slack",
+      userPermissionGrants: [mockGrant("slack", "admin", "allow")],
+    });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
+    });
+    await openPermissionsDrawer("Slack");
+
+    click(screen.getByText(/Admin \(\d+\)/i));
+    await waitFor(() => {
+      expect(screen.getByText("admin")).toBeInTheDocument();
+    });
+    const adminRow = getPermissionRow("admin");
+    expect(getPolicyButton(adminRow, "Allow")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    click(getButtonByText("Reset"));
+
+    await waitFor(() => {
+      expect(getPolicyButton(adminRow, "Deny")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+  });
+
   it("reinitializes grant policies and only writes changed connector grants", async () => {
     const grantBodies: unknown[] = [];
     mockAPIs({

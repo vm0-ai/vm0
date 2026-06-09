@@ -27,6 +27,7 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   getConnectorFirewall,
+  getDefaultFirewallPolicies,
   groupPermissionsByCategory,
   isFirewallConnectorType,
   resolveFirewallPolicies,
@@ -57,10 +58,12 @@ import {
   applyPermissionPolicies$,
   permissionUnknownPolicy$,
   setPermissionUnknownPolicy$,
+  permissionConnectorResetPending$,
   permissionGrantExpirations$,
   setPermissionGrantExpiration$,
   initPermissionGrantExpirations$,
   resetPermissionGrantExpirations$,
+  stagePermissionConnectorReset$,
 } from "../../../../signals/zero-page/settings/permissions-dialog.ts";
 import {
   IconCheck,
@@ -85,14 +88,31 @@ interface PermissionsDrawerProps {
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
   expirationEnabled: boolean;
+  resetEnabled?: boolean;
   readOnly?: boolean;
   onApply: (
     policies: FirewallPolicies,
     expiresInByPermission: Readonly<
       Record<string, UserPermissionGrantExpiresIn>
     >,
+    options: PermissionDrawerApplyOptions,
   ) => Promise<void>;
   onClose: () => void;
+}
+
+interface PermissionDrawerApplyOptions {
+  readonly resetConnectorGrants: boolean;
+}
+
+interface PermissionsDrawerFooterProps {
+  readonly readOnly?: boolean;
+  readonly resetEnabled?: boolean;
+  readonly canReset: boolean;
+  readonly saving: boolean;
+  readonly canApply: boolean;
+  readonly onReset: () => void;
+  readonly onClose: () => void;
+  readonly onApply: () => void;
 }
 
 function extractPermissions(config: FirewallConfig): ConnectorPermission[] {
@@ -266,6 +286,27 @@ function buildInitialPolicies(
   }
   result[ref] = refPolicies;
   return result;
+}
+
+function buildDefaultPolicyState(
+  ref: ConnectorType,
+  config: FirewallConfig | null,
+): {
+  readonly policies: Record<string, PermissionPolicy>;
+  readonly unknownPolicy: FirewallPolicyValue;
+} {
+  if (!config || !isFirewallConnectorType(ref)) {
+    return { policies: {}, unknownPolicy: "allow" };
+  }
+  const defaults = getDefaultFirewallPolicies(ref);
+  const policies: Record<string, PermissionPolicy> = {};
+  for (const permission of extractPermissions(config)) {
+    policies[permission.name] = defaults.policies[permission.name] ?? "allow";
+  }
+  return {
+    policies,
+    unknownPolicy: defaults.unknownPolicy ?? "allow",
+  };
 }
 
 function mergeDrawerPolicies({
@@ -1126,6 +1167,41 @@ function PermissionRow({
   );
 }
 
+function PermissionsDrawerFooter({
+  readOnly,
+  resetEnabled,
+  canReset,
+  saving,
+  canApply,
+  onReset,
+  onClose,
+  onApply,
+}: PermissionsDrawerFooterProps) {
+  const showReset = !readOnly && resetEnabled && canReset;
+
+  return (
+    <SheetFooter className="gap-2 sm:justify-between sm:space-x-0">
+      <div>
+        {showReset && (
+          <Button variant="outline" onClick={onReset} disabled={saving}>
+            Reset
+          </Button>
+        )}
+      </div>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button variant="outline" onClick={onClose}>
+          {readOnly ? "Close" : "Cancel"}
+        </Button>
+        {!readOnly && (
+          <Button onClick={onApply} disabled={!canApply}>
+            {saving ? "Saving..." : "Apply"}
+          </Button>
+        )}
+      </div>
+    </SheetFooter>
+  );
+}
+
 export function PermissionsDrawer({
   agentId,
   connectorType,
@@ -1133,6 +1209,7 @@ export function PermissionsDrawer({
   initialPolicies,
   initialGrants,
   expirationEnabled,
+  resetEnabled,
   readOnly,
   onApply,
   onClose,
@@ -1143,6 +1220,7 @@ export function PermissionsDrawer({
 
   const initialUnknownPolicy = initialPolicies[ref]?.unknownPolicy ?? "allow";
   const initialPolicyState = buildInitialPolicies(ref, config, initialPolicies);
+  const defaultPolicyState = buildDefaultPolicyState(ref, config);
   const explicitGrants = buildExplicitGrantMap(ref, initialGrants);
   const grantStateKey = explicitGrantStateKey(explicitGrants);
   const initialPolicyKey = `${agentId}\u0000${ref}\u0000${initialUnknownPolicy}\u0000${JSON.stringify(initialPolicyState[ref] ?? {})}\u0000${grantStateKey}`;
@@ -1156,6 +1234,10 @@ export function PermissionsDrawer({
   const allPolicies = useGet(permissionAllPolicies$);
   const unknownPolicy = useGet(permissionUnknownPolicy$);
   const setUnknownPolicy = useSet(setPermissionUnknownPolicy$);
+  const resetPending = useGet(permissionConnectorResetPending$);
+  const effectiveExplicitGrants = resetPending
+    ? new Map<string, UserPermissionGrantResponse>()
+    : explicitGrants;
   const scrolled = useGet(permissionScrolled$);
   const setScrolled = useSet(setPermissionScrolled$);
   const expandedGroups = useGet(permissionExpandedGroups$);
@@ -1166,6 +1248,7 @@ export function PermissionsDrawer({
   const setGrantExpiration = useSet(setPermissionGrantExpiration$);
   const resetPermissionPolicies = useSet(resetPermissionPolicies$);
   const resetGrantExpirations = useSet(resetPermissionGrantExpirations$);
+  const stageConnectorReset = useSet(stagePermissionConnectorReset$);
   const [applyLoadable, applyFn] = useLoadableSet(applyPermissionPolicies$);
   const saving = applyLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
@@ -1183,7 +1266,7 @@ export function PermissionsDrawer({
   });
   const hasExpirationChanges = hasGrantExpirationChanges({
     expirationEnabled,
-    explicitGrants,
+    explicitGrants: effectiveExplicitGrants,
     policies,
     unknownPolicy,
     selections: expirationSelections,
@@ -1191,9 +1274,9 @@ export function PermissionsDrawer({
   const canApply = canApplyPermissionPolicies({
     config,
     saving,
-    hasChanges: hasPermissionChanges || hasExpirationChanges,
+    hasChanges: hasPermissionChanges || hasExpirationChanges || resetPending,
   });
-  const unknownGrant = explicitGrants.get(UNKNOWN_PERMISSION_GRANT);
+  const unknownGrant = effectiveExplicitGrants.get(UNKNOWN_PERMISSION_GRANT);
   const unknownSelectedExpiration =
     expirationSelections[UNKNOWN_PERMISSION_GRANT];
 
@@ -1237,6 +1320,15 @@ export function PermissionsDrawer({
     setGrantExpiration(UNKNOWN_PERMISSION_GRANT, null);
   };
 
+  const handleResetConnector = () => {
+    stageConnectorReset(
+      initialPolicyKey,
+      ref,
+      defaultPolicyState.policies,
+      defaultPolicyState.unknownPolicy,
+    );
+  };
+
   const handleClose = () => {
     resetPermissionPolicies(initialPolicyKey);
     resetGrantExpirations(initialPolicyKey);
@@ -1247,6 +1339,7 @@ export function PermissionsDrawer({
     const wrappedApply = async (
       perms: Record<string, Record<string, PermissionPolicy>>,
       unknownFlag: FirewallPolicyValue,
+      resetConnectorGrants: boolean,
     ): Promise<void> => {
       await onApply(
         mergeDrawerPolicies({
@@ -1256,6 +1349,7 @@ export function PermissionsDrawer({
           unknownPolicy: unknownFlag,
         }),
         expirationSelections,
+        { resetConnectorGrants },
       );
     };
     detach(
@@ -1333,7 +1427,7 @@ export function PermissionsDrawer({
                 initialPolicies={initialPoliciesForRef}
                 policies={policies}
                 expandedGroups={expandedGroups}
-                explicitGrants={explicitGrants}
+                explicitGrants={effectiveExplicitGrants}
                 expirationSelections={expirationSelections}
                 expirationEnabled={expirationEnabled}
                 readOnly={readOnly}
@@ -1391,16 +1485,16 @@ export function PermissionsDrawer({
           </div>
         )}
 
-        <SheetFooter>
-          <Button variant="outline" onClick={handleClose}>
-            {readOnly ? "Close" : "Cancel"}
-          </Button>
-          {!readOnly && (
-            <Button onClick={handleApply} disabled={!canApply}>
-              {saving ? "Saving..." : "Apply"}
-            </Button>
-          )}
-        </SheetFooter>
+        <PermissionsDrawerFooter
+          readOnly={readOnly}
+          resetEnabled={resetEnabled}
+          canReset={config !== null}
+          saving={saving}
+          canApply={canApply}
+          onReset={handleResetConnector}
+          onClose={handleClose}
+          onApply={handleApply}
+        />
       </SheetContent>
     </Sheet>
   );

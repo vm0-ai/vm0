@@ -197,3 +197,34 @@ export const upsertUserPermissionGrant$ = command(
     return result.body;
   },
 );
+
+export const resetUserPermissionGrants$ = command(
+  async (
+    { get, set },
+    params: {
+      agentId: string;
+      connectorRef: string;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
+    await accept(
+      client.reset({
+        query: {
+          agentId: params.agentId,
+          connectorRef: params.connectorRef,
+        },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+    signal.throwIfAborted();
+    set(internalUserPermissionGrantsReload$, (prev) => {
+      return prev + 1;
+    });
+    set(internalAgentReload$, (prev) => {
+      return prev + 1;
+    });
+    set(reloadAgentById$);
+  },
+);
