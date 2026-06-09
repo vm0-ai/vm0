@@ -470,6 +470,25 @@ describe("BILL-02: maps and banking visible boundaries", () => {
     expectApiError(missingMapsProvider.body);
     expect(missingMapsProvider.body.error.code).toBe("NOT_CONFIGURED");
 
+    const unauthenticatedDirections = await api.requestMapsDirections(
+      null,
+      {
+        origin: "San Francisco",
+        destination: "Oakland",
+      },
+      [401],
+    );
+    expectApiError(unauthenticatedDirections.body);
+    expect(unauthenticatedDirections.body.error.code).toBe("UNAUTHORIZED");
+
+    const invalidReverseGeocode = await api.requestMapsReverseGeocode(
+      admin,
+      { lat: 91, lng: -122.4194 },
+      [400],
+    );
+    expectApiError(invalidReverseGeocode.body);
+    expect(invalidReverseGeocode.body.error.code).toBe("BAD_REQUEST");
+
     api.configureMapsProvider();
     const invalidPlacesSearch = await api.requestMapsPlacesSearch(
       admin,
@@ -481,6 +500,16 @@ describe("BILL-02: maps and banking visible boundaries", () => {
       "location is required when radius is provided",
     );
 
+    const invalidPlacesLocation = await api.requestMapsPlacesSearch(
+      admin,
+      { query: "coffee", location: "San Francisco", radius: 1000 },
+      [400],
+    );
+    expectApiError(invalidPlacesLocation.body);
+    expect(invalidPlacesLocation.body.error.message).toBe(
+      "location must be formatted as lat,lng",
+    );
+
     const insufficientMapsCredits = await api.requestMapsGeocode(
       admin,
       { address: "1 Market Street, San Francisco" },
@@ -488,6 +517,40 @@ describe("BILL-02: maps and banking visible boundaries", () => {
     );
     expectApiError(insufficientMapsCredits.body);
     expect(insufficientMapsCredits.body.error.code).toBe(
+      "INSUFFICIENT_CREDITS",
+    );
+
+    const insufficientReverseCredits = await api.requestMapsReverseGeocode(
+      admin,
+      { lat: 37.7749, lng: -122.4194 },
+      [402],
+    );
+    expectApiError(insufficientReverseCredits.body);
+    expect(insufficientReverseCredits.body.error.code).toBe(
+      "INSUFFICIENT_CREDITS",
+    );
+
+    const insufficientDirectionsCredits = await api.requestMapsDirections(
+      admin,
+      {
+        origin: "San Francisco",
+        destination: "Oakland",
+        departureTime: "now",
+      },
+      [402],
+    );
+    expectApiError(insufficientDirectionsCredits.body);
+    expect(insufficientDirectionsCredits.body.error.code).toBe(
+      "INSUFFICIENT_CREDITS",
+    );
+
+    const insufficientPlaceDetailsCredits = await api.requestMapsPlacesDetails(
+      admin,
+      { placeId: "places/bdd-place", fields: "pro" },
+      [402],
+    );
+    expectApiError(insufficientPlaceDetailsCredits.body);
+    expect(insufficientPlaceDetailsCredits.body.error.code).toBe(
       "INSUFFICIENT_CREDITS",
     );
 

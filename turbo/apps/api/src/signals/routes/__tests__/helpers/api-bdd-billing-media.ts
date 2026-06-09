@@ -128,6 +128,7 @@ type BillingMutationStatus = 200 | 400 | 401 | 403 | 409 | 500 | 503;
 type ImageIoStatus = 200 | 202 | 400 | 401 | 402 | 403 | 500 | 502 | 503;
 type VideoIoStatus = 200 | 202 | 400 | 401 | 402 | 403 | 500 | 502 | 503 | 504;
 type VoiceSpeechStatus = 200 | 400 | 401 | 402 | 403 | 500 | 502 | 503;
+type MapsStatus = 200 | 400 | 401 | 402 | 403 | 502 | 503;
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor ? { authorization: "Bearer clerk-session" } : {};
@@ -669,11 +670,40 @@ export function createBillingMediaApi(context: TestContext) {
     async requestMapsGeocode(
       actor: ApiTestUser | null,
       body: { readonly address: string; readonly region?: string },
-      statuses: readonly (200 | 400 | 401 | 402 | 403 | 502 | 503)[],
+      statuses: readonly MapsStatus[],
     ) {
       const client = setupApp({ context })(zeroMapsContract);
       return await accept(
         client.geocode({ headers: authenticate(actor), body }),
+        statuses,
+      );
+    },
+
+    async requestMapsReverseGeocode(
+      actor: ApiTestUser | null,
+      body: { readonly lat: number; readonly lng: number },
+      statuses: readonly MapsStatus[],
+    ) {
+      const client = setupApp({ context })(zeroMapsContract);
+      return await accept(
+        client.reverseGeocode({ headers: authenticate(actor), body }),
+        statuses,
+      );
+    },
+
+    async requestMapsDirections(
+      actor: ApiTestUser | null,
+      body: {
+        readonly origin: string;
+        readonly destination: string;
+        readonly mode?: "driving" | "walking" | "bicycling" | "transit";
+        readonly departureTime?: string;
+      },
+      statuses: readonly MapsStatus[],
+    ) {
+      const client = setupApp({ context })(zeroMapsContract);
+      return await accept(
+        client.directions({ headers: authenticate(actor), body }),
         statuses,
       );
     },
@@ -686,11 +716,26 @@ export function createBillingMediaApi(context: TestContext) {
         readonly radius?: number;
         readonly limit?: number;
       },
-      statuses: readonly (200 | 400 | 401 | 402 | 403 | 502 | 503)[],
+      statuses: readonly MapsStatus[],
     ) {
       const client = setupApp({ context })(zeroMapsContract);
       return await accept(
         client.placesSearch({ headers: authenticate(actor), body }),
+        statuses,
+      );
+    },
+
+    async requestMapsPlacesDetails(
+      actor: ApiTestUser | null,
+      body: {
+        readonly placeId: string;
+        readonly fields?: "essentials" | "pro";
+      },
+      statuses: readonly MapsStatus[],
+    ) {
+      const client = setupApp({ context })(zeroMapsContract);
+      return await accept(
+        client.placesDetails({ headers: authenticate(actor), body }),
         statuses,
       );
     },
