@@ -343,7 +343,8 @@ async fn u128_fields_serialize_as_numbers_when_in_u64_range() {
                 .path("/v1/datasets/vm0-web-logs-test/ingest")
                 .body_includes(r#""message":"timeout fields""#)
                 .body_includes(r#""timeout_ms":7200000"#)
-                .body_includes(r#""elapsed_ms":7200100"#);
+                .body_includes(r#""elapsed_ms":7200100"#)
+                .body_includes(r#""guest_duration_ms":7200084"#);
             then.status(200).body("{}");
         })
         .await;
@@ -364,6 +365,7 @@ async fn u128_fields_serialize_as_numbers_when_in_u64_range() {
         tracing::error!(
             timeout_ms = 7_200_000_u128,
             elapsed_ms = 7_200_100_u128,
+            guest_duration_ms = Some(7_200_084_u32),
             "timeout fields"
         );
     }
