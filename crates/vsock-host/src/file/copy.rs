@@ -17,7 +17,7 @@ use super::{file_operation_error_is_terminal, shell_quote};
 const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
 const COPY_TEMP_FILE_MODE: u32 = 0o600;
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
-const COPY_FILE_STREAM_CHUNK_LIMIT: u32 = 64 * 1024;
+pub(super) const COPY_FILE_STREAM_CHUNK_LIMIT: u32 = 64 * 1024;
 pub(super) const COPY_FILE_STREAM_MAX_BYTES: u64 = 64 * 1024 * 1024;
 // Copying is the one built-in streaming consumer that must tolerate the host
 // reader briefly outrunning the temp-file writer without failing the exec operation.
@@ -28,13 +28,34 @@ static COPY_TEMP_NONCE: AtomicU64 = AtomicU64::new(1);
 /// operation streaming.
 #[derive(Debug, Clone, Copy)]
 pub struct CopyFileOptions {
+    /// Maximum bytes to stream from the guest before the copy fails.
+    ///
+    /// This value must be positive and no larger than the host copy stream
+    /// limit. The copy fails if the streamed file contents exceed this byte
+    /// count.
     pub max_bytes: u64,
+    /// Guest-side copy exec timeout in milliseconds.
+    ///
+    /// This value must be positive.
     pub timeout_ms: u32,
+    /// Treat a guest helper result that reports the path does not resolve to a
+    /// regular file as a successful copy result.
+    ///
+    /// When such a helper result is treated as success, the operation returns
+    /// `bytes_copied == 0` without creating an empty host file or replacing an
+    /// existing host file.
     pub missing_ok: bool,
 }
 
+/// Result of copying a guest file to a host path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CopyFileResult {
+    /// Number of bytes copied from the guest file.
+    ///
+    /// This is `0` for a present empty guest file, which still publishes an
+    /// empty host file. It is also `0` when `missing_ok` turns a guest helper
+    /// result that reports the path does not resolve to a regular file into
+    /// success; in that case no host file is published.
     pub bytes_copied: u64,
 }
 
@@ -334,6 +355,12 @@ fn validate_copy_exec_result(
 impl VsockHost {
     /// Stream a guest file to a host path and atomically rename it into place
     /// after the exec operation exits successfully.
+    ///
+    /// Options are validated before guest work starts. When `missing_ok` is
+    /// enabled, a guest helper result that reports the path does not resolve
+    /// to a regular file is treated as success with `bytes_copied == 0`
+    /// without publishing a host file. Host-side setup and validation errors
+    /// can still fail the operation.
     pub async fn copy_file(
         &self,
         path: &str,
@@ -346,6 +373,9 @@ impl VsockHost {
 
     /// Stream a guest file to a host path and report when the helper exec
     /// frame is about to be written to the guest.
+    ///
+    /// This has the same copy semantics as `copy_file`, including option
+    /// validation and `missing_ok` handling.
     pub async fn copy_file_with_write_observer(
         &self,
         path: &str,

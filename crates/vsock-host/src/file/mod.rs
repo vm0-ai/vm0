@@ -23,6 +23,7 @@ fn file_operation_error_is_terminal(error: &io::Error) -> bool {
 
 #[cfg(test)]
 pub(crate) mod test_support {
+    pub(crate) const COPY_FILE_STREAM_CHUNK_LIMIT: u32 = super::copy::COPY_FILE_STREAM_CHUNK_LIMIT;
     pub(crate) const COPY_FILE_STREAM_MAX_BYTES: u64 = super::copy::COPY_FILE_STREAM_MAX_BYTES;
     pub(crate) const WRITE_FILE_CHUNK_LIMIT: usize = super::write::WRITE_FILE_CHUNK_LIMIT;
 }

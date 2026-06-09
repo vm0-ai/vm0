@@ -132,7 +132,8 @@ pub struct CopyFileCall {
     pub max_bytes: u64,
     /// Timeout requested for the copy operation.
     pub timeout: Duration,
-    /// Whether a missing guest source should be accepted as a no-op.
+    /// Whether a backend-reported missing or non-regular guest source should
+    /// succeed without writing the host destination.
     pub missing_ok: bool,
 }
 
@@ -1934,6 +1935,33 @@ mod tests {
 
         assert_eq!(result.bytes_copied, 0);
         assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn sandbox_copy_file_missing_ok_default_preserves_existing_host_file() {
+        let sandbox = MockSandbox::new("test-1");
+        let path = std::env::temp_dir().join(format!(
+            "sandbox-mock-copy-missing-existing-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::write(&path, b"old host log").unwrap();
+
+        let result = sandbox
+            .copy_file(
+                "/tmp/missing.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: true,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.bytes_copied, 0);
+        assert_eq!(std::fs::read(&path).unwrap(), b"old host log");
+        let _ = std::fs::remove_file(path);
     }
 
     #[tokio::test]

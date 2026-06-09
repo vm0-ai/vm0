@@ -71,7 +71,7 @@ async fn copy_file_streams_to_temp_then_renames() {
         start.stdout,
         ExecOutputPolicy::Stream {
             limit_bytes: 1024,
-            chunk_limit_bytes: 64 * 1024,
+            chunk_limit_bytes: file_impl::test_support::COPY_FILE_STREAM_CHUNK_LIMIT,
         }
     );
     send_exec_output(
@@ -108,6 +108,83 @@ async fn copy_file_streams_to_temp_then_renames() {
     );
     assert_eq!(std::fs::read(&host_path).unwrap(), b"line 1\nline 2\n");
     assert_eq!(mode(&host_path), 0o600);
+    temp_dir.assert_no_vm0tmp_files();
+}
+
+#[tokio::test]
+async fn copy_file_empty_guest_file_publishes_empty_host_file() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let temp_dir = HostTempDir::new("vsock-host-copy-empty");
+    let host_path = temp_dir.join("empty.log");
+    let copy_path = host_path.clone();
+
+    let copy_task = spawn_copy_file(
+        Arc::clone(&host),
+        "/tmp/empty.log",
+        copy_path,
+        default_copy_options(),
+    );
+
+    let start = expect_exec_start(&mut guest).await;
+    send_stream_exec_result(
+        &mut guest,
+        start.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+    )
+    .await;
+
+    let result = copy_task.await.unwrap().unwrap();
+    assert_eq!(result.bytes_copied, 0);
+    assert_eq!(std::fs::read(&host_path).unwrap(), b"");
+    assert_eq!(mode(&host_path), 0o600);
+    temp_dir.assert_no_vm0tmp_files();
+}
+
+#[tokio::test]
+async fn copy_file_allows_exact_max_bytes() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let temp_dir = HostTempDir::new("vsock-host-copy-exact-max");
+    let host_path = temp_dir.join("exact.log");
+    let copy_path = host_path.clone();
+
+    let copy_task = spawn_copy_file(
+        Arc::clone(&host),
+        "/tmp/exact.log",
+        copy_path,
+        copy_options(4, 5000, false),
+    );
+
+    let start = expect_exec_start(&mut guest).await;
+    assert_eq!(
+        start.stdout,
+        ExecOutputPolicy::Stream {
+            limit_bytes: 4,
+            chunk_limit_bytes: file_impl::test_support::COPY_FILE_STREAM_CHUNK_LIMIT,
+        }
+    );
+    send_exec_output(
+        &mut guest,
+        start.seq(),
+        0,
+        ExecOutputStream::Stdout,
+        b"1234",
+        false,
+    )
+    .await;
+    send_stream_exec_result(
+        &mut guest,
+        start.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+    )
+    .await;
+
+    let result = copy_task.await.unwrap().unwrap();
+    assert_eq!(result.bytes_copied, 4);
+    assert_eq!(std::fs::read(&host_path).unwrap(), b"1234");
     temp_dir.assert_no_vm0tmp_files();
 }
 
@@ -508,6 +585,37 @@ async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
         NormalOperationReadiness::Idle
     );
     assert!(!host_path.exists());
+    temp_dir.assert_no_vm0tmp_files();
+}
+
+#[tokio::test]
+async fn copy_file_missing_ok_preserves_existing_host_file() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let temp_dir = HostTempDir::new("vsock-host-copy-missing-existing");
+    let host_path = temp_dir.join("system.log");
+    std::fs::write(&host_path, b"old host log").unwrap();
+    let copy_path = host_path.clone();
+
+    let copy_task = spawn_copy_file(
+        Arc::clone(&host),
+        "/tmp/missing.log",
+        copy_path,
+        copy_options(1024, 5000, true),
+    );
+
+    let msg = read_guest_message(&mut guest).await;
+    send_stream_exec_result(
+        &mut guest,
+        msg.seq,
+        ExecTermination::Exited { exit_code: 66 },
+        b"",
+    )
+    .await;
+
+    let result = copy_task.await.unwrap().unwrap();
+    assert_eq!(result.bytes_copied, 0);
+    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
     temp_dir.assert_no_vm0tmp_files();
 }
 

@@ -130,10 +130,20 @@ impl ExecResult {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CopyFileOptions {
     /// Maximum bytes to copy before failing.
+    ///
+    /// This value must be positive and is subject to the backend copy stream
+    /// limit.
     pub max_bytes: u64,
     /// Guest-side copy command timeout.
+    ///
+    /// This value must be non-zero.
     pub timeout: Duration,
-    /// Treat a missing guest file as a successful zero-byte copy.
+    /// Treat a backend result that reports the path does not resolve to a
+    /// regular file as a successful copy result.
+    ///
+    /// When such a backend result is treated as success, the operation returns
+    /// `bytes_copied == 0` without creating an empty host file or replacing an
+    /// existing host file.
     pub missing_ok: bool,
 }
 
@@ -150,7 +160,12 @@ impl CopyFileOptions {
 /// Result of copying a guest file to a host path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CopyFileResult {
-    /// Number of bytes copied into the host file.
+    /// Number of bytes copied from the guest file.
+    ///
+    /// This is `0` for a present empty guest file, which still publishes an
+    /// empty host file. It is also `0` when `missing_ok` turns a backend
+    /// result that reports the path does not resolve to a regular file into
+    /// success; in that case no host file is published.
     pub bytes_copied: u64,
 }
 

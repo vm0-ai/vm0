@@ -209,7 +209,14 @@ pub trait Sandbox: Send + Sync + Any {
     /// Missing files return `Ok(None)`. Other read failures return an error.
     async fn read_file(&self, path: &str, max_bytes: u64) -> Result<Option<Vec<u8>>>;
 
-    /// Stream a guest file to a host path and atomically publish it on success.
+    /// Stream a guest file to a host path and atomically publish copied
+    /// contents.
+    ///
+    /// If [`CopyFileOptions::missing_ok`] is enabled, a backend result that
+    /// reports the path does not resolve to a regular file is treated as
+    /// success with `bytes_copied == 0` without publishing a host file or
+    /// replacing an existing host file. Host-side setup and validation errors
+    /// can still fail the operation.
     async fn copy_file(
         &self,
         path: &str,
