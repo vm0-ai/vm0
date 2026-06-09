@@ -391,11 +391,28 @@ class TestLoadRegistry:
         assert log.warn.call_count == 1
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
 
-    def test_json_recursion_error_after_success_marks_registry_unavailable(self, registry_file):
+    @pytest.mark.parametrize(
+        "registry_payload",
+        [
+            pytest.param(
+                b'{"vms":' + b"[" * 10000 + b"0" + b"]" * 10000 + b"}",
+                id="decoder-recursion",
+            ),
+            pytest.param(
+                b'{"vms":' + b"1" * 10000 + b"}",
+                id="integer-digit-limit",
+            ),
+        ],
+    )
+    def test_json_parser_failure_after_success_marks_registry_unavailable(
+        self,
+        registry_file,
+        registry_payload,
+    ):
         loaded = registry.load_registry(str(registry_file))
         assert loaded["10.200.0.1"]["runId"] == "run-abc-123"
 
-        registry_file.write_text('{"vms":' + "[" * 10000 + "0" + "]" * 10000 + "}")
+        registry_file.write_bytes(registry_payload)
 
         log = MagicMock()
         with (
