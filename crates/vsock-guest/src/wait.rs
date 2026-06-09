@@ -441,8 +441,10 @@ mod tests {
             .arg("-c")
             .arg(
                 "mkfifo \"$FIFO\"; \
+                 exec 3<> \"$FIFO\"; \
                  : > \"$READY\"; \
-                 read _ < \"$FIFO\"; \
+                 read _ <&3; \
+                 exec 3>&-; \
                  setsid sh -c 'printf %s \"$$\" > \"$CHILD_PID\"; sleep 60' & \
                  wait",
             )
@@ -503,7 +505,12 @@ mod tests {
         };
 
         let watchdog_kill = kill_child(stale_target, KillReason::Timeout);
-        assert!(watchdog_kill.killed);
+        if !watchdog_kill.killed {
+            kill_spawned_child_with_watchdog(&mut child);
+            kill_pidfd_and_wait(&child_pidfd)
+                .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
+            panic!("watchdog kill should signal at least one process target");
+        }
         assert!(matches!(watchdog_kill.reason, KillReason::Timeout));
         let _ = child.take().unwrap().wait().unwrap();
 
