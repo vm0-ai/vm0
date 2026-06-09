@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.108.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.22...runner-rs-v0.108.23) (2026-06-09)
+
+
+### Bug Fixes
+
+* **mitm-addon:** encode connector usage idempotency keys ([#16833](https://github.com/vm0-ai/vm0/issues/16833)) ([09fa9b2](https://github.com/vm0-ai/vm0/commit/09fa9b2e59b10645464b35fda404df8bc28c853c))
+* **runner:** preserve local results during submit abandon ([#16832](https://github.com/vm0-ai/vm0/issues/16832)) ([86c9060](https://github.com/vm0-ai/vm0/commit/86c9060a627537ae4937a3dd16d200607c1d13af))
+
 ## [0.108.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.21...runner-rs-v0.108.22) (2026-06-09)
 
 

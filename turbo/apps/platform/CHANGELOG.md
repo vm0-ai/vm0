@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.428.2](https://github.com/vm0-ai/vm0/compare/app-v0.428.1...app-v0.428.2) (2026-06-09)
+
+
+### Bug Fixes
+
+* normalize salesforce connector svg ([#16835](https://github.com/vm0-ai/vm0/issues/16835)) ([6f8c0e3](https://github.com/vm0-ai/vm0/commit/6f8c0e39f8754f13de535175f59d42dde569ea5d))
+* normalize scrapeninja connector svg ([#16836](https://github.com/vm0-ai/vm0/issues/16836)) ([5f1c08d](https://github.com/vm0-ai/vm0/commit/5f1c08d7db690dc553fd59522adb4db027a27fd1))
+
 ## [0.428.1](https://github.com/vm0-ai/vm0/compare/app-v0.428.0...app-v0.428.1) (2026-06-09)
 
 
