@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.116.0](https://github.com/vm0-ai/vm0/compare/api-v1.115.1...api-v1.116.0) (2026-06-09)
+
+
+### Features
+
+* add presentation HTML editor ([#16728](https://github.com/vm0-ai/vm0/issues/16728)) ([b1c33ca](https://github.com/vm0-ai/vm0/commit/b1c33ca770a1b342bcb77b48172fe5638e1a4ac1))
+
 ## [1.115.1](https://github.com/vm0-ai/vm0/compare/api-v1.115.0...api-v1.115.1) (2026-06-09)
 
 

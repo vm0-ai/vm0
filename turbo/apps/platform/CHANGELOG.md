@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.426.0](https://github.com/vm0-ai/vm0/compare/app-v0.425.1...app-v0.426.0) (2026-06-09)
+
+
+### Features
+
+* add presentation HTML editor ([#16728](https://github.com/vm0-ai/vm0/issues/16728)) ([b1c33ca](https://github.com/vm0-ai/vm0/commit/b1c33ca770a1b342bcb77b48172fe5638e1a4ac1))
+
 ## [0.425.1](https://github.com/vm0-ai/vm0/compare/app-v0.425.0...app-v0.425.1) (2026-06-09)
 
 
