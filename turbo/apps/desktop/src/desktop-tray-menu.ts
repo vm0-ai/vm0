@@ -7,10 +7,10 @@ import {
 } from "./computer-use-types";
 
 const HOST_STATUS_LABELS = {
-  idle: "Idle",
-  connecting: "Connecting",
+  idle: "Ready",
+  connecting: "Starting...",
   online: "Online",
-  unauthenticated: "Signed out",
+  unauthenticated: "Sign in required",
   needs_organization: "Select workspace",
   disabled: "Disabled",
   error: "Error",
@@ -39,6 +39,8 @@ export interface DesktopTrayMenuActions {
   readonly refreshStatus: () => void;
   readonly openSignIn: () => void;
   readonly switchWorkspace: () => void;
+  readonly requestAccessibilityPermission: () => void;
+  readonly requestScreenRecordingPermission: () => void;
   readonly openAccessibilitySettings: () => void;
   readonly openScreenRecordingSettings: () => void;
   readonly quit: () => void;
@@ -58,14 +60,26 @@ function disabledLabel(label: string): DesktopTrayMenuItem {
   return { label, enabled: false };
 }
 
-function computerUseStatusLabel(state: DesktopComputerUseState): string {
-  if (!state.supported) {
+function computerUseStatusLabel(state: DesktopTrayMenuState): string {
+  if (!state.computerUse.supported) {
     return "Unsupported";
   }
-  if (!hasRequiredComputerUsePermissions(state.permissions)) {
+  if (!hasRequiredComputerUsePermissions(state.computerUse.permissions)) {
     return "Needs permissions";
   }
-  return HOST_STATUS_LABELS[state.host.status];
+  if (state.computerUse.host.status !== "idle") {
+    return HOST_STATUS_LABELS[state.computerUse.host.status];
+  }
+  if (state.auth?.status === "signing_in") {
+    return "Signing in...";
+  }
+  if (state.auth?.status !== "signed_in") {
+    return "Sign in required";
+  }
+  if (!state.auth.organization) {
+    return "Select workspace";
+  }
+  return HOST_STATUS_LABELS[state.computerUse.host.status];
 }
 
 function isAuthReady(auth: DesktopAuthState | null): boolean {
@@ -106,7 +120,7 @@ function buildComputerUseSubmenu(
   actions: DesktopTrayMenuActions,
 ): readonly DesktopTrayMenuItem[] {
   const items: DesktopTrayMenuItem[] = [
-    disabledLabel(`Status: ${computerUseStatusLabel(state.computerUse)}`),
+    disabledLabel(`Status: ${computerUseStatusLabel(state)}`),
   ];
 
   if (!state.computerUse.supported) {
@@ -117,18 +131,11 @@ function buildComputerUseSubmenu(
     ];
   }
 
+  items.push(separator(), ...buildPermissionItems(state, actions));
+
   if (!hasRequiredComputerUsePermissions(state.computerUse.permissions)) {
     return [
       ...items,
-      separator(),
-      {
-        label: "Accessibility Settings",
-        click: actions.openAccessibilitySettings,
-      },
-      {
-        label: "Screen Recording Settings",
-        click: actions.openScreenRecordingSettings,
-      },
       separator(),
       { label: "Refresh Status", click: actions.refreshStatus },
     ];
@@ -149,6 +156,41 @@ function buildComputerUseSubmenu(
   }
   startItems.push({ label: "Refresh Status", click: actions.refreshStatus });
   return startItems;
+}
+
+function buildPermissionItems(
+  state: DesktopTrayMenuState,
+  actions: DesktopTrayMenuActions,
+): readonly DesktopTrayMenuItem[] {
+  const items: DesktopTrayMenuItem[] = [];
+
+  if (state.computerUse.permissions.accessibility) {
+    items.push(disabledLabel("Accessibility: Ready"));
+  } else {
+    items.push({
+      label: "Request Accessibility Permission",
+      click: actions.requestAccessibilityPermission,
+    });
+  }
+  items.push({
+    label: "Accessibility Settings",
+    click: actions.openAccessibilitySettings,
+  });
+
+  if (state.computerUse.permissions.screenRecording) {
+    items.push(disabledLabel("Screen Recording: Ready"));
+  } else {
+    items.push({
+      label: "Request Screen Recording Permission",
+      click: actions.requestScreenRecordingPermission,
+    });
+  }
+  items.push({
+    label: "Screen Recording Settings",
+    click: actions.openScreenRecordingSettings,
+  });
+
+  return items;
 }
 
 function authStatusLabel(state: DesktopTrayMenuState): string {
@@ -269,7 +311,7 @@ export function buildDesktopTrayMenuItems(
     { label: "Show Main Window", click: actions.showMainWindow },
     separator(),
     {
-      label: `Computer Use: ${computerUseStatusLabel(state.computerUse)}`,
+      label: `Computer Use: ${computerUseStatusLabel(state)}`,
       submenu: buildComputerUseSubmenu(state, actions),
     },
     {
