@@ -372,6 +372,15 @@ export const createCreditCheckoutSession$ = command(
       mode: "payment",
       customer: customerId,
       line_items: [{ price: presetPriceId, quantity: 1 }],
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          metadata: {
+            type: "credit_purchase",
+            ...metadata,
+          },
+        },
+      },
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
       payment_intent_data: {
