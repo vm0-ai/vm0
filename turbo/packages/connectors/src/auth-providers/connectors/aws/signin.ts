@@ -29,6 +29,9 @@ const AWS_REGION_RE = /^[a-z]{2}(?:-gov)?-[a-z]+-\d$/;
 const AWS_DPOP_KEY_CURVE = "P-256";
 const AWS_DPOP_JWT_TYPE = "dpop+jwt";
 const AWS_DPOP_JWT_ALGORITHM = "ES256";
+const AWS_RESPONSE_SHAPE_MAX_KEYS = 12;
+const AWS_RESPONSE_SHAPE_MAX_DEPTH = 3;
+const AWS_RESPONSE_SCHEMA_ISSUE_MAX_COUNT = 8;
 const AWS_SIGNIN_SENSITIVE_REQUEST_KEYS = [
   "code",
   "codeVerifier",
@@ -259,14 +262,88 @@ async function readAwsSigninTokenResponse(
     if (isAbortError(error)) {
       throw error;
     }
-    throw new ProviderResponseError("Invalid AWS Sign-In token response");
+    throw new ProviderResponseError(
+      invalidAwsSigninTokenResponseMessage({ response }),
+    );
   }
 
   const parsed = awsSigninTokenResponseSchema.safeParse(body);
   if (!parsed.success) {
-    throw new ProviderResponseError("Invalid AWS Sign-In token response");
+    throw new ProviderResponseError(
+      invalidAwsSigninTokenResponseMessage({
+        response,
+        body,
+        issues: parsed.error.issues,
+      }),
+    );
   }
   return parsed.data;
+}
+
+function invalidAwsSigninTokenResponseMessage(args: {
+  readonly response: Response;
+  readonly body?: unknown;
+  readonly issues?: readonly z.ZodIssue[];
+}): string {
+  const details = [
+    `status=${args.response.status}`,
+    `contentType=${args.response.headers.get("content-type") ?? "none"}`,
+  ];
+  if ("body" in args) {
+    details.push(`bodyShape=${awsSigninTokenResponseShape(args.body)}`);
+  }
+  if (args.issues && args.issues.length > 0) {
+    details.push(
+      `schemaIssues=${awsSigninTokenResponseSchemaIssues(args.issues)}`,
+    );
+  }
+  return `Invalid AWS Sign-In token response (${details.join("; ")})`;
+}
+
+function awsSigninTokenResponseSchemaIssues(
+  issues: readonly z.ZodIssue[],
+): string {
+  const summaries = issues
+    .slice(0, AWS_RESPONSE_SCHEMA_ISSUE_MAX_COUNT)
+    .map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join(".") : "<root>";
+      return `${path}:${issue.code}`;
+    });
+  if (issues.length > AWS_RESPONSE_SCHEMA_ISSUE_MAX_COUNT) {
+    summaries.push(
+      `...+${issues.length - AWS_RESPONSE_SCHEMA_ISSUE_MAX_COUNT}`,
+    );
+  }
+  return summaries.join(",");
+}
+
+function awsSigninTokenResponseShape(value: unknown, depth = 0): string {
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    if (depth >= AWS_RESPONSE_SHAPE_MAX_DEPTH || value.length === 0) {
+      return "array";
+    }
+    return `array[${awsSigninTokenResponseShape(value[0], depth + 1)}]`;
+  }
+  if (typeof value !== "object") {
+    return typeof value;
+  }
+  if (depth >= AWS_RESPONSE_SHAPE_MAX_DEPTH) {
+    return "object";
+  }
+
+  const entries = Object.entries(value);
+  const fields = entries
+    .slice(0, AWS_RESPONSE_SHAPE_MAX_KEYS)
+    .map(([key, fieldValue]) => {
+      return `${key}:${awsSigninTokenResponseShape(fieldValue, depth + 1)}`;
+    });
+  if (entries.length > AWS_RESPONSE_SHAPE_MAX_KEYS) {
+    fields.push(`...+${entries.length - AWS_RESPONSE_SHAPE_MAX_KEYS}`);
+  }
+  return `object{${fields.join(",")}}`;
 }
 
 export function parseAwsSigninVerificationCode(args: {

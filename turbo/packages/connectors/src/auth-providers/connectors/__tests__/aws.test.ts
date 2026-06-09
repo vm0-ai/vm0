@@ -12,6 +12,7 @@ import {
   startConnectorExternalCodeAuthorization,
 } from "../../connector-auth";
 import { isOAuthProviderHttpError } from "../../oauth/error";
+import { isProviderResponseError } from "../../provider-error";
 import { resolveConnectorAuthClientForMethod } from "../../../connector-utils";
 
 const AWS_TOKEN_URL = "https://us-east-1.signin.aws.amazon.com/v1/token";
@@ -374,6 +375,50 @@ describe("AWS external-code provider", () => {
     await expect(complete).rejects.toMatchObject({ name: "AbortError" });
     expect(tokenRequests).toHaveLength(1);
     expect(stsCalls).toBe(0);
+  });
+
+  it("reports invalid AWS token response shape without leaking token values", async () => {
+    const start = await startConnectorExternalCodeAuthorization({
+      type: "aws",
+      authMethod: "cli",
+      authClient: awsAuthClient(),
+    });
+    const providerState = parseProviderState(start.providerState);
+    server.use(
+      http.post(AWS_TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: {
+            accessKeyId: "leaked-access-key-id",
+            secretAccessKey: "leaked-secret-access-key",
+            sessionToken: "leaked-session-token",
+          },
+          expires_in: 900,
+          refresh_token: "leaked-refresh-token",
+          token_type: "aws_sigv4",
+        });
+      }),
+    );
+
+    await expect(
+      completeConnectorExternalCodeAuthorization({
+        type: "aws",
+        authMethod: "cli",
+        authClient: awsAuthClient(),
+        code: awsVerificationCode({ providerState }),
+        providerState: start.providerState,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toSatisfy((error: unknown) => {
+      return (
+        isProviderResponseError(error) &&
+        error.message.includes("bodyShape=object{access_token:object") &&
+        error.message.includes("schemaIssues=") &&
+        !error.message.includes("leaked-access-key-id") &&
+        !error.message.includes("leaked-secret-access-key") &&
+        !error.message.includes("leaked-session-token") &&
+        !error.message.includes("leaked-refresh-token")
+      );
+    });
   });
 
   it("refreshes AWS credentials and returns a rotated refresh token", async () => {
