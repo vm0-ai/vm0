@@ -203,9 +203,7 @@ export function isTranscriptionBody(
   return isRecord(value) && typeof value.text === "string";
 }
 
-export function isVerboseTranscriptionSegment(
-  value: unknown,
-): value is {
+export function isVerboseTranscriptionSegment(value: unknown): value is {
   readonly start: number;
   readonly end: number;
   readonly text: string;

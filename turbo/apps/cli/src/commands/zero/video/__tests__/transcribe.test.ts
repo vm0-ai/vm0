@@ -12,14 +12,18 @@ import { transcribeCommand } from "../transcribe";
 
 const STT_URL = "http://localhost:3000/api/zero/voice-io/stt";
 
-vi.mock("child_process", () => ({
-  execFileSync: vi.fn(),
-}));
+vi.mock("child_process", () => {
+  return {
+    execFileSync: vi.fn(),
+  };
+});
 
-vi.mock("fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("fs")>();
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
   return {
     ...actual,
+    readFileSync: vi.fn().mockReturnValue(Buffer.from("fake audio data")),
+    statSync: vi.fn().mockReturnValue({ size: 1024 }),
     unlinkSync: vi.fn(),
   };
 });
@@ -39,7 +43,9 @@ vi.mock("../../../../lib/api/domains/web", async (importOriginal) => {
 
 const mockStdoutWrite = vi
   .spyOn(process.stdout, "write")
-  .mockImplementation(() => true);
+  .mockImplementation(() => {
+    return true;
+  });
 
 describe("zero video transcribe command", () => {
   beforeEach(() => {
@@ -71,7 +77,11 @@ describe("zero video transcribe command", () => {
         { from: "user" },
       );
 
-      const output = mockStdoutWrite.mock.calls.map((c) => c[0]).join("");
+      const output = mockStdoutWrite.mock.calls
+        .map((c) => {
+          return c[0];
+        })
+        .join("");
       expect(output).toContain("## Transcript");
       expect(output).toContain("[00:02-00:05] Hello world.");
       expect(output).toContain("[00:06-00:07] Second sentence.");
@@ -95,7 +105,11 @@ describe("zero video transcribe command", () => {
         { from: "user" },
       );
 
-      const output = mockStdoutWrite.mock.calls.map((c) => c[0]).join("");
+      const output = mockStdoutWrite.mock.calls
+        .map((c) => {
+          return c[0];
+        })
+        .join("");
       expect(output).toContain("## Transcript");
       expect(output).toContain("Hello world. Second sentence.");
       expect(output).not.toMatch(/\[\d{2}:\d{2}-\d{2}:\d{2}\]/);
@@ -104,8 +118,9 @@ describe("zero video transcribe command", () => {
 
   describe("with --file-id", () => {
     it("should use downloadWebFile instead of curl", async () => {
-      const { downloadWebFile } =
-        await import("../../../../lib/api/domains/web");
+      const { downloadWebFile } = await import(
+        "../../../../lib/api/domains/web"
+      );
 
       server.use(
         http.post(STT_URL, () => {
