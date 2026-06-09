@@ -5,7 +5,7 @@ import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
   isFirewallConnectorType,
-} from "../index";
+} from "../../firewalls/index";
 
 describe("base44 firewall", () => {
   it("registers the Base44 firewall with OAuth placeholder expansion", () => {

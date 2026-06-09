@@ -5,7 +5,7 @@ import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
   isFirewallConnectorType,
-} from "../index";
+} from "../../firewalls/index";
 
 describe("netdata firewall", () => {
   it("registers the Netdata Cloud firewall with Bearer token auth", () => {

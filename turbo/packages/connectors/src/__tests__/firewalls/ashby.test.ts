@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { extractSecretNamesFromApis } from "../../firewall-types";
-import { getConnectorFirewall, isFirewallConnectorType } from "../index";
+import {
+  getConnectorFirewall,
+  isFirewallConnectorType,
+} from "../../firewalls/index";
 
 describe("ashby firewall", () => {
   it("registers the Ashby firewall with Basic auth over the raw API key", () => {

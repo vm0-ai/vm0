@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { extractSecretNamesFromApis } from "../../firewall-types";
-import { githubFirewall } from "../github.generated";
+import { githubFirewall } from "../../firewalls/github.generated";
 
 /**
  * Structural sanity tests for the generated GitHub firewall config.

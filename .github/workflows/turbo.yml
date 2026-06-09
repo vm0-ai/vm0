@@ -349,7 +349,7 @@ jobs:
     if: needs.detect-release.outputs.skip != 'true'
     steps:
       - uses: actions/checkout@v6
-      - name: Ensure no generated firewall files are tracked
+      - name: Ensure only allowed connector firewall files are tracked
         run: ./scripts/block-generated-firewalls.sh
 
   # Lint jobs - split into 4 parallel jobs for faster CI

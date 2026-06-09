@@ -70,5 +70,5 @@ pre-commit:
     - name: block-generated-firewalls
       run: ./scripts/block-generated-firewalls.sh
       fail_text: |
-        Generated firewall files must not be committed.
-        Run 'git rm --cached -- <file>' for each generated firewall file.
+        Only turbo/packages/connectors/src/firewalls/index.ts may be committed under turbo/packages/connectors/src/firewalls.
+        Run 'git rm --cached -- <file>' for each listed file.

@@ -6,13 +6,13 @@ import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
   isFirewallConnectorType,
-} from "../index";
+} from "../../firewalls/index";
 import {
   stripeCategories,
   stripeCategoryOrder,
   stripeDefaultAllowed,
   stripeGenerationStats,
-} from "../stripe.generated";
+} from "../../firewalls/stripe.generated";
 
 function getStripePermission(name: string) {
   const firewall = getConnectorFirewall("stripe");
