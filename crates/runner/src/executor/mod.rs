@@ -47,6 +47,8 @@ use api_contracts::generated::constants::runners::paths::{
 
 /// Maximum wall-clock time for a single job (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
+/// Exit code used when the runner's job timeout stops an agent process.
+const JOB_TIMEOUT_EXIT_CODE: i32 = 124;
 /// Maximum time to spend writing the guest cancel frame after a user cancel.
 const PROCESS_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 /// Grace period for the guest to report a terminal status after cancel is sent.

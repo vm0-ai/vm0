@@ -22,8 +22,8 @@ use super::storage::{download_storages, filter_unchanged_storages};
 use super::telemetry::record_api_latency;
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
-    PROCESS_CANCEL_TIMEOUTS, RunnerResult, SandboxReuseResult, USER_ENV_FILE_ENV_KEY,
-    agent_exit_failure_message, normalize_failure_exit_code,
+    JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, RunnerResult, SandboxReuseResult,
+    USER_ENV_FILE_ENV_KEY, agent_exit_failure_message, normalize_failure_exit_code,
 };
 use crate::paths::guest;
 use crate::telemetry::JobTelemetry;
@@ -82,6 +82,20 @@ pub(super) fn cancelled_agent_process_exit(
     exit.termination = ProcessTerminationKind::Cancelled;
     exit.stream_overflowed = stream_overflowed;
     exit
+}
+
+fn wait_process_timed_out(error: &sandbox::SandboxError) -> bool {
+    matches!(
+        error,
+        sandbox::SandboxError::Operation {
+            operation: sandbox::SandboxOperation::WaitProcess,
+            reason: sandbox::SandboxOperationReason::Timeout,
+            ..
+        }
+    ) || matches!(
+        error,
+        sandbox::SandboxError::Io(error) if error.kind() == std::io::ErrorKind::TimedOut
+    )
 }
 
 /// How this run is entering its sandbox. Each field feeds a distinct step:
@@ -351,6 +365,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             }
         }
     }
+    let stdout_stream_diagnostics_on_wait_error = AgentStdoutStreamDiagnostics {
+        chunk_truncated: stdout_drain_report.chunk_truncated,
+        stream_overflowed: false,
+    };
     let exit = match result {
         Ok(exit) => exit,
         Err(e) => {
@@ -368,6 +386,19 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             }
             let error = e.to_string();
             telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
+            if wait_process_timed_out(&e) {
+                return Ok(AgentExecutionResult {
+                    failure: Some(ExecutionFailure::runner_job_timeout(
+                        JOB_TIMEOUT_EXIT_CODE,
+                        error,
+                        None,
+                        JOB_TIMEOUT,
+                        t.elapsed(),
+                        None,
+                    )),
+                    stdout_stream_diagnostics: stdout_stream_diagnostics_on_wait_error,
+                });
+            }
             return Err(e.into());
         }
     };

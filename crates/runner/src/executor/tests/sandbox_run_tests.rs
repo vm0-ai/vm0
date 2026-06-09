@@ -780,9 +780,21 @@ async fn execute_inner_aborts_drain_task_on_wait_process_error() {
     .await
     .unwrap();
 
-    assert_eq!(outcome.exit_code(), 1);
-    let error = outcome.error().unwrap();
-    assert!(error.contains("wait timeout"), "got: {error}");
+    assert_eq!(outcome.exit_code(), 124);
+    let failure = outcome.failure.as_ref().expect("expected failure");
+    assert_eq!(failure.exit_code, 124);
+    assert!(failure.error.contains("wait timeout"), "got: {failure:?}");
+    match failure.kind {
+        ExecutionFailureKind::RunnerJobTimeout {
+            timeout_ms,
+            elapsed_ms: _,
+            guest_duration_ms,
+        } => {
+            assert_eq!(timeout_ms, 7_200_000);
+            assert_eq!(guest_duration_ms, None);
+        }
+        ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
+    }
     assert!(
         outcome.sandbox.is_some(),
         "sandbox must be returned on post-start execution failure"
