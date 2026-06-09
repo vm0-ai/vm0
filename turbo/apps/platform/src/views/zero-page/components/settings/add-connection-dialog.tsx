@@ -753,8 +753,8 @@ function ExternalCodeStartContent({
   return (
     <div className="flex flex-col gap-3">
       {method.helpText && <ConnectorHelpText text={method.helpText} />}
-      {method.grant.kind === "external-code" && method.grant.connectNotice ? (
-        <ConnectorAuthMethodConnectNotice notice={method.grant.connectNotice} />
+      {method.connectNotice ? (
+        <ConnectorAuthMethodConnectNotice notice={method.connectNotice} />
       ) : null}
       {terminalMessage ? (
         <p className="text-sm text-destructive" role="alert">
@@ -778,12 +778,14 @@ function ExternalCodeStartContent({
 
 function ExternalCodePendingContent({
   type,
+  method,
   current,
   onOpen,
   onCodeChange,
   onComplete,
 }: {
   type: ConnectorType;
+  method: ConnectorAuthMethodConfig;
   current: PendingConnectorExternalCodeState;
   onOpen: ExternalCodeButtonHandler;
   onCodeChange: (code: string) => void;
@@ -791,15 +793,10 @@ function ExternalCodePendingContent({
 }) {
   const completing = current.status === "completing";
   const connectorLabel = CONNECTOR_TYPES[type].label;
-  const method = getConnectorAuthMethod(type, current.authMethod);
-  const connectNotice =
-    method?.grant.kind === "external-code"
-      ? method.grant.connectNotice
-      : undefined;
   return (
     <div className="flex flex-col gap-3">
-      {connectNotice ? (
-        <ConnectorAuthMethodConnectNotice notice={connectNotice} />
+      {method.connectNotice ? (
+        <ConnectorAuthMethodConnectNotice notice={method.connectNotice} />
       ) : null}
       <p className="text-sm text-muted-foreground">
         Open {connectorLabel} sign-in, then paste the authorization code
@@ -894,6 +891,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
     return (
       <ExternalCodePendingContent
         type={props.item.type}
+        method={props.method}
         current={current}
         onOpen={() => {
           openAuthorizationPage(props.item.type, props.authMethod);

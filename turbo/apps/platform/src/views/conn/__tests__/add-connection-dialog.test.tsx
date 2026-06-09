@@ -477,9 +477,7 @@ describe("connect modal - content by auth method", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /vm0 can call AWS APIs allowed by the selected AWS identity/,
-      ),
+      screen.getByText(/temporary AWS connector.*up to 12 hours/),
     ).toBeInTheDocument();
     expect(screen.getByText("Start AWS sign-in")).toBeInTheDocument();
     expect(open).not.toHaveBeenCalled();
