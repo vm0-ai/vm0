@@ -149,6 +149,10 @@ function expectJsonWebTokenPart<T>(schema: z.ZodType<T>, value: string): T {
 
 function awsTokenEndpointResponseBody(
   body: z.infer<typeof awsTokenRequestSchema>,
+  options: {
+    readonly expiresIn?: number;
+    readonly tokenType?: string;
+  } = {},
 ) {
   return {
     accessToken: {
@@ -165,12 +169,12 @@ function awsTokenEndpointResponseBody(
           ? "refresh-session-token"
           : "exchange-session-token",
     },
-    expiresIn: 900,
+    expiresIn: options.expiresIn ?? 900,
     refreshToken:
       body.grantType === "refresh_token"
         ? "aws-refresh-token-rotated"
         : "aws-refresh-token",
-    tokenType: "aws_sigv4",
+    tokenType: options.tokenType ?? "aws_sigv4",
     ...(body.grantType === "authorization_code"
       ? { idToken: "aws-id-token" }
       : {}),
@@ -179,7 +183,9 @@ function awsTokenEndpointResponseBody(
 
 function mockAwsTokenEndpoint(
   options: {
+    readonly expiresIn?: number;
     readonly responseShape?: "flat" | "tokenOutput";
+    readonly tokenType?: string;
   } = {},
 ): void {
   server.use(
@@ -187,7 +193,7 @@ function mockAwsTokenEndpoint(
       const body = awsTokenRequestSchema.parse(await request.json());
       tokenRequests.push(body);
       dpopHeaders.push(request.headers.get("dpop") ?? "");
-      const responseBody = awsTokenEndpointResponseBody(body);
+      const responseBody = awsTokenEndpointResponseBody(body, options);
       if (options.responseShape === "tokenOutput") {
         return HttpResponse.json({ tokenOutput: responseBody });
       }
@@ -293,6 +299,28 @@ describe("AWS external-code provider", () => {
         email: null,
       },
     });
+  });
+
+  it("accepts AWS token metadata that the AWS CLI does not validate", async () => {
+    mockAwsTokenEndpoint({ expiresIn: 3600, tokenType: "Bearer" });
+    const start = await startConnectorExternalCodeAuthorization({
+      type: "aws",
+      authMethod: "cli",
+      authClient: awsAuthClient(),
+    });
+    const providerState = parseProviderState(start.providerState);
+
+    const result = await completeConnectorExternalCodeAuthorization({
+      type: "aws",
+      authMethod: "cli",
+      authClient: awsAuthClient(),
+      code: awsVerificationCode({ providerState }),
+      providerState: start.providerState,
+      signal: new AbortController().signal,
+    });
+
+    expect(result.expiresIn).toBe(3600);
+    expect(stsCalls).toBe(1);
   });
 
   it("aborts AWS code exchange without sending the token request", async () => {

@@ -20,7 +20,6 @@ export const AWS_SIGNIN_CROSS_DEVICE_CLIENT_ID =
 export const AWS_DEFAULT_SIGNIN_REGION = "us-east-1";
 export const AWS_DEFAULT_RUNTIME_REGION = "us-east-1";
 
-const AWS_SIGNIN_TOKEN_TYPE = "aws_sigv4";
 const AWS_CODE_CHALLENGE_METHOD = "SHA-256";
 const AWS_OPENID_SCOPE = "openid";
 const AWS_AUTHORIZATION_RESPONSE_TYPE = "code";
@@ -44,9 +43,9 @@ const awsSigninTokenResponseBodySchema = z.object({
     secretAccessKey: z.string().min(1),
     sessionToken: z.string().min(1),
   }),
-  expiresIn: z.number().int().min(1).max(900),
+  expiresIn: z.number().int().min(1),
   refreshToken: z.string().min(1),
-  tokenType: z.literal(AWS_SIGNIN_TOKEN_TYPE),
+  tokenType: z.string().min(1),
   idToken: z.string().optional(),
 });
 const awsSigninTokenResponseSchema = z.union([
