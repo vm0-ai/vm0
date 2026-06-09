@@ -209,4 +209,109 @@ describe("zero attachment chips", () => {
       expect(screen.getByText(/"status": "ready"/u)).toBeInTheDocument();
     });
   });
+
+  it("opens persisted csv, pdf, and html document previews from chat history", async () => {
+    const csvUrl =
+      "https://cdn.vm7.io/artifacts/test/attachment-csv/launch-metrics.csv";
+    const pdfUrl =
+      "https://cdn.vm7.io/artifacts/test/attachment-pdf/launch-plan.pdf";
+    const htmlUrl =
+      "https://cdn.vm7.io/artifacts/test/attachment-html/launch-site.html";
+    context.mocks.http.get(csvUrl, () => {
+      return new Response("metric,value\nsignups,42\nactivation,87", {
+        headers: { "Content-Type": "text/csv" },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-document-previews",
+          role: "user",
+          content: "Review these document previews",
+          attachFiles: [
+            {
+              id: "attachment-csv",
+              filename: "launch-metrics.csv",
+              contentType: "text/csv",
+              size: 38,
+              url: csvUrl,
+            },
+            {
+              id: "attachment-pdf",
+              filename: "launch-plan.pdf",
+              contentType: "application/pdf",
+              size: 2048,
+              url: pdfUrl,
+            },
+            {
+              id: "attachment-html",
+              filename: "launch-site.html",
+              contentType: "text/html",
+              size: 4096,
+              url: htmlUrl,
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Review these document previews"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open csv preview for launch-metrics.csv"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open pdf preview for launch-plan.pdf"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open html preview for launch-site.html"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open csv preview for launch-metrics.csv"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByText("metric")).toBeInTheDocument();
+      expect(screen.getByText("activation")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open pdf preview for launch-plan.pdf"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-document-frame"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open html preview for launch-site.html"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-body-html"),
+      ).toBeInTheDocument();
+    });
+  });
 });
