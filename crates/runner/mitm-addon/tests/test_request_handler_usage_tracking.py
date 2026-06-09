@@ -164,12 +164,12 @@ def _write_model_provider_tracking_registry(
     )
 
 
-def _x_tracking_flow(real_flow, *, path: str = _X_TRACKING_PATH):
+def _x_tracking_flow(real_flow):
     return real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host="api.x.com",
-        path=path,
+        path=_X_TRACKING_PATH,
         method="GET",
     )
 
