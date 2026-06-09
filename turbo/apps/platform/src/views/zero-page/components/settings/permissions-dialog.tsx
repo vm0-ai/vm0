@@ -1185,18 +1185,31 @@ function PermissionsDrawerFooter({
 }: PermissionsDrawerFooterProps) {
   const showReset = !readOnly && resetEnabled && canReset;
 
+  if (!showReset) {
+    return (
+      <SheetFooter>
+        <Button variant="outline" onClick={onClose}>
+          {readOnly ? "Close" : "Cancel"}
+        </Button>
+        {!readOnly && (
+          <Button onClick={onApply} disabled={!canApply}>
+            {saving ? "Saving..." : "Apply"}
+          </Button>
+        )}
+      </SheetFooter>
+    );
+  }
+
   return (
     <SheetFooter className="gap-2 sm:justify-between sm:space-x-0">
       <div>
-        {showReset && (
-          <Button
-            variant="outline"
-            onClick={onReset}
-            disabled={saving || !resetAvailable}
-          >
-            Restore
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          onClick={onReset}
+          disabled={saving || !resetAvailable}
+        >
+          Restore
+        </Button>
       </div>
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button variant="outline" onClick={onClose}>
