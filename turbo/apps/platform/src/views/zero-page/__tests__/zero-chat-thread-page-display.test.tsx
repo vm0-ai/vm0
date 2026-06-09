@@ -2541,6 +2541,9 @@ describe("zero chat thread page display - artifact sidebar", () => {
     click(await screen.findByLabelText("Open artifacts"));
     await user.click(await screen.findByLabelText("Open artifact report.html"));
     const sidebar = await screen.findByTestId("artifact-sidebar");
+    const openExternal = within(sidebar).getByLabelText("Open in new tab");
+    expect(openExternal).toHaveAttribute("href", fileUrl);
+    expect(openExternal).toHaveAttribute("target", "_blank");
     await user.click(within(sidebar).getByLabelText("Download artifact"));
 
     await waitFor(() => {

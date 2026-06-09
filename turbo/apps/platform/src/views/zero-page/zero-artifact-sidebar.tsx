@@ -5,6 +5,7 @@ import {
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
   IconDots,
+  IconExternalLink,
   IconLoader2,
   IconPencil,
   IconZoomReset,
@@ -250,6 +251,7 @@ function ArtifactSidebarContent({
     >
       <ArtifactSidebarHeader
         title={display.filename}
+        kind={display.kind}
         artifactKind={display.artifactKind}
         subtitle={display.subtitle}
         syncTarget={syncTarget}
@@ -359,6 +361,7 @@ function resolveArtifactDisplay(
 
 function ArtifactSidebarHeader({
   title,
+  kind,
   artifactKind,
   subtitle,
   syncTarget,
@@ -370,6 +373,7 @@ function ArtifactSidebarHeader({
   onClose,
 }: {
   title: string;
+  kind?: ArtifactKindForBody;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   subtitle: string;
   syncTarget?: ArtifactDownloadSyncTarget;
@@ -408,6 +412,7 @@ function ArtifactSidebarHeader({
         compactActions={compactActions}
         artifactKind={artifactKind}
         fullscreen={fullscreen}
+        kind={kind}
         onClose={onClose}
         onEditPresentation={onEditPresentation}
         onToggleFullscreen={onToggleFullscreen}
@@ -423,6 +428,7 @@ function ArtifactSidebarActions({
   artifactKind,
   compactActions,
   fullscreen,
+  kind,
   onClose,
   onEditPresentation,
   onToggleFullscreen,
@@ -433,6 +439,7 @@ function ArtifactSidebarActions({
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   compactActions: boolean;
   fullscreen: boolean;
+  kind?: ArtifactKindForBody;
   onClose: () => void;
   onEditPresentation?: () => void;
   onToggleFullscreen: () => void;
@@ -450,6 +457,7 @@ function ArtifactSidebarActions({
     <div className="flex shrink-0 items-center gap-1">
       {url && (
         <>
+          {kind === "html" && <ArtifactOpenExternalAction url={url} />}
           <ArtifactShareButton ariaLabel="Share artifact" url={url} />
           <ArtifactDownloadMenu
             ariaLabel="Download artifact"
@@ -490,6 +498,21 @@ function ArtifactEditPresentationAction({ onClick }: { onClick: () => void }) {
     >
       <IconPencil size={16} stroke={1.5} />
     </button>
+  );
+}
+
+function ArtifactOpenExternalAction({ url }: { url: string }) {
+  return (
+    <a
+      href={publicAttachmentUrl(url)}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Open in new tab"
+      data-testid="artifact-sidebar-open-external"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+    >
+      <IconExternalLink size={16} />
+    </a>
   );
 }
 
