@@ -529,9 +529,11 @@ def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
 def _validate_credentials(credentials: AwsSigV4Credentials) -> None:
     if not _ACCESS_KEY_ID_RE.fullmatch(credentials.access_key_id):
         raise AwsSigV4SigningError("Invalid AWS access key ID")
-    if _has_ascii_control(credentials.secret_access_key):
+    if not credentials.secret_access_key or _has_ascii_control(credentials.secret_access_key):
         raise AwsSigV4SigningError("Invalid AWS secret access key")
-    if credentials.session_token is not None and _has_ascii_control(credentials.session_token):
+    if credentials.session_token is not None and (
+        not credentials.session_token or _has_ascii_control(credentials.session_token)
+    ):
         raise AwsSigV4SigningError("Invalid AWS session token")
 
 

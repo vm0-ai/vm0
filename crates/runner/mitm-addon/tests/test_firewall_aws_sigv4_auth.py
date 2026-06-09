@@ -4,7 +4,9 @@ import urllib.parse
 
 import auth
 import matching
+from aws_sigv4 import AwsSigV4Credentials
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
+from tests.auth_state_helpers import set_cached_headers
 
 
 def _api_entry() -> dict:
@@ -427,6 +429,90 @@ async def test_header_sigv4_with_invalid_resolved_access_key_fails_closed(
     assert flow.response.status_code == 502
     assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
     assert "Invalid AWS access key ID" in flow.response.json()["message"]
+
+
+async def test_header_sigv4_with_empty_resolved_secret_key_fails_closed(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    flow = real_flow(
+        with_response=False,
+        host="sts.amazonaws.com",
+        path="/",
+        method="POST",
+        request_headers=headers(
+            ("Host", "sts.amazonaws.com"),
+            ("X-Amz-Date", "20260101T000000Z"),
+            (
+                "Authorization",
+                "AWS4-HMAC-SHA256 "
+                "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
+                "SignedHeaders=host;x-amz-date, "
+                "Signature=placeholder",
+            ),
+        ),
+    )
+    flow.metadata["vm_run_id"] = "run-1"
+    set_cached_headers(
+        ("run-1", "https://sts.amazonaws.com"),
+        headers={},
+        aws_sigv4=AwsSigV4Credentials("AKIDEXAMPLE", ""),
+    )
+
+    with mitm_ctx():
+        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+
+    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
+    assert "Invalid AWS secret access key" in flow.response.json()["message"]
+
+
+async def test_header_sigv4_with_empty_resolved_session_token_fails_closed(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    flow = real_flow(
+        with_response=False,
+        host="sts.amazonaws.com",
+        path="/",
+        method="POST",
+        request_headers=headers(
+            ("Host", "sts.amazonaws.com"),
+            ("X-Amz-Date", "20260101T000000Z"),
+            (
+                "Authorization",
+                "AWS4-HMAC-SHA256 "
+                "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
+                "SignedHeaders=host;x-amz-date, "
+                "Signature=placeholder",
+            ),
+        ),
+    )
+    flow.metadata["vm_run_id"] = "run-1"
+    set_cached_headers(
+        ("run-1", "https://sts.amazonaws.com"),
+        headers={},
+        aws_sigv4=AwsSigV4Credentials(
+            "AKIDEXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+            "",
+        ),
+    )
+
+    with mitm_ctx():
+        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+
+    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
+    assert "Invalid AWS session token" in flow.response.json()["message"]
 
 
 async def test_header_sigv4_with_real_source_access_key_fails_closed(

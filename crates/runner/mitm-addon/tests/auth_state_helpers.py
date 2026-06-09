@@ -1,6 +1,7 @@
 """Helpers for setting up auth state in mitm-addon tests."""
 
 import auth
+from aws_sigv4 import AwsSigV4Credentials
 
 
 def clear_auth_state() -> None:
@@ -19,6 +20,7 @@ def set_cached_headers(
     resolved_secrets: list | None = None,
     base: str | None = None,
     query: dict | None = None,
+    aws_sigv4: AwsSigV4Credentials | None = None,
 ) -> None:
     auth._get_auth_state(cache_key).cache = auth._FirewallHeaderCacheEntry(
         payload=auth._FirewallAuthPayload(
@@ -26,6 +28,7 @@ def set_cached_headers(
             resolved_secrets=resolved_secrets or [],
             base=base,
             query=query,
+            aws_sigv4=aws_sigv4,
         ),
         expires_at=expires_at,
     )
