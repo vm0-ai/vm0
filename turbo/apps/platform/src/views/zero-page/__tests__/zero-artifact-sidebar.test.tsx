@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   fireEvent,
   render,
@@ -16,7 +17,10 @@ import {
 } from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { search } from "../../../signals/location.ts";
 import { setPageSignal$ } from "../../../signals/page-signal.ts";
 import {
@@ -39,10 +43,16 @@ import {
 
 const context = testContext();
 
-function setup(path = "/chats/thread-1") {
+function setup(
+  path = "/chats/thread-1",
+  options?: {
+    featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  },
+) {
   detachedSetupPage({
     context,
     path,
+    featureSwitches: options?.featureSwitches,
     withoutRender: true,
   });
   // ArtifactSidebar reads pageSignal$ for fetch cancellation; tests render
@@ -315,6 +325,52 @@ describe("artifact sidebar: fullscreen toggle", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("artifact-dialog-body-html")).toHaveFocus();
+    });
+  });
+
+  it("opens presentation editor from the html artifact dialog", async () => {
+    const url = "about:blank";
+    setup("/chats/thread-1", {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
+      },
+    });
+    context.store.set(openDocumentLightbox$, {
+      kind: "html",
+      filename: "deck.html",
+      url,
+      artifact: {
+        agentId: null,
+        artifactKind: "presentation-html",
+        contentType: "text/html",
+        createdAt: new Date(0).toISOString(),
+        fileId: "file-1",
+        filename: "deck.html",
+        googleDriveSynced: false,
+        runId: "run-1",
+        size: 120,
+        threadId: "thread-1",
+      },
+    });
+    renderWithStore(<AttachmentLightbox />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-dialog-body-html")).toHaveFocus();
+    });
+
+    const editButton = queryAllByRoleFast("button").find((button) => {
+      return button.getAttribute("aria-label") === "Edit presentation";
+    });
+    if (!editButton) {
+      throw new Error("Edit presentation button not found");
+    }
+    fireEvent.click(editButton);
+
+    await waitFor(() => {
+      expect(search()).toContain(
+        `presentation-editor=${encodeURIComponent(url)}`,
+      );
+      expect(search()).toContain("artifact-fullscreen=1");
     });
   });
 });

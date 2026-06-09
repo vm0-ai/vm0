@@ -30,6 +30,7 @@ import {
 const ARTIFACT_QUERY_PARAM = "artifact";
 const ARTIFACT_INBOX_QUERY_PARAM = "artifacts";
 const ARTIFACT_FULLSCREEN_PARAM = "artifact-fullscreen";
+const PRESENTATION_EDITOR_QUERY_PARAM = "presentation-editor";
 const IMAGE_ID_PREFIX = "image:";
 
 export type ArtifactInboxSection = "all" | "media" | "docs" | "sites";
@@ -109,6 +110,10 @@ export const currentArtifactRef$ = computed<ArtifactRef | null>((get) => {
   return { source: "url", url: raw, kind, filename: attachment.filename };
 });
 
+export const currentPresentationEditorUrl$ = computed((get) => {
+  return get(searchParams$).get(PRESENTATION_EDITOR_QUERY_PARAM);
+});
+
 export const openArtifactSidebarPreview$ = command(
   ({ get, set }, url: string) => {
     const params = new URLSearchParams(get(searchParams$));
@@ -118,6 +123,25 @@ export const openArtifactSidebarPreview$ = command(
     set(updateSearchParams$, params);
   },
 );
+
+export const openPresentationEditor$ = command(({ get, set }, url: string) => {
+  const params = new URLSearchParams(get(searchParams$));
+  params.set(PRESENTATION_EDITOR_QUERY_PARAM, url);
+  params.set(ARTIFACT_FULLSCREEN_PARAM, "1");
+  params.delete(ARTIFACT_QUERY_PARAM);
+  params.delete(ARTIFACT_INBOX_QUERY_PARAM);
+  set(updateSearchParams$, params);
+});
+
+export const closePresentationEditor$ = command(({ get, set }) => {
+  const params = new URLSearchParams(get(searchParams$));
+  if (!params.has(PRESENTATION_EDITOR_QUERY_PARAM)) {
+    return;
+  }
+  params.delete(PRESENTATION_EDITOR_QUERY_PARAM);
+  params.delete(ARTIFACT_FULLSCREEN_PARAM);
+  set(replaceSearchParams$, params);
+});
 
 export const openArtifactInbox$ = command(({ get, set }, threadId: string) => {
   const params = new URLSearchParams(get(searchParams$));
@@ -177,6 +201,7 @@ export const closeArtifact$ = command(({ get, set }) => {
   params.delete(ARTIFACT_QUERY_PARAM);
   params.delete(ARTIFACT_INBOX_QUERY_PARAM);
   params.delete(ARTIFACT_FULLSCREEN_PARAM);
+  params.delete(PRESENTATION_EDITOR_QUERY_PARAM);
   set(replaceSearchParams$, params);
 });
 

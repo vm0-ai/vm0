@@ -71,7 +71,7 @@ function isDevArtifactFetchProxyTarget(url: URL): boolean {
   );
 }
 
-function readablePresentationResourceUrl(url: string): string {
+export function readablePresentationResourceUrl(url: string): string {
   if (!canUseDevArtifactFetchProxy() || !URL.canParse(url)) {
     return url;
   }
@@ -609,15 +609,28 @@ export async function downloadPresentationHtmlPptx(params: {
   }
   const html = await response.text();
   params.signal.throwIfAborted();
+  await downloadPresentationHtmlStringPptx({
+    baseUrl: htmlUrl,
+    filename: params.filename,
+    html,
+    signal: params.signal,
+  });
+}
 
+export async function downloadPresentationHtmlStringPptx(params: {
+  readonly baseUrl: string;
+  readonly filename: string;
+  readonly html: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
   const options = {
     fileName: pptxFilename(params.filename),
     svgAsVector: true,
     layout: "LAYOUT_WIDE",
   } satisfies DomToPptxOptions;
   const exportHtml = await htmlWithExportScript(
-    html,
-    htmlUrl,
+    params.html,
+    params.baseUrl,
     options,
     params.signal,
   );

@@ -77,6 +77,10 @@ const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
     pathname: "/api/zero/custom-connectors/:id/secret",
   },
   { methods: ["PUT"], pathname: "/api/zero/default-agent" },
+  {
+    methods: ["POST"],
+    pathname: "/api/zero/host/presentation-html/redeploy",
+  },
   { methods: ["GET"], pathname: "/api/zero/insights" },
   { methods: ["GET"], pathname: "/api/zero/insights/range" },
   { methods: ["GET", "DELETE"], pathname: "/api/zero/integrations/slack" },
