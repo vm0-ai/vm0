@@ -23,12 +23,14 @@ type TestOAuthGrantResult = ConnectorAuthProviderGrantResult<{
 type TestOAuthApiGrantResult = ConnectorAuthProviderGrantResult<{
   readonly initialAccessToken: string;
   readonly initialRefreshToken: string | null;
+  readonly tenantId: string;
 }>;
 
 interface TestOAuthApiRefreshResult {
   readonly outputs: {
     readonly refreshedAccessToken: string;
     readonly refreshedRefreshToken?: string;
+    readonly refreshedTenantId?: string;
   };
   readonly expiresIn?: number;
 }
@@ -99,6 +101,7 @@ async function exchangeTestOauthApiGrant(args: {
     outputs: {
       initialAccessToken: token.accessToken,
       initialRefreshToken: token.refreshToken,
+      tenantId: token.userInfo.id,
     },
     expiresIn: token.expiresIn,
     scopes: token.scopes,
@@ -192,6 +195,7 @@ function createTestOauthApiAccess(): RefreshTokenAccessProvider<
       const providerResult: TestOAuthApiRefreshResult = {
         outputs: {
           refreshedAccessToken: result.accessToken,
+          refreshedTenantId: refreshArgs.inputs.tenantId,
           ...(result.refreshToken
             ? { refreshedRefreshToken: result.refreshToken }
             : {}),

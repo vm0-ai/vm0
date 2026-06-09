@@ -402,6 +402,9 @@ export type ConnectorPlatformSecretName =
 
 export type ConnectorSecretValueRef = `$secrets.${string}`;
 export type ConnectorVariableValueRef = `$vars.${string}`;
+export type ConnectorOutputValueRef =
+  | ConnectorSecretValueRef
+  | ConnectorVariableValueRef;
 export type ConnectorRefreshTokenInputValueRef =
   | ConnectorSecretValueRef
   | ConnectorVariableValueRef;
@@ -415,7 +418,7 @@ export type ConnectorEnvBindings = Record<string, ConnectorEnvBindingValue>;
 
 export type ConnectorGrantOutputBindings = Record<
   string,
-  ConnectorSecretValueRef
+  ConnectorOutputValueRef
 >;
 export type ConnectorRevokeInputBindings = Record<
   string,
@@ -446,7 +449,7 @@ export type ConnectorRefreshTokenInputBindings = Record<
 >;
 export type ConnectorRefreshTokenOutputBindings = Record<
   string,
-  ConnectorSecretValueRef
+  ConnectorOutputValueRef
 >;
 
 export interface ConnectorRefreshTokenAccessConfig extends ConnectorEnvBindingAccessConfigBase {
@@ -701,8 +704,9 @@ type ConnectorRefreshInputValueRef<Storage> =
   | `$secrets.${ConnectorStorageSecretName<Storage>}`
   | `$vars.${ConnectorStorageVariableName<Storage>}`;
 
-type ConnectorRefreshOutputValueRef<Storage> =
-  `$secrets.${ConnectorStorageSecretName<Storage>}`;
+type ConnectorStorageOutputValueRef<Storage> =
+  | `$secrets.${ConnectorStorageSecretName<Storage>}`
+  | `$vars.${ConnectorStorageVariableName<Storage>}`;
 
 type ConnectorRevokeInputValueRef<Storage> =
   `$secrets.${ConnectorStorageSecretName<Storage>}`;
@@ -742,15 +746,15 @@ type ValidatedConnectorRefreshInputs<Inputs, Storage> = {
 };
 
 type ValidatedConnectorRefreshOutputs<Outputs, Storage> = {
-  readonly [OutputName in keyof Outputs]: Outputs[OutputName] extends ConnectorRefreshOutputValueRef<Storage>
+  readonly [OutputName in keyof Outputs]: Outputs[OutputName] extends ConnectorStorageOutputValueRef<Storage>
     ? Outputs[OutputName]
-    : ConnectorRefreshOutputValueRef<Storage>;
+    : ConnectorStorageOutputValueRef<Storage>;
 };
 
 type ValidatedConnectorGrantOutputs<Outputs, Storage> = {
-  readonly [OutputName in keyof Outputs]: Outputs[OutputName] extends ConnectorRefreshOutputValueRef<Storage>
+  readonly [OutputName in keyof Outputs]: Outputs[OutputName] extends ConnectorStorageOutputValueRef<Storage>
     ? Outputs[OutputName]
-    : ConnectorRefreshOutputValueRef<Storage>;
+    : ConnectorStorageOutputValueRef<Storage>;
 };
 
 type ValidatedConnectorRevokeInputs<Inputs, Storage> = {
@@ -776,8 +780,16 @@ type ConnectorRefreshableSecretName<
     ? Extract<SecretName, string>
     : never;
 
-type ConnectorRefreshOutputSecretNameFromRef<Ref> =
-  Ref extends `$secrets.${infer Name}` ? Name : never;
+type ConnectorRequiredRefreshOutputNameFromRef<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+  OutputName,
+  Ref,
+> = Ref extends `$secrets.${infer Name}`
+  ? Name extends ConnectorRefreshableSecretName<Type, Method>
+    ? OutputName
+    : never
+  : never;
 
 type ConnectorRequiredRefreshOutputName<
   Type extends ConnectorType,
@@ -786,11 +798,12 @@ type ConnectorRequiredRefreshOutputName<
   readonly [OutputName in keyof ConnectorRefreshOutputsFor<
     Type,
     Method
-  >]: ConnectorRefreshOutputSecretNameFromRef<
+  >]: ConnectorRequiredRefreshOutputNameFromRef<
+    Type,
+    Method,
+    OutputName,
     ConnectorRefreshOutputsFor<Type, Method>[OutputName]
-  > extends ConnectorRefreshableSecretName<Type, Method>
-    ? OutputName
-    : never;
+  >;
 }[keyof ConnectorRefreshOutputsFor<Type, Method>];
 
 type ValidatedConnectorRefreshableSecrets<Secrets, Outputs> =

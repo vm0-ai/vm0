@@ -4,7 +4,7 @@ import {
   connectorAuthClientIdentity,
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodAccessMetadata,
-  getConnectorRefreshOutputSecretName,
+  getConnectorRefreshOutputTarget,
   resolveConnectorAuthClientForMethod,
   type StaticConfidentialConnectorAuthClient,
 } from "../../../connector-utils";
@@ -80,8 +80,11 @@ describe("connector/providers/google-ads", () => {
       );
 
       expect(
-        getConnectorRefreshOutputSecretName(accessMetadata, "accessToken"),
-      ).toBe("GOOGLE_ADS_ACCESS_TOKEN");
+        getConnectorRefreshOutputTarget(accessMetadata, "accessToken"),
+      ).toStrictEqual({
+        kind: "connector-secret",
+        name: "GOOGLE_ADS_ACCESS_TOKEN",
+      });
     });
 
     it("declares GOOGLE_ADS_REFRESH_TOKEN as the refresh token input and output", () => {
@@ -98,8 +101,11 @@ describe("connector/providers/google-ads", () => {
         },
       });
       expect(
-        getConnectorRefreshOutputSecretName(accessMetadata, "refreshToken"),
-      ).toBe("GOOGLE_ADS_REFRESH_TOKEN");
+        getConnectorRefreshOutputTarget(accessMetadata, "refreshToken"),
+      ).toStrictEqual({
+        kind: "connector-secret",
+        name: "GOOGLE_ADS_REFRESH_TOKEN",
+      });
     });
 
     it("refreshToken is defined (uses shared Google token refresh)", () => {

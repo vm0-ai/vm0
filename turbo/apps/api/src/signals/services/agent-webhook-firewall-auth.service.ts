@@ -21,6 +21,7 @@ import {
   type ConnectorRefreshTokenInputMetadata,
   type ConnectorAuthMethodRuntimeMetadata,
   type ConnectorAuthClientForMethod,
+  type ConnectorOutputTarget,
 } from "@vm0/connectors/connector-utils";
 import {
   type ConnectorAuthClientConfigForMethod,
@@ -329,7 +330,7 @@ type RefreshInputSource =
 
 interface RefreshTokenContext {
   readonly inputSources: Readonly<Record<string, RefreshInputSource>>;
-  readonly outputSecrets: Readonly<Record<string, string>>;
+  readonly outputTargets: Readonly<Record<string, RefreshOutputTarget>>;
   readonly runtimeOutputSecrets: Readonly<Record<string, string>>;
   readonly secretUserId: string;
 }
@@ -351,9 +352,19 @@ interface RefreshStateRow {
 }
 
 interface ValidatedRefreshOutput {
-  readonly secretName: string;
+  readonly target: RefreshOutputTarget;
   readonly value: string;
 }
+
+type RefreshOutputTarget =
+  | {
+      readonly kind: "secret";
+      readonly name: string;
+    }
+  | {
+      readonly kind: "connector-variable";
+      readonly name: string;
+    };
 
 type PreparedRefreshTokenContext =
   | ConnectorPreparedRefreshTokenContext
@@ -847,6 +858,40 @@ async function upsertSecretValue(
     });
 }
 
+async function upsertConnectorVariableValue(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly name: string;
+    readonly value: string;
+  },
+): Promise<void> {
+  await db
+    .insert(variablesTable)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      name: args.name,
+      value: args.value,
+      description: null,
+      type: "connector",
+    })
+    .onConflictDoUpdate({
+      target: [
+        variablesTable.orgId,
+        variablesTable.userId,
+        variablesTable.type,
+        variablesTable.name,
+      ],
+      set: {
+        value: args.value,
+        description: null,
+        updatedAt: nowDate(),
+      },
+    });
+}
+
 function modelProviderRuntimeSecretName(args: {
   readonly key: string;
   readonly connectorType: string;
@@ -1072,15 +1117,36 @@ function connectorRefreshInputSources(
   );
 }
 
-function connectorRefreshOutputSecrets(
+function connectorRefreshOutputTargets(
   accessMetadata: Extract<
     ConnectorAuthMethodAccessMetadata,
     { readonly kind: "refresh-token" }
   >,
-): Record<string, string> {
+): Record<string, RefreshOutputTarget> {
   return Object.fromEntries(
     Object.entries(accessMetadata.outputs).map(([outputName, metadata]) => {
-      return [outputName, metadata.secretName];
+      return [
+        outputName,
+        refreshOutputTargetFromConnectorTarget(metadata.target),
+      ];
+    }),
+  );
+}
+
+function refreshOutputTargetFromConnectorTarget(
+  target: ConnectorOutputTarget,
+): RefreshOutputTarget {
+  return target.kind === "connector-secret"
+    ? { kind: "secret", name: target.name }
+    : target;
+}
+
+function modelProviderRefreshOutputTargets(
+  outputs: Readonly<Record<string, string>>,
+): Record<string, RefreshOutputTarget> {
+  return Object.fromEntries(
+    Object.entries(outputs).map(([outputName, secretName]) => {
+      return [outputName, { kind: "secret" as const, name: secretName }];
     }),
   );
 }
@@ -1286,7 +1352,7 @@ function prepareRefreshTokenContext(
           return [inputName, { kind: "secret" as const, name: secretName }];
         }),
       ),
-      outputSecrets: secretMetadata.outputs,
+      outputTargets: modelProviderRefreshOutputTargets(secretMetadata.outputs),
       runtimeOutputSecrets,
       secretUserId: resolveSecretUserId(
         args.sourceType,
@@ -1334,7 +1400,7 @@ function prepareRefreshTokenContext(
 
   const context: RefreshTokenContext = {
     inputSources: connectorRefreshInputSources(accessMetadata),
-    outputSecrets: connectorRefreshOutputSecrets(accessMetadata),
+    outputTargets: connectorRefreshOutputTargets(accessMetadata),
     runtimeOutputSecrets,
     secretUserId: resolveSecretUserId(
       args.sourceType,
@@ -1736,16 +1802,35 @@ async function markRefreshSuccess(
   expiresIn: number | undefined,
 ): Promise<Record<string, string>> {
   const returnedSecretValues = new Map<string, string>();
-  for (const { secretName, value } of outputs) {
-    await upsertSecretValue(args.db, {
-      orgId: args.orgId,
-      userId: context.secretUserId,
-      name: secretName,
-      value,
-      type: args.sourceType,
-      featureSwitchContext: args.featureSwitchContext,
-    });
-    returnedSecretValues.set(secretName, value);
+  for (const { target, value } of outputs) {
+    switch (target.kind) {
+      case "secret": {
+        await upsertSecretValue(args.db, {
+          orgId: args.orgId,
+          userId: context.secretUserId,
+          name: target.name,
+          value,
+          type: args.sourceType,
+          featureSwitchContext: args.featureSwitchContext,
+        });
+        returnedSecretValues.set(target.name, value);
+        break;
+      }
+      case "connector-variable": {
+        if (args.sourceType !== "connector") {
+          throw new Error(
+            "Model provider refresh cannot write connector variables",
+          );
+        }
+        await upsertConnectorVariableValue(args.db, {
+          orgId: args.orgId,
+          userId: context.secretUserId,
+          name: target.name,
+          value,
+        });
+        break;
+      }
+    }
   }
 
   const expiresAt = new Date(
@@ -2004,15 +2089,17 @@ function validateRefreshResultOutputs(args: {
     if (value === undefined) {
       continue;
     }
-    const secretName = args.context.outputSecrets[outputName];
-    if (!secretName) {
+    const target = args.context.outputTargets[outputName];
+    if (!target) {
       return {
         ok: false,
         message: `${args.connectorType} token refresh returned undeclared output ${outputName}`,
       };
     }
-    returnedSecretValues.add(secretName);
-    outputs.push({ secretName, value });
+    if (target.kind === "secret") {
+      returnedSecretValues.add(target.name);
+    }
+    outputs.push({ target, value });
   }
 
   for (const secretName of requiredRuntimeOutputSecretNames(args.context)) {

@@ -39,6 +39,7 @@ import {
   type ConnectorRevokeInputBindings,
   type ConnectorRevokeKind,
   type ConnectorSecretValueRef,
+  type ConnectorOutputValueRef,
   type ConnectorVariableValueRef,
   type ConnectorEnvBindingValue,
   type ConnectorType,
@@ -321,7 +322,7 @@ export interface ConnectorRefreshTokenInputMetadata {
 
 export interface ConnectorRefreshTokenOutputMetadata {
   readonly valueRef: string;
-  readonly secretName: string;
+  readonly target: ConnectorOutputTarget;
 }
 
 export interface ConnectorRefreshTokenMetadata {
@@ -334,7 +335,7 @@ export interface ConnectorRefreshTokenMetadata {
 
 export interface ConnectorGrantOutputMetadata {
   readonly valueRef: string;
-  readonly secretName: string;
+  readonly target: ConnectorOutputTarget;
 }
 
 export type ConnectorAuthMethodGrantMetadata =
@@ -376,6 +377,16 @@ export type ConnectorRuntimeBindingSource =
       readonly name: ConnectorPlatformSecretName;
     };
 
+export type ConnectorOutputTarget =
+  | {
+      readonly kind: "connector-secret";
+      readonly name: string;
+    }
+  | {
+      readonly kind: "connector-variable";
+      readonly name: string;
+    };
+
 export interface ConnectorRuntimeBindingEntry {
   readonly envName: string;
   readonly valueRef: string;
@@ -392,7 +403,7 @@ export interface ConnectorAuthMethodRuntimeMetadata {
 }
 
 function isConnectorSecretValueRef(
-  valueRef: ConnectorRefreshTokenInputValueRef,
+  valueRef: ConnectorOutputValueRef,
 ): valueRef is ConnectorSecretValueRef {
   return valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX);
 }
@@ -430,15 +441,34 @@ function connectorRefreshInputMetadata(
 }
 
 function connectorRefreshOutputMetadata(
-  valueRef: ConnectorSecretValueRef,
+  valueRef: ConnectorOutputValueRef,
 ): ConnectorRefreshTokenOutputMetadata {
-  return { valueRef, secretName: connectorSecretNameFromValueRef(valueRef) };
+  return {
+    valueRef,
+    target: connectorOutputTargetFromValueRef(valueRef),
+  };
 }
 
 function connectorGrantOutputMetadata(
-  valueRef: ConnectorSecretValueRef,
+  valueRef: ConnectorOutputValueRef,
 ): ConnectorGrantOutputMetadata {
   return connectorRefreshOutputMetadata(valueRef);
+}
+
+function connectorOutputTargetFromValueRef(
+  valueRef: ConnectorOutputValueRef,
+): ConnectorOutputTarget {
+  if (isConnectorSecretValueRef(valueRef)) {
+    return {
+      kind: "connector-secret",
+      name: connectorSecretNameFromValueRef(valueRef),
+    };
+  }
+
+  return {
+    kind: "connector-variable",
+    name: connectorVariableNameFromValueRef(valueRef),
+  };
 }
 
 function connectorRevokeInputMetadata(
@@ -544,11 +574,11 @@ export function getConnectorAuthMethodGrantMetadata(
   }
 }
 
-export function getConnectorGrantOutputSecretName(
+export function getConnectorGrantOutputTarget(
   metadata: ConnectorAuthMethodGrantMetadata,
   outputName: string,
-): string | undefined {
-  return metadata.outputs[outputName]?.secretName;
+): ConnectorOutputTarget | undefined {
+  return metadata.outputs[outputName]?.target;
 }
 
 function connectorRevokeInputMetadataMap(
@@ -584,12 +614,12 @@ export function getConnectorAuthMethodRevokeMetadata(
   }
 }
 
-export function getConnectorRefreshOutputSecretName(
+export function getConnectorRefreshOutputTarget(
   metadata: ConnectorAuthMethodAccessMetadata,
   outputName: string,
-): string | undefined {
+): ConnectorOutputTarget | undefined {
   return metadata.kind === "refresh-token"
-    ? metadata.outputs[outputName]?.secretName
+    ? metadata.outputs[outputName]?.target
     : undefined;
 }
 
