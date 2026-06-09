@@ -21,6 +21,8 @@ _AUTH_PARAM_RE = re.compile(r"([A-Za-z]+)=([^,]+)")
 _SCOPE_DATE_RE = re.compile(r"^\d{8}$")
 _SCOPE_REGION_RE = re.compile(r"^(?:[A-Za-z0-9._-]+|\*)$")
 _SCOPE_SERVICE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_AMZ_DATE_RE = re.compile(r"^\d{8}T\d{6}Z$")
+_PRESIGN_EXPIRES_RE = re.compile(r"^[1-9]\d*$")
 _ACCESS_KEY_ID_RE = re.compile(r"^[A-Za-z0-9]+$")
 _ASCII_CONTROL_MAX = 0x1F
 _ASCII_DELETE = 0x7F
@@ -131,6 +133,7 @@ def _classify_header_request(
     amz_date = _first_header(headers, "x-amz-date")
     if not amz_date:
         raise AwsSigV4SigningError("AWS SigV4 header auth requires x-amz-date")
+    _validate_amz_date(amz_date, scope)
     return _SigningContext(
         location=_AuthLocation.HEADER,
         algorithm=algorithm,
@@ -152,6 +155,9 @@ def _classify_query_request(
     if not credential or not signed_headers or not amz_date or not expires or not signature:
         raise AwsSigV4SigningError("Malformed AWS presigned query")
     scope = _parse_credential_scope(credential)
+    _validate_amz_date(amz_date, scope)
+    if not _PRESIGN_EXPIRES_RE.fullmatch(expires):
+        raise AwsSigV4SigningError("Malformed AWS presigned query expiry")
     return _SigningContext(
         location=_AuthLocation.QUERY,
         algorithm=algorithm,
@@ -195,6 +201,13 @@ def _parse_signed_headers(value: str) -> frozenset[str]:
     if "host" not in headers:
         raise AwsSigV4SigningError("AWS signed headers must include host")
     return headers
+
+
+def _validate_amz_date(amz_date: str, scope: _CredentialScope) -> None:
+    if not _AMZ_DATE_RE.fullmatch(amz_date):
+        raise AwsSigV4SigningError("Malformed AWS signing date")
+    if not amz_date.startswith(scope.date):
+        raise AwsSigV4SigningError("AWS signing date does not match credential scope")
 
 
 def _sign_header_request(
