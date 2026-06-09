@@ -177,6 +177,42 @@ async def test_sigv4a_request_fails_closed(real_flow, headers, tmp_path, mitm_ct
     assert "SigV4A is not supported" in flow.response.json()["message"]
 
 
+async def test_header_sigv4_without_signature_fails_closed(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    endpoint = FakeAuthEndpoint()
+    endpoint.queue_json_response(_auth_response())
+    flow = real_flow(
+        with_response=False,
+        host="sts.amazonaws.com",
+        path="/",
+        method="POST",
+        request_headers=headers(
+            ("Host", "sts.amazonaws.com"),
+            ("X-Amz-Date", "20260101T000000Z"),
+            (
+                "Authorization",
+                "AWS4-HMAC-SHA256 "
+                "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
+                "SignedHeaders=host;x-amz-date",
+            ),
+        ),
+    )
+    flow.metadata["vm_run_id"] = "run-1"
+
+    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+
+    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
+    assert "Malformed AWS authorization header" in flow.response.json()["message"]
+
+
 async def test_header_sigv4_without_amz_date_fails_closed(
     real_flow,
     headers,
@@ -211,3 +247,35 @@ async def test_header_sigv4_without_amz_date_fails_closed(
     assert flow.response.status_code == 502
     assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
     assert "requires x-amz-date" in flow.response.json()["message"]
+
+
+async def test_query_sigv4_without_signature_fails_closed(real_flow, tmp_path, mitm_ctx):
+    endpoint = FakeAuthEndpoint()
+    endpoint.queue_json_response(_auth_response())
+    placeholder_credential = urllib.parse.quote(
+        "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
+        safe="",
+    )
+    flow = real_flow(
+        with_response=False,
+        host="sts.amazonaws.com",
+        path=(
+            "/?Action=GetCallerIdentity&Version=2011-06-15"
+            "&X-Amz-Algorithm=AWS4-HMAC-SHA256"
+            f"&X-Amz-Credential={placeholder_credential}"
+            "&X-Amz-Date=20260101T000000Z"
+            "&X-Amz-Expires=60"
+            "&X-Amz-SignedHeaders=host"
+        ),
+        method="GET",
+    )
+    flow.metadata["vm_run_id"] = "run-1"
+
+    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+
+    assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
+    assert "Malformed AWS presigned query" in flow.response.json()["message"]

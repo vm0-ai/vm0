@@ -122,7 +122,8 @@ def _classify_header_request(
     algorithm, params = _parse_authorization_header(auth_header)
     credential = params.get("Credential")
     signed_headers = params.get("SignedHeaders")
-    if not credential or not signed_headers:
+    signature = params.get("Signature")
+    if not credential or not signed_headers or not signature:
         raise AwsSigV4SigningError("Malformed AWS authorization header")
     scope = _parse_credential_scope(credential, credentials)
     amz_date = _first_header(headers, "x-amz-date")
@@ -146,7 +147,8 @@ def _classify_query_request(
     signed_headers = _first_query_value(query_pairs, "X-Amz-SignedHeaders")
     amz_date = _first_query_value(query_pairs, "X-Amz-Date")
     expires = _first_query_value(query_pairs, "X-Amz-Expires")
-    if not credential or not signed_headers or not amz_date or not expires:
+    signature = _first_query_value(query_pairs, "X-Amz-Signature")
+    if not credential or not signed_headers or not amz_date or not expires or not signature:
         raise AwsSigV4SigningError("Malformed AWS presigned query")
     scope = _parse_credential_scope(credential, credentials)
     return _SigningContext(
