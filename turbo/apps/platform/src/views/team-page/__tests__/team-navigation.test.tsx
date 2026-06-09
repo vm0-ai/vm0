@@ -13,6 +13,7 @@ import {
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
 
@@ -250,6 +251,15 @@ describe("team page navigation", () => {
     click(screen.getByLabelText("Authorize Acme Search for this agent"));
     await waitFor(() => {
       expect(screen.getByText("Custom connectors saved")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Authorize Acme Search for this agent"),
+      ).toBeChecked();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Custom connectors saved"),
+      ).not.toBeInTheDocument();
     });
 
     click(tabByText("Scheduled"));
