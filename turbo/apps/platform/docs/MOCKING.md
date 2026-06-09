@@ -6,15 +6,12 @@ This app uses [Mock Service Worker (MSW)](https://mswjs.io/) for API mocking in 
 
 MSW intercepts HTTP requests at the network level, providing realistic API mocking without changing application code. This enables:
 
-- **Testing**: Mock API responses in unit and integration tests
-- **Development**: Work offline or with unstable backend services
-- **Prototyping**: Build features before APIs are ready
+- **Testing**: Mock API responses in integration tests
 
 ## Directory Structure
 
 ```
 src/mocks/
-├── browser.ts          # Browser (Service Worker) setup for Btest/development
 ├── server.ts           # Node.js server setup for testing
 └── handlers/
     ├── index.ts        # Aggregates all handlers
@@ -24,7 +21,6 @@ src/mocks/
 ## Usage in Tests
 
 MSW is automatically configured in `src/test/setup.ts`. All tests have access to mocked APIs without additional setup.
-Vitest Browser Tests use `src/test/browser-setup.ts` and the same handlers via `src/mocks/browser.ts`.
 
 ### Using Default Handlers
 
@@ -66,37 +62,6 @@ describe("Error handling", () => {
 
     expect(response.status).toBe(500);
   });
-});
-```
-
-## Usage in Development (Optional)
-
-To enable API mocking in the browser during development:
-
-### 1. Generate Service Worker
-
-Run this once to create the service worker file:
-
-```bash
-npx msw init ./public --save
-```
-
-### 2. Start the Worker
-
-Update `src/main.ts` to conditionally start MSW in development:
-
-```typescript
-async function enableMocking() {
-  if (import.meta.env.DEV) {
-    const { worker } = await import("./mocks/browser.ts");
-    return worker.start({
-      onUnhandledRequest: "error",
-    });
-  }
-}
-
-enableMocking().then(() => {
-  // Your app initialization code
 });
 ```
 

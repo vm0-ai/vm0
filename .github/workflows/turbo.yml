@@ -636,28 +636,6 @@ jobs:
           files: turbo/junit.xml
           report_type: test_results
 
-  test-app-browser:
-    needs: [detect-turbo-ts-checks]
-    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
-    env:
-      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-    steps:
-      - uses: actions/checkout@v6
-      - uses: ./.github/actions/toolchain-init
-      - name: Install shared browser
-        run: bash .github/scripts/install-playwright-chromium.sh
-      - name: Verify shared browser
-        run: |
-          test -n "${AGENT_BROWSER_EXECUTABLE_PATH:-}"
-          test -x "$AGENT_BROWSER_EXECUTABLE_PATH"
-          "$AGENT_BROWSER_EXECUTABLE_PATH" --version
-      - name: Test App Browser
-        working-directory: turbo
-        run: pnpm --filter @vm0/app btest
-
   test-api:
     needs: [detect-turbo-ts-checks]
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'

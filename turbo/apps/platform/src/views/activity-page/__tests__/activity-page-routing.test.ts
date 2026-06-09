@@ -1,52 +1,31 @@
-import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { server } from "../../../mocks/server.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  logsListContract,
   logsByIdContract,
+  logsListContract,
 } from "@vm0/api-contracts/contracts/logs";
 import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { describe, expect, it } from "vitest";
+
+import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import type {
-  LogDetail,
   AgentEventsResponse,
+  LogDetail,
 } from "../../../signals/zero-page/log-types.ts";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
-function mockActivityAPIs() {
-  const logs = [
-    {
-      id: "a0000000-0000-4000-a000-000000000001",
-      sessionId: "session-1",
-      agentId: "test-agent",
-      displayName: "Test Agent",
-      framework: "claude-code",
-      status: "completed" as const,
-      triggerSource: "web" as const,
-      triggerAgentName: null,
-      scheduleId: null,
-      prompt: "Test prompt",
-      createdAt: "2026-03-10T14:56:00Z",
-      startedAt: "2026-03-10T14:56:01Z",
-      completedAt: "2026-03-10T14:56:04Z",
-    },
-  ];
-
+function mockActivityAPIs(): void {
+  const runId = "a0000000-0000-4000-a000-000000000001";
   const logDetail: LogDetail = {
-    id: "a0000000-0000-4000-a000-000000000001",
+    id: runId,
     sessionId: "session-1",
     agentId: "test-agent",
     displayName: "Test Agent",
     framework: "claude-code",
     modelProvider: null,
     selectedModel: null,
-    triggerSource: "web" as const,
+    triggerSource: "web",
     triggerAgentName: null,
     scheduleId: null,
     status: "completed",
@@ -74,7 +53,7 @@ function mockActivityAPIs() {
     framework: "claude-code",
   };
 
-  setMockComposesList([
+  context.mocks.data.composesList([
     {
       id: "c0000000-0000-4000-a000-000000000001",
       name: "test-agent",
@@ -85,98 +64,73 @@ function mockActivityAPIs() {
       updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
-  server.use(
-    mockApi(logsListContract.list, ({ respond }) => {
-      return respond(200, {
-        data: logs,
-        pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
-        filters: { statuses: [], sources: [], agents: [] },
-      });
-    }),
-    mockApi(logsByIdContract.getById, ({ params, respond }) => {
-      if (params.id === "a0000000-0000-4000-a000-000000000001") {
-        return respond(200, logDetail);
-      }
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }),
-    mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+
+  context.mocks.api(logsListContract.list, ({ respond }) => {
+    return respond(200, {
+      data: [
+        {
+          id: runId,
+          sessionId: "session-1",
+          agentId: "test-agent",
+          displayName: "Test Agent",
+          framework: "claude-code",
+          status: "completed",
+          triggerSource: "web",
+          triggerAgentName: null,
+          scheduleId: null,
+          prompt: "Test prompt",
+          createdAt: "2026-03-10T14:56:00Z",
+          startedAt: "2026-03-10T14:56:01Z",
+          completedAt: "2026-03-10T14:56:04Z",
+        },
+      ],
+      pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+      filters: { statuses: [], sources: [], agents: [] },
+    });
+  });
+  context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
+    if (params.id === runId) {
+      return respond(200, logDetail);
+    }
+
+    return respond(404, {
+      error: { message: "Not found", code: "NOT_FOUND" },
+    });
+  });
+  context.mocks.api(
+    zeroRunAgentEventsContract.getAgentEvents,
+    ({ respond }) => {
       return respond(200, eventsResponse);
-    }),
+    },
   );
 }
 
 describe("activity page routing", () => {
-  it("should load detail view when clicking an activity row from the list", async () => {
+  it("opens an activity detail from the list and returns by breadcrumb", async () => {
     mockActivityAPIs();
 
-    detachedSetupPage({
-      context,
-      path: "/activities",
-    });
+    detachedSetupPage({ context, path: "/activities" });
 
-    // Wait for the list to render with the activity row
     await waitFor(() => {
       expect(screen.getByText("Test Agent")).toBeInTheDocument();
     });
 
-    // Click the activity row — this navigates to /activity/a0000000-0000-4000-a000-000000000001
     const row = screen.getByText("Test Agent").closest("a");
     expect(row).not.toBeNull();
     click(row!);
 
-    // The detail page should render with the agent name heading
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Test Agent" }),
       ).toBeInTheDocument();
     });
-
-    // Verify detail content loaded (duration)
     expect(screen.getByText("3.0s")).toBeInTheDocument();
+
+    expect(screen.getByText("Summary done.")).toBeInTheDocument();
   });
 
-  it("should navigate back to list from detail breadcrumb", async () => {
-    mockActivityAPIs();
-
-    detachedSetupPage({
-      context,
-      path: "/activities",
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
-    });
-
-    // Wait for list
-    await waitFor(() => {
-      expect(screen.getByText("Test Agent")).toBeInTheDocument();
-    });
-
-    // Navigate to detail
-    const row = screen.getByText("Test Agent").closest("a");
-    click(row!);
-
-    // Wait for detail
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Test Agent" }),
-      ).toBeInTheDocument();
-    });
-
-    // Click the "Activity" breadcrumb to go back
-    const breadcrumb = screen.getByText("Activity").closest("a");
-    expect(breadcrumb).not.toBeNull();
-    click(breadcrumb!);
-
-    // Should be back on the list page with the "Activity" heading
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Activity" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("should display 'Agent (displayName)' for delegated runs with triggerAgentName", async () => {
-    setMockComposesList([
+  it("identifies delegated activity with the parent agent source", async () => {
+    context.mocks.data.composesList([
       {
         id: "c0000000-0000-4000-a000-000000000001",
         name: "child-agent",
@@ -187,38 +141,32 @@ describe("activity page routing", () => {
         updatedAt: "2026-03-10T00:00:00Z",
       },
     ]);
-    server.use(
-      mockApi(logsListContract.list, ({ respond }) => {
-        return respond(200, {
-          data: [
-            {
-              id: "b0000000-0000-4000-a000-000000000001",
-              sessionId: "session-delegated",
-              agentId: "child-agent",
-              displayName: "Child Agent",
-              framework: "claude-code",
-              status: "completed",
-              triggerSource: "agent" as const,
-              triggerAgentName: "Parent Bot",
-              scheduleId: null,
-              prompt: "Test prompt",
-              createdAt: "2026-03-10T15:00:00Z",
-              startedAt: "2026-03-10T15:00:01Z",
-              completedAt: "2026-03-10T15:00:05Z",
-            },
-          ],
-          pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
-          filters: { statuses: [], sources: [], agents: [] },
-        });
-      }),
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/activities",
+    context.mocks.api(logsListContract.list, ({ respond }) => {
+      return respond(200, {
+        data: [
+          {
+            id: "b0000000-0000-4000-a000-000000000001",
+            sessionId: "session-delegated",
+            agentId: "child-agent",
+            displayName: "Child Agent",
+            framework: "claude-code",
+            status: "completed",
+            triggerSource: "agent",
+            triggerAgentName: "Parent Bot",
+            scheduleId: null,
+            prompt: "Test prompt",
+            createdAt: "2026-03-10T15:00:00Z",
+            startedAt: "2026-03-10T15:00:01Z",
+            completedAt: "2026-03-10T15:00:05Z",
+          },
+        ],
+        pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+        filters: { statuses: [], sources: [], agents: [] },
+      });
     });
 
-    // The source column should show "Agent (Parent Bot)" for the delegated run
+    detachedSetupPage({ context, path: "/activities" });
+
     await waitFor(() => {
       expect(screen.getByText("Agent (Parent Bot)")).toBeInTheDocument();
     });

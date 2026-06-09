@@ -1187,7 +1187,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
   },
 );
 
-export const connectConnectorOAuthDeviceAuth$ = command(
+const connectConnectorOAuthDeviceAuth$ = command(
   async (
     { get, set },
     args: ConnectConnectorOAuthDeviceAuthParams,

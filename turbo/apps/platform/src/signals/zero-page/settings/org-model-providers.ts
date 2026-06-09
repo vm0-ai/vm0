@@ -9,7 +9,6 @@ import {
   hasAuthMethods,
   hasModelSelection,
   type ModelProviderType,
-  type ModelProviderResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   createOrgModelProvider$,
@@ -160,24 +159,6 @@ export const orgOpenAddDialog$ = command(
       open: true,
       mode: "add",
       providerType,
-    });
-  },
-);
-
-export const orgOpenEditDialog$ = command(
-  ({ set }, provider: ModelProviderResponse) => {
-    set(internalOrgFormValues$, {
-      secret: "",
-      selectedModel: provider.selectedModel ?? "",
-      authMethod: provider.authMethod ?? "",
-      secrets: {},
-      useDefaultModel: !provider.selectedModel,
-    });
-    set(internalOrgFormErrors$, {});
-    set(internalOrgDialogState$, {
-      open: true,
-      mode: "edit",
-      providerType: provider.type,
     });
   },
 );

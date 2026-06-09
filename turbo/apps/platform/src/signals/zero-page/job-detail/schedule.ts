@@ -157,7 +157,7 @@ export const agentScheduleEntries$ = computed(
 // Schedule CRUD
 // ---------------------------------------------------------------------------
 
-export interface AgentScheduleSaveParams {
+interface AgentScheduleSaveParams {
   prompt: string;
   description?: string;
   freq: string;

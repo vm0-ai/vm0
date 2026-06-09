@@ -2,33 +2,38 @@
 
 This document describes the testing patterns for `turbo/apps/platform`.
 
-## Test Categories
+## Test Category
 
-App has three main types of tests:
+App Vitest tests are page-level tests only:
 
-| Type          | Location   | Suffix                     | Purpose                                                                 |
-| ------------- | ---------- | -------------------------- | ----------------------------------------------------------------------- |
-| UI Tests      | `views/`   | `.test.tsx`                | Test user interactions and UI state                                     |
-| State Tests   | `signals/` | `.test.ts`                 | Test state management logic                                             |
-| Browser Tests | `src/`     | `.btest.tsx` / `.btest.ts` | Test browser layout, rendering, scroll, and observer behavior in Chrome |
+| Type       | Location | Suffix                 | Purpose                             |
+| ---------- | -------- | ---------------------- | ----------------------------------- |
+| Page Tests | `views/` | `.test.tsx`/`.test.ts` | Test user interactions and UI state |
 
-## UI Tests
+Do not add signal, parser, helper, static config, or component-only unit tests
+under `turbo/apps/platform`. Cover behavior through a rendered page. If behavior
+has no user-visible page surface, do not add a platform Vitest test for it.
 
-UI tests are placed in `views/` directories with `.test.tsx` suffix.
+## Page Tests
+
+Page tests are placed in `views/` directories with `.test.tsx` or `.test.ts`
+suffix. They must enter through `detachedSetupPage` and assert on page-visible
+behavior. Configure test-specific mocks through `context.mocks` before setup so
+mock handlers and browser mocks share the same test lifecycle signal.
 
 ```typescript
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers";
-import { setupPage } from "../../../__tests__/helper";
+import { detachedSetupPage } from "../../../__tests__/page-helper";
 
 const context = testContext();
 const user = userEvent.setup();
 
 describe("ComponentName", () => {
   it("should do something when user clicks button", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/page-path",
     });
@@ -40,58 +45,16 @@ describe("ComponentName", () => {
     await user.click(button);
 
     // Verify UI state after interaction
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(screen.getByText("Success")).toBeInTheDocument();
     });
   });
 });
 ```
 
-## State Tests
-
-State tests are placed in `signals/` directories with `.test.ts` suffix.
-
-```typescript
-import { describe, expect, it } from "vitest";
-import { testContext } from "../test-helpers";
-import { setupPage } from "../../../__tests__/helper";
-import { someCommand$, someComputed$ } from "../some-signal";
-
-const context = testContext();
-
-describe("someSignal", () => {
-  it("should update state when command is called", async () => {
-    const { store, signal } = context;
-
-    await setupPage({
-      context,
-      path: "/",
-    });
-
-    // Call command
-    await store.set(someCommand$, { arg: "value" }, signal);
-
-    // Verify state
-    expect(store.get(someComputed$)).toBe("expected-value");
-  });
-});
-```
-
-## Browser Tests (Btest)
-
-Use Btest only when the behavior depends on real browser layout or render
-timing, such as scroll anchoring, `ResizeObserver`, or rerender-driven
-measurements. These tests run in Chromium through Vitest Browser Mode and are
-kept out of the normal happy-dom suite.
-
-```bash
-pnpm --filter @vm0/app btest
-```
-
-Browser tests use the `.btest.ts` or `.btest.tsx` suffix and share the same
-mock handlers and Clerk mocks as regular platform tests. They should still test
-behavior through user-visible DOM state or platform helpers; do not use them for
-logic that happy-dom can cover reliably.
+Setup helpers always render the page. Page setup may start long polling flows,
+so tests should call `detachedSetupPage` without awaiting it and then wait for
+the rendered page state that matters to the story.
 
 ## Mock Infrastructure
 
@@ -231,33 +194,30 @@ Default handlers in `mocks/handlers/` provide working responses for most tests. 
 
 ### Overriding API Behavior in Tests
 
-Use `server.use()` to override handlers for specific test scenarios:
+Use `context.mocks.api()` or `context.mocks.http()` to override handlers for
+specific test scenarios. Do not import MSW or call `server.use()` from page
+tests directly.
 
 ```typescript
-import { server } from "../../../mocks/server";
-import { http, HttpResponse } from "msw";
+import { HttpResponse } from "msw";
+import { apiContract } from "@vm0/api-contract";
 
 it("should show error when API returns 404", async () => {
-  // Override the default handler for this test only
-  server.use(
-    http.get("/api/org", () => {
-      return new HttpResponse(null, { status: 404 });
-    }),
-  );
+  context.mocks.api(apiContract.org.getOrg, () => {
+    return new HttpResponse(null, { status: 404 });
+  });
 
-  await setupPage({ context, path: "/" });
+  detachedSetupPage({ context, path: "/" });
 
   expect(screen.getByText("Not found")).toBeInTheDocument();
 });
 
 it("should handle empty list", async () => {
-  server.use(
-    http.get("/api/items", () => {
-      return HttpResponse.json({ items: [] });
-    }),
-  );
+  context.mocks.http.get("/api/items", () => {
+    return HttpResponse.json({ items: [] });
+  });
 
-  await setupPage({ context, path: "/items" });
+  detachedSetupPage({ context, path: "/items" });
 
   expect(screen.getByText("No items found")).toBeInTheDocument();
 });
@@ -271,19 +231,17 @@ Capture request data to verify what was sent:
 it("should send correct data when saving", async () => {
   let capturedBody: unknown = null;
 
-  server.use(
-    http.put("/api/items", async ({ request }) => {
-      capturedBody = await request.json();
-      return HttpResponse.json({ id: "1" }, { status: 200 });
-    }),
-  );
+  context.mocks.http.put("/api/items", async ({ request }) => {
+    capturedBody = await request.json();
+    return HttpResponse.json({ id: "1" }, { status: 200 });
+  });
 
-  await setupPage({ context, path: "/" });
+  detachedSetupPage({ context, path: "/" });
 
   await user.type(screen.getByRole("textbox"), "New Item");
   await user.click(screen.getByRole("button", { name: "Save" }));
 
-  await vi.waitFor(() => {
+  await waitFor(() => {
     expect(capturedBody).toEqual({ name: "New Item" });
   });
 });
@@ -295,19 +253,17 @@ Override multiple endpoints when testing complex flows:
 
 ```typescript
 it("should complete onboarding flow", async () => {
-  server.use(
-    http.get("/api/org", () => {
-      return new HttpResponse(null, { status: 404 });
-    }),
-    http.post("/api/org", () => {
-      return HttpResponse.json({}, { status: 201 });
-    }),
-    http.put("/api/settings", () => {
-      return HttpResponse.json({ success: true });
-    }),
-  );
+  context.mocks.http.get("/api/org", () => {
+    return new HttpResponse(null, { status: 404 });
+  });
+  context.mocks.http.post("/api/org", () => {
+    return HttpResponse.json({}, { status: 201 });
+  });
+  context.mocks.http.put("/api/settings", () => {
+    return HttpResponse.json({ success: true });
+  });
 
-  await setupPage({ context, path: "/" });
+  detachedSetupPage({ context, path: "/" });
   // Test onboarding flow...
 });
 ```
@@ -323,8 +279,8 @@ const context = testContext();
 
 describe("MyFeature", () => {
   it("test case", async () => {
-    const { store, signal } = context;
-    // store and signal are fresh for each test
+    const { mocks, signal } = context;
+    // mocks and signal are scoped to the current test lifecycle
   });
 });
 ```
@@ -333,13 +289,14 @@ Features:
 
 - Creates fresh store for each test
 - Provides AbortSignal for cleanup
+- Provides `context.mocks` for API, browser, upload, Ably, and test data mocks
 - Automatically resets mock handlers after each test
 - Cleans up localStorage mocks
 
 ## setupPage Options
 
 ```typescript
-await setupPage({
+detachedSetupPage({
   context, // Required: test context
   path: "/dashboard", // Required: initial route
 
@@ -360,9 +317,9 @@ await setupPage({
 
 ## Best Practices
 
-1. **Use `vi.waitFor()` for async assertions** - UI updates happen asynchronously
+1. **Use `waitFor()` for async assertions** - UI updates happen asynchronously
 2. **Override only what you need** - Let default handlers provide the happy path
-3. **Reset handlers automatically** - `afterEach(() => server.resetHandlers())` is in global setup
+3. **Mock through `context.mocks`** - Test mocks should share the page setup signal
 4. **Use factories for complex mock data** - Create helper functions for repetitive mock responses
 5. **Test user flows, not implementation** - Focus on what users see and do
 6. **Capture request data when needed** - Verify correct data is sent to APIs

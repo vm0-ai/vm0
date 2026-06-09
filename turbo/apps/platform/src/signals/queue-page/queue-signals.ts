@@ -1,8 +1,5 @@
 import { command, state, computed } from "ccstate";
-import {
-  zeroRunsQueueContract,
-  zeroRunsCancelContract,
-} from "@vm0/api-contracts/contracts/zero-runs";
+import { zeroRunsQueueContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
@@ -37,14 +34,5 @@ export const startQueuePolling$ = command(
     });
 
     await set(setAblyLoop$, "queue:changed", onQueueChanged$, signal);
-  },
-);
-
-export const cancelQueueRun$ = command(
-  async ({ get, set }, runId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroRunsCancelContract);
-    await accept(client.cancel({ params: { id: runId } }), [200]);
-    signal.throwIfAborted();
-    set(reloadQueueData$);
   },
 );

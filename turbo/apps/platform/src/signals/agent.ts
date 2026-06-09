@@ -97,7 +97,7 @@ export const currentAgent$ = computed((get) => {
   return get(agentById(agentId));
 });
 
-export const lastUsedAgentId$ = computed((get) => {
+const lastUsedAgentId$ = computed((get) => {
   const value = get(lastUsedAgentIdRaw$);
   return typeof value === "string" && value.length > 0 ? value : null;
 });

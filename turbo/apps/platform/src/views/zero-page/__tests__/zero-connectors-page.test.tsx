@@ -1,201 +1,221 @@
-/**
- * Tests for the /connectors page (ZeroConnectorsPage component).
- *
- * Tests page-level behavior via setupPage following platform testing principles:
- * - Entry point: setupPage({ path: "/connectors" })
- * - Mock (external): Web API via MSW
- * - Real (internal): All signals, components, rendering
- */
-
-import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
-import { server } from "../../../mocks/server.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
+  zeroConnectorOauthStartContract,
+  zeroConnectorScopeDiffContract,
+  zeroConnectorsByTypeContract,
+  zeroConnectorsMainContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type {
+  ConnectorAuthMethodId,
+  ConnectorType,
+} from "@vm0/connectors/connectors";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+
+import {
+  click,
   detachedSetupPage,
   fill,
-  click,
 } from "../../../__tests__/page-helper.ts";
-import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
-import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
+
+function mockConnectorOauthStart(): void {
+  context.mocks.api(
+    zeroConnectorOauthStartContract.start,
+    ({ params, respond }) => {
+      return respond(200, {
+        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+      });
+    },
+  );
+}
+
+function createMockAuthWindow(): Window {
+  const authWindow = context.mocks.browser.authWindow();
+  Object.defineProperty(authWindow, "location", {
+    value: { href: "" },
+    configurable: true,
+  });
+  return authWindow;
+}
+
+function mockConnectors(
+  connectors: {
+    type: ConnectorType;
+    authMethod?: ConnectorAuthMethodId;
+    externalUsername?: string;
+    connectionStatus?: ConnectorResponse["connectionStatus"];
+    oauthScopes?: string[];
+    tokenExpiresAt?: string | null;
+  }[],
+): void {
+  context.mocks.data.connectors(
+    connectors.map((connector) => {
+      return {
+        id: crypto.randomUUID(),
+        type: connector.type,
+        authMethod: connector.authMethod ?? "oauth",
+        externalId: null,
+        externalUsername: connector.externalUsername ?? null,
+        externalEmail: null,
+        oauthScopes: connector.oauthScopes ?? null,
+        connectionStatus: connector.connectionStatus ?? "connected",
+        tokenExpiresAt: connector.tokenExpiresAt ?? null,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      };
+    }),
+  );
+}
 
 describe("connectors page", () => {
-  it("renders the page header and search input", async () => {
+  it("lets users search connectors and browse grouped categories", async () => {
+    mockConnectors([
+      { type: "github", externalUsername: "octocat" },
+      { type: "openai", authMethod: "api-token" },
+    ]);
+
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Connectors" }),
+        screen.getByPlaceholderText("Find connectors"),
       ).toBeInTheDocument();
-    });
-    expect(screen.getByPlaceholderText("Find connectors")).toBeInTheDocument();
-  });
-
-  it("shows available connectors when none are connected", async () => {
-    detachedSetupPage({ context, path: "/connectors" });
-
-    await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("connector-category-ai")).toBeInTheDocument();
+
+    const engineeringSection = screen.getByTestId(
+      "connector-category-engineering-team-execution",
+    );
+    const engineeringLabels = within(engineeringSection)
+      .getAllByTestId("connector-card-label")
+      .map((element) => {
+        return element.textContent;
+      });
+    expect(engineeringLabels[0]).toBe("GitHub");
+    expect(engineeringLabels).toContain("Asana");
+
+    const aiGroup = screen.getByTestId("connector-category-ai");
+    const engineeringGroup = screen.getByTestId(
+      "connector-category-engineering-team-execution",
+    );
     expect(
-      screen.getByTestId("connector-category-ai-general-models"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("connector-category-engineering-team-execution"),
-    ).toBeInTheDocument();
-  });
-
-  it("shows connected connectors", async () => {
-    mockConnectors([{ type: "github", externalUsername: "testuser" }]);
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-    });
-    expect(screen.getByText("GitHub")).toBeInTheDocument();
-    expect(screen.getByLabelText("More options")).toBeInTheDocument();
-  });
-
-  it("filters connectors by search term", async () => {
-    detachedSetupPage({ context, path: "/connectors" });
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-    });
+      aiGroup.compareDocumentPosition(engineeringGroup) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     const searchInput = screen.getByPlaceholderText("Find connectors");
-    await fill(searchInput, "github");
-
+    await fill(searchInput, "vcs");
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
-    // Slack should not be visible when searching for "github"
     expect(screen.queryByText("Slack")).not.toBeInTheDocument();
-  });
 
-  it("shows empty state when search has no matches", async () => {
-    detachedSetupPage({ context, path: "/connectors" });
-
+    await fill(searchInput, "logs");
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Axiom")).toBeInTheDocument();
     });
+    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
 
-    const searchInput = screen.getByPlaceholderText("Find connectors");
     await fill(searchInput, "nonexistent-connector-xyz");
-
     await waitFor(() => {
       expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
     });
   });
 
-  it("matches connectors by tag keyword", async () => {
-    // GitHub declares tags: ["gh", "gh_api_key", "git", "vcs", "scm", "repos"].
-    // "vcs" is not in the GitHub label/type/helpText, so a match on "vcs"
-    // exercises the tags match path specifically.
-    detachedSetupPage({ context, path: "/connectors" });
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText("Find connectors");
-    await fill(searchInput, "vcs");
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-    });
-    // Slack's label, type, helpText, and tags do not contain "vcs".
-    expect(screen.queryByText("Slack")).not.toBeInTheDocument();
-  });
-
-  it("matches connectors by helpText (description) keyword", async () => {
-    // Axiom's helpText contains "query logs" but neither its label ("Axiom")
-    // nor its type ("axiom") contains "logs", so matching on "logs"
-    // exercises the helpText match path specifically.
-    detachedSetupPage({ context, path: "/connectors" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Axiom")).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText("Find connectors");
-    await fill(searchInput, "logs");
-
-    await waitFor(() => {
-      expect(screen.getByText("Axiom")).toBeInTheDocument();
-    });
-    // GitHub's label, type, helpText, and tags do not contain "logs".
-    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
-  });
-
-  it("shows success toast on disconnect", async () => {
-    mockConnectors([{ type: "github", externalUsername: "testuser" }]);
-
-    const deleteDeferred = createDeferredPromise<void>(context.signal);
-
-    server.use(
-      mockApi(zeroConnectorsByTypeContract.delete, async ({ respond }) => {
-        await deleteDeferred.promise;
-        return respond(204);
-      }),
-    );
+  it("keeps a reconnecting connector visibly pending until the OAuth update arrives", async () => {
+    mockConnectors([
+      {
+        type: "github",
+        connectionStatus: "reconnect-required",
+        oauthScopes: ["repo", "project", "workflow"],
+      },
+    ]);
+    mockConnectorOauthStart();
+    context.mocks.browser.open(createMockAuthWindow());
 
     detachedSetupPage({ context, path: "/connectors" });
 
-    // Wait for the connected GitHub card to appear
     await waitFor(() => {
-      expect(screen.getByLabelText("More options")).toBeInTheDocument();
+      expect(screen.getByText("Reconnect")).toBeInTheDocument();
     });
 
-    // Radix DropdownMenu opens on click
-    const moreButton = screen.getByLabelText("More options");
-    click(moreButton);
-
-    await waitFor(() => {
-      expect(screen.getByText("Disconnect")).toBeInTheDocument();
+    context.mocks.api(zeroConnectorsMainContract.list, ({ never }) => {
+      return never();
     });
-    click(screen.getByText("Disconnect"));
 
-    // Resolve the API call
-    deleteDeferred.resolve();
+    await userEvent.click(screen.getByText("Reconnect"));
 
     await waitFor(() => {
-      expect(screen.getByText("GitHub disconnected")).toBeInTheDocument();
+      expect(
+        screen.getAllByText((_, element) => {
+          return element?.textContent?.includes("Connecting") ?? false;
+        }).length,
+      ).toBeGreaterThan(0);
     });
   });
 
-  it("shows error toast when disconnect fails", async () => {
-    mockConnectors([{ type: "github", externalUsername: "testuser" }]);
-
-    server.use(
-      mockApi(zeroConnectorsByTypeContract.delete, ({ respond }) => {
-        return respond(404, {
-          error: { message: "Failed to disconnect", code: "NOT_FOUND" },
+  it("opens the right consent surface for token, Google, and scope-review flows", async () => {
+    mockConnectors([{ type: "github", oauthScopes: [] }]);
+    context.mocks.api(
+      zeroConnectorScopeDiffContract.getScopeDiff,
+      ({ respond }) => {
+        return respond(200, {
+          addedScopes: ["repo", "project"],
+          removedScopes: [],
+          currentScopes: [],
+          storedScopes: ["repo", "project"],
         });
-      }),
+      },
     );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Axiom")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Connect Axiom"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByText("Save")).toBeInTheDocument();
+    });
+    await userEvent.keyboard("{Escape}");
+
+    click(screen.getByLabelText("Connect Gmail"));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Google will show a security warning/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
+    });
+    await userEvent.keyboard("{Escape}");
+
+    click(screen.getByText("Review"));
+    await waitFor(() => {
+      expect(screen.getByText("repo")).toBeInTheDocument();
+      expect(screen.getByText("project")).toBeInTheDocument();
+    });
+  });
+
+  it("reports a failed connector disconnect", async () => {
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.api(zeroConnectorsByTypeContract.delete, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Failed to disconnect", code: "NOT_FOUND" },
+      });
+    });
 
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
-
-    // Radix DropdownMenu opens on click
-    const moreButton = screen.getByLabelText("More options");
-    click(moreButton);
-
-    await waitFor(() => {
-      expect(screen.getByText("Disconnect")).toBeInTheDocument();
-    });
-    click(screen.getByText("Disconnect"));
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Disconnect"));
 
     await waitFor(() => {
       expect(screen.getByText("Failed to disconnect")).toBeInTheDocument();

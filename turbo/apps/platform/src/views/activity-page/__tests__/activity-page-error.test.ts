@@ -1,25 +1,20 @@
-import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { server } from "../../../mocks/server.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { logsListContract } from "@vm0/api-contracts/contracts/logs";
-import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
+import { describe, expect, it } from "vitest";
+
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
 describe("activity page error", () => {
-  it("should show error state when /api/zero/logs returns 403", async () => {
-    setMockComposesList([]);
-    server.use(
-      mockApi(logsListContract.list, ({ respond }) => {
-        return respond(403, {
-          error: { message: "Internal Server Error", code: "INTERNAL" },
-        });
-      }),
-    );
+  it("shows a recoverable error when activity data cannot load", async () => {
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsListContract.list, ({ respond }) => {
+      return respond(403, {
+        error: { message: "Internal Server Error", code: "INTERNAL" },
+      });
+    });
 
     detachedSetupPage({ context, path: "/activities" });
 

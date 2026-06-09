@@ -2,8 +2,6 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   MODEL_PROVIDER_TYPES,
-  getDefaultAuthMethod,
-  getDefaultModel,
   getSecretNameForType,
   getSecretsForAuthMethod,
   hasAuthMethods,
@@ -234,33 +232,6 @@ export const personalConfiguredProviders$ = computed(async (get) => {
 // ---------------------------------------------------------------------------
 // Commands: dialog open/close
 // ---------------------------------------------------------------------------
-
-export const personalOpenOAuthCredentialDialog$ = command(
-  ({ set }, providerType: ModelProviderType) => {
-    set(internalPersonalModelPolicyRouteAfterAuth$, null);
-    set(internalPersonalDialogHideModelSelector$, true);
-    const defaultAuth = hasAuthMethods(providerType)
-      ? (getDefaultAuthMethod(providerType) ?? "")
-      : "";
-    const defaultModel = hasModelSelection(providerType)
-      ? (getDefaultModel(providerType) ?? "")
-      : "";
-
-    set(internalPersonalFormValues$, {
-      secret: "",
-      selectedModel: defaultModel,
-      authMethod: defaultAuth,
-      secrets: {},
-      useDefaultModel: true,
-    });
-    set(internalPersonalFormErrors$, {});
-    set(internalPersonalDialogState$, {
-      open: true,
-      mode: "add",
-      providerType,
-    });
-  },
-);
 
 export const personalCloseDialog$ = command(({ set }) => {
   set(internalPersonalDialogState$, {

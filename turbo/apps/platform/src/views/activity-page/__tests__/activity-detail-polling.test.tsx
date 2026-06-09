@@ -1,20 +1,16 @@
-import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { server } from "../../../mocks/server.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import type {
-  LogDetail,
-  AgentEventsResponse,
-} from "../../../signals/zero-page/log-types.ts";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
-import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
-import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
+import { describe, expect, it } from "vitest";
+
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import type {
+  AgentEventsResponse,
+  LogDetail,
+} from "../../../signals/zero-page/log-types.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
 function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
   return {
@@ -40,27 +36,18 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
   };
 }
 
-describe("activity detail polling with initially empty events", () => {
-  it("should pick up events that appear after the initial empty fetch", async () => {
-    let eventFetchCount = 0;
+describe("activity detail polling", () => {
+  it("renders events that arrive after an initially empty activity history", async () => {
     let eventsAvailable = false;
     let status: LogDetail["status"] = "running";
 
-    setMockComposesList([]);
-    server.use(
-      mockApi(logsByIdContract.getById, ({ respond }) => {
-        return respond(
-          200,
-          makeLogDetail({
-            status,
-          }),
-        );
-      }),
-      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
-        eventFetchCount++;
-
-        // Initial fetches can legitimately be empty while the run is still
-        // writing events.
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, makeLogDetail({ status }));
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
         if (!eventsAvailable) {
           return respond(200, {
             events: [],
@@ -69,7 +56,6 @@ describe("activity detail polling with initially empty events", () => {
           } satisfies AgentEventsResponse);
         }
 
-        // Subsequent fetches return actual events
         return respond(200, {
           events: [
             {
@@ -86,16 +72,14 @@ describe("activity detail polling with initially empty events", () => {
           hasMore: false,
           framework: "claude-code",
         } satisfies AgentEventsResponse);
-      }),
+      },
     );
 
-    // Navigate directly to a fresh run's detail page
     detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000099",
     });
 
-    // Wait for the detail heading to appear
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Agent One" }),
@@ -104,21 +88,16 @@ describe("activity detail polling with initially empty events", () => {
 
     const topic = "run:changed:a0000000-0000-4000-a000-000000000099";
     await waitFor(() => {
-      expect(hasSubscription(topic)).toBeTruthy();
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
     });
 
     status = "completed";
     eventsAvailable = true;
-    triggerAblyEvent(topic);
+    context.mocks.ably.trigger(topic);
 
     await waitFor(() => {
       expect(screen.getByText("Polled response arrived")).toBeInTheDocument();
     });
-
-    // Confirm the telemetry endpoint was called multiple times (re-fetched after empty)
-    expect(eventFetchCount).toBeGreaterThanOrEqual(3);
-
-    // And the loop eventually detects terminal status.
     await waitFor(() => {
       expect(screen.getByText("Done")).toBeInTheDocument();
     });

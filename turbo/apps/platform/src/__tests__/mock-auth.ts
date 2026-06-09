@@ -201,10 +201,3 @@ export const mockedClerk = {
     return Promise.resolve({ id: "new-org-id" });
   }),
 };
-
-/** Fire all registered Clerk listeners (simulates token refresh / auth change). */
-export function fireClerkListeners() {
-  for (const cb of clerkListeners) {
-    cb();
-  }
-}

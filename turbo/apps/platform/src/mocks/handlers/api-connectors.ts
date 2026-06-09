@@ -18,18 +18,6 @@ import {
 import { mockApi } from "../msw-contract.ts";
 
 let mockConnectors: ConnectorResponse[] = [];
-type MockOauthDeviceAuthSessionStartResponse = Omit<
-  Partial<ConnectorOauthDeviceAuthSessionStartResponse>,
-  "verificationUriComplete"
-> & {
-  readonly verificationUriComplete?: string | undefined;
-};
-
-let mockOauthDeviceAuthSessionStartResponse:
-  | MockOauthDeviceAuthSessionStartResponse
-  | undefined;
-let mockOauthDeviceAuthSessionPollResponses: ConnectorOauthDeviceAuthSessionPollResponse[] =
-  [];
 
 function createMockOauthDeviceAuthConnector(
   type: ConnectorType,
@@ -91,7 +79,6 @@ export function setMockConnectors(connectors: ConnectorResponse[]): void {
 
 export function resetMockConnectors(): void {
   mockConnectors = [];
-  resetMockOauthDeviceAuth();
 }
 
 function upsertMockConnector(connector: ConnectorResponse): void {
@@ -101,23 +88,6 @@ function upsertMockConnector(connector: ConnectorResponse): void {
     }),
     connector,
   ];
-}
-
-function resetMockOauthDeviceAuth(): void {
-  mockOauthDeviceAuthSessionStartResponse = undefined;
-  mockOauthDeviceAuthSessionPollResponses = [];
-}
-
-export function setMockOauthDeviceAuthSessionStartResponse(
-  response: MockOauthDeviceAuthSessionStartResponse,
-): void {
-  mockOauthDeviceAuthSessionStartResponse = response;
-}
-
-export function setMockOauthDeviceAuthSessionPollResponses(
-  responses: ConnectorOauthDeviceAuthSessionPollResponse[],
-): void {
-  mockOauthDeviceAuthSessionPollResponses = responses;
 }
 
 export const apiConnectorsHandlers = [
@@ -171,32 +141,20 @@ export const apiConnectorsHandlers = [
   mockApi(
     zeroConnectorOauthDeviceAuthSessionContract.create,
     ({ params, respond }) => {
-      const response = {
-        ...defaultOauthDeviceAuthSessionStartResponse(params.type),
-        ...mockOauthDeviceAuthSessionStartResponse,
-        type: mockOauthDeviceAuthSessionStartResponse?.type ?? params.type,
-      };
-      if (
-        mockOauthDeviceAuthSessionStartResponse &&
-        "verificationUriComplete" in mockOauthDeviceAuthSessionStartResponse &&
-        mockOauthDeviceAuthSessionStartResponse.verificationUriComplete ===
-          undefined
-      ) {
-        delete response.verificationUriComplete;
-      }
-      return respond(200, response);
+      return respond(
+        200,
+        defaultOauthDeviceAuthSessionStartResponse(params.type),
+      );
     },
   ),
 
   mockApi(
     zeroConnectorOauthDeviceAuthSessionContract.poll,
     ({ params, respond }) => {
-      const response =
-        mockOauthDeviceAuthSessionPollResponses.shift() ??
-        ({
-          status: "complete",
-          connector: createMockOauthDeviceAuthConnector(params.type),
-        } satisfies ConnectorOauthDeviceAuthSessionPollResponse);
+      const response = {
+        status: "complete",
+        connector: createMockOauthDeviceAuthConnector(params.type),
+      } satisfies ConnectorOauthDeviceAuthSessionPollResponse;
 
       if (response.status === "complete") {
         upsertMockConnector(response.connector);

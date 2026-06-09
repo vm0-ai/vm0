@@ -27,7 +27,6 @@ import {
   artifactFullscreen$,
   type ArtifactRef,
   closeArtifact$,
-  currentArtifactRef$,
   toggleArtifactFullscreen$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import {
@@ -64,16 +63,6 @@ import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 // by ?artifact=. Renders kind-specific bodies inline (no modal), with a
 // fullscreen toggle that swaps to a full-viewport layout.
 // ---------------------------------------------------------------------------
-
-export function ArtifactSidebarSlot() {
-  const ref = useGet(currentArtifactRef$);
-
-  if (!ref) {
-    return null;
-  }
-
-  return <ArtifactSidebar artifactRef={ref} />;
-}
 
 export function ArtifactSidebar({
   artifactRef,

@@ -42,7 +42,7 @@ export function createMockScheduleResponse(
   };
 }
 
-export { setMockSchedules, resetMockSchedules } from "./schedules-store.ts";
+export { resetMockSchedules } from "./schedules-store.ts";
 
 export const apiSchedulesHandlers = [
   // GET /api/zero/schedules

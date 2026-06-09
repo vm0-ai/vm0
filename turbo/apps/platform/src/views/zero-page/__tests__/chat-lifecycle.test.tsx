@@ -1,0 +1,397 @@
+import { act, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import {
+  chatThreadByIdContract,
+  chatThreadMarkReadContract,
+  chatThreadMessagesContract,
+  chatThreadsContract,
+  type PagedChatMessage,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
+import {
+  zeroRunAgentEventsContract,
+  zeroRunsByIdContract,
+} from "@vm0/api-contracts/contracts/zero-runs";
+import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  click,
+  detachedSetupPage,
+  fill,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
+import {
+  mockChatLifecycle,
+  mockSubagentThread,
+  PLACEHOLDER,
+  sendMessageInUI,
+} from "./chat-test-helpers.ts";
+
+const context = testContext();
+
+const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const THREAD_ID = "thread-test-1";
+const CHAT_PATH = `/chats/${THREAD_ID}`;
+const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
+
+function activeRunTextarea(): Promise<HTMLTextAreaElement> {
+  return waitFor(() => {
+    return screen.getByPlaceholderText(
+      /Type your next message/,
+    ) as HTMLTextAreaElement;
+  });
+}
+
+async function startActiveRun(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<HTMLTextAreaElement> {
+  const textarea = await waitFor(() => {
+    return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+  });
+  await sendMessageInUI(user, textarea, "Start the active run");
+
+  await waitFor(() => {
+    expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+  });
+
+  return activeRunTextarea();
+}
+
+async function sendQueuedMessage(
+  user: ReturnType<typeof userEvent.setup>,
+  text: string,
+): Promise<void> {
+  const textarea = await activeRunTextarea();
+  await fill(textarea, text);
+  await user.keyboard("{Enter}");
+}
+
+async function expectQueuedMessages(contents: string[]): Promise<void> {
+  await waitFor(() => {
+    const queuedMessages = screen.getAllByLabelText("Queued message");
+    expect(queuedMessages).toHaveLength(contents.length);
+    for (const [index, content] of contents.entries()) {
+      expect(queuedMessages[index]).toHaveTextContent(content);
+    }
+  });
+}
+
+function makeMessage(id: string, text: string): PagedChatMessage {
+  return {
+    id,
+    role: "user",
+    content: text,
+    createdAt: "2026-05-01T00:00:00Z",
+  };
+}
+
+describe("chat lifecycle", () => {
+  it("completes a run, renders markdown, and returns the composer to send mode", async () => {
+    const user = userEvent.setup({ delay: null });
+    const lifecycle = mockChatLifecycle(context);
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Summarize the launch plan");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    lifecycle.completeRun("Here is the **result**");
+
+    await waitFor(() => {
+      expect(screen.getByText("result")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    });
+  });
+
+  it("queues, recalls, and replays messages while an optimistic new thread settles", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sendGate = context.mocks.deferred<void>();
+    mockChatLifecycle(context, { sendGate: sendGate.promise });
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "First new-thread message");
+
+    await waitFor(() => {
+      expect(screen.getByText("First new-thread message")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    await sendQueuedMessage(user, "First queued follow-up");
+    await sendQueuedMessage(user, "Second queued follow-up");
+    await expectQueuedMessages([
+      "First queued follow-up",
+      "Second queued follow-up",
+    ]);
+
+    click(screen.getAllByLabelText("Remove queued message")[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
+        "First queued follow-up",
+      );
+    });
+
+    await fill(
+      screen.getByPlaceholderText(/Type your next message/),
+      "Replayed follow-up",
+    );
+    await user.keyboard("{Enter}");
+
+    await act(async () => {
+      sendGate.resolve();
+      await Promise.resolve();
+    });
+
+    await expectQueuedMessages([
+      "Second queued follow-up",
+      "Replayed follow-up",
+    ]);
+    expect(screen.getByText("First new-thread message")).toBeInTheDocument();
+  });
+
+  it("recalls queued content and clears the thinking indicator when the active run is stopped", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await startActiveRun(user);
+    await sendQueuedMessage(user, "First queued");
+    await sendQueuedMessage(user, "Second queued");
+    await expectQueuedMessages(["First queued", "Second queued"]);
+
+    click(screen.getByLabelText("Stop"));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText("Paused mid-thought — pick it back up whenever."),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("catches up after realtime bursts and keeps the latest burst message visible", async () => {
+    const threadId = "catchup-thread";
+    const baselineMessages = Array.from({ length: 5 }, (_, index) => {
+      return makeMessage(`base-${index}`, `Baseline ${index}`);
+    });
+    const burstMessages = Array.from({ length: 120 }, (_, index) => {
+      return makeMessage(`burst-${index}`, `Burst ${index}`);
+    });
+    let page = 0;
+
+    mockSubagentThread(context, threadId);
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        id: threadId,
+        title: null,
+        agentId: AGENT_ID,
+        latestSessionId: null,
+        activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
+        createdAt: "2026-05-01T00:00:00Z",
+        updatedAt: "2026-05-01T00:00:00Z",
+      });
+    });
+    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+      if (!query.sinceId) {
+        return respond(200, {
+          messages: baselineMessages,
+          hasHistoryBefore: false,
+        });
+      }
+      const startIndex = page * 50;
+      page += 1;
+      return respond(200, {
+        messages: burstMessages.slice(startIndex, startIndex + 50),
+      });
+    });
+    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
+      return respond(200, { lastReadMessageId: null, changed: false });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Baseline 0")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Burst 119")).toBeInTheDocument();
+    });
+  });
+
+  it("switches sessions without stale running or completed messages", async () => {
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, {
+        pinned: [],
+        threads: [
+          {
+            id: "thread-running",
+            title: "Running thread",
+            agent: { id: AGENT_ID, avatarUrl: null },
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+            isRead: true,
+            running: true,
+          },
+          {
+            id: "thread-completed",
+            title: "Completed thread",
+            agent: { id: AGENT_ID, avatarUrl: null },
+            createdAt: "2026-03-10T00:01:00Z",
+            updatedAt: "2026-03-10T00:01:00Z",
+            isRead: true,
+            running: false,
+          },
+        ],
+        hasMore: false,
+        nextCursor: null,
+        totalCount: 2,
+      });
+    });
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      ({ params, query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        if (params.threadId === "thread-running") {
+          return respond(200, {
+            messages: [
+              {
+                id: "msg-running-user",
+                role: "user",
+                content: "Active task prompt",
+                runId: "run-active",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "msg-running-assistant",
+                role: "assistant",
+                content: null,
+                runId: "run-active",
+                status: "running",
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+          });
+        }
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-completed-user",
+              role: "user",
+              content: "Done task",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-completed-assistant",
+              role: "assistant",
+              content: "All done!",
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ],
+        });
+      },
+    );
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      const running = params.id === "thread-running";
+      return respond(200, {
+        id: params.id,
+        title: null,
+        agentId: AGENT_ID,
+        latestSessionId: null,
+        activeRunIds: running ? ["run-active"] : [],
+        draftContent: null,
+        draftAttachments: null,
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
+    });
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, {
+        id: "run-active",
+        sessionId: "session-1",
+        agentId: "zero",
+        displayName: null,
+        framework: "claude-code",
+        modelProvider: null,
+        selectedModel: null,
+        triggerSource: "web",
+        triggerAgentName: null,
+        scheduleId: null,
+        status: "running",
+        prompt: "Active task prompt",
+        appendSystemPrompt: null,
+        error: null,
+        createdAt: "2026-03-10T00:00:00Z",
+        startedAt: "2026-03-10T00:00:01Z",
+        completedAt: null,
+        artifact: { name: null, version: null },
+      });
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      },
+    );
+    context.mocks.api(zeroRunsByIdContract.getById, ({ respond }) => {
+      return respond(200, {
+        runId: "run-active",
+        agentComposeVersionId: null,
+        status: "running",
+        prompt: "Active task prompt",
+        appendSystemPrompt: null,
+        result: { agentSessionId: "session-1", output: "" },
+        createdAt: "2026-03-10T00:00:00Z",
+      });
+    });
+    context.mocks.api(zeroQueuePositionContract.getPosition, ({ respond }) => {
+      return respond(200, { position: 0, total: 0 });
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-running" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    const completedThreadLink = await waitFor(() => {
+      return queryAllByRoleFast("link").find((element) => {
+        return element.getAttribute("href") === "/chats/thread-completed";
+      });
+    });
+    if (!completedThreadLink) {
+      throw new Error("Completed thread link not found");
+    }
+    click(completedThreadLink);
+
+    await waitFor(() => {
+      expect(screen.getByText("All done!")).toBeInTheDocument();
+      expect(screen.queryByText("Active task prompt")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    });
+  });
+});

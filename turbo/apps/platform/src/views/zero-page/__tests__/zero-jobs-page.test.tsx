@@ -1,244 +1,259 @@
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
 import {
+  click,
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
-  setMockSchedules,
-  createMockScheduleResponse,
-} from "../../../mocks/handlers/api-schedules.ts";
-import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
+  zeroAgentInstructionsContract,
+  zeroAgentsByIdContract,
+  zeroAgentsMainContract,
+} from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  type TeamComposeItem,
+  zeroTeamContract,
+} from "@vm0/api-contracts/contracts/zero-team";
+import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
 
 const context = testContext();
 
-function createMockTeamWithSubagents() {
-  return [
-    {
-      id: "c0000000-0000-4000-a000-000000000001",
-      displayName: null,
-      description: null,
-      sound: null,
-      avatarUrl: null,
-      headVersionId: "version_1",
-      updatedAt: "2024-01-01T00:00:00Z",
-    },
-    {
-      id: "agent-2",
-      displayName: "Research Agent",
-      description: "Finds and summarizes information",
-      sound: null,
-      avatarUrl: null,
-      headVersionId: "version_2",
-      updatedAt: "2024-01-02T00:00:00Z",
-    },
-    {
-      id: "agent-3",
-      displayName: null,
-      description: "Writes content based on research",
-      sound: null,
-      avatarUrl: null,
-      headVersionId: "version_3",
-      updatedAt: "2024-01-03T00:00:00Z",
-    },
-  ];
+function createDefaultAgent(): TeamComposeItem {
+  return {
+    id: "c0000000-0000-4000-a000-000000000001",
+    ownerId: "test-user-123",
+    displayName: "Zero",
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    customSkills: [],
+    visibility: "public",
+    headVersionId: "version_1",
+    updatedAt: "2024-01-01T00:00:00Z",
+  };
 }
 
-function mockTeamAPI(
-  agents: {
-    id: string;
-    displayName: string | null;
-    description: string | null;
-    sound: null;
-    avatarUrl: null;
-    headVersionId: string;
-    updatedAt: string;
-  }[] = createMockTeamWithSubagents(),
-) {
-  setMockTeam(agents);
+function mockAgentsPage(team: TeamComposeItem[]): void {
+  context.mocks.data.team(team);
+  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    const agent = team.find((item) => {
+      return item.id === params.id;
+    });
+    if (!agent) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    return respond(200, {
+      agentId: agent.id,
+      ownerId: agent.ownerId ?? "test-user-123",
+      description: agent.description,
+      displayName: agent.displayName,
+      sound: agent.sound,
+      avatarUrl: agent.avatarUrl,
+      customSkills: agent.customSkills ?? [],
+      visibility: agent.visibility,
+    });
+  });
 }
 
-function renderTeamPage() {
-  detachedSetupPage({ context, path: "/agents" });
+function findSectionCreateButton(sectionName: "Public" | "Private"): Element {
+  const section = screen.getByText(sectionName).closest("section");
+  if (!section) {
+    throw new Error(`${sectionName} section not found`);
+  }
+  const createButton = queryAllByRoleFast("button", section).find((button) => {
+    return button.textContent?.trim() === "Create";
+  });
+  if (!createButton) {
+    throw new Error(`${sectionName} create button not found`);
+  }
+  return createButton;
 }
 
-describe("zero jobs page - team list", () => {
-  it("should render team page with main agent and sub-agents", async () => {
-    mockTeamAPI();
-    await renderTeamPage();
-
-    // Verify sub-agents render with correct names (including displayName fallback)
-    await waitFor(() => {
-      expect(screen.getByText("Research Agent")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText("Finds and summarizes information"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Writes content based on research"),
-    ).toBeInTheDocument();
-    // "writer" agent has displayName: null, so it should fall back to showing the id
-    expect(screen.getByText("agent-3")).toBeInTheDocument();
+async function openCreateDialog(
+  sectionName: "Public" | "Private",
+): Promise<HTMLElement> {
+  await waitFor(() => {
+    expect(screen.getByText(sectionName)).toBeInTheDocument();
   });
+  click(findSectionCreateButton(sectionName));
+  return await screen.findByRole("dialog");
+}
 
-  it("should show public and private create buttons when no sub-agents exist", async () => {
-    mockTeamAPI([
+function dialogCreateButton(dialog: HTMLElement): HTMLElement {
+  const createButton = queryAllByRoleFast("button", dialog).find((button) => {
+    return button.textContent?.trim() === "Create";
+  });
+  if (!createButton) {
+    throw new Error("dialog create button not found");
+  }
+  return createButton;
+}
+
+describe("zero jobs page", () => {
+  it("shows agents, create actions, and scheduled work across the management surfaces", async () => {
+    mockAgentsPage([
+      createDefaultAgent(),
       {
-        id: "c0000000-0000-4000-a000-000000000001",
-        displayName: null,
-        description: null,
+        id: "a0000000-0000-4000-a000-000000000101",
+        ownerId: "test-user-123",
+        displayName: "Research Agent",
+        description: "Finds and summarizes information",
         sound: null,
         avatarUrl: null,
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
-    await renderTeamPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Public")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Private")).toBeInTheDocument();
-    const createButtons = queryAllByRoleFast("button").filter((el) => {
-      return el.textContent?.trim() === "Create";
-    });
-    expect(createButtons).toHaveLength(2);
-  });
-
-  it("should show public and private create buttons when sub-agents exist", async () => {
-    mockTeamAPI();
-    await renderTeamPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Public")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Private")).toBeInTheDocument();
-    const createButtons = queryAllByRoleFast("button").filter((el) => {
-      return el.textContent?.trim() === "Create";
-    });
-    expect(createButtons).toHaveLength(2);
-  });
-
-  it("should display multiple agents when team API returns multiple agents", async () => {
-    mockTeamAPI([
-      {
-        id: "c0000000-0000-4000-a000-000000000001",
-        displayName: null,
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-      {
-        id: "agent-alpha",
-        displayName: "Alpha Agent",
-        description: "Handles alpha tasks",
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "version_a",
+        customSkills: [],
+        visibility: "public",
+        headVersionId: "version_2",
         updatedAt: "2024-01-02T00:00:00Z",
       },
       {
-        id: "agent-beta",
-        displayName: "Beta Agent",
-        description: "Handles beta tasks",
+        id: "a0000000-0000-4000-a000-000000000102",
+        ownerId: "test-user-123",
+        displayName: null,
+        description: "Writes content based on research",
         sound: null,
         avatarUrl: null,
-        headVersionId: "version_b",
+        customSkills: [],
+        visibility: "private",
+        headVersionId: "version_3",
         updatedAt: "2024-01-03T00:00:00Z",
       },
-      {
-        id: "agent-gamma",
-        displayName: "Gamma Agent",
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "version_g",
-        updatedAt: "2024-01-04T00:00:00Z",
-      },
     ]);
-    await renderTeamPage();
+    context.mocks.data.schedules([
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000101",
+        description: "Morning brief",
+        prompt: "Send morning brief to the team channel",
+      }),
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000102",
+        description: "Office AC on",
+        prompt: "Turn on the air conditioning in my office",
+      }),
+    ]);
 
-    // All three sub-agents should be visible (default agent is filtered out)
+    detachedSetupPage({ context, path: "/agents" });
+
     await waitFor(() => {
-      expect(screen.getByText("Alpha Agent")).toBeInTheDocument();
+      expect(screen.getByText("Research Agent")).toBeInTheDocument();
+      expect(
+        screen.getByText("Finds and summarizes information"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("a0000000-0000-4000-a000-000000000102"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Writes content based on research"),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByText("Beta Agent")).toBeInTheDocument();
-    expect(screen.getByText("Gamma Agent")).toBeInTheDocument();
+    expect(findSectionCreateButton("Public")).toBeInTheDocument();
+    expect(findSectionCreateButton("Private")).toBeInTheDocument();
 
-    // Descriptions should be visible where provided
-    expect(screen.getByText("Handles alpha tasks")).toBeInTheDocument();
-    expect(screen.getByText("Handles beta tasks")).toBeInTheDocument();
-  });
-});
+    click(screen.getByText("Scheduled"));
 
-function createMockSchedulesFromAPI(): ScheduleResponse[] {
-  return [
-    createMockScheduleResponse({
-      id: "f0000002-0000-4000-a000-000000000001",
-      displayName: null,
-      userId: "user_test1",
-      name: "zero-morning",
-      cronExpression: "55 9 * * 1-5",
-      timezone: "Asia/Shanghai",
-      prompt: "Send morning brief pptx to the team channel",
-      description: "Morning brief",
-      nextRunAt: "2026-03-26T01:55:00.000Z",
-      lastRunAt: "2026-03-25T01:55:22.168Z",
-      createdAt: "2026-03-18T06:30:22.322Z",
-      updatedAt: "2026-03-24T13:47:09.003Z",
-    }),
-    createMockScheduleResponse({
-      id: "f0000002-0000-4000-a000-000000000002",
-      displayName: null,
-      userId: "user_test1",
-      name: "zero-ac",
-      timezone: "Asia/Shanghai",
-      prompt: "Turn on the air conditioning in my office",
-      description: "Office AC on",
-      nextRunAt: "2026-03-26T01:00:00.000Z",
-      lastRunAt: "2026-03-25T01:00:27.774Z",
-      createdAt: "2026-03-20T02:58:38.749Z",
-      updatedAt: "2026-03-25T01:46:27.637Z",
-    }),
-    createMockScheduleResponse({
-      id: "f0000002-0000-4000-a000-000000000003",
-      displayName: null,
-      userId: "user_test1",
-      name: "zero-evening",
-      cronExpression: "0 19 * * 1-5",
-      timezone: "Asia/Shanghai",
-      prompt:
-        "Summarize today's work and post evening brief to the team channel",
-      description: "Evening work summary",
-      nextRunAt: "2026-03-25T11:00:00.000Z",
-      createdAt: "2026-03-24T13:44:56.808Z",
-      updatedAt: "2026-03-24T13:47:30.669Z",
-    }),
-  ];
-}
-
-function mockScheduleAPI(schedules = createMockSchedulesFromAPI()) {
-  setMockSchedules(schedules);
-}
-
-function renderSchedulePage() {
-  detachedSetupPage({ context, path: "/schedules" });
-}
-
-describe("zero jobs page - schedule list", () => {
-  it("should display multiple schedules when schedule API returns data", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    // All three schedules should be visible (description is shown when available)
     await waitFor(() => {
       expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
+      expect(screen.getAllByText("Office AC on")[0]).toBeInTheDocument();
     });
-    expect(screen.getAllByText("Office AC on")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("Evening work summary")[0]).toBeInTheDocument();
+  });
+
+  it("creates public and private agents, supports Enter submit, cancel, and card navigation", async () => {
+    let team: TeamComposeItem[] = [createDefaultAgent()];
+    mockAgentsPage(team);
+    context.mocks.api(zeroTeamContract.list, ({ respond }) => {
+      return respond(200, team);
+    });
+    context.mocks.api(zeroAgentsMainContract.create, ({ body, respond }) => {
+      const agent: TeamComposeItem = {
+        id:
+          body.visibility === "private"
+            ? "a0000000-0000-4000-a000-000000000202"
+            : "a0000000-0000-4000-a000-000000000201",
+        ownerId: "test-user-123",
+        displayName: body.displayName ?? null,
+        description: null,
+        sound: body.sound ?? null,
+        avatarUrl: body.avatarUrl ?? null,
+        customSkills: [],
+        visibility: body.visibility ?? "public",
+        headVersionId: "version_created",
+        updatedAt: "2026-03-10T00:00:00Z",
+      };
+      team = [...team, agent];
+      return respond(201, {
+        agentId: agent.id,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: agent.displayName,
+        sound: agent.sound,
+        avatarUrl: agent.avatarUrl,
+        customSkills: [],
+        visibility: agent.visibility,
+      });
+    });
+    context.mocks.api(
+      zeroAgentInstructionsContract.update,
+      ({ params, respond }) => {
+        const agent = team.find((item) => {
+          return item.id === params.id;
+        });
+        return respond(200, {
+          agentId: params.id,
+          ownerId: "test-user-123",
+          description: null,
+          displayName: agent?.displayName ?? null,
+          sound: agent?.sound ?? null,
+          avatarUrl: agent?.avatarUrl ?? null,
+          customSkills: [],
+          visibility: agent?.visibility ?? "public",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/agents" });
+
+    let dialog = await openCreateDialog("Public");
+    await fill(
+      screen.getByPlaceholderText("e.g. Research Assistant"),
+      "Marketing Bot",
+    );
+    click(dialogCreateButton(dialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Marketing Bot")).toBeInTheDocument();
+    });
+
+    dialog = await openCreateDialog("Private");
+    expect(screen.getByText("Create a new private agent")).toBeInTheDocument();
+    click(screen.getByText("Cancel"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    dialog = await openCreateDialog("Private");
+    await fill(
+      screen.getByPlaceholderText("e.g. Research Assistant"),
+      "Private Analyst",
+    );
+    fireEvent.keyDown(screen.getByPlaceholderText("e.g. Research Assistant"), {
+      key: "Enter",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Private Analyst")).toBeInTheDocument();
+      expect(screen.getByLabelText("Private agent")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(dialog).not.toBeInTheDocument();
+
+    click(screen.getByText("Marketing Bot"));
+
+    await waitFor(() => {
+      expect(document.title).toContain("Marketing Bot");
+    });
   });
 });

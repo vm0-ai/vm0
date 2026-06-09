@@ -17,13 +17,6 @@ const defaultResponse: UsageRecordResponse = {
 
 let mockUsageRecordResponse: UsageRecordResponse = { ...defaultResponse };
 
-export function setMockUsageRecord(response: UsageRecordResponse): void {
-  mockUsageRecordResponse = {
-    rows: [...response.rows],
-    pagination: { ...response.pagination },
-  };
-}
-
 export function resetMockUsageRecord(): void {
   mockUsageRecordResponse = { ...defaultResponse };
 }

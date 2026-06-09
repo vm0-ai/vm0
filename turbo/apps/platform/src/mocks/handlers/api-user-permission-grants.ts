@@ -38,28 +38,6 @@ function resolvedMockExpiresAt(
   return null;
 }
 
-export function createMockUserPermissionGrantResponse(
-  overrides: Partial<UserPermissionGrantResponse>,
-): UserPermissionGrantResponse {
-  const now = new Date().toISOString();
-  return {
-    agentId: "c0000000-0000-4000-a000-000000000001",
-    connectorRef: "slack",
-    permission: "channels:read",
-    action: "allow",
-    expiresAt: null,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
-
-export function setMockUserPermissionGrants(
-  grants: UserPermissionGrantResponse[],
-): void {
-  mockUserPermissionGrants = grants;
-}
-
 export function resetMockUserPermissionGrants(): void {
   mockUserPermissionGrants = [];
 }

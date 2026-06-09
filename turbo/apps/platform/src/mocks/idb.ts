@@ -2,9 +2,8 @@
  * Mock idb library for tests.
  *
  * Returns a fake IDBDatabase whose object stores always return empty/undefined
- * reads (cache miss), so the IDB-cached chat data source falls through to the
- * remote (MSW-mocked) path. Real IDB behavior is tested in browser tests
- * (.btest.ts) against a real Chromium browser with fake-indexeddb.
+ * reads (cache miss), so IDB-backed data sources fall through to the remote
+ * (MSW-mocked) path in happy-dom tests.
  */
 
 function fakeIndex() {
