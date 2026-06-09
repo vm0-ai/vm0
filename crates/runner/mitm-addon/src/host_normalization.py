@@ -396,11 +396,11 @@ def normalize_idna_label(label: str) -> str:
     label; it does not split hostnames, translate IDNA dot variants, or remove
     trailing dots.
 
-    Raises ``UnsafeIdnaCompatibilityMappingError`` when compatibility processing
+    Raises ``UnsafeIdnaCompatibilityMappingError`` when direct Unicode input
     would obscure the label's host identity. Raises ``UnicodeError`` for
-    ordinary invalid labels, including empty labels, invalid A-labels, labels
-    that normalize to forbidden text, and labels that exceed the DNS label
-    length limit.
+    ordinary invalid labels, including empty labels, invalid or non-canonical
+    A-labels, labels that normalize to forbidden text, and labels that exceed
+    the DNS label length limit.
     """
     return _normalize_label(label)
 
@@ -412,8 +412,9 @@ def normalize_idna_hostname(host: str) -> str:
     returned as canonical ``xn--`` A-labels. IDNA dot variants are translated to
     ASCII ``.``, and one optional trailing dot is removed. Empty hostnames raise
     ``ValueError``; empty labels, multiple trailing dots, and invalid labels
-    raise ``UnicodeError``. Unsafe compatibility aliases raise
-    ``UnsafeIdnaCompatibilityMappingError``, a ``UnicodeError`` subclass.
+    raise ``UnicodeError``. Direct Unicode unsafe compatibility aliases raise
+    ``UnsafeIdnaCompatibilityMappingError``, a ``UnicodeError`` subclass;
+    invalid or non-canonical A-labels raise ordinary ``UnicodeError``.
 
     IPv4-literal-like input is accepted only when it is already a canonical
     dotted quad: four decimal octets, ASCII dots, no non-decimal forms, no
