@@ -193,6 +193,62 @@ fn new_rejects_symlinked_session_parent_without_events() -> std::io::Result<()> 
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn new_rejects_symlinked_codex_home_without_lock_artifacts() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let outside_home = dir.path().join("outside-home");
+    let codex_home = dir.path().join("codex-home");
+    std::fs::create_dir_all(&outside_home)?;
+    std::os::unix::fs::symlink(&outside_home, &codex_home)?;
+
+    let out = run(&codex_home, &["exec", "--json", "--", "hi"])?;
+
+    assert_ne!(out.status, 0);
+    assert!(
+        out.events.is_empty(),
+        "symlinked codex home should fail before emitting events: {:?}",
+        out.events
+    );
+    assert!(
+        codex_home.symlink_metadata()?.file_type().is_symlink(),
+        "mock should leave the CODEX_HOME symlink in place"
+    );
+    assert!(
+        !outside_home.join(".session-locks").exists(),
+        "mock should not create lock files through a symlinked CODEX_HOME"
+    );
+    assert!(
+        !outside_home.join("sessions").exists(),
+        "mock should not create session files through a symlinked CODEX_HOME"
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn resume_rejects_special_lock_file_without_events() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    let lock_dir = dir.path().join(".session-locks");
+    std::fs::create_dir_all(&lock_dir)?;
+    mkfifo(&lock_dir.join(format!("{thread_id}.lock")))?;
+
+    let out = run(dir.path(), &["exec", "resume", thread_id, "--", "hi"])?;
+
+    assert_ne!(out.status, 0);
+    assert!(
+        out.events.is_empty(),
+        "special lock file should fail before emitting events: {:?}",
+        out.events
+    );
+    assert!(
+        session_artifacts(dir.path())?.is_empty(),
+        "special lock file should prevent session writes"
+    );
+    Ok(())
+}
+
 #[test]
 fn fixture_rejects_sessions_file_root_without_events() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
@@ -1068,5 +1124,21 @@ fn session_artifacts_skip_symlinked_root_dir() -> std::io::Result<()> {
 
     assert!(session_artifacts(dir.path())?.is_empty());
     assert!(session_files(dir.path())?.is_empty());
+    Ok(())
+}
+
+#[cfg(unix)]
+fn mkfifo(path: &Path) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let c_path = CString::new(path.as_os_str().as_bytes())
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+    // SAFETY: `c_path` is a valid NUL-terminated path and `mkfifo` does not
+    // retain the pointer after returning.
+    let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+    if result < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
     Ok(())
 }

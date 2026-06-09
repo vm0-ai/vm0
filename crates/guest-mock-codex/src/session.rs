@@ -537,6 +537,20 @@ impl StoreDir {
         Ok(unsafe { fs::File::from_raw_fd(fd) })
     }
 
+    fn open_or_create_child_file(&self, name: &OsStr) -> io::Result<fs::File> {
+        let name = cstring_child_name(name)?;
+        let flags = libc::O_RDWR | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        // SAFETY: `self.file` is an open directory fd, `name` is a validated
+        // NUL-terminated child basename, and a mode is supplied because
+        // `O_CREAT` is set.
+        let fd = unsafe { libc::openat(self.file.as_raw_fd(), name.as_ptr(), flags, 0o600) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: a non-negative `openat` return is a newly owned fd.
+        Ok(unsafe { fs::File::from_raw_fd(fd) })
+    }
+
     fn ensure_child_file_usable(&self, name: &OsStr, path: &Path) -> io::Result<()> {
         let file = match self.open_child_file(name) {
             Ok(file) => file,
@@ -664,15 +678,21 @@ struct SessionLock;
 
 #[cfg(unix)]
 fn lock_session(codex_home: &Path, thread_id: &str) -> io::Result<SessionLock> {
-    let lock_dir = codex_home.join(".session-locks");
-    fs::create_dir_all(&lock_dir)?;
-    let lock_path = lock_dir.join(format!("{thread_id}.lock"));
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
-        .open(lock_path)?;
+    let lock_path = codex_home
+        .join(".session-locks")
+        .join(format!("{thread_id}.lock"));
+    let lock_dir = StoreDir::open_or_create_parent(codex_home, &lock_path)?;
+    let lock_name = lock_path
+        .file_name()
+        .ok_or_else(|| invalid_session_file_error(&lock_path))?;
+    let file = lock_dir.open_or_create_child_file(lock_name)?;
+    if !file
+        .metadata()
+        .ok()
+        .is_some_and(|metadata| metadata.file_type().is_file())
+    {
+        return Err(invalid_session_file_error(&lock_path));
+    }
     // SAFETY: `file.as_raw_fd()` is an open fd owned by `file`, and `flock`
     // only affects the advisory lock associated with that fd.
     let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
