@@ -290,6 +290,13 @@ fn serialize_event(event: &Event<'_>) -> Value {
         fn record_u64(&mut self, f: &Field, v: u64) {
             self.0.insert(f.name().into(), v.into());
         }
+        fn record_u128(&mut self, f: &Field, v: u128) {
+            if let Ok(v) = u64::try_from(v) {
+                self.0.insert(f.name().into(), v.into());
+            } else {
+                self.0.insert(f.name().into(), Value::String(v.to_string()));
+            }
+        }
         fn record_f64(&mut self, f: &Field, v: f64) {
             self.0.insert(f.name().into(), v.into());
         }
