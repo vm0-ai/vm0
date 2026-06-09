@@ -398,6 +398,23 @@ def sync_usage_executor():
             usage.webhook.usage_executor = original
 
 
+@contextlib.contextmanager
+def _fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
+    original = usage.webhook.usage_executor
+    executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage-test")
+    usage.webhook.usage_executor = executor
+    try:
+        yield executor
+    finally:
+        try:
+            try:
+                usage.flush_usage_events(trigger="shutdown")
+            finally:
+                executor.shutdown(wait=True)
+        finally:
+            usage.webhook.usage_executor = original
+
+
 @pytest.fixture
 def fresh_usage_executor():
     """Swap ``usage.webhook.usage_executor`` for a throw-away pool for one test.
@@ -406,20 +423,12 @@ def fresh_usage_executor():
     reports need a fresh executor afterwards so later tests still see a
     live pool.  This fixture owns the lifecycle: a new
     :class:`ThreadPoolExecutor` is installed before the test and the
-    original is restored after.  ``ThreadPoolExecutor.shutdown`` is
-    idempotent, so we always call it on the way out regardless of
-    whether the test already did.
+    original is restored after a shutdown-triggered final flush.
+    ``ThreadPoolExecutor.shutdown`` is idempotent, so we always call it
+    on the way out regardless of whether the test already did.
     """
-    original = usage.webhook.usage_executor
-    usage.webhook.usage_executor = ThreadPoolExecutor(
-        max_workers=4, thread_name_prefix="usage-test"
-    )
-    try:
-        yield usage.webhook.usage_executor
-    finally:
-        usage.flush_usage_events(trigger="test")
-        usage.webhook.usage_executor.shutdown(wait=True)
-        usage.webhook.usage_executor = original
+    with _fresh_usage_executor_context() as executor:
+        yield executor
 
 
 @pytest.fixture
