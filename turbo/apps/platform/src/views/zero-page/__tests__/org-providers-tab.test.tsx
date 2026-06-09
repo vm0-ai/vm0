@@ -3,7 +3,12 @@ import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-p
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  fill,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -28,12 +33,7 @@ function staleCodexProvider(): ModelProviderResponse {
 }
 
 function mockStaleProviderStory(): void {
-  context.mocks.data.org({
-    id: "org_1",
-    slug: "test-org",
-    name: "Test Org",
-    role: "admin",
-  });
+  mockAdminOrg();
   context.mocks.data.orgModelProviders([staleCodexProvider()]);
   context.mocks.api(zeroCodexDeviceAuthContract.start, ({ respond }) => {
     return respond(200, {
@@ -52,6 +52,15 @@ function mockStaleProviderStory(): void {
   });
 }
 
+function mockAdminOrg(): void {
+  context.mocks.data.org({
+    id: "org_1",
+    slug: "test-org",
+    name: "Test Org",
+    role: "admin",
+  });
+}
+
 async function openProvidersTab(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=providers" });
   await waitFor(() => {
@@ -63,6 +72,32 @@ async function openProvidersTab(): Promise<void> {
 }
 
 describe("organization model providers settings", () => {
+  it("adds an API key backed workspace model route", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    await openProvidersTab();
+
+    click(screen.getByText("Add model"));
+    click(screen.getByRole("radio", { name: /API key/u }));
+    await fill(
+      screen.getByPlaceholderText("Enter your API key"),
+      "sk-ant-test",
+    );
+    const submitButton = queryAllByRoleFast("button").find((element) => {
+      return element.textContent?.trim() === "Add model";
+    });
+    if (!submitButton) {
+      throw new Error("Add model button not found");
+    }
+    click(submitButton);
+
+    const row = await screen.findByTestId(
+      "org-model-policy-row-claude-opus-4-7",
+    );
+    expect(within(row).getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+  });
+
   it("opens device login from a stale workspace provider banner", async () => {
     mockStaleProviderStory();
     await openProvidersTab();
