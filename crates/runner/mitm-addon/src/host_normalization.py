@@ -391,9 +391,10 @@ def _normalize_label(label: str) -> str:
 def normalize_idna_label(label: str) -> str:
     """Normalize one hostname label with vm0's shared IDNA policy.
 
-    Returns a lowercase ASCII DNS label. Non-ASCII labels are returned as
-    canonical ``xn--`` A-labels. The function accepts exactly one label; it does
-    not split hostnames, translate IDNA dot variants, or remove trailing dots.
+    Returns a lowercase ASCII label under this policy. Non-ASCII input is
+    returned as canonical ``xn--`` A-labels. The function accepts exactly one
+    label; it does not split hostnames, translate IDNA dot variants, or remove
+    trailing dots.
 
     Raises ``UnsafeIdnaCompatibilityMappingError`` when compatibility processing
     would collapse the label into another host identity. Raises ``UnicodeError``
@@ -407,7 +408,7 @@ def normalize_idna_label(label: str) -> str:
 def normalize_idna_hostname(host: str) -> str:
     """Normalize one hostname with vm0's shared IDNA policy.
 
-    Returns a dot-separated lowercase ASCII hostname. Unicode labels are
+    Returns a dot-separated lowercase ASCII host identity. Unicode labels are
     returned as canonical ``xn--`` A-labels. IDNA dot variants are translated to
     ASCII ``.``, and one optional trailing dot is removed. Empty hostnames raise
     ``ValueError``; empty labels, multiple trailing dots, and invalid labels
@@ -416,10 +417,9 @@ def normalize_idna_hostname(host: str) -> str:
 
     IPv4-literal-like input is accepted only when it is already a canonical
     dotted quad: four decimal octets, ASCII dots, no non-decimal forms, no
-    leading zeroes except ``0``, and each octet at most 255. One trailing ASCII
-    dot is allowed, but IDNA dot variants inside an IPv4-literal-like spelling
-    are non-canonical. Other IPv4-literal-like spellings raise ``UnicodeError``
-    instead of being normalized to a different address.
+    leading zeroes except ``0``, and each octet at most 255. One trailing dot is
+    allowed only when it is also an ASCII dot. Other IPv4-literal-like spellings
+    raise ``UnicodeError`` instead of being normalized to a different address.
 
     Python's built-in codec is IDNA2003 and maps labels such as ``faß`` to
     ``fass``. WHATWG URL parsing keeps those as A-labels instead, so this helper
