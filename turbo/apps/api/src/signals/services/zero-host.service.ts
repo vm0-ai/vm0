@@ -127,7 +127,6 @@ interface CreateHostedSiteDeploymentContext {
   readonly allowExistingPublicSlug: boolean;
 }
 
-
 interface HostedR2Config {
   readonly bucket: string;
 }
@@ -473,7 +472,6 @@ function createHostedSiteDeployment(
     return { kind: "ok", site, deployment };
   });
 }
-
 
 export const prepareHostedSiteDeployment$ = command(
   async (
