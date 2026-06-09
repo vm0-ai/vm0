@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.427.0](https://github.com/vm0-ai/vm0/compare/app-v0.426.0...app-v0.427.0) (2026-06-09)
+
+
+### Features
+
+* add stripe firewall permissions from official data ([#16704](https://github.com/vm0-ai/vm0/issues/16704)) ([8e60269](https://github.com/vm0-ai/vm0/commit/8e60269c504497f0926da811835067656a2ba07d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.2
+    * @vm0/connectors bumped to 1.53.0
+    * @vm0/core bumped to 8.317.3
+
 ## [0.426.0](https://github.com/vm0-ai/vm0/compare/app-v0.425.1...app-v0.426.0) (2026-06-09)
 
 

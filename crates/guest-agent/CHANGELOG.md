@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.21...guest-agent-v0.34.22) (2026-06-09)
+
+
+### Refactoring
+
+* split telemetry delta reader ([#16765](https://github.com/vm0-ai/vm0/issues/16765)) ([7951c52](https://github.com/vm0-ai/vm0/commit/7951c525d2b7c8dccb8647d194ad2a91aeb72d79))
+
 ## [0.34.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.20...guest-agent-v0.34.21) (2026-06-08)
 
 ## [0.34.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.19...guest-agent-v0.34.20) (2026-06-08)

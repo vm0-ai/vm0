@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.108.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.20...runner-rs-v0.108.21) (2026-06-09)
+
+
+### Bug Fixes
+
+* harden runner setup artifact installs ([#16764](https://github.com/vm0-ai/vm0/issues/16764)) ([a38fb37](https://github.com/vm0-ai/vm0/commit/a38fb37f2439d506f19583a965118dd065825def))
+
 ## [0.108.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.19...runner-rs-v0.108.20) (2026-06-08)
 
 

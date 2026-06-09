@@ -1,5 +1,15 @@
 # Changelog
 
+## [8.317.3](https://github.com/vm0-ai/vm0/compare/core-v8.317.2...core-v8.317.3) (2026-06-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.2
+    * @vm0/connectors bumped to 1.53.0
+
 ## [8.317.2](https://github.com/vm0-ai/vm0/compare/core-v8.317.1...core-v8.317.2) (2026-06-09)
 
 
