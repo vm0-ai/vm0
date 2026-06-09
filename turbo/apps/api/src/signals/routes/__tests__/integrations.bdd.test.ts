@@ -79,6 +79,44 @@ function agentPhoneWebhookHeaders(body: string): {
 }
 
 describe("INT-01: Slack integration and Slack app routes", () => {
+  it("keeps signed Slack Events API URL verification boundaries visible through APIs", async () => {
+    integrations.configureSlackSigningSecret();
+    const body = JSON.stringify({
+      type: "url_verification",
+      challenge: "slack-bdd-challenge",
+    });
+
+    const missingSignature = await integrations.requestSlackEvent(
+      body,
+      {},
+      [401],
+    );
+    expect(missingSignature.body).toStrictEqual({
+      error: "Missing Slack signature headers",
+    });
+
+    const invalidSignature = await integrations.requestSlackEvent(
+      body,
+      {
+        ...integrations.signedSlackIngressHeaders(body),
+        "x-slack-signature": "v0=invalid",
+      },
+      [401],
+    );
+    expect(invalidSignature.body).toStrictEqual({
+      error: "Invalid signature",
+    });
+
+    const verified = await integrations.requestSlackEvent(
+      body,
+      integrations.signedSlackIngressHeaders(body),
+      [200],
+    );
+    expect(verified.body).toStrictEqual({
+      challenge: "slack-bdd-challenge",
+    });
+  });
+
   it("keeps unauthenticated, not-installed, non-admin, and provider-config errors visible through APIs", async () => {
     const admin = integrations.user();
     const member = integrations.user({

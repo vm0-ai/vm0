@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 import {
   integrationsTelegramBotListContract,
@@ -43,7 +43,9 @@ import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/z
 import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
 import { zeroSlackOauthContract } from "@vm0/api-contracts/contracts/zero-slack-oauth";
 
+import { createApp } from "../../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
+import { now } from "../../../../lib/time";
 import {
   accept,
   setupApp,
@@ -114,6 +116,16 @@ interface TelegramUpdateBody {
 const AGENTPHONE_API_BASE_URL = "https://api.agentphone.test";
 const AGENTPHONE_AGENT_ID = "agt-bdd-agentphone";
 const AGENTPHONE_PHONE_NUMBER = "+19039853128";
+const SLACK_SIGNING_SECRET = "slack-bdd-signing-secret";
+
+type SlackSignatureHeaders = Record<string, string>;
+type SlackEventStatus = 200 | 400 | 401 | 503;
+
+interface SlackEventResponse {
+  readonly status: SlackEventStatus;
+  readonly body: unknown;
+  readonly headers: Headers;
+}
 
 function clerkUserProfile(actor: ApiTestUser): ClerkUserProfile {
   const emailId = `email_${actor.userId}`;
@@ -191,6 +203,54 @@ function authenticate(
 
   routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
   return authHeaders(actor);
+}
+
+async function parseRawResponseBody(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return await response.json();
+  }
+  return await response.text();
+}
+
+async function requestRawSlackEvent(
+  context: TestContext,
+  body: string,
+  headers: SlackSignatureHeaders,
+): Promise<SlackEventResponse> {
+  const response = await createApp({ signal: context.signal }).request(
+    "/api/zero/slack/events",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...headers,
+      },
+      body,
+    },
+  );
+  const result = {
+    body: await parseRawResponseBody(response),
+    headers: response.headers,
+  };
+
+  switch (response.status) {
+    case 200: {
+      return { status: 200, ...result };
+    }
+    case 400: {
+      return { status: 400, ...result };
+    }
+    case 401: {
+      return { status: 401, ...result };
+    }
+    case 503: {
+      return { status: 503, ...result };
+    }
+    default: {
+      throw new Error(`Unexpected Slack Events API status ${response.status}`);
+    }
+  }
 }
 
 export function createBddIntegrationApi(context: TestContext) {
@@ -366,6 +426,31 @@ export function createBddIntegrationApi(context: TestContext) {
     configureSlackOauthProvider(): void {
       mockEnv("SLACK_OAUTH_CLIENT_ID", "slack-bdd-client-id");
       mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "slack-bdd-client-secret");
+    },
+
+    configureSlackSigningSecret(): void {
+      mockOptionalEnv("SLACK_SIGNING_SECRET", SLACK_SIGNING_SECRET);
+    },
+
+    signedSlackIngressHeaders(body: string): SlackSignatureHeaders {
+      const timestamp = String(Math.floor(now() / 1000));
+      return {
+        "x-slack-request-timestamp": timestamp,
+        "x-slack-signature": `v0=${createHmac("sha256", SLACK_SIGNING_SECRET)
+          .update(`v0:${timestamp}:${body}`)
+          .digest("hex")}`,
+      };
+    },
+
+    async requestSlackEvent(
+      body: string,
+      headers: SlackSignatureHeaders,
+      statuses: readonly (200 | 400 | 401 | 503)[],
+    ) {
+      return await accept(
+        requestRawSlackEvent(context, body, headers),
+        statuses,
+      );
     },
 
     async requestSlackOauthConnect(
