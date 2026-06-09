@@ -14,11 +14,7 @@ export const aws = {
         showExperimentalLabel: false,
         label: "Sign in with AWS",
         helpText:
-          "Sign in with AWS and paste the authorization code that AWS displays.",
-        connectNotice: {
-          variant: "warning",
-          text: "This is a temporary AWS connector that expires after up to 12 hours. Reconnect after it expires.",
-        },
+          "Sign in with AWS and paste the authorization code that AWS displays.\n**This temporary AWS connector expires after up to 12 hours.**",
         client: {
           clientRegistration: "static",
           clientType: "public",

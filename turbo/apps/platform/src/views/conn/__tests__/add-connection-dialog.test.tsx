@@ -476,9 +476,11 @@ describe("connect modal - content by auth method", () => {
         "Sign in with AWS and paste the authorization code that AWS displays.",
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/temporary AWS connector.*up to 12 hours/),
-    ).toBeInTheDocument();
+    const expiryText = screen.getByText(
+      /temporary AWS connector.*up to 12 hours/i,
+    );
+    expect(expiryText).toBeInTheDocument();
+    expect(expiryText.tagName).toBe("STRONG");
     expect(screen.getByText("Start AWS sign-in")).toBeInTheDocument();
     expect(open).not.toHaveBeenCalled();
 
@@ -487,6 +489,9 @@ describe("connect modal - content by auth method", () => {
     await waitFor(() => {
       expect(screen.getByText("Open AWS sign-in")).toBeInTheDocument();
     });
+    expect(
+      screen.getByText(/temporary AWS connector.*up to 12 hours/i),
+    ).toBeInTheDocument();
     expect(submittedStartBody).toStrictEqual({ authMethod: "cli" });
     expect(open).not.toHaveBeenCalled();
 

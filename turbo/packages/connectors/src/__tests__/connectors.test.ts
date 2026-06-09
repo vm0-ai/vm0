@@ -499,13 +499,6 @@ describe("connector auth method config", () => {
     expect(getConnectorAuthMethod("github", "api-token")).toBeUndefined();
   });
 
-  it("keeps connect notices on auth method config", () => {
-    expect(getConnectorAuthMethod("aws", "cli")?.connectNotice).toStrictEqual({
-      variant: "warning",
-      text: "This is a temporary AWS connector that expires after up to 12 hours. Reconnect after it expires.",
-    });
-  });
-
   it("does not silently choose one type-only auth-code grant when ambiguous", () => {
     const authMethods = CONNECTOR_TYPES.github.authMethods;
     Object.defineProperty(authMethods, "api", {

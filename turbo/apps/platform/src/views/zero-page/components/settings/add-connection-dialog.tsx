@@ -18,7 +18,6 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import {
   CONNECTOR_TYPES,
-  type ConnectorAuthMethodConnectNoticeConfig,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
   type ConnectorDeviceAuthStartOptions,
@@ -712,27 +711,6 @@ type PendingConnectorExternalCodeState = Extract<
 >;
 type ExternalCodeButtonHandler = (event: unknown) => void;
 
-const connectorAuthMethodConnectNoticeClassNameByVariant = {
-  warning:
-    "rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100",
-} satisfies Record<ConnectorAuthMethodConnectNoticeConfig["variant"], string>;
-
-function ConnectorAuthMethodConnectNotice({
-  notice,
-}: {
-  notice: ConnectorAuthMethodConnectNoticeConfig;
-}) {
-  return (
-    <div
-      className={
-        connectorAuthMethodConnectNoticeClassNameByVariant[notice.variant]
-      }
-    >
-      {notice.text}
-    </div>
-  );
-}
-
 function ExternalCodeStartContent({
   type,
   method,
@@ -753,9 +731,6 @@ function ExternalCodeStartContent({
   return (
     <div className="flex flex-col gap-3">
       {method.helpText && <ConnectorHelpText text={method.helpText} />}
-      {method.connectNotice ? (
-        <ConnectorAuthMethodConnectNotice notice={method.connectNotice} />
-      ) : null}
       {terminalMessage ? (
         <p className="text-sm text-destructive" role="alert">
           {terminalMessage}
@@ -795,13 +770,11 @@ function ExternalCodePendingContent({
   const connectorLabel = CONNECTOR_TYPES[type].label;
   return (
     <div className="flex flex-col gap-3">
+      {method.helpText && <ConnectorHelpText text={method.helpText} />}
       <p className="text-sm text-muted-foreground">
         Open {connectorLabel} sign-in, then paste the authorization code
         displayed by {connectorLabel}.
       </p>
-      {method.connectNotice ? (
-        <ConnectorAuthMethodConnectNotice notice={method.connectNotice} />
-      ) : null}
       <div className="flex items-center gap-2">
         <Button
           type="button"

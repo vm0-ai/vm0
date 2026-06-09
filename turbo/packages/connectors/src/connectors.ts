@@ -347,11 +347,6 @@ export interface ConnectorExternalCodeGrantConfig {
   readonly outputs: ConnectorGrantOutputBindings;
 }
 
-export interface ConnectorAuthMethodConnectNoticeConfig {
-  readonly variant: "warning";
-  readonly text: string;
-}
-
 export interface ConnectorDeviceAuthStartSelectOptionChoiceConfig {
   readonly value: string;
   readonly label: string;
@@ -484,7 +479,6 @@ export type ConnectorRevokeConfig =
 interface ConnectorAuthMethodConfigBase {
   label: string;
   helpText?: string;
-  connectNotice?: ConnectorAuthMethodConnectNoticeConfig;
   /** When set, this auth method is only available while the feature is enabled. */
   featureFlag?: FeatureSwitchKey;
   /** When false, feature-gated UI surfaces should not add an experimental label. */
