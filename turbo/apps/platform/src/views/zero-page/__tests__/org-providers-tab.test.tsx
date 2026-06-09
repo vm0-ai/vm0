@@ -71,8 +71,28 @@ async function openProvidersTab(): Promise<void> {
   });
 }
 
+function buttonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((element) => {
+    return element.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function menuItemByText(text: string): HTMLElement {
+  const item = queryAllByRoleFast("menuitem").find((element) => {
+    return element.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!item) {
+    throw new Error(`${text} menu item not found`);
+  }
+  return item;
+}
+
 describe("organization model providers settings", () => {
-  it("adds an API key backed workspace model route", async () => {
+  it("adds, edits, and deletes a workspace model route", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     await openProvidersTab();
@@ -83,19 +103,37 @@ describe("organization model providers settings", () => {
       screen.getByPlaceholderText("Enter your API key"),
       "sk-ant-test",
     );
-    const submitButton = queryAllByRoleFast("button").find((element) => {
-      return element.textContent?.trim() === "Add model";
-    });
-    if (!submitButton) {
-      throw new Error("Add model button not found");
-    }
-    click(submitButton);
+    click(buttonByText("Add model"));
 
     const row = await screen.findByTestId(
       "org-model-policy-row-claude-opus-4-7",
     );
     expect(within(row).getByText("Claude Opus 4.7")).toBeInTheDocument();
     expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+
+    click(within(row).getByLabelText("Actions for Claude Opus 4.7"));
+    click(menuItemByText("Edit model"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Edit model" }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByRole("radio", { name: /Built-in/u }));
+    click(buttonByText("Save changes"));
+
+    await waitFor(() => {
+      expect(within(row).getByText("Built-in")).toBeInTheDocument();
+    });
+
+    click(within(row).getByLabelText("Actions for Claude Opus 4.7"));
+    click(menuItemByText("Delete model"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("org-model-policy-row-claude-opus-4-7"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("opens device login from a stale workspace provider banner", async () => {
