@@ -1386,7 +1386,11 @@ jobs:
     concurrency:
       group: deploy-stripe-listener-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-api]
+    # Runs in parallel with deploy-api: the forward URL is the deterministic
+    # prepare.outputs.api-preview-url (a stable alias, not a deploy-api output),
+    # and Stripe webhooks only fire during e2e payment tests, which run after
+    # deploy-api has succeeded — so the listener never forwards to a dead API.
+    needs: [prepare]
     if: |
       always() &&
       github.event_name != 'push' &&
@@ -1395,8 +1399,7 @@ jobs:
         needs.prepare.outputs.cli-changed == 'true' ||
         needs.prepare.outputs.ci-changed == 'true' ||
         needs.prepare.outputs.e2e-changed == 'true'
-      ) &&
-      needs.deploy-api.result == 'success'
+      )
     steps:
       - uses: actions/checkout@v6
 
