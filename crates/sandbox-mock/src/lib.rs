@@ -972,9 +972,10 @@ impl MockSandbox {
     /// Return this sandbox's recorded copy-file calls.
     ///
     /// The returned vector is a cloned snapshot in recorded order. Calls are
-    /// recorded before mock validation errors such as zero `max_bytes`, zero
-    /// timeout, or invalid host paths are returned. Copy-file calls are sandbox-local; shared
-    /// overrides do not expose a copy-file call accessor.
+    /// recorded before mock validation errors such as invalid guest paths,
+    /// zero `max_bytes`, zero timeout, or invalid host paths are returned.
+    /// Copy-file calls are sandbox-local; shared overrides do not expose a
+    /// copy-file call accessor.
     pub fn copy_file_calls(&self) -> Vec<CopyFileCall> {
         self.copy_file_calls.lock_ignoring_poison().clone()
     }
@@ -2140,6 +2141,7 @@ mod tests {
         );
         assert!(!path.exists());
 
+        sandbox.push_copy_file_result(Ok(b"host ok\n".to_vec()));
         for invalid_host_path in ["", ".", "/tmp/", "/tmp/.", "/tmp/bad\0host.log"] {
             let err = sandbox
                 .copy_file(
@@ -2160,6 +2162,22 @@ mod tests {
                 "host path",
             );
         }
+
+        let result = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.bytes_copied, 8);
+        assert_eq!(std::fs::read(&path).unwrap(), b"host ok\n");
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[tokio::test]
@@ -2235,6 +2253,19 @@ mod tests {
             SandboxOperationReason::Other,
             "max_bytes must be positive",
         );
+
+        sandbox.push_read_file_result(Ok(Some(b"after invalid max\n".to_vec())));
+        let err = sandbox.read_file("/tmp/system.log", 0).await.unwrap_err();
+
+        assert_operation_error(
+            err,
+            SandboxOperation::ReadFile,
+            SandboxOperationReason::Other,
+            "max_bytes must be positive",
+        );
+
+        let result = sandbox.read_file("/tmp/system.log", 1024).await.unwrap();
+        assert_eq!(result.as_deref(), Some(&b"after invalid max\n"[..]));
     }
 
     #[tokio::test]
