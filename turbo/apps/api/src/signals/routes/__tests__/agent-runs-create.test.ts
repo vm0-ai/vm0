@@ -1467,11 +1467,13 @@ describe("POST /api/agent/runs", () => {
         encryptedValue: encryptSecretForTests("aws-session-token"),
         type: "connector",
       },
+    ]);
+    await db.insert(variables).values([
       {
         orgId: fx.orgId,
         userId: fx.userId,
         name: "AWS_REGION",
-        encryptedValue: encryptSecretForTests("us-west-2"),
+        value: "us-west-2",
         type: "connector",
       },
     ]);
@@ -1503,15 +1505,24 @@ describe("POST /api/agent/runs", () => {
       AWS_ACCESS_KEY_ID: "aws",
       AWS_SECRET_ACCESS_KEY: "aws",
       AWS_SESSION_TOKEN: "aws",
-      AWS_REGION: "aws",
-      AWS_DEFAULT_REGION: "aws",
     });
-    expect(
-      decryptSecretsMapForTests(executionContext.encryptedSecrets),
-    ).toMatchObject({
+    expect(executionContext.secretConnectorMap).not.toHaveProperty(
+      "AWS_REGION",
+    );
+    expect(executionContext.secretConnectorMap).not.toHaveProperty(
+      "AWS_DEFAULT_REGION",
+    );
+    const decryptedSecrets = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
+    expect(decryptedSecrets).toMatchObject({
       AWS_ACCESS_KEY_ID: "aws-access-key-id",
       AWS_SECRET_ACCESS_KEY: "aws-secret-access-key",
       AWS_SESSION_TOKEN: "aws-session-token",
+    });
+    expect(decryptedSecrets).not.toHaveProperty("AWS_REGION");
+    expect(decryptedSecrets).not.toHaveProperty("AWS_DEFAULT_REGION");
+    expect(executionContext.environment).toMatchObject({
       AWS_REGION: "us-west-2",
       AWS_DEFAULT_REGION: "us-west-2",
     });

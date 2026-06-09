@@ -27,10 +27,8 @@ export const aws = {
             "AWS_ACCESS_KEY_ID",
             "AWS_SECRET_ACCESS_KEY",
             "AWS_SESSION_TOKEN",
-            "AWS_SIGNIN_REGION",
-            "AWS_REGION",
           ],
-          variables: [],
+          variables: ["AWS_SIGNIN_REGION", "AWS_REGION"],
         },
         grant: {
           kind: "external-code",
@@ -41,8 +39,8 @@ export const aws = {
             accessKeyId: "$secrets.AWS_ACCESS_KEY_ID",
             secretAccessKey: "$secrets.AWS_SECRET_ACCESS_KEY",
             sessionToken: "$secrets.AWS_SESSION_TOKEN",
-            signinRegion: "$secrets.AWS_SIGNIN_REGION",
-            runtimeRegion: "$secrets.AWS_REGION",
+            signinRegion: "$vars.AWS_SIGNIN_REGION",
+            runtimeRegion: "$vars.AWS_REGION",
           },
         },
         access: {
@@ -50,7 +48,7 @@ export const aws = {
           inputs: {
             refreshToken: "$secrets.AWS_LOGIN_REFRESH_TOKEN",
             dpopKey: "$secrets.AWS_LOGIN_DPOP_KEY",
-            signinRegion: "$secrets.AWS_SIGNIN_REGION",
+            signinRegion: "$vars.AWS_SIGNIN_REGION",
           },
           outputs: {
             refreshToken: "$secrets.AWS_LOGIN_REFRESH_TOKEN",
@@ -67,8 +65,8 @@ export const aws = {
             AWS_ACCESS_KEY_ID: "$secrets.AWS_ACCESS_KEY_ID",
             AWS_SECRET_ACCESS_KEY: "$secrets.AWS_SECRET_ACCESS_KEY",
             AWS_SESSION_TOKEN: "$secrets.AWS_SESSION_TOKEN",
-            AWS_REGION: "$secrets.AWS_REGION",
-            AWS_DEFAULT_REGION: "$secrets.AWS_REGION",
+            AWS_REGION: "$vars.AWS_REGION",
+            AWS_DEFAULT_REGION: "$vars.AWS_REGION",
           },
         },
         revoke: { kind: "none" },
