@@ -1,5 +1,6 @@
 use std::io;
 use std::os::fd::AsRawFd;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -155,6 +156,30 @@ fn copy_temp_path(host_path: &Path, process_id: u32, seq: u32, nonce: u64) -> Pa
         .map(|name| name.to_string_lossy())
         .unwrap_or_else(|| "copy".into());
     host_path.with_file_name(format!(".{file_name}.vm0tmp-{process_id}-{seq}-{nonce}"))
+}
+
+fn validate_copy_host_path(host_path: &Path) -> io::Result<()> {
+    let path_bytes = host_path.as_os_str().as_bytes();
+    if path_bytes.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "copy_file host path must not be empty",
+        ));
+    }
+    if path_bytes.contains(&0) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "copy_file host path contains NUL bytes",
+        ));
+    }
+    if host_path.file_name().is_none() || path_bytes.ends_with(b"/") || path_bytes.ends_with(b"/.")
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "copy_file host path must name a file",
+        ));
+    }
+    Ok(())
 }
 
 async fn remove_temp_file(path: &Path) {
@@ -375,6 +400,10 @@ impl VsockHost {
     /// to a regular file is treated as success with `bytes_copied == 0`
     /// without publishing a host file. Host-side setup and validation errors
     /// can still fail the operation.
+    ///
+    /// The host path must name a file destination. Empty host paths, paths
+    /// containing NUL bytes, and paths that end in a directory marker are
+    /// rejected before guest work starts.
     pub async fn copy_file(
         &self,
         path: &str,
@@ -398,6 +427,7 @@ impl VsockHost {
         write_observer: FrameWriteObserver,
     ) -> io::Result<CopyFileResult> {
         validate_guest_file_path(path)?;
+        validate_copy_host_path(host_path)?;
         if options.max_bytes == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
