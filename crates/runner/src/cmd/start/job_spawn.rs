@@ -620,16 +620,43 @@ fn log_job_execution_failed(
         guest_duration_ms,
     } = failure.kind
     {
-        error!(
-            run_id = %run_id,
-            exit_code,
-            reused,
-            error = %failure.error,
-            timeout_ms,
-            elapsed_ms,
-            guest_duration_ms,
-            "runner job timed out"
-        );
+        if let Some(diagnostic) = failure.diagnostic.as_ref() {
+            let failure_detail_source = diagnostic
+                .failure_detail_source
+                .map(|source| source.as_str());
+            let failure_reason = diagnostic.failure_reason.map(|reason| reason.as_str());
+            error!(
+                run_id = %run_id,
+                exit_code,
+                reused,
+                error = %failure.error,
+                timeout_ms,
+                elapsed_ms,
+                guest_duration_ms,
+                failure_class = diagnostic.failure_class.as_str(),
+                failure_framework = diagnostic.framework.as_str(),
+                failure_cli_exit_code = diagnostic.cli_exit_code,
+                failure_claude_num_turns = diagnostic.claude_num_turns,
+                failure_detail_source,
+                failure_reason,
+                session_history_status = diagnostic.session_history_status.as_str(),
+                prompt_shape = diagnostic.prompt_shape.as_str(),
+                prompt_bytes = diagnostic.prompt_bytes,
+                first_line_bytes = diagnostic.first_line_bytes,
+                "runner job timed out"
+            );
+        } else {
+            error!(
+                run_id = %run_id,
+                exit_code,
+                reused,
+                error = %failure.error,
+                timeout_ms,
+                elapsed_ms,
+                guest_duration_ms,
+                "runner job timed out"
+            );
+        }
         return;
     }
 
@@ -998,6 +1025,35 @@ mod tests {
         assert_field_eq(&event, "timeout_ms", "7200000");
         assert_field_eq(&event, "elapsed_ms", "7199949");
         assert_field_eq(&event, "guest_duration_ms", "7200084");
+    }
+
+    #[test]
+    fn runner_job_timeout_preserves_diagnostic_fields() {
+        let diagnostic = job_failure_diagnostic(Some(FailureReason::UsageLimit));
+        let failure = executor::ExecutionFailure::runner_job_timeout(
+            124,
+            "Timeout",
+            Some(diagnostic),
+            Duration::from_secs(7200),
+            Duration::from_millis(7_200_100),
+            Some(7_200_000),
+        );
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(
+            event.fields.get("message").map(String::as_str),
+            Some("runner job timed out")
+        );
+        assert_field_eq(&event, "timeout_ms", "7200000");
+        assert_field_eq(&event, "elapsed_ms", "7200100");
+        assert_field_eq(&event, "guest_duration_ms", "7200000");
+        assert_field_eq(&event, "failure_reason", "usage_limit");
+        assert_field_eq(&event, "failure_class", "cli_nonzero");
+        assert_field_eq(&event, "failure_framework", "codex");
+        assert_field_eq(&event, "failure_detail_source", "codex_jsonl");
+        assert_field_eq(&event, "session_history_status", "not_applicable");
     }
 
     async fn status_idle_sessions_and_active_runs(
