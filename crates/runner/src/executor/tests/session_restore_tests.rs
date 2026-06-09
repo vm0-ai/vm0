@@ -2,7 +2,7 @@ use sandbox::ExecResult;
 use sandbox_mock::MockSandbox;
 
 use super::super::session_restore::{is_valid_session_id, restore_session};
-use super::support::{minimal_context, sandbox_exec_error, sandbox_write_file_error};
+use super::support::{minimal_context, sandbox_write_file_error};
 use crate::types::ResumeSession;
 
 #[test]
@@ -58,7 +58,7 @@ async fn restore_session_rejects_invalid_session_id() {
 }
 
 #[tokio::test]
-async fn restore_session_skips_unknown_framework() {
+async fn restore_session_unknown_framework_uses_claude_fallback() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "custom-agent".into();
@@ -66,11 +66,16 @@ async fn restore_session_skips_unknown_framework() {
         session_id: "sess-1".into(),
         session_history: "data".into(),
     };
-    // Unknown frameworks must no-op silently (warn-and-skip) so a typo in
-    // CLI_AGENT_TYPE does not block the run. Pushing an exec error detects
-    // any accidental fallthrough into either framework's restore path.
-    sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
+
     restore_session(&sandbox, &ctx, &session).await.unwrap();
+
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.claude/projects/-home-user-workspace/sess-1.jsonl"
+    );
+    assert_eq!(writes[0].content, b"data");
 }
 
 #[tokio::test]

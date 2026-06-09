@@ -30,9 +30,9 @@ pub(super) async fn restore_session(
             warn!(
                 run_id = %context.run_id,
                 framework = %other,
-                "skipping session restore for unknown framework"
+                "restoring session as claude-code for unknown framework"
             );
-            Ok(())
+            restore_claude_session(sandbox, context, session).await
         }
     }
 }
