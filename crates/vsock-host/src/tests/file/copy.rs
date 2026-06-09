@@ -620,6 +620,46 @@ async fn copy_file_missing_ok_preserves_existing_host_file() {
 }
 
 #[tokio::test]
+async fn copy_file_missing_ok_discards_streamed_output_and_preserves_existing_host_file() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let temp_dir = HostTempDir::new("vsock-host-copy-missing-output");
+    let host_path = temp_dir.join("system.log");
+    std::fs::write(&host_path, b"old host log").unwrap();
+    let copy_path = host_path.clone();
+
+    let copy_task = spawn_copy_file(
+        Arc::clone(&host),
+        "/tmp/missing.log",
+        copy_path,
+        copy_options(1024, 5000, true),
+    );
+
+    let msg = read_guest_message(&mut guest).await;
+    send_exec_output(
+        &mut guest,
+        msg.seq,
+        0,
+        ExecOutputStream::Stdout,
+        b"unexpected partial output",
+        false,
+    )
+    .await;
+    send_stream_exec_result(
+        &mut guest,
+        msg.seq,
+        ExecTermination::Exited { exit_code: 66 },
+        b"",
+    )
+    .await;
+
+    let result = copy_task.await.unwrap().unwrap();
+    assert_eq!(result.bytes_copied, 0);
+    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
+    temp_dir.assert_no_vm0tmp_files();
+}
+
+#[tokio::test]
 async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_removes_temp() {
     let (host, mut guest) = setup_host_and_guest().await;
     let temp_dir = HostTempDir::new("vsock-host-copy-missing-error");
