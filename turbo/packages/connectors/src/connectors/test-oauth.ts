@@ -20,6 +20,7 @@ const TEST_OAUTH_AUTH_CODE_GRANT = {
   outputs: {
     accessToken: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
     refreshToken: "$secrets.TEST_OAUTH_REFRESH_TOKEN",
+    tenantId: "$vars.TEST_OAUTH_API_TENANT_ID",
   },
 } as const satisfies ConnectorAuthCodeGrantConfig;
 
@@ -47,6 +48,12 @@ const TEST_OAUTH_API_TOKEN_MANUAL_GRANT = {
       placeholder: "test-input-variable",
       storage: "variable",
     },
+    TEST_OAUTH_API_TENANT_ID: {
+      label: "Tenant ID",
+      required: true,
+      placeholder: "test-oauth-tenant",
+      storage: "variable",
+    },
   },
 } as const satisfies ConnectorManualGrantConfig;
 
@@ -66,7 +73,7 @@ export const testOauth = {
         client: TEST_OAUTH_CLIENT,
         storage: {
           secrets: ["TEST_OAUTH_ACCESS_TOKEN", "TEST_OAUTH_REFRESH_TOKEN"],
-          variables: [],
+          variables: ["TEST_OAUTH_API_TENANT_ID"],
         },
         grant: TEST_OAUTH_AUTH_CODE_GRANT,
         access: {
@@ -81,6 +88,7 @@ export const testOauth = {
           refreshableSecrets: ["TEST_OAUTH_ACCESS_TOKEN"],
           envBindings: {
             TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
+            TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
           },
         },
         revoke: TEST_OAUTH_REVOKE,
@@ -127,7 +135,10 @@ export const testOauth = {
           "Test-only manual method used to exercise refreshable access without a platform auth client.",
         storage: {
           secrets: ["TEST_OAUTH_TOKEN", "TEST_OAUTH_API_TOKEN_ACCESS_TOKEN"],
-          variables: ["TEST_OAUTH_API_TOKEN_INPUT_VAR"],
+          variables: [
+            "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+            "TEST_OAUTH_API_TENANT_ID",
+          ],
         },
         grant: TEST_OAUTH_API_TOKEN_MANUAL_GRANT,
         access: {
@@ -142,6 +153,7 @@ export const testOauth = {
           refreshableSecrets: ["TEST_OAUTH_API_TOKEN_ACCESS_TOKEN"],
           envBindings: {
             TEST_OAUTH_API_TOKEN: "$secrets.TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+            TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
           },
         },
         revoke: TEST_OAUTH_REVOKE,

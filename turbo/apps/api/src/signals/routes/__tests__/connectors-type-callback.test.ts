@@ -237,6 +237,7 @@ type DynamicTestOAuthExchangeResult = {
   readonly outputs: {
     readonly accessToken: string;
     readonly refreshToken: string;
+    readonly tenantId: string;
   };
   readonly expiresIn: number;
   readonly scopes: string[];
@@ -305,6 +306,7 @@ function dynamicTestOAuthExchangeResult(): DynamicTestOAuthExchangeResult {
     outputs: {
       accessToken: "dynamic-access-token",
       refreshToken: "dynamic-refresh-token",
+      tenantId: "dynamic-tenant-id",
     },
     expiresIn: 3600,
     scopes: ["read"],
@@ -2225,6 +2227,16 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(decryptSecretForTests(secret!.encryptedValue)).toBe(
       "dynamic-access-token",
     );
+    await expect(
+      findVariable({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_API_TENANT_ID",
+      }),
+    ).resolves.toMatchObject({
+      value: "dynamic-tenant-id",
+      type: "connector",
+    });
   });
 
   it("stores tokens through method-specific grant output names", async () => {

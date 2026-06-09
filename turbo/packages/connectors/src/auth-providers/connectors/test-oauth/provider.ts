@@ -18,6 +18,7 @@ import type {
 type TestOAuthGrantResult = ConnectorAuthProviderGrantResult<{
   readonly accessToken: string;
   readonly refreshToken: string | null;
+  readonly tenantId: string;
 }>;
 
 type TestOAuthApiGrantResult = ConnectorAuthProviderGrantResult<{
@@ -83,6 +84,7 @@ async function exchangeTestOauthGrant(args: {
     outputs: {
       accessToken: token.accessToken,
       refreshToken: token.refreshToken,
+      tenantId: token.userInfo.id,
     },
     expiresIn: token.expiresIn,
     scopes: token.scopes,

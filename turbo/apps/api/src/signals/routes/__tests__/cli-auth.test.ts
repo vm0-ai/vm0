@@ -1973,6 +1973,13 @@ describe("CLI auth routes", () => {
           name: "TEST_OAUTH_REFRESH_TOKEN",
         }),
       ).resolves.toBe("test-oauth-refresh-token");
+      await expect(
+        findConnectorVariable({
+          orgId,
+          userId,
+          name: "TEST_OAUTH_API_TENANT_ID",
+        }),
+      ).resolves.toBe("test-oauth-oauth-tenantId");
     });
 
     it("maps legacy test token fields to method-specific grant outputs", async () => {

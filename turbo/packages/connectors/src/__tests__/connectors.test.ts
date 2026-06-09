@@ -918,9 +918,16 @@ describe("connector selected auth method capability checks", () => {
       TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
     });
     expect(
+      getConnectorAuthMethodEnvBindings("test-oauth", "oauth"),
+    ).toStrictEqual({
+      TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
+      TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
+    });
+    expect(
       getConnectorAuthMethodEnvBindings("test-oauth", "api-token"),
     ).toStrictEqual({
       TEST_OAUTH_API_TOKEN: "$secrets.TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+      TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
     });
 
     const authClient = resolveConnectorAuthClientForMethod(
@@ -2786,6 +2793,7 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       refreshableSecrets: ["TEST_OAUTH_API_TOKEN_ACCESS_TOKEN"],
       envBindings: {
         TEST_OAUTH_API_TOKEN: "$secrets.TEST_OAUTH_API_TOKEN_ACCESS_TOKEN",
+        TEST_OAUTH_TENANT_ID: "$vars.TEST_OAUTH_API_TENANT_ID",
       },
       platformSecrets: [],
     });

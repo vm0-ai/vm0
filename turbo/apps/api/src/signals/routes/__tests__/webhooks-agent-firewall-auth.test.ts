@@ -555,6 +555,12 @@ async function seedExpiredTestOAuthConnector(
     value: "test-oauth-refresh-token",
     type: "connector",
   });
+  await seedVariable({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "TEST_OAUTH_API_TENANT_ID",
+    value: "test-oauth-tenant-123",
+  });
 }
 
 async function seedExpiredTestOAuthApiConnector(
@@ -652,6 +658,13 @@ async function seedTestOAuthApiTokenConnector(
       value: inputVariable,
     });
   }
+
+  await seedVariable({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "TEST_OAUTH_API_TENANT_ID",
+    value: "test-oauth-api-token-tenant-123",
+  });
 
   if (args.accessToken !== undefined) {
     await seedSecret({
