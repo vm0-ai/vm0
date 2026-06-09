@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import {
   app,
   BrowserWindow,
+  dialog,
   Menu,
   net,
   protocol,
@@ -43,6 +44,11 @@ import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import { installDesktopAutoUpdates } from "./desktop-auto-updates";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
+import {
+  DesktopQuitConfirmationController,
+  buildDesktopQuitConfirmationOptions,
+  isDesktopQuitConfirmed,
+} from "./desktop-quit-confirmation";
 import { installDesktopTray, type DesktopTrayController } from "./desktop-tray";
 import { DesktopAuthSession } from "./desktop-auth-session";
 import {
@@ -104,6 +110,12 @@ let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
 const computerUseNativeBackend = createComputerUseNativeBackend();
 setComputerUsePermissionNativeBackend(computerUseNativeBackend);
+const quitConfirmation = new DesktopQuitConfirmationController({
+  confirmQuit: confirmDesktopQuit,
+  quit: () => {
+    app.quit();
+  },
+});
 
 function refreshDesktopTray(): void {
   desktopTray?.refresh();
@@ -356,6 +368,7 @@ function disposeComputerUseNativeBackend(): void {
 }
 
 async function prepareForQuitAndInstall(): Promise<void> {
+  quitConfirmation.allowQuitWithoutConfirmation();
   appIsQuitting = true;
   if (!computerUseQuitStopStarted) {
     computerUseQuitStopStarted = true;
@@ -407,8 +420,14 @@ function installTray(): void {
       openExternal(MAC_SCREEN_RECORDING_SETTINGS_URL);
     },
     quit: () => {
-      app.quit();
+      requestDesktopQuit();
     },
+  });
+}
+
+function requestDesktopQuit(): void {
+  void quitConfirmation.requestQuit().catch((error) => {
+    console.error("Desktop quit confirmation failed", error);
   });
 }
 
@@ -416,7 +435,15 @@ function applyApplicationMenu(): void {
   const menu = Menu.buildFromTemplate([
     {
       label: config.identity.displayName,
-      submenu: [{ role: "about" }, { type: "separator" }, { role: "quit" }],
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        {
+          label: `Quit ${config.identity.displayName}`,
+          accelerator: "CommandOrControl+Q",
+          click: requestDesktopQuit,
+        },
+      ],
     },
     {
       label: "Edit",
@@ -436,6 +463,20 @@ function applyApplicationMenu(): void {
     },
   ]);
   Menu.setApplicationMenu(menu);
+}
+
+async function confirmDesktopQuit(): Promise<boolean> {
+  const options = buildDesktopQuitConfirmationOptions(
+    config.identity.displayName,
+  );
+  const window =
+    mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()
+      ? mainWindow
+      : undefined;
+  const result = window
+    ? await dialog.showMessageBox(window, options)
+    : await dialog.showMessageBox(options);
+  return isDesktopQuitConfirmed(result.response);
 }
 
 function openExternal(url: string): void {
@@ -811,6 +852,12 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on("before-quit", (event) => {
+    if (!quitConfirmation.isQuitAllowed()) {
+      event.preventDefault();
+      requestDesktopQuit();
+      return;
+    }
+
     appIsQuitting = true;
     if (!computerUseRuntime || computerUseQuitStopStarted) {
       disposeComputerUseNativeBackend();
