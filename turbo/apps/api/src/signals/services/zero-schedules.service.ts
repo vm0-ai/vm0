@@ -22,12 +22,10 @@ import { db$, writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { isValidTimeZone, settle } from "../utils";
 import {
+  DefaultInterpreter,
   scheduleToAutomation,
-  TimeInterpreter,
   type Automation,
-  type AutomationInterpreter,
-  type TimeTriggerEvent,
-} from "./automations/time-interpreter";
+} from "./automations/default-interpreter";
 import { calculateNextRun, TimeTrigger } from "./automations/time-trigger";
 import {
   resolveModelFirstProviderAdmission,
@@ -1151,15 +1149,12 @@ export const runScheduleNow$ = command(
     }
     const { modelPin, effectiveModelProvider } = modelContext;
 
-    // Depend on the interpreter seam (interface), keyed off the Automation's
-    // interpreterKind. Only the time-based interpreter exists today.
+    // The single default interpreter handles every Automation kind, keyed off a
+    // time trigger event here. The registry is deferred to the first fetching
+    // interpreter (e.g. Gmail).
     const automation: Automation = scheduleToAutomation(schedule);
-    const interpreter: AutomationInterpreter<
-      Automation,
-      TimeTriggerEvent,
-      { readonly scheduleId: string }
-    > = new TimeInterpreter();
-    const runInput = await interpreter.interpret(automation, {
+    const runInput = await new DefaultInterpreter().interpret(automation, {
+      kind: "time",
       scheduleId: schedule.id,
     });
     signal.throwIfAborted();

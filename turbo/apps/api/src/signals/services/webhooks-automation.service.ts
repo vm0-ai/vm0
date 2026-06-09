@@ -13,10 +13,10 @@ import { decryptStoredSecretValue } from "./crypto.utils";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { postAutomationUserMessage } from "../routes/zero-chat-messages";
 import {
-  WebhookInterpreter,
-  type WebhookAutomation,
+  DefaultInterpreter,
+  webhookRowToAutomation,
   type WebhookTriggerEvent,
-} from "./automations/webhook-interpreter";
+} from "./automations/default-interpreter";
 
 const log = logger("api:webhooks:automation");
 
@@ -74,8 +74,9 @@ async function verifySignature(args: {
 /**
  * Dispatch an inbound webhook: resolve the automation by trigger token, verify
  * the HMAC signature, enforce the per-automation rate limit, then interpret the
- * request into an agent run via `WebhookInterpreter` and render it into the
- * linked chat thread. A write `command`: it creates a billable run.
+ * request into an agent run via the default interpreter (webhook trigger event)
+ * and render it into the linked chat thread. A write `command`: it creates a
+ * billable run.
  */
 export const dispatchAutomationWebhook$ = command(
   async (
@@ -153,17 +154,20 @@ export const dispatchAutomationWebhook$ = command(
       return { kind: "rate_limited" };
     }
 
-    const automation: WebhookAutomation = {
+    const automation = webhookRowToAutomation({
       id: row.automationId,
       agentId: row.agentId,
+      orgId: row.orgId,
+      userId: row.userId,
       chatThreadId: row.chatThreadId,
       instruction: row.instruction,
-    };
+    });
     const triggerEvent: WebhookTriggerEvent = {
+      kind: "webhook",
       headers: args.headers,
       body: safeJsonParse(args.rawBody) ?? args.rawBody,
     };
-    const runInput = await new WebhookInterpreter().interpret(
+    const runInput = await new DefaultInterpreter().interpret(
       automation,
       triggerEvent,
     );
