@@ -206,10 +206,15 @@ pub trait Sandbox: Send + Sync + Any {
 
     /// Read a small file from the guest.
     ///
+    /// The guest path must be non-empty and must not contain NUL bytes.
+    /// `max_bytes` must be positive and is subject to the backend read limit.
+    ///
     /// Missing files return `Ok(None)`. Other read failures return an error.
     async fn read_file(&self, path: &str, max_bytes: u64) -> Result<Option<Vec<u8>>>;
 
     /// Stream a guest file to a host path and publish copied contents.
+    ///
+    /// The guest path must be non-empty and must not contain NUL bytes.
     ///
     /// If [`CopyFileOptions::missing_ok`] is enabled, a backend result that
     /// reports the path does not resolve to a regular file is treated as

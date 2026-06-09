@@ -401,6 +401,8 @@ impl VsockHost {
     /// without publishing a host file. Host-side setup and validation errors
     /// can still fail the operation.
     ///
+    /// The guest path must be non-empty and must not contain NUL bytes.
+    ///
     /// The host path must name a file destination. Empty host paths, paths
     /// containing NUL bytes, and paths that end in a directory marker are
     /// rejected before guest work starts.

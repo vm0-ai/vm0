@@ -8,6 +8,9 @@ use super::{read_regular_file_command, validate_guest_file_path};
 impl VsockHost {
     /// Read a small file from the guest through exec capture.
     ///
+    /// The guest path must be non-empty and must not contain NUL bytes.
+    /// `max_bytes` must be positive and fit within the exec capture limit.
+    ///
     /// Missing files return `Ok(None)`. Files larger than `max_bytes` return
     /// an error instead of silently returning truncated bytes.
     pub async fn read_file(
@@ -27,6 +30,8 @@ impl VsockHost {
 
     /// Read a small file and report when the helper exec frame is about to be
     /// written to the guest.
+    ///
+    /// This has the same read semantics and input validation as `read_file`.
     pub async fn read_file_with_write_observer(
         &self,
         path: &str,
