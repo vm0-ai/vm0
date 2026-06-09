@@ -1,9 +1,17 @@
+const os = require("node:os");
 const path = require("node:path");
 
 const packageMetadata = require("./package.json");
 const desktopIdentities = require("./src/desktop-identities.json");
 
 const PRODUCTION_PLATFORM_HOSTNAME = "app.vm0.ai";
+const DEFAULT_NOTARIZE_KEYCHAIN_PROFILE = "vm0-desktop-notary";
+const DEFAULT_NOTARIZE_KEYCHAIN = path.join(
+  os.homedir(),
+  "Library",
+  "Keychains",
+  "login.keychain-db",
+);
 const DEVELOPER_ID_APPLICATION_IDENTITY =
   "Developer ID Application: Max & Zoe, Inc. (C5UWSXYB67)";
 const codeSigningIdentity =
@@ -21,6 +29,22 @@ function requiredEnv(name) {
 function desktopNotarizeOptions() {
   if (process.env.VM0_DESKTOP_NOTARIZE !== "true") {
     return undefined;
+  }
+
+  if (process.env.VM0_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE?.trim()) {
+    return {
+      keychainProfile: process.env.VM0_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE,
+      keychain:
+        process.env.VM0_DESKTOP_NOTARIZE_KEYCHAIN?.trim() ||
+        DEFAULT_NOTARIZE_KEYCHAIN,
+    };
+  }
+
+  if (!process.env.VM0_DESKTOP_NOTARIZE_API_KEY_PATH) {
+    return {
+      keychainProfile: DEFAULT_NOTARIZE_KEYCHAIN_PROFILE,
+      keychain: DEFAULT_NOTARIZE_KEYCHAIN,
+    };
   }
 
   return {

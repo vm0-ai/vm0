@@ -53,6 +53,16 @@ Create a macOS artifact with:
 pnpm desktop:make
 ```
 
+This builds the production `Zero.app`, signs it with the local Developer ID
+Application identity, submits it to Apple's notary service, staples the
+notarization ticket, and writes the zip artifact under `apps/desktop/out/make`.
+Local notarized builds use the `notarytool` Keychain profile
+`vm0-desktop-notary` by default. Set `VM0_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE` to
+override the profile and `VM0_DESKTOP_NOTARIZE_KEYCHAIN` to override the
+Keychain path, or set `VM0_DESKTOP_NOTARIZE_API_KEY_PATH`,
+`VM0_DESKTOP_NOTARIZE_API_KEY_ID`, and `VM0_DESKTOP_NOTARIZE_API_ISSUER` to use
+an API key file directly.
+
 The helper source lives under `apps/desktop/native/computer-use-helper`. Build
 output is copied to `apps/desktop/native/dist/native/computer-use-helper`, which
 is also the path included in packaged macOS artifacts.

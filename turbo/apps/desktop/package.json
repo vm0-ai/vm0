@@ -19,7 +19,7 @@
     "dev": "pnpm build && electron-forge start",
     "dev:packaged": "pnpm package && node scripts/run-packaged-app.js",
     "lint": "oxlint src --deny-warnings",
-    "make": "pnpm build && electron-forge make --platform darwin",
+    "make": "pnpm build && VM0_DESKTOP_NOTARIZE=true electron-forge make --platform darwin",
     "package": "pnpm build && electron-forge package --platform darwin",
     "start": "electron-forge start",
     "test": "vitest run",
