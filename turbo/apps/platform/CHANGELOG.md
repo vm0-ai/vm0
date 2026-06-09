@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.430.0](https://github.com/vm0-ai/vm0/compare/app-v0.429.0...app-v0.430.0) (2026-06-09)
+
+
+### Features
+
+* add staged connector permission reset ([#16840](https://github.com/vm0-ai/vm0/issues/16840)) ([c622626](https://github.com/vm0-ai/vm0/commit/c622626b687cb41e78669864422b824e328e9aeb))
+
+
+### Bug Fixes
+
+* download hosted html artifacts ([#16611](https://github.com/vm0-ai/vm0/issues/16611)) ([732edbf](https://github.com/vm0-ai/vm0/commit/732edbfb55eb765fae2173cfa0d89cee130cf083))
+* normalize sociavault connector icon ([#16878](https://github.com/vm0-ai/vm0/issues/16878)) ([92e80f9](https://github.com/vm0-ai/vm0/commit/92e80f9a8fe18961cba855eb0921830d162cdcc0))
+* update sponge connector icon ([#16883](https://github.com/vm0-ai/vm0/issues/16883)) ([6c7eb9a](https://github.com/vm0-ai/vm0/commit/6c7eb9a5a95d56243a12c201f9d44f6cb9c14437))
+* update spotify connector icon ([#16885](https://github.com/vm0-ai/vm0/issues/16885)) ([d673b3c](https://github.com/vm0-ai/vm0/commit/d673b3cdf127fd0b439222b0f0ae98141adef0ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.74.0
+    * @vm0/connectors bumped to 1.56.0
+    * @vm0/core bumped to 8.320.0
+
 ## [0.429.0](https://github.com/vm0-ai/vm0/compare/app-v0.428.2...app-v0.429.0) (2026-06-09)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.320.0](https://github.com/vm0-ai/vm0/compare/core-v8.319.0...core-v8.320.0) (2026-06-09)
+
+
+### Features
+
+* add staged connector permission reset ([#16840](https://github.com/vm0-ai/vm0/issues/16840)) ([c622626](https://github.com/vm0-ai/vm0/commit/c622626b687cb41e78669864422b824e328e9aeb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.74.0
+    * @vm0/connectors bumped to 1.56.0
+
 ## [8.319.0](https://github.com/vm0-ai/vm0/compare/core-v8.318.0...core-v8.319.0) (2026-06-09)
 
 
