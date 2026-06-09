@@ -111,11 +111,6 @@ export function mintRefreshToken(scenario: TestOAuthScenario): string {
   return `${REFRESH_PREFIX}${scenario}_${randomId()}`;
 }
 
-export function mintExpiredAccessToken(): string {
-  const pastMs = now() - 1000;
-  return `${ACCESS_PREFIX}${pastMs}_${randomId()}`;
-}
-
 export function isTestOAuthAccessToken(value: string): boolean {
   return value.startsWith(ACCESS_PREFIX);
 }

@@ -257,17 +257,6 @@ export async function decryptStoredSecretValue(
   return await decryptSecretValueWithKms(envelope.kms);
 }
 
-export async function encryptStoredSecretsMap(
-  secrets: Record<string, string> | null | undefined,
-  ctx: FeatureSwitchContext = {},
-): Promise<string | null> {
-  if (!secrets) {
-    return null;
-  }
-
-  return await encryptStoredSecretValue(JSON.stringify(secrets), ctx);
-}
-
 export async function encryptPersistentSecretValue(
   plaintext: string,
   ctx: FeatureSwitchContext,

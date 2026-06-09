@@ -24,7 +24,7 @@ export const VOICE_IO_STT_MODEL = "gpt-4o-mini-transcribe";
 // Verbose transcription (per-segment timestamps) requires whisper-1;
 // gpt-4o-mini-transcribe does not return segment timestamps.
 export const VOICE_IO_STT_VERBOSE_MODEL = "whisper-1";
-export const SPEECH_CONTENT_TYPE = "audio/wav";
+const SPEECH_CONTENT_TYPE = "audio/wav";
 export const SPEECH_RESPONSE_FORMAT = "wav";
 export const TTS_RESPONSE_FORMAT = "pcm";
 export const TTS_CONTENT_TYPE = "application/octet-stream";
@@ -231,11 +231,11 @@ export function isSpeechVoice(value: string): boolean {
   });
 }
 
-export function sttDailyRateKey(date: Date = nowDate()): string {
+function sttDailyRateKey(date: Date = nowDate()): string {
   return `${DAILY_RATE_KEY_PREFIX}_${date.toISOString().slice(0, 10)}`;
 }
 
-export function sttDailyDurationKey(date: Date = nowDate()): string {
+function sttDailyDurationKey(date: Date = nowDate()): string {
   return `${DAILY_DURATION_KEY_PREFIX}_${date.toISOString().slice(0, 10)}`;
 }
 

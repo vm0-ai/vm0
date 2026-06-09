@@ -1,5 +1,3 @@
-import { afterEach } from "vitest";
-
 import type { TestContext } from "../../../../__tests__/test-helpers";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -100,26 +98,5 @@ export function createZeroRouteMocks(context: TestContext): ZeroRouteMocks {
         setS3ListObjectsMock(context, objects);
       },
     },
-  };
-}
-
-export function createFixtureTracker<T>(
-  cleanup: (fixture: T) => Promise<void>,
-): (fixturePromise: Promise<T>) => Promise<T> {
-  const fixtures: T[] = [];
-
-  afterEach(async () => {
-    while (fixtures.length > 0) {
-      const fixture = fixtures.pop();
-      if (fixture) {
-        await cleanup(fixture);
-      }
-    }
-  });
-
-  return async (fixturePromise: Promise<T>): Promise<T> => {
-    const fixture = await fixturePromise;
-    fixtures.push(fixture);
-    return fixture;
   };
 }

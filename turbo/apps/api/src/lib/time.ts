@@ -1,10 +1,8 @@
 import { testOverride } from "./singleton";
 
-const {
-  get: getMockedNow,
-  set: setMockedNow,
-  clear: clearMockedNow,
-} = testOverride<number | undefined>(() => {
+const { get: getMockedNow, clear: clearMockedNow } = testOverride<
+  number | undefined
+>(() => {
   return undefined;
 });
 
@@ -14,10 +12,6 @@ export function now(): number {
 
 export function nowDate(): Date {
   return new Date(now());
-}
-
-export function mockNow(value: Date | number): void {
-  setMockedNow(value instanceof Date ? value.getTime() : value);
 }
 
 export function clearMockNow(): void {

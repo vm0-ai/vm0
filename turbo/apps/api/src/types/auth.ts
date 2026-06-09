@@ -87,8 +87,3 @@ export interface CliAuth {
   readonly orgId: string;
   readonly tokenId: string;
 }
-
-export interface ComposeJobAuth {
-  readonly userId: string;
-  readonly jobId: string;
-}
