@@ -105,7 +105,9 @@ fn read_codex_session_history_impl(
 
     let mut found = None;
     find_codex_session_file_recursive(sessions_dir, sessions_dir, thread_id, id_norm, &mut found)?;
-    Ok(found.map(|session| session.bytes))
+    found
+        .map(|session| read_history_bytes(&session.path))
+        .transpose()
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -143,8 +145,7 @@ fn find_codex_session_file_recursive(
                     &path,
                 ));
             }
-            let bytes = read_history_bytes(&path)?;
-            *found = Some(ResolvedCodexSession { path, bytes });
+            *found = Some(ResolvedCodexSession { path });
         }
     }
 
@@ -169,7 +170,9 @@ fn read_codex_session_history_impl(
         id_norm,
         &mut found,
     )?;
-    Ok(found.map(|session| session.bytes))
+    found
+        .map(|session| read_history_bytes_from_file(&session.path, session.file))
+        .transpose()
 }
 
 #[cfg(target_os = "linux")]
@@ -219,8 +222,7 @@ fn find_and_read_codex_session_file_recursive(
                     &path,
                 ));
             }
-            let bytes = read_history_bytes_from_file(&path, file)?;
-            *found = Some(ResolvedCodexSession { path, bytes });
+            *found = Some(ResolvedCodexSession { path, file });
         }
     }
 
@@ -229,7 +231,8 @@ fn find_and_read_codex_session_file_recursive(
 
 struct ResolvedCodexSession {
     path: PathBuf,
-    bytes: Vec<u8>,
+    #[cfg(target_os = "linux")]
+    file: File,
 }
 
 fn duplicate_codex_session_error(
