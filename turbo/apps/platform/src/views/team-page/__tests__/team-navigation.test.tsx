@@ -236,6 +236,25 @@ describe("team page navigation", () => {
       ).toBeInTheDocument();
     });
 
+    click(buttonByText("Add schedule"));
+
+    const createScheduleDialog = await screen.findByRole("dialog");
+    expect(
+      within(createScheduleDialog).getByText("Add schedule"),
+    ).toBeInTheDocument();
+    await fill(
+      within(createScheduleDialog).getByLabelText("Prompt"),
+      "Collect weekly research links",
+    );
+    click(buttonByText("Create"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Schedule created")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Collect weekly research links")[0],
+      ).toBeInTheDocument();
+    });
+
     click(screen.getAllByLabelText("More actions for Every 30 minutes")[0]);
     click(menuItemByText("Run now"));
 
