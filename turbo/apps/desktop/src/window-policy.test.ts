@@ -203,7 +203,7 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("staging");
     expect(config.webUrl.toString()).toBe("https://staging-www.vm6.ai/");
     expect(config.identity).toMatchObject({
-      displayName: "Zero Dev",
+      displayName: "Zero CU Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
     });
@@ -225,7 +225,7 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("development");
     expect(config.webUrl.toString()).toBe("https://www.vm7.ai:8443/");
     expect(config.identity).toMatchObject({
-      displayName: "Zero Dev",
+      displayName: "Zero CU Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
     });
@@ -241,7 +241,7 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("development");
     expect(config.webUrl.toString()).toBe("https://pr-123-www.vm6.ai/");
     expect(config.identity).toMatchObject({
-      displayName: "Zero Dev",
+      displayName: "Zero CU Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
     });
