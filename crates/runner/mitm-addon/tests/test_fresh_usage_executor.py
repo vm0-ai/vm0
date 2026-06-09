@@ -1,13 +1,15 @@
 """Tests for the fresh usage executor fixture lifecycle."""
 
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
 import usage
 import usage.buffer as usage_buffer
-from tests.usage_helpers import fresh_usage_executor_context
+from tests.usage_helpers import UsageWebhookServer, fresh_usage_executor_context
 
 
 def _event(source_key: str = "source-1") -> usage_buffer.UsageEvent:
@@ -18,6 +20,22 @@ def _event(source_key: str = "source-1") -> usage_buffer.UsageEvent:
         "category": "tokens.input",
         "quantity": 1,
     }
+
+
+class _RecordingExecutor:
+    def __init__(self) -> None:
+        self.submissions: list[tuple[Callable[..., Any], tuple[Any, ...], dict[str, Any]]] = []
+
+    def submit(
+        self,
+        fn: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any,
+    ) -> Future[None]:
+        self.submissions.append((fn, args, kwargs))
+        future: Future[None] = Future()
+        future.set_result(None)
+        return future
 
 
 def test_fresh_usage_executor_restores_and_shuts_down_after_flush_failure(tmp_path):
@@ -52,28 +70,30 @@ def test_fresh_usage_executor_restores_and_shuts_down_after_flush_failure(tmp_pa
         executors[0].submit(lambda: None)
 
 
-def test_fresh_usage_executor_shuts_down_owned_executor_when_global_changes():
+def test_fresh_usage_executor_uses_owned_executor_when_global_changes(tmp_path):
     original = usage.webhook.usage_executor
-    replacement = ThreadPoolExecutor(
-        max_workers=1,
-        thread_name_prefix="usage-replacement-test",
-    )
+    replacement = _RecordingExecutor()
     executors: list[ThreadPoolExecutor] = []
+    server = UsageWebhookServer()
 
-    try:
-        with (
-            patch.object(usage, "flush_usage_events", wraps=usage.flush_usage_events) as flush,
-            fresh_usage_executor_context() as executor,
-        ):
-            executors.append(executor)
-            usage.webhook.usage_executor = replacement
+    with (
+        server.run(),
+        patch.object(usage, "flush_usage_events", wraps=usage.flush_usage_events) as flush,
+        fresh_usage_executor_context() as executor,
+    ):
+        executors.append(executor)
+        usage.webhook.usage_executor = replacement
+        usage.buffer_usage_events(
+            server.url(),
+            "token-a",
+            "run-1",
+            [_event()],
+            str(tmp_path / "proxy.jsonl"),
+        )
 
-        flush.assert_called_once_with(trigger="shutdown")
-        assert usage.webhook.usage_executor is original
-        with pytest.raises(RuntimeError, match="shutdown"):
-            executors[0].submit(lambda: None)
-
-        replacement_result = replacement.submit(lambda: "replacement-live")
-        assert replacement_result.result() == "replacement-live"
-    finally:
-        replacement.shutdown(wait=True)
+    flush.assert_called_once_with(trigger="shutdown")
+    assert len(server.usage_events()) == 1
+    assert replacement.submissions == []
+    assert usage.webhook.usage_executor is original
+    with pytest.raises(RuntimeError, match="shutdown"):
+        executors[0].submit(lambda: None)
