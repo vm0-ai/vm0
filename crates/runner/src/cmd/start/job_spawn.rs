@@ -892,6 +892,44 @@ mod tests {
     }
 
     #[test]
+    fn generic_zero_exit_code_normalizes_to_generic_failure() {
+        let failure = executor::ExecutionFailure::new(0, "", None);
+
+        assert_eq!(failure.exit_code, 1);
+        assert_eq!(failure.error, "Agent exited with code 1");
+        assert_eq!(failure.kind, executor::ExecutionFailureKind::Generic);
+    }
+
+    #[test]
+    fn runner_job_timeout_zero_exit_code_normalizes_to_timeout_failure() {
+        let failure = executor::ExecutionFailure::runner_job_timeout(
+            0,
+            "",
+            None,
+            Duration::from_secs(7200),
+            Duration::from_secs(7201),
+            None,
+        );
+
+        assert_eq!(failure.exit_code, 124);
+        assert_eq!(failure.error, "Agent exited with code 124");
+        match failure.kind {
+            executor::ExecutionFailureKind::RunnerJobTimeout {
+                timeout_ms,
+                elapsed_ms,
+                guest_duration_ms,
+            } => {
+                assert_eq!(timeout_ms, 7_200_000);
+                assert_eq!(elapsed_ms, 7_201_000);
+                assert_eq!(guest_duration_ms, None);
+            }
+            executor::ExecutionFailureKind::Generic => {
+                panic!("expected runner job timeout failure kind")
+            }
+        }
+    }
+
+    #[test]
     fn expected_cli_failure_reasons_log_job_execution_failed_at_info() {
         for reason in [
             FailureReason::InsufficientCredits,

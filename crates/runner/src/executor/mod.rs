@@ -208,7 +208,7 @@ impl ExecutionFailure {
         error: impl Into<String>,
         diagnostic: Option<FailureDiagnostic>,
     ) -> Self {
-        let exit_code = normalize_timeout_failure_exit_code(exit_code);
+        let exit_code = normalize_failure_exit_code(exit_code);
         let error = non_empty_failure_error(exit_code, error.into());
         Self {
             exit_code,
@@ -227,7 +227,7 @@ impl ExecutionFailure {
         elapsed: Duration,
         guest_duration_ms: Option<u32>,
     ) -> Self {
-        let exit_code = normalize_failure_exit_code(exit_code);
+        let exit_code = normalize_timeout_failure_exit_code(exit_code);
         let error = non_empty_failure_error(exit_code, error.into());
         Self {
             exit_code,
