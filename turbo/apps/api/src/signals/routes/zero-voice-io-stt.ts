@@ -107,7 +107,7 @@ const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const openaiForm = new FormData();
   openaiForm.append("file", file, file.name || "audio.webm");
-  openaiForm.append("model", VOICE_IO_STT_MODEL);
+  openaiForm.append("model", verbose ? "whisper-1" : VOICE_IO_STT_MODEL);
   openaiForm.append("response_format", verbose ? "verbose_json" : "json");
 
   const openaiResponse = await fetch(OPENAI_AUDIO_TRANSCRIPTIONS_URL, {
