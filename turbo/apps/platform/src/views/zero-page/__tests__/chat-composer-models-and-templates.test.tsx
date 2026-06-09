@@ -1,6 +1,11 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import type {
+  ConnectorAuthMethodId,
+  ConnectorType,
+} from "@vm0/connectors/connectors";
 import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
 import {
   chatThreadByIdContract,
@@ -15,6 +20,7 @@ import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -191,6 +197,44 @@ function mockThread(options?: {
   });
   context.mocks.api(chatThreadMessagesContract.list, ({ respond }) => {
     return respond(200, { messages: options?.messages ?? [] });
+  });
+}
+
+function mockConnectors(
+  connectors: {
+    type: ConnectorType;
+    authMethod?: ConnectorAuthMethodId;
+    externalUsername?: string;
+    oauthScopes?: string[];
+  }[],
+): void {
+  context.mocks.data.connectors(
+    connectors.map((connector): ConnectorResponse => {
+      return {
+        id: crypto.randomUUID(),
+        type: connector.type,
+        authMethod: connector.authMethod ?? "oauth",
+        externalId: null,
+        externalUsername: connector.externalUsername ?? null,
+        externalEmail: null,
+        oauthScopes: connector.oauthScopes ?? null,
+        connectionStatus: "connected",
+        tokenExpiresAt: null,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      };
+    }),
+  );
+}
+
+function mockAgentConnectorAuthorizations(initialTypes: string[]): void {
+  let enabledTypes = initialTypes;
+  context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    return respond(200, { enabledTypes });
+  });
+  context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
+    enabledTypes = body.enabledTypes;
+    return respond(200, { enabledTypes });
   });
 }
 
@@ -565,6 +609,42 @@ describe("chat composer models", () => {
     await expect(
       screen.findByLabelText("Remove notes.txt"),
     ).resolves.toBeInTheDocument();
+  });
+
+  it("manages agent connector access from the composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent();
+    mockConnectors([
+      { type: "github", externalUsername: "octocat" },
+      { type: "slack", externalUsername: "launch-team" },
+    ]);
+    mockAgentConnectorAuthorizations(["github"]);
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    click(await screen.findByLabelText("Connectors"));
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove GitHub")).toBeInTheDocument();
+      expect(screen.getByLabelText("Add Slack")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Add Slack"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove GitHub")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Remove GitHub"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Add GitHub")).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
+    });
   });
 });
 
