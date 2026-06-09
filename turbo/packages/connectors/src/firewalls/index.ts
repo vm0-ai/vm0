@@ -793,7 +793,7 @@ const DEFAULT_UNKNOWN_POLICIES: Partial<
  *
  * Returns a ConnectorPolicy with all permissions mapped. Connectors with a
  * default-allowed list get "allow"/"deny" selectively; others get all-allow.
- * `unknownPolicy` defaults to "allow".
+ * `unknownPolicy` defaults to "allow" unless the connector overrides it.
  */
 export function getDefaultFirewallPolicies(
   type: FirewallConnectorType,
