@@ -28,6 +28,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
 import {
+  billingStatusAsync$,
   completeCheckoutSession$,
   reloadBillingStatus$,
   startCheckout$,
@@ -72,10 +73,11 @@ export const onboardingEffectiveConnectors$ = computed((get) => {
 });
 
 /**
- * The resolved step. Onboarding is admin workspace setup
- * (step 1 → step 2 → step 4). A use-case deep link (`?prompt=`, optionally
- * with `&connector=`) collapses the flow to step 3, where the user reviews
- * connectors + edits the prompt before "Try It".
+ * The resolved step. Onboarding is admin workspace setup. Orgs only run the
+ * trial checkout step when billing is still waiting on onboarding payment. A
+ * use-case deep link (`?prompt=`, optionally with `&connector=`) collapses the
+ * flow to step 3, where the user reviews connectors + edits the prompt before
+ * "Try It".
  */
 export const onboardingEffectiveStep$ = computed(async (get) => {
   const step = await get(zeroOnboardingStep$);
@@ -91,10 +93,18 @@ export const onboardingEffectiveStep$ = computed(async (get) => {
 
 /**
  * Steps shown in the progress bar. The regular admin flow is step 1
- * (workspace) + step 2 (connectors) + step 4 (Pro features + 7-day trial).
+ * (workspace) + step 2 (connectors), plus step 4 (Pro features + 7-day
+ * trial) only when the org is `pro-suspend` with pending onboarding payment.
  * A use-case deep link collapses to step 3 (plus step 1 when the admin still
  * has to create the workspace).
  */
+const onboardingNeedsTrialCheckout$ = computed(async (get) => {
+  const billing = await get(billingStatusAsync$);
+  return (
+    billing.tier === "pro-suspend" && billing.onboardingPaymentPending === true
+  );
+});
+
 export const onboardingVisibleSteps$ = computed(async (get) => {
   const isAdmin = await get(onboardingIsAdmin$);
   const isUseCase = get(onboardingIsUseCase$);
@@ -104,7 +114,10 @@ export const onboardingVisibleSteps$ = computed(async (get) => {
   if (!isAdmin) {
     return [] as readonly string[];
   }
-  return ["1", "2", "4"] as readonly string[];
+  if (await get(onboardingNeedsTrialCheckout$)) {
+    return ["1", "2", "4"] as readonly string[];
+  }
+  return ["1", "2"] as readonly string[];
 });
 
 /** Current step index within visible steps. */
@@ -215,11 +228,19 @@ export const onboardingStepNext$ = command(
         break;
       }
       case "2": {
+        if (get(onboardingEagerInitialized$)) {
+          await set(authorizeStep2Connectors$, signal);
+          signal.throwIfAborted();
+        }
         if (await set(redeemOnboardingSearchParamCode$, signal)) {
           break;
         }
         signal.throwIfAborted();
-        set(setZeroStep$, "4");
+        if (await get(onboardingNeedsTrialCheckout$)) {
+          set(setZeroStep$, "4");
+          break;
+        }
+        await set(onboardingContinueWeb$, signal);
         break;
       }
       case "3":
@@ -229,14 +250,6 @@ export const onboardingStepNext$ = command(
         // clears the pending-payment marker. Already-onboarded/non-admin
         // use-case step 3 can continue straight into the prompt flow.
         if (step === "4") {
-          const selectedConnectors = get(zeroSelectedConnectors$);
-          if (
-            get(onboardingEagerInitialized$) &&
-            selectedConnectors.length > 0
-          ) {
-            await set(authorizeStep2Connectors$, signal);
-            signal.throwIfAborted();
-          }
           await set(startCheckout$, "pro", false, { trialDays: 7 }, signal);
           break;
         }
@@ -280,9 +293,10 @@ export const onboardingResolvedPrompt$ = computed((get) => {
 });
 
 /**
- * Re-run setup so the connectors picked in the (skippable) step 2 are
- * authorized to the default agent. Eager-init already created the agent;
- * setup is idempotent on the agent and upserts the connectors.
+ * Re-run setup when leaving step 2 so the connectors picked in the skippable
+ * picker are authorized before either trial checkout or web chat continuation.
+ * Eager-init already created the agent; setup is idempotent on the agent and
+ * upserts the connectors.
  */
 const authorizeStep2Connectors$ = command(
   async ({ set }, signal: AbortSignal) => {
@@ -324,20 +338,20 @@ const onboardingContinueWeb$ = command(
       (async () => {
         const isUseCase = get(onboardingIsUseCase$);
         const eagerInitialized = get(onboardingEagerInitialized$);
-        const selectedConnectors = get(zeroSelectedConnectors$);
 
-        // Regular admin finishing step 2 with connectors picked: re-run setup
-        // to authorize them to the default agent. Use-case flows already
-        // authorized their connectors (step 1 eager-init for the URL
-        // connectors, plus the per-connector permission dialog in step 3), so
-        // just resolve the default agent from status.
+        // Regular admin finishing after eager-init: step 2 should already
+        // have refreshed status after binding connectors. Fall back to setup
+        // only if status still cannot resolve the default agent.
+        // Use-case flows already authorized their connectors (step 1
+        // eager-init for the URL connectors, plus the per-connector permission
+        // dialog in step 3), so just resolve the default agent from status.
         let agentId: string | null | undefined;
-        if (eagerInitialized && !isUseCase && selectedConnectors.length > 0) {
+        const status = await get(zeroOnboardingStatus$);
+        signal.throwIfAborted();
+        agentId = status.defaultAgentId;
+
+        if (!agentId && eagerInitialized && !isUseCase) {
           agentId = await set(authorizeStep2Connectors$, signal);
-        } else {
-          const status = await get(zeroOnboardingStatus$);
-          signal.throwIfAborted();
-          agentId = status.defaultAgentId;
         }
 
         if (!agentId) {

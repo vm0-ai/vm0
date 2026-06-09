@@ -31,11 +31,6 @@ const downloadFileContract = c.router({
   },
 });
 
-function contentDispositionFor(filename: string): string {
-  const asciiFilename = filename.replace(/[^\x20-\x7E]|["\\]/gu, "_");
-  return `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
-}
-
 const downloadFileInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(queryOf(downloadFileContract.download));
@@ -55,7 +50,6 @@ const downloadFileInner$ = computed(async (get) => {
   headers.set("X-File-Name", encodeURIComponent(result.filename));
   headers.set("X-File-Mimetype", result.contentType);
   headers.set("Content-Length", String(result.buffer.length));
-  headers.set("Content-Disposition", contentDispositionFor(result.filename));
 
   return new Response(new Uint8Array(result.buffer), {
     status: 200,

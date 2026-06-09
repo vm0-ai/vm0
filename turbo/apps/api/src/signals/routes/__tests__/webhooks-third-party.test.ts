@@ -3141,6 +3141,58 @@ describe("POST /api/webhooks/stripe", () => {
       });
     });
 
+    it("creates org metadata from Clerk and grants credits when invoice.paid arrives first", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const db = store.set(writeDb$);
+      const customerId = stripeId("cus");
+      const subId = stripeId("sub");
+      const invId = stripeId("inv");
+      const periodEnd = 1_800_000_000;
+      await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
+      context.mocks.stripe.customers.retrieve.mockResolvedValue({
+        id: customerId,
+        metadata: { orgId: fixture.orgId },
+      });
+      context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
+        id: fixture.orgId,
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: subId,
+        status: "active",
+        cancel_at_period_end: false,
+        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: customerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
+          parent: { subscription_details: { subscription: subId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(
+        context.mocks.clerk.organizations.getOrganization,
+      ).toHaveBeenCalledWith({ organizationId: fixture.orgId });
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.stripeCustomerId).toBe(customerId);
+      expect(billing.stripeSubscriptionId).toBe(subId);
+      expect(billing.subscriptionStatus).toBe("active");
+      expect(billing.tier).toBe("pro");
+      expect(billing.credits).toBe(20_000);
+      expect(billing.lastProcessedInvoiceId).toBe(invId);
+      expect(billing.currentPeriodEnd).toStrictEqual(
+        new Date(periodEnd * 1000),
+      );
+    });
+
     it("grants 120k credits for team tier", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),

@@ -103,6 +103,7 @@ describe("GET /api/zero/billing/status", () => {
 
     expect(response.body.tier).toBe("free");
     expect(response.body.credits).toBe(100_000);
+    expect(response.body.onboardingPaymentPending).toBeFalsy();
     expect(response.body.hasSubscription).toBeFalsy();
     expect(response.body.subscriptionStatus).toBeNull();
     expect(response.body.currentPeriodEnd).toBeNull();
@@ -199,6 +200,26 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.cancelAtPeriodEnd).toBeFalsy();
     expect(response.body.scheduledChange).toBeNull();
     expect(response.body.hasSubscription).toBeTruthy();
+  });
+
+  it("returns onboarding payment pending state", async () => {
+    const fixture = await track(
+      store.set(
+        seedBillingStatusOrg$,
+        { onboardingPaymentPending: true },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(response.body.onboardingPaymentPending).toBeTruthy();
   });
 
   it("returns cancelAtPeriodEnd true when set", async () => {

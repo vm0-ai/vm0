@@ -6,7 +6,7 @@
  * lightbox, and explicit sidebar opens write the ?artifact= URL parameter.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   fireEvent,
@@ -15,7 +15,10 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { StoreProvider } from "ccstate-react";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
@@ -34,6 +37,7 @@ import {
   ArtifactSidebarSlot,
   ArtifactSidebar,
 } from "../zero-artifact-sidebar.tsx";
+import { ArtifactDownloadMenu } from "../zero-artifact-actions.tsx";
 import {
   artifactFullscreen$,
   clearArtifactPreview$,
@@ -182,6 +186,57 @@ describe("artifact sidebar: hosted-site URL classification", () => {
       kind: "html",
       filename: url,
     });
+  });
+});
+
+describe("artifact download menu", () => {
+  it("downloads hosted sites with an html filename", async () => {
+    const user = userEvent.setup();
+    const fileUrl = "https://sunny-kitten-35a4112d-1784c700.sites.vm7.io/";
+    let downloadedFilename: string | null = null;
+    setup();
+    server.use(
+      http.get(fileUrl, () => {
+        return HttpResponse.html("<!doctype html><h1>Site</h1>");
+      }),
+    );
+    const createObjectURLSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:hosted-site-download");
+    const revokeObjectURLSpy = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
+    const anchorClickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        downloadedFilename = this.download;
+      });
+
+    try {
+      renderWithStore(
+        <ArtifactDownloadMenu
+          artifactKind="hosted-site"
+          filename={fileUrl}
+          url={fileUrl}
+        />,
+      );
+
+      await user.click(screen.getByLabelText("Download options"));
+      await user.click(await screen.findByText("Download"));
+
+      await waitFor(() => {
+        expect(anchorClickSpy).toHaveBeenCalledOnce();
+      });
+      expect(createObjectURLSpy).toHaveBeenCalledOnce();
+      expect(downloadedFilename).toBe("sunny-kitten-35a4112d-1784c700.html");
+      expect(revokeObjectURLSpy).toHaveBeenCalledWith(
+        "blob:hosted-site-download",
+      );
+    } finally {
+      createObjectURLSpy.mockRestore();
+      revokeObjectURLSpy.mockRestore();
+      anchorClickSpy.mockRestore();
+    }
   });
 });
 

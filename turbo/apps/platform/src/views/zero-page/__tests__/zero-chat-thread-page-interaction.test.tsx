@@ -51,6 +51,7 @@ function paidBillingStatus(credits: number): BillingStatusResponse {
   return {
     tier: "pro",
     credits,
+    onboardingPaymentPending: false,
     subscriptionStatus: "active",
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,

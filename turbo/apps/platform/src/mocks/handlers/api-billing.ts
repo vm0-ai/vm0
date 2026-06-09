@@ -24,6 +24,7 @@ function defaultBillingStatus(): BillingStatusResponse {
   return {
     tier: "pro-suspend",
     credits: 0,
+    onboardingPaymentPending: true,
     subscriptionStatus: null,
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,

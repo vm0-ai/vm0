@@ -40,6 +40,7 @@ interface ActiveCreditRecord {
 interface BillingOrgRow {
   tier: string;
   credits: number;
+  onboardingPaymentPending: boolean;
   subscriptionStatus: string | null;
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
@@ -55,6 +56,7 @@ interface BillingOrgRow {
 interface BillingStatusResponse {
   tier: string;
   credits: number;
+  onboardingPaymentPending: boolean;
   subscriptionStatus: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
@@ -84,6 +86,7 @@ interface BillingStatusResponse {
 const DEFAULT_BILLING_ORG = Object.freeze<BillingOrgRow>({
   tier: "pro-suspend",
   credits: 0,
+  onboardingPaymentPending: false,
   subscriptionStatus: null,
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
@@ -317,6 +320,7 @@ function billingStatusResponse(args: {
   return {
     tier: org.tier,
     credits: displayedCredits,
+    onboardingPaymentPending: org.onboardingPaymentPending,
     subscriptionStatus: org.subscriptionStatus,
     currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: org.cancelAtPeriodEnd,
@@ -349,6 +353,7 @@ export function zeroBillingStatus(
         .select({
           tier: orgMetadata.tier,
           credits: orgMetadata.credits,
+          onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
           subscriptionStatus: orgMetadata.subscriptionStatus,
           currentPeriodEnd: orgMetadata.currentPeriodEnd,
           cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,

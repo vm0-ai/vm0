@@ -756,6 +756,7 @@ describe("org billing tab - auto-recharge section", () => {
         return respond(200, {
           tier: "pro",
           credits: 20_000,
+          onboardingPaymentPending: false,
           subscriptionStatus: "active",
           currentPeriodEnd: null,
           cancelAtPeriodEnd: false,

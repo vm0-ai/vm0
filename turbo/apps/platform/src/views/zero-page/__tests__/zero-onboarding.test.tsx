@@ -14,6 +14,7 @@ import {
   onboardingStatusContract,
 } from "@vm0/api-contracts/contracts/onboarding";
 import { pathname$ } from "../../../signals/route.ts";
+import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -224,7 +225,16 @@ describe("zero onboarding - step 2: choose tools", () => {
 
 describe("zero onboarding - Pro trial step", () => {
   it("appends the trial step after connectors", async () => {
+    const setupBodies: Record<string, unknown>[] = [];
     mockOnboardingNeeded();
+    server.use(
+      mockApi(onboardingSetupContract.setup, ({ body, respond }) => {
+        setupBodies.push(body as Record<string, unknown>);
+        return respond(200, {
+          agentId: "d0000000-0000-4000-a000-000000000001",
+        });
+      }),
+    );
     await renderOnboardingPage();
 
     // Step 1 -> fill name -> Next
@@ -251,9 +261,21 @@ describe("zero onboarding - Pro trial step", () => {
         "Next",
       );
     });
+    click(screen.getByTestId("connector-card-github"));
+    await waitFor(() => {
+      expect(screen.getByTestId("connector-check-icon")).toBeInTheDocument();
+    });
 
-    // Advance into the trial step.
+    // Advance into the trial step. Connectors are bound while leaving step 2,
+    // before the user reaches step 4's checkout CTA.
     click(screen.getByTestId("onboarding-next-button"));
+
+    await waitFor(() => {
+      expect(setupBodies).toHaveLength(2);
+    });
+    expect(setupBodies[1]).toMatchObject({
+      selectedConnectors: ["github"],
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId("onboarding-step-trial")).toBeInTheDocument();
@@ -266,6 +288,33 @@ describe("zero onboarding - Pro trial step", () => {
     expect(screen.getByTestId("onboarding-next-button")).toHaveTextContent(
       "Get Started",
     );
+  });
+
+  it("skips the trial step when onboarding payment is not pending", async () => {
+    setMockBillingStatus({
+      tier: "pro-suspend",
+      onboardingPaymentPending: false,
+    });
+    mockOnboardingNeeded();
+    await renderOnboardingPage();
+
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
+    click(screen.getByText("Next"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getAllByTestId("progress-step")).toHaveLength(2);
+    expect(
+      screen.queryByTestId("onboarding-step-trial"),
+    ).not.toBeInTheDocument();
   });
 });
 

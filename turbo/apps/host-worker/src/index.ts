@@ -42,6 +42,35 @@ interface HostedSiteManifest {
   readonly files: Record<string, ManifestFile>;
 }
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Headers": "Accept, Content-Type",
+  "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Max-Age": "86400",
+} as const;
+
+function setCorsHeaders(headers: Headers): void {
+  for (const [name, value] of Object.entries(CORS_HEADERS)) {
+    headers.set(name, value);
+  }
+}
+
+function corsResponse(response: Response): Response {
+  const headers = new Headers(response.headers);
+  setCorsHeaders(headers);
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+function optionsResponse(): Response {
+  const headers = new Headers();
+  setCorsHeaders(headers);
+  return new Response(null, { headers, status: 204 });
+}
+
 function notFoundResponse(): Response {
   return new Response("Not found", {
     status: 404,
@@ -145,7 +174,7 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method not allowed", {
       status: 405,
-      headers: { Allow: "GET, HEAD" },
+      headers: { Allow: "GET, HEAD, OPTIONS" },
     });
   }
 
@@ -208,6 +237,9 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
 
 export default {
   fetch(request: Request, env: Env): Promise<Response> {
-    return serveHostedSite(request, env);
+    if (request.method === "OPTIONS") {
+      return Promise.resolve(optionsResponse());
+    }
+    return serveHostedSite(request, env).then(corsResponse);
   },
 };

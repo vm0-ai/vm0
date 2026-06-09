@@ -283,13 +283,18 @@ async function upsertDefaultAgentMetadata(
         target: orgMetadata.orgId,
         set: {
           defaultAgentId: args.agentId,
-          ...(args.onboardingPaymentPending === undefined
-            ? {}
-            : { onboardingPaymentPending: args.onboardingPaymentPending }),
           updatedAt: nowDate(),
         },
       });
   });
+
+  if (args.onboardingPaymentPending !== undefined) {
+    await updateOnboardingPaymentPending(
+      db,
+      args.orgId,
+      args.onboardingPaymentPending,
+    );
+  }
 }
 
 async function upsertSetupMemberMetadata(
@@ -390,7 +395,11 @@ async function updateOnboardingPaymentPending(
       onboardingPaymentPending,
       updatedAt: nowDate(),
     })
-    .where(eq(orgMetadata.orgId, orgId));
+    .where(
+      onboardingPaymentPending
+        ? and(eq(orgMetadata.orgId, orgId), eq(orgMetadata.tier, "pro-suspend"))
+        : eq(orgMetadata.orgId, orgId),
+    );
 }
 
 async function completeExistingDefaultAgentSetup(
