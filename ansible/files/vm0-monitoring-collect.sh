@@ -3,7 +3,7 @@
 set -euo pipefail
 
 cache_dir="${VM0_WORKSPACE_IMAGE_CACHE_DIR:-/var/lib/vm0-runner/workspace-image-cache}"
-textfile_dir="${VM0_MONITORING_TEXTFILE_DIR:-/var/lib/vm0-monitoring/textfile}"
+textfile_dir="${VM0_MONITORING_TEXTFILE_DIR:-/var/lib/vm0-monitoring/textfile-collector}"
 output_file="$textfile_dir/workspace-image-cache.prom"
 
 mib=$((1024 * 1024))

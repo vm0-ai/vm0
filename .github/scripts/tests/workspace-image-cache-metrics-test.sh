@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
-script="$repo_root/ansible/files/vm0-workspace-image-cache-metrics.sh"
+script="$repo_root/ansible/files/vm0-monitoring-collect.sh"
 tmp_root="$(mktemp -d)"
 trap 'rm -rf "$tmp_root"' EXIT
 

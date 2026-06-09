@@ -76,44 +76,44 @@
         mode: "0755"
       become: true
 
-    - name: Ensure VM0 monitoring textfile directory exists
+    - name: Ensure VM0 monitoring textfile collector directory exists
       file:
-        path: /var/lib/vm0-monitoring/textfile
+        path: /var/lib/vm0-monitoring/textfile-collector
         state: directory
         owner: root
         group: root
         mode: "0755"
       become: true
 
-    - name: Install workspace image cache metrics script
+    - name: Install VM0 monitoring collector script
       copy:
-        src: ../files/vm0-workspace-image-cache-metrics.sh
-        dest: /usr/local/bin/vm0-workspace-image-cache-metrics
+        src: ../files/vm0-monitoring-collect.sh
+        dest: /usr/local/bin/vm0-monitoring-collect
         owner: root
         group: root
         mode: "0755"
       become: true
 
-    - name: Install workspace image cache metrics service
+    - name: Install VM0 monitoring collector service
       copy:
         content: |
           [Unit]
-          Description=Collect VM0 workspace image cache metrics
+          Description=Collect VM0 host monitoring metrics
 
           [Service]
           Type=oneshot
-          ExecStart=/usr/local/bin/vm0-workspace-image-cache-metrics
-        dest: /etc/systemd/system/vm0-workspace-image-cache-metrics.service
+          ExecStart=/usr/local/bin/vm0-monitoring-collect
+        dest: /etc/systemd/system/vm0-monitoring-collect.service
         owner: root
         group: root
         mode: "0644"
       become: true
 
-    - name: Install workspace image cache metrics timer
+    - name: Install VM0 monitoring collector timer
       copy:
         content: |
           [Unit]
-          Description=Collect VM0 workspace image cache metrics every minute
+          Description=Collect VM0 host monitoring metrics every minute
 
           [Timer]
           OnBootSec=1min
@@ -123,23 +123,23 @@
 
           [Install]
           WantedBy=timers.target
-        dest: /etc/systemd/system/vm0-workspace-image-cache-metrics.timer
+        dest: /etc/systemd/system/vm0-monitoring-collect.timer
         owner: root
         group: root
         mode: "0644"
       become: true
 
-    - name: Generate initial workspace image cache metrics
+    - name: Generate initial VM0 host monitoring metrics
       systemd:
-        name: vm0-workspace-image-cache-metrics.service
+        name: vm0-monitoring-collect.service
         state: started
         daemon_reload: true
       become: true
       changed_when: false
 
-    - name: Enable workspace image cache metrics timer
+    - name: Enable VM0 monitoring collector timer
       systemd:
-        name: vm0-workspace-image-cache-metrics.timer
+        name: vm0-monitoring-collect.timer
         state: started
         enabled: true
         daemon_reload: true
@@ -162,7 +162,7 @@
               device_include = "^(en|eth|bond).*"
             }
             textfile {
-              directory = "/var/lib/vm0-monitoring/textfile"
+              directory = "/var/lib/vm0-monitoring/textfile-collector"
             }
           }
 
