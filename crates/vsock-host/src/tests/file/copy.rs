@@ -65,7 +65,7 @@ async fn copy_file_streams_to_temp_then_renames() {
     assert_eq!(start.label, "copy-file");
     assert_eq!(
         start.command,
-        "if test -f '/tmp/vm0-system-run.log'; then cat -- '/tmp/vm0-system-run.log'; else exit 66; fi"
+        "if test -f '/tmp/vm0-system-run.log'; then cat < '/tmp/vm0-system-run.log'; else exit 66; fi"
     );
     assert_eq!(
         start.stdout,
@@ -234,7 +234,7 @@ async fn copy_file_creates_parent_and_quotes_guest_path_with_single_quote() {
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(
         decoded.command,
-        "if test -f '/tmp/vm0-system-run'\\''s.log'; then cat -- '/tmp/vm0-system-run'\\''s.log'; else exit 66; fi"
+        "if test -f '/tmp/vm0-system-run'\\''s.log'; then cat < '/tmp/vm0-system-run'\\''s.log'; else exit 66; fi"
     );
     send_exec_output(
         &mut guest,

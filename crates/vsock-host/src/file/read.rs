@@ -49,7 +49,7 @@ impl VsockHost {
 
         const MISSING_FILE_EXIT_CODE: i32 = 66;
         let command = format!(
-            "if test -f {path}; then cat -- {path}; else exit {MISSING_FILE_EXIT_CODE}; fi",
+            "if test -f {path}; then cat < {path}; else exit {MISSING_FILE_EXIT_CODE}; fi",
             path = shell_quote(path)
         );
         let result = self
