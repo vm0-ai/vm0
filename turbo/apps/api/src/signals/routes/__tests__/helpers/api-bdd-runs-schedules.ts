@@ -26,11 +26,13 @@ import {
 } from "@vm0/api-contracts/contracts/cron";
 import {
   runnersHeartbeatContract,
+  runnersJobClaimContract,
   runnersPollContract,
 } from "@vm0/api-contracts/contracts/runners";
 import {
   zeroRunsCancelContract,
   zeroRunContextContract,
+  zeroRunRunnerContract,
   zeroRunsByIdContract,
   zeroRunsMainContract,
   zeroRunsQueueContract,
@@ -280,6 +282,20 @@ export function createRunsSchedulesApi(context: TestContext) {
       );
     },
 
+    async requestRunRunner(
+      actor: ApiTestUser | null,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroRunRunnerContract).getRunner({
+          headers: authenticate(context, actor),
+          params: { id: runId },
+        }),
+        statuses,
+      );
+    },
+
     async readRunQueue(actor: ApiTestUser) {
       return await accept(
         setupApp({ context })(zeroRunsQueueContract).getQueue({
@@ -358,6 +374,21 @@ export function createRunsSchedulesApi(context: TestContext) {
         setupApp({ context })(runnersPollContract).poll({
           headers: runnerHeaders(validAuth),
           body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestClaimRunnerJob(
+      validAuth: boolean,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(runnersJobClaimContract).claim({
+          headers: runnerHeaders(validAuth),
+          params: { id: runId },
+          body: {},
         }),
         statuses,
       );

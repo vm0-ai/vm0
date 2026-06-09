@@ -194,6 +194,62 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
     expect(hiddenContext.body.error.code).toBe("NOT_FOUND");
   });
 
+  it("rejects runner metadata reads and job claims at unauthenticated, malformed, and missing boundaries", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const actor = bdd.user();
+    const missingRunId = randomUUID();
+    const invalidRunId = "not-a-run-id";
+
+    const unauthenticatedRunner = await api.requestRunRunner(
+      null,
+      missingRunId,
+      [401],
+    );
+    expectApiError(unauthenticatedRunner.body);
+    expect(unauthenticatedRunner.body.error.code).toBe("UNAUTHORIZED");
+
+    const invalidRunner = await api.requestRunRunner(
+      actor,
+      invalidRunId,
+      [400],
+    );
+    expectApiError(invalidRunner.body);
+    expect(invalidRunner.body.error.code).toBe("BAD_REQUEST");
+
+    const missingRunner = await api.requestRunRunner(
+      actor,
+      missingRunId,
+      [404],
+    );
+    expectApiError(missingRunner.body);
+    expect(missingRunner.body.error.code).toBe("NOT_FOUND");
+
+    const unauthenticatedClaim = await api.requestClaimRunnerJob(
+      false,
+      missingRunId,
+      [401],
+    );
+    expectApiError(unauthenticatedClaim.body);
+    expect(unauthenticatedClaim.body.error.code).toBe("UNAUTHORIZED");
+
+    const invalidClaim = await api.requestClaimRunnerJob(
+      true,
+      invalidRunId,
+      [400],
+    );
+    expectApiError(invalidClaim.body);
+    expect(invalidClaim.body.error.code).toBe("BAD_REQUEST");
+
+    const missingClaim = await api.requestClaimRunnerJob(
+      true,
+      missingRunId,
+      [404],
+    );
+    expectApiError(missingClaim.body);
+    expect(missingClaim.body.error.code).toBe("NOT_FOUND");
+  });
+
   it("rejects malformed and unauthenticated runner, queue, read, context, and cancel requests", async () => {
     const bdd = createBddApi(context);
     const api = createRunsSchedulesApi(context);
