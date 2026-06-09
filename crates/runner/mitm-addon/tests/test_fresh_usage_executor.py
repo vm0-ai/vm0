@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 import usage
-from tests.conftest import _fresh_usage_executor_context
+from tests.usage_helpers import fresh_usage_executor_context
 
 
 def test_fresh_usage_executor_restores_and_shuts_down_after_flush_failure():
@@ -14,7 +14,7 @@ def test_fresh_usage_executor_restores_and_shuts_down_after_flush_failure():
     executors: list[ThreadPoolExecutor] = []
 
     def use_fresh_executor() -> None:
-        with _fresh_usage_executor_context() as executor:
+        with fresh_usage_executor_context() as executor:
             assert usage.webhook.usage_executor is executor
             executors.append(executor)
 
@@ -45,7 +45,7 @@ def test_fresh_usage_executor_shuts_down_owned_executor_when_global_changes():
     try:
         with (
             patch.object(usage, "flush_usage_events", return_value=0) as flush,
-            _fresh_usage_executor_context() as executor,
+            fresh_usage_executor_context() as executor,
         ):
             executors.append(executor)
             usage.webhook.usage_executor = replacement

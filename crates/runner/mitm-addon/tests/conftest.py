@@ -16,7 +16,7 @@ Fixtures here exist for two reasons:
 import contextlib
 import json
 from collections.abc import Callable, Iterator
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -32,7 +32,7 @@ import mitm_addon
 import registry
 import usage
 from tests.auth_state_helpers import clear_auth_state
-from tests.usage_helpers import UsageWebhookServer
+from tests.usage_helpers import UsageWebhookServer, fresh_usage_executor_context
 from usage.providers import connectors as _usage_connectors
 
 
@@ -398,23 +398,6 @@ def sync_usage_executor():
             usage.webhook.usage_executor = original
 
 
-@contextlib.contextmanager
-def _fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
-    original = usage.webhook.usage_executor
-    executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage-test")
-    usage.webhook.usage_executor = executor
-    try:
-        yield executor
-    finally:
-        try:
-            try:
-                usage.flush_usage_events(trigger="shutdown")
-            finally:
-                executor.shutdown(wait=True)
-        finally:
-            usage.webhook.usage_executor = original
-
-
 @pytest.fixture
 def fresh_usage_executor():
     """Swap ``usage.webhook.usage_executor`` for a throw-away pool for one test.
@@ -427,7 +410,7 @@ def fresh_usage_executor():
     ``ThreadPoolExecutor.shutdown`` is idempotent, so we always call it
     on the way out regardless of whether the test already did.
     """
-    with _fresh_usage_executor_context() as executor:
+    with fresh_usage_executor_context() as executor:
         yield executor
 
 
