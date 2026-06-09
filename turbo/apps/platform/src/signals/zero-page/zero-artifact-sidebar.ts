@@ -109,6 +109,17 @@ export const currentArtifactRef$ = computed<ArtifactRef | null>((get) => {
   return { source: "url", url: raw, kind, filename: attachment.filename };
 });
 
+// True whenever an artifact surface occupies the right pane — either the
+// inbox (?artifacts=) or a single preview (?artifact=). Drives the left
+// sidebar's auto-collapse so the chat column keeps a readable width while
+// three panes are visible.
+export const artifactPanelOpen$ = computed((get) => {
+  return (
+    get(currentArtifactInboxThreadId$) !== null ||
+    get(currentArtifactRef$) !== null
+  );
+});
+
 export const openArtifactSidebarPreview$ = command(
   ({ get, set }, url: string) => {
     const params = new URLSearchParams(get(searchParams$));

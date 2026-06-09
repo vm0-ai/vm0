@@ -38,6 +38,7 @@ import {
   type SidebarNavId,
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
+import { artifactPanelOpen$ } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { subagents$, defaultAgentName$ } from "../../signals/agent.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
@@ -231,7 +232,10 @@ function AccountDropdownContainer({
 
 function CollapsedSidebar() {
   const off = useGet(sidebarOff$);
-  if (!off) {
+  // The artifact panel auto-collapses the sidebar to the icon rail so the
+  // chat column keeps a readable width while three panes share the row.
+  const artifactsOpen = useGet(artifactPanelOpen$);
+  if (!off && !artifactsOpen) {
     return null;
   }
   return (
@@ -246,6 +250,13 @@ function CollapsedSidebar() {
 
 function CollapsedExpandButton() {
   const onCollapse = useSidebarCollapseToggle();
+  // While the artifact panel forces the collapse, the manual expand toggle is
+  // a no-op (artifacts override the width) and would silently flip the saved
+  // preference — so hide it until the artifact panel closes.
+  const artifactsOpen = useGet(artifactPanelOpen$);
+  if (artifactsOpen) {
+    return null;
+  }
   return (
     <div className="flex w-full shrink-0 justify-center pt-3 pb-1">
       <TooltipProvider delayDuration={200}>
@@ -380,11 +391,16 @@ function CollapsedFooter() {
 function ExpandedSidebar() {
   const off = useGet(sidebarOff$);
   const expanded = useGet(sidebarExpanded$);
+  // When the artifact panel is open we yield to the collapsed icon rail on
+  // desktop (md+), but keep the mobile overlay (data-sidebar-expanded) intact
+  // so the hamburger menu still works while artifacts fill the screen.
+  const artifactsOpen = useGet(artifactPanelOpen$);
   return (
     <aside
       data-sidebar-off={off || undefined}
       data-sidebar-expanded={expanded || undefined}
-      className="zero-nav hidden md:flex data-[sidebar-off]:md:hidden data-[sidebar-expanded]:max-md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl"
+      data-artifacts-open={artifactsOpen || undefined}
+      className="zero-nav hidden md:flex data-[sidebar-off]:md:hidden data-[artifacts-open]:md:hidden data-[sidebar-expanded]:max-md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl"
     >
       <ExpandedHeader />
       <ExpandedMainNav />
