@@ -18,7 +18,6 @@
 //! ```
 
 use std::collections::VecDeque;
-use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -49,19 +48,18 @@ fn mock_copy_file_error(message: impl Into<String>) -> SandboxError {
 }
 
 fn validate_mock_copy_host_path(host_path: &Path) -> Result<()> {
-    let path_bytes = host_path.as_os_str().as_bytes();
-    if path_bytes.is_empty() {
+    let path_text = host_path.as_os_str().to_string_lossy();
+    if path_text.is_empty() {
         return Err(mock_copy_file_error(
             "mock copy_file host path must not be empty",
         ));
     }
-    if path_bytes.contains(&0) {
+    if path_text.contains('\0') {
         return Err(mock_copy_file_error(
             "mock copy_file host path contains NUL bytes",
         ));
     }
-    if host_path.file_name().is_none() || path_bytes.ends_with(b"/") || path_bytes.ends_with(b"/.")
-    {
+    if host_path.file_name().is_none() || path_text.ends_with('/') || path_text.ends_with("/.") {
         return Err(mock_copy_file_error(
             "mock copy_file host path must name a file",
         ));
