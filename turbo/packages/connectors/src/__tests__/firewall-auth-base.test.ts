@@ -140,6 +140,27 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
     });
   });
 
+  it("extracts vars from auth.awsSigv4 references", () => {
+    const apis = [
+      {
+        base: "https://sts.amazonaws.com",
+        auth: {
+          headers: {},
+          awsSigv4: {
+            accessKeyId: "${{ vars.AWS_ACCESS_KEY_ID }}",
+            secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+          },
+        },
+      },
+    ];
+
+    expect(extractSecretNamesFromApis(apis)).toEqual(["AWS_SECRET_ACCESS_KEY"]);
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: ["AWS_SECRET_ACCESS_KEY"],
+      vars: ["AWS_ACCESS_KEY_ID"],
+    });
+  });
+
   it("skips auth.query when not present", () => {
     const apis = [
       {
