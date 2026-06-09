@@ -510,19 +510,17 @@ async function seedExpiredAwsConnector(
     value: "stale-aws-session-token",
     type: "connector",
   });
-  await seedSecret({
+  await seedVariable({
     orgId: fixture.orgId,
     userId: fixture.userId,
     name: "AWS_SIGNIN_REGION",
     value: "us-east-1",
-    type: "connector",
   });
-  await seedSecret({
+  await seedVariable({
     orgId: fixture.orgId,
     userId: fixture.userId,
     name: "AWS_REGION",
     value: "us-west-2",
-    type: "connector",
   });
 }
 
@@ -1963,22 +1961,22 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             AWS_ACCESS_KEY_ID: STALE_ENCRYPTED_AWS_CREDENTIAL_ID,
             AWS_SECRET_ACCESS_KEY: "stale-encrypted-aws-secret-access-key",
             AWS_SESSION_TOKEN: "stale-encrypted-aws-session-token",
-            AWS_REGION: "stale-encrypted-aws-region",
-            AWS_DEFAULT_REGION: "stale-encrypted-aws-default-region",
           }),
           authHeaders: {
             "X-Aws-Access-Key-Id": secretTemplate("AWS_ACCESS_KEY_ID"),
             "X-Aws-Secret-Access-Key": secretTemplate("AWS_SECRET_ACCESS_KEY"),
             "X-Aws-Session-Token": secretTemplate("AWS_SESSION_TOKEN"),
-            "X-Aws-Region": secretTemplate("AWS_REGION"),
-            "X-Aws-Default-Region": secretTemplate("AWS_DEFAULT_REGION"),
+            "X-Aws-Region": varTemplate("AWS_REGION"),
+            "X-Aws-Default-Region": varTemplate("AWS_DEFAULT_REGION"),
           },
           secretConnectorMap: {
             AWS_ACCESS_KEY_ID: "aws",
             AWS_SECRET_ACCESS_KEY: "aws",
             AWS_SESSION_TOKEN: "aws",
-            AWS_REGION: "aws",
-            AWS_DEFAULT_REGION: "aws",
+          },
+          vars: {
+            AWS_REGION: "us-west-2",
+            AWS_DEFAULT_REGION: "us-west-2",
           },
         },
         headers: authHeaders(fixture),
@@ -1995,6 +1993,11 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
     expect(response.body.refreshedConnectors).toStrictEqual(["aws"]);
     expect(response.body.refreshedSecrets).toStrictEqual([
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+    ]);
+    expect(response.body.resolvedSecrets).toStrictEqual([
       "AWS_ACCESS_KEY_ID",
       "AWS_SECRET_ACCESS_KEY",
       "AWS_SESSION_TOKEN",
@@ -2016,13 +2019,28 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       }),
     ).resolves.toBe("rotated-aws-refresh-token");
     await expect(
+      readConnectorVariable({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "AWS_REGION",
+      }),
+    ).resolves.toBe("us-west-2");
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "AWS_SIGNIN_REGION",
+        type: "connector",
+      }),
+    ).resolves.toBeNull();
+    await expect(
       readSecret({
         orgId: fixture.orgId,
         userId: fixture.userId,
         name: "AWS_REGION",
         type: "connector",
       }),
-    ).resolves.toBe("us-west-2");
+    ).resolves.toBeNull();
   });
 
   it("serializes concurrent connector OAuth refreshes for rotated refresh tokens", async () => {
