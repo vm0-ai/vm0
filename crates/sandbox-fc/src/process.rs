@@ -41,7 +41,9 @@ pub(crate) enum ChildExitNotifierUnavailable {
     MissingPid,
     #[cfg(not(target_os = "linux"))]
     Unsupported,
+    #[cfg(target_os = "linux")]
     OpenFailed(io::Error),
+    #[cfg(target_os = "linux")]
     RegisterFailed(io::Error),
     #[cfg(test)]
     ForcedForTest,
@@ -53,7 +55,9 @@ impl fmt::Display for ChildExitNotifierUnavailable {
             Self::MissingPid => f.write_str("child PID is unavailable"),
             #[cfg(not(target_os = "linux"))]
             Self::Unsupported => f.write_str("pidfd is unsupported on this platform"),
+            #[cfg(target_os = "linux")]
             Self::OpenFailed(error) => write!(f, "pidfd_open failed: {error}"),
+            #[cfg(target_os = "linux")]
             Self::RegisterFailed(error) => write!(f, "pidfd async registration failed: {error}"),
             #[cfg(test)]
             Self::ForcedForTest => f.write_str("pidfd forced unavailable for test"),
