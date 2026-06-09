@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -109,6 +110,29 @@ function tabByText(text: string): HTMLElement {
     throw new Error(`${text} tab not found`);
   }
   return tab;
+}
+
+async function permissionRowByName(
+  container: HTMLElement,
+  name: string,
+): Promise<HTMLElement> {
+  const row = (await within(container).findByText(name)).closest(
+    "div",
+  )?.parentElement;
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`${name} permission row not found`);
+  }
+  return row;
+}
+
+function unknownEndpointsRow(container: HTMLElement): HTMLElement {
+  const row = within(container)
+    .getByText("Other endpoints")
+    .closest("div")?.parentElement;
+  if (!(row instanceof HTMLElement)) {
+    throw new Error("Other endpoints row not found");
+  }
+  return row;
 }
 
 function mockTeamAPIs(): void {
@@ -352,7 +376,14 @@ describe("team page navigation", () => {
 
   it("updates connector permission policies from an agent page", async () => {
     mockTeamAPIs();
-    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ExpiringPermissionGrants]: true,
+        [FeatureSwitchKey.ConnectorPermissionReset]: true,
+      },
+    });
 
     await waitFor(() => {
       expect(
@@ -371,15 +402,49 @@ describe("team page navigation", () => {
       within(permissionsDialog).getByText("for Research Agent"),
     ).toBeInTheDocument();
 
-    const permissionRow = (
-      await within(permissionsDialog).findByText("annotations|create")
-    ).closest("div")?.parentElement;
-    expect(permissionRow).toBeTruthy();
-    click(buttonByText("Deny", permissionRow!));
+    const permissionRow = await permissionRowByName(
+      permissionsDialog,
+      "annotations|create",
+    );
+    click(screen.getByLabelText("annotations|create allow options"));
+    click(menuItemByText("Allow for 24h"));
     await waitFor(() => {
+      expect(within(permissionRow).getByText("24h")).toBeInTheDocument();
       expect(buttonByText("Apply", permissionsDialog)).toBeEnabled();
     });
     click(buttonByText("Apply", permissionsDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+      expect(screen.queryByText("Axiom permissions")).not.toBeInTheDocument();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(screen.queryByText("Permissions updated")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Axiom permissions"));
+
+    const resetDialog = await screen.findByRole("dialog");
+    expect(
+      within(resetDialog).getByText("Axiom permissions"),
+    ).toBeInTheDocument();
+
+    const resetPermissionRow = await permissionRowByName(
+      resetDialog,
+      "annotations|create",
+    );
+    click(buttonByText("Deny", resetPermissionRow));
+    click(buttonByText("Deny", unknownEndpointsRow(resetDialog)));
+
+    await waitFor(() => {
+      expect(buttonByText("Restore", resetDialog)).toBeEnabled();
+    });
+    click(buttonByText("Restore", resetDialog));
+    await waitFor(() => {
+      expect(buttonByText("Apply", resetDialog)).toBeEnabled();
+    });
+    click(buttonByText("Apply", resetDialog));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
