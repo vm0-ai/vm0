@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.317.2](https://github.com/vm0-ai/vm0/compare/core-v8.317.1...core-v8.317.2) (2026-06-09)
+
+
+### Bug Fixes
+
+* remove scheduled run cards ([#16726](https://github.com/vm0-ai/vm0/issues/16726)) ([960c391](https://github.com/vm0-ai/vm0/commit/960c3914fbbbbce5c5ae77aa3be01c729d515663))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.1
+    * @vm0/connectors bumped to 1.52.1
+
 ## [8.317.1](https://github.com/vm0-ai/vm0/compare/core-v8.317.0...core-v8.317.1) (2026-06-08)
 
 

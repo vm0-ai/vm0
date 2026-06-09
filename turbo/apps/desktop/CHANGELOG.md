@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.3.0...desktop-v0.3.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* **desktop:** bundle updater dependency ([#16734](https://github.com/vm0-ai/vm0/issues/16734)) ([97acd73](https://github.com/vm0-ai/vm0/commit/97acd73a034af28462180d50abafa7e236394abc))
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.2.0...desktop-v0.3.0) (2026-06-08)
 
 

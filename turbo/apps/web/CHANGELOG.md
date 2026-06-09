@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.416.0](https://github.com/vm0-ai/vm0/compare/web-v12.415.0...web-v12.416.0) (2026-06-09)
+
+
+### Features
+
+* add 3 use case pages (landing-page-builder, support-driven-bug-fixes, smart-deadline-guardian) ([#15938](https://github.com/vm0-ai/vm0/issues/15938)) ([b50197b](https://github.com/vm0-ai/vm0/commit/b50197bb5cc0700b360a295c268440b9ad1f9676))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.1
+    * @vm0/core bumped to 8.317.2
+  * devDependencies
+    * @vm0/connectors bumped to 1.52.1
+
 ## [12.415.0](https://github.com/vm0-ai/vm0/compare/web-v12.414.0...web-v12.415.0) (2026-06-08)
 
 

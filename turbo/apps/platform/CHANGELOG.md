@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.425.1](https://github.com/vm0-ai/vm0/compare/app-v0.425.0...app-v0.425.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* relax chat bubble line-height for 15px text ([#16708](https://github.com/vm0-ai/vm0/issues/16708)) ([e931f42](https://github.com/vm0-ai/vm0/commit/e931f42bad4262cd3ed70a8cd603e66833a91869))
+* remove scheduled run cards ([#16726](https://github.com/vm0-ai/vm0/issues/16726)) ([960c391](https://github.com/vm0-ai/vm0/commit/960c3914fbbbbce5c5ae77aa3be01c729d515663))
+* support dark mode in credit usage popover ([#16719](https://github.com/vm0-ai/vm0/issues/16719)) ([18ec51b](https://github.com/vm0-ai/vm0/commit/18ec51b8b0732669b6a87d187b3f5be9dce6e727))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.1
+    * @vm0/connectors bumped to 1.52.1
+    * @vm0/core bumped to 8.317.2
+
 ## [0.425.0](https://github.com/vm0-ai/vm0/compare/app-v0.424.0...app-v0.425.0) (2026-06-08)
 
 
