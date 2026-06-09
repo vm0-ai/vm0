@@ -62,12 +62,17 @@ class TestDoneHook:
         with (
             patch.object(usage, "flush_usage_events") as flush_usage_events,
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(
+                mitm_addon.auth_base_forwarder,
+                "shutdown_forward_request_executor",
+            ) as shutdown_forward_request_executor,
             patch.object(mitm_addon, "shutdown_log_writer") as shutdown_log_writer,
         ):
             mitm_addon.done()
         flush_usage_events.assert_called_once_with(trigger="shutdown")
         # concurrent.futures boundary: done() must gracefully shut down the pool (#9991).
         mock_executor.shutdown.assert_called_once_with(wait=True)
+        shutdown_forward_request_executor.assert_called_once_with(wait=False)
         shutdown_log_writer.assert_called_once_with()
 
     def test_done_waits_for_runner_flush_before_executor_shutdown(self):
@@ -119,6 +124,11 @@ class TestDoneHook:
             patch.object(mitm_addon, "_usage_flush_signal_lock", lock),
             patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(
+                mitm_addon.auth_base_forwarder,
+                "shutdown_forward_request_executor",
+                lambda *, wait: calls.append(f"auth-base:shutdown:{wait}"),
+            ),
             patch.object(mitm_addon, "shutdown_log_writer", lambda: calls.append("jsonl:shutdown")),
         ):
             mitm_addon._handle_runner_usage_flush_signal(0, None)
@@ -133,7 +143,13 @@ class TestDoneHook:
             done_thread.join(timeout=1)
 
         assert not done_thread.is_alive()
-        assert calls == ["flush:runner", "flush:shutdown", "shutdown:True", "jsonl:shutdown"]
+        assert calls == [
+            "flush:runner",
+            "flush:shutdown",
+            "shutdown:True",
+            "auth-base:shutdown:False",
+            "jsonl:shutdown",
+        ]
 
     def test_done_shuts_down_executor_when_flush_fails(self):
         mock_executor = MagicMock()
@@ -145,6 +161,10 @@ class TestDoneHook:
                 side_effect=RuntimeError("flush failed"),
             ) as flush_usage_events,
             patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(
+                mitm_addon.auth_base_forwarder,
+                "shutdown_forward_request_executor",
+            ) as shutdown_forward_request_executor,
             patch.object(mitm_addon, "shutdown_log_writer") as shutdown_log_writer,
             pytest.raises(RuntimeError, match="flush failed"),
         ):
@@ -152,6 +172,7 @@ class TestDoneHook:
 
         flush_usage_events.assert_called_once_with(trigger="shutdown")
         mock_executor.shutdown.assert_called_once_with(wait=True)
+        shutdown_forward_request_executor.assert_called_once_with(wait=False)
         shutdown_log_writer.assert_called_once_with()
 
 
