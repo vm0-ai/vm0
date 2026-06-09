@@ -3135,7 +3135,7 @@ function WaitingForAssistantResponse({
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
-        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-relaxed min-w-0 overflow-hidden">
+        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-[1.7] min-w-0 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0">
             <span className="zero-blocks shrink-0" style={blockStyle}>
               <span />
@@ -3299,7 +3299,7 @@ function BodyContentBlocks({
               }
               mediaPreview
               mathEnabled
-              style={{ fontSize: "inherit" }}
+              style={{ fontSize: "inherit", lineHeight: "inherit" }}
             />
           );
         }
@@ -4265,7 +4265,10 @@ function AssistantErrorContent({ error }: { error: string }) {
   return (
     <div className="flex items-start gap-2 text-destructive">
       <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
-      <Markdown source={error} style={{ fontSize: "inherit" }} />
+      <Markdown
+        source={error}
+        style={{ fontSize: "inherit", lineHeight: "inherit" }}
+      />
     </div>
   );
 }
@@ -4816,7 +4819,7 @@ function PagedUserMessage({
           <UserMessageGenerationTemplate
             generationTemplate={message.generationTemplate}
           />
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
                 <BodyContentBlocks
@@ -4888,7 +4891,7 @@ function PagedAssistantMessageItem({
 
   if (message.error) {
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-relaxed min-w-0 [overflow-wrap:anywhere]">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]">
         <AssistantErrorContent error={message.error} />
       </div>
     );
@@ -4897,7 +4900,7 @@ function PagedAssistantMessageItem({
   if (message.content) {
     const { blocks } = message;
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-relaxed min-w-0 [overflow-wrap:anywhere]">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]">
         {blocks.length > 0 ? (
           <BodyContentBlocks
             blocks={blocks}
