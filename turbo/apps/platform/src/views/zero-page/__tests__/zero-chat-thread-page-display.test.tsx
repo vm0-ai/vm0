@@ -2498,6 +2498,62 @@ describe("zero chat thread page display - artifact sidebar", () => {
     expect(queryRoleByText("menuitem", "Download (.pptx)")).toBeUndefined();
   });
 
+  it("closes the artifact download menu from the dismiss layer above iframe previews", async () => {
+    const user = userEvent.setup();
+    const fileUrl = "https://example.com/report.html";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: "Generated report",
+          runId: "run-html-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-html-artifact",
+              files: [
+                {
+                  id: fileUrl,
+                  filename: "report.html",
+                  contentType: "text/html",
+                  size: 1024,
+                  url: fileUrl,
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    click(await screen.findByLabelText("Open artifacts"));
+    await user.click(await screen.findByLabelText("Open artifact report.html"));
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await user.click(within(sidebar).getByLabelText("Download artifact"));
+
+    await waitFor(() => {
+      expect(queryRoleByText("menuitem", "Download")).toBeInTheDocument();
+    });
+    await user.click(
+      screen.getByTestId("artifact-download-menu-dismiss-layer"),
+    );
+    await waitFor(() => {
+      expect(queryRoleByText("menuitem", "Download")).toBeUndefined();
+    });
+  });
+
   it("ignores presentation editor query when the feature switch is disabled", async () => {
     const fileUrl = "https://demo-deck.sites.vm0.io";
     mockChatLifecycle({

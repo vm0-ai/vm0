@@ -8,6 +8,7 @@ import {
   cn,
   Popover,
   PopoverContent,
+  PopoverOverlay,
   PopoverTrigger,
   Tooltip,
   TooltipContent,
@@ -450,6 +451,13 @@ export function ArtifactDownloadMenu({
           <IconDownload size={iconSize} stroke={1.5} />
         </button>
       </PopoverTrigger>
+      {open && (
+        <PopoverOverlay
+          data-testid="artifact-download-menu-dismiss-layer"
+          aria-label="Close download menu"
+          className="z-[9999]"
+        />
+      )}
       <PopoverContent
         role="menu"
         align={align}
