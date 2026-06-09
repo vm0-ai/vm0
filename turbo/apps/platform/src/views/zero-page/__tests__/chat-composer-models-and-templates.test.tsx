@@ -203,6 +203,10 @@ async function expectComposerModel(label: string): Promise<void> {
 async function openTemplatePicker(
   user: ReturnType<typeof userEvent.setup>,
 ): Promise<void> {
+  const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+  const slideCount =
+    template.previewImages.length > 0 ? template.previewImages.length : 1;
+
   click(
     await waitFor(() => {
       return screen.getByLabelText("Template");
@@ -211,11 +215,30 @@ async function openTemplatePicker(
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
-  await user.click(
-    screen.getByLabelText(
-      `Select template ${PRESENTATION_TEMPLATE_ITEMS[0]!.title}`,
-    ),
-  );
+
+  await fill(screen.getByLabelText("Search templates"), "no matching deck");
+  await waitFor(() => {
+    expect(screen.getByText("No matches")).toBeInTheDocument();
+  });
+
+  await fill(screen.getByLabelText("Search templates"), template.title);
+  await waitFor(() => {
+    expect(screen.getByText(template.title)).toBeInTheDocument();
+  });
+
+  click(screen.getByLabelText(`View template ${template.title}`));
+  await waitFor(() => {
+    expect(screen.getByText(`1 of ${slideCount}`)).toBeInTheDocument();
+  });
+
+  if (slideCount > 1) {
+    click(screen.getByLabelText("Next slide"));
+    await waitFor(() => {
+      expect(screen.getByText(`2 of ${slideCount}`)).toBeInTheDocument();
+    });
+  }
+
+  await user.click(screen.getByLabelText(`Select template ${template.title}`));
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Template")).toHaveAttribute(
