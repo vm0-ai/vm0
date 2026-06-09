@@ -3,11 +3,16 @@ import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroComposesMainContract } from "@vm0/api-contracts/contracts/zero-composes";
+import {
+  zeroCustomConnectorsContract,
+  type CustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
 
@@ -55,6 +60,20 @@ function createConnector(
     tokenExpiresAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function createCustomConnector(): CustomConnectorResponse {
+  return {
+    id: "33333333-3333-4333-8333-333333333333",
+    slug: "acme-search",
+    displayName: "Acme Search",
+    prefixes: ["https://api.acme.test/v1/"],
+    headerName: "Authorization",
+    headerTemplate: "Bearer {{secret}}",
+    hasSecret: true,
+    createdAt: "2026-02-01T00:00:00Z",
+    updatedAt: "2026-02-01T00:00:00Z",
   };
 }
 
@@ -115,6 +134,8 @@ function mockTeamAPIs(): void {
     }),
   ]);
   let enabledTypes: string[] = [];
+  let enabledCustomConnectorIds: string[] = [];
+  const customConnector = createCustomConnector();
   context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
     return respond(200, { enabledTypes });
   });
@@ -122,6 +143,19 @@ function mockTeamAPIs(): void {
     enabledTypes = body.enabledTypes;
     return respond(200, { enabledTypes });
   });
+  context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+    return respond(200, { connectors: [customConnector] });
+  });
+  context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+    return respond(200, { enabledIds: enabledCustomConnectorIds });
+  });
+  context.mocks.api(
+    zeroAgentCustomConnectorsContract.update,
+    ({ body, respond }) => {
+      enabledCustomConnectorIds = body.enabledIds;
+      return respond(200, { enabledIds: enabledCustomConnectorIds });
+    },
+  );
   context.mocks.api(chatThreadsContract.list, ({ respond }) => {
     return respond(200, {
       pinned: [],
@@ -206,6 +240,16 @@ describe("team page navigation", () => {
     click(screen.getByLabelText("Grant GitHub access"));
     await waitFor(() => {
       expect(screen.getByLabelText("Revoke GitHub access")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Acme Search")).toBeInTheDocument();
+      expect(screen.getByText("https://api.acme.test/v1/")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Authorize Acme Search for this agent"));
+    await waitFor(() => {
+      expect(screen.getByText("Custom connectors saved")).toBeInTheDocument();
     });
 
     click(tabByText("Scheduled"));
