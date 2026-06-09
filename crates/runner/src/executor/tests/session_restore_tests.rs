@@ -166,6 +166,31 @@ async fn restore_session_writes_codex_session_with_canonical_fallback_filename()
 }
 
 #[tokio::test]
+async fn restore_session_canonicalizes_codex_session_id() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let session = ResumeSession {
+        session_id: "019E9154C30470F0ADDE36EFB1BE1701".into(),
+        session_history: "{}\n".into(),
+    };
+
+    restore_session(&sandbox, &ctx, &session).await.unwrap();
+
+    assert_codex_cleanup_call(&sandbox);
+
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert!(
+        writes[0]
+            .path
+            .ends_with("-019e9154-c304-70f0-adde-36efb1be1701.jsonl"),
+        "codex restore path must use canonical thread id, got {}",
+        writes[0].path
+    );
+}
+
+#[tokio::test]
 async fn restore_session_rejects_invalid_codex_session_id() {
     // Path-traversal validation runs before framework dispatch, so codex
     // shares the same allow-list as claude-code.

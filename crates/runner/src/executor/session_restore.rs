@@ -134,20 +134,14 @@ pub(super) async fn restore_codex_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    if !is_valid_codex_thread_id(&session.session_id) {
-        return Err(RunnerError::Internal(format!(
-            "invalid codex session_id: {}",
-            session.session_id
-        )));
-    }
+    let session_id = canonical_codex_thread_id(&session.session_id).ok_or_else(|| {
+        RunnerError::Internal(format!("invalid codex session_id: {}", session.session_id))
+    })?;
 
-    let session_path = codex_restore_rollout_path(
-        &session.session_id,
-        &session.session_history,
-        chrono::Utc::now(),
-    );
+    let session_path =
+        codex_restore_rollout_path(&session_id, &session.session_history, chrono::Utc::now());
 
-    cleanup_existing_codex_session_files(sandbox, context, &session.session_id).await?;
+    cleanup_existing_codex_session_files(sandbox, context, &session_id).await?;
 
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
@@ -211,6 +205,9 @@ pub(super) fn is_valid_session_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-fn is_valid_codex_thread_id(id: &str) -> bool {
-    uuid::Uuid::parse_str(id).is_ok_and(|uuid| uuid.to_string() == id)
+pub(super) fn canonical_codex_thread_id(id: &str) -> Option<String> {
+    if !is_valid_session_id(id) {
+        return None;
+    }
+    uuid::Uuid::parse_str(id).ok().map(|uuid| uuid.to_string())
 }
