@@ -120,7 +120,11 @@ impl SubmitQueueEntry {
     fn cleanup_abandoned(&self, marker: Option<&PublishedMarker>) {
         if remove_file_if_exists(&self.job) && !self.claim.exists() {
             let _ = remove_file_if_exists(&self.cancel);
-            remove_marker_if_unchanged(&self.result, marker);
+            if marker.is_some() {
+                remove_marker_if_unchanged(&self.result, marker);
+            } else if result_file_is_empty(&self.result) {
+                let _ = remove_file_if_exists(&self.result);
+            }
         }
     }
 
@@ -140,12 +144,6 @@ fn write_abandoned_result_marker(
     // without creating a fake claim that could strand the job if submit exits.
     if try_read_result(result_path).is_some() {
         return None;
-    }
-    if std::fs::metadata(result_path)
-        .map(|metadata| metadata.is_file() && metadata.len() == 0)
-        .unwrap_or(false)
-    {
-        let _ = remove_file_if_exists(result_path);
     }
 
     let response = JobResponse {
@@ -196,6 +194,12 @@ fn write_abandoned_result_marker(
         dev: metadata.dev(),
         ino: metadata.ino(),
     })
+}
+
+fn result_file_is_empty(result_path: &std::path::Path) -> bool {
+    std::fs::metadata(result_path)
+        .map(|metadata| metadata.is_file() && metadata.len() == 0)
+        .unwrap_or(false)
 }
 
 fn remove_marker_if_unchanged(result_path: &std::path::Path, marker: Option<&PublishedMarker>) {
@@ -509,6 +513,28 @@ mod tests {
 
         assert!(marker.is_none());
         assert!(result_path.is_dir());
+        let result_dir = local_queue::results_dir(group_dir);
+        let tmp_files: Vec<_> = std::fs::read_dir(result_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("tmp"))
+            .collect();
+        assert!(tmp_files.is_empty(), "tmp files left behind: {tmp_files:?}");
+    }
+
+    #[test]
+    fn abandoned_marker_write_preserves_existing_empty_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let result_path = local_queue::result_path(group_dir, job_id);
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        std::fs::write(&result_path, b"").unwrap();
+
+        let marker = write_abandoned_result_marker(&result_path, job_id, "local submit abandoned");
+
+        assert!(marker.is_none());
+        assert!(result_file_is_empty(&result_path));
         let result_dir = local_queue::results_dir(group_dir);
         let tmp_files: Vec<_> = std::fs::read_dir(result_dir)
             .unwrap()
@@ -957,7 +983,7 @@ mod tests {
     }
 
     #[test]
-    fn abandoned_cleanup_replaces_empty_result_marker() {
+    fn abandoned_cleanup_removes_stale_empty_result_after_unclaimed_job() {
         let dir = tempfile::tempdir().unwrap();
         let group_dir = dir.path();
         let job_id = RunId::new_v4();
@@ -977,6 +1003,37 @@ mod tests {
             !queue.result.exists(),
             "empty stale result should not strand an unclaimed abandoned job"
         );
+        assert!(!queue.cancel.exists());
+        assert!(!queue.claim.exists());
+    }
+
+    #[test]
+    fn abandoned_cleanup_keeps_runner_result_published_over_empty_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = RunId::new_v4();
+        let queue = submit_queue_entry(group_dir, job_id);
+        std::fs::create_dir_all(queue.job.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.result.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(queue.cancel.parent().unwrap()).unwrap();
+
+        std::fs::write(&queue.job, b"{}").unwrap();
+        std::fs::write(&queue.result, b"").unwrap();
+        std::fs::write(&queue.cancel, b"").unwrap();
+        let marker = write_abandoned_result_marker(&queue.result, job_id, "local submit abandoned");
+        assert!(marker.is_none());
+
+        let runner_queue = local_queue::LocalQueue::new(group_dir.to_path_buf());
+        assert!(runner_queue.write_result_sync(job_id, 0, None));
+
+        queue.cleanup_abandoned(None);
+
+        assert!(!queue.job.exists());
+        let response: JobResponse =
+            serde_json::from_slice(&std::fs::read(&queue.result).unwrap()).unwrap();
+        assert_eq!(response.run_id, job_id);
+        assert_eq!(response.exit_code, 0);
+        assert!(response.error.is_none());
         assert!(!queue.cancel.exists());
         assert!(!queue.claim.exists());
     }
