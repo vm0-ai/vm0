@@ -167,31 +167,6 @@ const OPENAPI_RESOURCE_CATEGORY_BY_ID = new Map<string, string>([
   ["transfer_reversal", "Connect"],
 ]);
 
-const LOW_RISK_DEFAULT_ALLOWED_PERMISSIONS = [
-  "apple_pay_domain_read",
-  "billing_clock_read",
-  "billing_meter_read",
-  "climate_product_read",
-  "climate_supplier_read",
-  "country_spec_read",
-  "coupon_read",
-  "customer_portal_read",
-  "entitlements_feature_read",
-  "exchange_rate_read",
-  "payment_links_read",
-  "payment_method_configurations_read",
-  "payment_method_domain_read",
-  "plan_read",
-  "product_feature_read",
-  "product_read",
-  "promotion_code_read",
-  "shipping_rate_read",
-  "tax_code_read",
-  "tax_rate_read",
-  "tax_settings_read",
-  "terminal_configuration_read",
-] as const;
-
 const REPRESENTATIVE_RULES: ReadonlyArray<{
   permission: string;
   rule: string;
@@ -1323,26 +1298,12 @@ function isReadOnlyPermission(permission: PermissionGroup): boolean {
   });
 }
 
-function validateDefaultAllowedPermissions(
+function stripeDefaultAllowedPermissions(
   permissions: PermissionGroup[],
-): void {
-  const permissionsByName = new Map(
-    permissions.map((permission) => {
-      return [permission.name, permission] as const;
-    }),
-  );
-
-  for (const name of LOW_RISK_DEFAULT_ALLOWED_PERMISSIONS) {
-    const permission = permissionsByName.get(name);
-    if (!permission) {
-      throw new Error(`Missing Stripe default-allowed permission "${name}"`);
-    }
-    if (!isReadOnlyPermission(permission)) {
-      throw new Error(
-        `Stripe default-allowed permission "${name}" is not read-only`,
-      );
-    }
-  }
+): string[] {
+  return permissions.filter(isReadOnlyPermission).map((permission) => {
+    return permission.name;
+  });
 }
 
 function generateTypeScript(
@@ -1350,8 +1311,6 @@ function generateTypeScript(
   categories: Record<string, string>,
   stats: BuildStats,
 ): string {
-  validateDefaultAllowedPermissions(permissions);
-
   const lines: string[] = [
     "// Auto-generated from official Stripe API data.",
     `// OpenAPI source: ${STRIPE_OPENAPI_URL}`,
@@ -1398,9 +1357,11 @@ function generateTypeScript(
     }),
   );
   lines.push(
-    ...renderDefaultAllowed("stripeDefaultAllowed", "stripeFirewall", [
-      ...LOW_RISK_DEFAULT_ALLOWED_PERMISSIONS,
-    ]),
+    ...renderDefaultAllowed(
+      "stripeDefaultAllowed",
+      "stripeFirewall",
+      stripeDefaultAllowedPermissions(permissions),
+    ),
   );
   lines.push(...renderStats(stats));
 
