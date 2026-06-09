@@ -8,7 +8,6 @@ import posixpath
 import re
 import urllib.parse
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from enum import Enum
 
 _AWS4_REQUEST = "aws4_request"
@@ -126,7 +125,9 @@ def _classify_header_request(
     if not credential or not signed_headers:
         raise AwsSigV4SigningError("Malformed AWS authorization header")
     scope = _parse_credential_scope(credential, credentials)
-    amz_date = _first_header(headers, "x-amz-date") or _fallback_amz_date(scope.date)
+    amz_date = _first_header(headers, "x-amz-date")
+    if not amz_date:
+        raise AwsSigV4SigningError("AWS SigV4 header auth requires x-amz-date")
     return _SigningContext(
         location=_AuthLocation.HEADER,
         algorithm=algorithm,
@@ -188,12 +189,6 @@ def _parse_signed_headers(value: str) -> frozenset[str]:
     if "host" not in headers:
         raise AwsSigV4SigningError("AWS signed headers must include host")
     return headers
-
-
-def _fallback_amz_date(scope_date: str) -> str:
-    if re.fullmatch(r"\d{8}", scope_date):
-        return f"{scope_date}T000000Z"
-    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _sign_header_request(
