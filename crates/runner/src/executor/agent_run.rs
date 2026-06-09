@@ -24,6 +24,7 @@ use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
     JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, RunnerResult, SandboxReuseResult,
     USER_ENV_FILE_ENV_KEY, agent_exit_failure_message, normalize_failure_exit_code,
+    normalize_timeout_failure_exit_code,
 };
 use crate::paths::guest;
 use crate::telemetry::JobTelemetry;
@@ -464,7 +465,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         // Skip guest file reads — sandbox hasn't been stopped yet.
         Some(ExecutionFailure::cancelled())
     } else if process_failed {
-        let failure_exit_code = normalize_failure_exit_code(exit.exit_code);
+        let failure_exit_code = if exit.termination == ProcessTerminationKind::TimedOut {
+            normalize_timeout_failure_exit_code(exit.exit_code)
+        } else {
+            normalize_failure_exit_code(exit.exit_code)
+        };
         let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
         let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
         let guest_error = if stderr.is_empty() {

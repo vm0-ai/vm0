@@ -208,7 +208,7 @@ impl ExecutionFailure {
         error: impl Into<String>,
         diagnostic: Option<FailureDiagnostic>,
     ) -> Self {
-        let exit_code = normalize_failure_exit_code(exit_code);
+        let exit_code = normalize_timeout_failure_exit_code(exit_code);
         let error = non_empty_failure_error(exit_code, error.into());
         Self {
             exit_code,
@@ -254,6 +254,14 @@ impl ExecutionFailure {
 
 fn normalize_failure_exit_code(exit_code: i32) -> i32 {
     if exit_code == 0 { 1 } else { exit_code }
+}
+
+fn normalize_timeout_failure_exit_code(exit_code: i32) -> i32 {
+    if exit_code == 0 {
+        JOB_TIMEOUT_EXIT_CODE
+    } else {
+        exit_code
+    }
 }
 
 fn non_empty_failure_error(exit_code: i32, error: String) -> String {

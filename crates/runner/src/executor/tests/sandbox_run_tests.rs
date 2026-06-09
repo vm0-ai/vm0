@@ -938,8 +938,8 @@ async fn execute_inner_timeout_zero_code_is_failure() {
     .unwrap();
 
     let failure = outcome.failure.as_ref().expect("expected timeout failure");
-    assert_eq!(outcome.exit_code(), 1);
-    assert_eq!(failure.exit_code, 1);
+    assert_eq!(outcome.exit_code(), 124);
+    assert_eq!(failure.exit_code, 124);
     assert_eq!(failure.error, "Timeout");
     match failure.kind {
         ExecutionFailureKind::RunnerJobTimeout {
