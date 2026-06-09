@@ -67,8 +67,10 @@ fn format_command_display(program: &str, args: &[&str]) -> String {
 /// This helper is intended for host lifecycle operations where an unbounded
 /// subprocess can block resource cleanup. On timeout the child is killed and
 /// waited before returning. On Unix, the subprocess runs in its own process
-/// group so timeout cleanup also kills grandchildren. The timeout bounds both
-/// child exit and stdout/stderr pipe draining.
+/// group so timeout cleanup also kills grandchildren while the child is still
+/// owned. The timeout bounds both child exit and stdout/stderr pipe draining.
+/// When pipe draining times out after the child has already been reaped, cleanup
+/// aborts pipe readers without signalling by a stale PID.
 pub async fn exec_with_timeout(
     program: &str,
     args: &[&str],
