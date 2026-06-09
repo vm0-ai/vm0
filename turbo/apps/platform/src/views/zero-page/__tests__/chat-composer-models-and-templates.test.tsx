@@ -338,9 +338,17 @@ describe("chat composer models", () => {
 
   it("blocks routed model sends until the matching device login is opened", async () => {
     const user = userEvent.setup({ delay: null });
-    const authWindow = context.mocks.browser.authWindow();
-    authWindow.closed = true;
-    const openWindow = context.mocks.browser.open(authWindow);
+    const codexApproval = context.mocks.deferred<void>();
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000402",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    context.mocks.browser.open(context.mocks.browser.authWindow());
+    context.mocks.browser.clipboardWriteText();
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         model: "gpt-5.5",
@@ -364,9 +372,18 @@ describe("chat composer models", () => {
         interval: 1,
       });
     });
-    context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
-      return respond(200, { status: "pending", errorMessage: null });
-    });
+    context.mocks.api(
+      zeroCodexDeviceAuthContract.complete,
+      async ({ respond }) => {
+        await codexApproval.promise;
+        context.mocks.data.personalModelProviders([codexProvider]);
+        return respond(200, {
+          status: "complete",
+          provider: codexProvider,
+          created: true,
+        });
+      },
+    );
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
     await expectComposerModel("GPT-5.5");
@@ -388,7 +405,19 @@ describe("chat composer models", () => {
       screen.findByTestId("codex-device-auth-code"),
     ).resolves.toHaveTextContent("ABCD-EFGH");
     expect(screen.getByText("Connect Codex")).toBeInTheDocument();
-    expect(openWindow.calls).toStrictEqual([]);
+
+    click(screen.getByTestId("codex-device-auth-open"));
+
+    await expect(
+      screen.findByText("Device code copied. Waiting for approval..."),
+    ).resolves.toBeInTheDocument();
+    codexApproval.resolve(undefined);
+    await waitFor(() => {
+      expect(screen.getByText("ChatGPT connected")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Connect Codex")).not.toBeInTheDocument();
+    });
   });
 
   it("completes personal Claude Code auth from a routed model blocker", async () => {
