@@ -539,7 +539,8 @@ impl StoreDir {
 
     fn open_or_create_child_file(&self, name: &OsStr) -> io::Result<fs::File> {
         let name = cstring_child_name(name)?;
-        let flags = libc::O_RDWR | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        let flags =
+            libc::O_RDWR | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK;
         // SAFETY: `self.file` is an open directory fd, `name` is a validated
         // NUL-terminated child basename, and a mode is supplied because
         // `O_CREAT` is set.
