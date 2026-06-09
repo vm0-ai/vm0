@@ -393,7 +393,7 @@ describe("chat composer models", () => {
 
   it("completes personal Claude Code auth from a routed model blocker", async () => {
     const user = userEvent.setup({ delay: null });
-    context.mocks.browser.open(context.mocks.browser.authWindow());
+    context.mocks.browser.open(null);
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         model: "claude-opus-4-7",
@@ -451,7 +451,16 @@ describe("chat composer models", () => {
     ).resolves.toBeInTheDocument();
     expect(screen.getByText("Connect Claude Code")).toBeInTheDocument();
 
+    click(screen.getByTestId("claude-code-device-auth-submit"));
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      "Paste the Claude Code authorization code to continue.",
+    );
+
     click(screen.getByTestId("claude-code-device-auth-open"));
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      "The approval page could not be opened.",
+    );
+
     await fill(
       screen.getByTestId("claude-code-device-auth-code"),
       "mock-claude-code",
