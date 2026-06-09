@@ -391,10 +391,10 @@ def _normalize_label(label: str) -> str:
 def normalize_idna_label(label: str) -> str:
     """Normalize one hostname label with vm0's shared IDNA policy.
 
-    Returns a lowercase ASCII label under this policy. Non-ASCII input is
-    returned as canonical ``xn--`` A-labels. The function accepts exactly one
-    label; it does not split hostnames, translate IDNA dot variants, or remove
-    trailing dots.
+    Returns a lowercase ASCII label under this policy. Accepted non-ASCII input
+    is returned as a canonical ``xn--`` A-label. The function accepts exactly
+    one label; it does not split hostnames, translate IDNA dot variants, or
+    remove trailing dots.
 
     Raises ``UnsafeIdnaCompatibilityMappingError`` when direct Unicode input
     would obscure the label's host identity. Raises ``UnicodeError`` for
@@ -408,10 +408,10 @@ def normalize_idna_label(label: str) -> str:
 def normalize_idna_hostname(host: str) -> str:
     """Normalize one hostname with vm0's shared IDNA policy.
 
-    Returns a dot-separated lowercase ASCII host identity. Unicode labels are
-    returned as canonical ``xn--`` A-labels. For non-IPv4 hostnames, IDNA dot
-    variants are translated to ASCII ``.`` and one optional trailing dot is
-    removed. Empty hostnames raise ``ValueError``; empty labels, multiple
+    Returns a dot-separated lowercase ASCII host identity. Accepted Unicode
+    labels are returned as canonical ``xn--`` A-labels. For non-IPv4 hostnames,
+    IDNA dot variants are translated to ASCII ``.`` and one optional trailing dot
+    is removed. Empty hostnames raise ``ValueError``; empty labels, multiple
     trailing dots, and invalid labels raise ``UnicodeError``. Direct Unicode
     unsafe compatibility aliases raise ``UnsafeIdnaCompatibilityMappingError``,
     a ``UnicodeError`` subclass; invalid or non-canonical A-labels raise
