@@ -131,8 +131,7 @@ impl ExecResult {
 pub struct CopyFileOptions {
     /// Maximum bytes to copy before failing.
     ///
-    /// This value must be positive and is subject to the backend copy stream
-    /// limit.
+    /// This value must be positive and is subject to the backend copy limit.
     pub max_bytes: u64,
     /// Guest-side copy command timeout.
     ///
