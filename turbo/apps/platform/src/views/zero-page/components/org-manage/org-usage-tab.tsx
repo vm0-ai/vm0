@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useLoadable, useSet } from "ccstate-react";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
@@ -151,37 +152,52 @@ function CreditGrantRow({ grant }: { grant: CreditGrant }) {
 }
 
 function CreditGrantList({ grants }: { grants: CreditGrant[] }) {
+  const [open, setOpen] = useState(false);
+
   if (grants.length === 0) {
     return null;
   }
 
   return (
-    <details
+    <div
       data-testid="credit-grants-section"
-      className="group mt-4 border-t border-border/50 pt-3"
+      data-open={open ? "" : undefined}
+      className="mt-4 border-t border-border/50 pt-3"
     >
-      <summary
+      <button
+        type="button"
         data-testid="credit-grants-toggle"
-        className="mb-1 cursor-pointer list-none px-2"
+        aria-expanded={open}
+        onClick={(event) => {
+          // A native <details>/<summary> toggle here was being interpreted by
+          // the surrounding settings dialog as an outside interaction, which
+          // dismissed the whole dialog. A controlled disclosure expands inline
+          // and the stopped click never reaches the dialog's dismiss handling.
+          event.stopPropagation();
+          setOpen((prev) => {
+            return !prev;
+          });
+        }}
+        className="mb-1 flex w-full cursor-pointer items-center gap-1.5 px-2 text-xs font-medium text-muted-foreground"
       >
-        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <IconChevronRight
-            size={13}
-            stroke={2}
-            className="shrink-0 transition-transform group-open:rotate-90"
-          />
-          <span>Credit additions</span>
-          <span className="tabular-nums">({grants.length})</span>
-        </div>
-      </summary>
-      <TooltipProvider delayDuration={100}>
-        <div className="flex flex-col">
-          {grants.map((grant) => {
-            return <CreditGrantRow key={grant.id} grant={grant} />;
-          })}
-        </div>
-      </TooltipProvider>
-    </details>
+        <IconChevronRight
+          size={13}
+          stroke={2}
+          className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+        />
+        <span>Credit additions</span>
+        <span className="tabular-nums">({grants.length})</span>
+      </button>
+      {open ? (
+        <TooltipProvider delayDuration={100}>
+          <div className="flex flex-col">
+            {grants.map((grant) => {
+              return <CreditGrantRow key={grant.id} grant={grant} />;
+            })}
+          </div>
+        </TooltipProvider>
+      ) : null}
+    </div>
   );
 }
 

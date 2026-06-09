@@ -183,13 +183,20 @@ describe("org usage tab - credit balance display", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Credit additions")).toBeInTheDocument();
-      expect(screen.getByTestId("credit-grants-section")).not.toHaveAttribute(
-        "open",
+      expect(screen.getByTestId("credit-grants-toggle")).toHaveAttribute(
+        "aria-expanded",
+        "false",
       );
     });
+    expect(
+      screen.queryByTestId("credit-grant-grant-pro"),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId("credit-grants-toggle"));
-    expect(screen.getByTestId("credit-grants-section")).toHaveAttribute("open");
+    expect(screen.getByTestId("credit-grants-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
 
     await waitFor(() => {
       expect(screen.getByTestId("credit-grant-grant-pro")).toHaveTextContent(
@@ -204,9 +211,13 @@ describe("org usage tab - credit balance display", () => {
     await expectPopoverTokenTooltip("Expires Apr 20, 2026");
 
     await user.click(screen.getByTestId("credit-grants-toggle"));
-    expect(screen.getByTestId("credit-grants-section")).not.toHaveAttribute(
-      "open",
+    expect(screen.getByTestId("credit-grants-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "false",
     );
+    expect(
+      screen.queryByTestId("credit-grant-grant-pro"),
+    ).not.toBeInTheDocument();
   });
 
   it("should use popover theme tokens for credit balance segment tooltips", async () => {
