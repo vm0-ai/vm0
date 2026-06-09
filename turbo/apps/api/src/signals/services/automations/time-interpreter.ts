@@ -42,30 +42,48 @@ interface RunCallback {
 }
 
 /**
+ * The run-identity metadata an interpreter attaches to its produced run. The
+ * time interpreter tags the originating schedule; the webhook interpreter tags
+ * the originating automation. Open for the run-create layer to thread either
+ * into `zeroRunMetadata`.
+ */
+export type ZeroRunInputMetadata =
+  | { readonly scheduleId: string }
+  | { readonly automationId: string };
+
+/**
  * The automation-derived portion of a Zero agent-run request: the parts an
  * interpreter constructs from the Automation definition (and trigger event).
  * Runtime concerns resolved from live state (model pin, provider admission) are
- * layered on by the caller, not by the interpreter.
+ * layered on by the caller, not by the interpreter. `Metadata` is the
+ * interpreter-specific run-identity shape (schedule vs automation).
  */
-export interface ZeroRunInput {
+export interface ZeroRunInput<
+  Metadata extends ZeroRunInputMetadata = ZeroRunInputMetadata,
+> {
   readonly prompt: string;
   readonly agentId: string;
   readonly chatThreadId: string;
   readonly appendSystemPrompt: string;
   readonly callbacks: readonly RunCallback[];
-  readonly zeroRunMetadata: { readonly scheduleId: string };
+  readonly zeroRunMetadata: Metadata;
 }
 
 /**
- * Builds the agent-run input for an Automation. Async and trigger-event aware
- * so it can later accommodate event triggers; the time interpreter ignores the
- * event payload beyond its identity.
+ * Builds the agent-run input for an Automation from its definition and a trigger
+ * event. Generic over both the automation projection an interpreter consumes
+ * (schedule-shaped for time, automation-shaped for webhook) and the trigger
+ * event, so each interpreter stays decoupled from the others' shapes.
  */
-export interface AutomationInterpreter<TriggerEvent> {
+export interface AutomationInterpreter<
+  AutomationProjection,
+  TriggerEvent,
+  Metadata extends ZeroRunInputMetadata = ZeroRunInputMetadata,
+> {
   interpret(
-    automation: Automation,
+    automation: AutomationProjection,
     triggerEvent: TriggerEvent,
-  ): Promise<ZeroRunInput>;
+  ): Promise<ZeroRunInput<Metadata>>;
 }
 
 /**
@@ -172,11 +190,15 @@ function buildCallbacks(automation: Automation): RunCallback[] {
  * its linked thread. Behavior-preserving extraction of the run-input
  * construction that used to be inline in `runScheduleNow$`.
  */
-export class TimeInterpreter implements AutomationInterpreter<TimeTriggerEvent> {
+export class TimeInterpreter implements AutomationInterpreter<
+  Automation,
+  TimeTriggerEvent,
+  { readonly scheduleId: string }
+> {
   interpret(
     automation: Automation,
     _triggerEvent: TimeTriggerEvent,
-  ): Promise<ZeroRunInput> {
+  ): Promise<ZeroRunInput<{ readonly scheduleId: string }>> {
     return Promise.resolve({
       prompt: automation.prompt,
       agentId: automation.agentId,

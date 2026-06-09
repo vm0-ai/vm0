@@ -60,6 +60,10 @@ const AUTOMATIONS_DISABLE_REWRITE_SOURCE = "/api/automations/:name/disable";
 const AUTOMATIONS_DISABLE_PATH_RE = /^\/api\/automations\/[^/]+\/disable$/;
 const AUTOMATIONS_ENABLE_REWRITE_SOURCE = "/api/automations/:name/enable";
 const AUTOMATIONS_ENABLE_PATH_RE = /^\/api\/automations\/[^/]+\/enable$/;
+const AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE =
+  "/api/automations/webhooks/:token";
+const AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE =
+  /^\/api\/automations\/webhooks\/[^/]+$/;
 const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
 const ZERO_SKILLS_BY_NAME_PATH_RE = /^\/api\/zero\/skills\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
@@ -1119,6 +1123,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_SCHEDULES_ENABLE_PATH_RE,
   ],
   ["/api/automations", "/api/automations"],
+  [
+    AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE,
+    "/api/automations/webhooks/:token",
+    AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE,
+  ],
   [AUTOMATIONS_RUN_REWRITE_SOURCE, "/api/automations/run"],
   [
     AUTOMATIONS_DISABLE_REWRITE_SOURCE,

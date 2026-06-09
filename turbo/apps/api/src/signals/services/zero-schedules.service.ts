@@ -1154,8 +1154,11 @@ export const runScheduleNow$ = command(
     // Depend on the interpreter seam (interface), keyed off the Automation's
     // interpreterKind. Only the time-based interpreter exists today.
     const automation: Automation = scheduleToAutomation(schedule);
-    const interpreter: AutomationInterpreter<TimeTriggerEvent> =
-      new TimeInterpreter();
+    const interpreter: AutomationInterpreter<
+      Automation,
+      TimeTriggerEvent,
+      { readonly scheduleId: string }
+    > = new TimeInterpreter();
     const runInput = await interpreter.interpret(automation, {
       scheduleId: schedule.id,
     });
