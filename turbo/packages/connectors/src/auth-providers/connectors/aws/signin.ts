@@ -1,4 +1,14 @@
-import { createHash, randomBytes } from "node:crypto";
+import { Buffer } from "node:buffer";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  randomBytes,
+  randomUUID,
+  sign,
+  type KeyObject,
+} from "node:crypto";
 
 import { z } from "zod";
 
@@ -10,13 +20,15 @@ export const AWS_SIGNIN_CROSS_DEVICE_CLIENT_ID =
 export const AWS_DEFAULT_SIGNIN_REGION = "us-east-1";
 export const AWS_DEFAULT_RUNTIME_REGION = "us-east-1";
 
-const AWS_SIGNIN_TOKEN_TYPE =
-  "urn:aws:params:oauth:token-type:access_token_sigv4";
+const AWS_SIGNIN_TOKEN_TYPE = "aws_sigv4";
 const AWS_CODE_CHALLENGE_METHOD = "SHA-256";
 const AWS_OPENID_SCOPE = "openid";
 const AWS_AUTHORIZATION_RESPONSE_TYPE = "code";
 const AWS_ERROR_BODY_MAX_LENGTH = 500;
 const AWS_REGION_RE = /^[a-z]{2}(?:-gov)?-[a-z]+-\d$/;
+const AWS_DPOP_KEY_CURVE = "P-256";
+const AWS_DPOP_JWT_TYPE = "dpop+jwt";
+const AWS_DPOP_JWT_ALGORITHM = "ES256";
 const AWS_SIGNIN_SENSITIVE_REQUEST_KEYS = [
   "code",
   "codeVerifier",
@@ -61,14 +73,40 @@ export interface AwsExternalCodeProviderState {
   readonly version: 1;
   readonly state: string;
   readonly codeVerifier: string;
+  readonly dpopKey: string;
   readonly redirectUri: string;
   readonly signinRegion: string;
   readonly runtimeRegion: string;
 }
 
+interface AwsSigninVerificationCode {
+  readonly code: string;
+  readonly state: string;
+}
+
 interface AwsSigninErrorDetails {
   readonly message: string;
   readonly oauthError: string | undefined;
+}
+
+interface AwsDpopPublicJwk {
+  readonly kty: "EC";
+  readonly crv: "P-256";
+  readonly x: string;
+  readonly y: string;
+}
+
+interface AwsDpopJwtHeader {
+  readonly typ: "dpop+jwt";
+  readonly alg: "ES256";
+  readonly jwk: AwsDpopPublicJwk;
+}
+
+interface AwsDpopJwtPayload {
+  readonly htm: "POST";
+  readonly htu: string;
+  readonly iat: number;
+  readonly jti: string;
 }
 
 export function awsSigninRedirectUri(signinRegion: string): string {
@@ -89,6 +127,7 @@ export function createAwsExternalCodeProviderState(): AwsExternalCodeProviderSta
     version: 1,
     state: randomBase64UrlBytes(32),
     codeVerifier: randomBase64UrlBytes(64),
+    dpopKey: createAwsDpopPrivateKey(),
     redirectUri: awsSigninRedirectUri(signinRegion),
     signinRegion,
     runtimeRegion: AWS_DEFAULT_RUNTIME_REGION,
@@ -118,6 +157,7 @@ export async function exchangeAwsSigninAuthorizationCode(args: {
   readonly signinRegion: string;
   readonly code: string;
   readonly codeVerifier: string;
+  readonly dpopKey: string;
   readonly redirectUri: string;
   readonly signal: AbortSignal;
 }): Promise<AwsSigninTokenResult> {
@@ -125,6 +165,7 @@ export async function exchangeAwsSigninAuthorizationCode(args: {
     signinRegion: args.signinRegion,
     operation: "exchange",
     reconnectOnClientError: true,
+    dpopKey: args.dpopKey,
     signal: args.signal,
     body: {
       clientId: args.clientId,
@@ -140,12 +181,14 @@ export async function refreshAwsSigninToken(args: {
   readonly clientId: string;
   readonly signinRegion: string;
   readonly refreshToken: string;
+  readonly dpopKey: string;
   readonly signal: AbortSignal;
 }): Promise<AwsSigninTokenResult> {
   return await fetchAwsSigninToken({
     signinRegion: args.signinRegion,
     operation: "refresh",
     reconnectOnClientError: true,
+    dpopKey: args.dpopKey,
     signal: args.signal,
     body: {
       clientId: args.clientId,
@@ -159,13 +202,19 @@ async function fetchAwsSigninToken(args: {
   readonly signinRegion: string;
   readonly operation: "exchange" | "refresh";
   readonly reconnectOnClientError: boolean;
+  readonly dpopKey: string;
   readonly body: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
 }): Promise<AwsSigninTokenResult> {
-  const response = await fetch(awsSigninTokenUrl(args.signinRegion), {
+  const tokenUrl = awsSigninTokenUrl(args.signinRegion);
+  const response = await fetch(tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      DPoP: buildAwsDpopHeader({
+        privateKeyPem: args.dpopKey,
+        uri: tokenUrl,
+      }),
     },
     body: JSON.stringify(args.body),
     signal: args.signal,
@@ -210,6 +259,108 @@ async function readAwsSigninTokenResponse(
     throw new ProviderResponseError("Invalid AWS Sign-In token response");
   }
   return parsed.data;
+}
+
+export function parseAwsSigninVerificationCode(args: {
+  readonly verificationCode: string;
+  readonly expectedState: string;
+}): AwsSigninVerificationCode {
+  const decoded = decodeAwsSigninVerificationCode(args.verificationCode);
+  const params = new URLSearchParams(decoded);
+  const code = params.get("code");
+  const state = params.get("state");
+  if (!code || !state) {
+    throw invalidAwsSigninVerificationCode(
+      "missing state or authorization code",
+    );
+  }
+  if (state !== args.expectedState) {
+    throw invalidAwsSigninVerificationCode("state mismatch");
+  }
+  return { code, state };
+}
+
+function decodeAwsSigninVerificationCode(verificationCode: string): string {
+  const value = verificationCode.trim();
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || value.length % 4 === 1) {
+    throw invalidAwsSigninVerificationCode("invalid base64");
+  }
+  return Buffer.from(value, "base64").toString("utf8");
+}
+
+function invalidAwsSigninVerificationCode(
+  reason: string,
+): OAuthProviderHttpError {
+  return new OAuthProviderHttpError(
+    `Invalid AWS Sign-In authorization code: ${reason}`,
+    400,
+    "invalid_grant",
+  );
+}
+
+function createAwsDpopPrivateKey(): string {
+  const { privateKey } = generateKeyPairSync("ec", {
+    namedCurve: AWS_DPOP_KEY_CURVE,
+  });
+  return privateKey.export({ type: "sec1", format: "pem" }).toString();
+}
+
+function buildAwsDpopHeader(args: {
+  readonly privateKeyPem: string;
+  readonly uri: string;
+}): string {
+  const privateKey = parseAwsDpopPrivateKey(args.privateKeyPem);
+  const header = awsDpopHeader(privateKey);
+  const payload: AwsDpopJwtPayload = {
+    htm: "POST",
+    htu: args.uri,
+    iat: Math.floor(Date.now() / 1000),
+    jti: randomUUID(),
+  };
+  const signingInput = `${base64UrlJson(header)}.${base64UrlJson(payload)}`;
+  const signature = sign("sha256", Buffer.from(signingInput), {
+    key: privateKey,
+    dsaEncoding: "ieee-p1363",
+  });
+  return `${signingInput}.${signature.toString("base64url")}`;
+}
+
+function parseAwsDpopPrivateKey(privateKeyPem: string): KeyObject {
+  try {
+    return createPrivateKey(privateKeyPem);
+  } catch {
+    throw new ProviderResponseError("Invalid AWS DPoP key");
+  }
+}
+
+function awsDpopHeader(privateKey: KeyObject): AwsDpopJwtHeader {
+  return {
+    typ: AWS_DPOP_JWT_TYPE,
+    alg: AWS_DPOP_JWT_ALGORITHM,
+    jwk: awsDpopPublicJwk(privateKey),
+  };
+}
+
+function awsDpopPublicJwk(privateKey: KeyObject): AwsDpopPublicJwk {
+  const jwk = createPublicKey(privateKey).export({ format: "jwk" });
+  if (
+    jwk.kty !== "EC" ||
+    jwk.crv !== AWS_DPOP_KEY_CURVE ||
+    typeof jwk.x !== "string" ||
+    typeof jwk.y !== "string"
+  ) {
+    throw new ProviderResponseError("Invalid AWS DPoP key");
+  }
+  return {
+    kty: "EC",
+    crv: "P-256",
+    x: jwk.x,
+    y: jwk.y,
+  };
+}
+
+function base64UrlJson(value: AwsDpopJwtHeader | AwsDpopJwtPayload): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
 async function throwAwsSigninHttpError(args: {

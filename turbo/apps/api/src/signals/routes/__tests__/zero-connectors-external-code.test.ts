@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
 
 import {
@@ -59,6 +60,19 @@ function sessionTokenHash(sessionToken: string): string {
   return createHash("sha256").update(sessionToken).digest("hex");
 }
 
+function awsVerificationCode(
+  authorizationUrl: string,
+  code = "AWS-CODE",
+): string {
+  const state = new URL(authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected AWS authorization URL state");
+  }
+  return Buffer.from(new URLSearchParams({ state, code }).toString()).toString(
+    "base64",
+  );
+}
+
 function deferred(): {
   readonly promise: Promise<void>;
   readonly resolve: () => void;
@@ -115,6 +129,7 @@ function mockAwsProvider(): z.infer<typeof awsTokenRequestSchema>[] {
   server.use(
     http.post(AWS_TOKEN_URL, async ({ request }) => {
       const body = awsTokenRequestSchema.parse(await request.json());
+      expect(request.headers.get("dpop")).toBeTruthy();
       tokenRequests.push(body);
       return HttpResponse.json({
         accessToken: {
@@ -124,7 +139,7 @@ function mockAwsProvider(): z.infer<typeof awsTokenRequestSchema>[] {
         },
         expiresIn: 900,
         refreshToken: "aws-login-refresh-token",
-        tokenType: "urn:aws:params:oauth:token-type:access_token_sigv4",
+        tokenType: "aws_sigv4",
         idToken: "aws-id-token",
       });
     }),
@@ -291,7 +306,7 @@ describe("external-code connector routes", () => {
         params: { type: "aws", sessionId: start.body.sessionId },
         body: {
           sessionToken: `wrong-${start.body.sessionToken}`,
-          code: "AWS-CODE",
+          code: awsVerificationCode(start.body.authorizationUrl),
         },
         headers: AUTH_HEADERS,
       }),
@@ -325,7 +340,7 @@ describe("external-code connector routes", () => {
         params: { type: "aws", sessionId: start.body.sessionId },
         body: {
           sessionToken: start.body.sessionToken,
-          code: "AWS-CODE",
+          code: awsVerificationCode(start.body.authorizationUrl),
         },
         headers: AUTH_HEADERS,
       }),
@@ -365,7 +380,7 @@ describe("external-code connector routes", () => {
         params: { type: "aws", sessionId: firstStart.body.sessionId },
         body: {
           sessionToken: firstStart.body.sessionToken,
-          code: "AWS-CODE",
+          code: awsVerificationCode(firstStart.body.authorizationUrl),
         },
         headers: AUTH_HEADERS,
       }),
@@ -426,7 +441,7 @@ describe("external-code connector routes", () => {
         params: { type: "aws", sessionId: start.body.sessionId },
         body: {
           sessionToken: start.body.sessionToken,
-          code: " AWS-CODE \n",
+          code: ` ${awsVerificationCode(start.body.authorizationUrl)} \n`,
         },
         headers: AUTH_HEADERS,
       }),
@@ -460,6 +475,9 @@ describe("external-code connector routes", () => {
       storedSecret({ orgId, userId, name: "AWS_LOGIN_REFRESH_TOKEN" }),
     ).resolves.toBe("aws-login-refresh-token");
     await expect(
+      storedSecret({ orgId, userId, name: "AWS_LOGIN_DPOP_KEY" }),
+    ).resolves.toContain("BEGIN EC PRIVATE KEY");
+    await expect(
       storedSecret({ orgId, userId, name: "AWS_ACCESS_KEY_ID" }),
     ).resolves.toBe(AWS_EXTERNAL_CODE_CREDENTIAL_ID);
     await expect(
@@ -480,7 +498,7 @@ describe("external-code connector routes", () => {
         params: { type: "aws", sessionId: start.body.sessionId },
         body: {
           sessionToken: start.body.sessionToken,
-          code: "AWS-CODE",
+          code: awsVerificationCode(start.body.authorizationUrl),
         },
         headers: AUTH_HEADERS,
       }),
@@ -524,7 +542,7 @@ describe("external-code connector routes", () => {
         type: "aws",
         sessionId: start.body.sessionId,
         sessionToken: start.body.sessionToken,
-        code: "AWS-CODE",
+        code: awsVerificationCode(start.body.authorizationUrl),
       },
       controller.signal,
     );
@@ -556,6 +574,7 @@ describe("external-code connector routes", () => {
     server.use(
       http.post(AWS_TOKEN_URL, async ({ request }) => {
         const body = awsTokenRequestSchema.parse(await request.json());
+        expect(request.headers.get("dpop")).toBeTruthy();
         tokenRequests.push(body);
         tokenRequestStarted.resolve();
         await releaseTokenResponse.promise;
@@ -567,7 +586,7 @@ describe("external-code connector routes", () => {
           },
           expiresIn: 900,
           refreshToken: "aws-login-refresh-token",
-          tokenType: "urn:aws:params:oauth:token-type:access_token_sigv4",
+          tokenType: "aws_sigv4",
           idToken: "aws-id-token",
         });
       }),
@@ -603,7 +622,7 @@ describe("external-code connector routes", () => {
         params: { type: "aws", sessionId: firstStart.body.sessionId },
         body: {
           sessionToken: firstStart.body.sessionToken,
-          code: "AWS-CODE",
+          code: awsVerificationCode(firstStart.body.authorizationUrl),
         },
         headers: AUTH_HEADERS,
       }),
@@ -648,6 +667,66 @@ describe("external-code connector routes", () => {
         { id: secondStart.body.sessionId, status: "pending" },
       ]),
     );
+  });
+
+  it("restores a rejected AWS code session to pending and records the provider error", async () => {
+    server.use(
+      http.post(AWS_TOKEN_URL, () => {
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            error_description: "Rejected authorization code",
+          },
+          { status: 400 },
+        );
+      }),
+    );
+    setupUser({ enableAws: true });
+    const client = setupApp({ context })(
+      zeroConnectorExternalCodeSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "aws" },
+        body: { authMethod: "cli" },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+
+    const complete = await accept(
+      client.complete({
+        params: { type: "aws", sessionId: start.body.sessionId },
+        body: {
+          sessionToken: start.body.sessionToken,
+          code: awsVerificationCode(start.body.authorizationUrl),
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [400],
+    );
+
+    expect(complete.body.error.message).toBe(
+      "External-code authorization code was rejected. Check the code and try again.",
+    );
+    const [session] = await store
+      .set(writeDb$)
+      .select({
+        status: connectorExternalCodeSessions.status,
+        errorCode: connectorExternalCodeSessions.errorCode,
+        errorMessage: connectorExternalCodeSessions.errorMessage,
+      })
+      .from(connectorExternalCodeSessions)
+      .where(eq(connectorExternalCodeSessions.id, start.body.sessionId))
+      .limit(1);
+    expect(session).toMatchObject({
+      status: "pending",
+      errorCode: "provider_rejected",
+    });
+    expect(session?.errorMessage).toContain(
+      "AWS Sign-In token exchange failed: 400",
+    );
+    expect(session?.errorMessage).toContain("invalid_grant");
   });
 
   it("rejects complete when the AWS connector is not available", async () => {

@@ -23,6 +23,7 @@ export const aws = {
         storage: {
           secrets: [
             "AWS_LOGIN_REFRESH_TOKEN",
+            "AWS_LOGIN_DPOP_KEY",
             "AWS_ACCESS_KEY_ID",
             "AWS_SECRET_ACCESS_KEY",
             "AWS_SESSION_TOKEN",
@@ -36,6 +37,7 @@ export const aws = {
           scopes: ["openid"],
           outputs: {
             refreshToken: "$secrets.AWS_LOGIN_REFRESH_TOKEN",
+            dpopKey: "$secrets.AWS_LOGIN_DPOP_KEY",
             accessKeyId: "$secrets.AWS_ACCESS_KEY_ID",
             secretAccessKey: "$secrets.AWS_SECRET_ACCESS_KEY",
             sessionToken: "$secrets.AWS_SESSION_TOKEN",
@@ -47,6 +49,7 @@ export const aws = {
           kind: "refresh-token",
           inputs: {
             refreshToken: "$secrets.AWS_LOGIN_REFRESH_TOKEN",
+            dpopKey: "$secrets.AWS_LOGIN_DPOP_KEY",
             signinRegion: "$secrets.AWS_SIGNIN_REGION",
           },
           outputs: {

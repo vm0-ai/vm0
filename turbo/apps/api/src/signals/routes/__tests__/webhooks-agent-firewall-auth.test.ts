@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
@@ -57,6 +57,11 @@ const STALE_ENCRYPTED_AWS_CREDENTIAL_ID = [
   "credential",
   "id",
 ].join("-");
+
+function awsDpopKey(): string {
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  return privateKey.export({ type: "sec1", format: "pem" }).toString();
+}
 
 interface FirewallFixture extends UsageInsightFixture {
   readonly composeId: string;
@@ -454,6 +459,13 @@ async function seedExpiredAwsConnector(
     userId: fixture.userId,
     name: "AWS_LOGIN_REFRESH_TOKEN",
     value: "aws-refresh-token",
+    type: "connector",
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "AWS_LOGIN_DPOP_KEY",
+    value: awsDpopKey(),
     type: "connector",
   });
   await seedSecret({
@@ -1893,6 +1905,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     const awsRefreshRequests: unknown[] = [];
     server.use(
       http.post(AWS_TOKEN_URL, async ({ request }) => {
+        expect(request.headers.get("dpop")).toBeTruthy();
         awsRefreshRequests.push(await request.json());
         return HttpResponse.json({
           accessToken: {
@@ -1902,7 +1915,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
           },
           expiresIn: 900,
           refreshToken: "rotated-aws-refresh-token",
-          tokenType: "urn:aws:params:oauth:token-type:access_token_sigv4",
+          tokenType: "aws_sigv4",
         });
       }),
     );

@@ -344,12 +344,15 @@ async function markClaimPending(args: {
   readonly writeDb: Db;
   readonly session: ExternalCodeSessionRow;
   readonly claimStartedAt: Date;
+  readonly errorMessage?: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
   await args.writeDb
     .update(connectorExternalCodeSessions)
     .set({
       status: "pending",
+      errorCode: args.errorMessage ? "provider_rejected" : null,
+      errorMessage: args.errorMessage ?? null,
       updatedAt: nowDate(),
     })
     .where(
@@ -399,7 +402,13 @@ async function markClaimComplete(args: {
   const completedAt = nowDate();
   const [completedSession] = await args.writeDb
     .update(connectorExternalCodeSessions)
-    .set({ status: "complete", updatedAt: completedAt, completedAt })
+    .set({
+      status: "complete",
+      errorCode: null,
+      errorMessage: null,
+      updatedAt: completedAt,
+      completedAt,
+    })
     .where(
       and(
         eq(connectorExternalCodeSessions.id, args.session.id),
@@ -536,6 +545,7 @@ async function completeClaimedExternalCodeSession(
         writeDb: args.writeDb,
         session: args.session,
         claimStartedAt: args.claimStartedAt,
+        errorMessage: errorMessage(providerResult.error),
         signal: args.signal,
       });
       const badRequest = providerBadRequest(providerResult.error);

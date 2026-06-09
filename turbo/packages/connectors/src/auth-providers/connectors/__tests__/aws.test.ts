@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { Buffer } from "node:buffer";
+import { createHash, generateKeyPairSync } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -35,13 +36,33 @@ const awsProviderStateSchema = z.object({
   version: z.literal(1),
   state: z.string(),
   codeVerifier: z.string(),
+  dpopKey: z.string(),
   redirectUri: z.string(),
   signinRegion: z.string(),
   runtimeRegion: z.string(),
 });
 
+const awsDpopHeaderSchema = z.object({
+  typ: z.literal("dpop+jwt"),
+  alg: z.literal("ES256"),
+  jwk: z.object({
+    kty: z.literal("EC"),
+    crv: z.literal("P-256"),
+    x: z.string().min(1),
+    y: z.string().min(1),
+  }),
+});
+
+const awsDpopPayloadSchema = z.object({
+  htm: z.literal("POST"),
+  htu: z.literal(AWS_TOKEN_URL),
+  iat: z.number().int().positive(),
+  jti: z.string().uuid(),
+});
+
 const server = setupServer();
 const tokenRequests: z.infer<typeof awsTokenRequestSchema>[] = [];
+const dpopHeaders: string[] = [];
 let stsCalls = 0;
 
 beforeAll(() => {
@@ -50,6 +71,7 @@ beforeAll(() => {
 
 afterEach(() => {
   tokenRequests.length = 0;
+  dpopHeaders.length = 0;
   stsCalls = 0;
   server.resetHandlers();
 });
@@ -72,11 +94,64 @@ function codeChallenge(codeVerifier: string): string {
   return createHash("sha256").update(codeVerifier).digest("base64url");
 }
 
+function parseProviderState(providerState: string) {
+  return awsProviderStateSchema.parse(JSON.parse(providerState) as unknown);
+}
+
+function awsVerificationCode(args: {
+  readonly providerState: z.infer<typeof awsProviderStateSchema>;
+  readonly code?: string;
+  readonly state?: string;
+}): string {
+  return Buffer.from(
+    new URLSearchParams({
+      state: args.state ?? args.providerState.state,
+      code: args.code ?? "AWS-CODE",
+    }).toString(),
+  ).toString("base64");
+}
+
+function awsDpopKey(): string {
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  return privateKey.export({ type: "sec1", format: "pem" }).toString();
+}
+
+function awsRefreshInputs() {
+  return {
+    refreshToken: "aws-refresh-token",
+    dpopKey: awsDpopKey(),
+    signinRegion: "us-east-1",
+  };
+}
+
+function expectAwsDpopHeader(value: string | undefined): void {
+  expect(value).toBeTruthy();
+  const parts = value?.split(".");
+  expect(parts).toHaveLength(3);
+  if (!parts || parts.length !== 3) {
+    return;
+  }
+  const header = parts[0];
+  const payload = parts[1];
+  const signature = parts[2];
+  if (!header || !payload || !signature) {
+    return;
+  }
+  expectJsonWebTokenPart(awsDpopHeaderSchema, header);
+  expectJsonWebTokenPart(awsDpopPayloadSchema, payload);
+  expect(signature).toMatch(/^[A-Za-z0-9_-]+$/);
+}
+
+function expectJsonWebTokenPart<T>(schema: z.ZodType<T>, value: string): T {
+  return schema.parse(JSON.parse(Buffer.from(value, "base64url").toString()));
+}
+
 function mockAwsTokenEndpoint(): void {
   server.use(
     http.post(AWS_TOKEN_URL, async ({ request }) => {
       const body = awsTokenRequestSchema.parse(await request.json());
       tokenRequests.push(body);
+      dpopHeaders.push(request.headers.get("dpop") ?? "");
       return HttpResponse.json({
         accessToken: {
           accessKeyId:
@@ -97,7 +172,7 @@ function mockAwsTokenEndpoint(): void {
           body.grantType === "refresh_token"
             ? "aws-refresh-token-rotated"
             : "aws-refresh-token",
-        tokenType: "urn:aws:params:oauth:token-type:access_token_sigv4",
+        tokenType: "aws_sigv4",
         ...(body.grantType === "authorization_code"
           ? { idToken: "aws-id-token" }
           : {}),
@@ -134,9 +209,7 @@ describe("AWS external-code provider", () => {
       authClient: awsAuthClient(),
     });
 
-    const providerState = awsProviderStateSchema.parse(
-      JSON.parse(result.providerState) as unknown,
-    );
+    const providerState = parseProviderState(result.providerState);
     const url = new URL(result.authorizationUrl);
 
     expect(url.origin + url.pathname).toBe(
@@ -155,6 +228,7 @@ describe("AWS external-code provider", () => {
       "https://us-east-1.signin.aws.amazon.com/v1/sessions/confirmation",
     );
     expect(url.searchParams.get("state")).toBe(providerState.state);
+    expect(providerState.dpopKey).toContain("BEGIN EC PRIVATE KEY");
     expect(result.expiresIn).toBe(600);
   });
 
@@ -166,11 +240,12 @@ describe("AWS external-code provider", () => {
       authClient: awsAuthClient(),
     });
 
+    const providerState = parseProviderState(start.providerState);
     const result = await completeConnectorExternalCodeAuthorization({
       type: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
-      code: "AWS-CODE",
+      code: awsVerificationCode({ providerState }),
       providerState: start.providerState,
       signal: new AbortController().signal,
     });
@@ -182,14 +257,13 @@ describe("AWS external-code provider", () => {
       redirectUri:
         "https://us-east-1.signin.aws.amazon.com/v1/sessions/confirmation",
     });
-    expect(tokenRequests[0]?.codeVerifier).toBe(
-      awsProviderStateSchema.parse(JSON.parse(start.providerState) as unknown)
-        .codeVerifier,
-    );
+    expect(tokenRequests[0]?.codeVerifier).toBe(providerState.codeVerifier);
+    expectAwsDpopHeader(dpopHeaders[0]);
     expect(stsCalls).toBe(1);
     expect(result).toStrictEqual({
       outputs: {
         refreshToken: "aws-refresh-token",
+        dpopKey: providerState.dpopKey,
         accessKeyId: AWS_EXCHANGE_CREDENTIAL_ID,
         secretAccessKey: "exchange-secret-access-key",
         sessionToken: "exchange-session-token",
@@ -213,6 +287,7 @@ describe("AWS external-code provider", () => {
       authMethod: "cli",
       authClient: awsAuthClient(),
     });
+    const providerState = parseProviderState(start.providerState);
     const controller = new AbortController();
     controller.abort();
 
@@ -221,7 +296,7 @@ describe("AWS external-code provider", () => {
         type: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
-        code: "AWS-CODE",
+        code: awsVerificationCode({ providerState }),
         providerState: start.providerState,
         signal: controller.signal,
       }),
@@ -259,13 +334,14 @@ describe("AWS external-code provider", () => {
       authMethod: "cli",
       authClient: awsAuthClient(),
     });
+    const providerState = parseProviderState(start.providerState);
     const controller = new AbortController();
 
     const complete = completeConnectorExternalCodeAuthorization({
       type: "aws",
       authMethod: "cli",
       authClient: awsAuthClient(),
-      code: "AWS-CODE",
+      code: awsVerificationCode({ providerState }),
       providerState: start.providerState,
       signal: controller.signal,
     });
@@ -294,10 +370,7 @@ describe("AWS external-code provider", () => {
         type: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
-        inputs: {
-          refreshToken: "aws-refresh-token",
-          signinRegion: "us-east-1",
-        },
+        inputs: awsRefreshInputs(),
         signal: new AbortController().signal,
       }),
     ).resolves.toStrictEqual({
@@ -316,6 +389,38 @@ describe("AWS external-code provider", () => {
         refreshToken: "aws-refresh-token",
       },
     ]);
+    expectAwsDpopHeader(dpopHeaders[0]);
+  });
+
+  it("rejects AWS verification codes with a mismatched state before token exchange", async () => {
+    mockAwsTokenEndpoint();
+    const start = await startConnectorExternalCodeAuthorization({
+      type: "aws",
+      authMethod: "cli",
+      authClient: awsAuthClient(),
+    });
+    const providerState = parseProviderState(start.providerState);
+
+    await expect(
+      completeConnectorExternalCodeAuthorization({
+        type: "aws",
+        authMethod: "cli",
+        authClient: awsAuthClient(),
+        code: awsVerificationCode({
+          providerState,
+          state: "wrong-state",
+        }),
+        providerState: start.providerState,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toSatisfy((error: unknown) => {
+      return (
+        isOAuthProviderHttpError(error) &&
+        error.status === 400 &&
+        error.oauthError === "invalid_grant"
+      );
+    });
+    expect(tokenRequests).toStrictEqual([]);
   });
 
   it("maps terminal AWS refresh failures to invalid_grant", async () => {
@@ -336,10 +441,7 @@ describe("AWS external-code provider", () => {
         type: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
-        inputs: {
-          refreshToken: "aws-refresh-token",
-          signinRegion: "us-east-1",
-        },
+        inputs: awsRefreshInputs(),
         signal: new AbortController().signal,
       }),
     ).rejects.toSatisfy((error: unknown) => {
@@ -357,9 +459,7 @@ describe("AWS external-code provider", () => {
       authMethod: "cli",
       authClient: awsAuthClient(),
     });
-    const providerState = awsProviderStateSchema.parse(
-      JSON.parse(start.providerState) as unknown,
-    );
+    const providerState = parseProviderState(start.providerState);
     const errorAccessKeyId = ["aws", "error", "access", "key"].join("-");
     const errorSecretAccessKey = ["aws", "error", "secret"].join("-");
     const errorSessionToken = ["aws", "error", "session"].join("-");
@@ -387,7 +487,7 @@ describe("AWS external-code provider", () => {
         type: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
-        code: "AWS-CODE",
+        code: awsVerificationCode({ providerState }),
         providerState: start.providerState,
         signal: new AbortController().signal,
       }),
@@ -421,10 +521,7 @@ describe("AWS external-code provider", () => {
         type: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
-        inputs: {
-          refreshToken: "aws-refresh-token",
-          signinRegion: "us-east-1",
-        },
+        inputs: awsRefreshInputs(),
         signal: new AbortController().signal,
       }),
     ).rejects.toSatisfy((error: unknown) => {
@@ -450,10 +547,7 @@ describe("AWS external-code provider", () => {
         type: "aws",
         authMethod: "cli",
         authClient: awsAuthClient(),
-        inputs: {
-          refreshToken: "aws-refresh-token",
-          signinRegion: "us-east-1",
-        },
+        inputs: awsRefreshInputs(),
         signal: new AbortController().signal,
       }),
     ).rejects.toSatisfy((error: unknown) => {

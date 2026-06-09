@@ -9,6 +9,7 @@ import {
   buildAwsSigninAuthorizationUrl,
   createAwsExternalCodeProviderState,
   exchangeAwsSigninAuthorizationCode,
+  parseAwsSigninVerificationCode,
   refreshAwsSigninToken,
 } from "./signin";
 import { getAwsCallerIdentity, type AwsCallerIdentity } from "./sts";
@@ -19,6 +20,7 @@ const awsExternalCodeProviderStateSchema = z.object({
   version: z.literal(1),
   state: z.string().min(1).max(128),
   codeVerifier: z.string().min(43).max(128),
+  dpopKey: z.string().min(1),
   redirectUri: z.string().url(),
   signinRegion: z.string().regex(/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/),
   runtimeRegion: z.string().regex(/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/),
@@ -46,11 +48,16 @@ function createAwsExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider
       const providerState = parseAwsExternalCodeProviderState(
         args.providerState,
       );
+      const verificationCode = parseAwsSigninVerificationCode({
+        verificationCode: args.code,
+        expectedState: providerState.state,
+      });
       const token = await exchangeAwsSigninAuthorizationCode({
         clientId: args.authClient.clientId,
         signinRegion: providerState.signinRegion,
-        code: args.code,
+        code: verificationCode.code,
         codeVerifier: providerState.codeVerifier,
+        dpopKey: providerState.dpopKey,
         redirectUri: providerState.redirectUri,
         signal: args.signal,
       });
@@ -62,6 +69,7 @@ function createAwsExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider
       return {
         outputs: {
           refreshToken: token.refreshToken,
+          dpopKey: providerState.dpopKey,
           accessKeyId: token.credentials.accessKeyId,
           secretAccessKey: token.credentials.secretAccessKey,
           sessionToken: token.credentials.sessionToken,
@@ -87,6 +95,7 @@ function createAwsRefreshTokenAccessProvider(): RefreshTokenAccessProvider<
         clientId: args.authClient.clientId,
         signinRegion: args.inputs.signinRegion,
         refreshToken: args.inputs.refreshToken,
+        dpopKey: args.inputs.dpopKey,
         signal: args.signal,
       });
       return {

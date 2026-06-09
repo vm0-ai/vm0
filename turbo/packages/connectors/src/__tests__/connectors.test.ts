@@ -2575,6 +2575,13 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
             name: "AWS_LOGIN_REFRESH_TOKEN",
           },
         },
+        dpopKey: {
+          valueRef: "$secrets.AWS_LOGIN_DPOP_KEY",
+          source: {
+            kind: "connector-secret",
+            name: "AWS_LOGIN_DPOP_KEY",
+          },
+        },
         signinRegion: {
           valueRef: "$secrets.AWS_SIGNIN_REGION",
           source: {
@@ -3737,6 +3744,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
         scopes: ["openid"],
         outputs: {
           refreshToken: "$secrets.AWS_LOGIN_REFRESH_TOKEN",
+          dpopKey: "$secrets.AWS_LOGIN_DPOP_KEY",
           accessKeyId: "$secrets.AWS_ACCESS_KEY_ID",
           secretAccessKey: "$secrets.AWS_SECRET_ACCESS_KEY",
           sessionToken: "$secrets.AWS_SESSION_TOKEN",
