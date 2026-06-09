@@ -30,6 +30,22 @@ function buttonByText(
   return button;
 }
 
+function dialogByText(text: string): HTMLElement {
+  const dialog = screen.getByText(text).closest('[role="dialog"]');
+  if (!(dialog instanceof HTMLElement)) {
+    throw new Error(`${text} dialog not found`);
+  }
+  return dialog;
+}
+
+function closestDialog(element: Element, label: string): HTMLElement {
+  const dialog = element.closest('[role="dialog"]');
+  if (!(dialog instanceof HTMLElement)) {
+    throw new Error(`${label} dialog not found`);
+  }
+  return dialog;
+}
+
 function createApiKey(overrides: Partial<ApiKeyItem>): ApiKeyItem {
   return {
     id: "11111111-1111-4111-8111-111111111111",
@@ -137,6 +153,59 @@ describe("zero API keys page", () => {
       within(revokeDialog).getByText("Revoke Preview deploy?"),
     ).toBeInTheDocument();
 
+    click(buttonByText("Revoke", revokeDialog));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Preview deploy")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("CI deploy key")).toBeInTheDocument();
+  });
+
+  it("creates and revokes an API key from the settings dialog", async () => {
+    context.mocks.browser.clipboardWriteText();
+    mockApiKeyStory();
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=api-keys",
+      featureSwitches: {
+        [FeatureSwitchKey.ApiKeys]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByText("Create and manage API keys for programmatic access."),
+      ).toBeInTheDocument();
+      expect(screen.getByText("CI deploy key")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Create API key"));
+
+    const nameInput = await screen.findByLabelText("Name");
+    const createDialog = closestDialog(nameInput, "Create API key");
+    await fill(nameInput, "Preview deploy");
+    click(buttonByText("Create", createDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("API key created")).toBeInTheDocument();
+    });
+    const revealDialog = dialogByText("vm0_pat_preview_full_token");
+    expect(
+      within(revealDialog).getByText("vm0_pat_preview_full_token"),
+    ).toBeInTheDocument();
+    click(buttonByText("Done", revealDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Preview deploy")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Revoke Preview deploy"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Revoke Preview deploy?")).toBeInTheDocument();
+    });
+    const revokeDialog = dialogByText("Revoke Preview deploy?");
     click(buttonByText("Revoke", revokeDialog));
 
     await waitFor(() => {
