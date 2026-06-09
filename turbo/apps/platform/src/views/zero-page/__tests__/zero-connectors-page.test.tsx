@@ -283,7 +283,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("opens the right consent surface for token, Google, and scope-review flows", async () => {
+  it("opens connector consent surfaces and completes modal grant flows", async () => {
     mockConnectors([{ type: "github", oauthScopes: [] }]);
     context.mocks.api(
       zeroConnectorScopeDiffContract.getScopeDiff,
@@ -342,6 +342,22 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(
         within(connectorCardByLabel("Base44")).getByText("Connected"),
+      ).toBeInTheDocument();
+    });
+    await userEvent.keyboard("{Escape}");
+
+    click(screen.getByLabelText("Connect Axiom"));
+
+    const axiomDialog = await screen.findByRole("dialog", { name: "Axiom" });
+    await fill(
+      within(axiomDialog).getByPlaceholderText("xaat-..."),
+      "xaat-test",
+    );
+    click(buttonByText("Save", axiomDialog));
+
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("Axiom")).getByText("Connected"),
       ).toBeInTheDocument();
     });
   });
