@@ -18,9 +18,22 @@ import {
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
 import { isCurrentStripePreviewMetadata } from "./stripe-preview-metadata.service";
+import {
+  subscriptionScheduleCancellationEnd,
+  subscriptionScheduleId,
+} from "./stripe-subscription-schedules.service";
+import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
+import {
+  BILLING_DOWNGRADE_PURPOSE,
+  BILLING_RESTORE_PURPOSE,
+} from "./zero-billing-payment-method.service";
+import { restoreSubscriptionForOrg } from "./zero-billing-restore.service";
+import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
 import { drainOrgQueueToCapacity$ } from "./zero-run-queue.service";
 
 const L = logger("WebhookStripe");
+
+type BillingDowngradeCheckoutTargetTier = "pro-suspend" | "pro";
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -29,6 +42,14 @@ interface CheckoutSessionInput {
   readonly subscription: string | { readonly id: string } | null;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
+  readonly mode?: string | null;
+  readonly setup_intent?:
+    | string
+    | {
+        readonly id: string;
+        readonly payment_method?: string | { readonly id: string } | null;
+      }
+    | null;
   readonly amount_subtotal?: number | null;
   readonly amount_total?: number | null;
   readonly payment_status?: string | null;
@@ -92,6 +113,11 @@ interface CheckoutSubscriptionContext {
   readonly subscriptionId: string;
 }
 
+interface BillingRestoreCheckoutOutcome {
+  readonly handled: boolean;
+  readonly orgId: string | null;
+}
+
 interface InvoicePaidOrg {
   readonly orgId: string;
   readonly lastProcessedInvoiceId: string | null;
@@ -107,6 +133,7 @@ interface SubscriptionInvoiceDetails {
   readonly tier: SubscriptionCheckoutTier;
   readonly credits: number;
   readonly periodEndDate: Date;
+  readonly scheduledEndDate: Date | null;
   readonly expiresAt: Date;
 }
 
@@ -135,21 +162,16 @@ function subscriptionWillCancel(subscription: SubscriptionInput): boolean {
   );
 }
 
-function subscriptionScheduleId(
+async function subscriptionScheduledEnd(
+  stripe: ReturnType<typeof getStripeClient>,
   subscription: SubscriptionInput,
-): string | null {
-  const schedule = subscription.schedule;
-  if (typeof schedule === "string") {
-    return schedule;
-  }
-  return schedule?.id ?? null;
-}
-
-function subscriptionScheduledEnd(
-  subscription: SubscriptionInput,
-): Date | null {
+): Promise<Date | null> {
   return (
-    subscriptionCancelAt(subscription) ?? subscriptionPeriodEnd(subscription)
+    subscriptionCancelAt(subscription) ??
+    (await subscriptionScheduleCancellationEnd(stripe, subscription)) ??
+    (subscription.cancel_at_period_end
+      ? subscriptionPeriodEnd(subscription)
+      : null)
   );
 }
 
@@ -170,11 +192,9 @@ function subscriptionTrialEnd(subscription: SubscriptionInput): Date | null {
 function subscriptionPendingChangeCleared(
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
+  willCancel: boolean,
 ): boolean {
-  if (
-    subscriptionWillCancel(subscription) ||
-    subscriptionScheduleId(subscription)
-  ) {
+  if (willCancel || subscriptionScheduleId(subscription)) {
     return false;
   }
 
@@ -632,6 +652,234 @@ function checkoutSubscriptionContext(
   return { customerId, subscriptionId };
 }
 
+function checkoutCustomerId(session: CheckoutSessionInput): string | null {
+  return typeof session.customer === "string"
+    ? session.customer
+    : (session.customer?.id ?? null);
+}
+
+function setupIntentPaymentMethodId(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const setupIntent = value as {
+    readonly payment_method?: string | { readonly id: string } | null;
+  };
+  const paymentMethod = setupIntent.payment_method;
+  if (typeof paymentMethod === "string") {
+    return paymentMethod;
+  }
+  return paymentMethod?.id ?? null;
+}
+
+async function checkoutSetupPaymentMethodId(
+  stripe: ReturnType<typeof getStripeClient>,
+  session: CheckoutSessionInput,
+): Promise<string | null> {
+  const directPaymentMethodId = setupIntentPaymentMethodId(
+    session.setup_intent,
+  );
+  if (directPaymentMethodId) {
+    return directPaymentMethodId;
+  }
+
+  const refreshed = await stripe.checkout.sessions.retrieve(session.id, {
+    expand: ["setup_intent"],
+  });
+  return setupIntentPaymentMethodId(
+    (refreshed as { readonly setup_intent?: unknown }).setup_intent,
+  );
+}
+
+function billingRestoreCheckoutMetadata(
+  session: CheckoutSessionInput,
+): { readonly orgId: string; readonly subscriptionId: string } | null {
+  if (session.metadata?.purpose !== BILLING_RESTORE_PURPOSE) {
+    return null;
+  }
+
+  const orgId = session.metadata.orgId;
+  const subscriptionId = session.metadata.subscriptionId;
+  if (!orgId || !subscriptionId) {
+    L.warn("billing restore checkout missing metadata", {
+      sessionId: session.id,
+      orgId: orgId ?? null,
+      subscriptionId: subscriptionId ?? null,
+    });
+    return null;
+  }
+  return { orgId, subscriptionId };
+}
+
+function billingDowngradeTargetTier(
+  value: string | undefined,
+): BillingDowngradeCheckoutTargetTier | null {
+  if (value === "pro" || value === "pro-suspend") {
+    return value;
+  }
+  return null;
+}
+
+function billingDowngradeCheckoutMetadata(session: CheckoutSessionInput): {
+  readonly orgId: string;
+  readonly subscriptionId: string;
+  readonly targetTier: BillingDowngradeCheckoutTargetTier;
+} | null {
+  if (session.metadata?.purpose !== BILLING_DOWNGRADE_PURPOSE) {
+    return null;
+  }
+
+  const orgId = session.metadata.orgId;
+  const subscriptionId = session.metadata.subscriptionId;
+  const targetTier = billingDowngradeTargetTier(session.metadata.targetTier);
+  if (!orgId || !subscriptionId || !targetTier) {
+    L.warn("billing downgrade checkout missing metadata", {
+      sessionId: session.id,
+      orgId: orgId ?? null,
+      subscriptionId: subscriptionId ?? null,
+      targetTier: session.metadata.targetTier ?? null,
+    });
+    return null;
+  }
+  return { orgId, subscriptionId, targetTier };
+}
+
+async function applyBillingSetupPaymentMethod(
+  db: Db,
+  session: CheckoutSessionInput,
+  metadata: { readonly orgId: string; readonly subscriptionId: string },
+  logContext: string,
+): Promise<boolean> {
+  if (session.mode !== "setup") {
+    L.warn(`billing ${logContext} checkout completed with unexpected mode`, {
+      sessionId: session.id,
+      mode: session.mode ?? null,
+    });
+    return false;
+  }
+
+  const customerId = checkoutCustomerId(session);
+  if (!customerId) {
+    L.warn(`billing ${logContext} checkout completed without customer`, {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+    });
+    return false;
+  }
+
+  const [org] = await db
+    .select({
+      stripeCustomerId: orgMetadata.stripeCustomerId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, metadata.orgId))
+    .limit(1);
+
+  if (
+    !org ||
+    org.stripeSubscriptionId !== metadata.subscriptionId ||
+    (org.stripeCustomerId !== null && org.stripeCustomerId !== customerId)
+  ) {
+    L.warn(
+      `billing ${logContext} checkout no longer matches org billing state`,
+      {
+        sessionId: session.id,
+        orgId: metadata.orgId,
+        customerId,
+        metadataSubscriptionId: metadata.subscriptionId,
+        orgStripeCustomerId: org?.stripeCustomerId ?? null,
+        orgStripeSubscriptionId: org?.stripeSubscriptionId ?? null,
+      },
+    );
+    return false;
+  }
+
+  const stripe = getStripeClient();
+  const paymentMethodId = await checkoutSetupPaymentMethodId(stripe, session);
+  if (!paymentMethodId) {
+    L.warn(`billing ${logContext} checkout has no setup payment method`, {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+    });
+    return false;
+  }
+
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  });
+  return true;
+}
+
+async function handleBillingRestoreCheckoutCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<BillingRestoreCheckoutOutcome> {
+  const metadata = billingRestoreCheckoutMetadata(session);
+  if (!metadata) {
+    return { handled: false, orgId: null };
+  }
+  const paymentMethodSet = await applyBillingSetupPaymentMethod(
+    db,
+    session,
+    metadata,
+    "restore",
+  );
+  if (!paymentMethodSet) {
+    return { handled: true, orgId: null };
+  }
+
+  const restoreResult = await restoreSubscriptionForOrg(db, {
+    orgId: metadata.orgId,
+    requirePaymentMethod: false,
+  });
+  if (!restoreResult.ok) {
+    L.warn("billing restore checkout could not restore subscription", {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+      reason: restoreResult.reason,
+    });
+    return { handled: true, orgId: null };
+  }
+
+  return { handled: true, orgId: metadata.orgId };
+}
+
+async function handleBillingDowngradeCheckoutCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<BillingRestoreCheckoutOutcome> {
+  const metadata = billingDowngradeCheckoutMetadata(session);
+  if (!metadata) {
+    return { handled: false, orgId: null };
+  }
+  const paymentMethodSet = await applyBillingSetupPaymentMethod(
+    db,
+    session,
+    metadata,
+    "downgrade",
+  );
+  if (!paymentMethodSet) {
+    return { handled: true, orgId: null };
+  }
+
+  const downgradeResult = await downgradeSubscriptionForOrg(db, {
+    orgId: metadata.orgId,
+    targetTier: metadata.targetTier,
+    requirePaymentMethod: false,
+  });
+  if (!downgradeResult.ok) {
+    L.warn("billing downgrade checkout could not downgrade subscription", {
+      sessionId: session.id,
+      orgId: metadata.orgId,
+      reason: downgradeResult.reason,
+    });
+    return { handled: true, orgId: null };
+  }
+
+  return { handled: true, orgId: metadata.orgId };
+}
+
 async function shouldSkipSubscriptionBinding(
   db: Db,
   args: {
@@ -791,7 +1039,7 @@ async function bindSubscriptionToCustomerOrg(
       | "checkout.session.completed"
       | "customer.subscription.created";
   },
-): Promise<void> {
+): Promise<readonly string[]> {
   if (
     args.source === "customer.subscription.created" &&
     !(await bindStripeCustomerFromMetadata(db, {
@@ -799,7 +1047,7 @@ async function bindSubscriptionToCustomerOrg(
       subscriptionId: args.subscription.id,
     }))
   ) {
-    return;
+    return [];
   }
 
   const priceId = args.subscription.items.data[0]?.price?.id;
@@ -815,7 +1063,7 @@ async function bindSubscriptionToCustomerOrg(
       tier: tierFromPriceId(priceId),
     })
   ) {
-    return;
+    return [];
   }
 
   const rows = await db
@@ -836,6 +1084,9 @@ async function bindSubscriptionToCustomerOrg(
       source: args.source,
     });
   }
+  return rows.map((row) => {
+    return row.orgId;
+  });
 }
 
 function invoiceWouldReplaceWithSameOrLowerTier(args: {
@@ -1040,11 +1291,15 @@ async function subscriptionInvoiceDetails(
   }
 
   const periodEndDate = subscriptionPeriodEndFromInvoice(invoice, args.orgId);
+  const scheduledEndDate =
+    (await subscriptionScheduledEnd(stripe, subscription)) ??
+    (subscriptionWillCancel(subscription) ? periodEndDate : null);
   return {
     subscription,
     tier,
     credits,
     periodEndDate,
+    scheduledEndDate,
     expiresAt: subscriptionCreditExpiresAt(subscription, periodEndDate),
   };
 }
@@ -1058,19 +1313,25 @@ async function updateSubscriptionInvoiceMetadata(
     readonly details: SubscriptionInvoiceDetails;
   },
 ): Promise<void> {
+  const scheduleId = subscriptionScheduleId(args.details.subscription);
+  const willCancel =
+    subscriptionWillCancel(args.details.subscription) ||
+    args.details.scheduledEndDate !== null;
+  const pendingChangeAt = args.details.scheduledEndDate;
+
   await tx
     .update(orgMetadata)
     .set({
       tier: args.details.tier,
       stripeSubscriptionId: args.subscriptionId,
       subscriptionStatus: args.details.subscription.status,
-      cancelAtPeriodEnd: subscriptionWillCancel(args.details.subscription),
+      cancelAtPeriodEnd: willCancel,
       onboardingPaymentPending: false,
       lastProcessedInvoiceId: args.invoiceId,
-      currentPeriodEnd: args.details.periodEndDate,
-      pendingSubscriptionScheduleId: null,
-      pendingSubscriptionTargetTier: null,
-      pendingSubscriptionChangeAt: null,
+      currentPeriodEnd: pendingChangeAt ?? args.details.periodEndDate,
+      pendingSubscriptionScheduleId: pendingChangeAt ? scheduleId : null,
+      pendingSubscriptionTargetTier: pendingChangeAt ? "pro-suspend" : null,
+      pendingSubscriptionChangeAt: pendingChangeAt,
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.orgId, args.orgId));
@@ -1198,14 +1459,49 @@ async function processSubscriptionInvoicePaid(
 async function handleCheckoutCompleted(
   db: Db,
   session: CheckoutSessionInput,
-): Promise<string | null> {
+): Promise<{
+  readonly drainOrgId: string | null;
+  readonly orgIds: readonly string[];
+}> {
+  const billingRestoreResult = await handleBillingRestoreCheckoutCompleted(
+    db,
+    session,
+  );
+  if (billingRestoreResult.handled) {
+    return {
+      drainOrgId: null,
+      orgIds:
+        billingRestoreResult.orgId === null ? [] : [billingRestoreResult.orgId],
+    };
+  }
+
+  const billingDowngradeResult = await handleBillingDowngradeCheckoutCompleted(
+    db,
+    session,
+  );
+  if (billingDowngradeResult.handled) {
+    return {
+      drainOrgId: null,
+      orgIds:
+        billingDowngradeResult.orgId === null
+          ? []
+          : [billingDowngradeResult.orgId],
+    };
+  }
+
   const creditPurchaseResult = await handlePaidCheckoutPurpose(
     db,
     session,
     "credit_purchase",
   );
   if (creditPurchaseResult.handled) {
-    return creditPurchaseResult.drainOrgId;
+    return {
+      drainOrgId: creditPurchaseResult.drainOrgId,
+      orgIds:
+        creditPurchaseResult.drainOrgId === null
+          ? []
+          : [creditPurchaseResult.drainOrgId],
+    };
   }
 
   const oneTimePurchaseResult = await handlePaidCheckoutPurpose(
@@ -1214,38 +1510,44 @@ async function handleCheckoutCompleted(
     "one_time_purchase",
   );
   if (oneTimePurchaseResult.handled) {
-    return oneTimePurchaseResult.drainOrgId;
+    return {
+      drainOrgId: oneTimePurchaseResult.drainOrgId,
+      orgIds:
+        oneTimePurchaseResult.drainOrgId === null
+          ? []
+          : [oneTimePurchaseResult.drainOrgId],
+    };
   }
 
   const checkoutContext = checkoutSubscriptionContext(session);
   if (!checkoutContext) {
-    return null;
+    return { drainOrgId: null, orgIds: [] };
   }
   const { customerId, subscriptionId } = checkoutContext;
 
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-  await bindSubscriptionToCustomerOrg(db, {
+  const orgIds = await bindSubscriptionToCustomerOrg(db, {
     customerId,
     subscription,
     source: "checkout.session.completed",
   });
-  return null;
+  return { drainOrgId: null, orgIds };
 }
 
 async function handleSubscriptionCreated(
   db: Db,
   subscription: SubscriptionInput,
-): Promise<void> {
+): Promise<readonly string[]> {
   const customerId = customerIdFromSubscription(subscription);
   if (!customerId) {
     L.warn("customer.subscription.created without customer ID", {
       subscriptionId: subscription.id,
     });
-    return;
+    return [];
   }
 
-  await bindSubscriptionToCustomerOrg(db, {
+  return await bindSubscriptionToCustomerOrg(db, {
     customerId,
     subscription,
     source: "customer.subscription.created",
@@ -1327,14 +1629,15 @@ async function handleSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
-): Promise<void> {
-  const periodEnd = subscriptionWillCancel(subscription)
-    ? subscriptionScheduledEnd(subscription)
-    : null;
+): Promise<readonly string[]> {
+  const stripe = getStripeClient();
+  const periodEnd = await subscriptionScheduledEnd(stripe, subscription);
+  const willCancel = subscriptionWillCancel(subscription) || periodEnd !== null;
   const pendingScheduleId = subscriptionScheduleId(subscription);
   const clearPendingChange = subscriptionPendingChangeCleared(
     subscription,
     previousAttributes,
+    willCancel,
   );
   const trialEnd = subscriptionTrialEnd(subscription);
   const previousTrialEnd =
@@ -1347,12 +1650,12 @@ async function handleSubscriptionUpdated(
     previousTrialEnd !== null &&
     trialEnd < previousTrialEnd;
 
-  await db.transaction(async (tx) => {
+  return await db.transaction(async (tx) => {
     const rows = await tx
       .update(orgMetadata)
       .set({
         subscriptionStatus: subscription.status,
-        cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+        cancelAtPeriodEnd: willCancel,
         updatedAt: nowDate(),
         ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
         ...(periodEnd && pendingScheduleId
@@ -1375,7 +1678,9 @@ async function handleSubscriptionUpdated(
       .returning({ orgId: orgMetadata.orgId });
 
     if (!trialShortened) {
-      return;
+      return rows.map((row) => {
+        return row.orgId;
+      });
     }
 
     for (const row of rows) {
@@ -1391,13 +1696,16 @@ async function handleSubscriptionUpdated(
           ),
         );
     }
+    return rows.map((row) => {
+      return row.orgId;
+    });
   });
 }
 
 async function handleSubscriptionScheduleReleased(
   db: Db,
   schedule: SubscriptionScheduleInput,
-): Promise<void> {
+): Promise<readonly string[]> {
   const rows = await db
     .update(orgMetadata)
     .set({
@@ -1418,12 +1726,15 @@ async function handleSubscriptionScheduleReleased(
       }),
     });
   }
+  return rows.map((row) => {
+    return row.orgId;
+  });
 }
 
 async function handleSubscriptionScheduleEnded(
   db: Db,
   schedule: SubscriptionScheduleInput,
-): Promise<void> {
+): Promise<readonly string[]> {
   const rows = await db
     .update(orgMetadata)
     .set({
@@ -1443,13 +1754,16 @@ async function handleSubscriptionScheduleEnded(
       }),
     });
   }
+  return rows.map((row) => {
+    return row.orgId;
+  });
 }
 
 async function handleSubscriptionDeleted(
   db: Db,
   subscription: SubscriptionDeletedInput,
-): Promise<void> {
-  await db
+): Promise<readonly string[]> {
+  const rows = await db
     .update(orgMetadata)
     .set({
       tier: "pro-suspend",
@@ -1462,13 +1776,18 @@ async function handleSubscriptionDeleted(
       pendingSubscriptionChangeAt: null,
       updatedAt: nowDate(),
     })
-    .where(eq(orgMetadata.stripeSubscriptionId, subscription.id));
+    .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
+    .returning({ orgId: orgMetadata.orgId });
+  return rows.map((row) => {
+    return row.orgId;
+  });
 }
 
 export const handleStripeWebhookEvent$ = command(
   async ({ set }, event: Stripe.Event, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
     let drainOrgId: string | null = null;
+    const billingChangedOrgIds = new Set<string>();
     L.debug("stripe webhook received", { type: event.type, id: event.id });
 
     if (!shouldHandleStripePreviewEvent(event)) {
@@ -1480,49 +1799,74 @@ export const handleStripeWebhookEvent$ = command(
     }
 
     switch (event.type) {
-      case "checkout.session.completed": {
-        drainOrgId = await handleCheckoutCompleted(db, event.data.object);
-        signal.throwIfAborted();
-        break;
-      }
+      case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
-        drainOrgId = await handleCheckoutCompleted(db, event.data.object);
+        const result = await handleCheckoutCompleted(db, event.data.object);
         signal.throwIfAborted();
+        drainOrgId = result.drainOrgId;
+        for (const orgId of result.orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       case "invoice.paid": {
-        drainOrgId = await handleInvoicePaid(db, event.data.object);
+        const paidDrainOrgId = await handleInvoicePaid(db, event.data.object);
         signal.throwIfAborted();
+        drainOrgId = paidDrainOrgId;
+        if (paidDrainOrgId) {
+          billingChangedOrgIds.add(paidDrainOrgId);
+        }
         break;
       }
       case "customer.subscription.created": {
-        await handleSubscriptionCreated(db, event.data.object);
+        const orgIds = await handleSubscriptionCreated(db, event.data.object);
         signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       case "customer.subscription.updated": {
-        await handleSubscriptionUpdated(
+        const orgIds = await handleSubscriptionUpdated(
           db,
           event.data.object,
           event.data.previous_attributes,
         );
         signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       case "customer.subscription.deleted": {
-        await handleSubscriptionDeleted(db, event.data.object);
+        const orgIds = await handleSubscriptionDeleted(db, event.data.object);
         signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       case "subscription_schedule.released": {
-        await handleSubscriptionScheduleReleased(db, event.data.object);
+        const orgIds = await handleSubscriptionScheduleReleased(
+          db,
+          event.data.object,
+        );
         signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       case "subscription_schedule.canceled":
       case "subscription_schedule.aborted": {
-        await handleSubscriptionScheduleEnded(db, event.data.object);
+        const orgIds = await handleSubscriptionScheduleEnded(
+          db,
+          event.data.object,
+        );
         signal.throwIfAborted();
+        for (const orgId of orgIds) {
+          billingChangedOrgIds.add(orgId);
+        }
         break;
       }
       default: {
@@ -1531,6 +1875,11 @@ export const handleStripeWebhookEvent$ = command(
     }
 
     signal.throwIfAborted();
+    for (const orgId of billingChangedOrgIds) {
+      await publishBillingChangedForOrg(db, orgId);
+      signal.throwIfAborted();
+    }
+
     if (drainOrgId) {
       await set(drainOrgQueueToCapacity$, { orgId: drainOrgId }, signal);
       signal.throwIfAborted();

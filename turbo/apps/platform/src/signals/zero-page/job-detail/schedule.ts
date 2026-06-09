@@ -1,11 +1,5 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { accept } from "../../../lib/accept.ts";
-import {
-  zeroSchedulesMainContract,
-  zeroSchedulesByNameContract,
-  zeroSchedulesEnableContract,
-} from "@vm0/api-contracts/contracts/zero-schedules";
 import { zeroClient$ } from "../../api-client.ts";
 import { agentDetail$ } from "./detail.ts";
 import {
@@ -15,6 +9,13 @@ import {
   type ScheduleBody,
   type CronTimeOption,
 } from "../cron.ts";
+import {
+  automationsModeEnabled$,
+  listSchedulesVia,
+  deployScheduleVia,
+  setScheduleEnabledVia,
+  deleteScheduleVia,
+} from "../automations-mode.ts";
 import type { ScheduleEntry } from "../../../views/zero-page/zero-schedule-card.tsx";
 
 // ---------------------------------------------------------------------------
@@ -121,9 +122,11 @@ const rawSchedules$ = computed(async (get): Promise<ScheduleItem[]> => {
   if (!detail) {
     return [];
   }
-  const client = get(zeroClient$)(zeroSchedulesMainContract);
-  const result = await accept(client.list(), [200]);
-  return result.body.schedules.filter((s) => {
+  const schedules = await listSchedulesVia(
+    get(zeroClient$),
+    get(automationsModeEnabled$),
+  );
+  return schedules.filter((s) => {
     return s.agentId === detail.agentId;
   });
 });
@@ -230,8 +233,12 @@ export const saveAgentSchedule$ = command(
       body = { ...base, cronExpression };
     }
 
-    const client = get(zeroClient$)(zeroSchedulesMainContract);
-    await accept(client.deploy({ body }), [200, 201]);
+    await deployScheduleVia(
+      get(zeroClient$),
+      get(automationsModeEnabled$),
+      body,
+      params.editName !== undefined,
+    );
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -251,14 +258,14 @@ export const toggleAgentScheduleEnabled$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    const client = get(zeroClient$)(zeroSchedulesEnableContract);
-    const action = params.enabled ? "enable" : "disable";
-    await accept(
-      client[action]({
-        params: { name: params.name },
-        body: { agentId: detail.agentId },
-      }),
-      [200],
+    await setScheduleEnabledVia(
+      get(zeroClient$),
+      get(automationsModeEnabled$),
+      {
+        name: params.name,
+        agentId: detail.agentId,
+        enabled: params.enabled,
+      },
     );
     signal.throwIfAborted();
 
@@ -274,14 +281,10 @@ export const deleteAgentSchedule$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    const client = get(zeroClient$)(zeroSchedulesByNameContract);
-    await accept(
-      client.delete({
-        params: { name: scheduleName },
-        query: { agentId: detail.agentId },
-      }),
-      [204],
-    );
+    await deleteScheduleVia(get(zeroClient$), get(automationsModeEnabled$), {
+      name: scheduleName,
+      agentId: detail.agentId,
+    });
     signal.throwIfAborted();
 
     toast.success("Schedule deleted");

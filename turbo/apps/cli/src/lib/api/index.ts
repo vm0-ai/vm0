@@ -174,6 +174,16 @@ export {
   resolveZeroScheduleByAgent,
 } from "./domains/zero-schedules";
 
+// Domain modules - Zero Automations
+export {
+  deployZeroAutomation,
+  listZeroAutomations,
+  deleteZeroAutomation,
+  enableZeroAutomation,
+  disableZeroAutomation,
+  resolveZeroAutomationByAgent,
+} from "./domains/zero-automations";
+
 // Domain modules - Zero Runs
 export { getZeroRunAgentEvents } from "./domains/zero-runs";
 

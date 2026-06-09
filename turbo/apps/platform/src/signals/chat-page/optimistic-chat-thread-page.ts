@@ -127,7 +127,6 @@ async function appendQueuedMessage(
         modelSelection: append.modelSelection,
         generationTemplate: append.generationTemplate,
         attachFiles: append.attachments ?? undefined,
-        ...(append.forceNewSession ? { forceNewSession: true } : {}),
       },
       fetchOptions: { signal },
     }),
@@ -161,7 +160,6 @@ function queuedReplayAppendArgs({
     hasTextContent: hasTextContentForQueuedReplay(entry.message),
     modelSelection,
     generationTemplate: entry.message.generationTemplate,
-    ...(entry.forceNewSession ? { forceNewSession: true } : {}),
   };
 }
 

@@ -10,7 +10,6 @@ use std::sync::Arc;
 use chrono::SecondsFormat;
 use futures_util::FutureExt;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
-use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::idle_lifecycle::{
@@ -32,6 +31,7 @@ use crate::network_log_manager::NetworkLogSession;
 #[cfg(test)]
 use crate::provider::CompletionAuth;
 use crate::resource_budget::BudgetLease;
+use crate::run_cancellation::RunCancellationHandle;
 use crate::status::StatusTracker;
 use crate::workspace_image_cache::{
     WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionRequest,
@@ -75,7 +75,7 @@ pub(super) struct FinalizeContext {
     pub(super) parking_gate: ParkingGate,
     pub(super) network_log_drain: NetworkLogDrainCoordinator,
     pub(super) exit_code: i32,
-    pub(super) cancel: CancellationToken,
+    pub(super) cancel: RunCancellationHandle,
     pub(super) cleanup_state: RunCleanupState,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
@@ -241,102 +241,139 @@ pub(super) async fn finalize_sandbox_for_completion(
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             #[cfg(test)]
             test_observer.notify_before_idle_pool_ownership_transfer(run_id);
-            let mut pool = idle_pool.lock().await;
-            if cancel.is_cancelled() {
-                info!(
-                    run_id = %run_id,
-                    session_id,
-                    "job cancelled before idle pool ownership transfer, destroying VM"
-                );
-                drop(pool);
-                let (payload, budget_lease) = candidate.into_active_destroy_parts();
-                let destroy_result = destroy_active_owned_idle_payload(
-                    payload,
-                    budget_lease,
-                    "cancelled",
-                    destroy_bookkeeping,
-                )
-                .await;
-                return mark_session_affinity_refresh(
-                    CompletionReady::new(completion_payload, destroy_result.budget),
-                    destroy_result.workspace_cache_promoted,
-                    false,
-                );
-            }
-            let candidate = candidate.with_last_completed_at(completed_at.clone());
-            match pool.park(candidate) {
-                ParkResult::Parked => {
-                    info!(run_id = %run_id, session_id, "VM parked for reuse");
-                    cleanup_state.mark_idle_pool_owned();
-                    #[cfg(test)]
-                    maybe_panic_outer_job(
-                        outer_job_panic,
-                        OuterJobPanicPoint::IdlePoolOwned,
-                        run_id,
-                    );
-                    // Push fresh idle state to status.json BEFORE
-                    // conditional active-run removal (below) clears the run_id
-                    // from active_runs. Without this, doctor would
-                    // briefly see the FC as unknown (neither active
-                    // nor idle) until the next idle_cleanup tick
-                    // (~10s), producing transient false-positive
-                    // FirecrackerNotInStatus warnings.
-                    let snapshot = pool.status_snapshot();
+            loop {
+                let mut pool = idle_pool.lock().await;
+                // Let cancellation win while finalization is still waiting for
+                // the pool lock. Once the pool lock is held, only enter the
+                // final transfer boundary if the per-run gate is immediately
+                // available; otherwise release the pool lock before waiting.
+                let Some(transfer_guard) = cancel.try_transfer_guard() else {
                     drop(pool);
-                    let ownership = OwnershipTransitions::new(status.as_ref());
-                    ownership
-                        .publish_idle_status_after_pool_transfer(snapshot)
+                    let transfer_guard = cancel.transfer_guard().await;
+                    if cancel.is_cancelled() {
+                        info!(
+                            run_id = %run_id,
+                            session_id,
+                            "job cancelled before idle pool ownership transfer, destroying VM"
+                        );
+                        drop(transfer_guard);
+                        let (payload, budget_lease) = candidate.into_active_destroy_parts();
+                        let destroy_result = destroy_active_owned_idle_payload(
+                            payload,
+                            budget_lease,
+                            "cancelled",
+                            destroy_bookkeeping,
+                        )
                         .await;
-                    session_affinity_changed = true;
-                    session_affinity_refresh_sent = true;
-                    park_notify.notify_one();
-                    BudgetOwnership::idle_owned()
-                }
-                ParkResult::Replaced(evicted) => {
-                    info!(run_id = %run_id, session_id, "VM parked, evicting previous");
-                    cleanup_state.mark_idle_pool_owned();
-                    #[cfg(test)]
-                    maybe_panic_outer_job(
-                        outer_job_panic,
-                        OuterJobPanicPoint::IdlePoolOwned,
-                        run_id,
-                    );
-                    let snapshot = pool.status_snapshot();
-                    drop(pool);
-                    let ownership = OwnershipTransitions::new(status.as_ref());
-                    ownership
-                        .publish_idle_status_after_pool_transfer(snapshot)
-                        .await;
-                    session_affinity_changed = true;
-                    session_affinity_refresh_sent = true;
-                    park_notify.notify_one();
-                    // The replaced VM was park()ed when it entered the
-                    // pool; destroying a parked sandbox is safe — Drop
-                    // aborts any leftover handles and the FC process is
-                    // killed regardless of balloon state.
-                    if destroy_idle_jobs_and_wait(vec![evicted], "park_replaced").await {
-                        park_notify.notify_one();
+                        return mark_session_affinity_refresh(
+                            CompletionReady::new(completion_payload, destroy_result.budget),
+                            destroy_result.workspace_cache_promoted,
+                            false,
+                        );
                     }
-                    BudgetOwnership::idle_owned()
-                }
-                ParkResult::Rejected(rejected) => {
-                    info!(run_id = %run_id, session_id, "idle parking rejected, destroying VM");
+                    drop(transfer_guard);
+                    continue;
+                };
+                if cancel.is_cancelled() {
+                    info!(
+                        run_id = %run_id,
+                        session_id,
+                        "job cancelled before idle pool ownership transfer, destroying VM"
+                    );
+                    drop(transfer_guard);
                     drop(pool);
-                    // Pool unchanged (park rejected) — no status
-                    // update needed. The rejected sandbox was just
-                    // park()ed above; destroying a parked sandbox is
-                    // safe — see Replaced arm for rationale.
-                    let (payload, lease) = rejected.into_active_destroy_parts();
+                    let (payload, budget_lease) = candidate.into_active_destroy_parts();
                     let destroy_result = destroy_active_owned_idle_payload(
                         payload,
-                        lease,
-                        "park_rejected",
+                        budget_lease,
+                        "cancelled",
                         destroy_bookkeeping,
                     )
                     .await;
-                    session_affinity_changed |= destroy_result.workspace_cache_promoted;
-                    destroy_result.budget
+                    return mark_session_affinity_refresh(
+                        CompletionReady::new(completion_payload, destroy_result.budget),
+                        destroy_result.workspace_cache_promoted,
+                        false,
+                    );
                 }
+                let candidate = candidate.with_last_completed_at(completed_at.clone());
+                break match pool.park(candidate) {
+                    ParkResult::Parked => {
+                        info!(run_id = %run_id, session_id, "VM parked for reuse");
+                        cleanup_state.mark_idle_pool_owned();
+                        #[cfg(test)]
+                        maybe_panic_outer_job(
+                            outer_job_panic,
+                            OuterJobPanicPoint::IdlePoolOwned,
+                            run_id,
+                        );
+                        // Push fresh idle state to status.json BEFORE
+                        // conditional active-run removal (below) clears the run_id
+                        // from active_runs. Without this, doctor would
+                        // briefly see the FC as unknown (neither active
+                        // nor idle) until the next idle_cleanup tick
+                        // (~10s), producing transient false-positive
+                        // FirecrackerNotInStatus warnings.
+                        let snapshot = pool.status_snapshot();
+                        drop(transfer_guard);
+                        drop(pool);
+                        let ownership = OwnershipTransitions::new(status.as_ref());
+                        ownership
+                            .publish_idle_status_after_pool_transfer(snapshot)
+                            .await;
+                        session_affinity_changed = true;
+                        session_affinity_refresh_sent = true;
+                        park_notify.notify_one();
+                        BudgetOwnership::idle_owned()
+                    }
+                    ParkResult::Replaced(evicted) => {
+                        info!(run_id = %run_id, session_id, "VM parked, evicting previous");
+                        cleanup_state.mark_idle_pool_owned();
+                        #[cfg(test)]
+                        maybe_panic_outer_job(
+                            outer_job_panic,
+                            OuterJobPanicPoint::IdlePoolOwned,
+                            run_id,
+                        );
+                        let snapshot = pool.status_snapshot();
+                        drop(transfer_guard);
+                        drop(pool);
+                        let ownership = OwnershipTransitions::new(status.as_ref());
+                        ownership
+                            .publish_idle_status_after_pool_transfer(snapshot)
+                            .await;
+                        session_affinity_changed = true;
+                        session_affinity_refresh_sent = true;
+                        park_notify.notify_one();
+                        // The replaced VM was park()ed when it entered the
+                        // pool; destroying a parked sandbox is safe — Drop
+                        // aborts any leftover handles and the FC process is
+                        // killed regardless of balloon state.
+                        if destroy_idle_jobs_and_wait(vec![evicted], "park_replaced").await {
+                            park_notify.notify_one();
+                        }
+                        BudgetOwnership::idle_owned()
+                    }
+                    ParkResult::Rejected(rejected) => {
+                        info!(run_id = %run_id, session_id, "idle parking rejected, destroying VM");
+                        drop(transfer_guard);
+                        drop(pool);
+                        // Pool unchanged (park rejected) — no status
+                        // update needed. The rejected sandbox was just
+                        // park()ed above; destroying a parked sandbox is
+                        // safe — see Replaced arm for rationale.
+                        let (payload, lease) = rejected.into_active_destroy_parts();
+                        let destroy_result = destroy_active_owned_idle_payload(
+                            payload,
+                            lease,
+                            "park_rejected",
+                            destroy_bookkeeping,
+                        )
+                        .await;
+                        session_affinity_changed |= destroy_result.workspace_cache_promoted;
+                        destroy_result.budget
+                    }
+                };
             }
         }
     } else {
@@ -542,7 +579,6 @@ mod tests {
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
-    use tokio_util::sync::CancellationToken;
 
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::{
@@ -623,7 +659,7 @@ mod tests {
             sandbox_id: SandboxId,
             session_id: &str,
             network_log_session: NetworkLogSession,
-            cancel: CancellationToken,
+            cancel: RunCancellationHandle,
         ) -> FinalizeContext {
             FinalizeContext {
                 run_id,
@@ -745,7 +781,7 @@ mod tests {
                 sandbox_id,
                 "sess-network-log-park",
                 network_log_session,
-                CancellationToken::new(),
+                RunCancellationHandle::new(),
             ),
         )
         .await;
@@ -760,6 +796,58 @@ mod tests {
                 )
                 .await,
             "parked sandbox must not retain the previous run's network-log attribution",
+        );
+    }
+
+    #[tokio::test]
+    async fn finalizer_keeps_idle_pool_ownership_when_cancelled_after_transfer() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cancel = RunCancellationHandle::new();
+        let cleanup_state = RunCleanupState::new();
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-cancel-after-transfer",
+            network_log_session,
+            cancel.clone(),
+        );
+        context.cleanup_state = cleanup_state.clone();
+
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(Box::new(MockSandbox::new("cancel-after-transfer"))),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+
+        assert_eq!(fixture.idle_pool.lock().await.len(), 1);
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::IdlePoolOwned,
+        );
+
+        assert!(cancel.cancel().await);
+
+        assert_eq!(
+            fixture.idle_pool.lock().await.len(),
+            1,
+            "late cancellation must not undo idle-pool ownership",
+        );
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::IdlePoolOwned,
         );
     }
 
@@ -938,7 +1026,7 @@ mod tests {
             sandbox_id,
             "unused-context-session",
             network_log_session,
-            CancellationToken::new(),
+            RunCancellationHandle::new(),
         );
         context.session_id = None;
         context.guest_session_id = Some("sess-guest".into());
@@ -1021,7 +1109,7 @@ mod tests {
             sandbox_id,
             "sess-new",
             network_log_session,
-            CancellationToken::new(),
+            RunCancellationHandle::new(),
         );
         context.workspace_image = Some(workspace_image);
         context.workspace_promotable = true;
@@ -1129,7 +1217,7 @@ mod tests {
             new_sandbox_id,
             session_id,
             network_log_session,
-            CancellationToken::new(),
+            RunCancellationHandle::new(),
         );
         context.park_notify = Arc::clone(&park_notify);
 
@@ -1177,8 +1265,8 @@ mod tests {
         let (_budget, lease) = test_budget_lease();
         let fixture = FinalizeTestFixture::new().await;
         let network_log_session = fixture.network_log_session().await;
-        let cancel = CancellationToken::new();
-        cancel.cancel();
+        let cancel = RunCancellationHandle::new();
+        cancel.cancel().await;
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
 
@@ -1223,7 +1311,7 @@ mod tests {
         let network_log_session = fixture.network_log_session().await;
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        let cancel = CancellationToken::new();
+        let cancel = RunCancellationHandle::new();
         let cleanup_state = RunCleanupState::new();
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
         let park_gate = MockLifecycleGate::new();
@@ -1262,7 +1350,7 @@ mod tests {
                 .expect("park should enter gate"),
             1
         );
-        cancel.cancel();
+        cancel.cancel().await;
         park_gate.release_one();
         assert_eq!(
             destroy_gate
@@ -1301,7 +1389,7 @@ mod tests {
         let network_log_session = fixture.network_log_session().await;
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        let cancel = CancellationToken::new();
+        let cancel = RunCancellationHandle::new();
         let cleanup_state = RunCleanupState::new();
         let observer = StartLoopTestObserver::default();
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -1339,7 +1427,7 @@ mod tests {
         observer
             .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(5))
             .await;
-        cancel.cancel();
+        cancel.cancel().await;
         assert!(
             !fixture
                 .network_log_manager

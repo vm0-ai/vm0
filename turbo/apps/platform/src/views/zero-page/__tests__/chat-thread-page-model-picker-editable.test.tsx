@@ -3,8 +3,8 @@
  *
  * Rule: the composer's model picker remains editable in an existing chat
  * thread. Changing it writes the thread model pin immediately, and switching
- * away from the previous thread-pinned model sends forceNewSession so the
- * backend starts a compatible CLI session.
+ * away from the previous thread-pinned model leaves session compatibility to
+ * the backend.
  *
  * Entry point: /chats/:threadId thread page.
  * Mock (external): Web API via MSW (feature switch + org providers + thread
@@ -204,9 +204,9 @@ describe("chat thread page — model picker editable", () => {
   });
 
   // CHAT-MODEL-EDIT-005: changing the model on an existing thread persists the
-  // thread pin and sends the forceNewSession flag expected by the backend
-  // model-switch path.
-  it("updates the thread model and sends forceNewSession when changing model on an existing thread (CHAT-MODEL-EDIT-005)", async () => {
+  // thread pin and sends only the selected model; the backend owns session
+  // compatibility.
+  it("updates the thread model without sending session controls when changing model on an existing thread (CHAT-MODEL-EDIT-005)", async () => {
     const user = userEvent.setup();
     let capturedBody:
       | {
@@ -214,7 +214,7 @@ describe("chat thread page — model picker editable", () => {
             modelProviderId: string;
             selectedModel: string;
           } | null;
-          forceNewSession?: boolean;
+          hasForceNewSession: boolean;
         }
       | undefined;
     let capturedModelSelectionBody:
@@ -238,8 +238,7 @@ describe("chat thread page — model picker editable", () => {
         capturedBody = {
           modelSelection:
             "modelSelection" in body ? body.modelSelection : undefined,
-          forceNewSession:
-            "forceNewSession" in body ? body.forceNewSession : undefined,
+          hasForceNewSession: "forceNewSession" in body,
         };
         return respond(201, {
           runId: "run-test-1",
@@ -272,12 +271,12 @@ describe("chat thread page — model picker editable", () => {
       "claude-opus-4-8",
     );
     expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-8");
-    expect(capturedBody?.forceNewSession).toBeTruthy();
+    expect(capturedBody?.hasForceNewSession).toBeFalsy();
   });
 
-  // CHAT-MODEL-EDIT-006: queued sends share the same model-switch semantics as
-  // direct sends so the backend can start a compatible CLI session.
-  it("sends forceNewSession for queued messages after changing model on an active thread (CHAT-MODEL-EDIT-006)", async () => {
+  // CHAT-MODEL-EDIT-006: queued sends share the same backend-owned model-switch
+  // semantics as direct sends.
+  it("does not send session controls for queued messages after changing model on an active thread (CHAT-MODEL-EDIT-006)", async () => {
     const user = userEvent.setup();
     let capturedBody:
       | {
@@ -285,7 +284,7 @@ describe("chat thread page — model picker editable", () => {
             modelProviderId: string;
             selectedModel: string;
           } | null;
-          forceNewSession?: boolean;
+          hasForceNewSession: boolean;
         }
       | undefined;
     let capturedModelSelectionBody:
@@ -317,8 +316,7 @@ describe("chat thread page — model picker editable", () => {
         capturedBody = {
           modelSelection:
             "modelSelection" in body ? body.modelSelection : undefined,
-          forceNewSession:
-            "forceNewSession" in body ? body.forceNewSession : undefined,
+          hasForceNewSession: "forceNewSession" in body,
         };
         return respond(201, {
           runId: null,
@@ -352,6 +350,6 @@ describe("chat thread page — model picker editable", () => {
       "claude-opus-4-8",
     );
     expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-8");
-    expect(capturedBody?.forceNewSession).toBeTruthy();
+    expect(capturedBody?.hasForceNewSession).toBeFalsy();
   });
 });

@@ -7,6 +7,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
@@ -83,6 +84,15 @@ interface SeedRunArgs {
   readonly createdAt?: Date;
   readonly startedAt?: Date | null;
   readonly completedAt?: Date | null;
+}
+
+interface SeedChatThreadRunArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly title?: string | null;
+  readonly triggerSource?: string;
+  readonly threadId?: string;
+  readonly createdAt?: Date;
 }
 
 export const seedUsageFixture$ = command(
@@ -402,5 +412,53 @@ export const seedRun$ = command(
     signal.throwIfAborted();
 
     return { runId: run.id, composeId: compose.id };
+  },
+);
+
+// Seed a run that belongs to a chat thread, so it surfaces in the per-chat
+// usage record. Returns the thread id alongside the run/compose ids.
+export const seedChatThreadRun$ = command(
+  async (
+    { set },
+    args: SeedChatThreadRunArgs,
+    signal: AbortSignal,
+  ): Promise<{ runId: string; threadId: string; composeId: string }> => {
+    const db = set(writeDb$);
+    const { runId, composeId } = await set(
+      seedRun$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        triggerSource: args.triggerSource ?? "web",
+        createdAt: args.createdAt,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    let threadId = args.threadId;
+    if (!threadId) {
+      const [thread] = await db
+        .insert(chatThreads)
+        .values({
+          userId: args.userId,
+          agentComposeId: composeId,
+          title: args.title ?? null,
+        })
+        .returning({ id: chatThreads.id });
+      signal.throwIfAborted();
+      if (!thread) {
+        throw new Error("seedChatThreadRun$: thread insert returned no row");
+      }
+      threadId = thread.id;
+    }
+
+    await db
+      .update(zeroRuns)
+      .set({ chatThreadId: threadId })
+      .where(eq(zeroRuns.id, runId));
+    signal.throwIfAborted();
+
+    return { runId, threadId, composeId };
   },
 );

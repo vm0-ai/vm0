@@ -3,13 +3,12 @@
 //! `run()` owns the provider discovery future and reactor scheduling. This
 //! module owns the body that turns a discovered job into a claimed spawned job.
 
+use std::collections::BTreeMap;
 use std::collections::hash_map::Entry;
-use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use sandbox::SandboxId;
 use tokio::task::JoinSet;
-use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::active_sessions::ActiveSessionGuard;
@@ -24,6 +23,7 @@ use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::provider::{ClaimedJob, JobCandidate};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
+use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::{RunnerMode, StatusTracker};
 use crate::types::{ExecutionContext, SandboxReuseResult};
 
@@ -38,7 +38,7 @@ pub(super) struct DiscoveredJobContext<'a> {
     pub(super) idle_pool: &'a SharedIdlePool,
     pub(super) status: &'a StatusTracker,
     pub(super) mode_rx: &'a tokio::sync::watch::Receiver<RunnerMode>,
-    pub(super) cancel_tokens: &'a Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    pub(super) cancel_tokens: &'a SharedRunCancellationMap,
     pub(super) spawn_ctx: &'a SpawnContext,
     pub(super) destroy_tasks: &'a mut JoinSet<bool>,
     pub(super) jobs: &'a mut JoinSet<Option<RunId>>,
@@ -47,20 +47,17 @@ pub(super) struct DiscoveredJobContext<'a> {
 struct LocalAdmission {
     run_id: RunId,
     budget_lease: BudgetLease,
-    cancel: CancellationToken,
+    cancel: RunCancellationHandle,
 }
 
 struct AdmittedClaim {
     claimed: ClaimedJob,
     budget_lease: BudgetLease,
-    cancel: CancellationToken,
+    cancel: RunCancellationHandle,
 }
 
 impl LocalAdmission {
-    async fn rollback(
-        self,
-        cancel_tokens: &Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
-    ) {
+    async fn rollback(self, cancel_tokens: &SharedRunCancellationMap) {
         let Self {
             run_id,
             budget_lease,
@@ -180,7 +177,7 @@ async fn claim_with_local_admission(
     // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
     // find the active job. Skip duplicate discoveries; overwriting would break
     // cancel delivery for the executor.
-    let job_cancel = CancellationToken::new();
+    let job_cancel = RunCancellationHandle::new();
     {
         let mut tokens = ctx.cancel_tokens.lock().await;
         match tokens.entry(run_id) {
@@ -208,7 +205,7 @@ async fn claim_with_local_admission(
             return None;
         }
         RunnerMode::Stopping => {
-            admission.cancel.cancel();
+            admission.cancel.cancel().await;
         }
         RunnerMode::Stopped => {
             admission.rollback(ctx.cancel_tokens).await;

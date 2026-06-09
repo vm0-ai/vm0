@@ -153,6 +153,7 @@
     "generate:monday": "tsx src/index.ts monday",
     "generate:n8n": "tsx src/index.ts n8n",
     "generate:neon": "tsx src/index.ts neon",
+    "generate:netdata": "tsx src/index.ts netdata",
     "generate:notion": "tsx src/index.ts notion",
     "generate:novita": "tsx src/index.ts novita",
     "generate:openai": "tsx src/index.ts openai",

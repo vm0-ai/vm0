@@ -1,4 +1,5 @@
 use std::io;
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -14,6 +15,8 @@ use crate::{
 use super::{file_operation_error_is_terminal, shell_quote};
 
 const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
+const COPY_TEMP_FILE_MODE: u32 = 0o600;
+const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const COPY_FILE_STREAM_CHUNK_LIMIT: u32 = 64 * 1024;
 pub(super) const COPY_FILE_STREAM_MAX_BYTES: u64 = 64 * 1024 * 1024;
 // Copying is the one built-in streaming consumer that must tolerate the host
@@ -143,16 +146,33 @@ async fn create_copy_temp_file(
     host_path: &Path,
     seq: u32,
 ) -> io::Result<(PathBuf, tokio::fs::File)> {
+    create_copy_temp_file_with_validator(host_path, seq, secure_copy_temp_file).await
+}
+
+async fn create_copy_temp_file_with_validator(
+    host_path: &Path,
+    seq: u32,
+    validate: impl Fn(&tokio::fs::File, &Path) -> io::Result<()>,
+) -> io::Result<(PathBuf, tokio::fs::File)> {
     for _ in 0..COPY_TEMP_CREATE_ATTEMPTS {
         let nonce = COPY_TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
         let temp_path = copy_temp_path(host_path, std::process::id(), seq, nonce);
         match tokio::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
+            .mode(COPY_TEMP_FILE_MODE)
+            .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK)
             .open(&temp_path)
             .await
         {
-            Ok(file) => return Ok((temp_path, file)),
+            Ok(file) => {
+                if let Err(err) = validate(&file, &temp_path) {
+                    drop(file);
+                    remove_temp_file(&temp_path).await;
+                    return Err(err);
+                }
+                return Ok((temp_path, file));
+            }
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(err) => return Err(err),
         }
@@ -164,6 +184,61 @@ async fn create_copy_temp_file(
             "copy_file could not create a unique temp file after {COPY_TEMP_CREATE_ATTEMPTS} attempts"
         ),
     ))
+}
+
+fn secure_copy_temp_file(file: &tokio::fs::File, path: &Path) -> io::Result<()> {
+    let stat = fstat_copy_temp_file(file, path)?;
+    let file_type = stat.st_mode & nix::libc::S_IFMT;
+    if file_type != nix::libc::S_IFREG {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("copy temp file {} is not a regular file", path.display()),
+        ));
+    }
+    let expected_uid = unsafe { nix::libc::geteuid() };
+    if stat.st_uid != expected_uid {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "copy temp file {} is owned by uid {}, but euid is {expected_uid}",
+                path.display(),
+                stat.st_uid
+            ),
+        ));
+    }
+    if stat.st_mode & GROUP_OR_OTHER_WRITE_BITS != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("copy temp file {} is group/other writable", path.display()),
+        ));
+    }
+    // SAFETY: `fchmod` operates on the live fd and does not affect Rust aliasing.
+    let result =
+        unsafe { nix::libc::fchmod(file.as_raw_fd(), COPY_TEMP_FILE_MODE as nix::libc::mode_t) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "chmod copy temp file {}: {}",
+            path.display(),
+            io::Error::last_os_error()
+        )))
+    }
+}
+
+fn fstat_copy_temp_file(file: &tokio::fs::File, path: &Path) -> io::Result<nix::libc::stat> {
+    let mut stat = std::mem::MaybeUninit::<nix::libc::stat>::uninit();
+    // SAFETY: `stat` points to writable memory and `file` owns a live fd.
+    let result = unsafe { nix::libc::fstat(file.as_raw_fd(), stat.as_mut_ptr()) };
+    if result != 0 {
+        return Err(io::Error::other(format!(
+            "stat copy temp file {}: {}",
+            path.display(),
+            io::Error::last_os_error()
+        )));
+    }
+    // SAFETY: successful `fstat` initialized the full struct.
+    Ok(unsafe { stat.assume_init() })
 }
 
 async fn write_copy_stream_event(
@@ -518,6 +593,39 @@ mod tests {
         assert!(second_path.exists());
         drop(first_file);
         drop(second_file);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn create_copy_temp_file_removes_temp_when_validation_fails() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-host-copy-temp-validation-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let host_path = dir.join("system.log");
+
+        let error = create_copy_temp_file_with_validator(&host_path, 7, |_file, _path| {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "forced validation failure",
+            ))
+        })
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(std::fs::read_dir(&dir).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains("vm0tmp")
+        }));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

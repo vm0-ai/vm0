@@ -891,10 +891,12 @@ export {
 export {
   zeroUserPermissionGrantsContract,
   userPermissionGrantActionSchema,
+  userPermissionGrantExpiresInSchema,
   userPermissionGrantResponseSchema,
   listUserPermissionGrantsQuerySchema,
   upsertUserPermissionGrantRequestSchema,
   type UserPermissionGrantAction,
+  type UserPermissionGrantExpiresIn,
   type UserPermissionGrantResponse,
   type ListUserPermissionGrantsQuery,
   type UpsertUserPermissionGrantRequest,
@@ -996,6 +998,22 @@ export {
   type ScheduleListResponse,
   type DeployScheduleResponse,
 } from "./zero-schedules";
+export {
+  automationsMainContract,
+  automationsByNameContract,
+  automationsEnableContract,
+  automationRunContract,
+  automationResponseSchema,
+  automationListResponseSchema,
+  automationMutationResponseSchema,
+  type AutomationsMainContract,
+  type AutomationsByNameContract,
+  type AutomationsEnableContract,
+  type AutomationRunContract,
+  type AutomationResponse,
+  type AutomationListResponse,
+  type AutomationMutationResponse,
+} from "./automations";
 export {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
@@ -1177,6 +1195,14 @@ export {
   type UsageInsightScheduleRow,
   type UsageInsightChatRow,
 } from "./zero-usage-insight";
+export {
+  zeroUsageRecordContract,
+  usageRecordSourceSchema,
+  type ZeroUsageRecordContract,
+  type UsageRecordResponse,
+  type UsageRecordRow,
+  type UsageRecordSource,
+} from "./zero-usage-record";
 export {
   usageContract,
   type UsageContract,

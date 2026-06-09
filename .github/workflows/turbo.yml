@@ -1252,6 +1252,7 @@ jobs:
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
           environment: preview
           deployment-env: app
+          prebuilt: "true"
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_VERCEL_ENV=preview

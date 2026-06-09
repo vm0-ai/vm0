@@ -3,6 +3,7 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
+import { automationsRoutes } from "./routes/automations";
 import { agentComposesMetadataRoutes } from "./routes/agent-composes-metadata";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
@@ -74,6 +75,7 @@ import { zeroBillingCreditCheckoutRoutes } from "./routes/zero-billing-credit-ch
 import { zeroBillingDowngradeRoutes } from "./routes/zero-billing-downgrade";
 import { zeroBillingInvoicesRoutes } from "./routes/zero-billing-invoices";
 import { zeroBillingPortalRoutes } from "./routes/zero-billing-portal";
+import { zeroBillingRedeemCodeRoutes } from "./routes/zero-billing-redeem-code";
 import { zeroBillingRedeemRoutes } from "./routes/zero-billing-redeem";
 import { zeroBillingRestoreRoutes } from "./routes/zero-billing-restore";
 import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
@@ -153,6 +155,7 @@ import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
 import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
+import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
 import { zeroUsageRunsRoutes } from "./routes/zero-usage-runs";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
 import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
@@ -192,6 +195,7 @@ export const ROUTES: readonly RouteEntry[] = [
     handler: apiHealth$,
   },
   ...authMeRoutes,
+  ...automationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
@@ -258,6 +262,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBillingDowngradeRoutes,
   ...zeroBillingInvoicesRoutes,
   ...zeroBillingPortalRoutes,
+  ...zeroBillingRedeemCodeRoutes,
   ...zeroBillingRedeemRoutes,
   ...zeroBillingRestoreRoutes,
   ...zeroBillingStatusRoutes,
@@ -350,6 +355,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...storagesPrepareRoutes,
   ...zeroUsageInsightRoutes,
   ...zeroUsageMembersRoutes,
+  ...zeroUsageRecordRoutes,
   ...zeroUsageRunsRoutes,
   ...chatThreadsV1Routes,
   ...audioTranscriptionsV1Routes,

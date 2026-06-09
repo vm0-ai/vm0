@@ -4,7 +4,6 @@
 //! owns the spawned task body: executor orchestration, provider completion,
 //! deferred telemetry/network-log uploads, and outer-task panic cleanup.
 
-use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
@@ -34,6 +33,7 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_logs;
 use crate::provider::{ClaimedJob, CompletionAuth, JobProvider};
 use crate::resource_budget::BudgetLease;
+use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::StatusTracker;
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, SandboxReuseResult};
@@ -48,7 +48,7 @@ pub(super) struct JobProfile {
     pub(super) restore_guest_state: bool,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     pub(super) factory: SharedFactory,
-    pub(super) cancel: CancellationToken,
+    pub(super) cancel: RunCancellationHandle,
 }
 
 /// Shared state passed to each spawned job task.
@@ -57,7 +57,7 @@ pub(super) struct SpawnContext {
     pub(super) exec_config: Arc<ExecutorConfig>,
     pub(super) idle_pool: SharedIdlePool,
     pub(super) status: Arc<StatusTracker>,
-    pub(super) cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    pub(super) cancel_tokens: SharedRunCancellationMap,
     pub(super) orphaned_active_runs: OrphanedActiveRuns,
     /// Current lifecycle parking permission. This is checked at job
     /// completion so soft-drain/resume races do not depend on a stale
@@ -211,7 +211,7 @@ struct FinalizationPhase {
     park_notify: Arc<tokio::sync::Notify>,
     parking_gate: ParkingGate,
     network_log_drain: NetworkLogDrainCoordinator,
-    cancel: CancellationToken,
+    cancel: RunCancellationHandle,
     cleanup_state: RunCleanupState,
     #[cfg(test)]
     outer_job_panic: Option<OuterJobPanicPoint>,
@@ -274,8 +274,8 @@ impl FinalizationPhase {
             completion_auth,
         );
         // Cancellation can arrive after terminal logging or while
-        // `sandbox.park()` is in flight. Pass the live token so finalization
-        // can re-check immediately before idle-pool ownership transfer.
+        // `sandbox.park()` is in flight. Pass the live handle so finalization
+        // can synchronize the final idle-pool ownership transfer.
         let completion_ready = finalize_sandbox_for_completion(
             sandbox,
             ActiveBudgetLease::new(active_lease),
@@ -484,7 +484,7 @@ pub(super) fn spawn_job(
         factory: Arc::clone(&factory),
         reuse_entry,
         reuse_result,
-        cancel: job_cancel.clone(),
+        cancel: job_cancel.token(),
         sandbox_token: sandbox_token.clone(),
     };
     let finalization = FinalizationPhase {
@@ -668,7 +668,7 @@ fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
 pub(super) async fn cleanup_panicked_job(
     run_id: RunId,
     sandbox_id: SandboxId,
-    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    cancel_tokens: SharedRunCancellationMap,
     status: Arc<StatusTracker>,
     idle_pool: SharedIdlePool,
     cleanup_state: RunCleanupState,
@@ -701,7 +701,7 @@ pub(super) async fn cleanup_panicked_job(
 /// Handle a completed job from the JoinSet, cleaning up cancel tokens.
 pub(super) async fn handle_job_result(
     result: Option<Result<Option<RunId>, tokio::task::JoinError>>,
-    cancel_tokens: &Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    cancel_tokens: &SharedRunCancellationMap,
 ) {
     match result {
         Some(Ok(Some(run_id))) => {
@@ -727,7 +727,6 @@ mod tests {
     };
     use sandbox::{SandboxFactory, SandboxId};
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
-    use tokio_util::sync::CancellationToken;
     use tracing::field::{Field, Visit};
     use tracing::{Event, Level, Subscriber};
     use tracing_subscriber::layer::{Context, Layer};
@@ -1006,7 +1005,7 @@ mod tests {
         status_path: std::path::PathBuf,
         status: Arc<StatusTracker>,
         idle_pool: SharedIdlePool,
-        tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        tokens: SharedRunCancellationMap,
         orphans: OrphanedActiveRuns,
         _dir: tempfile::TempDir,
     }
@@ -1021,7 +1020,7 @@ mod tests {
                     default_timeout: Duration::from_secs(300),
                     max_idle: 10,
                 })));
-            let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
+            let tokens: SharedRunCancellationMap =
                 Arc::new(tokio::sync::Mutex::new(HashMap::new()));
             let orphans = OrphanedActiveRuns::new();
 
@@ -1069,7 +1068,7 @@ mod tests {
             .tokens
             .lock()
             .await
-            .insert(run_id, CancellationToken::new());
+            .insert(run_id, RunCancellationHandle::new());
         cleanup_state.mark_status_removed();
 
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
@@ -1091,7 +1090,7 @@ mod tests {
             .tokens
             .lock()
             .await
-            .insert(run_id, CancellationToken::new());
+            .insert(run_id, RunCancellationHandle::new());
 
         fixture
             .cleanup(run_id, sandbox_id, RunCleanupState::new())
@@ -1115,7 +1114,7 @@ mod tests {
             .tokens
             .lock()
             .await
-            .insert(run_id, CancellationToken::new());
+            .insert(run_id, RunCancellationHandle::new());
         cleanup_state.mark_destroy_completed();
 
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
@@ -1140,7 +1139,7 @@ mod tests {
             .tokens
             .lock()
             .await
-            .insert(run_id, CancellationToken::new());
+            .insert(run_id, RunCancellationHandle::new());
         cleanup_state.mark_destroy_completed();
 
         fixture
@@ -1184,7 +1183,7 @@ mod tests {
             .tokens
             .lock()
             .await
-            .insert(run_id, CancellationToken::new());
+            .insert(run_id, RunCancellationHandle::new());
         cleanup_state.mark_idle_pool_owned();
 
         fixture.cleanup(run_id, sandbox_id, cleanup_state).await;

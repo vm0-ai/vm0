@@ -6,13 +6,7 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { createElement } from "react";
 import { Link } from "../../views/router/link.tsx";
-import {
-  zeroSchedulesMainContract,
-  zeroSchedulesByNameContract,
-  zeroSchedulesEnableContract,
-  zeroScheduleRunContract,
-  type ScheduleResponse,
-} from "@vm0/api-contracts/contracts/zero-schedules";
+import type { ScheduleResponse } from "@vm0/api-contracts/contracts/zero-schedules";
 import { zeroClient$ } from "../api-client.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
@@ -22,7 +16,15 @@ import {
   type ScheduleBody,
   type CronTimeOption,
 } from "./cron.ts";
-import { accept, ApiError } from "../../lib/accept.ts";
+import {
+  automationsModeEnabled$,
+  listSchedulesVia,
+  deployScheduleVia,
+  setScheduleEnabledVia,
+  deleteScheduleVia,
+  runScheduleNowVia,
+} from "./automations-mode.ts";
+import { ApiError } from "../../lib/accept.ts";
 import { markDetachedErrorHandled, throwIfAbort } from "../utils.ts";
 import { defaultAgentId$ } from "../agent.ts";
 
@@ -171,16 +173,15 @@ export const fetchZeroSchedules$ = command(
       return;
     }
 
-    const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await accept(
-      client.list({ fetchOptions: { signal } }),
-      [200],
-      { toast: false },
+    const schedules = await listSchedulesVia(
+      get(zeroClient$),
+      get(automationsModeEnabled$),
+      { signal },
     );
     signal.throwIfAborted();
 
     // Filter schedules for this agent's composeId
-    const agentSchedules = result.body.schedules.filter((s) => {
+    const agentSchedules = schedules.filter((s) => {
       return s.agentId === composeId;
     });
     set(internalSchedules$, agentSchedules);
@@ -271,8 +272,12 @@ export const saveZeroSchedule$ = command(
 
     const body = buildScheduleBody(defaultAgentId, params);
 
-    const client = get(zeroClient$)(zeroSchedulesMainContract);
-    await accept(client.deploy({ body }), [200, 201]);
+    await deployScheduleVia(
+      get(zeroClient$),
+      get(automationsModeEnabled$),
+      body,
+      params.editName !== undefined,
+    );
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -297,14 +302,14 @@ export const toggleZeroScheduleEnabled$ = command(
       throw new Error("No default agent configured");
     }
 
-    const client = get(zeroClient$)(zeroSchedulesEnableContract);
-    const action = params.enabled ? "enable" : "disable";
-    await accept(
-      client[action]({
-        params: { name: params.name },
-        body: { agentId: composeId },
-      }),
-      [200],
+    await setScheduleEnabledVia(
+      get(zeroClient$),
+      get(automationsModeEnabled$),
+      {
+        name: params.name,
+        agentId: composeId,
+        enabled: params.enabled,
+      },
     );
     signal.throwIfAborted();
 
@@ -332,14 +337,10 @@ export const deleteZeroSchedule$ = command(
       throw new Error("No default agent configured");
     }
 
-    const client = get(zeroClient$)(zeroSchedulesByNameContract);
-    await accept(
-      client.delete({
-        params: { name: scheduleName },
-        query: { agentId: composeId },
-      }),
-      [204],
-    );
+    await deleteScheduleVia(get(zeroClient$), get(automationsModeEnabled$), {
+      name: scheduleName,
+      agentId: composeId,
+    });
     signal.throwIfAborted();
 
     toast.success("Schedule deleted");
@@ -403,16 +404,15 @@ export const allOrgScheduleEntries$ = computed((get) => {
 
 export const fetchAllOrgSchedules$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await accept(
-      client.list({ fetchOptions: { signal } }),
-      [200],
-      { toast: false },
+    const schedules = await listSchedulesVia(
+      get(zeroClient$),
+      get(automationsModeEnabled$),
+      { signal },
     ).finally(() => {
       set(internalAllSchedulesLoaded$, true);
     });
     signal.throwIfAborted();
-    set(internalAllSchedules$, result.body.schedules);
+    set(internalAllSchedules$, schedules);
   },
 );
 
@@ -426,10 +426,14 @@ export const saveOrgSchedule$ = command(
     try {
       const body = buildScheduleBody(params.agentId, params);
 
-      const client = get(zeroClient$)(zeroSchedulesMainContract);
-      const result = await accept(client.deploy({ body }), [200, 201]);
+      const result = await deployScheduleVia(
+        get(zeroClient$),
+        get(automationsModeEnabled$),
+        body,
+        params.editName !== undefined,
+      );
       signal.throwIfAborted();
-      scheduleId = result.body.schedule.id;
+      scheduleId = result.id;
     } catch (error: unknown) {
       throwIfAbort(error);
       if (!(error instanceof ApiError)) {
@@ -456,14 +460,14 @@ export const toggleOrgScheduleEnabled$ = command(
     params: { name: string; enabled: boolean; agentId: string },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroSchedulesEnableContract);
-    const action = params.enabled ? "enable" : "disable";
-    await accept(
-      client[action]({
-        params: { name: params.name },
-        body: { agentId: params.agentId },
-      }),
-      [200],
+    await setScheduleEnabledVia(
+      get(zeroClient$),
+      get(automationsModeEnabled$),
+      {
+        name: params.name,
+        agentId: params.agentId,
+        enabled: params.enabled,
+      },
     );
     signal.throwIfAborted();
 
@@ -477,14 +481,10 @@ export const deleteOrgSchedule$ = command(
     params: { name: string; agentId: string },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroSchedulesByNameContract);
-    await accept(
-      client.delete({
-        params: { name: params.name },
-        query: { agentId: params.agentId },
-      }),
-      [204],
-    );
+    await deleteScheduleVia(get(zeroClient$), get(automationsModeEnabled$), {
+      name: params.name,
+      agentId: params.agentId,
+    });
     signal.throwIfAborted();
 
     toast.success("Schedule deleted");
@@ -502,14 +502,14 @@ export const runScheduleNow$ = command(
     signal.addEventListener("abort", () => {
       return toast.dismiss(toastId);
     });
-    const client = get(zeroClient$)(zeroScheduleRunContract);
-    let data: { runId: string };
+    let runId: string;
     try {
-      const result = await accept(client.run({ body: { scheduleId } }), [201], {
-        toast: false,
-      });
+      runId = await runScheduleNowVia(
+        get(zeroClient$),
+        get(automationsModeEnabled$),
+        scheduleId,
+      );
       signal.throwIfAborted();
-      data = result.body;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Run failed";
       toast.error(message, { id: toastId });
@@ -526,7 +526,7 @@ export const runScheduleNow$ = command(
           Link,
           {
             pathname: "/activities/:activityRunId" as const,
-            options: { pathParams: { activityRunId: data.runId } },
+            options: { pathParams: { activityRunId: runId } },
             className: "underline",
           },
           "View activity",
@@ -535,6 +535,6 @@ export const runScheduleNow$ = command(
       { id: toastId },
     );
 
-    return data.runId;
+    return runId;
   },
 );

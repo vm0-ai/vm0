@@ -1,5 +1,64 @@
 # Changelog
 
+## [0.425.0](https://github.com/vm0-ai/vm0/compare/app-v0.424.0...app-v0.425.0) (2026-06-08)
+
+
+### Features
+
+* consolidate usage into Credit balance with per-source records ([#16192](https://github.com/vm0-ai/vm0/issues/16192)) ([b6c0795](https://github.com/vm0-ai/vm0/commit/b6c07954d332b99ca7b207fe8a9e608c64d98c7a))
+
+
+### Bug Fixes
+
+* move chat session switching to server ([#16702](https://github.com/vm0-ai/vm0/issues/16702)) ([0eac1be](https://github.com/vm0-ai/vm0/commit/0eac1be1b6e9368c417f5ba384e8c79d2de8123a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.0
+    * @vm0/core bumped to 8.317.1
+
+## [0.424.0](https://github.com/vm0-ai/vm0/compare/app-v0.423.0...app-v0.424.0) (2026-06-08)
+
+
+### Features
+
+* add netdata connector ([#16693](https://github.com/vm0-ai/vm0/issues/16693)) ([f8e41ce](https://github.com/vm0-ai/vm0/commit/f8e41ce30e03a823c82227efbc3e85fd787f8a0b))
+* add onboarding redeem code flow ([#16614](https://github.com/vm0-ai/vm0/issues/16614)) ([b09c0e1](https://github.com/vm0-ai/vm0/commit/b09c0e10a3ff53ebb694a8fc23a6e24ee0370eb0))
+* collapse scheduled chat runs into cards ([#16579](https://github.com/vm0-ai/vm0/issues/16579)) ([068db4e](https://github.com/vm0-ai/vm0/commit/068db4efd32eb1e7651be7096bbd519079a106a8))
+* **platform:** render Automations surface behind feature switch ([#16676](https://github.com/vm0-ai/vm0/issues/16676)) ([f1a7328](https://github.com/vm0-ai/vm0/commit/f1a7328af8fa700c9f9c49a16b0ebd2a3fa774ae))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.70.0
+    * @vm0/connectors bumped to 1.52.0
+    * @vm0/core bumped to 8.317.0
+
+## [0.423.0](https://github.com/vm0-ai/vm0/compare/app-v0.422.0...app-v0.423.0) (2026-06-08)
+
+
+### Features
+
+* bump chat message font size from 14px to 15px ([#16043](https://github.com/vm0-ai/vm0/issues/16043)) ([2e37612](https://github.com/vm0-ai/vm0/commit/2e37612e0119dfb5ffc586e17628ca374d3daa19))
+
+
+### Refactoring
+
+* **zero:** drop secrets/vars/volumeVersions from schedule surface ([#16645](https://github.com/vm0-ai/vm0/issues/16645)) ([cc78c7b](https://github.com/vm0-ai/vm0/commit/cc78c7b4f6b0c309597cee236ed4e4b2b43d56f1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.69.0
+    * @vm0/core bumped to 8.316.0
+
 ## [0.422.0](https://github.com/vm0-ai/vm0/compare/app-v0.421.1...app-v0.422.0) (2026-06-08)
 
 

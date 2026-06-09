@@ -1,4 +1,6 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
+import { zeroBillingRedeemCodeContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   zeroNeedsOnboarding$,
   zeroOnboardingStep$,
@@ -20,7 +22,10 @@ import {
   updateSearchParams$,
 } from "../route.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import { setLoop } from "../utils.ts";
+import { setAblyLoop$ } from "../realtime.ts";
+import { setLoop, settle } from "../utils.ts";
+import { zeroClient$ } from "../api-client.ts";
+import { accept } from "../../lib/accept.ts";
 
 import {
   completeCheckoutSession$,
@@ -210,6 +215,10 @@ export const onboardingStepNext$ = command(
         break;
       }
       case "2": {
+        if (await set(redeemOnboardingSearchParamCode$, signal)) {
+          break;
+        }
+        signal.throwIfAborted();
         set(setZeroStep$, "4");
         break;
       }
@@ -414,6 +423,106 @@ const waitForCompletedOnboardingCheckout$ = command(
 
     signal.throwIfAborted();
     return resolvedAgentId;
+  },
+);
+
+const redeemedOnboardingReady$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    set(reloadOnboardingStatus$);
+    set(reloadBillingStatus$);
+    const status = await get(zeroOnboardingStatus$);
+    signal.throwIfAborted();
+    return !status.needsOnboarding && !!status.defaultAgentId;
+  },
+);
+
+const internalRedeemingOnboardingSearchParamCode$ = state(false);
+
+export const redeemingOnboardingSearchParamCode$ = computed((get) => {
+  return get(internalRedeemingOnboardingSearchParamCode$);
+});
+
+const ONBOARDING_REDEEM_CODE_SEARCH_PARAM = "redeemCode";
+
+function onboardingRedeemCodeFromSearchParams(
+  searchParams: URLSearchParams,
+): string | null {
+  const value = searchParams.get(ONBOARDING_REDEEM_CODE_SEARCH_PARAM)?.trim();
+  if (value) {
+    return value;
+  }
+  return null;
+}
+
+function withoutOnboardingRedeemCodeSearchParams(
+  searchParams: URLSearchParams,
+): URLSearchParams {
+  const cleaned = new URLSearchParams(searchParams);
+  cleaned.delete(ONBOARDING_REDEEM_CODE_SEARCH_PARAM);
+  return cleaned;
+}
+
+const redeemOnboardingCode$ = command(
+  async ({ get, set }, code: string, signal: AbortSignal): Promise<boolean> => {
+    const trimmedCode = code.trim();
+    if (!trimmedCode) {
+      return false;
+    }
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingRedeemCodeContract, {
+      apiBase: "www",
+    });
+    const accepted = await settle(
+      accept(
+        client.create({
+          body: { code: trimmedCode },
+          fetchOptions: { signal },
+        }),
+        [200],
+      ),
+      signal,
+    );
+    signal.throwIfAborted();
+    if (!accepted.ok) {
+      return false;
+    }
+
+    if (!(await set(redeemedOnboardingReady$, signal))) {
+      await set(
+        setAblyLoop$,
+        "billing:changed",
+        redeemedOnboardingReady$,
+        signal,
+      );
+    }
+
+    signal.throwIfAborted();
+    toast.success("Redeem code applied");
+    await set(onboardingContinueWeb$, signal);
+    return true;
+  },
+);
+
+export const redeemOnboardingSearchParamCode$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    const searchParams = get(searchParams$);
+    const code = onboardingRedeemCodeFromSearchParams(searchParams);
+    if (!code) {
+      return false;
+    }
+
+    set(
+      updateSearchParams$,
+      withoutOnboardingRedeemCodeSearchParams(searchParams),
+    );
+    set(internalRedeemingOnboardingSearchParamCode$, true);
+    const redeemed = await set(redeemOnboardingCode$, code, signal);
+    signal.throwIfAborted();
+    if (!redeemed) {
+      set(internalRedeemingOnboardingSearchParamCode$, false);
+    }
+    return redeemed;
   },
 );
 

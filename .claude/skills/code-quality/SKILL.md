@@ -94,8 +94,8 @@ review "authentication changes"     # Review by description
    - Suggest static import alternatives
    - Zero tolerance unless truly justified
 
-   **Database Mocking in Web Tests (Bad Smell #7)**
-   - Flag globalThis.services mocking in apps/web tests
+   **Database Mocking in Route Tests (Bad Smell #7)**
+   - Flag database or internal-service mocking in apps/api route tests
    - Verify real database connections are used
 
    **Test Mock Cleanup (Bad Smell #8)**

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import {
   zeroAgentsByIdContract,
@@ -171,6 +172,59 @@ function getUnknownEndpointsRow(): HTMLElement {
   return row;
 }
 
+function getPermissionGroupHeader(category: string): HTMLElement {
+  const label = screen.getByText((text) => {
+    return text.startsWith(`${category} (`);
+  });
+  const row = label.closest("button")?.parentElement;
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`Permission group header not found: ${category}`);
+  }
+  return row;
+}
+
+function getAllowOptionsButton(
+  row: HTMLElement,
+  permission: string,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", row).find((el) => {
+    return el.getAttribute("aria-label") === `${permission} allow options`;
+  });
+  if (!(button instanceof HTMLElement)) {
+    throw new Error(`Allow options button not found: ${permission}`);
+  }
+  return button;
+}
+
+function getResetChangesButton(
+  row: HTMLElement,
+  permission: string,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", row).find((el) => {
+    return el.getAttribute("aria-label") === `Reset ${permission} changes`;
+  });
+  if (!(button instanceof HTMLElement)) {
+    throw new Error(`Reset changes button not found: ${permission}`);
+  }
+  return button;
+}
+
+async function selectAllowDuration(
+  row: HTMLElement,
+  permission: string,
+  option: string,
+) {
+  click(getAllowOptionsButton(row, permission));
+  let item: HTMLElement | undefined;
+  await waitFor(() => {
+    item = queryAllByRoleFast("menuitem").find((el) => {
+      return el.textContent?.includes(option) ?? false;
+    });
+    expect(item).toBeDefined();
+  });
+  click(item!);
+}
+
 describe("permissions dialog - flat list connector (Notion)", () => {
   it("renders permission names and descriptions in flat list (FW-D-031)", async () => {
     mockAPIs({ connectorType: "notion" });
@@ -219,6 +273,278 @@ describe("permissions dialog - flat list connector (Notion)", () => {
       return b.textContent?.includes("Allow") ?? false;
     });
     expect(allowBtn).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("allows updating expiration on an existing explicit grant", async () => {
+    const grantBodies: unknown[] = [];
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [
+        createMockUserPermissionGrantResponse({
+          agentId: AGENT_ID,
+          connectorRef: "notion",
+          permission: "insert_comments",
+          action: "allow",
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        }),
+      ],
+    });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    await waitFor(() => {
+      expect(screen.getByText("< 1 hour")).toBeInTheDocument();
+    });
+    const row = getPermissionRow("insert_comments");
+    const allowButton = getPolicyButton(row, "Allow");
+    expect(allowButton).toHaveTextContent(/^Allow$/);
+    expect(screen.getByText("Apply")).toBeDisabled();
+
+    await selectAllowDuration(row, "insert_comments", "Allow for 7d");
+    expect(allowButton).toHaveTextContent(/^Allow$/);
+    expect(within(row).getByText("7d")).toBeInTheDocument();
+    expect(screen.getByText("Apply")).toBeEnabled();
+
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+      permission: "insert_comments",
+      action: "allow",
+      expiresIn: "7d",
+    });
+  });
+
+  it("treats default allow permissions as always and saves selected expiration", async () => {
+    const grantBodies: unknown[] = [];
+    mockAPIs({ connectorType: "notion" });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    expect(within(row).getAllByText("Always").length).toBeGreaterThan(0);
+    const allowButton = getPolicyButton(row, "Allow");
+    expect(allowButton).toHaveTextContent(/^Allow$/);
+    expect(screen.getByText("Apply")).toBeDisabled();
+
+    await selectAllowDuration(row, "insert_comments", "Allow always");
+    expect(allowButton).toHaveTextContent(/^Allow$/);
+    expect(screen.getByText("Apply")).toBeDisabled();
+
+    await selectAllowDuration(row, "insert_comments", "Allow for 24h");
+    expect(allowButton).toHaveTextContent(/^Allow$/);
+    expect(within(row).getByText("24h")).toBeInTheDocument();
+    expect(screen.getByText("Apply")).toBeEnabled();
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+      permission: "insert_comments",
+      action: "allow",
+      expiresIn: "24h",
+    });
+  });
+
+  it("does not keep deny expiration when an existing grant action changes", async () => {
+    const grantBodies: unknown[] = [];
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [
+        createMockUserPermissionGrantResponse({
+          agentId: AGENT_ID,
+          connectorRef: "notion",
+          permission: "insert_comments",
+          action: "deny",
+          expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        }),
+      ],
+    });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    expect(screen.queryByText("2 hours")).not.toBeInTheDocument();
+    expect(within(row).queryByText("Always")).not.toBeInTheDocument();
+    click(getPolicyButton(row, "Allow"));
+    expect(getPolicyButton(row, "Allow")).toHaveTextContent(/^Allow$/);
+    expect(within(row).getByText("Always")).toBeInTheDocument();
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+      permission: "insert_comments",
+      action: "allow",
+    });
+    expect(grantBodies[0]).not.toMatchObject({
+      expiresIn: expect.any(String),
+    });
+  });
+
+  it("saves selected expiration for a newly changed grant", async () => {
+    const grantBodies: unknown[] = [];
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
+    });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    await selectAllowDuration(row, "insert_comments", "Allow for 24h");
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+      permission: "insert_comments",
+      action: "allow",
+      expiresIn: "24h",
+    });
+  });
+
+  it("resets pending allow duration changes from allow options", async () => {
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
+    });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    click(getAllowOptionsButton(row, "insert_comments"));
+
+    let menuItems: HTMLElement[] = [];
+    await waitFor(() => {
+      menuItems = queryAllByRoleFast("menuitem");
+      expect(menuItems.length).toBeGreaterThan(0);
+    });
+    expect(
+      menuItems.some((item) => {
+        return item.textContent?.trim() === "Allow";
+      }),
+    ).toBeFalsy();
+    expect(
+      menuItems.some((item) => {
+        return item.textContent?.includes("Keep current") ?? false;
+      }),
+    ).toBeFalsy();
+
+    const allowFor24h = menuItems.find((item) => {
+      return item.textContent?.includes("Allow for 24h") ?? false;
+    });
+    if (!(allowFor24h instanceof HTMLElement)) {
+      throw new Error("Allow for 24h menu item not found");
+    }
+    click(allowFor24h);
+
+    expect(getPolicyButton(row, "Allow")).toHaveTextContent(/^Allow$/);
+    expect(within(row).getByText("24h")).toBeInTheDocument();
+    expect(screen.getByText("Apply")).toBeEnabled();
+
+    click(getResetChangesButton(row, "insert_comments"));
+
+    expect(getPolicyButton(row, "Deny")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(getPolicyButton(row, "Allow")).toHaveTextContent(/^Allow$/);
+    expect(screen.getByText("Apply")).toBeDisabled();
+  });
+
+  it("does not show expiration controls for deny changes", async () => {
+    const grantBodies: unknown[] = [];
+    mockAPIs({ connectorType: "notion" });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    const denyButton = getPolicyButton(row, "Deny");
+    click(denyButton);
+    expect(denyButton).toHaveAttribute("aria-pressed", "true");
+    expect(within(row).queryByText("Always")).not.toBeInTheDocument();
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+      permission: "insert_comments",
+      action: "deny",
+    });
+    expect(grantBodies[0]).not.toMatchObject({
+      expiresIn: expect.any(String),
+    });
   });
 });
 
@@ -305,6 +631,61 @@ describe("permissions dialog - grouped connector (Slack)", () => {
         screen.queryByText("channels:read"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("sets and resets expiration from grouped permission controls", async () => {
+    mockAPIs({ connectorType: "slack" });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Slack");
+
+    const readGroup = getPermissionGroupHeader("Read");
+    await selectAllowDuration(readGroup, "Read", "Allow for 24h");
+    expect(screen.getByText("Apply")).toBeEnabled();
+
+    click(screen.getByText(/Read \(\d+\)/i));
+    await waitFor(() => {
+      expect(screen.getByText("channels:read")).toBeInTheDocument();
+    });
+    const channelsReadRow = getPermissionRow("channels:read");
+    expect(getPolicyButton(channelsReadRow, "Allow")).toHaveTextContent(
+      /^Allow$/,
+    );
+    expect(within(channelsReadRow).getByText("24h")).toBeInTheDocument();
+
+    click(getResetChangesButton(readGroup, "Read"));
+    expect(getPolicyButton(channelsReadRow, "Allow")).toHaveTextContent(
+      "Allow",
+    );
+    expect(screen.getByText("Apply")).toBeDisabled();
+  });
+
+  it("shows always when a grouped deny change returns to allow", async () => {
+    mockAPIs({ connectorType: "slack" });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ExpiringPermissionGrants]: true },
+    });
+    await openPermissionsDrawer("Slack");
+
+    const readGroup = getPermissionGroupHeader("Read");
+    click(getPolicyButton(readGroup, "Deny"));
+    expect(within(readGroup).queryByText("Always")).not.toBeInTheDocument();
+
+    click(getPolicyButton(readGroup, "Allow"));
+    expect(within(readGroup).getByText("Always")).toBeInTheDocument();
+
+    click(screen.getByText(/Read \(\d+\)/i));
+    await waitFor(() => {
+      expect(screen.getByText("channels:read")).toBeInTheDocument();
+    });
+    expect(
+      within(getPermissionRow("channels:read")).getByText("Always"),
+    ).toBeInTheDocument();
   });
 
   it("saves changed grants and closes drawer when Apply is clicked (FW-D-036)", async () => {

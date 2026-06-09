@@ -81,8 +81,7 @@ const SECTION_META = {
   },
   usage: {
     title: "Credit balance",
-    description:
-      "Credit balance and per-member credit consumption this billing period.",
+    description: "Your usage by source, plus the team's credit balance.",
   },
   invoices: {
     title: "Invoices",
@@ -130,14 +129,25 @@ const MODELS_GROUP = {
   items: [{ id: "model", label: "Models", icon: IconCpu }],
 } as const satisfies SidebarGroup;
 
-const BILLING_GROUP = {
-  label: "Billing & pricing",
-  items: [
-    { id: "billing", label: "Billing", icon: IconCreditCard },
-    { id: "usage", label: "Credit balance", icon: IconCoins },
-    { id: "invoices", label: "Invoices", icon: IconFileInvoice },
-  ],
-} as const satisfies SidebarGroup;
+// Credit balance is visible to everyone (it holds personal usage); Billing and
+// Invoices stay admin-only. The group is assembled per-viewer in the component.
+const CREDIT_BALANCE_ITEM = {
+  id: "usage",
+  label: "Credit balance",
+  icon: IconCoins,
+} as const satisfies SidebarItem;
+
+const BILLING_ADMIN_ITEMS = [
+  { id: "billing", label: "Billing", icon: IconCreditCard },
+  { id: "invoices", label: "Invoices", icon: IconFileInvoice },
+] as const satisfies readonly SidebarItem[];
+
+function billingGroup(isAdmin: boolean): SidebarGroup {
+  return {
+    label: "Billing & pricing",
+    items: [CREDIT_BALANCE_ITEM, ...(isAdmin ? BILLING_ADMIN_ITEMS : [])],
+  };
+}
 
 const SECTION_COMPONENTS = {
   preference: () => {
@@ -202,7 +212,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     PERSONAL_GROUP,
     ...(isAdmin ? [WORKSPACE_GROUP] : []),
     MODELS_GROUP,
-    ...(isAdmin ? [BILLING_GROUP] : []),
+    billingGroup(isAdmin),
   ];
 
   // If the user lost admin while the dialog is open, fall back to a safe section

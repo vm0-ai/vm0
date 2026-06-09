@@ -70,6 +70,8 @@ import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
+const RECENT_CHAT_RUN_LIMIT = 10;
+const PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
 
 interface ContentBlock {
@@ -125,6 +127,24 @@ interface IncompleteRoundMessage {
   readonly attachFiles: readonly string[] | null;
 }
 
+interface PriorRunMessage {
+  readonly role: "user" | "assistant";
+  readonly content: string;
+  readonly attachFiles: readonly string[] | null;
+}
+
+interface PriorRun {
+  readonly runId: string;
+  readonly status: string;
+  readonly prompt: string;
+  readonly messages: readonly PriorRunMessage[];
+}
+
+interface LatestThreadSession {
+  readonly sessionId: string;
+  readonly selectedModel: string | null;
+}
+
 interface QueuedUserMessage {
   readonly id: string;
   readonly content: string | null;
@@ -141,6 +161,19 @@ interface AgentForAutoSend {
   readonly id: string;
   readonly orgId: string;
 }
+
+interface ResolvedAttachFile {
+  readonly id: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly size: number;
+  readonly url: string;
+}
+
+type ResolveAttachFiles = (
+  userId: string,
+  fileIds: readonly string[],
+) => Promise<readonly ResolvedAttachFile[]>;
 
 interface ChatThreadForRunRow {
   readonly chatThreadId: string;
@@ -697,9 +730,15 @@ function buildWebAttachFilesPrompt(
 
 function buildAppendSystemPrompt(
   incompleteContext: string,
+  priorContext: string,
   generationTemplatePrompt: string,
 ): string {
-  return [buildWebChatPrompt(), incompleteContext, generationTemplatePrompt]
+  return [
+    buildWebChatPrompt(),
+    priorContext,
+    incompleteContext,
+    generationTemplatePrompt,
+  ]
     .filter((part) => {
       return part.length > 0;
     })
@@ -719,11 +758,58 @@ function formatAttachFileIds(
     .join("\n");
 }
 
+function truncatePrior(value: string): string {
+  if (value.length <= PRIOR_MESSAGE_CHAR_CAP) {
+    return value;
+  }
+  return `${value.slice(0, PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
+}
+
 function truncateIncomplete(value: string): string {
   if (value.length <= INCOMPLETE_MESSAGE_CHAR_CAP) {
     return value;
   }
   return `${value.slice(0, INCOMPLETE_MESSAGE_CHAR_CAP)}...[truncated]`;
+}
+
+function formatPriorRunMessage(message: PriorRunMessage): string {
+  const roleLabel = message.role === "user" ? "User" : "Assistant";
+  const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
+  const attach = formatAttachFileIds(message.attachFiles);
+  return attach ? `${body}\n${attach}` : body;
+}
+
+function buildWebChatPriorRunsContext(runs: readonly PriorRun[]): string {
+  if (runs.length === 0) {
+    return "";
+  }
+  const sections = runs.map((run, index) => {
+    const renderedMessages = run.messages.map(formatPriorRunMessage);
+    const transcript =
+      renderedMessages.length > 0
+        ? renderedMessages.join("\n\n")
+        : [
+            `User: ${truncatePrior(run.prompt) || "[empty message]"}`,
+            "Assistant: [no visible assistant message recorded]",
+          ].join("\n\n");
+    return [
+      `## Recent Run ${index + 1}`,
+      `- RUN_ID: ${run.runId}`,
+      `- RUN_STATUS: ${run.status}`,
+      `- LOG_COMMAND: zero logs ${run.runId} --all`,
+      "",
+      transcript,
+    ].join("\n");
+  });
+  return [
+    "# Web Chat Run Context",
+    "The current CLI session is fresh, so recent visible chat rounds are provided here for continuity.",
+    "Use these messages as context for the user's current request.",
+    "- Treat the newest run below as the most recent prior round.",
+    "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
+    "",
+    ...sections,
+  ].join("\n");
 }
 
 function formatIncompleteMessage(message: IncompleteRoundMessage): string {
@@ -936,6 +1022,80 @@ async function nextQueuedUserMessage(
   return message ?? null;
 }
 
+async function getLatestRunsByThreadId(
+  db: Db,
+  threadId: string,
+  limit: number,
+): Promise<PriorRun[]> {
+  const runRows = await db
+    .select({
+      runId: zeroRuns.id,
+      status: agentRuns.status,
+      prompt: agentRuns.prompt,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(eq(zeroRuns.chatThreadId, threadId))
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(limit);
+
+  const orderedRuns = runRows.reverse();
+  const runIds = orderedRuns.map((run) => {
+    return run.runId;
+  });
+  if (runIds.length === 0) {
+    return [];
+  }
+
+  const messageRows = await db
+    .select({
+      runId: chatMessages.runId,
+      role: chatMessages.role,
+      content: chatMessages.content,
+      attachFiles: chatMessages.attachFiles,
+      createdAt: chatMessages.createdAt,
+      sequenceNumber: chatMessages.sequenceNumber,
+    })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, threadId),
+        isNotNull(chatMessages.content),
+        inArray(chatMessages.runId, runIds),
+        inArray(chatMessages.role, ["user", "assistant"]),
+        visibleChatMessageCondition(),
+      ),
+    )
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+
+  const messagesByRunId = new Map<string, PriorRunMessage[]>();
+  for (const row of messageRows) {
+    if (
+      row.runId === null ||
+      row.content === null ||
+      (row.role !== "user" && row.role !== "assistant")
+    ) {
+      continue;
+    }
+    const existing = messagesByRunId.get(row.runId) ?? [];
+    existing.push({
+      role: row.role,
+      content: row.content,
+      attachFiles: row.attachFiles,
+    });
+    messagesByRunId.set(row.runId, existing);
+  }
+
+  return orderedRuns.map((run) => {
+    return {
+      runId: run.runId,
+      status: run.status,
+      prompt: run.prompt,
+      messages: messagesByRunId.get(run.runId) ?? [],
+    };
+  });
+}
+
 async function resolveQueuedMessageModelPin(params: {
   readonly db: Db;
   readonly orgId: string;
@@ -1014,15 +1174,18 @@ function hasAgentSessionId(
   );
 }
 
-async function latestSessionIdForThreadFromDb(
+async function latestSessionForThreadFromDb(
   db: Db,
   threadId: string,
-): Promise<string | null> {
+): Promise<LatestThreadSession | null> {
   const rows = await db
-    .select({ result: agentRuns.result })
+    .select({
+      result: agentRuns.result,
+      selectedModel: zeroRuns.selectedModel,
+    })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-    // D7 session-continuity exclusion (see latestSessionIdForThread in
+    // D7 session-continuity exclusion (see latestSessionForThread in
     // zero-chat-messages.ts): only web-source runs join the chain, so an
     // autoSend follow-up resumes the latest web session, not a scheduled one.
     .where(
@@ -1036,10 +1199,25 @@ async function latestSessionIdForThreadFromDb(
 
   for (const row of rows) {
     if (hasAgentSessionId(row.result)) {
-      return row.result.agentSessionId;
+      return {
+        sessionId: row.result.agentSessionId,
+        selectedModel: row.selectedModel,
+      };
     }
   }
   return null;
+}
+
+function shouldStartNewSessionForQueuedMessage(params: {
+  readonly latestSession: LatestThreadSession | null;
+  readonly queuedMessage: QueuedUserMessage;
+}): boolean {
+  return (
+    params.latestSession?.selectedModel !== undefined &&
+    params.latestSession.selectedModel !== null &&
+    params.queuedMessage.selectedModel !== null &&
+    params.latestSession.selectedModel !== params.queuedMessage.selectedModel
+  );
 }
 
 async function loadAgentForAutoSend(
@@ -1054,13 +1232,9 @@ async function loadAgentForAutoSend(
   return agent ?? null;
 }
 
-function fallbackAttachFiles(ids: readonly string[] | null): readonly {
-  readonly id: string;
-  readonly filename: string;
-  readonly contentType: string;
-  readonly size: number;
-  readonly url: string;
-}[] {
+function fallbackAttachFiles(
+  ids: readonly string[] | null,
+): readonly ResolvedAttachFile[] {
   return (ids ?? []).map((id) => {
     return {
       id,
@@ -1072,19 +1246,168 @@ function fallbackAttachFiles(ids: readonly string[] | null): readonly {
   });
 }
 
+async function buildQueuedPriorContext(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly startNewSession: boolean;
+  readonly incompleteContext: string;
+}): Promise<string> {
+  if (!args.startNewSession || args.incompleteContext.length > 0) {
+    return "";
+  }
+  return buildWebChatPriorRunsContext(
+    await getLatestRunsByThreadId(
+      args.db,
+      args.threadId,
+      RECENT_CHAT_RUN_LIMIT,
+    ),
+  );
+}
+
+function resolveQueuedAttachFiles(args: {
+  readonly getResolvedAttachFiles: ResolveAttachFiles;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly userId: string;
+}): Promise<readonly ResolvedAttachFile[]> {
+  if (
+    args.queuedMessage.attachFileMetadata &&
+    args.queuedMessage.attachFileMetadata.length > 0
+  ) {
+    return Promise.resolve(
+      resolveAttachFileMetadataUrls(args.queuedMessage.attachFileMetadata),
+    );
+  }
+  if (
+    args.queuedMessage.attachFiles &&
+    args.queuedMessage.attachFiles.length > 0
+  ) {
+    return args.getResolvedAttachFiles(
+      args.userId,
+      args.queuedMessage.attachFiles,
+    );
+  }
+  return Promise.resolve([]);
+}
+
+async function buildQueuedFullPrompt(args: {
+  readonly getResolvedAttachFiles: ResolveAttachFiles;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly userId: string;
+}): Promise<string> {
+  const resolvedAttachFiles = await resolveQueuedAttachFiles(args);
+  const attachFiles =
+    resolvedAttachFiles.length > 0
+      ? resolvedAttachFiles
+      : fallbackAttachFiles(args.queuedMessage.attachFiles);
+  const content = args.queuedMessage.content ?? "";
+  if (attachFiles.length === 0) {
+    return content;
+  }
+  return `${content}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
+}
+
+async function buildCreateQueuedChatRunInput(args: {
+  readonly db: Db;
+  readonly getResolvedAttachFiles: ResolveAttachFiles;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly agent: AgentForAutoSend;
+  readonly queuedMessage: QueuedUserMessage;
+}): Promise<CreateQueuedChatRunInput> {
+  const resolvedQueuedMessage = await resolveQueuedMessageModelPin({
+    db: args.db,
+    orgId: args.agent.orgId,
+    queuedMessage: args.queuedMessage,
+  });
+
+  const [latestSession, incompleteRows] = await Promise.all([
+    latestSessionForThreadFromDb(args.db, args.threadId),
+    getIncompleteRoundsSinceLastSuccess(args.db, args.threadId),
+  ]);
+  const startNewSession = shouldStartNewSessionForQueuedMessage({
+    latestSession,
+    queuedMessage: resolvedQueuedMessage,
+  });
+  const incompleteContext = startNewSession
+    ? ""
+    : buildWebChatIncompleteContext(
+        groupIncompleteRoundsByRunId(incompleteRows),
+      );
+  const priorContext = await buildQueuedPriorContext({
+    db: args.db,
+    threadId: args.threadId,
+    startNewSession,
+    incompleteContext,
+  });
+  const generationTemplatePrompt = buildGenerationTemplatePrompt(
+    resolvedQueuedMessage.generationTemplate,
+  );
+
+  return {
+    orgId: args.agent.orgId,
+    userId: args.userId,
+    agentId: args.agent.id,
+    prompt: await buildQueuedFullPrompt({
+      getResolvedAttachFiles: args.getResolvedAttachFiles,
+      queuedMessage: resolvedQueuedMessage,
+      userId: args.userId,
+    }),
+    sessionId: startNewSession ? null : (latestSession?.sessionId ?? null),
+    appendSystemPrompt: buildAppendSystemPrompt(
+      incompleteContext,
+      priorContext,
+      generationTemplatePrompt.status === "resolved"
+        ? generationTemplatePrompt.prompt
+        : "",
+    ),
+    threadId: args.threadId,
+    queuedMessage: resolvedQueuedMessage,
+  };
+}
+
+async function claimQueuedUserMessage(args: {
+  readonly db: Db;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly runId: string;
+  readonly threadId: string;
+}): Promise<boolean> {
+  const claimed = await args.db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: args.threadId,
+      role: "user",
+      content: args.queuedMessage.content,
+      runId: args.runId,
+      attachFiles: args.queuedMessage.attachFiles
+        ? [...args.queuedMessage.attachFiles]
+        : null,
+      attachFileMetadata: args.queuedMessage.attachFileMetadata
+        ? [...args.queuedMessage.attachFileMetadata]
+        : null,
+      generationTemplate: args.queuedMessage.generationTemplate,
+      revokesMessageId: args.queuedMessage.id,
+    })
+    .onConflictDoNothing({ target: chatMessages.revokesMessageId })
+    .returning({ id: chatMessages.id });
+
+  if (claimed.length > 0) {
+    return true;
+  }
+
+  await args.db
+    .update(agentRuns)
+    .set({ status: "cancelled", error: "Queued message already claimed" })
+    .where(eq(agentRuns.id, args.runId));
+  log.warn("Auto-send created a run for an already-claimed message", {
+    threadId: args.threadId,
+    runId: args.runId,
+    userMessageId: args.queuedMessage.id,
+  });
+  return false;
+}
+
 async function autoSendQueuedMessageOnRunComplete(args: {
-  readonly getResolvedAttachFiles: (
-    userId: string,
-    fileIds: readonly string[],
-  ) => Promise<
-    readonly {
-      readonly id: string;
-      readonly filename: string;
-      readonly contentType: string;
-      readonly size: number;
-      readonly url: string;
-    }[]
-  >;
+  readonly getResolvedAttachFiles: ResolveAttachFiles;
   readonly createRun: (
     input: CreateQueuedChatRunInput,
   ) => Promise<{ readonly runId: string } | null>;
@@ -1111,92 +1434,27 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     });
     return;
   }
-  const resolvedQueuedMessage = await resolveQueuedMessageModelPin({
+
+  const runInput = await buildCreateQueuedChatRunInput({
     db: args.db,
-    orgId: agent.orgId,
+    getResolvedAttachFiles: args.getResolvedAttachFiles,
+    threadId,
+    userId,
+    agent,
     queuedMessage,
   });
-
-  const [sessionId, incompleteRows] = await Promise.all([
-    latestSessionIdForThreadFromDb(args.db, threadId),
-    getIncompleteRoundsSinceLastSuccess(args.db, threadId),
-  ]);
-  const incompleteContext = buildWebChatIncompleteContext(
-    groupIncompleteRoundsByRunId(incompleteRows),
-  );
-
-  const resolvedAttachFiles =
-    resolvedQueuedMessage.attachFileMetadata &&
-    resolvedQueuedMessage.attachFileMetadata.length > 0
-      ? resolveAttachFileMetadataUrls(resolvedQueuedMessage.attachFileMetadata)
-      : resolvedQueuedMessage.attachFiles &&
-          resolvedQueuedMessage.attachFiles.length > 0
-        ? await args.getResolvedAttachFiles(
-            userId,
-            resolvedQueuedMessage.attachFiles,
-          )
-        : [];
-  const attachFiles =
-    resolvedAttachFiles.length > 0
-      ? resolvedAttachFiles
-      : fallbackAttachFiles(resolvedQueuedMessage.attachFiles);
-  const content = resolvedQueuedMessage.content ?? "";
-  const fullPrompt =
-    attachFiles.length === 0
-      ? content
-      : `${content}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
-  const generationTemplatePrompt = buildGenerationTemplatePrompt(
-    resolvedQueuedMessage.generationTemplate,
-  );
-
-  const run = await args.createRun({
-    orgId: agent.orgId,
-    userId,
-    agentId: agent.id,
-    prompt: fullPrompt,
-    sessionId,
-    appendSystemPrompt: buildAppendSystemPrompt(
-      incompleteContext,
-      generationTemplatePrompt.status === "resolved"
-        ? generationTemplatePrompt.prompt
-        : "",
-    ),
-    threadId,
-    queuedMessage: resolvedQueuedMessage,
-  });
+  const run = await args.createRun(runInput);
   if (!run) {
     return;
   }
 
-  const claimed = await args.db
-    .insert(chatMessages)
-    .values({
-      chatThreadId: threadId,
-      role: "user",
-      content: queuedMessage.content,
-      runId: run.runId,
-      attachFiles: queuedMessage.attachFiles
-        ? [...queuedMessage.attachFiles]
-        : null,
-      attachFileMetadata: queuedMessage.attachFileMetadata
-        ? [...queuedMessage.attachFileMetadata]
-        : null,
-      generationTemplate: queuedMessage.generationTemplate,
-      revokesMessageId: queuedMessage.id,
-    })
-    .onConflictDoNothing({ target: chatMessages.revokesMessageId })
-    .returning({ id: chatMessages.id });
-
-  if (claimed.length === 0) {
-    await args.db
-      .update(agentRuns)
-      .set({ status: "cancelled", error: "Queued message already claimed" })
-      .where(eq(agentRuns.id, run.runId));
-    log.warn("Auto-send created a run for an already-claimed message", {
-      threadId,
-      runId: run.runId,
-      userMessageId: queuedMessage.id,
-    });
+  const claimed = await claimQueuedUserMessage({
+    db: args.db,
+    queuedMessage,
+    runId: run.runId,
+    threadId,
+  });
+  if (!claimed) {
     return;
   }
 

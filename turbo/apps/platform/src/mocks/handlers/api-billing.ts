@@ -7,6 +7,7 @@ import {
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
   zeroBillingRedeemContract,
+  zeroBillingRedeemCodeContract,
   type BillingStatusResponse,
   type BillingInvoice,
   type RedeemResponse,
@@ -54,15 +55,23 @@ function defaultRedeemResponse(): RedeemResponse {
 }
 
 let mockRedeemResponse: RedeemResponse = defaultRedeemResponse();
+let mockRedeemCodeHandler: ((code: string) => void) | null = null;
 
 export function setMockRedeemResponse(response: RedeemResponse): void {
   mockRedeemResponse = response;
+}
+
+export function setMockRedeemCodeHandler(
+  handler: (code: string) => void,
+): void {
+  mockRedeemCodeHandler = handler;
 }
 
 export function resetMockBilling(): void {
   mockBillingStatus = defaultBillingStatus();
   mockBillingInvoices = [];
   mockRedeemResponse = defaultRedeemResponse();
+  mockRedeemCodeHandler = null;
 }
 
 export const apiBillingHandlers = [
@@ -92,7 +101,7 @@ export const apiBillingHandlers = [
   mockApi(zeroBillingRestoreContract.create, ({ respond }) => {
     mockBillingStatus.cancelAtPeriodEnd = false;
     mockBillingStatus.scheduledChange = null;
-    return respond(200, { success: true });
+    return respond(200, { status: "restored" });
   }),
 
   mockApi(zeroBillingAutoRechargeContract.get, ({ respond }) => {
@@ -114,5 +123,10 @@ export const apiBillingHandlers = [
 
   mockApi(zeroBillingRedeemContract.create, ({ respond }) => {
     return respond(200, mockRedeemResponse);
+  }),
+
+  mockApi(zeroBillingRedeemCodeContract.create, ({ body, respond }) => {
+    mockRedeemCodeHandler?.(body.code);
+    return respond(200, { redeemed: true });
   }),
 ];

@@ -2,6 +2,8 @@ import {
   isFirewallConnectorType,
   type FirewallConnectorType,
 } from "@vm0/connectors/firewalls";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { parseUserPermissionGrantExpiresIn } from "../permission-allow/permission-grant-expiration.ts";
 
 type PermissionAction = "allow" | "deny";
 type PlatformHostTarget = "api" | "www" | "app" | "platform";
@@ -14,6 +16,7 @@ export interface PermissionActionDescriptor {
   method: string | null;
   path: string | null;
   reason: string | null;
+  expiresIn: UserPermissionGrantExpiresIn | null;
   search: string;
   originalUrl: string;
 }
@@ -76,8 +79,18 @@ function permissionActionBaseUrl(): string | null {
   return browserOrigin() ?? configuredApiUrl ?? null;
 }
 
+function stripUrlParserIgnoredPrefix(value: string): string {
+  let index = 0;
+  while (index < value.length && value.charCodeAt(index) <= 0x20) {
+    index += 1;
+  }
+  return value.slice(index);
+}
+
 function hasExplicitUrlOrigin(value: string): boolean {
-  return /^[a-z][a-z\d+\-.]*:\/\//i.test(value);
+  return (
+    URL.canParse(value) || stripUrlParserIgnoredPrefix(value).startsWith("//")
+  );
 }
 
 function isPlatformPermissionHostname(hostname: string): boolean {
@@ -91,9 +104,18 @@ function isPlatformPermissionHostname(hostname: string): boolean {
   return /(^|-)(platform|app|www|api)\./.test(hostname);
 }
 
+function isHttpUrl(url: URL): boolean {
+  return url.protocol === "http:" || url.protocol === "https:";
+}
+
 function isAllowedPermissionActionUrl(url: URL, sourceUrl: string): boolean {
+  const explicitOrigin = hasExplicitUrlOrigin(sourceUrl);
+  if (explicitOrigin && !isHttpUrl(url)) {
+    return false;
+  }
+
   return (
-    !hasExplicitUrlOrigin(sourceUrl) ||
+    !explicitOrigin ||
     permissionActionOrigins().has(url.origin) ||
     isPlatformPermissionHostname(url.hostname)
   );
@@ -138,6 +160,10 @@ export function parsePermissionActionUrl(
   const method = url.searchParams.get("method");
   const path = url.searchParams.get("path");
   const reason = url.searchParams.get("reason");
+  const expiresIn =
+    action === "allow"
+      ? parseUserPermissionGrantExpiresIn(url.searchParams.get("expiresIn"))
+      : null;
 
   if (
     !agentId ||
@@ -157,6 +183,7 @@ export function parsePermissionActionUrl(
     method,
     path,
     reason,
+    expiresIn,
     search: url.searchParams.toString(),
     originalUrl: value,
   };

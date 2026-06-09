@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
@@ -78,6 +78,16 @@ function validFiles() {
       immutable: true,
     },
   ];
+}
+
+function fileForContent(path: string, content: string) {
+  const bytes = Buffer.from(content, "utf8");
+  return {
+    path,
+    size: bytes.byteLength,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    contentType: "text/html; charset=utf-8",
+  };
 }
 
 function mockUploadedKeys(keys: readonly string[]) {
@@ -560,5 +570,157 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
       contentType: "text/html",
       url: completed.body.url,
     });
+  });
+});
+
+describe("POST /api/zero/host/presentation-html/redeploy", () => {
+  it("redeploys presentation HTML to the same hosted site URL", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const prepared = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "deck-site",
+          slugSuffix: "release-01",
+          artifactKind: "presentation-html",
+          spaFallback: true,
+          files: [
+            fileForContent("/index.html", "original"),
+            fileForContent("/assets/cat style.css", "body { color: black; }"),
+          ],
+        },
+      }),
+      [200],
+    );
+
+    mockUploadedKeys([
+      `sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}/index.html`,
+      `sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}/assets/cat style.css`,
+    ]);
+    await accept(
+      client.complete({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { deploymentId: prepared.body.deploymentId },
+        body: {},
+      }),
+      [200],
+    );
+
+    const copied: string[] = [];
+    const copiedSources: string[] = [];
+    const puts: string[] = [];
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const commandName =
+        typeof command === "object" && command !== null
+          ? command.constructor.name
+          : "";
+      const input =
+        typeof command === "object" && command !== null && "input" in command
+          ? (command.input as { CopySource?: string; Key?: string })
+          : {};
+      if (commandName === "HeadObjectCommand") {
+        return Promise.resolve({});
+      }
+      if (commandName === "CopyObjectCommand" && input.Key) {
+        copied.push(input.Key);
+      }
+      if (commandName === "CopyObjectCommand" && input.CopySource) {
+        copiedSources.push(input.CopySource);
+      }
+      if (commandName === "PutObjectCommand" && input.Key) {
+        puts.push(input.Key);
+      }
+      return Promise.resolve({});
+    });
+
+    const redeployed = await accept(
+      client.redeployPresentationHtml({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          url: prepared.body.url,
+          html: "<!doctype html><html><body>edited</body></html>",
+        },
+      }),
+      [200],
+    );
+
+    expect(redeployed.body.url).toBe(prepared.body.url);
+    expect(redeployed.body.deploymentId).not.toBe(prepared.body.deploymentId);
+
+    const prefix = `sites/${prepared.body.publicSlug}/deployments/${redeployed.body.deploymentId}`;
+    expect(copied).toStrictEqual([`${prefix}/assets/cat style.css`]);
+    expect(copiedSources).toStrictEqual([
+      `test-hosted-sites/sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}/assets/cat%20style.css`,
+    ]);
+    expect(puts).toStrictEqual([
+      `${prefix}/index.html`,
+      `${prefix}/manifest.json`,
+      `sites/${prepared.body.publicSlug}/active.json`,
+    ]);
+
+    const [site] = await store
+      .set(writeDb$)
+      .select()
+      .from(hostedSites)
+      .where(eq(hostedSites.id, prepared.body.siteId));
+    expect(site?.activeDeploymentId).toBe(redeployed.body.deploymentId);
+
+    const [deployment] = await store
+      .set(writeDb$)
+      .select()
+      .from(hostedDeployments)
+      .where(eq(hostedDeployments.id, redeployed.body.deploymentId));
+    expect(deployment?.spaFallback).toBeTruthy();
+    expect(deployment?.manifest.spaFallback).toBeTruthy();
+  });
+
+  it("rejects redeploying a non-presentation hosted site", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const prepared = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "plain-site",
+          slugSuffix: "release-01",
+          artifactKind: "hosted-site",
+          spaFallback: false,
+          files: [fileForContent("/index.html", "original")],
+        },
+      }),
+      [200],
+    );
+
+    mockUploadedKeys([
+      `sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}/index.html`,
+    ]);
+    await accept(
+      client.complete({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { deploymentId: prepared.body.deploymentId },
+        body: {},
+      }),
+      [200],
+    );
+
+    const redeployed = await accept(
+      client.redeployPresentationHtml({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          url: prepared.body.url,
+          html: "<!doctype html><html><body>edited</body></html>",
+        },
+      }),
+      [400],
+    );
+
+    expect(redeployed.body.error.message).toBe(
+      "Hosted site is not a presentation HTML artifact",
+    );
   });
 });

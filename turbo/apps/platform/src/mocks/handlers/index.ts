@@ -20,6 +20,10 @@ import {
   resetMockUsageInsight,
 } from "./api-usage-insight.ts";
 import {
+  apiUsageRecordHandlers,
+  resetMockUsageRecord,
+} from "./api-usage-record.ts";
+import {
   apiOrgModelProvidersHandlers,
   resetMockOrgModelProviders,
 } from "./api-org-model-providers.ts";
@@ -81,6 +85,7 @@ import {
 import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
 import { apiAttributionHandlers } from "./api-attribution.ts";
 import { apiSchedulesHandlers, resetMockSchedules } from "./api-schedules.ts";
+import { apiAutomationsHandlers } from "./api-automations.ts";
 import { apiInsightsHandlers } from "./api-insights.ts";
 import { apiQueuePositionHandlers } from "./api-queue-position.ts";
 import {
@@ -99,6 +104,7 @@ export const handlers = [
   ...apiOrgMembersHandlers,
   ...apiUsageHandlers,
   ...apiUsageInsightHandlers,
+  ...apiUsageRecordHandlers,
   ...apiOrgModelProvidersHandlers,
   ...apiOrgModelPoliciesHandlers,
   ...apiPersonalModelProvidersHandlers,
@@ -125,6 +131,7 @@ export const handlers = [
   ...apiRealtimeHandlers,
   ...apiUserPermissionGrantsHandlers,
   ...apiSchedulesHandlers,
+  ...apiAutomationsHandlers,
   ...apiInsightsHandlers,
   ...apiQueuePositionHandlers,
   ...apiVoiceIoHandlers,
@@ -153,6 +160,7 @@ export function resetAllMockHandlers(): void {
   resetMockOrgMembers();
   resetMockUsageMembers();
   resetMockUsageInsight();
+  resetMockUsageRecord();
   resetMockSchedules();
   resetMockTeam();
   resetMockSkills();

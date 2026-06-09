@@ -9,6 +9,12 @@ const connectorRefSchema = z.string().min(1).max(64);
 const permissionSchema = z.string().min(1).max(128);
 
 export const userPermissionGrantActionSchema = z.enum(["allow", "deny"]);
+export const userPermissionGrantExpiresInSchema = z.enum([
+  "1h",
+  "24h",
+  "7d",
+  "always",
+]);
 
 export const userPermissionGrantResponseSchema = z.object({
   agentId: agentIdSchema,
@@ -24,12 +30,25 @@ export const listUserPermissionGrantsQuerySchema = z.object({
   agentId: agentIdSchema,
 });
 
-export const upsertUserPermissionGrantRequestSchema = z.object({
+const upsertUserPermissionGrantBaseRequestSchema = z.object({
   agentId: agentIdSchema,
   connectorRef: connectorRefSchema,
   permission: permissionSchema,
-  action: userPermissionGrantActionSchema,
 });
+
+export const upsertUserPermissionGrantRequestSchema = z.discriminatedUnion(
+  "action",
+  [
+    upsertUserPermissionGrantBaseRequestSchema.extend({
+      action: z.literal("allow"),
+      expiresIn: userPermissionGrantExpiresInSchema.optional(),
+    }),
+    upsertUserPermissionGrantBaseRequestSchema.extend({
+      action: z.literal("deny"),
+      expiresIn: z.never().optional(),
+    }),
+  ],
+);
 
 export const zeroUserPermissionGrantsContract = c.router({
   list: {
@@ -64,6 +83,9 @@ export const zeroUserPermissionGrantsContract = c.router({
 
 export type UserPermissionGrantAction = z.infer<
   typeof userPermissionGrantActionSchema
+>;
+export type UserPermissionGrantExpiresIn = z.infer<
+  typeof userPermissionGrantExpiresInSchema
 >;
 export type UserPermissionGrantResponse = z.infer<
   typeof userPermissionGrantResponseSchema

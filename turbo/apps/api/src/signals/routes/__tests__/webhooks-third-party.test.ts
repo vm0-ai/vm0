@@ -2697,6 +2697,169 @@ describe("POST /api/webhooks/stripe", () => {
         creditsBefore + 100_000,
       );
     });
+
+    it("restores a scheduled cancellation after setup checkout collects a payment method", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        tier: "pro",
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: new Date("2026-09-08T08:22:49Z"),
+      });
+      context.mocks.stripe.customers.update.mockResolvedValue({
+        id: fixture.stripeCustomerId,
+      });
+      context.mocks.stripe.subscriptions.update.mockResolvedValue({
+        id: subId,
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "checkout.session.completed",
+        dataObject: {
+          id: stripeId("cs"),
+          mode: "setup",
+          subscription: null,
+          customer: fixture.stripeCustomerId,
+          setup_intent: {
+            id: stripeId("seti"),
+            payment_method: "pm_restore",
+          },
+          metadata: {
+            purpose: "billing_restore",
+            orgId: fixture.orgId,
+            subscriptionId: subId,
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.stripe.customers.update).toHaveBeenCalledWith(
+        fixture.stripeCustomerId,
+        { invoice_settings: { default_payment_method: "pm_restore" } },
+      );
+      expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+        subId,
+        { cancel_at_period_end: false },
+      );
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.cancelAtPeriodEnd).toBeFalsy();
+      expect(billing.pendingSubscriptionScheduleId).toBeNull();
+      expect(billing.pendingSubscriptionTargetTier).toBeNull();
+      expect(billing.pendingSubscriptionChangeAt).toBeNull();
+    });
+
+    it("schedules a downgrade after setup checkout collects a payment method", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const scheduleId = stripeId("sched");
+      const periodStart = 1_782_809_751;
+      const periodEnd = 1_785_401_751;
+      const discountId = stripeId("di");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        tier: "team",
+        currentPeriodEnd: new Date(periodEnd * 1000),
+      });
+      context.mocks.stripe.customers.update.mockResolvedValue({
+        id: fixture.stripeCustomerId,
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: subId,
+        customer: fixture.stripeCustomerId,
+        discounts: [discountId],
+        items: {
+          data: [
+            {
+              id: "si_item_team",
+              current_period_start: periodStart,
+              current_period_end: periodEnd,
+              quantity: 1,
+              price: {
+                id: STRIPE_PRICE_TEAM,
+                recurring: { interval: "month", interval_count: 1 },
+              },
+            },
+          ],
+        },
+      });
+      context.mocks.stripe.subscriptionSchedules.create.mockResolvedValue({
+        id: scheduleId,
+        current_phase: {
+          start_date: periodStart,
+          end_date: periodEnd,
+        },
+      });
+      context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+        id: scheduleId,
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "checkout.session.completed",
+        dataObject: {
+          id: stripeId("cs"),
+          mode: "setup",
+          subscription: null,
+          customer: fixture.stripeCustomerId,
+          setup_intent: {
+            id: stripeId("seti"),
+            payment_method: "pm_downgrade",
+          },
+          metadata: {
+            purpose: "billing_downgrade",
+            orgId: fixture.orgId,
+            subscriptionId: subId,
+            targetTier: "pro",
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.stripe.customers.update).toHaveBeenCalledWith(
+        fixture.stripeCustomerId,
+        { invoice_settings: { default_payment_method: "pm_downgrade" } },
+      );
+      expect(
+        context.mocks.stripe.subscriptionSchedules.update,
+      ).toHaveBeenCalledWith(scheduleId, {
+        end_behavior: "release",
+        proration_behavior: "none",
+        phases: [
+          {
+            start_date: periodStart,
+            end_date: periodEnd,
+            items: [{ price: STRIPE_PRICE_TEAM, quantity: 1 }],
+            proration_behavior: "none",
+            discounts: [{ discount: discountId }],
+          },
+          {
+            start_date: periodEnd,
+            duration: { interval: "month", interval_count: 1 },
+            items: [{ price: STRIPE_PRICE_PRO, quantity: 1 }],
+            proration_behavior: "none",
+            discounts: [{ discount: discountId }],
+          },
+        ],
+      });
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.pendingSubscriptionScheduleId).toBe(scheduleId);
+      expect(billing.pendingSubscriptionTargetTier).toBe("pro");
+      expect(billing.pendingSubscriptionChangeAt).toStrictEqual(
+        new Date(periodEnd * 1000),
+      );
+      expect(billing.currentPeriodEnd).toStrictEqual(
+        new Date(periodEnd * 1000),
+      );
+      expect(billing.cancelAtPeriodEnd).toBeFalsy();
+    });
   });
 
   describe("customer.subscription.created", () => {
@@ -3636,6 +3799,59 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.currentPeriodEnd).toStrictEqual(new Date(cancelAt * 1000));
     });
 
+    it("syncs final schedule end for schedule-managed cancellation", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const scheduleId = stripeId("sched");
+      const monthlyEnd = 1_800_000_000;
+      const finalEnd = 1_805_184_000;
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        tier: "pro",
+      });
+      context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
+        id: scheduleId,
+        end_behavior: "cancel",
+        current_phase: { start_date: 1_797_408_000, end_date: finalEnd },
+        phases: [
+          { start_date: 1_797_408_000, end_date: monthlyEnd },
+          { start_date: monthlyEnd, end_date: finalEnd },
+        ],
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.updated",
+        dataObject: {
+          id: subId,
+          status: "active",
+          schedule: scheduleId,
+          cancel_at_period_end: false,
+          items: {
+            data: [
+              {
+                price: { id: STRIPE_PRICE_PRO },
+                current_period_end: monthlyEnd,
+              },
+            ],
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.cancelAtPeriodEnd).toBeTruthy();
+      expect(billing.currentPeriodEnd).toStrictEqual(new Date(finalEnd * 1000));
+      expect(billing.pendingSubscriptionScheduleId).toBe(scheduleId);
+      expect(billing.pendingSubscriptionTargetTier).toBe("pro-suspend");
+      expect(billing.pendingSubscriptionChangeAt).toStrictEqual(
+        new Date(finalEnd * 1000),
+      );
+    });
+
     it("clears cancelAtPeriodEnd when subscription is uncancelled", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
@@ -4298,6 +4514,63 @@ describe("POST /api/webhooks/stripe", () => {
       expect(
         (await selectStripeBilling(fixture)).currentPeriodEnd,
       ).toStrictEqual(new Date("2026-04-26T07:24:12Z"));
+    });
+
+    it("keeps scheduled cancellation end when invoice period is shorter", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const invId = stripeId("inv");
+      const scheduleId = stripeId("sched");
+      const monthlyEnd = Math.floor(
+        new Date("2026-04-26T07:24:12Z").getTime() / 1000,
+      );
+      const finalEnd = Math.floor(
+        new Date("2026-06-26T07:24:12Z").getTime() / 1000,
+      );
+      await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: subId,
+        status: "active",
+        schedule: scheduleId,
+        cancel_at_period_end: false,
+        items: {
+          data: [
+            { price: { id: STRIPE_PRICE_PRO }, current_period_end: monthlyEnd },
+          ],
+        },
+      });
+      context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
+        id: scheduleId,
+        end_behavior: "cancel",
+        current_phase: { start_date: monthlyEnd - 86_400, end_date: finalEnd },
+        phases: [
+          { start_date: monthlyEnd - 86_400, end_date: monthlyEnd },
+          { start_date: monthlyEnd, end_date: finalEnd },
+        ],
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(monthlyEnd),
+          parent: { subscription_details: { subscription: subId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.currentPeriodEnd).toStrictEqual(new Date(finalEnd * 1000));
+      expect(billing.cancelAtPeriodEnd).toBeTruthy();
+      expect(billing.pendingSubscriptionScheduleId).toBe(scheduleId);
+      expect(billing.pendingSubscriptionChangeAt).toStrictEqual(
+        new Date(finalEnd * 1000),
+      );
     });
 
     it("auto-recharge writes a sentinel expires record with far-future expiresAt", async () => {

@@ -7,7 +7,6 @@ export interface OptimisticChatMessageEntry {
   threadId: string;
   message: PagedChatMessage;
   optimisticUserMessageAssociation?: OptimisticUserMessageAssociation;
-  forceNewSession?: boolean;
 }
 
 const internalOptimisticChatMessages$ = state<OptimisticChatMessageEntry[]>([]);

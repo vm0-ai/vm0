@@ -1,6 +1,8 @@
 """Proxy registry loading and VM lookup cache."""
 
 import json
+import os
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,6 +17,8 @@ VmContext = tuple[
     matching.CompiledNetworkPolicies,
 ]
 _RegistryCacheKey = tuple[str, int, int, int, int]
+MAX_REGISTRY_BYTES = 16 * 1024 * 1024
+_READ_CHUNK_BYTES = 1024 * 1024
 
 
 class _RegistryFormatError(ValueError):
@@ -64,7 +68,7 @@ class _RegistryCacheState:
     # means the current snapshot belongs to an older file state and this key
     # should short-circuit until the file changes again.
     failed_key: _RegistryCacheKey | None = None
-    # Stat failures do not provide a key, so use a one-shot guard. Open/read
+    # Open/stat failures do not provide a key, so use a one-shot guard. Read
     # errors have a key but are retried on every call; track their last warning
     # key only to avoid request-path log spam without poisoning the file state.
     stat_error_logged: bool = False
@@ -171,9 +175,43 @@ def _classify_registry_vms(raw_registry: dict) -> tuple[dict, dict[str, InvalidV
     return new_registry, invalid_vms
 
 
-def _read_registry_vms(path: Path) -> dict:
-    with path.open() as f:
-        raw_registry = json.load(f)
+def _open_registry_for_read(path: Path) -> tuple[int, os.stat_result]:
+    flags = os.O_RDONLY
+    for flag_name in ("O_CLOEXEC", "O_NOFOLLOW", "O_NONBLOCK"):
+        flags |= getattr(os, flag_name, 0)
+    fd = os.open(path, flags)
+    try:
+        st = os.fstat(fd)
+    except OSError:
+        os.close(fd)
+        raise
+    if not stat.S_ISREG(st.st_mode):
+        os.close(fd)
+        raise OSError(f"proxy registry is not a regular file: {path}")
+    return fd, st
+
+
+def _read_registry_bytes(fd: int, path: Path, st_size: int) -> bytes:
+    if st_size > MAX_REGISTRY_BYTES:
+        raise OSError(f"proxy registry {path} exceeds {MAX_REGISTRY_BYTES} bytes")
+
+    chunks: list[bytes] = []
+    total = 0
+    while total <= MAX_REGISTRY_BYTES:
+        to_read = min(_READ_CHUNK_BYTES, MAX_REGISTRY_BYTES + 1 - total)
+        chunk = os.read(fd, to_read)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+
+    if total > MAX_REGISTRY_BYTES:
+        raise OSError(f"proxy registry {path} exceeds {MAX_REGISTRY_BYTES} bytes")
+    return b"".join(chunks)
+
+
+def _read_registry_vms(fd: int, path: Path, st_size: int) -> dict:
+    raw_registry = json.loads(_read_registry_bytes(fd, path, st_size).decode("utf-8"))
     if not isinstance(raw_registry, dict):
         raise _RegistryFormatError("proxy registry must be an object")
     raw_vms = raw_registry.get("vms", {})
@@ -199,7 +237,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
 
     Cache state is scoped to one active registry path. A successful load
     publishes raw and compiled registry state together in a snapshot keyed by
-    file identity metadata. Registry file stat/read/parse failures publish a
+    file identity metadata. Registry file open/stat/read/parse failures publish a
     separate unavailable state instead of returning a stale snapshot for
     enforcement. Malformed registry document input is recorded separately as a
     failed key so repeated reads of the same bad bytes do not reparse or
@@ -211,7 +249,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
     state = _state_for_path(path_key)
 
     try:
-        st = path.stat()
+        fd, st = _open_registry_for_read(path)
     except OSError as e:
         message = str(e)
         if not state.stat_error_logged:
@@ -219,34 +257,37 @@ def load_registry_state(registry_path: str) -> RegistryState:
             ctx.log.warn(f"Failed to stat proxy registry: {message}")
         return _mark_unavailable(state, reason="stat_failed", message=message)
 
-    key = (path_key, st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
-    if key == state.snapshot.loaded_key:
-        state.unavailable = None
-        state.stat_error_logged = False
-        state.read_error_key = None
-        return state.snapshot
-    if key == state.failed_key:
-        return state.unavailable or _mark_unavailable(
-            state,
-            reason="parse_failed",
-            message="proxy registry is unavailable",
-        )
-
     try:
-        raw_registry = _read_registry_vms(path)
-    except OSError as e:
-        message = str(e)
-        state.failed_key = None
-        if key != state.read_error_key:
-            state.read_error_key = key
-            ctx.log.warn(f"Failed to read proxy registry: {message}")
-        return _mark_unavailable(state, reason="read_failed", message=message)
-    except (json.JSONDecodeError, UnicodeDecodeError, _RegistryFormatError) as e:
-        message = str(e)
-        state.failed_key = key
-        state.read_error_key = None
-        ctx.log.warn(f"Failed to parse proxy registry: {message}")
-        return _mark_unavailable(state, reason="parse_failed", message=message)
+        key = (path_key, st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
+        if key == state.snapshot.loaded_key:
+            state.unavailable = None
+            state.stat_error_logged = False
+            state.read_error_key = None
+            return state.snapshot
+        if key == state.failed_key:
+            return state.unavailable or _mark_unavailable(
+                state,
+                reason="parse_failed",
+                message="proxy registry is unavailable",
+            )
+
+        try:
+            raw_registry = _read_registry_vms(fd, path, st.st_size)
+        except OSError as e:
+            message = str(e)
+            state.failed_key = None
+            if key != state.read_error_key:
+                state.read_error_key = key
+                ctx.log.warn(f"Failed to read proxy registry: {message}")
+            return _mark_unavailable(state, reason="read_failed", message=message)
+        except (json.JSONDecodeError, UnicodeDecodeError, _RegistryFormatError) as e:
+            message = str(e)
+            state.failed_key = key
+            state.read_error_key = None
+            ctx.log.warn(f"Failed to parse proxy registry: {message}")
+            return _mark_unavailable(state, reason="parse_failed", message=message)
+    finally:
+        os.close(fd)
 
     new_registry, invalid_vms = _classify_registry_vms(raw_registry)
     if invalid_vms:

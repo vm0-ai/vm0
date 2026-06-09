@@ -1679,14 +1679,12 @@ impl SessionWorkspaceCache {
         &self,
         metadata_path: &Path,
     ) -> RunnerResult<WorkspaceCacheMetadata> {
-        let metadata = fs::symlink_metadata(metadata_path).await?;
-        if !metadata.is_file() {
-            return Err(RunnerError::Internal(format!(
-                "workspace image cache metadata is not a file: {}",
-                metadata_path.display()
-            )));
-        }
-        let bytes = fs::read(metadata_path).await?;
+        let bytes = crate::state_file::read_to_bytes_required(
+            metadata_path,
+            crate::state_file::WORKSPACE_METADATA_MAX_BYTES,
+            crate::state_file::OwnerCheck::None,
+        )
+        .await?;
         serde_json::from_slice(&bytes)
             .map_err(|e| RunnerError::Internal(format!("parse {}: {e}", metadata_path.display())))
     }
@@ -2879,6 +2877,18 @@ mod tests {
         format!("2026-05-01T00:{:02}:{:02}.000Z", index / 60, index % 60)
     }
 
+    fn make_fifo(path: &Path) {
+        let c_path = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
+        // SAFETY: `c_path` is a valid nul-terminated path for `mkfifo`.
+        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(
+            result,
+            0,
+            "mkfifo failed: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+
     async fn write_current_cache_entry(
         cache: &SessionWorkspaceCache,
         paths: &RunnerPaths,
@@ -3666,6 +3676,55 @@ mod tests {
         let outside = dir.path().join("outside-metadata.json");
         fs::write(&outside, b"{\"unexpected\":true}").await.unwrap();
         std::os::unix::fs::symlink(&outside, paths.session_workspace_cache_metadata(&key)).unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert_eq!(entry.reason.as_deref(), Some("missing or invalid metadata"));
+    }
+
+    #[tokio::test]
+    async fn inspect_rejects_fifo_metadata_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        fs::write(paths.session_workspace_cache_current_image(&key), b"image")
+            .await
+            .unwrap();
+        make_fifo(&paths.session_workspace_cache_metadata(&key));
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert_eq!(entry.reason.as_deref(), Some("missing or invalid metadata"));
+    }
+
+    #[tokio::test]
+    async fn inspect_rejects_oversized_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        fs::write(paths.session_workspace_cache_current_image(&key), b"image")
+            .await
+            .unwrap();
+        fs::write(
+            paths.session_workspace_cache_metadata(&key),
+            vec![b' '; crate::state_file::WORKSPACE_METADATA_MAX_BYTES as usize + 1],
+        )
+        .await
+        .unwrap();
 
         let inspection = cache.inspect().await.unwrap();
 

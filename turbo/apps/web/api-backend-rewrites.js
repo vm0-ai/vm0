@@ -53,6 +53,13 @@ const ZERO_SCHEDULES_DISABLE_PATH_RE =
   /^\/api\/zero\/schedules\/[^/]+\/disable$/;
 const ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE = "/api/zero/schedules/:name/enable";
 const ZERO_SCHEDULES_ENABLE_PATH_RE = /^\/api\/zero\/schedules\/[^/]+\/enable$/;
+const AUTOMATIONS_RUN_REWRITE_SOURCE = "/api/automations/run";
+const AUTOMATIONS_BY_NAME_REWRITE_SOURCE = "/api/automations/:name";
+const AUTOMATIONS_BY_NAME_PATH_RE = /^\/api\/automations\/[^/]+$/;
+const AUTOMATIONS_DISABLE_REWRITE_SOURCE = "/api/automations/:name/disable";
+const AUTOMATIONS_DISABLE_PATH_RE = /^\/api\/automations\/[^/]+\/disable$/;
+const AUTOMATIONS_ENABLE_REWRITE_SOURCE = "/api/automations/:name/enable";
+const AUTOMATIONS_ENABLE_PATH_RE = /^\/api\/automations\/[^/]+\/enable$/;
 const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
 const ZERO_SKILLS_BY_NAME_PATH_RE = /^\/api\/zero\/skills\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
@@ -354,6 +361,7 @@ const ZERO_BILLING_CREDIT_CHECKOUT_REWRITE_SOURCE =
 const ZERO_BILLING_DOWNGRADE_REWRITE_SOURCE = "/api/zero/billing/downgrade";
 const ZERO_BILLING_INVOICES_REWRITE_SOURCE = "/api/zero/billing/invoices";
 const ZERO_BILLING_PORTAL_REWRITE_SOURCE = "/api/zero/billing/portal";
+const ZERO_BILLING_REDEEM_CODE_REWRITE_SOURCE = "/api/zero/billing/redeem-code";
 const ZERO_BILLING_REDEEM_REWRITE_SOURCE = "/api/zero/billing/redeem/:campaign";
 const ZERO_BILLING_REDEEM_PATH_RE = /^\/api\/zero\/billing\/redeem\/[^/]+$/;
 const ZERO_BILLING_RESTORE_REWRITE_SOURCE = "/api/zero/billing/restore";
@@ -704,6 +712,7 @@ export const API_BACKEND_REWRITES = [
   [ZERO_BILLING_DOWNGRADE_REWRITE_SOURCE, "/api/zero/billing/downgrade"],
   [ZERO_BILLING_INVOICES_REWRITE_SOURCE, "/api/zero/billing/invoices"],
   [ZERO_BILLING_PORTAL_REWRITE_SOURCE, "/api/zero/billing/portal"],
+  [ZERO_BILLING_REDEEM_CODE_REWRITE_SOURCE, "/api/zero/billing/redeem-code"],
   [
     ZERO_BILLING_REDEEM_REWRITE_SOURCE,
     "/api/zero/billing/redeem/:campaign",
@@ -759,6 +768,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/host/deployments/:deploymentId/complete",
   ],
   ["/api/zero/host/deployments/prepare", "/api/zero/host/deployments/prepare"],
+  [
+    "/api/zero/host/presentation-html/redeploy",
+    "/api/zero/host/presentation-html/redeploy",
+  ],
   [ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE, "/api/zero/me/model-providers"],
   [
     ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
@@ -977,6 +990,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/onboarding/status", "/api/zero/onboarding/status"],
   ["/api/zero/usage/insight", "/api/zero/usage/insight"],
   ["/api/zero/usage/members", "/api/zero/usage/members"],
+  ["/api/zero/usage/record", "/api/zero/usage/record"],
   ["/api/zero/usage/runs", "/api/zero/usage/runs"],
   ["/api/zero/video-io/generate", "/api/zero/video-io/generate"],
   ["/api/zero/host/deployments/prepare", "/api/zero/host/deployments/prepare"],
@@ -1103,6 +1117,23 @@ export const API_BACKEND_REWRITES = [
     ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE,
     "/api/zero/schedules/:name/enable",
     ZERO_SCHEDULES_ENABLE_PATH_RE,
+  ],
+  ["/api/automations", "/api/automations"],
+  [AUTOMATIONS_RUN_REWRITE_SOURCE, "/api/automations/run"],
+  [
+    AUTOMATIONS_DISABLE_REWRITE_SOURCE,
+    "/api/automations/:name/disable",
+    AUTOMATIONS_DISABLE_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_ENABLE_REWRITE_SOURCE,
+    "/api/automations/:name/enable",
+    AUTOMATIONS_ENABLE_PATH_RE,
+  ],
+  [
+    AUTOMATIONS_BY_NAME_REWRITE_SOURCE,
+    "/api/automations/:name",
+    AUTOMATIONS_BY_NAME_PATH_RE,
   ],
   ["/api/zero/memory", "/api/zero/memory"],
   ["/api/zero/memory/activity", "/api/zero/memory/activity"],

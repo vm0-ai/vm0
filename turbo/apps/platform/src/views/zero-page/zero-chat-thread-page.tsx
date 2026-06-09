@@ -55,6 +55,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@vm0/ui/components/ui/dialog";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
   ChatThreadArtifactFile,
@@ -62,7 +69,10 @@ import type {
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type {
+  UserPermissionGrantExpiresIn,
+  UserPermissionGrantResponse,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { IN_VITEST } from "../../env.ts";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
@@ -107,7 +117,15 @@ import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
+import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
+  permissionGrantExpiresInByScope$,
+  permissionGrantExpiryText,
+  requestedUserPermissionGrantExpirationAlreadyApplies,
+  setPermissionGrantExpiresIn$,
+} from "../../signals/permission-allow/permission-grant-expiration.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -2108,6 +2126,88 @@ function useGithubPrTrackingOpen(
   );
 }
 
+interface ScheduledRunDisplay {
+  userMessage: EnrichedChatMessage & { role: "user" };
+  assistantMessages: (EnrichedChatMessage & { role: "assistant" })[];
+  previewText: string | null;
+  status: ScheduledRunStatus;
+  statusLabel: string;
+  title: string;
+  triggerTime: string;
+}
+
+type ChatThreadDisplayEntry =
+  | { type: "group"; group: GroupedChatMessageGroup }
+  | { type: "scheduled-run"; run: ScheduledRunDisplay };
+
+function appendDisplayGroup(
+  entries: ChatThreadDisplayEntry[],
+  message: EnrichedChatMessage,
+): void {
+  const last = entries[entries.length - 1];
+  if (last?.type === "group" && last.group.role === message.role) {
+    last.group.messages.push(message);
+    return;
+  }
+  entries.push({
+    type: "group",
+    group: {
+      beginMessageId: message.id,
+      role: message.role,
+      messages: [message],
+    },
+  });
+}
+
+function buildChatThreadDisplayEntries(
+  groups: readonly GroupedChatMessageGroup[],
+  scheduledRunCardEnabled: boolean,
+): ChatThreadDisplayEntry[] {
+  if (!scheduledRunCardEnabled) {
+    return groups.map((group) => {
+      return { type: "group", group };
+    });
+  }
+
+  const entries: ChatThreadDisplayEntry[] = [];
+  const messages = groups.flatMap((group) => {
+    return group.messages;
+  });
+
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index]!;
+    if (isScheduleUserMessage(message)) {
+      const assistantMessages: (EnrichedChatMessage & {
+        role: "assistant";
+      })[] = [];
+      let nextIndex = index + 1;
+      while (nextIndex < messages.length) {
+        const nextMessage = messages[nextIndex]!;
+        if (
+          message.runId !== undefined &&
+          nextMessage.role === "assistant" &&
+          nextMessage.runId === message.runId
+        ) {
+          assistantMessages.push(nextMessage);
+          nextIndex++;
+          continue;
+        }
+        break;
+      }
+      entries.push({
+        type: "scheduled-run",
+        run: createScheduledRunDisplay(message, assistantMessages),
+      });
+      index = nextIndex - 1;
+      continue;
+    }
+
+    appendDisplayGroup(entries, message);
+  }
+
+  return entries;
+}
+
 function ChatThreadMessagesMain({
   thread,
   groups,
@@ -2134,6 +2234,15 @@ function ChatThreadMessagesMain({
     groups.length === 0 &&
     !messagesLoading &&
     !skeletonVisible;
+  const features = useLastResolved(featureSwitch$);
+  const scheduledRunCardEnabled =
+    features?.[FeatureSwitchKey.ChatScheduledRunCard] ?? true;
+  const displayEntries = buildChatThreadDisplayEntries(
+    activeGroups,
+    scheduledRunCardEnabled,
+  );
+  const suppressThinkingIndicator =
+    displayEntries[displayEntries.length - 1]?.type === "scheduled-run";
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
@@ -2176,16 +2285,27 @@ function ChatThreadMessagesMain({
             </p>
           </div>
         )}
-        {activeGroups.map((group) => {
+        {displayEntries.map((entry) => {
+          if (entry.type === "scheduled-run") {
+            return (
+              <ScheduledRunCard
+                key={entry.run.userMessage.id}
+                run={entry.run}
+                thread={thread}
+              />
+            );
+          }
           return (
             <PagedGroupRow
-              key={group.beginMessageId}
-              group={group}
+              key={entry.group.beginMessageId}
+              group={entry.group}
               thread={thread}
             />
           );
         })}
-        <ThinkingIndicator thread={thread} groups={activeGroups} />
+        {!suppressThinkingIndicator && (
+          <ThinkingIndicator thread={thread} groups={activeGroups} />
+        )}
       </div>
     </main>
   );
@@ -2530,7 +2650,7 @@ function RecommendedFollowupList({
             <span className="shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground">
               <RecommendedFollowupIcon followup={followup} />
             </span>
-            <span className="min-w-0 flex-1 break-words text-xs font-medium leading-5 text-muted-foreground group-hover:text-foreground">
+            <span className="min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 text-muted-foreground group-hover:text-foreground">
               {followup.prompt}
             </span>
             <IconArrowUpRight
@@ -3000,7 +3120,7 @@ function ThinkingLabel({
 
   if (isQueued) {
     return (
-      <p className="zero-shimmer-text text-xs truncate">
+      <p className="zero-shimmer-text text-[0.8125rem] truncate">
         Waiting in{" "}
         <button
           type="button"
@@ -3015,7 +3135,11 @@ function ThinkingLabel({
     );
   }
 
-  return <p className="zero-shimmer-text text-xs truncate">{rotatingLabel}</p>;
+  return (
+    <p className="zero-shimmer-text text-[0.8125rem] truncate">
+      {rotatingLabel}
+    </p>
+  );
 }
 
 function InlineThinkingRow({
@@ -3085,7 +3209,7 @@ function WaitingForAssistantResponse({
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
-        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
+        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-relaxed min-w-0 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0">
             <span className="zero-blocks shrink-0" style={blockStyle}>
               <span />
@@ -3249,6 +3373,7 @@ function BodyContentBlocks({
               }
               mediaPreview
               mathEnabled
+              style={{ fontSize: "inherit" }}
             />
           );
         }
@@ -3336,10 +3461,10 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
           <ConnectorIcon type={block.connectorType} size={22} />
         </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-foreground">
+          <div className="truncate text-[0.9375rem] font-medium text-foreground">
             {config.label}
           </div>
-          <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
+          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
             {config.helpText}
           </div>
         </div>
@@ -3350,7 +3475,7 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
         onClick={() => {
           detach(activate(pageSignal), Reason.DomCallback);
         }}
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {activating && <IconLoader2 size={15} className="animate-spin" />}
         {complete ? "Connected" : "Connect"}
@@ -3384,9 +3509,10 @@ type UpsertUserPermissionGrantFn = (
     connectorRef: string;
     permission: string;
     action: PermissionAction;
+    expiresIn?: UserPermissionGrantExpiresIn;
   },
   signal: AbortSignal,
-) => Promise<void>;
+) => Promise<UserPermissionGrantResponse>;
 
 function loadableData<T>(loadable: LoadableLike<T>): T | undefined {
   return loadable.state === "hasData" ? loadable.data : undefined;
@@ -3450,7 +3576,9 @@ function PermissionActionButton({
   const status = permissionActionStatusText(state, action);
   if (status) {
     return (
-      <span className={`shrink-0 text-sm font-medium ${status.className}`}>
+      <span
+        className={`shrink-0 text-[0.9375rem] font-medium ${status.className}`}
+      >
         {status.label}
       </span>
     );
@@ -3461,7 +3589,7 @@ function PermissionActionButton({
       type="button"
       disabled={permissionActionButtonDisabled(state)}
       onClick={onClick}
-      className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+      className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
     >
       {state.saving && <IconLoader2 size={15} className="animate-spin" />}
       {permissionActionButtonLabel(state)}
@@ -3491,11 +3619,23 @@ function isPermissionActionAlreadyApplied(params: {
   hasAgent: boolean;
   userGrantPolicy: FirewallPolicyValue | undefined;
   action: "allow" | "deny";
+  expirationAvailable: boolean;
+  requestedExpiresIn: UserPermissionGrantExpiresIn | null;
+  currentExpiresAt: string | null | undefined;
 }): boolean {
   if (!params.hasAgent) {
     return false;
   }
-  return params.userGrantPolicy === params.action;
+  if (params.userGrantPolicy !== params.action) {
+    return false;
+  }
+  if (!params.expirationAvailable || params.action !== "allow") {
+    return true;
+  }
+  return requestedUserPermissionGrantExpirationAlreadyApplies({
+    expiresIn: params.requestedExpiresIn,
+    currentExpiresAt: params.currentExpiresAt,
+  });
 }
 
 function findPermissionActionPermission(block: PermissionActionBlock) {
@@ -3517,6 +3657,23 @@ function permissionActionUserGrantPolicy(
     block.connectorRef,
     block.permission,
   );
+}
+
+function permissionActionUserGrant(
+  loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
+  block: PermissionActionBlock,
+): PermissionActionUserGrant | undefined {
+  const grants = loadableData(loadable);
+  if (!grants) {
+    return undefined;
+  }
+  return grants.find((grant) => {
+    return (
+      grant.connectorRef === block.connectorRef &&
+      grant.permission === block.permission &&
+      grant.action === block.action
+    );
+  });
 }
 
 function createPermissionActionButtonState(params: {
@@ -3565,6 +3722,8 @@ function createPermissionActionCardViewState(params: {
   agentLoadableState: string;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
+  expirationAvailable: boolean;
+  currentGrantExpiresAt: string | null | undefined;
 }) {
   const focusedPermission = findPermissionActionPermission(params.block);
   const actionLabel = permissionActionVerb(params.block.action);
@@ -3587,6 +3746,9 @@ function createPermissionActionCardViewState(params: {
     hasAgent: params.hasAgent,
     userGrantPolicy,
     action: params.block.action,
+    expirationAvailable: params.expirationAvailable,
+    requestedExpiresIn: params.block.expiresIn,
+    currentExpiresAt: params.currentGrantExpiresAt,
   });
   const saveDone = params.grantLoadableState === "hasData";
   const buttonState = createPermissionActionCardButtonState({
@@ -3635,6 +3797,8 @@ function createPermissionActionHandler(params: {
   focusedPermission: { name: string } | undefined;
   state: PermissionActionButtonState;
   finished: boolean;
+  expirationAvailable: boolean;
+  expiresIn: UserPermissionGrantExpiresIn;
   upsertGrant: UpsertUserPermissionGrantFn;
 }): () => void {
   return () => {
@@ -3653,6 +3817,9 @@ function createPermissionActionHandler(params: {
               connectorRef: params.block.connectorRef,
               permission: permissionName,
               action: params.block.action,
+              ...(params.expirationAvailable
+                ? { expiresIn: params.expiresIn }
+                : {}),
             },
             params.pageSignal,
           ),
@@ -3669,6 +3836,10 @@ function PermissionActionCardContent({
   actionLabel,
   permissionName,
   buttonState,
+  expirationAvailable,
+  expiresIn,
+  onExpiresInChange,
+  expiresAt,
   onClick,
 }: {
   block: PermissionActionBlock;
@@ -3676,8 +3847,17 @@ function PermissionActionCardContent({
   actionLabel: string;
   permissionName: string;
   buttonState: PermissionActionButtonState;
+  expirationAvailable: boolean;
+  expiresIn: UserPermissionGrantExpiresIn;
+  onExpiresInChange: (value: UserPermissionGrantExpiresIn) => void;
+  expiresAt: string | null;
   onClick: () => void;
 }) {
+  const expiryText = expirationAvailable
+    ? permissionGrantExpiryText(expiresAt)
+    : null;
+  const showDurationSelect =
+    expirationAvailable && !buttonState.alreadyApplied && !buttonState.saveDone;
   return (
     <div
       data-testid="permission-action-card"
@@ -3688,19 +3868,34 @@ function PermissionActionCardContent({
           <ConnectorIcon type={block.connectorRef} size={22} />
         </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-foreground">
+          <div className="truncate text-[0.9375rem] font-medium text-foreground">
             {connectorLabel} permissions
           </div>
-          <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
+          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
             {actionLabel} {permissionName}
           </div>
+          {expiryText && (
+            <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              {expiryText}
+            </div>
+          )}
         </div>
       </div>
-      <PermissionActionButton
-        state={buttonState}
-        action={block.action}
-        onClick={onClick}
-      />
+      <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+        {showDurationSelect && (
+          <PermissionGrantDurationSelect
+            value={expiresIn}
+            onValueChange={onExpiresInChange}
+            disabled={buttonState.loading || buttonState.saving}
+            ariaLabel="Permission duration"
+          />
+        )}
+        <PermissionActionButton
+          state={buttonState}
+          action={block.action}
+          onClick={onClick}
+        />
+      </div>
     </div>
   );
 }
@@ -3708,6 +3903,17 @@ function PermissionActionCardContent({
 function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const pageSignal = useGet(pageSignal$);
   const config = CONNECTOR_TYPES[block.connectorRef];
+  const features = useLastResolved(featureSwitch$);
+  const expirationEnabled =
+    features?.[FeatureSwitchKey.ExpiringPermissionGrants] ?? false;
+  const expirationAvailable = expirationEnabled && block.action === "allow";
+  const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
+  const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
+  const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
+  const expiresIn =
+    expiresInByScope[durationScope] ??
+    block.expiresIn ??
+    DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
   const agentLoadable = useLastLoadable(agentById(block.agentId));
   const [grantLoadable, upsertGrant] = useLoadableSet(
     upsertUserPermissionGrant$,
@@ -3719,13 +3925,20 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   );
   const hasAgent =
     agentLoadable.state === "hasData" && Boolean(agentLoadable.data);
+  const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
   const actionState = createPermissionActionCardViewState({
     block,
     hasAgent,
     agentLoadableState: agentLoadable.state,
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
+    expirationAvailable,
+    currentGrantExpiresAt: existingGrant?.expiresAt,
   });
+  const grantExpiresAt =
+    grantLoadable.state === "hasData"
+      ? grantLoadable.data.expiresAt
+      : (existingGrant?.expiresAt ?? null);
 
   return (
     <PermissionActionCardContent
@@ -3734,6 +3947,12 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? block.permission}
       buttonState={actionState.buttonState}
+      expirationAvailable={expirationAvailable}
+      expiresIn={expiresIn}
+      onExpiresInChange={(value) => {
+        setExpiresInForScope(durationScope, value);
+      }}
+      expiresAt={grantExpiresAt}
       onClick={createPermissionActionHandler({
         block,
         pageSignal,
@@ -3741,6 +3960,8 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
         focusedPermission: actionState.focusedPermission,
         state: actionState.buttonState,
         finished: actionState.finished,
+        expirationAvailable,
+        expiresIn,
         upsertGrant,
       })}
     />
@@ -3802,10 +4023,10 @@ function customCreditsFromForm(form: HTMLFormElement | null): number | null {
 function CreditsAvailableMessage() {
   return (
     <div className="max-w-md">
-      <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+      <p className="text-[0.9375rem] font-medium text-emerald-700 dark:text-emerald-300">
         Credits available
       </p>
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="mt-1 text-sm text-muted-foreground">
         Your credits have been added. You can continue chatting with Zero.
       </p>
     </div>
@@ -3877,7 +4098,7 @@ function PaidCreditCheckoutActions({
                 handleCreditClick({ credits }, event);
               }}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
             >
               {formatCreditsUsd(credits)}
             </button>
@@ -3886,12 +4107,12 @@ function PaidCreditCheckoutActions({
         <details>
           <summary
             role="button"
-            className="inline-flex h-8 cursor-pointer list-none items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent marker:hidden disabled:opacity-60 [&::-webkit-details-marker]:hidden"
+            className="inline-flex h-8 cursor-pointer list-none items-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent marker:hidden disabled:opacity-60 [&::-webkit-details-marker]:hidden"
           >
             Custom
           </summary>
           <form className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">$</span>
+            <span className="text-sm text-muted-foreground">$</span>
             <input
               type="text"
               inputMode="numeric"
@@ -3904,13 +4125,13 @@ function PaidCreditCheckoutActions({
                 );
               }}
               aria-label="Custom dollar amount"
-              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none transition-colors focus:border-ring"
+              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition-colors focus:border-ring"
             />
             <button
               type="button"
               onClick={handleCustomCreditClick}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
             >
               {redirecting ? "Redirecting..." : "Buy"}
             </button>
@@ -3985,14 +4206,14 @@ function InsufficientCreditsCard() {
 
   return (
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
-      <p className="text-sm font-medium text-foreground">{headline}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+      <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
       {!canManageBilling ? null : shouldStartProCheckout ? (
         <button
           type="button"
           onClick={handleUpgradeClick}
           disabled={redirecting}
-          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
         >
           {redirecting ? "Redirecting..." : "Upgrade to Pro"}
         </button>
@@ -4018,7 +4239,7 @@ function AssistantErrorContent({ error }: { error: string }) {
   if (error.trim().toLowerCase() === "run cancelled") {
     return (
       <div
-        className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[13px] text-muted-foreground"
+        className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[0.9375rem] text-muted-foreground"
         style={{
           border: "0.7px solid hsl(var(--border))",
           borderRadius: "12px",
@@ -4118,7 +4339,7 @@ function AssistantErrorContent({ error }: { error: string }) {
   return (
     <div className="flex items-start gap-2 text-destructive">
       <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
-      <Markdown source={error} />
+      <Markdown source={error} style={{ fontSize: "inherit" }} />
     </div>
   );
 }
@@ -4172,6 +4393,289 @@ function PagedUserGroup({
         return <PagedUserMessage key={msg.id} message={msg} thread={thread} />;
       })}
     </>
+  );
+}
+
+type ScheduledRunStatus = "running" | "succeeded" | "failed";
+
+function isScheduleUserMessage(
+  message: EnrichedChatMessage,
+): message is EnrichedChatMessage & { role: "user" } {
+  return (
+    message.role === "user" &&
+    (message.scheduleSnapshot !== undefined ||
+      message.scheduleTitle !== undefined ||
+      message.scheduleId !== undefined)
+  );
+}
+
+function scheduleMessageLabel(
+  message: EnrichedChatMessage & { role: "user" },
+): string {
+  return (
+    message.scheduleSnapshot?.description?.trim() ||
+    message.scheduleSnapshot?.title?.trim() ||
+    message.scheduleTitle?.trim() ||
+    "Scheduled run"
+  );
+}
+
+function scheduledRunTitle(
+  userMessage: EnrichedChatMessage & { role: "user" },
+): string {
+  return scheduleMessageLabel(userMessage);
+}
+
+function formatScheduledRunTriggerTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function resolveScheduledRunStatus(
+  assistantMessages: readonly (EnrichedChatMessage & { role: "assistant" })[],
+): ScheduledRunStatus {
+  const failed = assistantMessages.some((message) => {
+    return (
+      message.runLifecycleEvent === "failed" ||
+      message.runLifecycleEvent === "cancelled" ||
+      message.status === "failed" ||
+      message.status === "cancelled" ||
+      message.error !== undefined
+    );
+  });
+  if (failed) {
+    return "failed";
+  }
+
+  const succeeded = assistantMessages.some((message) => {
+    return (
+      message.runLifecycleEvent === "completed" ||
+      message.status === "completed"
+    );
+  });
+  return succeeded ? "succeeded" : "running";
+}
+
+function scheduledRunStatusLabel(status: ScheduledRunStatus): string {
+  switch (status) {
+    case "failed": {
+      return "Failed";
+    }
+    case "running": {
+      return "Running";
+    }
+    case "succeeded": {
+      return "Succeeded";
+    }
+  }
+}
+
+function scheduledRunStatusClassName(status: ScheduledRunStatus): string {
+  switch (status) {
+    case "failed": {
+      return "bg-destructive/10 text-destructive";
+    }
+    case "running": {
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+    }
+    case "succeeded": {
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+    }
+  }
+}
+
+function ScheduledRunStatusIcon({ status }: { status: ScheduledRunStatus }) {
+  if (status === "running") {
+    return <IconLoader2 size={16} stroke={1.8} className="animate-spin" />;
+  }
+  if (status === "failed") {
+    return <IconAlertCircle size={16} stroke={1.8} />;
+  }
+  return <IconCheck size={16} stroke={1.8} />;
+}
+
+function latestRenderableAssistantMessage(
+  messages: readonly (EnrichedChatMessage & { role: "assistant" })[],
+): (EnrichedChatMessage & { role: "assistant" }) | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]!;
+    if (hasRenderableAssistantContent(message)) {
+      return message;
+    }
+  }
+  return undefined;
+}
+
+function lastThreeAssistantLines(
+  messages: readonly (EnrichedChatMessage & { role: "assistant" })[],
+): string | null {
+  const message = latestRenderableAssistantMessage(messages);
+  const content = (message?.error ?? message?.content ?? "").trim();
+  if (!content) {
+    return null;
+  }
+
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => {
+      return line.trim();
+    })
+    .filter((line) => {
+      return line.length > 0;
+    });
+  const preview = lines.slice(-3).join("\n").trim();
+  return preview.length > 0 ? preview : null;
+}
+
+function createScheduledRunDisplay(
+  userMessage: EnrichedChatMessage & { role: "user" },
+  assistantMessages: (EnrichedChatMessage & { role: "assistant" })[],
+): ScheduledRunDisplay {
+  const title = scheduledRunTitle(userMessage);
+  const status = resolveScheduledRunStatus(assistantMessages);
+  return {
+    userMessage,
+    assistantMessages,
+    previewText: lastThreeAssistantLines(assistantMessages),
+    status,
+    statusLabel: scheduledRunStatusLabel(status),
+    title,
+    triggerTime: formatScheduledRunTriggerTime(userMessage.createdAt),
+  };
+}
+
+function hasRenderableAssistantContent(message: EnrichedChatMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    (message.error !== undefined ||
+      message.blocks.length > 0 ||
+      (message.content?.trim().length ?? 0) > 0)
+  );
+}
+
+function ScheduledRunTranscript({
+  run,
+  thread,
+}: {
+  run: ScheduledRunDisplay;
+  thread: ChatThreadSignals;
+}) {
+  const messages = run.assistantMessages.filter(hasRenderableAssistantContent);
+
+  if (messages.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
+        No assistant messages yet
+      </div>
+    );
+  }
+
+  return (
+    <div className="@container">
+      <PagedAssistantGroup
+        group={{
+          beginMessageId: messages[0]!.id,
+          role: "assistant",
+          messages,
+        }}
+        thread={thread}
+      />
+    </div>
+  );
+}
+
+function ScheduledRunCard({
+  run,
+  thread,
+}: {
+  run: ScheduledRunDisplay;
+  thread: ChatThreadSignals;
+}) {
+  const { previewText, status, statusLabel, title, triggerTime } = run;
+
+  return (
+    <div
+      data-role="scheduled-run"
+      className="flex justify-center animate-in fade-in slide-in-from-bottom-2 duration-300"
+    >
+      <Dialog>
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            className="group flex w-full max-w-[640px] items-start gap-3 rounded-xl border border-border bg-background px-4 py-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Open scheduled run details for ${title}`}
+          >
+            <span
+              className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                scheduledRunStatusClassName(status),
+              )}
+            >
+              <ScheduledRunStatusIcon status={status} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-foreground">
+                Triggered at {triggerTime}
+              </span>
+              <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <IconClock size={13} stroke={1.8} className="shrink-0" />
+                <span className="min-w-0 truncate">{title}</span>
+              </span>
+              {previewText && (
+                <span className="mt-2 block whitespace-pre-line text-xs leading-5 text-muted-foreground line-clamp-3">
+                  {previewText}
+                </span>
+              )}
+            </span>
+            <span
+              className={cn(
+                "shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium",
+                scheduledRunStatusClassName(status),
+              )}
+            >
+              {statusLabel}
+            </span>
+            <IconChevronRight
+              size={16}
+              stroke={1.8}
+              className="shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground"
+            />
+          </button>
+        </DialogTrigger>
+        <DialogContent
+          className="max-w-3xl gap-0 overflow-hidden p-0"
+          aria-describedby={undefined}
+        >
+          <DialogHeader className="border-b border-border px-5 py-4">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <DialogTitle className="text-base">Scheduled run</DialogTitle>
+                <p className="mt-1 truncate text-sm text-muted-foreground">
+                  Triggered at {triggerTime} · {title}
+                </p>
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium",
+                  scheduledRunStatusClassName(status),
+                )}
+              >
+                {statusLabel}
+              </span>
+            </div>
+          </DialogHeader>
+          <div className="max-h-[68vh] overflow-y-auto bg-muted/20 px-5 py-4">
+            <ScheduledRunTranscript run={run} thread={thread} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 
@@ -4540,10 +5044,10 @@ function UserMessageGenerationTemplate({
 
 function ScheduleUserMessage({
   scheduleId,
-  scheduleTitle,
+  scheduleLabel,
 }: {
   scheduleId: string | undefined;
-  scheduleTitle: string;
+  scheduleLabel: string;
 }) {
   const cardClassName =
     "zero-chat-bubble-user inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm text-muted-foreground transition-colors duration-150";
@@ -4551,7 +5055,7 @@ function ScheduleUserMessage({
     <>
       <IconClock size={15} className="shrink-0" />
       <span className="min-w-0 truncate font-medium text-foreground">
-        {scheduleTitle}
+        {scheduleLabel}
       </span>
     </>
   );
@@ -4559,13 +5063,13 @@ function ScheduleUserMessage({
     <div data-role="user" className="group">
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
-        <div className="flex flex-col items-end w-full">
+        <div className="flex w-full flex-col items-end">
           {scheduleId ? (
             <Link
               pathname="/schedules/:scheduleId"
               options={{ pathParams: { scheduleId } }}
               className={cn(cardClassName, "cursor-pointer hover:opacity-80")}
-              aria-label={`Open schedule ${scheduleTitle}`}
+              aria-label={`Open schedule ${scheduleLabel}`}
             >
               {body}
             </Link>
@@ -4630,13 +5134,11 @@ function PagedUserMessage({
     );
   };
 
-  // Schedule-posted user messages don't show the prompt — they render the
-  // schedule's title behind a clock icon and link to the schedule detail page.
-  if (message.scheduleTitle) {
+  if (isScheduleUserMessage(message)) {
     return (
       <ScheduleUserMessage
         scheduleId={message.scheduleId}
-        scheduleTitle={message.scheduleTitle}
+        scheduleLabel={scheduleMessageLabel(message)}
       />
     );
   }
@@ -4649,7 +5151,7 @@ function PagedUserMessage({
           <UserMessageGenerationTemplate
             generationTemplate={message.generationTemplate}
           />
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
                 <BodyContentBlocks
@@ -4721,7 +5223,7 @@ function PagedAssistantMessageItem({
 
   if (message.error) {
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         <AssistantErrorContent error={message.error} />
       </div>
     );
@@ -4730,7 +5232,7 @@ function PagedAssistantMessageItem({
   if (message.content) {
     const { blocks } = message;
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         {blocks.length > 0 ? (
           <BodyContentBlocks
             blocks={blocks}

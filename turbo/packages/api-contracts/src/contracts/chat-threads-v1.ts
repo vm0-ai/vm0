@@ -7,9 +7,9 @@ const c = initContract();
 /**
  * Public v1 chat-threads surface. Authenticated exclusively via vm0 personal
  * access tokens (`vm0_pat_…`) minted from `/settings/api-keys`. The caller
- * never addresses an agent id — every thread is created under the caller's
- * default agent, and responses omit agent-related fields so the public
- * contract stays narrow.
+ * never addresses an agent id — messages are sent into an existing thread's
+ * agent, and responses omit agent-related fields so the public contract stays
+ * narrow.
  */
 const v1ThreadSchema = z.object({
   id: z.string(),
@@ -70,26 +70,26 @@ export const chatThreadV1SendContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       prompt: z.string().min(1),
-      // When omitted, a new thread is created under the caller's default
-      // agent and this becomes its first message. When provided, the
-      // message is appended to the existing thread (ownership enforced).
-      threadId: z.string().uuid().optional(),
+      threadId: z.string().uuid(),
     }),
     responses: {
       201: z.object({
         threadId: z.string(),
         messageId: z.string(),
+        runId: z.string().nullable(),
         createdAt: z.string(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      402: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
+      422: apiErrorSchema,
       429: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary:
-      "Send a chat message — creates a new thread on the caller's default agent when threadId is omitted",
+    summary: "Send a chat message to an existing thread",
   },
 });
 

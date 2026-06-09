@@ -2,6 +2,7 @@ import {
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { userPermissionGrantExpiresAt } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { mockApi } from "../msw-contract.ts";
 
 let mockUserPermissionGrants: UserPermissionGrantResponse[] = [];
@@ -13,6 +14,28 @@ function grantKey(
   >,
 ): string {
   return `${grant.agentId}:${grant.connectorRef}:${grant.permission}`;
+}
+
+function isActiveGrant(grant: UserPermissionGrantResponse, checkedAt: Date) {
+  return grant.expiresAt === null || new Date(grant.expiresAt) > checkedAt;
+}
+
+function resolvedMockExpiresAt(
+  existing: UserPermissionGrantResponse | undefined,
+  action: UserPermissionGrantResponse["action"],
+  expiresIn: Parameters<typeof userPermissionGrantExpiresAt>[0],
+  now: Date,
+): string | null {
+  if (action !== "allow") {
+    return null;
+  }
+  if (expiresIn !== undefined) {
+    return userPermissionGrantExpiresAt(expiresIn, now.getTime());
+  }
+  if (existing?.action === "allow" && isActiveGrant(existing, now)) {
+    return existing.expiresAt;
+  }
+  return null;
 }
 
 export function createMockUserPermissionGrantResponse(
@@ -43,10 +66,13 @@ export function resetMockUserPermissionGrants(): void {
 
 export const apiUserPermissionGrantsHandlers = [
   mockApi(zeroUserPermissionGrantsContract.list, ({ query, respond }) => {
+    const checkedAt = new Date();
     return respond(
       200,
       mockUserPermissionGrants.filter((grant) => {
-        return grant.agentId === query.agentId;
+        return (
+          grant.agentId === query.agentId && isActiveGrant(grant, checkedAt)
+        );
       }),
     );
   }),
@@ -61,7 +87,12 @@ export const apiUserPermissionGrantsHandlers = [
       connectorRef: body.connectorRef,
       permission: body.permission,
       action: body.action,
-      expiresAt: null,
+      expiresAt: resolvedMockExpiresAt(
+        existing,
+        body.action,
+        body.expiresIn,
+        now,
+      ),
       createdAt: existing?.createdAt ?? now.toISOString(),
       updatedAt: now.toISOString(),
     };

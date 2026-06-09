@@ -1,4 +1,5 @@
 use std::io;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -16,6 +17,10 @@ use super::support::{
 };
 use crate::file as file_impl;
 use crate::operation_tracker::NormalOperationReadiness;
+
+fn mode(path: &Path) -> u32 {
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
 
 #[tokio::test]
 async fn copy_file_rejects_max_bytes_above_stream_budget() {
@@ -102,6 +107,7 @@ async fn copy_file_streams_to_temp_then_renames() {
         NormalOperationReadiness::Idle
     );
     assert_eq!(std::fs::read(&host_path).unwrap(), b"line 1\nline 2\n");
+    assert_eq!(mode(&host_path), 0o600);
     temp_dir.assert_no_vm0tmp_files();
 }
 

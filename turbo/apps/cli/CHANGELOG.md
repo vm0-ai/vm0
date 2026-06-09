@@ -1,5 +1,46 @@
 # Changelog
 
+## [9.183.1](https://github.com/vm0-ai/vm0/compare/cli-v9.183.0...cli-v9.183.1) (2026-06-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.71.0
+    * @vm0/core bumped to 8.317.1
+
+## [9.183.0](https://github.com/vm0-ai/vm0/compare/cli-v9.182.7...cli-v9.183.0) (2026-06-08)
+
+
+### Features
+
+* **cli:** add zero automation commands over the new Automations API ([#16675](https://github.com/vm0-ai/vm0/issues/16675)) ([6bd405a](https://github.com/vm0-ai/vm0/commit/6bd405afdf18e65d24587491940e4ce475a411b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.70.0
+    * @vm0/connectors bumped to 1.52.0
+    * @vm0/core bumped to 8.317.0
+
+## [9.182.7](https://github.com/vm0-ai/vm0/compare/cli-v9.182.6...cli-v9.182.7) (2026-06-08)
+
+
+### Refactoring
+
+* **zero:** drop secrets/vars/volumeVersions from schedule surface ([#16645](https://github.com/vm0-ai/vm0/issues/16645)) ([cc78c7b](https://github.com/vm0-ai/vm0/commit/cc78c7b4f6b0c309597cee236ed4e4b2b43d56f1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.69.0
+    * @vm0/core bumped to 8.316.0
+
 ## [9.182.6](https://github.com/vm0-ai/vm0/compare/cli-v9.182.5...cli-v9.182.6) (2026-06-08)
 
 
