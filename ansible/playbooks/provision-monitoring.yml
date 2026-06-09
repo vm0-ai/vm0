@@ -1,7 +1,8 @@
 # Provision Monitoring with Grafana Alloy
 #
 # Installs Grafana Alloy on bare metal hosts to collect system metrics
-# (via built-in prometheus.exporter.unix) and remote-write to Grafana Cloud.
+# (via built-in prometheus.exporter.unix), workspace image cache textfile
+# metrics, and remote-write to Grafana Cloud.
 #
 # Usage:
 #   ansible-playbook -i "host1,host2," playbooks/provision-monitoring.yml \
