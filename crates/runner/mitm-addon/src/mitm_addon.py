@@ -685,7 +685,7 @@ async def request(flow: http.HTTPFlow) -> None:
 
         # No firewall match — pass through directly
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
-    except Exception:
+    except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         _release_tracked_usage_flow(flow)
         raise

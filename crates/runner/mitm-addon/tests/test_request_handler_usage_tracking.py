@@ -23,7 +23,7 @@ class _ForwardProbe:
         self,
         *,
         response: _ForwardResponse | None = None,
-        error: Exception | None = None,
+        error: BaseException | None = None,
     ) -> None:
         if response is None and error is None:
             raise ValueError("forward probe requires a response or error")
@@ -36,7 +36,7 @@ class _ForwardProbe:
         self._response: _ForwardResponse = (
             response if response is not None else (500, b"", dict[str, str]())
         )
-        self._error: Exception | None = error
+        self._error: BaseException | None = error
 
     async def __call__(self, *_args: object) -> _ForwardResponse:
         self.calls += 1
@@ -492,6 +492,43 @@ async def test_unexpected_request_exception_releases_tracking(
     )
 
 
+async def test_request_cancellation_releases_tracking_during_auth_resolution(
+    tmp_path, usage_pending_path, real_flow, mitm_ctx
+):
+    """Cancelled auth resolution must not leak request-time usage tracking."""
+    reg_path = _write_billable_tracking_registry(tmp_path)
+    flow = _billable_tracking_flow(real_flow)
+
+    async def cancel_auth_after_tracking(*_args, **_kwargs):
+        usage.write_pending_snapshot(flush_request_id="during-auth-cancel")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="during-auth-cancel",
+        )
+        raise asyncio.CancelledError
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", cancel_auth_after_tracking),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await mitm_addon.request(flow)
+
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+    assert "_usage_flow_tracked" not in flow.metadata
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="request-1",
+    )
+
+
 async def test_non_billable_model_provider_is_not_tracked_before_responseheaders(
     tmp_path,
     usage_pending_path,
@@ -846,6 +883,98 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
     assert flow.response.status_code == 502
     assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
     assert "auth_url_rewrite" not in flow.metadata
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="request-1",
+    )
+
+
+async def test_billable_auth_url_rewrite_forward_cancellation_releases_tracking(
+    tmp_path, usage_pending_path, real_flow, mitm_ctx
+):
+    """Cancelled inline auth.base forwarding drains request-time tracking."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            run_id="run-rewrite-1",
+            sandbox_marker="tok-rewrite",
+            firewall_name="webhook",
+            api_entry={
+                "base": "https://placeholder.example.com",
+                "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
+                "permissions": [{"name": "send", "rules": ["POST /"]}],
+            },
+            network_policy={
+                "allow": ["send"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            billable_firewalls=["webhook"],
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        path="/",
+        method="POST",
+        request_body=b'{"ok":true}',
+    )
+    token_meta = {
+        "headers": {},
+        "base": "https://real.example.com/webhook",
+        "resolved_secrets": ["WEBHOOK_URL"],
+        "refreshed_connectors": [],
+        "refreshed_secrets": [],
+        "cache_hit": False,
+    }
+    probe = _ForwardProbe(error=asyncio.CancelledError())
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(
+            auth,
+            "get_firewall_headers",
+            AsyncMock(return_value=token_meta),
+        ),
+        patch.object(
+            auth,
+            "forward_request",
+            probe,
+        ),
+    ):
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await _wait_for_forward_start(probe, request_task)
+
+            assert probe.calls == 1
+            usage.write_pending_snapshot(flush_request_id="during-forward-cancel")
+            assert_pending(
+                usage_pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="during-forward-cancel",
+            )
+
+            probe.release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await _await_request_task(request_task)
+        finally:
+            if not request_task.done():
+                await _release_forward_probe(probe, request_task)
+
+    assert flow.response is None
+    assert "auth_url_rewrite" not in flow.metadata
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+    assert "_usage_flow_tracked" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
         usage_pending_path,
