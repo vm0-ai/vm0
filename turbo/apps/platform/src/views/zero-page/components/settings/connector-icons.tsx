@@ -212,6 +212,7 @@ const CONNECTOR_ICON_COLORFUL = {
   rentcast: true,
   reportei: true,
   salesforce: true,
+  scrapeninja: true,
   serpapi: true,
   servicenow: true,
   shopify: true,
