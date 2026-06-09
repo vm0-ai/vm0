@@ -568,7 +568,6 @@ type ActiveConnectorExternalCodeState = {
   readonly sessionToken: string;
   readonly authorizationUrl: string;
   readonly expiresAtMs: number;
-  readonly authorizationOpened: boolean;
   readonly code: string;
   readonly errorMessage: string | null;
 };
@@ -1499,7 +1498,6 @@ export const openConnectorExternalCodeAuthorizationPage$ = command(
 
     set(internalConnectorExternalCodeState$, {
       ...current,
-      authorizationOpened: true,
       errorMessage: null,
     });
     return true;
@@ -1573,7 +1571,6 @@ export const connectConnectorExternalCode$ = command(
           authorizationUrl: startResult.authorizationUrl,
           expiresAtMs:
             Date.now() + secondsToMilliseconds(startResult.expiresIn),
-          authorizationOpened: false,
           code: "",
           errorMessage: null,
         });
