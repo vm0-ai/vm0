@@ -1,4 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="connector logo">
-  <!-- Official brand asset source: https://framerusercontent.com/images/Zbos6KTLSsIOHcPx0ywm0Z06I.png -->
-  <image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAM1BMVEU00ot54rNb26HX9ugz0Yz///800os00otMaXE004tM2Jnq+/PB8tw91JCy7tOW6MN+4rXnAtd/AAAACnRSTlP9////ZP//1gBjsZuqjQAAAAlwSFlzAAALEwAACxMBAJqcGAAAAKRJREFUeNq1k+EKxSAIhS1nbbba3v9p74wuIzD9cbkHIsEPM+vAfmRIC0HedtiSqQOyDWQAG5jyVVYMPBPfIBAR80miVhcA0hCyDrxqS6Bg6TvrgJSuvY9LB6JELNFpAEl6RQuQM4oFNAl/quD2UJxbxGmUyqDwraWMGs8+avQeKyyAMvL34j9QvB4EW0xLYHw8E0h/Azg8qo4xVOO41nPN69n/Aw+8Fyv7FFtvAAAAAElFTkSuQmCC" x="0" y="0" width="256" height="256" preserveAspectRatio="xMidYMid meet"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="connector logo">
+  <!-- Official brand asset source: https://pipedream.com/ -->
+  <rect width="32" height="32" rx="3.333" fill="#34D28B"/>
+  <path fill="#fff" fill-rule="evenodd" d="M8.667 5.167h3.16l.678 1.305c1.214-1.084 2.879-1.805 5.134-1.805 4.049 0 6.361 2.86 6.361 8.823v2.81c-.35 3.92-2.56 6.33-6.239 6.33-1.947 0-3.484-.625-4.627-1.762v6.465H8.667V5.167Zm4.467 5.168v7.246c.665.958 1.72 1.437 3.166 1.437 2.449 0 3.867-1.374 3.867-4.064v-.978c0-3.37-1.214-5.074-3.622-5.074-1.545 0-2.675.483-3.411 1.433Z"/>
 </svg>
