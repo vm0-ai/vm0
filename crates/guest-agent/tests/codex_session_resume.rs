@@ -141,6 +141,37 @@ async fn send_event_extracts_codex_thread_id_and_writes_marker() {
 }
 
 #[tokio::test]
+async fn send_event_canonicalizes_codex_thread_id_before_writing_marker() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let masker = SecretMasker::from_raw("");
+    let event = json!({
+        "type": "thread.started",
+        "thread_id": "0193ABCDEF01723489ABCDEF01234567"
+    });
+    let expected = "0193abcd-ef01-7234-89ab-cdef01234567";
+
+    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    assert!(
+        result.is_ok(),
+        "send_event should succeed when no API token"
+    );
+
+    let stored_id =
+        std::fs::read_to_string(guest_agent::paths::session_id_file()).expect("session id written");
+    assert_eq!(stored_id, expected);
+
+    let marker = std::fs::read_to_string(guest_agent::paths::session_history_path_file())
+        .expect("history-path file written");
+    assert!(
+        marker.ends_with(&format!(":{expected}")),
+        "marker should use canonical thread id, got: {marker}"
+    );
+}
+
+#[tokio::test]
 async fn send_event_codex_ignores_non_thread_started_event() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
@@ -178,17 +209,20 @@ async fn send_event_codex_ignores_empty_thread_id() {
 async fn send_event_codex_ignores_malformed_thread_id() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
-    reset_session_files();
 
-    let masker = SecretMasker::from_raw("");
-    let event = json!({"type": "thread.started", "thread_id": "abc"});
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
-    assert!(result.is_ok());
+    for thread_id in ["abc", "0193-abcd-ef01-7234-89abcdef01234567"] {
+        reset_session_files();
 
-    assert!(
-        !Path::new(guest_agent::paths::session_id_file()).exists(),
-        "malformed thread_id must not be persisted"
-    );
+        let masker = SecretMasker::from_raw("");
+        let event = json!({"type": "thread.started", "thread_id": thread_id});
+        let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+        assert!(result.is_ok());
+
+        assert!(
+            !Path::new(guest_agent::paths::session_id_file()).exists(),
+            "malformed thread_id must not be persisted: {thread_id}"
+        );
+    }
 }
 
 #[tokio::test]

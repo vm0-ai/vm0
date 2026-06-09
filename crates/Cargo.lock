@@ -1290,6 +1290,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
+ "uuid",
  "vsock-guest",
  "vsock-host",
  "vsock-proto",

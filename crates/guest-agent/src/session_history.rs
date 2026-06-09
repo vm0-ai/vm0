@@ -83,11 +83,13 @@ fn read_codex_session_history(
 }
 
 pub(crate) fn normalize_codex_thread_id(thread_id: &str) -> Option<String> {
-    let id_norm = thread_id.replace('-', "");
-    if id_norm.len() != 32 || !id_norm.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return None;
-    }
-    Some(id_norm.to_ascii_lowercase())
+    Some(canonical_codex_thread_id(thread_id)?.replace('-', ""))
+}
+
+pub(crate) fn canonical_codex_thread_id(thread_id: &str) -> Option<String> {
+    uuid::Uuid::parse_str(thread_id)
+        .ok()
+        .map(|uuid| uuid.to_string())
 }
 
 #[cfg(not(target_os = "linux"))]

@@ -396,11 +396,11 @@ fn extract_codex_thread_id(event: &Value) -> Option<(String, String)> {
         return None;
     }
     let thread_id = event.get("thread_id").and_then(|v| v.as_str())?;
-    crate::session_history::normalize_codex_thread_id(thread_id)?;
+    let thread_id = crate::session_history::canonical_codex_thread_id(thread_id)?;
 
     let home = env::home_dir();
     let marker = format!("CODEX_SEARCH:{home}/.codex/sessions:{thread_id}");
-    Some((thread_id.to_string(), marker))
+    Some((thread_id, marker))
 }
 
 #[cfg(test)]
