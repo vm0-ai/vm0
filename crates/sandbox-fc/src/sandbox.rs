@@ -42,7 +42,7 @@ use crate::park_coordinator::{
     PrepareParkError, PrepareParkEvidence,
 };
 use crate::paths::{SandboxPaths, SockPaths};
-use crate::process::{kill_process_group, kill_process_group_by_pid};
+use crate::process::{ChildExitNotifier, kill_process_group};
 
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -627,6 +627,11 @@ struct ProcessMonitorContext {
     state_tx: watch::Sender<SandboxState>,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     runtime_cancel: CancellationToken,
+}
+
+enum ProcessMonitorExit {
+    NaturalPreReap,
+    Reaped(io::Result<std::process::ExitStatus>),
 }
 
 pub struct FirecrackerSandbox {
@@ -1386,69 +1391,51 @@ fn monitor_process(
 
 fn monitor_process_with_log_readers(
     id: &str,
-    mut child: tokio::process::Child,
+    child: tokio::process::Child,
     context: ProcessMonitorContext,
     readers: ProcessLogReaders,
 ) -> ProcessMonitorHandle {
-    let process_group_pid = child.id();
+    let exit_notifier = ChildExitNotifier::open(&child);
+    monitor_process_with_log_readers_and_exit_notifier(id, child, context, readers, exit_notifier)
+}
+
+fn monitor_process_with_log_readers_and_exit_notifier(
+    id: &str,
+    mut child: tokio::process::Child,
+    context: ProcessMonitorContext,
+    readers: ProcessLogReaders,
+    exit_notifier: ChildExitNotifier,
+) -> ProcessMonitorHandle {
+    if let Some(reason) = exit_notifier.unavailable_reason() {
+        warn!(
+            id = %id,
+            reason = %reason,
+            "pidfd child exit notification unavailable; natural exit cleanup will not signal by cached PID after reap"
+        );
+    }
     let id = id.to_owned();
     let (kill_tx, mut kill_rx) = mpsc::channel::<control::ProcessTerminationRequest>(1);
     let task = tokio::spawn(async move {
-        let status = tokio::select! {
-            status = child.wait() => status,
-            request = kill_rx.recv() => {
-                if let Some(request) = request {
+        let exit = wait_for_process_monitor_exit(&mut child, &exit_notifier, &mut kill_rx).await;
+        let (prev, status) = match exit {
+            ProcessMonitorExit::NaturalPreReap => {
+                let prev = publish_process_monitor_exit(&context);
+                if prev == SandboxState::Running {
                     kill_process_group(&child);
-                    request.acknowledge();
-                    kill_rx.close();
-                    // Closed receivers can still observe sends that already
-                    // reserved capacity, so drain through `None` before wait.
-                    while let Some(request) = kill_rx.recv().await {
-                        request.acknowledge();
-                    }
                 }
-                child.wait().await
+                (prev, child.wait().await)
             }
+            ProcessMonitorExit::Reaped(status) => (publish_process_monitor_exit(&context), status),
         };
+
         match &status {
             Ok(status) => trace!(id = %id, %status, "process monitor observed exit"),
             Err(error) => warn!(id = %id, %error, "process monitor failed to wait for child"),
         }
         context.runtime_cancel.cancel();
 
-        let prev = {
-            let _guard = state_publish_guard(&context.state_publish_lock);
-            match context.state.compare_exchange(
-                SandboxState::Running as u8,
-                SandboxState::Crashed as u8,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(v) => {
-                    publish_watch_state(&context.state_tx, SandboxState::Crashed);
-                    SandboxState::from_u8(v)
-                }
-                Err(v) => {
-                    let prev = SandboxState::from_u8(v);
-                    if matches!(
-                        prev,
-                        SandboxState::Created | SandboxState::Stopping | SandboxState::Stopped
-                    ) {
-                        context
-                            .state
-                            .store(SandboxState::Stopped as u8, Ordering::Release);
-                        publish_watch_state(&context.state_tx, SandboxState::Stopped);
-                    }
-                    prev
-                }
-            }
-        };
-
         match prev {
             SandboxState::Running => {
-                if let Some(pid) = process_group_pid {
-                    kill_process_group_by_pid(pid);
-                }
                 match status {
                     Ok(status) => warn!(id = %id, %status, "process exited unexpectedly"),
                     Err(error) => warn!(id = %id, %error, "process wait failed unexpectedly"),
@@ -1462,6 +1449,75 @@ fn monitor_process_with_log_readers(
     });
 
     ProcessMonitorHandle { kill_tx, task }
+}
+
+async fn wait_for_process_monitor_exit(
+    child: &mut tokio::process::Child,
+    exit_notifier: &ChildExitNotifier,
+    kill_rx: &mut mpsc::Receiver<control::ProcessTerminationRequest>,
+) -> ProcessMonitorExit {
+    let has_exit_notifier = exit_notifier.is_available();
+    tokio::select! {
+        exit = exit_notifier.wait_for_exit(), if has_exit_notifier => {
+            match exit {
+                Ok(()) => ProcessMonitorExit::NaturalPreReap,
+                Err(error) => {
+                    warn!(%error, "pidfd child exit notification failed; falling back to wait-only cleanup");
+                    ProcessMonitorExit::Reaped(child.wait().await)
+                }
+            }
+        }
+        status = child.wait(), if !has_exit_notifier => ProcessMonitorExit::Reaped(status),
+        request = kill_rx.recv() => {
+            ProcessMonitorExit::Reaped(wait_after_process_termination_request(child, kill_rx, request).await)
+        }
+    }
+}
+
+async fn wait_after_process_termination_request(
+    child: &mut tokio::process::Child,
+    kill_rx: &mut mpsc::Receiver<control::ProcessTerminationRequest>,
+    request: Option<control::ProcessTerminationRequest>,
+) -> io::Result<std::process::ExitStatus> {
+    if let Some(request) = request {
+        kill_process_group(child);
+        request.acknowledge();
+        kill_rx.close();
+        // Closed receivers can still observe sends that already reserved
+        // capacity, so drain through `None` before wait.
+        while let Some(request) = kill_rx.recv().await {
+            request.acknowledge();
+        }
+    }
+    child.wait().await
+}
+
+fn publish_process_monitor_exit(context: &ProcessMonitorContext) -> SandboxState {
+    let _guard = state_publish_guard(&context.state_publish_lock);
+    match context.state.compare_exchange(
+        SandboxState::Running as u8,
+        SandboxState::Crashed as u8,
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    ) {
+        Ok(v) => {
+            publish_watch_state(&context.state_tx, SandboxState::Crashed);
+            SandboxState::from_u8(v)
+        }
+        Err(v) => {
+            let prev = SandboxState::from_u8(v);
+            if matches!(
+                prev,
+                SandboxState::Created | SandboxState::Stopping | SandboxState::Stopped
+            ) {
+                context
+                    .state
+                    .store(SandboxState::Stopped as u8, Ordering::Release);
+                publish_watch_state(&context.state_tx, SandboxState::Stopped);
+            }
+            prev
+        }
+    }
 }
 
 fn process_timeout_policy(timeout_ms: u32) -> ExecTimeoutPolicy {
@@ -5906,6 +5962,11 @@ mod tests {
 
     #[tokio::test]
     async fn process_monitor_kills_group_after_unexpected_parent_exit() {
+        if !ChildExitNotifier::available_for_current_process_for_test() {
+            eprintln!("skipping pidfd-dependent process group cleanup test");
+            return;
+        }
+
         let dir = tempfile::tempdir().unwrap();
         let pid_file = dir.path().join("child.pid");
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
@@ -5946,6 +6007,55 @@ mod tests {
         assert!(
             child_stopped,
             "unexpected parent exit should not leave process-group children running"
+        );
+    }
+
+    #[tokio::test]
+    async fn process_monitor_fallback_does_not_kill_group_after_parent_reap() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("child.pid");
+        let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
+        let state_publish_lock = Arc::new(Mutex::new(()));
+        let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let mut child = parent_exits_with_child_process(&pid_file);
+        let readers = ProcessLogReaders::from_child("test-sandbox", &mut child);
+        let context = ProcessMonitorContext {
+            state: Arc::clone(&state),
+            state_publish_lock: Arc::clone(&state_publish_lock),
+            state_tx,
+            guest,
+            runtime_cancel: CancellationToken::new(),
+        };
+
+        let handle = monitor_process_with_log_readers_and_exit_notifier(
+            "test-sandbox",
+            child,
+            context,
+            readers,
+            ChildExitNotifier::unavailable_for_test(),
+        );
+
+        handle.wait().await;
+
+        let leaked_pid: u32 = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let child_still_running = pid_is_running(leaked_pid);
+        let _ = nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(i32::try_from(leaked_pid).unwrap()),
+            nix::sys::signal::Signal::SIGKILL,
+        );
+
+        assert_eq!(
+            SandboxState::from_u8(state.load(Ordering::Acquire)),
+            SandboxState::Crashed
+        );
+        assert!(
+            child_still_running,
+            "pidfd-unavailable fallback must not signal a cached process group after parent reap"
         );
     }
 
