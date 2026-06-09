@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import posixpath
 import re
 import urllib.parse
 from dataclasses import dataclass
@@ -378,13 +377,27 @@ def _canonical_uri(path: str, *, is_s3: bool) -> str:
     raw_path = path or "/"
     if is_s3:
         return raw_path
-    decoded = urllib.parse.unquote(raw_path)
-    normalized = posixpath.normpath(decoded)
-    if decoded.endswith("/") and not normalized.endswith("/"):
-        normalized += "/"
-    if not normalized.startswith("/"):
-        normalized = f"/{normalized}"
+    normalized = _remove_dot_segments(raw_path)
     return urllib.parse.quote(normalized, safe="/~")
+
+
+def _remove_dot_segments(path: str) -> str:
+    if not path:
+        return "/"
+
+    output: list[str] = []
+    for segment in path.split("/"):
+        if not segment or segment == ".":
+            continue
+        if segment == "..":
+            if output:
+                output.pop()
+            continue
+        output.append(segment)
+
+    leading_slash = "/" if path.startswith("/") else ""
+    trailing_slash = "/" if path.endswith("/") and output else ""
+    return f"{leading_slash}{'/'.join(output)}{trailing_slash}"
 
 
 def _canonical_query_string(query: str) -> str:

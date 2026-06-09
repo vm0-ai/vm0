@@ -178,6 +178,82 @@ async def test_re_signs_header_sigv4_request_to_reference_signature(
     assert "x-amz-security-token" not in flow.request.headers
 
 
+async def test_re_signs_header_sigv4_request_with_encoded_path(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    endpoint = FakeAuthEndpoint()
+    endpoint.queue_json_response(
+        {
+            "headers": {},
+            "awsSigv4": {
+                "accessKeyId": "AKIDEXAMPLE",
+                "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+            },
+            "expiresAt": 1_800_000_000,
+            "resolvedSecrets": [
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+            ],
+            "refreshedConnectors": [],
+            "refreshedSecrets": [],
+        }
+    )
+    api_entry = {
+        "base": "https://iam.amazonaws.com",
+        "auth": {
+            "headers": {},
+            "awsSigv4": {
+                "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+            },
+        },
+    }
+    flow = real_flow(
+        with_response=False,
+        host="iam.amazonaws.com",
+        path="/a/../long/path%20name/",
+        method="GET",
+        request_headers=headers(
+            ("Host", "iam.amazonaws.com"),
+            ("X-Amz-Date", "20150830T123600Z"),
+            (
+                "Authorization",
+                "AWS4-HMAC-SHA256 "
+                "Credential=PLACEHOLDER/20150830/us-east-1/iam/aws4_request, "
+                "SignedHeaders=host;x-amz-date, "
+                "Signature=placeholder",
+            ),
+        ),
+    )
+    flow.metadata["vm_run_id"] = "run-1"
+
+    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+        result = await auth.handle_firewall_request(
+            flow,
+            matching.FirewallAllow(
+                api_entry,
+                "aws",
+                "encoded-path",
+                {},
+                "GET /{path+}",
+                "/a/../long/path%20name/",
+            ),
+            _vm_info(tmp_path),
+        )
+
+    assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+    assert flow.request.url == "https://iam.amazonaws.com/a/../long/path%20name/"
+    assert flow.request.headers["authorization"] == (
+        "AWS4-HMAC-SHA256 "
+        "Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, "
+        "SignedHeaders=host;x-amz-date, "
+        "Signature=f1e30e1649dd37a25de158bbc35c722f3c513f7b1051cb50ec2d351a468824ff"
+    )
+
+
 async def test_re_signs_query_sigv4_request(real_flow, tmp_path, mitm_ctx):
     endpoint = FakeAuthEndpoint()
     endpoint.queue_json_response(_auth_response())
