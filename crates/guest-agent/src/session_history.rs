@@ -98,11 +98,11 @@ fn read_codex_session_history_impl(
     thread_id: &str,
     id_norm: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
-    if !std::fs::symlink_metadata(sessions_dir)
-        .ok()
-        .is_some_and(|metadata| metadata.file_type().is_dir())
-    {
-        return Ok(None);
+    match std::fs::symlink_metadata(sessions_dir) {
+        Ok(metadata) if metadata.file_type().is_dir() => {}
+        Ok(_) => return Ok(None),
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(None),
+        Err(err) => return Err(read_history_error(sessions_dir, err)),
     }
 
     let mut found = None;
@@ -124,14 +124,23 @@ fn find_codex_session_file_recursive(
     id_norm: &str,
     found: &mut Option<ResolvedCodexSession>,
 ) -> Result<(), AgentError> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Ok(());
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(()),
+        Err(err) => return Err(read_history_error(dir, err)),
     };
-    for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(dir, err)),
         };
         let path = entry.path();
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(&path, err)),
+        };
         if file_type.is_dir() {
             find_codex_session_file_recursive(root, &path, thread_id, id_norm, found)?;
         } else if file_type.is_file()
@@ -160,8 +169,10 @@ fn read_codex_session_history_impl(
     thread_id: &str,
     id_norm: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
-    let Ok(root) = Dir::open(sessions_dir) else {
-        return Ok(None);
+    let root = match Dir::open(sessions_dir) {
+        Ok(root) => root,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(None),
+        Err(err) => return Err(read_history_error(sessions_dir, err)),
     };
     let mut found = None;
     find_and_read_codex_session_file_recursive(
@@ -186,19 +197,30 @@ fn find_and_read_codex_session_file_recursive(
     id_norm: &str,
     found: &mut Option<ResolvedCodexSession>,
 ) -> Result<(), AgentError> {
-    let Ok(entries) = dir.read_dir() else {
-        return Ok(());
+    let entries = match dir.read_dir() {
+        Ok(entries) => entries,
+        Err(err) if should_skip_unusable_codex_entry(&err) => return Ok(()),
+        Err(err) => return Err(read_history_error(dir_path, err)),
     };
 
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let Ok(file_type) = entry.file_type() else {
-            continue;
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(dir_path, err)),
         };
+        let name = entry.file_name();
         let path = dir_path.join(&name);
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+            Err(err) => return Err(read_history_error(&path, err)),
+        };
         if file_type.is_dir() {
-            let Ok(child) = dir.open_child_dir(&name) else {
-                continue;
+            let child = match dir.open_child_dir(&name) {
+                Ok(child) => child,
+                Err(err) if should_skip_unusable_codex_entry(&err) => continue,
+                Err(err) => return Err(read_history_error(&path, err)),
             };
             find_and_read_codex_session_file_recursive(
                 &child, root_path, &path, thread_id, id_norm, found,
@@ -206,7 +228,7 @@ fn find_and_read_codex_session_file_recursive(
         } else if file_type.is_file() && codex_session_filename_matches(&name, id_norm) {
             let file = match dir.open_child_file(&name) {
                 Ok(file) => file,
-                Err(e) if should_skip_raced_codex_entry(&e) => continue,
+                Err(e) if should_skip_unusable_codex_entry(&e) => continue,
                 Err(e) => return Err(read_history_error(&path, e)),
             };
             if !file
@@ -261,12 +283,21 @@ fn codex_session_filename_matches(name: &OsStr, id_norm: &str) -> bool {
     name_norm.contains(id_norm)
 }
 
-#[cfg(target_os = "linux")]
-fn should_skip_raced_codex_entry(err: &io::Error) -> bool {
+fn should_skip_unusable_codex_entry(err: &io::Error) -> bool {
     matches!(
         err.kind(),
         io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
-    ) || err.raw_os_error() == Some(libc::ELOOP)
+    ) || is_filesystem_loop_error(err)
+}
+
+#[cfg(target_os = "linux")]
+fn is_filesystem_loop_error(err: &io::Error) -> bool {
+    err.raw_os_error() == Some(libc::ELOOP)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_filesystem_loop_error(_: &io::Error) -> bool {
+    false
 }
 
 /// Read the bytes at `path`, decompressing legacy zstd files if the extension is `.zst`.

@@ -658,6 +658,49 @@ async fn read_session_history_codex_marker_skips_special_files() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn read_session_history_codex_marker_reports_unreadable_directory() {
+    use std::os::unix::fs::PermissionsExt;
+
+    // SAFETY: `geteuid` only reads the current process credential.
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let blocked_dir = sessions_dir.join("blocked");
+    std::fs::create_dir_all(&blocked_dir).unwrap();
+    std::fs::set_permissions(&blocked_dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let result = guest_agent::session_history::read_session_history(path_file.to_str().unwrap());
+    std::fs::set_permissions(&blocked_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    let err = result.expect_err("unreadable codex directories must surface as read errors");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Failed to read session history"),
+        "expected directory read error, got: {msg}"
+    );
+    assert!(
+        msg.contains("Permission denied"),
+        "expected permission failure to be preserved, got: {msg}"
+    );
+}
+
 #[tokio::test]
 async fn read_session_history_resolves_claude_literal_path() {
     // Claude path goes through the same public entry but uses a literal
