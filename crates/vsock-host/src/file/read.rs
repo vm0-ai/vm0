@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use crate::{ExecCaptureRequest, FrameWriteObserver, VsockHost, exec_operation};
 
-use super::read_regular_file_command;
+use super::{read_regular_file_command, validate_guest_file_path};
 
 impl VsockHost {
     /// Read a small file from the guest through exec capture.
@@ -34,6 +34,7 @@ impl VsockHost {
         timeout_ms: u32,
         write_observer: FrameWriteObserver,
     ) -> io::Result<Option<Vec<u8>>> {
+        validate_guest_file_path(path)?;
         let stdout_limit_bytes = u32::try_from(max_bytes).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,

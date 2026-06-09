@@ -12,7 +12,9 @@ use crate::{
     ExecStreamRequest, FrameWriteObserver, VsockHost, exec_operation,
 };
 
-use super::{file_operation_error_is_terminal, read_regular_file_command};
+use super::{
+    file_operation_error_is_terminal, read_regular_file_command, validate_guest_file_path,
+};
 
 const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
 const COPY_TEMP_FILE_MODE: u32 = 0o600;
@@ -395,6 +397,7 @@ impl VsockHost {
         options: CopyFileOptions,
         write_observer: FrameWriteObserver,
     ) -> io::Result<CopyFileResult> {
+        validate_guest_file_path(path)?;
         if options.max_bytes == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,

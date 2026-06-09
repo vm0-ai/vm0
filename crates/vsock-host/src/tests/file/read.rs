@@ -149,6 +149,14 @@ async fn read_file_rejects_invalid_max_bytes_without_sending_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
+    let err = host
+        .read_file("/tmp/bad\0path.txt", 1024, 5000)
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(operation_count(&host), 0);
+
     let err = host.read_file("/tmp/empty.txt", 0, 5000).await.unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);

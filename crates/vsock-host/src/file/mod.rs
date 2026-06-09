@@ -10,6 +10,16 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+fn validate_guest_file_path(path: &str) -> io::Result<()> {
+    if path.as_bytes().contains(&0) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "guest file path contains NUL bytes",
+        ));
+    }
+    Ok(())
+}
+
 fn read_regular_file_command(path: &str, missing_file_exit_code: i32) -> String {
     let path = shell_quote(path);
     format!(
