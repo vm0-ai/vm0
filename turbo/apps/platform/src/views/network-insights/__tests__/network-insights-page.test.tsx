@@ -42,6 +42,7 @@ function getTabByText(text: string): HTMLElement {
 
 function insightsResponse(): InsightsResponse {
   const date = localDateDaysAgo(1);
+  const olderDate = localDateDaysAgo(20);
   return {
     days: [
       {
@@ -210,9 +211,49 @@ function insightsResponse(): InsightsResponse {
           },
         ],
       },
+      {
+        date: olderDate,
+        agents: [
+          {
+            agentName: "Archive Bot",
+            agentId: "c0000000-0000-4000-a000-000000000003",
+            runs: 1,
+            credits: 80,
+          },
+        ],
+        creditsUsed: 80,
+        creditBalance: 8720,
+        teamUsage: [
+          {
+            name: "Mira",
+            credits: 80,
+            agentNames: ["Archive Bot"],
+            agentCredits: { "Archive Bot": 80 },
+          },
+        ],
+        topTask: { name: "calendar cleanup", count: 1 },
+        services: [
+          {
+            domain: "google-calendar",
+            calls: 2,
+            agentNames: ["Archive Bot"],
+          },
+        ],
+        permissions: [
+          {
+            label: "events:read",
+            connectorType: "google-calendar",
+            allowed: 2,
+            denied: 0,
+            agentNames: ["Archive Bot"],
+          },
+        ],
+        schedules: [],
+        chats: [],
+      },
     ],
-    totalCredits: 1570,
-    totalRuns: 12,
+    totalCredits: 1650,
+    totalRuns: 13,
     lastUpdated: `${date}T18:30:00Z`,
   };
 }
@@ -280,6 +321,21 @@ describe("network insights page", () => {
     expect(screen.getByText("3 rejected")).toBeInTheDocument();
     expect(screen.getByText("Daily market briefing")).toBeInTheDocument();
     expect(screen.getByText("Competitor scan")).toBeInTheDocument();
+    expect(screen.queryByText("Archive Bot")).not.toBeInTheDocument();
+
+    click(screen.getByText("Last 7 Days"));
+    click(screen.getByText("Last 28 Days"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Archive Bot")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Last 28 Days"));
+    click(screen.getByText("Last 7 Days"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Archive Bot")).not.toBeInTheDocument();
+    });
 
     expect(screen.queryByText("pull-requests:read")).not.toBeInTheDocument();
     click(screen.getByText("Load more"));
