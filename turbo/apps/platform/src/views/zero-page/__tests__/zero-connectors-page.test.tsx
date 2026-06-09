@@ -360,6 +360,16 @@ describe("connectors page", () => {
         within(connectorCardByLabel("Axiom")).getByText("Connected"),
       ).toBeInTheDocument();
     });
+
+    click(within(connectorCardByLabel("Axiom")).getByLabelText("More options"));
+    click(await screen.findByText("Disconnect"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Axiom")).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Axiom")).queryByText("Connected"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("reports a failed connector disconnect", async () => {
