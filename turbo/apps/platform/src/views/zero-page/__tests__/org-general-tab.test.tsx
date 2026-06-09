@@ -41,11 +41,17 @@ async function openGeneralTab(): Promise<void> {
 describe("organization general settings", () => {
   it("lets admins save or discard workspace profile edits", async () => {
     let capturedBody: unknown = null;
+    const logoUrl = "https://cdn.vm0.test/orgs/old-slug/logo.png";
     context.mocks.data.org({
       id: "org_1",
       name: "Old Name",
       slug: "old-slug",
       role: "admin",
+    });
+    context.mocks.http.get("*/api/zero/org/logo", () => {
+      return new Response(JSON.stringify({ logoUrl }), {
+        headers: { "Content-Type": "application/json" },
+      });
     });
     context.mocks.api(zeroOrgContract.update, ({ body, respond }) => {
       capturedBody = body;
@@ -58,6 +64,13 @@ describe("organization general settings", () => {
     });
 
     await openGeneralTab();
+
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: "old-slug" })).toHaveAttribute(
+        "src",
+        logoUrl,
+      );
+    });
 
     await fill(await screen.findByDisplayValue("Old Name"), "New Name");
     await fill(screen.getByDisplayValue("old-slug"), "new-slug");
@@ -109,6 +122,7 @@ describe("organization general settings", () => {
   });
 
   it("requires slug confirmation before deleting a workspace and keeps failures visible", async () => {
+    let deleteShouldFail = true;
     context.mocks.data.org({
       id: "org_1",
       name: "Acme",
@@ -116,6 +130,9 @@ describe("organization general settings", () => {
       role: "admin",
     });
     context.mocks.api(zeroOrgDeleteContract.delete, ({ respond }) => {
+      if (!deleteShouldFail) {
+        return respond(200, { message: "Org deleted" });
+      }
       return respond(400, {
         error: {
           message: "Delete blocked by active members",
@@ -149,6 +166,16 @@ describe("organization general settings", () => {
       expect(
         screen.getByRole("dialog", { name: "Delete workspace?" }),
       ).toBeInTheDocument();
+    });
+
+    deleteShouldFail = false;
+    click(deleteButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Workspace deleted")).toBeInTheDocument();
+      expect(window.location.href).toContain(
+        "/sign-in/tasks/choose-organization",
+      );
     });
   });
 });
