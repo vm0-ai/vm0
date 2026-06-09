@@ -118,9 +118,8 @@ describe("zero video transcribe command", () => {
 
   describe("with --file-id", () => {
     it("should use downloadWebFile instead of curl", async () => {
-      const { downloadWebFile } = await import(
-        "../../../../lib/api/domains/web"
-      );
+      const { downloadWebFile } =
+        await import("../../../../lib/api/domains/web");
 
       server.use(
         http.post(STT_URL, () => {
