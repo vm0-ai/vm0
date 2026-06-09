@@ -246,6 +246,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       displayName: "No-credit chat branch agent",
     });
     const uploadId = randomUUID();
+    const clientMessageId = randomUUID();
 
     const sent = await api.requestSendMessage(
       actor,
@@ -261,7 +262,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
           },
         ],
         hasTextContent: false,
-        clientMessageId: randomUUID(),
+        clientMessageId,
       },
       [201],
     );
@@ -308,9 +309,64 @@ describe("CHAT-02 chat messages and visible validation", () => {
     expect(assistantMessage?.content).toContain("Insufficient credits");
     expect(assistantMessage?.error).toBe("insufficient_credits");
 
+    const retried = await api.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        threadId,
+        prompt: "Retry the same client message",
+        clientMessageId,
+      },
+      [201],
+    );
+    expect(retried.body).toMatchObject({
+      runId: null,
+      threadId,
+      createdAt: expect.any(String),
+    });
+
+    const afterRetry = await api.listThreadMessages(actor, threadId);
+    expect(afterRetry.messages).toHaveLength(2);
+
+    const secondThread = await api.createThread(actor, {
+      agentId: agent.agentId,
+      title: "Duplicate client message id",
+    });
+    const duplicateAcrossThreads = await api.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        threadId: secondThread.id,
+        prompt: "Reuse the client message id in another thread",
+        clientMessageId,
+      },
+      [409],
+    );
+    expectApiError(duplicateAcrossThreads.body);
+    expect(duplicateAcrossThreads.body.error.code).toBe("CONFLICT");
+    expect(duplicateAcrossThreads.body.error.message).toBe(
+      "clientMessageId is already in use",
+    );
+
     if (!userMessage) {
       throw new Error("Expected the no-credit send to create a user message");
     }
+
+    const unavailableFollowup = await api.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        threadId,
+        prompt: "Use a stale recommended follow-up",
+        revokesMessageId: userMessage.id,
+      },
+      [400],
+    );
+    expectApiError(unavailableFollowup.body);
+    expect(unavailableFollowup.body.error.code).toBe("BAD_REQUEST");
+    expect(unavailableFollowup.body.error.message).toBe(
+      "Recommended follow-up is no longer available",
+    );
 
     const peerRecall = await api.requestSendMessage(
       peer,
@@ -349,6 +405,27 @@ describe("CHAT-02 chat messages and visible validation", () => {
         return message.revokesMessageId === userMessage.id;
       }),
     ).toBeTruthy();
+
+    const repeatedRecall = await api.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        threadId,
+        revokesMessageId: userMessage.id,
+      },
+      [201],
+    );
+    expect(repeatedRecall.body).toMatchObject({
+      runId: null,
+      threadId,
+      createdAt: expect.any(String),
+    });
+    const afterRepeatedRecall = await api.listThreadMessages(actor, threadId);
+    expect(
+      afterRepeatedRecall.messages.filter((message) => {
+        return message.revokesMessageId === userMessage.id;
+      }),
+    ).toHaveLength(1);
 
     const interrupted = await api.requestSendMessage(
       actor,
@@ -424,6 +501,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
 
   it("lists visible messages and rejects invalid send requests without hidden fixtures", async () => {
     const actor = bdd.user();
+    const peer = bdd.user({ orgId: actor.orgId });
     const compose = await api.createComposeForChatThread(actor);
     const thread = await api.createThread(actor, {
       agentId: compose.composeId,
@@ -456,6 +534,24 @@ describe("CHAT-02 chat messages and visible validation", () => {
     );
     expectApiError(blankPrompt.body);
     expect(blankPrompt.body.error.code).toBe("BAD_REQUEST");
+
+    const privateAgent = await bdd.createAgent(actor, {
+      displayName: "Private chat send agent",
+      visibility: "private",
+    });
+    const forbiddenPrivateAgent = await api.requestSendMessage(
+      peer,
+      {
+        agentId: privateAgent.agentId,
+        prompt: "Run someone else's private agent",
+      },
+      [403],
+    );
+    expectApiError(forbiddenPrivateAgent.body);
+    expect(forbiddenPrivateAgent.body.error.code).toBe("FORBIDDEN");
+    expect(forbiddenPrivateAgent.body.error.message).toBe(
+      "Only the private agent owner can run this agent",
+    );
   });
 
   it("given an empty chat thread, when message list boundaries are requested, then only the owner sees zero messages", async () => {

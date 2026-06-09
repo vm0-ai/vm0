@@ -531,6 +531,85 @@ describe("ORG-01 and ORG-02", () => {
 });
 
 describe("AGENT-01 and AGENT-02", () => {
+  it("enforces the public agent limit while still allowing private agents", async () => {
+    const admin = api.user();
+    api.acceptAgentStorageWrites();
+
+    const builtInCustomSkill = await api.requestCreateAgent(
+      admin,
+      {
+        displayName: "BDD Built In Custom Skill",
+        customSkills: ["github"],
+      },
+      [400],
+    );
+    expectApiError(builtInCustomSkill.body);
+    expect(builtInCustomSkill.body.error.code).toBe("VALIDATION_ERROR");
+    expect(builtInCustomSkill.body.error.message).toBe(
+      "'github' is a built-in connector, not a custom skill. Enable it via connectors instead.",
+    );
+
+    const missingCustomSkill = await api.requestCreateAgent(
+      admin,
+      {
+        displayName: "BDD Missing Custom Skill",
+        customSkills: [`missing-${shortId()}`],
+      },
+      [400],
+    );
+    expectApiError(missingCustomSkill.body);
+    expect(missingCustomSkill.body.error.code).toBe("VALIDATION_ERROR");
+    expect(missingCustomSkill.body.error.message).toContain(
+      "not found in this organization",
+    );
+
+    const publicAgents = [];
+    for (let index = 0; index < 7; index += 1) {
+      publicAgents.push(
+        await api.createAgent(admin, {
+          displayName: `BDD Public Limit ${index + 1}`,
+          visibility: "public",
+        }),
+      );
+    }
+
+    const blocked = await api.requestCreateAgent(
+      admin,
+      {
+        displayName: "BDD Public Limit Blocked",
+        visibility: "public",
+      },
+      [409],
+    );
+    expectApiError(blocked.body);
+    expect(blocked.body.error.code).toBe("CONFLICT");
+    expect(blocked.body.error.message).toBe(
+      "This organization has reached the maximum number of agents (7). Delete an existing agent before creating a new one.",
+    );
+
+    const listed = await api.listAgents(admin);
+    const listedPublicAgents = listed.filter((agent) => {
+      return agent.visibility === "public";
+    });
+    expect(listedPublicAgents).toHaveLength(7);
+    expect(
+      publicAgents.every((agent) => {
+        return listedPublicAgents.some((listedAgent) => {
+          return listedAgent.agentId === agent.agentId;
+        });
+      }),
+    ).toBeTruthy();
+
+    const privateAfterLimit = await api.createAgent(admin, {
+      displayName: "BDD Private After Public Limit",
+      visibility: "private",
+    });
+    expect(privateAfterLimit).toMatchObject({
+      displayName: "BDD Private After Public Limit",
+      visibility: "private",
+    });
+  });
+
   it("covers agent isolation, default-agent permissions, and org custom connector enablement", async () => {
     const admin = api.user();
     const member = api.user({

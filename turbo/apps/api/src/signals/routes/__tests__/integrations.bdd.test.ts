@@ -150,20 +150,97 @@ describe("INT-01: Slack integration and Slack app routes", () => {
   it("keeps signed Slack command and interactive payload boundaries visible through APIs", async () => {
     integrations.configureSlackSigningSecret();
 
-    const commandBody = new URLSearchParams({
-      team_id: "TBDD",
-      channel_id: "CBDD",
-      user_id: "UBDD",
-      text: "help",
-      trigger_id: "trigger-bdd",
-    }).toString();
+    const commandBody = (text: string) => {
+      return new URLSearchParams({
+        team_id: "TBDD",
+        channel_id: "CBDD",
+        user_id: "UBDD",
+        text,
+        trigger_id: "trigger-bdd",
+      }).toString();
+    };
+
+    const helpBody = commandBody("help");
     const help = await integrations.requestSlackCommand(
-      commandBody,
-      integrations.signedSlackIngressHeaders(commandBody),
+      helpBody,
+      integrations.signedSlackIngressHeaders(helpBody),
       [200],
     );
     expectSlackEphemeral(help.body);
     expect(help.body.blocks.length).toBeGreaterThan(0);
+
+    const connectBody = commandBody("connect");
+    const connect = await integrations.requestSlackCommand(
+      connectBody,
+      integrations.signedSlackIngressHeaders(connectBody),
+      [200],
+    );
+    expectSlackEphemeral(connect.body);
+    expect(connect.body.blocks.length).toBeGreaterThan(0);
+
+    const disconnectBody = commandBody("disconnect");
+    const disconnect = await integrations.requestSlackCommand(
+      disconnectBody,
+      integrations.signedSlackIngressHeaders(disconnectBody),
+      [200],
+    );
+    expectSlackEphemeral(disconnect.body);
+    expect(disconnect.body.blocks.length).toBeGreaterThan(0);
+
+    const unknownBody = commandBody("unknown");
+    const unknown = await integrations.requestSlackCommand(
+      unknownBody,
+      integrations.signedSlackIngressHeaders(unknownBody),
+      [200],
+    );
+    expectSlackEphemeral(unknown.body);
+    expect(unknown.body.blocks.length).toBeGreaterThan(0);
+
+    const emptyActionPayload = new URLSearchParams({
+      payload: JSON.stringify({
+        type: "block_actions",
+        team: { id: "TBDD" },
+        user: { id: "UBDD" },
+        actions: [],
+      }),
+    }).toString();
+    const emptyActions = await integrations.requestSlackInteractive(
+      emptyActionPayload,
+      integrations.signedSlackIngressHeaders(emptyActionPayload),
+      [200],
+    );
+    expect(emptyActions.body).toBe("");
+
+    const disconnectActionPayload = new URLSearchParams({
+      payload: JSON.stringify({
+        type: "block_actions",
+        team: { id: "TBDD" },
+        user: { id: "UBDD" },
+        actions: [{ action_id: "home_disconnect" }],
+      }),
+    }).toString();
+    const homeDisconnect = await integrations.requestSlackInteractive(
+      disconnectActionPayload,
+      integrations.signedSlackIngressHeaders(disconnectActionPayload),
+      [200],
+    );
+    expect(homeDisconnect.body).toBe("");
+
+    const switchActionPayload = new URLSearchParams({
+      payload: JSON.stringify({
+        type: "block_actions",
+        team: { id: "TBDD" },
+        user: { id: "UBDD" },
+        trigger_id: "trigger-bdd",
+        actions: [{ action_id: "home_switch_agent" }],
+      }),
+    }).toString();
+    const homeSwitch = await integrations.requestSlackInteractive(
+      switchActionPayload,
+      integrations.signedSlackIngressHeaders(switchActionPayload),
+      [200],
+    );
+    expect(homeSwitch.body).toBe("");
 
     const missingPayloadBody = "";
     const missingPayload = await integrations.requestSlackInteractive(
@@ -344,6 +421,36 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       error: { code: "NOT_FOUND" },
     });
 
+    const unauthenticatedDownload = await integrations.requestSlackDownloadFile(
+      null,
+      "F123",
+      [401],
+    );
+    expect(unauthenticatedDownload.body).toMatchObject({
+      error: { code: "UNAUTHORIZED" },
+    });
+
+    const missingDownloadFileId = await integrations.requestSlackDownloadFile(
+      admin,
+      undefined,
+      [400],
+    );
+    expect(missingDownloadFileId.body).toStrictEqual({
+      error: {
+        message: "file_id query parameter is required",
+        code: "BAD_REQUEST",
+      },
+    });
+
+    const missingDownloadInstallation =
+      await integrations.requestSlackDownloadFile(admin, "F123", [404]);
+    expect(missingDownloadInstallation.body).toStrictEqual({
+      error: {
+        message: "No Slack installation found for this org",
+        code: "NOT_FOUND",
+      },
+    });
+
     const nonAdminDisconnect = await integrations.requestSlackDisconnect(
       member,
       "delete",
@@ -351,6 +458,39 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     );
     expect(nonAdminDisconnect.body).toMatchObject({
       error: { code: "NOT_FOUND" },
+    });
+
+    const unauthenticatedDisconnect = await integrations.requestSlackDisconnect(
+      null,
+      undefined,
+      [401],
+    );
+    expect(unauthenticatedDisconnect.body).toMatchObject({
+      error: { code: "UNAUTHORIZED" },
+    });
+
+    const nonAdminUninstall = await integrations.requestSlackDisconnect(
+      member,
+      "uninstall",
+      [403],
+    );
+    expect(nonAdminUninstall.body).toStrictEqual({
+      error: {
+        message: "Admin access required",
+        code: "FORBIDDEN",
+      },
+    });
+
+    const missingUninstall = await integrations.requestSlackDisconnect(
+      admin,
+      "uninstall",
+      [404],
+    );
+    expect(missingUninstall.body).toStrictEqual({
+      error: {
+        message: "No Slack installation found",
+        code: "NOT_FOUND",
+      },
     });
 
     const oauthWithoutProviderConfig =
@@ -789,6 +929,26 @@ describe("INT-02: Telegram integration", () => {
       [200],
     );
     expect(avatar.headers.get("content-type")).toContain("image/svg+xml");
+
+    const unauthenticatedAvatar = await integrations.requestTelegramAvatar(
+      null,
+      botId,
+      {},
+      [401],
+    );
+    expect(unauthenticatedAvatar.body).toMatchObject({
+      error: { code: "UNAUTHORIZED" },
+    });
+
+    const missingAvatar = await integrations.requestTelegramAvatar(
+      actor,
+      "555555555",
+      {},
+      [404],
+    );
+    expect(missingAvatar.body).toMatchObject({
+      error: { code: "NOT_FOUND" },
+    });
 
     const memberDisconnect = await integrations.requestDisconnectTelegramBot(
       member,

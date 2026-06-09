@@ -136,9 +136,16 @@ type SlackIngressPath =
   | "/api/zero/slack/events"
   | "/api/zero/slack/interactive";
 type SlackIngressStatus = 200 | 400 | 401 | 503;
+type SlackDownloadStatus = 200 | 400 | 401 | 404 | 413 | 502;
 
 interface SlackIngressResponse {
   readonly status: SlackIngressStatus;
+  readonly body: unknown;
+  readonly headers: Headers;
+}
+
+interface SlackDownloadResponse {
+  readonly status: SlackDownloadStatus;
   readonly body: unknown;
   readonly headers: Headers;
 }
@@ -264,6 +271,55 @@ async function requestRawSlackIngress(
     }
     default: {
       throw new Error(`Unexpected Slack ingress status ${response.status}`);
+    }
+  }
+}
+
+async function requestRawSlackDownloadFile(
+  context: TestContext,
+  headers: AuthHeaders,
+  fileId: string | undefined,
+): Promise<SlackDownloadResponse> {
+  const search = new URLSearchParams();
+  if (fileId !== undefined) {
+    search.set("file_id", fileId);
+  }
+  const query = search.toString();
+  const response = await createApp({ signal: context.signal }).request(
+    `/api/zero/integrations/slack/download-file${query ? `?${query}` : ""}`,
+    {
+      method: "GET",
+      headers: extraHeaders(headers),
+    },
+  );
+  const result = {
+    body: await parseRawResponseBody(response),
+    headers: response.headers,
+  };
+
+  switch (response.status) {
+    case 200: {
+      return { status: 200, ...result };
+    }
+    case 400: {
+      return { status: 400, ...result };
+    }
+    case 401: {
+      return { status: 401, ...result };
+    }
+    case 404: {
+      return { status: 404, ...result };
+    }
+    case 413: {
+      return { status: 413, ...result };
+    }
+    case 502: {
+      return { status: 502, ...result };
+    }
+    default: {
+      throw new Error(
+        `Unexpected Slack download-file status ${response.status}`,
+      );
     }
   }
 }
@@ -434,6 +490,21 @@ export function createBddIntegrationApi(context: TestContext) {
           headers: authenticate(context, routeMocks, actor),
           body,
         }),
+        statuses,
+      );
+    },
+
+    async requestSlackDownloadFile(
+      actor: ApiTestUser | null,
+      fileId: string | undefined,
+      statuses: readonly SlackDownloadStatus[],
+    ) {
+      return await accept(
+        requestRawSlackDownloadFile(
+          context,
+          authenticate(context, routeMocks, actor),
+          fileId,
+        ),
         statuses,
       );
     },

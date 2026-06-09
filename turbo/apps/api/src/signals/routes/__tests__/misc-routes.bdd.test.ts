@@ -110,6 +110,22 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     const noOrgStart = await api.startUserExport(noOrgActor, [401]);
     expectApiError(noOrgStart.body);
 
+    const missingUnsubscribeToken = await api.requestEmailUnsubscribePage(
+      undefined,
+      [400],
+    );
+    expect(missingUnsubscribeToken.body).toStrictEqual({
+      error: "Missing token",
+    });
+
+    const invalidUnsubscribeToken = await api.requestEmailUnsubscribe(
+      "not-a-valid-token",
+      [400],
+    );
+    expect(invalidUnsubscribeToken.body).toStrictEqual({
+      error: "Invalid token",
+    });
+
     const logs = await api.listLogs(admin);
     expect(logs.body.data).toStrictEqual([]);
     const searched = await api.searchLogs(admin, "nothing-here");

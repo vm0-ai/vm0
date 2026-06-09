@@ -6,7 +6,10 @@ import {
   internalEventConsumerChatAssistantContract,
   type eventConsumerPayloadSchema,
 } from "@vm0/api-contracts/contracts/internal-event-consumers";
-import { zeroEmailInboundContract } from "@vm0/api-contracts/contracts/zero-email";
+import {
+  zeroEmailInboundContract,
+  zeroEmailTriggerCallbackContract,
+} from "@vm0/api-contracts/contracts/zero-email";
 import {
   webhookBuiltInGenerationBytePlusContract,
   webhookBuiltInGenerationFalContract,
@@ -15,7 +18,6 @@ import {
   webhookClerkContract,
   webhookCompleteContract,
   webhookEventsContract,
-  webhookGithubContract,
   webhookHeartbeatContract,
   webhookModelUsageObservationContract,
   webhookStoragesCommitContract,
@@ -27,6 +29,7 @@ import {
 import { Webhook } from "svix";
 import type { z } from "zod";
 
+import { createApp } from "../../../../app-factory";
 import { env, mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
 import { generateSandboxToken } from "../../../auth/tokens";
@@ -65,6 +68,9 @@ type AgentStoragePrepareBody = z.infer<
 type AgentStorageCommitBody = z.infer<
   (typeof webhookStoragesCommitContract.commit)["body"]
 >;
+type EmailTriggerCallbackBody = z.infer<
+  (typeof zeroEmailTriggerCallbackContract.post)["body"]
+>;
 
 interface Vm0SignatureHeaders {
   readonly "x-vm0-signature": string;
@@ -81,11 +87,35 @@ interface SandboxWebhookHeaders {
   readonly authorization?: string;
 }
 
+interface ClerkWebhookEvent {
+  readonly type: string;
+  readonly data: unknown;
+}
+
+type GithubWebhookStatus = 200 | 400 | 401 | 503;
+
+interface GithubWebhookResponse {
+  readonly status: GithubWebhookStatus;
+  readonly body: unknown;
+  readonly headers: Headers;
+}
+
 type BuiltInGenerationProvider = "fal" | "byteplus";
 const RESEND_WEBHOOK_SECRET = "whsec_test";
 
 function serializedTsRestBody(body: unknown): string {
   return JSON.stringify(body);
+}
+
+async function parseRawResponseBody(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return await response.json();
+  }
+  if (contentType.startsWith("text/")) {
+    return await response.text();
+  }
+  return await response.blob();
 }
 
 function builtInGenerationToken(args: {
@@ -120,6 +150,59 @@ function resendSvixHeaders(body: unknown): SvixHeaders {
       serializedTsRestBody(body),
     ),
   };
+}
+
+function githubWebhookHeaders(
+  body: string,
+  event: string,
+): Record<string, string> {
+  return {
+    "x-github-delivery": `delivery-${randomUUID()}`,
+    "x-github-event": event,
+    "x-hub-signature-256": `sha256=${createHmac("sha256", "github-bdd-secret")
+      .update(body)
+      .digest("hex")}`,
+  };
+}
+
+async function requestRawGithubWebhook(
+  context: TestContext,
+  body: string,
+  headers: Record<string, string>,
+): Promise<GithubWebhookResponse> {
+  const response = await createApp({ signal: context.signal }).request(
+    "/api/webhooks/github",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...headers,
+      },
+      body,
+    },
+  );
+  const result = {
+    body: await parseRawResponseBody(response),
+    headers: response.headers,
+  };
+
+  switch (response.status) {
+    case 200: {
+      return { status: 200, ...result };
+    }
+    case 400: {
+      return { status: 400, ...result };
+    }
+    case 401: {
+      return { status: 401, ...result };
+    }
+    case 503: {
+      return { status: 503, ...result };
+    }
+    default: {
+      throw new Error(`Unexpected GitHub webhook status ${response.status}`);
+    }
+  }
 }
 
 function sandboxWebhookHeaders(args: {
@@ -173,6 +256,10 @@ export function createWebhookCallbackApi(context: TestContext) {
       );
     },
 
+    verifyNextClerkWebhook(event: ClerkWebhookEvent): void {
+      context.mocks.clerk.verifyWebhook.mockResolvedValueOnce(event);
+    },
+
     async requestClerkWebhook(
       body: string,
       headers: Record<string, string>,
@@ -195,18 +282,26 @@ export function createWebhookCallbackApi(context: TestContext) {
       mockEnv("RESEND_WEBHOOK_SECRET", RESEND_WEBHOOK_SECRET);
     },
 
+    disableResendApiKey(): void {
+      mockEnv("RESEND_API_KEY", undefined);
+    },
+
     async requestGithubWebhook(
       body: string,
       headers: Record<string, string>,
       statuses: readonly (200 | 400 | 401 | 503)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookGithubContract).post({
-          body,
-          extraHeaders: headers,
-        }),
+        requestRawGithubWebhook(context, body, headers),
         statuses,
       );
+    },
+
+    signedGithubWebhookHeaders(
+      body: string,
+      event: string,
+    ): Record<string, string> {
+      return githubWebhookHeaders(body, event);
     },
 
     signedResendWebhookHeaders(body: unknown): SvixHeaders {
@@ -221,6 +316,19 @@ export function createWebhookCallbackApi(context: TestContext) {
       return await accept(
         setupApp({ context })(zeroEmailInboundContract).post({
           headers,
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestEmailTriggerCallback(
+      body: EmailTriggerCallbackBody,
+      statuses: readonly (200 | 400 | 401 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroEmailTriggerCallbackContract).post({
+          headers: {},
           body,
         }),
         statuses,

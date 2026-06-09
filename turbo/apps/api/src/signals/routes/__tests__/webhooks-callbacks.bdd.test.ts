@@ -54,6 +54,38 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     });
   });
 
+  it("accepts verified Clerk events that do not require visible cleanup", async () => {
+    api.configureClerkWebhookSecret();
+
+    api.verifyNextClerkWebhook({
+      type: "session.created",
+      data: { id: "sess_bdd" },
+    });
+    const ignored = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(ignored.body).toBe("OK");
+
+    api.verifyNextClerkWebhook({
+      type: "organization.deleted",
+      data: {},
+    });
+    const missingOrgId = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(missingOrgId.body).toBe("OK");
+
+    api.verifyNextClerkWebhook({
+      type: "user.deleted",
+      data: {},
+    });
+    const missingUserId = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(missingUserId.body).toBe("OK");
+
+    api.verifyNextClerkWebhook({
+      type: "organizationMembership.deleted",
+      data: { id: "mem_bdd" },
+    });
+    const membershipDeleted = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(membershipDeleted.body).toBe("OK");
+  });
+
   it("rejects GitHub requests with missing headers or invalid signatures", async () => {
     api.configureGithubWebhookSecret();
 
@@ -73,6 +105,41 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     );
     expect(invalidSignature.body).toStrictEqual({
       error: "Invalid signature",
+    });
+
+    const invalidJson = await api.requestGithubWebhook(
+      "not-json",
+      api.signedGithubWebhookHeaders("not-json", "ping"),
+      [400],
+    );
+    expect(invalidJson.body).toStrictEqual({
+      error: "Invalid JSON payload",
+    });
+
+    const pingBody = "{}";
+    const ping = await api.requestGithubWebhook(
+      pingBody,
+      api.signedGithubWebhookHeaders(pingBody, "ping"),
+      [200],
+    );
+    expect(ping.body).toStrictEqual({ message: "pong" });
+
+    const ignoredBody = JSON.stringify({ action: "ignored" });
+    const ignored = await api.requestGithubWebhook(
+      ignoredBody,
+      api.signedGithubWebhookHeaders(ignoredBody, "workflow_job"),
+      [200],
+    );
+    expect(ignored.body).toBe("OK");
+
+    const invalidIssuesBody = JSON.stringify({ action: "opened" });
+    const invalidIssues = await api.requestGithubWebhook(
+      invalidIssuesBody,
+      api.signedGithubWebhookHeaders(invalidIssuesBody, "issues"),
+      [400],
+    );
+    expect(invalidIssues.body).toStrictEqual({
+      error: "Invalid payload structure",
     });
   });
 });
@@ -227,6 +294,27 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
       [200],
     );
     expect(malformedResponse.body).toStrictEqual({ received: true });
+  });
+
+  it("skips email trigger callbacks while outbound email is not configured", async () => {
+    api.disableResendApiKey();
+
+    const response = await api.requestEmailTriggerCallback(
+      {
+        runId: randomUUID(),
+        status: "completed",
+        payload: {
+          senderEmail: "sender@example.test",
+          agentId: randomUUID(),
+          userId: `user_${randomUUID()}`,
+          inboundEmailId: `email_${randomUUID()}`,
+          replyToken: `reply_${randomUUID()}`,
+        },
+      },
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true, skipped: true });
   });
 });
 

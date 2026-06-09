@@ -2,6 +2,7 @@ import {
   logsByIdContract,
   logsListContract,
 } from "@vm0/api-contracts/contracts/logs";
+import { emailUnsubscribeContract } from "@vm0/api-contracts/contracts/email-unsubscribe";
 import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 import type {
@@ -252,6 +253,30 @@ export function createMiscRoutesApi(context: TestContext) {
       return await accept(
         setupApp({ context })(userExportContract).post({
           headers: authenticate(context, actor),
+        }),
+        statuses,
+      );
+    },
+
+    async requestEmailUnsubscribePage(
+      token: string | undefined,
+      statuses: readonly (200 | 400)[],
+    ) {
+      return await accept(
+        setupApp({ context })(emailUnsubscribeContract).get({
+          query: { token },
+        }),
+        statuses,
+      );
+    },
+
+    async requestEmailUnsubscribe(
+      token: string | undefined,
+      statuses: readonly (200 | 400)[],
+    ) {
+      return await accept(
+        setupApp({ context })(emailUnsubscribeContract).unsubscribe({
+          query: { token },
         }),
         statuses,
       );

@@ -647,7 +647,13 @@ export function createBillingMediaApi(context: TestContext) {
 
     async requestImageIoGenerate(
       actor: ApiTestUser | null,
-      body: { readonly prompt?: string; readonly model?: string },
+      body: {
+        readonly prompt?: string;
+        readonly model?: string;
+        readonly size?: string;
+        readonly quality?: string;
+        readonly background?: string;
+      },
       statuses: readonly ImageIoStatus[],
     ) {
       const client = setupApp({ context })(zeroImageIoGenerateContract);
@@ -659,7 +665,14 @@ export function createBillingMediaApi(context: TestContext) {
 
     async requestVideoIoGenerate(
       actor: ApiTestUser | null,
-      body: { readonly prompt?: string; readonly model?: string },
+      body: {
+        readonly prompt?: string;
+        readonly model?: string;
+        readonly aspectRatio?: string;
+        readonly duration?: string;
+        readonly resolution?: string;
+        readonly seed?: number;
+      },
       statuses: readonly VideoIoStatus[],
     ) {
       const client = setupApp({ context })(zeroVideoIoGenerateContract);

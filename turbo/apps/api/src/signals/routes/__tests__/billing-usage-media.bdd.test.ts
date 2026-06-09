@@ -441,7 +441,27 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     expectApiError(speech.body);
     expect(speech.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
+    const invalidSpeechVoice = await api.requestVoiceSpeech(
+      admin,
+      { text: "hello", voice: "not-a-voice" },
+      [400],
+    );
+    expectApiError(invalidSpeechVoice.body);
+    expect(invalidSpeechVoice.body.error.message).toBe(
+      "Unsupported voice: not-a-voice",
+    );
+
     api.configureGemini();
+    const invalidGeminiPrompt = await api.requestGenerateImage(
+      admin,
+      { prompt: "" },
+      [400],
+    );
+    expectApiError(invalidGeminiPrompt.body);
+    expect(invalidGeminiPrompt.body.error.message).toBe(
+      "prompt is required and must be a non-empty string",
+    );
+
     const generatedImage = await api.requestGenerateImage(
       admin,
       { prompt: "a concise billing usage chart" },
@@ -450,6 +470,24 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     expectApiError(generatedImage.body);
     expect(generatedImage.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
+    const missingImageIoPrompt = await api.requestImageIoGenerate(
+      admin,
+      {},
+      [400],
+    );
+    expectApiError(missingImageIoPrompt.body);
+    expect(missingImageIoPrompt.body.error.message).toBe("prompt is required");
+
+    const unsupportedImageIoModel = await api.requestImageIoGenerate(
+      admin,
+      { prompt: "a concise billing usage chart", model: "not-a-model" },
+      [400],
+    );
+    expectApiError(unsupportedImageIoModel.body);
+    expect(unsupportedImageIoModel.body.error.message).toContain(
+      "Unsupported image model: not-a-model",
+    );
+
     const imageIo = await api.requestImageIoGenerate(
       admin,
       { prompt: "a concise billing usage chart" },
@@ -457,6 +495,27 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     );
     expectApiError(imageIo.body);
     expect(imageIo.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    const missingVideoIoPrompt = await api.requestVideoIoGenerate(
+      admin,
+      {},
+      [400],
+    );
+    expectApiError(missingVideoIoPrompt.body);
+    expect(missingVideoIoPrompt.body.error.message).toBe("prompt is required");
+
+    const unsupportedVideoRatio = await api.requestVideoIoGenerate(
+      admin,
+      {
+        prompt: "animated billing usage chart",
+        aspectRatio: "10:1",
+      },
+      [400],
+    );
+    expectApiError(unsupportedVideoRatio.body);
+    expect(unsupportedVideoRatio.body.error.message).toBe(
+      "Unsupported video aspect ratio: 10:1",
+    );
 
     const videoIo = await api.requestVideoIoGenerate(
       admin,
