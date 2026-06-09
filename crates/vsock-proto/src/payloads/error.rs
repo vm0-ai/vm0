@@ -1,6 +1,6 @@
 use super::truncate_utf8_to_u16_bytes;
 use crate::error::ProtocolError;
-use crate::read::read_u16_at;
+use crate::read::{expect_consumed, read_str, read_u16};
 
 /// Encode error payload: `[2B error_len][error]`.
 ///
@@ -15,15 +15,17 @@ pub fn encode_error(message: &str) -> Vec<u8> {
 
 /// Decode error payload. Returns the error message.
 pub fn decode_error(payload: &[u8]) -> Result<&str, ProtocolError> {
-    let msg_len = read_u16_at(payload, 0)
-        .ok_or(ProtocolError::InvalidPayload("error payload too short"))?
-        as usize;
-    std::str::from_utf8(
-        payload
-            .get(2..2 + msg_len)
-            .ok_or(ProtocolError::InvalidPayload("error message truncated"))?,
-    )
-    .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in error"))
+    let mut offset = 0;
+    let msg_len = read_u16(payload, &mut offset, "error payload too short")? as usize;
+    let message = read_str(
+        payload,
+        &mut offset,
+        msg_len,
+        "error message truncated",
+        "invalid UTF-8 in error",
+    )?;
+    expect_consumed(payload, offset, "error trailing bytes")?;
+    Ok(message)
 }
 
 #[cfg(test)]
@@ -114,5 +116,15 @@ mod tests {
         let err = decode_error(&payload).unwrap_err();
 
         assert_invalid_payload(err, "error message truncated");
+    }
+
+    #[test]
+    fn decode_error_rejects_trailing_bytes() {
+        let mut payload = encode_error("x");
+        payload.push(b'y');
+
+        let err = decode_error(&payload).unwrap_err();
+
+        assert_invalid_payload(err, "error trailing bytes");
     }
 }
