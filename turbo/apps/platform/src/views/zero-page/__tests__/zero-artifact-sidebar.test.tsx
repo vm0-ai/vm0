@@ -11,7 +11,12 @@ import {
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  fill,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -108,7 +113,10 @@ function setupChatThread({
   detachedSetupPage({ context, path });
 }
 
-function artifactFile(url: string): ChatThreadArtifactFile {
+function artifactFile(
+  url: string,
+  overrides: Partial<ChatThreadArtifactFile> = {},
+): ChatThreadArtifactFile {
   return {
     id: "artifact-release-notes",
     filename: "release-notes.md",
@@ -117,7 +125,18 @@ function artifactFile(url: string): ChatThreadArtifactFile {
     url,
     createdAt: "2026-03-10T00:00:01Z",
     googleDriveSync: { status: "not_synced" },
+    ...overrides,
   };
+}
+
+function getArtifactTab(container: HTMLElement, label: string): HTMLElement {
+  const tab = queryAllByRoleFast("tab", container).find((element) => {
+    return element.textContent?.trim() === label;
+  });
+  if (!tab) {
+    throw new Error(`${label} artifact tab not found`);
+  }
+  return tab;
 }
 
 describe("zero artifact sidebar", () => {
@@ -228,6 +247,92 @@ describe("zero artifact sidebar", () => {
     await waitFor(() => {
       expect(screen.getByText("Download")).toBeInTheDocument();
       expect(screen.getByText("Connect Google Drive")).toBeInTheDocument();
+    });
+  });
+
+  it("browses artifact inbox sections, searches, and opens a result", async () => {
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/release-notes.md";
+    const imageUrl =
+      "https://www.vm0.ai/f/36PnTFtD4dBQ9zg5jj6E5r918aV/24b42fb4-4b7b-4521-800f-defc356ae7b4/chart.png";
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response(
+        "# Release notes\n\nOpened from the artifact inbox.",
+        {
+          headers: { "Content-Type": "text/plain" },
+        },
+      );
+    });
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(markdownUrl),
+        artifactFile(imageUrl, {
+          id: "artifact-chart",
+          filename: "launch-chart.png",
+          contentType: "image/png",
+          size: 128,
+        }),
+      ],
+      content: "Artifacts are ready.",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Open artifacts")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open artifacts"));
+
+    const inbox = await waitFor(() => {
+      const element = screen.getByTestId("artifact-inbox");
+      expect(screen.getByText("release-notes.md")).toBeInTheDocument();
+      expect(screen.getByText("launch-chart.png")).toBeInTheDocument();
+      return element;
+    });
+
+    click(getArtifactTab(inbox, "Media"));
+
+    await waitFor(() => {
+      expect(screen.getByText("launch-chart.png")).toBeInTheDocument();
+      expect(screen.queryByText("release-notes.md")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Search artifacts"));
+    await fill(screen.getByPlaceholderText("Search"), "release");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("No artifacts match this view."),
+      ).toBeInTheDocument();
+    });
+
+    click(getArtifactTab(inbox, "Docs"));
+
+    await waitFor(() => {
+      expect(screen.getByText("release-notes.md")).toBeInTheDocument();
+      expect(screen.queryByText("launch-chart.png")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open artifact release-notes.md"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(
+        screen.getByText("Opened from the artifact inbox."),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Back to all artifacts"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
+      expect(screen.getByText("release-notes.md")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close artifacts"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-inbox")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
   });
 });
