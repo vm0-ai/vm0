@@ -425,8 +425,9 @@ def normalize_idna_hostname(host: str) -> str:
 
     Python's built-in codec is IDNA2003 and maps labels such as ``faß`` to
     ``fass``. WHATWG URL parsing keeps those as A-labels instead, so this helper
-    encodes non-ASCII labels and rejects compatibility folds that collapse to a
-    plain ASCII label such as fullwidth Latin text.
+    encodes accepted non-ASCII labels and rejects unsafe compatibility mappings
+    that would obscure host identity, including folds to plain ASCII labels such
+    as fullwidth Latin text.
     """
     normalized = _normalize_hostname_dots(host)
     if not normalized:
