@@ -33,7 +33,7 @@ from typing import Literal, Protocol, TypedDict
 from logging_utils import log_proxy_entry
 
 from .counters import set_buffered_usage_events
-from .idempotency import USAGE_EVENT_NAMESPACE_AGGREGATE, encode_uuid_name
+from .idempotency import USAGE_EVENT_NAMESPACE_AGGREGATE, derive_usage_idempotency_key
 from .webhook import _enqueue_webhook
 
 DEFAULT_FLUSH_INTERVAL_SECONDS = 30.0
@@ -543,23 +543,19 @@ class UsageEventBuffer:
         aggregate_key: _AggregateKey,
         flush_sequence: int,
     ) -> str:
-        return str(
-            uuid.uuid5(
-                USAGE_EVENT_NAMESPACE_AGGREGATE,
-                encode_uuid_name(
-                    (
-                        self._buffer_id,
-                        str(flush_sequence),
-                        destination.url,
-                        destination.sandbox_token,
-                        destination.proxy_log_path,
-                        aggregate_key.run_id,
-                        aggregate_key.kind,
-                        aggregate_key.provider,
-                        aggregate_key.category,
-                    )
-                ),
-            )
+        return derive_usage_idempotency_key(
+            USAGE_EVENT_NAMESPACE_AGGREGATE,
+            (
+                self._buffer_id,
+                str(flush_sequence),
+                destination.url,
+                destination.sandbox_token,
+                destination.proxy_log_path,
+                aggregate_key.run_id,
+                aggregate_key.kind,
+                aggregate_key.provider,
+                aggregate_key.category,
+            ),
         )
 
     @staticmethod
