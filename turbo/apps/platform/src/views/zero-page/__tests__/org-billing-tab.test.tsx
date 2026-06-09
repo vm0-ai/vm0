@@ -1,5 +1,6 @@
 import {
   zeroBillingAutoRechargeContract,
+  zeroBillingCreditCheckoutContract,
   zeroBillingDowngradeContract,
   zeroBillingRestoreContract,
   zeroBillingStatusContract,
@@ -89,6 +90,11 @@ function mockBillingStory(): void {
       return respond(200, billingStatus.autoRecharge);
     },
   );
+  context.mocks.api(zeroBillingCreditCheckoutContract.create, ({ respond }) => {
+    return respond(200, {
+      url: "https://billing.stripe.com/checkout/credit-purchase",
+    });
+  });
   context.mocks.api(zeroBillingDowngradeContract.create, ({ respond }) => {
     billingStatus = {
       ...billingStatus,
@@ -235,6 +241,14 @@ describe("organization billing settings", () => {
       expect(
         screen.getByLabelText("Auto-recharge credit amount in credits"),
       ).toHaveValue("10000");
+    });
+
+    click(screen.getByText("Quick buy $35.00"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://billing.stripe.com/checkout/credit-purchase",
+      );
     });
   });
 });
