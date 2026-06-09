@@ -203,6 +203,17 @@ export function isTranscriptionBody(
   return isRecord(value) && typeof value.text === "string";
 }
 
+export function isVerboseTranscriptionSegment(
+  value: unknown,
+): value is { readonly start: number; readonly end: number; readonly text: string } {
+  return (
+    isRecord(value) &&
+    typeof value.start === "number" &&
+    typeof value.end === "number" &&
+    typeof value.text === "string"
+  );
+}
+
 export function isAllowedSttMimeType(value: string): boolean {
   return ALLOWED_STT_MIME_TYPES.some((mimeType) => {
     return mimeType === value;

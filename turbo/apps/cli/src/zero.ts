@@ -30,6 +30,7 @@ import { zeroMapsCommand } from "./commands/zero/maps";
 import { zeroBankingCommand } from "./commands/zero/banking";
 import { zeroModelCommand } from "./commands/zero/model";
 import { zeroModelProviderCommand } from "./commands/zero/model-provider";
+import { zeroVideoCommand } from "./commands/zero/video";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
@@ -66,6 +67,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "computer-use": "computer-use:write",
   generate: null,
   web: null,
+  video: null,
   host: "host:write",
   maps: "maps:read",
   banking: "banking:read",
@@ -96,6 +98,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroComputerUseCommand,
   generateCommand,
   zeroWebCommand,
+  zeroVideoCommand,
   zeroHostCommand,
   zeroMapsCommand,
   zeroBankingCommand,
