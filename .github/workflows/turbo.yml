@@ -1174,6 +1174,17 @@ jobs:
 
           vercel build --token="$VERCEL_TOKEN"
 
+          # Diagnostic: report the prebuilt payload size composition. The
+          # archive uploaded to Vercel drives the slow "Deploying outputs"
+          # step, so this shows whether static assets or function bundles
+          # dominate the ~105MB payload. Informational; never fails the build.
+          echo "::group::Prebuilt output size (.vercel/output)"
+          du -sh .vercel/output 2>/dev/null || true
+          du -sh .vercel/output/static .vercel/output/functions 2>/dev/null || true
+          echo "--- 40 largest files ---"
+          du -ah .vercel/output 2>/dev/null | sort -rh | head -40 || true
+          echo "::endgroup::"
+
       - name: Resolve Web deploy environment
         id: web-deploy-env
         uses: ./.github/actions/web-api-env
