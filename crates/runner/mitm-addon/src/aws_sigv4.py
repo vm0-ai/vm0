@@ -55,6 +55,7 @@ class _CredentialScope:
 class _SigningContext:
     location: _AuthLocation
     algorithm: str
+    source_access_key_id: str
     scope: _CredentialScope
     signed_headers: frozenset[str]
     amz_date: str
@@ -76,6 +77,8 @@ def sign_request(
         raise AwsSigV4SigningError("SigV4A is not supported by this runner")
     if context.algorithm != _HMAC_ALGORITHM:
         raise AwsSigV4SigningError("Unsupported AWS signing algorithm")
+    if context.source_access_key_id == credentials.access_key_id:
+        raise AwsSigV4SigningError("AWS request must use a placeholder access key ID")
     if context.scope.region == "*":
         raise AwsSigV4SigningError("Wildcard AWS signing region requires SigV4A")
     if context.scope.service == _UNSUPPORTED_S3_EXPRESS_SIGNING_NAME:
@@ -129,7 +132,7 @@ def _classify_header_request(
     signature = params.get("Signature")
     if not credential or not signed_headers or not signature:
         raise AwsSigV4SigningError("Malformed AWS authorization header")
-    scope = _parse_credential_scope(credential)
+    source_access_key_id, scope = _parse_credential(credential)
     amz_date = _first_header(headers, "x-amz-date")
     if not amz_date:
         raise AwsSigV4SigningError("AWS SigV4 header auth requires x-amz-date")
@@ -137,6 +140,7 @@ def _classify_header_request(
     return _SigningContext(
         location=_AuthLocation.HEADER,
         algorithm=algorithm,
+        source_access_key_id=source_access_key_id,
         scope=scope,
         signed_headers=_parse_signed_headers(signed_headers),
         amz_date=amz_date,
@@ -154,13 +158,14 @@ def _classify_query_request(
     signature = _first_query_value(query_pairs, "X-Amz-Signature")
     if not credential or not signed_headers or not amz_date or not expires or not signature:
         raise AwsSigV4SigningError("Malformed AWS presigned query")
-    scope = _parse_credential_scope(credential)
+    source_access_key_id, scope = _parse_credential(credential)
     _validate_amz_date(amz_date, scope)
     if not _PRESIGN_EXPIRES_RE.fullmatch(expires):
         raise AwsSigV4SigningError("Malformed AWS presigned query expiry")
     return _SigningContext(
         location=_AuthLocation.QUERY,
         algorithm=algorithm,
+        source_access_key_id=source_access_key_id,
         scope=scope,
         signed_headers=_parse_signed_headers(signed_headers),
         amz_date=amz_date,
@@ -178,22 +183,25 @@ def _parse_authorization_header(value: str) -> tuple[str, dict[str, str]]:
     return algorithm, params
 
 
-def _parse_credential_scope(credential: str) -> _CredentialScope:
+def _parse_credential(credential: str) -> tuple[str, _CredentialScope]:
     parts = urllib.parse.unquote(credential).split("/")
     if len(parts) != _CREDENTIAL_SCOPE_PARTS or parts[-1] != _AWS4_REQUEST:
         raise AwsSigV4SigningError("Malformed AWS credential scope")
+    access_key_id = parts[0]
     date = parts[1]
     region = parts[2]
     service = parts[3]
-    if not date or not region or not service:
+    if not access_key_id or not date or not region or not service:
         raise AwsSigV4SigningError("Incomplete AWS credential scope")
     if (
-        not _SCOPE_DATE_RE.fullmatch(date)
+        not _ACCESS_KEY_ID_RE.fullmatch(access_key_id)
+        or _has_ascii_control(access_key_id)
+        or not _SCOPE_DATE_RE.fullmatch(date)
         or not _SCOPE_REGION_RE.fullmatch(region)
         or not _SCOPE_SERVICE_RE.fullmatch(service)
     ):
         raise AwsSigV4SigningError("Malformed AWS credential scope")
-    return _CredentialScope(date=date, region=region, service=service)
+    return access_key_id, _CredentialScope(date=date, region=region, service=service)
 
 
 def _parse_signed_headers(value: str) -> frozenset[str]:
