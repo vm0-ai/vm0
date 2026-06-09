@@ -62,6 +62,7 @@ import { webhooksAgentFirewallAuthRoutes } from "./routes/webhooks-agent-firewal
 import { webhooksAgentHealthUsageTelemetryRoutes } from "./routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
 import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-generations";
+import { webhookAutomationsRoutes } from "./routes/webhook-automations";
 import { webhooksAutomationRoutes } from "./routes/webhooks-automation";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
@@ -197,6 +198,10 @@ export const ROUTES: readonly RouteEntry[] = [
   },
   ...authMeRoutes,
   ...automationsRoutes,
+  // Webhook-automation management (create/list/delete) on the new tables. Listed
+  // before the inbound webhook route so the management collection/by-id paths
+  // resolve ahead of the catch-all `:token` dispatch.
+  ...webhookAutomationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
