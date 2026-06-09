@@ -282,7 +282,8 @@ function mockGitHubAppCredentials(): void {
 function setupGitHubApiMocks(args: {
   readonly installationId: string;
   readonly comments?: readonly GitHubApiComment[];
-}): void {
+}): { readonly capturedComments: readonly CapturedGitHubIssueComment[] } {
+  const capturedComments: CapturedGitHubIssueComment[] = [];
   server.use(
     http.post(
       `https://api.github.com/app/installations/${args.installationId}/access_tokens`,
@@ -301,7 +302,9 @@ function setupGitHubApiMocks(args: {
     ),
     http.post(
       "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
-      () => {
+      async ({ request }) => {
+        const body = (await request.json()) as { readonly body: string };
+        capturedComments.push({ body: body.body });
         return HttpResponse.json({ id: 9876 });
       },
     ),
@@ -312,6 +315,7 @@ function setupGitHubApiMocks(args: {
       },
     ),
   );
+  return { capturedComments };
 }
 
 function gitHubWebhookHeaders(args: {
@@ -1421,6 +1425,11 @@ describe("POST /api/webhooks/github", () => {
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
     mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    const { capturedComments } = setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [],
+    });
 
     const response = await postGitHubWebhook({
       event: "issues",
@@ -1441,6 +1450,13 @@ describe("POST /api/webhooks/github", () => {
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.prompt).toBe("Handle this labeled GitHub work");
+    expect(capturedComments).toHaveLength(1);
+    expect(capturedComments[0]?.body).toContain(
+      `Zero received the "${GITHUB_APP_SLUG}" label and started working.`,
+    );
+    expect(capturedComments[0]?.body).toContain(
+      `Audit: http://localhost:3002/activities/${runs[0]?.id}`,
+    );
   });
 
   it("starts a new session for label triggers on a GitHub issue with an existing session", async () => {
