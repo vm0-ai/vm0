@@ -119,10 +119,14 @@ const AGENTPHONE_PHONE_NUMBER = "+19039853128";
 const SLACK_SIGNING_SECRET = "slack-bdd-signing-secret";
 
 type SlackSignatureHeaders = Record<string, string>;
-type SlackEventStatus = 200 | 400 | 401 | 503;
+type SlackIngressPath =
+  | "/api/zero/slack/commands"
+  | "/api/zero/slack/events"
+  | "/api/zero/slack/interactive";
+type SlackIngressStatus = 200 | 400 | 401 | 503;
 
-interface SlackEventResponse {
-  readonly status: SlackEventStatus;
+interface SlackIngressResponse {
+  readonly status: SlackIngressStatus;
   readonly body: unknown;
   readonly headers: Headers;
 }
@@ -213,22 +217,21 @@ async function parseRawResponseBody(response: Response): Promise<unknown> {
   return await response.text();
 }
 
-async function requestRawSlackEvent(
+async function requestRawSlackIngress(
   context: TestContext,
+  path: SlackIngressPath,
   body: string,
   headers: SlackSignatureHeaders,
-): Promise<SlackEventResponse> {
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/zero/slack/events",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...headers,
-      },
-      body,
+  contentType: string,
+): Promise<SlackIngressResponse> {
+  const response = await createApp({ signal: context.signal }).request(path, {
+    method: "POST",
+    headers: {
+      "content-type": contentType,
+      ...headers,
     },
-  );
+    body,
+  });
   const result = {
     body: await parseRawResponseBody(response),
     headers: response.headers,
@@ -248,7 +251,7 @@ async function requestRawSlackEvent(
       return { status: 503, ...result };
     }
     default: {
-      throw new Error(`Unexpected Slack Events API status ${response.status}`);
+      throw new Error(`Unexpected Slack ingress status ${response.status}`);
     }
   }
 }
@@ -448,7 +451,47 @@ export function createBddIntegrationApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 503)[],
     ) {
       return await accept(
-        requestRawSlackEvent(context, body, headers),
+        requestRawSlackIngress(
+          context,
+          "/api/zero/slack/events",
+          body,
+          headers,
+          "application/json",
+        ),
+        statuses,
+      );
+    },
+
+    async requestSlackCommand(
+      body: string,
+      headers: SlackSignatureHeaders,
+      statuses: readonly (200 | 400 | 401 | 503)[],
+    ) {
+      return await accept(
+        requestRawSlackIngress(
+          context,
+          "/api/zero/slack/commands",
+          body,
+          headers,
+          "application/x-www-form-urlencoded",
+        ),
+        statuses,
+      );
+    },
+
+    async requestSlackInteractive(
+      body: string,
+      headers: SlackSignatureHeaders,
+      statuses: readonly (200 | 400 | 401 | 503)[],
+    ) {
+      return await accept(
+        requestRawSlackIngress(
+          context,
+          "/api/zero/slack/interactive",
+          body,
+          headers,
+          "application/x-www-form-urlencoded",
+        ),
         statuses,
       );
     },

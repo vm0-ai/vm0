@@ -12,10 +12,9 @@ import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 
 /*
 helper gap:
-- INT-01 Slack installed-workspace, signed command, event, interactive,
-  browser-connect, upload-complete, and internal Slack org callback happy paths
-  still need a public API setup journey that does not use test-state DB seed
-  routes.
+- INT-01 Slack installed-workspace, browser-connect, upload-complete, and
+  internal Slack org callback happy paths still need a public API setup journey
+  that does not use test-state DB seed routes.
 - INT-02 Telegram linked-bot, message/upload success, internal callback, and
   cleanup flows still need public API setup helpers for bot installation state.
 - INT-03 GitHub installed-app and AgentPhone linked-send happy paths need public
@@ -29,6 +28,27 @@ const integrations = createBddIntegrationApi(context);
 const AGENTPHONE_WEBHOOK_SECRET = "agentphone-bdd-secret";
 const TELEGRAM_BOT_ID = 99_887_766;
 const TELEGRAM_BOT_TOKEN = `${TELEGRAM_BOT_ID}:bdd-token`;
+
+interface SlackEphemeralBody {
+  readonly response_type: "ephemeral";
+  readonly blocks: readonly unknown[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function expectSlackEphemeral(
+  body: unknown,
+): asserts body is SlackEphemeralBody {
+  if (
+    !isRecord(body) ||
+    body.response_type !== "ephemeral" ||
+    !Array.isArray(body.blocks)
+  ) {
+    throw new Error("Expected Slack ephemeral response body");
+  }
+}
 
 function telegramDomainProbe() {
   return http.head("https://oauth.telegram.org/auth", () => {
@@ -115,6 +135,43 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     expect(verified.body).toStrictEqual({
       challenge: "slack-bdd-challenge",
     });
+  });
+
+  it("keeps signed Slack command and interactive payload boundaries visible through APIs", async () => {
+    integrations.configureSlackSigningSecret();
+
+    const commandBody = new URLSearchParams({
+      team_id: "TBDD",
+      channel_id: "CBDD",
+      user_id: "UBDD",
+      text: "help",
+      trigger_id: "trigger-bdd",
+    }).toString();
+    const help = await integrations.requestSlackCommand(
+      commandBody,
+      integrations.signedSlackIngressHeaders(commandBody),
+      [200],
+    );
+    expectSlackEphemeral(help.body);
+    expect(help.body.blocks.length).toBeGreaterThan(0);
+
+    const missingPayloadBody = "";
+    const missingPayload = await integrations.requestSlackInteractive(
+      missingPayloadBody,
+      integrations.signedSlackIngressHeaders(missingPayloadBody),
+      [400],
+    );
+    expect(missingPayload.body).toStrictEqual({ error: "Missing payload" });
+
+    const invalidPayloadBody = new URLSearchParams({
+      payload: "not-json",
+    }).toString();
+    const invalidPayload = await integrations.requestSlackInteractive(
+      invalidPayloadBody,
+      integrations.signedSlackIngressHeaders(invalidPayloadBody),
+      [400],
+    );
+    expect(invalidPayload.body).toStrictEqual({ error: "Invalid payload" });
   });
 
   it("keeps unauthenticated, not-installed, non-admin, and provider-config errors visible through APIs", async () => {
