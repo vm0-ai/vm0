@@ -1,3 +1,4 @@
+import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -73,6 +74,52 @@ async function openModelSettings(): Promise<void> {
 }
 
 describe("personal model providers settings", () => {
+  it("opens personal Claude Code login from model settings", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([]);
+    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+      return respond(200, {
+        sessionToken: "mock-personal-claude-code-session",
+        type: "claude-code",
+        status: "pending",
+        scope: "personal",
+        browserUrl: "https://claude.ai/oauth/authorize",
+        expiresIn: 30,
+      });
+    });
+
+    await openModelSettings();
+
+    const claudeCodeRow = await screen.findByTestId(
+      "oauth-card-claude-code-oauth-token",
+    );
+    expect(
+      within(claudeCodeRow).getByText("Claude Code OAuth"),
+    ).toBeInTheDocument();
+    const connectButton = queryAllByRoleFast("button", claudeCodeRow).find(
+      (button) => {
+        return (
+          button.getAttribute("aria-label") === "Connect Claude Code OAuth"
+        );
+      },
+    );
+    if (!connectButton) {
+      throw new Error("Connect Claude Code OAuth button not found");
+    }
+    click(connectButton);
+
+    const authorizationCodeInputs = await screen.findAllByTestId(
+      "claude-code-device-auth-code",
+    );
+    expect(authorizationCodeInputs).not.toHaveLength(0);
+    expect(screen.getAllByText("Connect Claude Code")).not.toHaveLength(0);
+  });
+
   it("opens reconnect login from a stale personal Codex credential", async () => {
     mockPersonalProvidersStory();
     await openModelSettings();
