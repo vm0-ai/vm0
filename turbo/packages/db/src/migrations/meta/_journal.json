@@ -3074,6 +3074,13 @@
       "when": 1780974019944,
       "tag": "0438_slow_klaw",
       "breakpoints": true
+    },
+    {
+      "idx": 439,
+      "version": "7",
+      "when": 1780986126784,
+      "tag": "0439_premium_wendigo",
+      "breakpoints": true
     }
   ]
 }
