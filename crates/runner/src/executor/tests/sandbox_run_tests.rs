@@ -813,6 +813,47 @@ async fn execute_inner_nonzero_without_guest_error_returns_failure_message() {
 }
 
 #[tokio::test]
+async fn execute_inner_non_exited_zero_code_is_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let mut exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
+    exit.termination = ProcessTerminationKind::WaitFailed;
+    overrides.push_wait_process_exit(exit);
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected failure");
+    assert_eq!(outcome.exit_code(), 1);
+    assert_eq!(failure.exit_code, 1);
+    assert_eq!(failure.error, "Agent exited with code 1");
+    assert_eq!(failure.kind, ExecutionFailureKind::Generic);
+    assert!(outcome.guest_session_id.is_none());
+    assert!(
+        overrides
+            .exec_calls()
+            .iter()
+            .any(|call| call.cmd.contains("guest-agent-binary"))
+    );
+}
+
+#[tokio::test]
 async fn execute_inner_guest_process_timeout_marks_failure_kind() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -842,6 +883,51 @@ async fn execute_inner_guest_process_timeout_marks_failure_kind() {
 
     let failure = outcome.failure.as_ref().expect("expected timeout failure");
     assert_eq!(failure.exit_code, 124);
+    assert_eq!(failure.error, "Timeout");
+    match failure.kind {
+        ExecutionFailureKind::RunnerJobTimeout {
+            timeout_ms,
+            elapsed_ms: _,
+            guest_duration_ms,
+        } => {
+            assert_eq!(timeout_ms, 7_200_000);
+            assert_eq!(guest_duration_ms, Some(7_200_084));
+        }
+        ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
+    }
+}
+
+#[tokio::test]
+async fn execute_inner_timeout_zero_code_is_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let mut exit = ProcessExit::new(1, 0, Vec::new(), b"Timeout".to_vec());
+    exit.termination = ProcessTerminationKind::TimedOut;
+    exit.guest_duration_ms = Some(7_200_084);
+    overrides.push_wait_process_exit(exit);
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected timeout failure");
+    assert_eq!(outcome.exit_code(), 1);
+    assert_eq!(failure.exit_code, 1);
     assert_eq!(failure.error, "Timeout");
     match failure.kind {
         ExecutionFailureKind::RunnerJobTimeout {

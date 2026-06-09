@@ -132,7 +132,7 @@ pub(super) fn should_collect_agent_abnormal_exit_diagnostics(
     guest_error: Option<&str>,
 ) -> bool {
     !wait_cancelled
-        && exit.exit_code != 0
+        && (exit.exit_code != 0 || exit.termination != sandbox::ProcessTerminationKind::Exited)
         && exit.diagnostic.is_empty()
         && stderr.is_empty()
         && failure_diagnostic.is_none()

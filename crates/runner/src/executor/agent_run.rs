@@ -23,7 +23,7 @@ use super::telemetry::record_api_latency;
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
     PROCESS_CANCEL_TIMEOUTS, RunnerResult, SandboxReuseResult, USER_ENV_FILE_ENV_KEY,
-    agent_exit_failure_message,
+    agent_exit_failure_message, normalize_failure_exit_code,
 };
 use crate::paths::guest;
 use crate::telemetry::JobTelemetry;
@@ -428,10 +428,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
 
+    let process_failed = exit.exit_code != 0 || exit.termination != ProcessTerminationKind::Exited;
     let failure = if wait_cancelled {
         // Skip guest file reads — sandbox hasn't been stopped yet.
         Some(ExecutionFailure::cancelled())
-    } else if exit.exit_code != 0 {
+    } else if process_failed {
+        let failure_exit_code = normalize_failure_exit_code(exit.exit_code);
         let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
         let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
         let guest_error = if stderr.is_empty() {
@@ -460,7 +462,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 context.run_id,
                 sandbox.id(),
                 start.reuse_result,
-                exit.exit_code,
+                failure_exit_code,
             )
             .await;
         }
@@ -470,11 +472,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             // Stderr is empty (redirected to log file). Check for a structured
             // error file written by the guest-agent for final failure
             // handoff.
-            guest_error.unwrap_or_else(|| agent_exit_failure_message(exit.exit_code))
+            guest_error.unwrap_or_else(|| agent_exit_failure_message(failure_exit_code))
         };
         Some(if exit.termination == ProcessTerminationKind::TimedOut {
             ExecutionFailure::runner_job_timeout(
-                exit.exit_code,
+                failure_exit_code,
                 error,
                 failure_diagnostic,
                 JOB_TIMEOUT,
@@ -482,7 +484,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 exit.guest_duration_ms,
             )
         } else {
-            ExecutionFailure::new(exit.exit_code, error, failure_diagnostic)
+            ExecutionFailure::new(failure_exit_code, error, failure_diagnostic)
         })
     } else {
         None
