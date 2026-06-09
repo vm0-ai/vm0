@@ -211,6 +211,7 @@ const CONNECTOR_ICON_COLORFUL = {
   reducto: true,
   rentcast: true,
   reportei: true,
+  revenuecat: true,
   salesforce: true,
   serpapi: true,
   servicenow: true,
