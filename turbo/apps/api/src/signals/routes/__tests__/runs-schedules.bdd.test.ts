@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
+import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import {
   createBddApi,
@@ -278,6 +279,62 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
     );
     expectApiError(invalidPollGroup.body);
     expect(invalidPollGroup.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("issues runner realtime tokens only for authenticated vm0 runner groups", async () => {
+    const api = createRunsSchedulesApi(context);
+
+    const unauthenticated = await api.requestRunnerRealtimeToken(
+      false,
+      { group: "vm0/test" },
+      [401],
+    );
+    expectApiError(unauthenticated.body);
+    expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
+
+    const malformedGroup = await api.requestRunnerRealtimeToken(
+      true,
+      { group: "not-a-group" },
+      [400],
+    );
+    expectApiError(malformedGroup.body);
+    expect(malformedGroup.body.error.code).toBe("BAD_REQUEST");
+
+    const forbiddenGroup = await api.requestRunnerRealtimeToken(
+      true,
+      { group: "other/test" },
+      [403],
+    );
+    expectApiError(forbiddenGroup.body);
+    expect(forbiddenGroup.body.error.code).toBe("FORBIDDEN");
+
+    const capability = JSON.stringify({
+      "runner-group:vm0/test": ["subscribe"],
+    });
+    context.mocks.ably.createTokenRequest.mockResolvedValueOnce({
+      keyName: "ably-key",
+      timestamp: now(),
+      capability,
+      nonce: "nonce",
+      mac: "mac",
+    });
+
+    const token = await api.requestRunnerRealtimeToken(
+      true,
+      { group: "vm0/test" },
+      [200],
+    );
+    if (token.status !== 200) {
+      throw new Error("Expected runner realtime token request to succeed");
+    }
+    expect(token.body.capability).toBe(capability);
+    expect(context.mocks.ably.createTokenRequest).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.createTokenRequest).toHaveBeenCalledWith({
+      capability: {
+        "runner-group:vm0/test": ["subscribe"],
+      },
+      ttl: 60 * 60 * 1000,
+    });
   });
 });
 

@@ -10,6 +10,7 @@ import {
   type AutomationMutationResponse,
   type AutomationResponse,
 } from "@vm0/api-contracts/contracts/automations";
+import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import {
@@ -72,6 +73,9 @@ type RunnerHeartbeatBody = z.infer<
   (typeof runnersHeartbeatContract.heartbeat)["body"]
 >;
 type RunnerPollBody = z.infer<(typeof runnersPollContract.poll)["body"]>;
+type RunnerRealtimeTokenBody = z.infer<
+  (typeof runnerRealtimeTokenContract.create)["body"]
+>;
 
 interface ClerkUserProfile {
   readonly id: string;
@@ -352,6 +356,20 @@ export function createRunsSchedulesApi(context: TestContext) {
     ) {
       return await accept(
         setupApp({ context })(runnersPollContract).poll({
+          headers: runnerHeaders(validAuth),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestRunnerRealtimeToken(
+      validAuth: boolean,
+      body: RunnerRealtimeTokenBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(runnerRealtimeTokenContract).create({
           headers: runnerHeaders(validAuth),
           body,
         }),
