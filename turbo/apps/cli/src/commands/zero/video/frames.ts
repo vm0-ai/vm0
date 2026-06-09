@@ -20,17 +20,12 @@ export const framesCommand = new Command()
     "--at <timestamps>",
     "Comma-separated timestamps to capture (e.g. 00:21,01:40 or 12,95.5)",
   )
-  .option(
-    "--out-dir <dir>",
-    "Directory to write extracted frames (default: a temp dir)",
-  )
   .addHelpText(
     "after",
     `
 Examples:
   Frames at two moments:  zero video frames --url "https://..." --at 00:21,01:40
   From a web file:        zero video frames --file-id abc-123 --at 12,95.5
-  Custom output dir:      zero video frames --url "https://..." --at 00:05 --out-dir /tmp/shots
 
 Output:
   Prints a JSON object to stdout, one entry per timestamp:
@@ -47,12 +42,7 @@ Notes:
   )
   .action(
     withErrorHandler(
-      async (options: {
-        url?: string;
-        fileId?: string;
-        at: string;
-        outDir?: string;
-      }) => {
+      async (options: { url?: string; fileId?: string; at: string }) => {
         if (!options.url && !options.fileId) {
           process.stderr.write(
             "Error: provide --url <presigned-url> or --file-id <id>\n",
@@ -73,8 +63,7 @@ Notes:
           process.exit(1);
         }
 
-        const outDir =
-          options.outDir ?? join(tmpdir(), `zero-frames-${Date.now()}`);
+        const outDir = join(tmpdir(), `zero-frames-${Date.now()}`);
         mkdirSync(outDir, { recursive: true });
 
         const tmpVideo = join(tmpdir(), `zero-video-${Date.now()}.mp4`);
