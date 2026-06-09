@@ -3,6 +3,154 @@
   <head>
     <title>Zero</title>
     <meta charset="UTF-8" />
+    <style>
+      .browser-upgrade {
+        display: none;
+      }
+
+      [data-browser-supported="false"] body {
+        margin: 0;
+      }
+
+      [data-browser-supported="false"] #root {
+        display: none;
+      }
+
+      [data-browser-supported="false"] .browser-upgrade {
+        background: #fafbfc;
+        color: #14171d;
+        display: table;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        min-height: 100vh;
+        width: 100%;
+      }
+
+      .browser-upgrade__center {
+        display: table-cell;
+        padding: 32px 20px;
+        vertical-align: middle;
+      }
+
+      .browser-upgrade__panel {
+        background: #ffffff;
+        border: 1px solid #dce1e8;
+        border-radius: 8px;
+        box-shadow: 0 24px 80px rgba(20, 23, 29, 0.12);
+        margin: 0 auto;
+        max-width: 520px;
+        padding: 32px;
+      }
+
+      .browser-upgrade__brand {
+        color: #ed4e01;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 20px;
+        margin: 0 0 18px;
+        text-transform: uppercase;
+      }
+
+      .browser-upgrade h1 {
+        font-size: 28px;
+        line-height: 36px;
+        margin: 0;
+      }
+
+      .browser-upgrade p {
+        color: #525b68;
+        font-size: 16px;
+        line-height: 24px;
+        margin: 16px 0 0;
+      }
+
+      .browser-upgrade__actions {
+        margin-top: 28px;
+      }
+
+      .browser-upgrade a {
+        background: #ed4e01;
+        border: 1px solid #ed4e01;
+        border-radius: 8px;
+        color: #ffffff;
+        display: inline-block;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 20px;
+        margin: 0 12px 12px 0;
+        min-height: 20px;
+        padding: 10px 16px;
+        text-align: center;
+        text-decoration: none;
+      }
+
+      .browser-upgrade a.secondary {
+        background: #ffffff;
+        border-color: #c5ccd7;
+        color: #14171d;
+      }
+
+      @media (max-width: 520px) {
+        .browser-upgrade__panel {
+          padding: 24px;
+        }
+
+        .browser-upgrade h1 {
+          font-size: 24px;
+          line-height: 32px;
+        }
+
+        .browser-upgrade a {
+          display: block;
+          margin-right: 0;
+        }
+      }
+    </style>
+    <script>
+      (function () {
+        var ua = navigator.userAgent || "";
+        var supported = true;
+        var iosPattern = /\b(?:iPhone|iPad|iPod)\b.*\bOS (\d+)(?:_(\d+))?/;
+        var iosMatch = iosPattern.exec(ua);
+        var chromeMatch = /\b(?:Chrome|CriOS)\/(\d+)/.exec(ua);
+
+        if (iosMatch) {
+          var iosMajor = parseInt(iosMatch[1], 10);
+          var iosMinor = iosMatch[2] ? parseInt(iosMatch[2], 10) : 0;
+          if (!isNaN(iosMajor) && !isNaN(iosMinor)) {
+            supported = iosMajor > 16 || (iosMajor === 16 && iosMinor >= 4);
+          }
+        } else if (chromeMatch && !/\b(?:Edg|OPR|SamsungBrowser)\//.test(ua)) {
+          var chromeMajor = parseInt(chromeMatch[1], 10);
+          if (!isNaN(chromeMajor)) {
+            supported = chromeMajor >= 111;
+          }
+        } else {
+          var safariMatch = /\bVersion\/(\d+)(?:\.(\d+))?.*\bSafari\//.exec(ua);
+          if (
+            safariMatch &&
+            !/\b(?:Chrome|CriOS|Chromium|Edg|OPR|FxiOS)\//.test(ua)
+          ) {
+            var safariMajor = parseInt(safariMatch[1], 10);
+            var safariMinor = safariMatch[2] ? parseInt(safariMatch[2], 10) : 0;
+            if (!isNaN(safariMajor) && !isNaN(safariMinor)) {
+              supported =
+                safariMajor > 16 || (safariMajor === 16 && safariMinor >= 4);
+            }
+          }
+        }
+
+        window.__vm0BrowserSupported = supported;
+        if (!supported) {
+          var html = document.documentElement;
+          html.setAttribute("data-browser-supported", "false");
+        }
+      })();
+    </script>
     <script>
       (function () {
         if ("%VITE_VERCEL_ENV%" !== "production") return;
@@ -127,7 +275,11 @@
         if (t === "dark") document.documentElement.classList.add("dark");
       })();
     </script>
-    <script type="module" src="/src/main.ts" defer></script>
+    <script type="module">
+      if (window.__vm0BrowserSupported !== false) {
+        import("/src/main.ts");
+      }
+    </script>
     <script>
       function __initPlausible() {
         var url = "%VITE_PLAUSIBLE_SCRIPT_URL%";
@@ -165,6 +317,24 @@
     </script>
   </head>
   <body>
+    <div class="browser-upgrade" role="status" aria-live="polite">
+      <div class="browser-upgrade__center">
+        <div class="browser-upgrade__panel">
+          <p class="browser-upgrade__brand">Zero</p>
+          <h1>Update your browser to continue</h1>
+          <p>
+            Zero supports Chrome 111+, Safari 16.4+, and iOS 16.4+. Please
+            upgrade your browser, then reload this page.
+          </p>
+          <div class="browser-upgrade__actions">
+            <a href="https://www.google.com/chrome/">Update Chrome</a>
+            <a class="secondary" href="https://support.apple.com/safari">
+              Update Safari
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
     <div id="root">
       <style>
         body {
