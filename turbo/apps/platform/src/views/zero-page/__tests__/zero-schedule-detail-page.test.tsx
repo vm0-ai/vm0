@@ -161,6 +161,26 @@ describe("zero schedule detail page", () => {
     expect(screen.getByText("3.0s")).toBeInTheDocument();
     expect(screen.getByText("5.0s")).toBeInTheDocument();
 
+    click(screen.getByLabelText("Status filter"));
+    click(screen.getByRole("option", { name: "Failed" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Failed").length).toBeGreaterThan(0);
+      expect(screen.getByText("5.0s")).toBeInTheDocument();
+      expect(screen.queryByText("Done")).not.toBeInTheDocument();
+      expect(screen.queryByText("3.0s")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Status filter"));
+    click(screen.getByRole("option", { name: "All status" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Done")).toBeInTheDocument();
+      expect(screen.getByText("Failed")).toBeInTheDocument();
+      expect(screen.getByText("3.0s")).toBeInTheDocument();
+      expect(screen.getByText("5.0s")).toBeInTheDocument();
+    });
+
     click(tabByText("Settings"));
     click(screen.getByLabelText("Disable this schedule"));
 
