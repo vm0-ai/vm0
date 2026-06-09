@@ -126,6 +126,10 @@ function connectorSecretTargetName(
 ): string | undefined {
   return target?.kind === "connector-secret" ? target.name : undefined;
 }
+
+function connectorOutputTargetKey(target: ConnectorOutputTarget): string {
+  return `${target.kind}:${target.name}`;
+}
 const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
 const STRIPE_CLI_AUTH_URL = "https://dashboard.stripe.com/stripecli/auth";
 const STRIPE_CLI_BROWSER_URL =
@@ -3171,6 +3175,73 @@ describe("getConnectorAuthMethodGrantMetadata", () => {
         },
       },
     });
+  });
+
+  it("initializes provider grant connector variables needed by runtime or refresh", () => {
+    for (const type of connectorTypeSchema.options) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
+        const method = getConnectorAuthMethod(type, authMethod);
+        if (
+          !method ||
+          !(
+            method.grant.kind === "auth-code" ||
+            method.grant.kind === "external-code" ||
+            method.grant.kind === "device-auth"
+          )
+        ) {
+          continue;
+        }
+
+        const grantMetadata = getConnectorAuthMethodGrantMetadata(
+          type,
+          authMethod,
+        );
+        const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
+          type,
+          authMethod,
+        );
+        if (!grantMetadata || !runtimeMetadata) {
+          throw new Error(`${type}/${authMethod}: missing connector metadata`);
+        }
+
+        const grantOutputTargetKeys = new Set(
+          Object.values(grantMetadata.outputs).map((output) => {
+            return connectorOutputTargetKey(output.target);
+          }),
+        );
+
+        for (const binding of runtimeMetadata.runtimeBindings) {
+          if (
+            binding.optional ||
+            binding.source.kind !== "connector-variable"
+          ) {
+            continue;
+          }
+          expect(
+            grantOutputTargetKeys,
+            `${type}/${authMethod}: required runtime variable ${binding.source.name} must be initialized by a grant output`,
+          ).toContain(connectorOutputTargetKey(binding.source));
+        }
+
+        const accessMetadata = getConnectorAuthMethodAccessMetadata(
+          type,
+          authMethod,
+        );
+        if (accessMetadata?.kind !== "refresh-token") {
+          continue;
+        }
+
+        for (const input of Object.values(accessMetadata.inputs)) {
+          if (input.source.kind !== "connector-variable") {
+            continue;
+          }
+          expect(
+            grantOutputTargetKeys,
+            `${type}/${authMethod}: refresh input variable ${input.source.name} must be initialized by a grant output`,
+          ).toContain(connectorOutputTargetKey(input.source));
+        }
+      }
+    }
   });
 });
 
