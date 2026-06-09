@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -11,6 +12,7 @@ import {
   type ChatThreadArtifactFile,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
@@ -30,10 +32,12 @@ const THREAD_PATH = `/chats/${THREAD_ID}`;
 function setupChatThread({
   artifactFiles,
   content,
+  featureSwitches,
   path = THREAD_PATH,
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
   content: string;
+  featureSwitches?: Parameters<typeof detachedSetupPage>[0]["featureSwitches"];
   path?: string;
 }): void {
   context.mocks.data.team([
@@ -113,7 +117,7 @@ function setupChatThread({
     });
   }
 
-  detachedSetupPage({ context, path });
+  detachedSetupPage({ context, featureSwitches, path });
 }
 
 function artifactFile(
@@ -146,6 +150,35 @@ function googleDriveConnector(): ConnectorResponse {
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   };
+}
+
+function presentationHtml(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Quarterly roadmap</title>
+    <script id="vm0-deck-metadata" type="application/json">
+      {
+        "kind": "presentation-html",
+        "editProtocolVersion": 1,
+        "slides": {
+          "slide-intro": { "speakerNotes": "Open with launch metrics." },
+          "slide-plan": { "speakerNotes": "Explain the hiring plan." }
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <section data-vm0-slide data-slide-id="slide-intro">
+      <h1 data-vm0-editable="text" data-vm0-edit-id="title">Quarterly roadmap</h1>
+      <p data-vm0-editable="text" data-vm0-edit-id="summary">Launch metrics are ahead of plan.</p>
+    </section>
+    <section data-vm0-slide data-slide-id="slide-plan">
+      <h2 data-vm0-editable="text" data-vm0-edit-id="plan">Expansion plan</h2>
+      <p data-vm0-editable="text" data-vm0-edit-id="detail">Hire support and scale onboarding.</p>
+    </section>
+  </body>
+</html>`;
 }
 
 function getArtifactTab(container: HTMLElement, label: string): HTMLElement {
@@ -371,6 +404,85 @@ describe("zero artifact sidebar", () => {
     await user.click(screen.getByLabelText("Download artifact"));
     await waitFor(() => {
       expect(menuItemByText("Synced to Google Drive")).toBeInTheDocument();
+    });
+  });
+
+  it("opens a presentation artifact in the editor and saves speaker notes on close", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
+    context.mocks.http.get(presentationUrl, () => {
+      return new Response(presentationHtml(), {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(presentationHtml(), {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ respond }) => {
+        return respond(200, {
+          siteId: "22222222-2222-4222-8222-222222222222",
+          deploymentId: "33333333-3333-4333-8333-333333333333",
+          publicSlug: "quarterly-roadmap",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(presentationUrl, {
+          id: "artifact-quarterly-roadmap",
+          filename: "quarterly-roadmap.html",
+          contentType: "text/html",
+          artifactKind: "presentation-html",
+          size: 1024,
+        }),
+      ],
+      content: `[Quarterly roadmap](${presentationUrl})`,
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
+      },
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Edit presentation"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Presentation editor")).toBeInTheDocument();
+      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
+        "Open with launch metrics.",
+      );
+      expect(screen.getByLabelText("Open slide 2")).toBeInTheDocument();
+    });
+
+    await fill(
+      screen.getByLabelText("Speaker notes"),
+      "Highlight the updated launch narrative.",
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close presentation editor"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Presentation updated"),
+      ).not.toBeInTheDocument();
     });
   });
 
