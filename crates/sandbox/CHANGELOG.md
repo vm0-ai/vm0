@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.19.3](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.2...sandbox-v0.19.3) (2026-06-09)
+
+
+### Bug Fixes
+
+* clarify runner job timeout logs ([#16823](https://github.com/vm0-ai/vm0/issues/16823)) ([77edf47](https://github.com/vm0-ai/vm0/commit/77edf47a4f3c43978ea9339209d370061ec3f474))
+
+
+### Documentation
+
+* document copy file semantics ([#16788](https://github.com/vm0-ai/vm0/issues/16788)) ([57223b3](https://github.com/vm0-ai/vm0/commit/57223b35d45d50b088ac6b35d1c69d59e3c39a1a))
+
 ## [0.19.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.1...sandbox-v0.19.2) (2026-06-07)
 
 

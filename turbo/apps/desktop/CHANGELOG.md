@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.3.1...desktop-v0.4.0) (2026-06-09)
+
+
+### Features
+
+* add desktop tray status menu ([#16863](https://github.com/vm0-ai/vm0/issues/16863)) ([34dc1af](https://github.com/vm0-ai/vm0/commit/34dc1af0f120f4a64ccf8ddbf75bc680ba4ca6d4))
+* add desktop tray template icon ([#16879](https://github.com/vm0-ai/vm0/issues/16879)) ([3e5d9c1](https://github.com/vm0-ai/vm0/commit/3e5d9c1f55497fd828641ee90a9188e5448cc875))
+
+
+### Bug Fixes
+
+* navigate browser address set-value ([#16888](https://github.com/vm0-ai/vm0/issues/16888)) ([ceb5d5d](https://github.com/vm0-ai/vm0/commit/ceb5d5d7cbe848900f82c518afb82268ba98f823))
+
+
+### CI
+
+* automate desktop release publishing ([#16890](https://github.com/vm0-ai/vm0/issues/16890)) ([27a29c7](https://github.com/vm0-ai/vm0/commit/27a29c741864c8cf2dcf6b91acff50a6eb0dc675))
+
 ## [0.3.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.3.0...desktop-v0.3.1) (2026-06-09)
 
 

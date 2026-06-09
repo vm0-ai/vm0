@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.25](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.24...vsock-host-v0.17.25) (2026-06-09)
+
+
+### Documentation
+
+* document copy file semantics ([#16788](https://github.com/vm0-ai/vm0/issues/16788)) ([57223b3](https://github.com/vm0-ai/vm0/commit/57223b35d45d50b088ac6b35d1c69d59e3c39a1a))
+
 ## [0.17.24](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.23...vsock-host-v0.17.24) (2026-06-09)
 
 ## [0.17.23](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.22...vsock-host-v0.17.23) (2026-06-08)

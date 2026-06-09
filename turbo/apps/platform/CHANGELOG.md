@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.429.0](https://github.com/vm0-ai/vm0/compare/app-v0.428.2...app-v0.429.0) (2026-06-09)
+
+
+### Features
+
+* add aws external-code connector ([#16577](https://github.com/vm0-ai/vm0/issues/16577)) ([6aaf392](https://github.com/vm0-ai/vm0/commit/6aaf392435773785e31fb9bbba15dc820c97aed1))
+* **platform:** add presentation speaker notes export ([#16854](https://github.com/vm0-ai/vm0/issues/16854)) ([bfb47f8](https://github.com/vm0-ai/vm0/commit/bfb47f806b35d452d746c373454d908b62237e47))
+
+
+### Bug Fixes
+
+* clarify permission change undo copy ([#16861](https://github.com/vm0-ai/vm0/issues/16861)) ([cc7ce10](https://github.com/vm0-ai/vm0/commit/cc7ce10c34dd2cb06f1b5946635217521a88a6e6))
+* normalize slock connector icon fill ([#16867](https://github.com/vm0-ai/vm0/issues/16867)) ([36c5038](https://github.com/vm0-ai/vm0/commit/36c5038515e97da8d5a5f36cae45f0a24f0b5375))
+* normalize square connector icon ([#16889](https://github.com/vm0-ai/vm0/issues/16889)) ([30f9cc9](https://github.com/vm0-ai/vm0/commit/30f9cc9364b85ff095bfd7021d43f4ddd871fe75))
+* re-apply chat message font size + make line-height actually apply (15px) ([#16841](https://github.com/vm0-ai/vm0/issues/16841)) ([025acfc](https://github.com/vm0-ai/vm0/commit/025acfc827ee35d46b76f3233569f411c0eb08aa))
+* update google maps connector icon ([#16862](https://github.com/vm0-ai/vm0/issues/16862)) ([5ba6f7d](https://github.com/vm0-ai/vm0/commit/5ba6f7d19ecd4643d9ba692bf9ac43d88ab2c066))
+* update segment connector icon ([#16837](https://github.com/vm0-ai/vm0/issues/16837)) ([ab83030](https://github.com/vm0-ai/vm0/commit/ab83030597216f1d82d2fe44b257f7ef5d181534))
+* update serpapi connector icon ([#16856](https://github.com/vm0-ai/vm0/issues/16856)) ([7230f95](https://github.com/vm0-ai/vm0/commit/7230f9507eee07079adf371844e9c0c787053440))
+* update shopify connector icon ([#16866](https://github.com/vm0-ai/vm0/issues/16866)) ([ae73f9f](https://github.com/vm0-ai/vm0/commit/ae73f9fb16779c9934ac4e6911de42f2a4ba6bef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.73.0
+    * @vm0/connectors bumped to 1.55.0
+    * @vm0/core bumped to 8.319.0
+
 ## [0.428.2](https://github.com/vm0-ai/vm0/compare/app-v0.428.1...app-v0.428.2) (2026-06-09)
 
 

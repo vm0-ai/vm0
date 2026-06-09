@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.24](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.23...guest-agent-v0.34.24) (2026-06-09)
+
+
+### Bug Fixes
+
+* expose api url to sandbox cli child ([#16846](https://github.com/vm0-ai/vm0/issues/16846)) ([5906d51](https://github.com/vm0-ai/vm0/commit/5906d5101232bbebf8e2ae486a28fa9bd43f06e2))
+
 ## [0.34.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.22...guest-agent-v0.34.23) (2026-06-09)
 
 

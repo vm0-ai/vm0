@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.21](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.20...guest-download-v0.20.21) (2026-06-09)
+
+
+### Performance Improvements
+
+* cache guest cleanup mountinfo per pass ([#16860](https://github.com/vm0-ai/vm0/issues/16860)) ([bcf01a8](https://github.com/vm0-ai/vm0/commit/bcf01a8e6036be0b69776d9f14f7bc085ebe0937))
+
 ## [0.20.20](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.19...guest-download-v0.20.20) (2026-06-05)
 
 

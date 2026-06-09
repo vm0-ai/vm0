@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.319.0](https://github.com/vm0-ai/vm0/compare/core-v8.318.0...core-v8.319.0) (2026-06-09)
+
+
+### Features
+
+* add aws external-code connector ([#16577](https://github.com/vm0-ai/vm0/issues/16577)) ([6aaf392](https://github.com/vm0-ai/vm0/commit/6aaf392435773785e31fb9bbba15dc820c97aed1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.73.0
+    * @vm0/connectors bumped to 1.55.0
+
 ## [8.318.0](https://github.com/vm0-ai/vm0/compare/core-v8.317.3...core-v8.318.0) (2026-06-09)
 
 

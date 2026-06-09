@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.17](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.16...sandbox-fc-v0.37.17) (2026-06-09)
+
+
+### Bug Fixes
+
+* clarify runner job timeout logs ([#16823](https://github.com/vm0-ai/vm0/issues/16823)) ([77edf47](https://github.com/vm0-ai/vm0/commit/77edf47a4f3c43978ea9339209d370061ec3f474))
+
 ## [0.37.16](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.15...sandbox-fc-v0.37.16) (2026-06-09)
 
 ## [0.37.15](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.14...sandbox-fc-v0.37.15) (2026-06-08)
