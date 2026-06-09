@@ -46,7 +46,9 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_compiled_firewall_malformed_config.py` | Compiled firewall malformed config and fail-closed behavior |
 | `test_firewall_auth.py` | Firewall auth header resolution, fetching, forwarding, and cleanup |
 | `test_auth_base_forwarder.py` | Low-level auth.base forwarding, header filtering, and cleanup |
-| `test_firewall_rewrite.py` | Firewall auth URL rewrite and forwarding behavior |
+| `test_firewall_rewrite_success.py` | Firewall auth URL rewrite success behavior |
+| `test_firewall_rewrite_forwarding.py` | Firewall auth URL rewrite forwarding behavior |
+| `test_firewall_rewrite_safety.py` | Firewall auth URL rewrite fail-closed and safety behavior |
 | `test_auth_query_injection.py` | Firewall auth query injection and query rewrite behavior |
 | `test_url_utils.py` | URL reconstruction and rewrite utility cases |
 | `test_auth_cache.py` | Firewall auth cache behavior |
