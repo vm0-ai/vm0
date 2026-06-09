@@ -7,8 +7,8 @@ import {
 import {
   cn,
   Popover,
-  PopoverAnchor,
   PopoverContent,
+  PopoverTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -32,7 +32,6 @@ import {
   artifactDownloadMenuOpenKey$,
   closeArtifactDownloadMenu$,
   openArtifactDownloadMenu$,
-  scheduleArtifactDownloadMenuClose$,
 } from "../../signals/zero-page/zero-artifact-actions.ts";
 import {
   type ArtifactGoogleDriveSyncFile,
@@ -288,11 +287,9 @@ function ArtifactDownloadMenuItem({
 
 function GoogleDriveMenuItem({
   closeMenu,
-  onHover,
   syncTarget,
 }: {
   closeMenu: () => void;
-  onHover: () => void;
   syncTarget?: ArtifactDownloadSyncTarget;
 }) {
   const connectorList = useLastResolved(connectors$);
@@ -369,14 +366,9 @@ function GoogleDriveMenuItem({
   }
 
   return (
-    <div
-      className="group/google-drive-connect relative"
-      onPointerEnter={onHover}
-    >
+    <div className="group/google-drive-connect relative">
       <ArtifactDownloadMenuItem
         className="text-muted-foreground"
-        onFocus={onHover}
-        onPointerEnter={onHover}
         onClick={syncOrConnect}
       >
         <IconBrandGoogleDrive size={14} stroke={1.5} />
@@ -420,7 +412,6 @@ export function ArtifactDownloadMenu({
   const openKey = useGet(artifactDownloadMenuOpenKey$);
   const openMenu = useSet(openArtifactDownloadMenu$);
   const closeMenu = useSet(closeArtifactDownloadMenu$);
-  const scheduleCloseMenu = useSet(scheduleArtifactDownloadMenuClose$);
   const pageSignal = useGet(pageSignal$);
   const features = useLastResolved(featureSwitch$);
   const open = openKey === menuKey;
@@ -432,14 +423,6 @@ export function ArtifactDownloadMenu({
     filename,
     url,
   );
-  const show = () => {
-    openMenu(menuKey);
-  };
-
-  const hide = () => {
-    scheduleCloseMenu(menuKey);
-  };
-
   const closeNow = () => {
     closeMenu();
   };
@@ -456,22 +439,17 @@ export function ArtifactDownloadMenu({
         closeMenu();
       }}
     >
-      <PopoverAnchor asChild>
+      <PopoverTrigger asChild>
         <button
           type="button"
           aria-label={ariaLabel}
           aria-haspopup="menu"
           aria-expanded={open}
           className={iconButtonClassName(className)}
-          onPointerEnter={show}
-          onPointerLeave={hide}
-          onFocus={show}
-          onBlur={hide}
-          onClick={show}
         >
           <IconDownload size={iconSize} stroke={1.5} />
         </button>
-      </PopoverAnchor>
+      </PopoverTrigger>
       <PopoverContent
         role="menu"
         align={align}
@@ -483,10 +461,6 @@ export function ArtifactDownloadMenu({
         onCloseAutoFocus={(event) => {
           event.preventDefault();
         }}
-        onPointerEnter={show}
-        onPointerLeave={hide}
-        onFocus={show}
-        onBlur={hide}
         className={cn(
           "pointer-events-auto w-56 p-1",
           ARTIFACT_FLOATING_LAYER_CLASS,
@@ -520,11 +494,7 @@ export function ArtifactDownloadMenu({
             Download (.pptx)
           </ArtifactDownloadMenuItem>
         )}
-        <GoogleDriveMenuItem
-          closeMenu={closeNow}
-          onHover={show}
-          syncTarget={syncTarget}
-        />
+        <GoogleDriveMenuItem closeMenu={closeNow} syncTarget={syncTarget} />
       </PopoverContent>
     </Popover>
   );

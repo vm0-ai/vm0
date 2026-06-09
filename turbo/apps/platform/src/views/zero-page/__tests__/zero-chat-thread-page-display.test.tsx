@@ -1514,9 +1514,14 @@ describe("zero chat thread page display - attachment video preview", () => {
     expect(video).toHaveAttribute("controls");
     expect((video as HTMLVideoElement).autoplay).toBeTruthy();
     expect(within(lightbox).getByLabelText("Share")).toBeInTheDocument();
-    expect(
-      within(lightbox).getByLabelText("Download options"),
-    ).toBeInTheDocument();
+    const downloadOptions = within(lightbox).getByLabelText("Download options");
+    expect(downloadOptions).toBeInTheDocument();
+    await userEvent.hover(downloadOptions);
+    expect(queryRoleByText("menuitem", "Download")).toBeUndefined();
+    await userEvent.click(downloadOptions);
+    await waitFor(() => {
+      expect(getRoleByText("menuitem", "Download")).toBeInTheDocument();
+    });
   });
 
   it("uses the padded artifact dialog stage for video previews", async () => {
@@ -2391,12 +2396,24 @@ describe("zero chat thread page display - artifact sidebar", () => {
 
     const downloadButton = screen.getByLabelText("Download artifact");
     await user.hover(downloadButton);
+    expect(
+      queryRoleByText("menuitem", "Upload to Google Drive"),
+    ).toBeUndefined();
+
+    await user.click(downloadButton);
     await waitFor(() => {
       expect(
         getRoleByText("menuitem", "Upload to Google Drive"),
       ).toBeInTheDocument();
     });
     fireEvent.pointerLeave(downloadButton);
+    await waitFor(() => {
+      expect(
+        getRoleByText("menuitem", "Upload to Google Drive"),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(downloadButton);
     await waitFor(() => {
       expect(
         queryRoleByText("menuitem", "Upload to Google Drive"),
