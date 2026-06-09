@@ -533,22 +533,30 @@ function renderText(params: {
   ready: GenerationCandidate[];
   other: GenerationCandidate[];
   showAll: boolean;
+  usesConnectors: boolean;
 }): void {
-  const { generationType, agentId, ready, other, showAll } = params;
+  const { generationType, agentId, ready, other, showAll, usesConnectors } =
+    params;
   const label = GENERATION_TYPE_LABELS[generationType];
-  const scope = agentId ? "for current agent" : "(connected connectors)";
+  const scope = usesConnectors
+    ? agentId
+      ? " for current agent"
+      : " (connected connectors)"
+    : "";
 
-  console.log(`${label} generation choices ${scope}`);
+  console.log(`${label} generation choices${scope}`);
   console.log("");
 
-  if (agentId) {
-    console.log(`${"Agent:".padEnd(10)}${agentId}`);
-    console.log("");
-  } else {
-    console.log(
-      "ZERO_AGENT_ID is not set, so agent authorization could not be checked.",
-    );
-    console.log("");
+  if (usesConnectors) {
+    if (agentId) {
+      console.log(`${"Agent:".padEnd(10)}${agentId}`);
+      console.log("");
+    } else {
+      console.log(
+        "ZERO_AGENT_ID is not set, so agent authorization could not be checked.",
+      );
+      console.log("");
+    }
   }
 
   const hasBuiltInCommand = getBuiltInCommand(generationType) !== null;
@@ -584,6 +592,18 @@ export async function runLister(
 ): Promise<void> {
   const connectorGenerationType = getConnectorGenerationType(generationType);
   const agentId = process.env.ZERO_AGENT_ID;
+  if (connectorGenerationType === null) {
+    renderText({
+      generationType,
+      agentId,
+      ready: [],
+      other: [],
+      showAll: options.all === true,
+      usesConnectors: false,
+    });
+    return;
+  }
+
   const [connectorList, availableTypes, enabledTypes, platformOrigin] =
     await Promise.all([
       listZeroConnectors(),
@@ -598,22 +618,20 @@ export async function runLister(
   );
   const configuredTypes = new Set(connectorList.configuredTypes);
   const authorizedTypes = enabledTypes ? new Set(enabledTypes) : null;
-  const candidates = connectorGenerationType
-    ? getGenerationConnectors(connectorGenerationType).map(
-        ([connectorType, config]) => {
-          return toCandidate({
-            type: connectorType,
-            config,
-            connector: connectedMap.get(connectorType),
-            configuredTypes,
-            availableTypes,
-            authorizedTypes,
-            agentId,
-            platformOrigin,
-          });
-        },
-      )
-    : [];
+  const candidates = getGenerationConnectors(connectorGenerationType).map(
+    ([connectorType, config]) => {
+      return toCandidate({
+        type: connectorType,
+        config,
+        connector: connectedMap.get(connectorType),
+        configuredTypes,
+        availableTypes,
+        authorizedTypes,
+        agentId,
+        platformOrigin,
+      });
+    },
+  );
   const ready = candidates.filter((candidate) => {
     return candidate.status === "ready";
   });
@@ -626,6 +644,7 @@ export async function runLister(
     ready,
     other,
     showAll: options.all === true,
+    usesConnectors: true,
   });
 
   const shouldShowOtherHint =

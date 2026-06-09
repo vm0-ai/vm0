@@ -232,7 +232,10 @@ describe("zero generate lister", () => {
     await generateCommand.parseAsync(["node", "cli", "presentation"]);
 
     const text = output();
-    expect(text).toContain("Presentation generation choices for current agent");
+    expect(text).toContain("Presentation generation choices");
+    expect(text).not.toContain(
+      "Presentation generation choices for current agent",
+    );
     expect(text).not.toContain("Connectors:");
     expect(text).not.toContain(
       "No ready presentation generation connectors found.",
@@ -255,7 +258,8 @@ describe("zero generate lister", () => {
     await generateCommand.parseAsync(["node", "cli", "website"]);
 
     const text = output();
-    expect(text).toContain("Website generation choices for current agent");
+    expect(text).toContain("Website generation choices");
+    expect(text).not.toContain("Website generation choices for current agent");
     expect(text).not.toContain("Connectors:");
     expect(text).not.toContain("No ready website generation connectors found.");
     expect(text).toContain("Built-in command:");
@@ -275,6 +279,36 @@ describe("zero generate lister", () => {
     expect(text).not.toContain("Model: gpt-5.5");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
+  });
+
+  it("suggests the built-in website command with an invalid ZERO_TOKEN", async () => {
+    vi.stubEnv("VM0_TOKEN", undefined);
+    vi.stubEnv("ZERO_TOKEN", "expired-zero-token");
+
+    await generateCommand.parseAsync(["node", "cli", "website"]);
+
+    const text = output();
+    expect(text).toContain("Website generation choices");
+    expect(text).not.toContain("Website generation choices for current agent");
+    expect(text).toContain("Built-in command:");
+    expect(text).toContain("Built-in website generation");
+    expect(text).toContain("Use: zero generate website -h");
+    expect(mockConsoleError).not.toHaveBeenCalled();
+  });
+
+  it("suggests the built-in website command without authentication", async () => {
+    vi.stubEnv("VM0_TOKEN", undefined);
+    vi.stubEnv("ZERO_TOKEN", undefined);
+
+    await generateCommand.parseAsync(["node", "cli", "website"]);
+
+    const text = output();
+    expect(text).toContain("Website generation choices");
+    expect(text).not.toContain("Website generation choices for current agent");
+    expect(text).toContain("Built-in command:");
+    expect(text).toContain("Built-in website generation");
+    expect(text).toContain("Use: zero generate website -h");
+    expect(mockConsoleError).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -300,7 +334,8 @@ describe("zero generate lister", () => {
     await generateCommand.parseAsync(["node", "cli", type]);
 
     const text = output();
-    expect(text).toContain(`${label} generation choices for current agent`);
+    expect(text).toContain(`${label} generation choices`);
+    expect(text).not.toContain(`${label} generation choices for current agent`);
     expect(text).not.toContain(`No ready ${type} generation connectors found.`);
     expect(text).toContain("Built-in command:");
     expect(text).toContain(commandLabel);

@@ -87,8 +87,8 @@ Output:
   With no --prompt and no piped input, prints the generation choices instead.
 
 Notes:
-  - Authenticates via ZERO_TOKEN
-  - The agent authors the HTML artifact and hosts it with zero host
+  - The command prints local authoring instructions and does not require authentication.
+  - The agent authors the HTML artifact and hosts it with zero host.
 
 Design Systems:
 ${formatRegistryListing(designSystems, "design systems")}
