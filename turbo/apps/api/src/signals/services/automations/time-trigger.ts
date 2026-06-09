@@ -1,3 +1,4 @@
+import { automationTriggers } from "@vm0/db/schema/automation";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { Cron } from "croner";
 import { and, eq } from "drizzle-orm";
@@ -5,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../../external/db";
 
 type ScheduleRow = typeof zeroAgentSchedules.$inferSelect;
+type TriggerRow = typeof automationTriggers.$inferSelect;
 
 /**
  * Computes the next fire time for a cron expression in the given timezone,
@@ -159,5 +161,83 @@ export class TimeTrigger {
       throw new Error("Loop schedule is missing intervalSeconds");
     }
     return new Date(args.completedAt.getTime() + args.intervalSeconds * 1000);
+  }
+
+  /**
+   * Next recurrence for an `automation_triggers` time row, computed from its kind:
+   * cron advances to the next occurrence; loop advances by its interval; once does
+   * not recur. The same math the schedule path uses, applied to a trigger row.
+   * `null` is returned when the kind cannot recur (once, or a malformed time row).
+   */
+  private static nextTriggerRun(
+    trigger: TriggerRow,
+    fromDate: Date,
+  ): Date | null {
+    if (trigger.kind === "cron" && trigger.cronExpression) {
+      return calculateNextRun(
+        trigger.cronExpression,
+        trigger.timezone,
+        fromDate,
+      );
+    }
+    if (trigger.kind === "loop" && trigger.intervalSeconds) {
+      return new Date(fromDate.getTime() + trigger.intervalSeconds * 1000);
+    }
+    return null;
+  }
+
+  /**
+   * Claim a due `automation_triggers` time row via an optimistic lock on
+   * `nextRunAt` — the trigger-table counterpart of `evaluate`. Mirrors the live
+   * schedule claim's atomicity (a concurrent poller whose `nextRunAt` already
+   * moved loses the race and returns null), but because the trigger poller is
+   * self-contained (no reschedule callback in this slice) the claim folds in the
+   * recurrence advance: cron/loop advance to their next run, once disables. Stamps
+   * `lastRunAt` and clears any retry marker, exactly as the schedule claim does.
+   */
+  async evaluateTrigger(args: {
+    readonly db: Db;
+    readonly trigger: TriggerRow;
+    readonly currentTime: Date;
+  }): Promise<TriggerRow | null> {
+    const nextRunAt = TimeTrigger.nextTriggerRun(
+      args.trigger,
+      args.currentTime,
+    );
+    const [claimed] = await args.db
+      .update(automationTriggers)
+      .set({
+        nextRunAt,
+        lastRunAt: args.currentTime,
+        retryStartedAt: null,
+        updatedAt: args.currentTime,
+        ...(args.trigger.kind === "once" ? { enabled: false } : {}),
+      })
+      .where(
+        and(
+          eq(automationTriggers.id, args.trigger.id),
+          eq(automationTriggers.nextRunAt, args.trigger.nextRunAt!),
+        ),
+      )
+      .returning();
+    return claimed ?? null;
+  }
+
+  /**
+   * Next run for an `automation_triggers` time row after a pre-run failure in the
+   * poller (the run was never created) — the trigger-table counterpart of
+   * `advanceAfterPreRunFailure`. Cron advances to the next occurrence; a loop
+   * advances by its interval; once and interval-less loops do not reschedule.
+   * Disabling collapses the next run to null.
+   */
+  advanceTriggerAfterPreRunFailure(args: {
+    readonly trigger: TriggerRow;
+    readonly failureTime: Date;
+    readonly shouldDisable: boolean;
+  }): Date | null {
+    if (args.shouldDisable) {
+      return null;
+    }
+    return TimeTrigger.nextTriggerRun(args.trigger, args.failureTime);
   }
 }

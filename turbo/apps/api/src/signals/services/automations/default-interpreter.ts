@@ -99,11 +99,28 @@ export interface WebhookTriggerEvent {
 }
 
 /**
- * The trigger that fired an Automation. A time fire carries only the schedule
- * identity; a webhook fire carries the raw inbound payload. The interpreter
- * keys its context/callbacks/metadata off this discriminant.
+ * Trigger event for an automation-table time fire (the dormant trigger poller,
+ * U4). Like the schedule time fire it is instruction-only — no inbound payload —
+ * but it tags the run with the originating automation + the firing
+ * `automation_triggers` row (run provenance, U3) instead of a schedule id, and
+ * attaches no reschedule callback because the poller advances `next_run_at`
+ * inline. `triggerId` is the firing trigger row.
  */
-type TriggerEvent = TimeTriggerEvent | WebhookTriggerEvent;
+interface AutomationTimeTriggerEvent {
+  readonly kind: "automation-time";
+  readonly triggerId: string;
+}
+
+/**
+ * The trigger that fired an Automation. A schedule time fire carries only the
+ * schedule identity; an automation-table time fire carries the firing trigger
+ * identity; a webhook fire carries the raw inbound payload. The interpreter keys
+ * its context/callbacks/metadata off this discriminant.
+ */
+type TriggerEvent =
+  | TimeTriggerEvent
+  | AutomationTimeTriggerEvent
+  | WebhookTriggerEvent;
 
 /**
  * Maps a `zero_agent_schedules` row to the Automation view the interpreter
@@ -154,6 +171,39 @@ export function webhookRowToAutomation(row: {
     triggerType: "webhook",
     cronExpression: null,
     timezone: "UTC",
+  };
+}
+
+/**
+ * Maps an `automations` row (joined with its firing time trigger) to the
+ * Automation view the interpreter consumes for an automation-table time fire
+ * (the dormant trigger poller). The recurrence lives on the trigger row, so its
+ * `kind` (cron/once/loop) and `cronExpression`/`timezone` are threaded in here.
+ * Counterpart to `scheduleToAutomation` for the events-first time path.
+ */
+export function automationRowToTimeAutomation(row: {
+  readonly id: string;
+  readonly agentId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly chatThreadId: string;
+  readonly instruction: string;
+  readonly triggerType: "cron" | "once" | "loop";
+  readonly cronExpression: string | null;
+  readonly timezone: string;
+}): Automation {
+  return {
+    interpreterKind: "time",
+    id: row.id,
+    agentId: row.agentId,
+    orgId: row.orgId,
+    userId: row.userId,
+    chatThreadId: row.chatThreadId,
+    prompt: row.instruction,
+    appendSystemPrompt: null,
+    triggerType: row.triggerType,
+    cronExpression: row.cronExpression,
+    timezone: row.timezone,
   };
 }
 
@@ -292,6 +342,24 @@ export class DefaultInterpreter {
         agentId: automation.agentId,
         chatThreadId: automation.chatThreadId,
         appendSystemPrompt: buildWebhookAppendSystemPrompt(triggerEvent),
+        callbacks: [buildChatCallback(automation)],
+        zeroRunMetadata: {
+          automationId: automation.id,
+          triggerId: triggerEvent.triggerId,
+        },
+      });
+    }
+
+    if (triggerEvent.kind === "automation-time") {
+      // Automation-table time fire (dormant trigger poller): same instruction-only
+      // schedule context as the schedule fire, but tagged with the automation +
+      // firing trigger (provenance) and carrying no reschedule callback — the
+      // poller advances next_run_at itself.
+      return Promise.resolve({
+        prompt: automation.prompt,
+        agentId: automation.agentId,
+        chatThreadId: automation.chatThreadId,
+        appendSystemPrompt: buildScheduleAppendSystemPrompt(automation),
         callbacks: [buildChatCallback(automation)],
         zeroRunMetadata: {
           automationId: automation.id,
