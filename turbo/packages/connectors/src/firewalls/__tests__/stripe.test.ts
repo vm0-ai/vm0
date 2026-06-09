@@ -295,7 +295,7 @@ describe("stripe firewall", () => {
     expect(policy.policies.tax_code_read).toBe("allow");
     expect(policy.policies.payment_intent_write).toBe("deny");
     expect(policy.policies.checkout_session_write).toBe("deny");
-    expect(policy.unknownPolicy).toBe("deny");
+    expect(policy.unknownPolicy).toBe("allow");
   });
 
   it("generates Stripe default-allowed permissions from readonly rules", () => {

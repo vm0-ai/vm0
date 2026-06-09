@@ -782,25 +782,18 @@ const DEFAULT_ALLOWED: Partial<
   stripe: stripeDefaultAllowed,
 };
 
-const DEFAULT_UNKNOWN_POLICIES: Partial<
-  Record<FirewallConnectorType, FirewallPolicyValue>
-> = {
-  stripe: "deny",
-};
-
 /**
  * Get the default firewall policies for a connector type.
  *
  * Returns a ConnectorPolicy with all permissions mapped. Connectors with a
  * default-allowed list get "allow"/"deny" selectively; others get all-allow.
- * `unknownPolicy` defaults to "allow" unless the connector overrides it.
+ * `unknownPolicy` defaults to "allow".
  */
 export function getDefaultFirewallPolicies(
   type: FirewallConnectorType,
 ): FirewallPolicy {
   const allowed = DEFAULT_ALLOWED[type];
   const allowSet = allowed ? new Set<string>(allowed) : null;
-  const unknownPolicy = DEFAULT_UNKNOWN_POLICIES[type] ?? "allow";
   const config = getConnectorFirewall(type);
   const policies: Record<string, FirewallPolicyValue> = {};
   for (const api of config.apis) {
@@ -810,7 +803,7 @@ export function getDefaultFirewallPolicies(
       }
     }
   }
-  return { policies, unknownPolicy };
+  return { policies, unknownPolicy: "allow" };
 }
 
 /**
