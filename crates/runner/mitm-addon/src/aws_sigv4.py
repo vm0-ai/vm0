@@ -17,7 +17,18 @@ _S3_SIGNING_NAMES = frozenset(("s3", "s3-outposts", "s3-object-lambda"))
 _UNSUPPORTED_S3_EXPRESS_SIGNING_NAME = "s3express"
 _STREAMING_PAYLOAD_PREFIX = "STREAMING-"
 _CREDENTIAL_SCOPE_PARTS = 5
-_AUTH_PARAM_RE = re.compile(r"([A-Za-z]+)=([^,]+)")
+_AUTH_HEADER_PARAM_NAMES = frozenset(("Credential", "SignedHeaders", "Signature"))
+_QUERY_SIGNING_PARAM_NAMES = frozenset(
+    (
+        "X-Amz-Algorithm",
+        "X-Amz-Credential",
+        "X-Amz-Date",
+        "X-Amz-Expires",
+        "X-Amz-SignedHeaders",
+        "X-Amz-Security-Token",
+        "X-Amz-Signature",
+    )
+)
 _SCOPE_DATE_RE = re.compile(r"^\d{8}$")
 _SCOPE_REGION_RE = re.compile(r"^(?:[A-Za-z0-9._-]+|\*)$")
 _SCOPE_SERVICE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -110,9 +121,13 @@ def _classify_request(
     url: str,
     headers: list[tuple[str, str]],
 ) -> _SigningContext:
-    auth_header = _first_header(headers, "authorization")
+    auth_header = _unique_header_value(
+        headers,
+        "authorization",
+        "Malformed AWS authorization header",
+    )
     query_pairs = _parse_query_pairs(urllib.parse.urlsplit(url).query)
-    query_algorithm = _first_query_value(query_pairs, "X-Amz-Algorithm")
+    query_algorithm = _unique_query_value(query_pairs, "X-Amz-Algorithm")
     if auth_header and query_algorithm:
         raise AwsSigV4SigningError("Ambiguous AWS auth location")
     if query_algorithm:
@@ -133,7 +148,11 @@ def _classify_header_request(
     if not credential or not signed_headers or not signature:
         raise AwsSigV4SigningError("Malformed AWS authorization header")
     source_access_key_id, scope = _parse_credential(credential)
-    amz_date = _first_header(headers, "x-amz-date")
+    amz_date = _unique_header_value(
+        headers,
+        "x-amz-date",
+        "AWS SigV4 header auth requires a single x-amz-date",
+    )
     if not amz_date:
         raise AwsSigV4SigningError("AWS SigV4 header auth requires x-amz-date")
     _validate_amz_date(amz_date, scope)
@@ -151,11 +170,11 @@ def _classify_query_request(
     query_pairs: list[tuple[str, str]],
     algorithm: str,
 ) -> _SigningContext:
-    credential = _first_query_value(query_pairs, "X-Amz-Credential")
-    signed_headers = _first_query_value(query_pairs, "X-Amz-SignedHeaders")
-    amz_date = _first_query_value(query_pairs, "X-Amz-Date")
-    expires = _first_query_value(query_pairs, "X-Amz-Expires")
-    signature = _first_query_value(query_pairs, "X-Amz-Signature")
+    credential = _unique_query_value(query_pairs, "X-Amz-Credential")
+    signed_headers = _unique_query_value(query_pairs, "X-Amz-SignedHeaders")
+    amz_date = _unique_query_value(query_pairs, "X-Amz-Date")
+    expires = _unique_query_value(query_pairs, "X-Amz-Expires")
+    signature = _unique_query_value(query_pairs, "X-Amz-Signature")
     if not credential or not signed_headers or not amz_date or not expires or not signature:
         raise AwsSigV4SigningError("Malformed AWS presigned query")
     source_access_key_id, scope = _parse_credential(credential)
@@ -175,11 +194,15 @@ def _classify_query_request(
 
 def _parse_authorization_header(value: str) -> tuple[str, dict[str, str]]:
     algorithm, sep, remainder = value.partition(" ")
-    if not sep:
+    if not sep or not algorithm or not remainder.strip():
         raise AwsSigV4SigningError("Malformed AWS authorization header")
-    params = {
-        match.group(1): match.group(2).strip() for match in _AUTH_PARAM_RE.finditer(remainder)
-    }
+    params: dict[str, str] = {}
+    for raw_param in remainder.split(","):
+        key, param_sep, raw_param_value = raw_param.strip().partition("=")
+        param_value = raw_param_value.strip()
+        if not param_sep or key not in _AUTH_HEADER_PARAM_NAMES or not param_value or key in params:
+            raise AwsSigV4SigningError("Malformed AWS authorization header")
+        params[key] = param_value
     return algorithm, params
 
 
@@ -387,7 +410,11 @@ def _normalize_header_value(value: str) -> str:
 
 
 def _payload_hash(headers: list[tuple[str, str]], body: bytes | None) -> str:
-    header_value = _first_header(headers, "x-amz-content-sha256")
+    header_value = _unique_header_value(
+        headers,
+        "x-amz-content-sha256",
+        "AWS content hash header is ambiguous",
+    )
     if header_value:
         if header_value.startswith(_STREAMING_PAYLOAD_PREFIX):
             raise AwsSigV4SigningError("AWS streaming payload signing is not supported")
@@ -396,7 +423,11 @@ def _payload_hash(headers: list[tuple[str, str]], body: bytes | None) -> str:
 
 
 def _query_payload_hash(headers: list[tuple[str, str]], body: bytes | None, is_s3: bool) -> str:
-    header_value = _first_header(headers, "x-amz-content-sha256")
+    header_value = _unique_header_value(
+        headers,
+        "x-amz-content-sha256",
+        "AWS content hash header is ambiguous",
+    )
     if header_value:
         if header_value.startswith(_STREAMING_PAYLOAD_PREFIX):
             raise AwsSigV4SigningError("AWS streaming payload signing is not supported")
@@ -452,16 +483,7 @@ def _replace_query_signing_params(
     filtered = [
         (key, value)
         for key, value in _parse_query_pairs(parts.query)
-        if key
-        not in {
-            "X-Amz-Algorithm",
-            "X-Amz-Credential",
-            "X-Amz-Date",
-            "X-Amz-Expires",
-            "X-Amz-SignedHeaders",
-            "X-Amz-Security-Token",
-            "X-Amz-Signature",
-        }
+        if key not in _QUERY_SIGNING_PARAM_NAMES
     ]
     filtered.extend(
         [
@@ -517,19 +539,33 @@ def _has_ascii_control(value: str) -> bool:
     return any(ord(char) <= _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE for char in value)
 
 
-def _first_header(headers: list[tuple[str, str]], name: str) -> str | None:
+def _unique_header_value(
+    headers: list[tuple[str, str]],
+    name: str,
+    duplicate_message: str,
+) -> str | None:
     lower_name = name.lower()
+    result: str | None = None
+    found = False
     for header_name, value in headers:
         if header_name.lower() == lower_name:
-            return value
-    return None
+            if found:
+                raise AwsSigV4SigningError(duplicate_message)
+            found = True
+            result = value
+    return result
 
 
-def _first_query_value(pairs: list[tuple[str, str]], name: str) -> str | None:
+def _unique_query_value(pairs: list[tuple[str, str]], name: str) -> str | None:
+    result: str | None = None
+    found = False
     for key, value in pairs:
         if key == name:
-            return value
-    return None
+            if found:
+                raise AwsSigV4SigningError("Malformed AWS presigned query")
+            found = True
+            result = value
+    return result
 
 
 def _without_headers(
