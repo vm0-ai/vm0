@@ -64,7 +64,7 @@ type ExportFrameMessage =
       readonly type: "vm0-presentation-pptx-export";
     };
 
-export interface PresentationPptxSpeakerNote {
+interface PresentationPptxSpeakerNote {
   readonly notes: string;
   readonly slideNumber: number;
 }
@@ -729,12 +729,12 @@ async function zipText(zip: JSZip, path: string): Promise<string | null> {
 function xmlTagAttribute(tag: string, attribute: string): string | null {
   const prefix = `${attribute}="`;
   const start = tag.indexOf(prefix);
-  if (start < 0) {
+  if (start === -1) {
     return null;
   }
   const valueStart = start + prefix.length;
   const valueEnd = tag.indexOf('"', valueStart);
-  return valueEnd < 0 ? null : tag.slice(valueStart, valueEnd);
+  return valueEnd === -1 ? null : tag.slice(valueStart, valueEnd);
 }
 
 async function presentationSlideNumbers(
@@ -926,7 +926,11 @@ function ensureNotesMasterIdList(doc: Document, relationshipId: string): void {
       return node instanceof Element && node.localName === "sldIdLst";
     });
     if (sldIdLst) {
-      presentation.insertBefore(list, sldIdLst.nextSibling);
+      if (sldIdLst.nextSibling) {
+        sldIdLst.nextSibling.before(list);
+      } else {
+        presentation.append(list);
+      }
       return;
     }
     presentation.append(list);

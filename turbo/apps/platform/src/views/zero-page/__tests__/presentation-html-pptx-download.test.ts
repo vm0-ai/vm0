@@ -17,7 +17,7 @@ const presentationNs =
 const relationshipNs =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-async function minimalPptxBlob(
+function minimalPptxBlob(
   slideNumbers: readonly number[] = [1, 2],
 ): Promise<Blob> {
   const zip = new JSZip();

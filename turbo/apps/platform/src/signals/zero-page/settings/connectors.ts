@@ -1362,7 +1362,7 @@ function waitForOAuthAuthCodePopupClosed(
 
   const deferred = Promise.withResolvers<"popupClosed">();
   let settled = false;
-  let intervalId: ReturnType<typeof window.setInterval> | undefined;
+  let intervalId: number | undefined;
 
   function cleanup() {
     if (intervalId !== undefined) {
