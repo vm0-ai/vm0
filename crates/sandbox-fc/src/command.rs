@@ -217,7 +217,7 @@ where
 
 enum CommandChildExit {
     PreReap,
-    Reaped(std::process::ExitStatus),
+    NoPreReapNotifier,
 }
 
 struct CommandChild {
@@ -395,7 +395,7 @@ async fn wait_for_child_exit(
     if exit_notifier.is_available() {
         match tokio::time::timeout_at(deadline, exit_notifier.wait_for_exit()).await {
             Ok(Ok(())) => return Ok(CommandChildExit::PreReap),
-            Ok(Err(_)) => {}
+            Ok(Err(_)) => return Ok(CommandChildExit::NoPreReapNotifier),
             Err(_) => {
                 child.kill_and_wait().await;
                 return Err(CommandRunError::Timeout(timeout.as_millis()));
@@ -403,17 +403,7 @@ async fn wait_for_child_exit(
         }
     }
 
-    match tokio::time::timeout_at(deadline, child.wait()).await {
-        Ok(Ok(status)) => Ok(CommandChildExit::Reaped(status)),
-        Ok(Err(e)) => {
-            child.kill_and_wait().await;
-            Err(CommandRunError::Wait(e))
-        }
-        Err(_) => {
-            child.kill_and_wait().await;
-            Err(CommandRunError::Timeout(timeout.as_millis()))
-        }
-    }
+    Ok(CommandChildExit::NoPreReapNotifier)
 }
 
 async fn collect_command_output(
@@ -443,14 +433,36 @@ async fn collect_command_output(
                 }
             }
         }
-        CommandChildExit::Reaped(status) => {
+        CommandChildExit::NoPreReapNotifier => {
             match pipe_tasks.collect_with_deadline(deadline, timeout).await {
-                Ok((stdout, stderr)) => Ok((status, stdout, stderr)),
+                Ok((stdout, stderr)) => {
+                    let status = wait_child_with_deadline(child, deadline, timeout).await?;
+                    Ok((status, stdout, stderr))
+                }
                 Err(e) => {
+                    child.kill_and_wait().await;
                     pipe_tasks.abort_all().await;
                     Err(e)
                 }
             }
+        }
+    }
+}
+
+async fn wait_child_with_deadline(
+    child: &mut CommandChild,
+    deadline: tokio::time::Instant,
+    timeout: Duration,
+) -> std::result::Result<std::process::ExitStatus, CommandRunError> {
+    match tokio::time::timeout_at(deadline, child.wait()).await {
+        Ok(Ok(status)) => Ok(status),
+        Ok(Err(e)) => {
+            child.kill_and_wait().await;
+            Err(CommandRunError::Wait(e))
+        }
+        Err(_) => {
+            child.kill_and_wait().await;
+            Err(CommandRunError::Timeout(timeout.as_millis()))
         }
     }
 }
@@ -583,24 +595,21 @@ mod tests {
 
     #[tokio::test]
     #[cfg(unix)]
-    async fn exec_with_timeout_pidfd_unavailable_pipe_drain_does_not_kill_after_parent_reap() {
+    async fn exec_with_timeout_pidfd_unavailable_pipe_drain_kills_before_parent_reap() {
         let dir = tempfile::tempdir().unwrap();
         let pid_file = dir.path().join("pid");
-        let pgid_file = dir.path().join("pgid");
         let marker = dir.path().join("marker");
         let pid_file = pid_file.to_str().unwrap();
-        let pgid_file = pgid_file.to_str().unwrap();
         let marker = marker.to_str().unwrap();
 
         let result = command_output_with_timeout_with_exit_notifier(
             "sh",
             &[
                 "-c",
-                "echo $$ > \"$3\"; (sleep 5; touch \"$2\") & echo $! > \"$1\"",
+                "(sleep 5; touch \"$2\") & echo $! > \"$1\"",
                 "_",
                 pid_file,
                 marker,
-                pgid_file,
             ],
             Duration::from_millis(250),
             |_| ChildExitNotifier::unavailable_for_test(),
@@ -612,13 +621,38 @@ mod tests {
             "result was: {result:?}"
         );
         let pid = read_pid_file(pid_file).await;
-        let pgid = read_pid_file(pgid_file).await;
-        assert!(
-            process_is_running(pid),
-            "pidfd-unavailable fallback should not signal by stale process group"
-        );
+        assert_pid_not_running(pid).await;
+        assert!(!std::path::Path::new(marker).exists());
+    }
 
-        kill_process_group_for_test(pgid);
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn exec_with_timeout_pidfd_unavailable_closed_pipes_still_bounds_child_wait() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("pid");
+        let marker = dir.path().join("marker");
+        let pid_file = pid_file.to_str().unwrap();
+        let marker = marker.to_str().unwrap();
+
+        let result = command_output_with_timeout_with_exit_notifier(
+            "sh",
+            &[
+                "-c",
+                "echo $$ > \"$1\"; exec 1>&- 2>&-; sleep 5; touch \"$2\"",
+                "_",
+                pid_file,
+                marker,
+            ],
+            Duration::from_millis(250),
+            |_| ChildExitNotifier::unavailable_for_test(),
+        )
+        .await;
+
+        assert!(
+            matches!(result, Err(CommandRunError::Timeout(_))),
+            "result was: {result:?}"
+        );
+        let pid = read_pid_file(pid_file).await;
         assert_pid_not_running(pid).await;
         assert!(!std::path::Path::new(marker).exists());
     }
@@ -820,16 +854,6 @@ mod tests {
         } else {
             eprintln!("skipping pidfd-dependent {test_name} test");
             false
-        }
-    }
-
-    #[cfg(unix)]
-    fn kill_process_group_for_test(pgid: u32) {
-        if let Ok(pgid) = i32::try_from(pgid) {
-            let _ = nix::sys::signal::killpg(
-                nix::unistd::Pid::from_raw(pgid),
-                nix::sys::signal::Signal::SIGKILL,
-            );
         }
     }
 }
