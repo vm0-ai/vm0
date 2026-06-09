@@ -45,6 +45,7 @@ import {
   type ZeroSlackBrowserConnectQuery,
 } from "@vm0/api-contracts/contracts/zero-slack-browser-connect";
 import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
+import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
 import { zeroSlackOauthContract } from "@vm0/api-contracts/contracts/zero-slack-oauth";
 
 import { createApp } from "../../../../app-factory";
@@ -115,6 +116,13 @@ interface TelegramSetupStatusBody {
 interface TelegramUpdateBody {
   readonly defaultAgentId?: string;
   readonly selectedAgentId?: string | null;
+}
+
+interface SlackConnectBody {
+  readonly workspaceId: string;
+  readonly slackUserId: string;
+  readonly channelId?: string;
+  readonly threadTs?: string;
 }
 
 const AGENTPHONE_API_BASE_URL = "https://api.agentphone.test";
@@ -359,6 +367,19 @@ export function createBddIntegrationApi(context: TestContext) {
       );
     },
 
+    async requestSlackIntegrationStatus(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401)[],
+    ) {
+      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+      return await accept(
+        client.getStatus({
+          headers: authenticate(context, routeMocks, actor),
+        }),
+        statuses,
+      );
+    },
+
     async requestListSlackChannels(
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 404)[],
@@ -410,6 +431,34 @@ export function createBddIntegrationApi(context: TestContext) {
       );
       return await accept(
         client.complete({
+          headers: authenticate(context, routeMocks, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestSlackConnectStatus(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401)[],
+    ) {
+      const client = setupApp({ context })(zeroSlackConnectContract);
+      return await accept(
+        client.getStatus({
+          headers: authenticate(context, routeMocks, actor),
+        }),
+        statuses,
+      );
+    },
+
+    async requestSlackConnect(
+      actor: ApiTestUser | null,
+      body: SlackConnectBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      const client = setupApp({ context })(zeroSlackConnectContract);
+      return await accept(
+        client.connect({
           headers: authenticate(context, routeMocks, actor),
           body,
         }),

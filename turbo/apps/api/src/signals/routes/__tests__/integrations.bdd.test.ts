@@ -211,6 +211,57 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     );
   });
 
+  it("keeps Slack org and user connect status boundaries visible through APIs", async () => {
+    const admin = integrations.user();
+
+    const unauthenticatedOrgStatus =
+      await integrations.requestSlackIntegrationStatus(null, [401]);
+    expect(unauthenticatedOrgStatus.body).toMatchObject({
+      error: { code: "UNAUTHORIZED" },
+    });
+
+    const orgStatus = await integrations.requestSlackIntegrationStatus(
+      admin,
+      [200],
+    );
+    expect(orgStatus.body).toMatchObject({
+      isConnected: false,
+      isInstalled: false,
+      isAdmin: true,
+      connectUrl: null,
+    });
+
+    const unauthenticatedConnectStatus =
+      await integrations.requestSlackConnectStatus(null, [401]);
+    expect(unauthenticatedConnectStatus.body).toMatchObject({
+      error: { code: "UNAUTHORIZED" },
+    });
+
+    const connectStatus = await integrations.requestSlackConnectStatus(
+      admin,
+      [200],
+    );
+    expect(connectStatus.body).toStrictEqual({
+      isConnected: false,
+      isAdmin: true,
+    });
+
+    const missingWorkspace = await integrations.requestSlackConnect(
+      admin,
+      {
+        workspaceId: "TBDD",
+        slackUserId: "UBDD",
+      },
+      [404],
+    );
+    expect(missingWorkspace.body).toStrictEqual({
+      error: {
+        message: "Workspace not found. Please install the Slack app first.",
+        code: "NOT_FOUND",
+      },
+    });
+  });
+
   it("keeps unauthenticated, not-installed, non-admin, and provider-config errors visible through APIs", async () => {
     const admin = integrations.user();
     const member = integrations.user({
