@@ -94,6 +94,11 @@ impl ProcessTreeKillTarget {
     pub(crate) fn child_id(self) -> u32 {
         self.child_id
     }
+
+    fn child_pgid_to_signal(self) -> Option<u32> {
+        self.child_pgid
+            .filter(|pgid| *pgid > 1 && *pgid != self.child_id)
+    }
 }
 
 /// Snapshot process-tree kill targets while the direct child is still alive.
@@ -151,11 +156,9 @@ pub(crate) unsafe fn kill_process_tree_target(target: ProcessTreeKillTarget) -> 
 
     // Kill the session/process group created by su's child after setsid().
     // Skip if the child is in the same group (no setsid happened, e.g. debug builds).
-    // Guard pgid != 0: kill(0, sig) sends to the calling process's own group.
-    if let Some(pgid) = target.child_pgid
-        && pgid != 0
-        && pgid != target.child_id
-    {
+    // Guard pgid > 1: kill(0, sig) targets the caller's group, and kill(-1, sig)
+    // broadcasts to every process the caller may signal.
+    if let Some(pgid) = target.child_pgid_to_signal() {
         let ret = unsafe { libc::kill(-(pgid as i32), libc::SIGKILL) };
         if ret == 0 {
             signalled = true;
@@ -325,6 +328,50 @@ mod tests {
     #[test]
     fn parse_stat_ppid_pgid_no_closing_paren() {
         assert_eq!(parse_stat_ppid_pgid("1 bash S 10 42 42"), None);
+    }
+
+    #[test]
+    fn child_pgid_to_signal_skips_reserved_and_self_targets() {
+        assert_eq!(
+            ProcessTreeKillTarget {
+                child_id: 42,
+                child_pgid: None
+            }
+            .child_pgid_to_signal(),
+            None
+        );
+        assert_eq!(
+            ProcessTreeKillTarget {
+                child_id: 42,
+                child_pgid: Some(0)
+            }
+            .child_pgid_to_signal(),
+            None
+        );
+        assert_eq!(
+            ProcessTreeKillTarget {
+                child_id: 42,
+                child_pgid: Some(1)
+            }
+            .child_pgid_to_signal(),
+            None
+        );
+        assert_eq!(
+            ProcessTreeKillTarget {
+                child_id: 42,
+                child_pgid: Some(42)
+            }
+            .child_pgid_to_signal(),
+            None
+        );
+        assert_eq!(
+            ProcessTreeKillTarget {
+                child_id: 42,
+                child_pgid: Some(43)
+            }
+            .child_pgid_to_signal(),
+            Some(43)
+        );
     }
 
     #[cfg(target_os = "linux")]
