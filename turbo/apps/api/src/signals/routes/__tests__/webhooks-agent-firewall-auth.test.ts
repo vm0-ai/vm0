@@ -1421,6 +1421,54 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("resolves aws sigv4 auth templates", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            AWS_ACCESS_KEY_ID: "access-key-id",
+            AWS_SECRET_ACCESS_KEY: "secret-access-key",
+            AWS_SESSION_TOKEN: "session-token",
+          }),
+          authHeaders: {},
+          authAwsSigv4: {
+            accessKeyId: secretTemplate("AWS_ACCESS_KEY_ID"),
+            secretAccessKey: secretTemplate("AWS_SECRET_ACCESS_KEY"),
+            sessionToken: secretTemplate("AWS_SESSION_TOKEN"),
+            defaultRegion: varTemplate("AWS_REGION"),
+            defaultService: "sts",
+          },
+          vars: {
+            AWS_REGION: "us-east-1",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      headers: {},
+      awsSigv4: {
+        accessKeyId: "access-key-id",
+        secretAccessKey: "secret-access-key",
+        sessionToken: "session-token",
+        defaultRegion: "us-east-1",
+        defaultService: "sts",
+      },
+      expiresAt: null,
+      resolvedSecrets: [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+      ],
+      refreshedConnectors: [],
+      refreshedSecrets: [],
+    });
+  });
+
   it("resolves query, vars, pass-through, and omitted query template cases", async () => {
     const fixture = await track(seedFixture());
 

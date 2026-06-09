@@ -110,6 +110,38 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("extracts secrets from auth.awsSigv4", () => {
+    const apis = [
+      {
+        base: "https://sts.amazonaws.com",
+        auth: {
+          headers: {},
+          awsSigv4: {
+            accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
+            secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+            sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
+            defaultRegion: "${{ vars.AWS_REGION }}",
+            defaultService: "sts",
+          },
+        },
+      },
+    ];
+
+    expect(extractSecretNamesFromApis(apis)).toEqual([
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+    ]);
+    expect(extractFirewallTemplateReferences(apis)).toStrictEqual({
+      secrets: [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+      ],
+      vars: ["AWS_REGION"],
+    });
+  });
+
   it("skips auth.query when not present", () => {
     const apis = [
       {
