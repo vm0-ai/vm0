@@ -124,6 +124,20 @@ async function storedSecret(args: {
   return secret ? await decryptStoredSecretValue(secret.encryptedValue) : null;
 }
 
+function awsTokenEndpointResponseBody() {
+  return {
+    accessToken: {
+      accessKeyId: AWS_EXTERNAL_CODE_CREDENTIAL_ID,
+      secretAccessKey: "aws-secret-access-key",
+      sessionToken: "aws-session-token",
+    },
+    expiresIn: 900,
+    refreshToken: "aws-login-refresh-token",
+    tokenType: "aws_sigv4",
+    idToken: "aws-id-token",
+  };
+}
+
 function mockAwsProvider(): z.infer<typeof awsTokenRequestSchema>[] {
   const tokenRequests: z.infer<typeof awsTokenRequestSchema>[] = [];
   server.use(
@@ -131,17 +145,7 @@ function mockAwsProvider(): z.infer<typeof awsTokenRequestSchema>[] {
       const body = awsTokenRequestSchema.parse(await request.json());
       expect(request.headers.get("dpop")).toBeTruthy();
       tokenRequests.push(body);
-      return HttpResponse.json({
-        accessToken: {
-          accessKeyId: AWS_EXTERNAL_CODE_CREDENTIAL_ID,
-          secretAccessKey: "aws-secret-access-key",
-          sessionToken: "aws-session-token",
-        },
-        expiresIn: 900,
-        refreshToken: "aws-login-refresh-token",
-        tokenType: "aws_sigv4",
-        idToken: "aws-id-token",
-      });
+      return HttpResponse.json({ tokenOutput: awsTokenEndpointResponseBody() });
     }),
     http.get(AWS_STS_URL, () => {
       return HttpResponse.xml(
@@ -579,15 +583,7 @@ describe("external-code connector routes", () => {
         tokenRequestStarted.resolve();
         await releaseTokenResponse.promise;
         return HttpResponse.json({
-          accessToken: {
-            accessKeyId: AWS_EXTERNAL_CODE_CREDENTIAL_ID,
-            secretAccessKey: "aws-secret-access-key",
-            sessionToken: "aws-session-token",
-          },
-          expiresIn: 900,
-          refreshToken: "aws-login-refresh-token",
-          tokenType: "aws_sigv4",
-          idToken: "aws-id-token",
+          tokenOutput: awsTokenEndpointResponseBody(),
         });
       }),
       http.get(AWS_STS_URL, () => {

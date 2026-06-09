@@ -345,6 +345,12 @@ export interface ConnectorExternalCodeGrantConfig {
   readonly kind: "external-code";
   readonly scopes: string[];
   readonly outputs: ConnectorGrantOutputBindings;
+  readonly connectNotice?: ConnectorAuthMethodConnectNoticeConfig;
+}
+
+export interface ConnectorAuthMethodConnectNoticeConfig {
+  readonly variant: "warning";
+  readonly text: string;
 }
 
 export interface ConnectorDeviceAuthStartSelectOptionChoiceConfig {

@@ -3742,6 +3742,10 @@ describe("connector OAuth lifecycle grant helpers", () => {
       {
         kind: "external-code",
         scopes: ["openid"],
+        connectNotice: {
+          variant: "warning",
+          text: "vm0 can call AWS APIs allowed by the selected AWS identity. This temporary login may require reconnect after the AWS session expires.",
+        },
         outputs: {
           refreshToken: "$secrets.AWS_LOGIN_REFRESH_TOKEN",
           dpopKey: "$secrets.AWS_LOGIN_DPOP_KEY",

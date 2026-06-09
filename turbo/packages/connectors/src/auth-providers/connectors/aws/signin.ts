@@ -35,7 +35,7 @@ const AWS_SIGNIN_SENSITIVE_REQUEST_KEYS = [
   "refreshToken",
 ] as const;
 
-const awsSigninTokenResponseSchema = z.object({
+const awsSigninTokenResponseBodySchema = z.object({
   accessToken: z.object({
     accessKeyId: z.string().min(1),
     secretAccessKey: z.string().min(1),
@@ -46,6 +46,14 @@ const awsSigninTokenResponseSchema = z.object({
   tokenType: z.literal(AWS_SIGNIN_TOKEN_TYPE),
   idToken: z.string().optional(),
 });
+const awsSigninTokenResponseSchema = z.union([
+  awsSigninTokenResponseBodySchema,
+  z
+    .object({ tokenOutput: awsSigninTokenResponseBodySchema })
+    .transform(({ tokenOutput }) => {
+      return tokenOutput;
+    }),
+]);
 
 const awsSigninErrorResponseSchema = z.object({
   error: z.string().optional(),
@@ -243,7 +251,7 @@ async function fetchAwsSigninToken(args: {
 
 async function readAwsSigninTokenResponse(
   response: Response,
-): Promise<z.infer<typeof awsSigninTokenResponseSchema>> {
+): Promise<z.infer<typeof awsSigninTokenResponseBodySchema>> {
   let body: unknown;
   try {
     body = await response.json();

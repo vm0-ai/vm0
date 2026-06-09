@@ -146,37 +146,51 @@ function expectJsonWebTokenPart<T>(schema: z.ZodType<T>, value: string): T {
   return schema.parse(JSON.parse(Buffer.from(value, "base64url").toString()));
 }
 
-function mockAwsTokenEndpoint(): void {
+function awsTokenEndpointResponseBody(
+  body: z.infer<typeof awsTokenRequestSchema>,
+) {
+  return {
+    accessToken: {
+      accessKeyId:
+        body.grantType === "refresh_token"
+          ? AWS_REFRESH_CREDENTIAL_ID
+          : AWS_EXCHANGE_CREDENTIAL_ID,
+      secretAccessKey:
+        body.grantType === "refresh_token"
+          ? "refresh-secret-access-key"
+          : "exchange-secret-access-key",
+      sessionToken:
+        body.grantType === "refresh_token"
+          ? "refresh-session-token"
+          : "exchange-session-token",
+    },
+    expiresIn: 900,
+    refreshToken:
+      body.grantType === "refresh_token"
+        ? "aws-refresh-token-rotated"
+        : "aws-refresh-token",
+    tokenType: "aws_sigv4",
+    ...(body.grantType === "authorization_code"
+      ? { idToken: "aws-id-token" }
+      : {}),
+  };
+}
+
+function mockAwsTokenEndpoint(
+  options: {
+    readonly responseShape?: "flat" | "tokenOutput";
+  } = {},
+): void {
   server.use(
     http.post(AWS_TOKEN_URL, async ({ request }) => {
       const body = awsTokenRequestSchema.parse(await request.json());
       tokenRequests.push(body);
       dpopHeaders.push(request.headers.get("dpop") ?? "");
-      return HttpResponse.json({
-        accessToken: {
-          accessKeyId:
-            body.grantType === "refresh_token"
-              ? AWS_REFRESH_CREDENTIAL_ID
-              : AWS_EXCHANGE_CREDENTIAL_ID,
-          secretAccessKey:
-            body.grantType === "refresh_token"
-              ? "refresh-secret-access-key"
-              : "exchange-secret-access-key",
-          sessionToken:
-            body.grantType === "refresh_token"
-              ? "refresh-session-token"
-              : "exchange-session-token",
-        },
-        expiresIn: 900,
-        refreshToken:
-          body.grantType === "refresh_token"
-            ? "aws-refresh-token-rotated"
-            : "aws-refresh-token",
-        tokenType: "aws_sigv4",
-        ...(body.grantType === "authorization_code"
-          ? { idToken: "aws-id-token" }
-          : {}),
-      });
+      const responseBody = awsTokenEndpointResponseBody(body);
+      if (options.responseShape === "tokenOutput") {
+        return HttpResponse.json({ tokenOutput: responseBody });
+      }
+      return HttpResponse.json(responseBody);
     }),
     http.get(AWS_STS_URL, ({ request }) => {
       stsCalls += 1;
@@ -233,7 +247,7 @@ describe("AWS external-code provider", () => {
   });
 
   it("exchanges the pasted code, preserves expiresIn, and maps STS identity", async () => {
-    mockAwsTokenEndpoint();
+    mockAwsTokenEndpoint({ responseShape: "tokenOutput" });
     const start = await startConnectorExternalCodeAuthorization({
       type: "aws",
       authMethod: "cli",
