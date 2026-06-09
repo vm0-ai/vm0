@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.184.0](https://github.com/vm0-ai/vm0/compare/cli-v9.183.3...cli-v9.184.0) (2026-06-09)
+
+
+### Features
+
+* **cli:** add zero automation webhook trigger commands ([#16777](https://github.com/vm0-ai/vm0/issues/16777)) ([4b7dd79](https://github.com/vm0-ai/vm0/commit/4b7dd79acec6010040d4b6bf4c5f590f2608c68e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.72.0
+    * @vm0/connectors bumped to 1.54.0
+    * @vm0/core bumped to 8.318.0
+
 ## [9.183.3](https://github.com/vm0-ai/vm0/compare/cli-v9.183.2...cli-v9.183.3) (2026-06-09)
 
 

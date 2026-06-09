@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.417.0](https://github.com/vm0-ai/vm0/compare/web-v12.416.1...web-v12.417.0) (2026-06-09)
+
+
+### Features
+
+* **api:** inbound webhook route + WebhookInterpreter + run submission ([#16775](https://github.com/vm0-ai/vm0/issues/16775)) ([ace24c7](https://github.com/vm0-ai/vm0/commit/ace24c7d15afb88b28c4b250a089b61ef5525a16))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.72.0
+    * @vm0/core bumped to 8.318.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.54.0
+
 ## [12.416.1](https://github.com/vm0-ai/vm0/compare/web-v12.416.0...web-v12.416.1) (2026-06-09)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.22...guest-agent-v0.34.23) (2026-06-09)
+
+
+### Bug Fixes
+
+* mask lowercase percent-encoded secrets ([#16769](https://github.com/vm0-ai/vm0/issues/16769)) ([6e3a625](https://github.com/vm0-ai/vm0/commit/6e3a6253fcd1556225dc4f2f8f3ba8caddf677e9))
+
 ## [0.34.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.21...guest-agent-v0.34.22) (2026-06-09)
 
 

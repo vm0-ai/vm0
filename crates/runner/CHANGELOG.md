@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.108.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.21...runner-rs-v0.108.22) (2026-06-09)
+
+
+### Refactoring
+
+* **runner:** share network log drain loop ([#16768](https://github.com/vm0-ai/vm0/issues/16768)) ([a399e57](https://github.com/vm0-ai/vm0/commit/a399e57e7b81b85d93e4adf80fdc73776e326357))
+* split mitm matching pattern tests ([#16790](https://github.com/vm0-ai/vm0/issues/16790)) ([3bbac7a](https://github.com/vm0-ai/vm0/commit/3bbac7a5ec5a9cb7f2159ef86a0b82046c5fb648))
+
 ## [0.108.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.20...runner-rs-v0.108.21) (2026-06-09)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.117.0](https://github.com/vm0-ai/vm0/compare/api-v1.116.2...api-v1.117.0) (2026-06-09)
+
+
+### Features
+
+* **api:** manage webhook automations (create/list/delete) behind switch ([#16776](https://github.com/vm0-ai/vm0/issues/16776)) ([770e5e4](https://github.com/vm0-ai/vm0/commit/770e5e4a7e59448ae31d99464f0f2196174d8894))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.72.0
+    * @vm0/connectors bumped to 1.54.0
+    * @vm0/core bumped to 8.318.0
+    * @vm0/db bumped to 1.35.1
+
 ## [1.116.2](https://github.com/vm0-ai/vm0/compare/api-v1.116.1...api-v1.116.2) (2026-06-09)
 
 

@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.428.0](https://github.com/vm0-ai/vm0/compare/app-v0.427.0...app-v0.428.0) (2026-06-09)
+
+
+### Features
+
+* add inline provide feedback on agent messages ([#16223](https://github.com/vm0-ai/vm0/issues/16223)) ([03ccac6](https://github.com/vm0-ai/vm0/commit/03ccac6771099250a365b64a3e15c7c87ac03fb6))
+* **api:** inbound webhook route + WebhookInterpreter + run submission ([#16775](https://github.com/vm0-ai/vm0/issues/16775)) ([ace24c7](https://github.com/vm0-ai/vm0/commit/ace24c7d15afb88b28c4b250a089b61ef5525a16))
+
+
+### Bug Fixes
+
+* normalize podchaser svg attributes ([#16773](https://github.com/vm0-ai/vm0/issues/16773)) ([77521f6](https://github.com/vm0-ai/vm0/commit/77521f6e4022ace85ae86194b1a17dd32da96de4))
+* normalize qiita connector svg attributes ([#16800](https://github.com/vm0-ai/vm0/issues/16800)) ([b77b2ec](https://github.com/vm0-ai/vm0/commit/b77b2ecdac4a2cdab26d1a00c60c4725af54baf4))
+* replace porkbun raster icon ([#16779](https://github.com/vm0-ai/vm0/issues/16779)) ([7162109](https://github.com/vm0-ai/vm0/commit/7162109467f5f013a16666a6c8a7cd3c35651828))
+* replace posthog icon ([#16785](https://github.com/vm0-ai/vm0/issues/16785)) ([ba1a768](https://github.com/vm0-ai/vm0/commit/ba1a768ac021cfb66bc936733123bcb8728cdd6e))
+* replace printful embedded icon ([#16792](https://github.com/vm0-ai/vm0/issues/16792)) ([c86b789](https://github.com/vm0-ai/vm0/commit/c86b7897934fc4e82c544875a04313631c4fd888))
+* use official pinecone connector icon ([#16763](https://github.com/vm0-ai/vm0/issues/16763)) ([6e52699](https://github.com/vm0-ai/vm0/commit/6e5269970f4d91dac53e3119be24aac9c18934e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.72.0
+    * @vm0/connectors bumped to 1.54.0
+    * @vm0/core bumped to 8.318.0
+
 ## [0.427.0](https://github.com/vm0-ai/vm0/compare/app-v0.426.0...app-v0.427.0) (2026-06-09)
 
 

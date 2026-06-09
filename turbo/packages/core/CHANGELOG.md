@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.318.0](https://github.com/vm0-ai/vm0/compare/core-v8.317.3...core-v8.318.0) (2026-06-09)
+
+
+### Features
+
+* add inline provide feedback on agent messages ([#16223](https://github.com/vm0-ai/vm0/issues/16223)) ([03ccac6](https://github.com/vm0-ai/vm0/commit/03ccac6771099250a365b64a3e15c7c87ac03fb6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.72.0
+    * @vm0/connectors bumped to 1.54.0
+
 ## [8.317.3](https://github.com/vm0-ai/vm0/compare/core-v8.317.2...core-v8.317.3) (2026-06-09)
 
 
