@@ -1,6 +1,5 @@
-<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Tripo: isometric 3D cube (3D model generation) -->
-  <polygon points="16,4 26,10 16,16 6,10" fill="#5EEAD4"/>
-  <polygon points="6,10 16,16 16,28 6,22" fill="#14B8A6"/>
-  <polygon points="16,16 26,10 26,22 16,28" fill="#0F766E"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
+  <rect width="60" height="60" fill="#000000"/>
+  <path fill="#FFFFFF" d="M5 6 9 9 29 44 35 42 48 19H58L38 54 28 56 23 53 2 17V11Z"/>
+  <path fill="#F8CF00" d="M12 4H53L59 8 60 13H43L34 30 30 32 26 27V24L32 13H17Z"/>
 </svg>
