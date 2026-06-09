@@ -20,7 +20,11 @@ async fn read_file_returns_content_and_missing() {
     };
     let start = expect_exec_start(&mut guest).await;
     assert_eq!(start.label, "read-file");
-    assert!(start.command.contains("cat < '/tmp/session.txt'"));
+    assert!(
+        start
+            .command
+            .contains("cat 2>/dev/null < '/tmp/session.txt'")
+    );
     assert_eq!(start.expected_exit_codes, vec![66]);
     send_exec_result(
         &mut guest,
@@ -169,7 +173,7 @@ async fn read_file_quotes_guest_path_with_single_quote() {
     let start = expect_exec_start(&mut guest).await;
     assert_eq!(
         start.command,
-        "if test -f '/tmp/session'\\''one.txt'; then cat < '/tmp/session'\\''one.txt' 2>/dev/null || { test -f '/tmp/session'\\''one.txt' || exit 66; printf '%s\\n' 'failed to read file' >&2; exit 1; }; else exit 66; fi"
+        "if test -f '/tmp/session'\\''one.txt'; then cat 2>/dev/null < '/tmp/session'\\''one.txt' || { test -f '/tmp/session'\\''one.txt' || exit 66; printf '%s\\n' 'failed to read file' >&2; exit 1; }; else exit 66; fi"
     );
     send_exec_result(
         &mut guest,
