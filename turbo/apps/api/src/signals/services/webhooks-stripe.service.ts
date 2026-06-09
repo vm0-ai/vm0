@@ -39,6 +39,7 @@ type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 interface CheckoutSessionInput {
   readonly id: string;
+  readonly invoice?: string | { readonly id: string } | null;
   readonly subscription: string | { readonly id: string } | null;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
@@ -248,11 +249,35 @@ function subscriptionCreditExpiresAt(
 
 const CREDITS_PER_DOLLAR = 1000;
 
-function creditsFromAmountCents(amountCents: number | null | undefined): number {
+function creditsFromAmountCents(
+  amountCents: number | null | undefined,
+): number {
   if (amountCents === undefined || amountCents === null) {
     return Number.NaN;
   }
   return Math.floor((amountCents * CREDITS_PER_DOLLAR) / 100);
+}
+
+function creditPurchaseAmount(session: CheckoutSessionInput): number {
+  const metadata = session.metadata ?? {};
+  if (metadata.creditsAmountMode === "amount_subtotal") {
+    return creditsFromAmountCents(
+      session.amount_subtotal ?? session.amount_total,
+    );
+  }
+  if (metadata.creditsAmountMode === "amount_total") {
+    return creditsFromAmountCents(session.amount_total);
+  }
+  return Number(metadata.creditsAmount);
+}
+
+function checkoutSessionInvoiceId(
+  session: CheckoutSessionInput,
+): string | null {
+  if (typeof session.invoice === "string") {
+    return session.invoice;
+  }
+  return session.invoice?.id ?? null;
 }
 
 function autoRechargeNeverExpiresAt(): Date {
@@ -591,6 +616,55 @@ async function handleOneTimePurchaseCompleted(
     }
 
     await grantOrgCredits(tx, orgId, campaign.credits);
+  });
+
+  return orgId;
+}
+
+async function handleCreditPurchaseCompleted(
+  db: Db,
+  session: CheckoutSessionInput,
+): Promise<string | null> {
+  if (session.payment_status !== "paid") {
+    L.debug("credit_purchase checkout completed before payment settled", {
+      sessionId: session.id,
+      paymentStatus: session.payment_status ?? null,
+    });
+    return null;
+  }
+
+  const metadata = session.metadata ?? {};
+  const orgId = metadata.orgId;
+  const creditsAmount = creditPurchaseAmount(session);
+
+  if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
+    L.warn("credit_purchase checkout has invalid metadata or amount", {
+      sessionId: session.id,
+      hasOrgId: Boolean(orgId),
+      amountSubtotal: session.amount_subtotal ?? null,
+      amountTotal: session.amount_total ?? null,
+      metadata,
+    });
+    return null;
+  }
+
+  await db.transaction(async (tx) => {
+    const inserted = await createExpiresRecord(tx, orgId, {
+      source: "auto_recharge",
+      stripeInvoiceId: session.id,
+      amount: creditsAmount,
+      expiresAt: autoRechargeNeverExpiresAt(),
+    });
+
+    if (!inserted) {
+      L.debug("credit_purchase checkout already processed", {
+        sessionId: session.id,
+        orgId,
+      });
+      return;
+    }
+
+    await grantOrgCredits(tx, orgId, creditsAmount);
   });
 
   return orgId;
@@ -1483,8 +1557,18 @@ async function handleCheckoutCompleted(
   }
 
   if (session.metadata?.purpose === "credit_purchase") {
+    const invoiceId = checkoutSessionInvoiceId(session);
+    if (!invoiceId) {
+      const drainOrgId = await handleCreditPurchaseCompleted(db, session);
+      return {
+        drainOrgId,
+        orgIds: drainOrgId === null ? [] : [drainOrgId],
+      };
+    }
+
     L.debug("credit_purchase checkout completed; waiting for invoice.paid", {
       sessionId: session.id,
+      invoiceId,
       paymentStatus: session.payment_status ?? null,
     });
     return { drainOrgId: null, orgIds: [] };
@@ -1549,7 +1633,10 @@ async function handleInvoicePaid(
     return autoRechargeResult.drainOrgId;
   }
 
-  const creditPurchaseResult = await handleCreditPurchaseInvoicePaid(db, invoice);
+  const creditPurchaseResult = await handleCreditPurchaseInvoicePaid(
+    db,
+    invoice,
+  );
   if (creditPurchaseResult.handled) {
     return creditPurchaseResult.drainOrgId;
   }

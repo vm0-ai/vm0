@@ -2629,18 +2629,20 @@ describe("POST /api/webhooks/stripe", () => {
       });
     });
 
-    it("does not grant custom credit purchase credits from checkout completion", async () => {
+    it("does not grant invoice-backed custom credit purchase credits from checkout completion", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
       mockStripeWebhookEnv();
       const creditsBefore = (await selectStripeBilling(fixture)).credits;
       const sessionId = stripeId("cs");
+      const invoiceId = stripeId("inv");
 
       const response = await postStripeWebhookEvent({
         type: "checkout.session.completed",
         dataObject: {
           id: sessionId,
+          invoice: invoiceId,
           subscription: null,
           customer: fixture.stripeCustomerId,
           payment_status: "paid",
@@ -2658,6 +2660,45 @@ describe("POST /api/webhooks/stripe", () => {
       await expect(
         selectStripeCreditExpiresRecords(fixture),
       ).resolves.toHaveLength(0);
+    });
+
+    it("keeps processing legacy custom credit checkout sessions without an invoice", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const creditsBefore = (await selectStripeBilling(fixture)).credits;
+      const sessionId = stripeId("cs");
+
+      const response = await postStripeWebhookEvent({
+        type: "checkout.session.completed",
+        dataObject: {
+          id: sessionId,
+          invoice: null,
+          subscription: null,
+          customer: fixture.stripeCustomerId,
+          payment_status: "paid",
+          amount_total: 10_000,
+          metadata: {
+            purpose: "credit_purchase",
+            orgId: fixture.orgId,
+            creditsAmountMode: "amount_total",
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect((await selectStripeBilling(fixture)).credits).toBe(
+        creditsBefore + 100_000,
+      );
+      const records = await selectStripeCreditExpiresRecords(fixture);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        source: "auto_recharge",
+        stripeInvoiceId: sessionId,
+        amount: 100_000,
+        remaining: 100_000,
+      });
     });
 
     it("restores a scheduled cancellation after setup checkout collects a payment method", async () => {
