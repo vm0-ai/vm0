@@ -2608,9 +2608,9 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
           },
         },
         signinRegion: {
-          valueRef: "$secrets.AWS_SIGNIN_REGION",
+          valueRef: "$vars.AWS_SIGNIN_REGION",
           source: {
-            kind: "connector-secret",
+            kind: "connector-variable",
             name: "AWS_SIGNIN_REGION",
           },
         },
@@ -2654,8 +2654,8 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
         AWS_ACCESS_KEY_ID: "$secrets.AWS_ACCESS_KEY_ID",
         AWS_SECRET_ACCESS_KEY: "$secrets.AWS_SECRET_ACCESS_KEY",
         AWS_SESSION_TOKEN: "$secrets.AWS_SESSION_TOKEN",
-        AWS_REGION: "$secrets.AWS_REGION",
-        AWS_DEFAULT_REGION: "$secrets.AWS_REGION",
+        AWS_REGION: "$vars.AWS_REGION",
+        AWS_DEFAULT_REGION: "$vars.AWS_REGION",
       },
       platformSecrets: [],
     });
@@ -3893,8 +3893,8 @@ describe("connector OAuth lifecycle grant helpers", () => {
           accessKeyId: "$secrets.AWS_ACCESS_KEY_ID",
           secretAccessKey: "$secrets.AWS_SECRET_ACCESS_KEY",
           sessionToken: "$secrets.AWS_SESSION_TOKEN",
-          signinRegion: "$secrets.AWS_SIGNIN_REGION",
-          runtimeRegion: "$secrets.AWS_REGION",
+          signinRegion: "$vars.AWS_SIGNIN_REGION",
+          runtimeRegion: "$vars.AWS_REGION",
         },
       },
     );
