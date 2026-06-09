@@ -1,0 +1,13 @@
+# Prebuilt deploys (`vercel deploy --prebuilt`) only need `.vercel/output`,
+# which Vercel force-includes regardless of this file. Everything below is
+# project source that is redundant in the uploaded archive — most notably
+# `public/`, whose assets are already baked into `.vercel/output/static`.
+# Excluding it shrinks the upload + "Deploying outputs" payload. This only
+# filters the deploy upload; `vercel build` still sees every file.
+public
+app
+src
+__tests__
+custom-eslint
+scripts
+messages
