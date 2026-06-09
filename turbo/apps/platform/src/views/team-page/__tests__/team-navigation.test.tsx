@@ -143,6 +143,7 @@ function mockTeamAPIs(): void {
   context.mocks.data.connectors([
     createConnector("github", "octocat"),
     createConnector("axiom", "workspace"),
+    createConnector("slack", "ops"),
   ]);
   context.mocks.data.schedules([
     createMockScheduleResponse({
@@ -453,6 +454,64 @@ describe("team page navigation", () => {
     toast.dismiss();
     await waitFor(() => {
       expect(screen.queryByText("Permissions updated")).not.toBeInTheDocument();
+    });
+  });
+
+  it("updates grouped connector permission policies from an agent page", async () => {
+    mockTeamAPIs();
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ExpiringPermissionGrants]: true,
+        [FeatureSwitchKey.ConnectorPermissionReset]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@ops")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Slack permissions"));
+
+    const groupedDialog = await screen.findByRole("dialog");
+    expect(
+      within(groupedDialog).getByText("Slack permissions"),
+    ).toBeInTheDocument();
+    expect(within(groupedDialog).getByText("Read (37)")).toBeInTheDocument();
+    expect(within(groupedDialog).getByText("Write (23)")).toBeInTheDocument();
+    expect(within(groupedDialog).getByText("Misc (5)")).toBeInTheDocument();
+
+    click(screen.getByText("Misc (5)"));
+    const miscGroup = screen.getByText("Misc (5)").closest("div");
+    if (!(miscGroup instanceof HTMLElement)) {
+      throw new Error("Misc permission group not found");
+    }
+    click(within(miscGroup).getByLabelText("Misc allow options"));
+    click(menuItemByText("Allow for 7d"));
+    await waitFor(() => {
+      expect(within(miscGroup).getByText("7d")).toBeInTheDocument();
+    });
+
+    const channelsJoinRow = await permissionRowByName(
+      groupedDialog,
+      "channels:join",
+    );
+    click(within(channelsJoinRow).getByLabelText("Undo channels:join changes"));
+    await waitFor(() => {
+      expect(
+        within(channelsJoinRow).queryByLabelText("Undo channels:join changes"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(buttonByText("Apply", groupedDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+      expect(screen.queryByText("Slack permissions")).not.toBeInTheDocument();
     });
   });
 });
