@@ -15,6 +15,7 @@ import {
   deviceTokenContract,
   type PollDeviceTokenRequest,
 } from "@vm0/api-contracts/contracts/device-token";
+import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import {
   type ClaudeCodeDeviceAuthScope,
   zeroClaudeCodeDeviceAuthContract,
@@ -214,6 +215,17 @@ export function createAuthDeviceApiActions(context: TestContext) {
           headers: authenticate(actor),
           body: { device_code: deviceCode },
         }),
+        statuses,
+      );
+    },
+
+    async requestPlatformRealtimeToken(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 500)[],
+    ) {
+      const client = setupApp({ context })(platformRealtimeTokenContract);
+      return await accept(
+        client.create({ headers: authenticate(actor), body: {} }),
         statuses,
       );
     },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createAuthDeviceApiActions } from "./helpers/api-bdd-auth-device";
@@ -244,6 +245,45 @@ describe("AUTH-02: bb0 device token", () => {
     );
     expectApiError(invalidPoll.body);
     expect(invalidPoll.body.error.code).toBe("BAD_REQUEST");
+  });
+});
+
+describe("AUTH-02: platform realtime token", () => {
+  it("issues user-scoped realtime tokens only for authenticated users", async () => {
+    const unauthenticated = await authDevice.requestPlatformRealtimeToken(
+      null,
+      [401],
+    );
+    expectApiError(unauthenticated.body);
+    expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
+
+    const actor = bdd.user();
+    const capability = JSON.stringify({
+      [`user:${actor.userId}`]: ["subscribe"],
+    });
+    context.mocks.ably.createTokenRequest.mockResolvedValueOnce({
+      keyName: "ably-key",
+      timestamp: now(),
+      capability,
+      clientId: actor.userId,
+      nonce: "nonce",
+      mac: "mac",
+    });
+
+    const token = await authDevice.requestPlatformRealtimeToken(actor, [200]);
+    if (token.status !== 200) {
+      throw new Error("Expected platform realtime token request to succeed");
+    }
+    expect(token.body.capability).toBe(capability);
+    expect(token.body.clientId).toBe(actor.userId);
+    expect(context.mocks.ably.createTokenRequest).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.createTokenRequest).toHaveBeenCalledWith({
+      capability: {
+        [`user:${actor.userId}`]: ["subscribe"],
+      },
+      ttl: 60 * 60 * 1000,
+      clientId: actor.userId,
+    });
   });
 });
 
