@@ -15,6 +15,7 @@ import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -388,6 +389,81 @@ describe("chat composer models", () => {
     ).resolves.toHaveTextContent("ABCD-EFGH");
     expect(screen.getByText("Connect Codex")).toBeInTheDocument();
     expect(openWindow.calls).toStrictEqual([]);
+  });
+
+  it("completes personal Claude Code auth from a routed model blocker", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.open(context.mocks.browser.authWindow());
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "claude-opus-4-7",
+        modelLabel: "Claude Opus 4.7",
+        isDefault: true,
+        defaultProviderType: "claude-code-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([]);
+    mockAgent();
+    context.mocks.api(zeroClaudeCodeDeviceAuthContract.start, ({ respond }) => {
+      return respond(200, {
+        sessionToken: "mock-claude-code-device-session",
+        type: "claude-code",
+        status: "pending",
+        scope: "personal",
+        browserUrl: "https://claude.ai/oauth/authorize",
+        expiresIn: 30,
+      });
+    });
+    context.mocks.api(
+      zeroClaudeCodeDeviceAuthContract.complete,
+      ({ respond }) => {
+        return respond(200, {
+          status: "complete",
+          provider: buildProvider({
+            id: "00000000-0000-4000-a000-000000000401",
+            type: "claude-code-oauth-token",
+            secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+          }),
+          created: true,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectComposerModel("Claude Opus 4.7");
+
+    await fill(await screen.findByPlaceholderText(PLACEHOLDER), "Hello");
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+    const warning = (await screen.findByText("Model Configure")).closest(
+      "button",
+    )!;
+    expect(warning).toHaveAccessibleName(
+      /Model Configure: This workspace routes Claude Opus 4\.7/u,
+    );
+
+    await user.click(warning);
+
+    await expect(
+      screen.findByTestId("claude-code-device-auth-code"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Connect Claude Code")).toBeInTheDocument();
+
+    click(screen.getByTestId("claude-code-device-auth-open"));
+    await fill(
+      screen.getByTestId("claude-code-device-auth-code"),
+      "mock-claude-code",
+    );
+    click(screen.getByTestId("claude-code-device-auth-submit"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Claude Code connected")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Connect Claude Code")).not.toBeInTheDocument();
+    });
   });
 
   it("keeps unsupported visual files out of text-only model sends while accepting text files", async () => {
