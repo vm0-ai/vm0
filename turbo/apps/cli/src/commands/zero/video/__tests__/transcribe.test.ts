@@ -1,8 +1,11 @@
 /**
  * Tests for zero video transcribe command.
  *
- * Uses MSW to mock the STT API endpoint and child_process.execFileSync
- * to avoid requiring real ffmpeg/curl in CI.
+ * Mocks only external boundaries: the curl/ffmpeg binaries (via child_process,
+ * not available in CI) and HTTP (via MSW). The fake binaries write real bytes
+ * to their output paths (the arg after "-o" for curl, before "-y" for ffmpeg)
+ * so the command's real filesystem, real downloadWebFile, and real
+ * transcribeAudio code all run unchanged.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -11,32 +14,26 @@ import { server } from "../../../../mocks/server";
 import { transcribeCommand } from "../transcribe";
 
 const STT_URL = "http://localhost:3000/api/zero/voice-io/stt";
+const DOWNLOAD_URL = "http://localhost:3000/api/zero/web/download-file";
 
-vi.mock("child_process", () => {
+vi.mock("child_process", async () => {
+  const { writeFileSync } = await vi.importActual<typeof import("fs")>("fs");
   return {
-    execFileSync: vi.fn(),
-  };
-});
-
-vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs")>();
-  return {
-    ...actual,
-    readFileSync: vi.fn().mockReturnValue(Buffer.from("fake audio data")),
-    statSync: vi.fn().mockReturnValue({ size: 1024 }),
-    unlinkSync: vi.fn(),
-  };
-});
-
-vi.mock("../../../../lib/api/domains/web", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../../lib/api/domains/web")>();
-  return {
-    ...actual,
-    downloadWebFile: vi.fn().mockResolvedValue({
-      path: "/tmp/zero-video-test.mp4",
-      mimetype: "video/mp4",
-      size: 1024,
+    execFileSync: vi.fn((command: string, args: readonly string[]) => {
+      if (command === "curl") {
+        const i = args.indexOf("-o");
+        const outPath = i >= 0 ? args[i + 1] : undefined;
+        if (outPath) {
+          writeFileSync(outPath, Buffer.from("fake-video-bytes"));
+        }
+      } else if (command === "ffmpeg") {
+        const i = args.indexOf("-y");
+        const outPath = i > 0 ? args[i - 1] : undefined;
+        if (outPath) {
+          writeFileSync(outPath, Buffer.from("fake-audio-bytes"));
+        }
+      }
+      return Buffer.from("");
     }),
   };
 });
@@ -47,6 +44,14 @@ const mockStdoutWrite = vi
     return true;
   });
 
+function readStdout(): string {
+  return mockStdoutWrite.mock.calls
+    .map((c) => {
+      return c[0];
+    })
+    .join("");
+}
+
 describe("zero video transcribe command", () => {
   beforeEach(() => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
@@ -56,10 +61,11 @@ describe("zero video transcribe command", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   describe("with timestamps (verbose mode)", () => {
-    it("should output structured Markdown with timestamp blocks", async () => {
+    it("outputs structured Markdown with timestamp blocks", async () => {
       server.use(
         http.post(STT_URL, () => {
           return HttpResponse.json({
@@ -77,11 +83,7 @@ describe("zero video transcribe command", () => {
         { from: "user" },
       );
 
-      const output = mockStdoutWrite.mock.calls
-        .map((c) => {
-          return c[0];
-        })
-        .join("");
+      const output = readStdout();
       expect(output).toContain("## Transcript");
       expect(output).toContain("[00:02-00:05] Hello world.");
       expect(output).toContain("[00:06-00:07] Second sentence.");
@@ -89,14 +91,11 @@ describe("zero video transcribe command", () => {
   });
 
   describe("without timestamps (--no-timestamps)", () => {
-    it("should output plain text transcript", async () => {
+    it("outputs plain text transcript", async () => {
       server.use(
         http.post(STT_URL, ({ request }) => {
-          const url = new URL(request.url);
-          expect(url.searchParams.get("verbose")).toBeNull();
-          return HttpResponse.json({
-            text: "Hello world. Second sentence.",
-          });
+          expect(new URL(request.url).searchParams.get("verbose")).toBeNull();
+          return HttpResponse.json({ text: "Hello world. Second sentence." });
         }),
       );
 
@@ -105,11 +104,7 @@ describe("zero video transcribe command", () => {
         { from: "user" },
       );
 
-      const output = mockStdoutWrite.mock.calls
-        .map((c) => {
-          return c[0];
-        })
-        .join("");
+      const output = readStdout();
       expect(output).toContain("## Transcript");
       expect(output).toContain("Hello world. Second sentence.");
       expect(output).not.toMatch(/\[\d{2}:\d{2}-\d{2}:\d{2}\]/);
@@ -117,11 +112,18 @@ describe("zero video transcribe command", () => {
   });
 
   describe("with --file-id", () => {
-    it("should use downloadWebFile instead of curl", async () => {
-      const { downloadWebFile } =
-        await import("../../../../lib/api/domains/web");
-
+    it("downloads via the web file API and transcribes", async () => {
+      let requestedFileId: string | null = null;
       server.use(
+        http.get(DOWNLOAD_URL, ({ request }) => {
+          requestedFileId = new URL(request.url).searchParams.get("file_id");
+          return new HttpResponse(new Uint8Array([1, 2, 3, 4]), {
+            headers: {
+              "content-type": "video/mp4",
+              "content-length": "4",
+            },
+          });
+        }),
         http.post(STT_URL, () => {
           return HttpResponse.json({ text: "File content." });
         }),
@@ -131,15 +133,13 @@ describe("zero video transcribe command", () => {
         from: "user",
       });
 
-      expect(downloadWebFile).toHaveBeenCalledWith(
-        "abc-123-def",
-        expect.stringContaining("zero-video-"),
-      );
+      expect(requestedFileId).toBe("abc-123-def");
+      expect(readStdout()).toContain("File content.");
     });
   });
 
   describe("missing arguments", () => {
-    it("should exit with error when neither --url nor --file-id provided", async () => {
+    it("exits with error when neither --url nor --file-id provided", async () => {
       const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
         throw new Error("process.exit called");
       }) as never);

@@ -1,36 +1,38 @@
 /**
  * Tests for zero video frames command.
  *
- * Uses vi.mock for child_process (curl/ffmpeg) and fs so the test does not
- * require real binaries or touch the filesystem in CI.
+ * Mocks only external boundaries: the curl/ffmpeg binaries (via child_process,
+ * not available in CI) and HTTP (via MSW). The fake binaries write real bytes
+ * to their output paths (the arg after "-o" for curl, before "-y" for ffmpeg)
+ * so the command's real filesystem and real downloadWebFile code run unchanged.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "child_process";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server";
 import { framesCommand } from "../frames";
 
-vi.mock("child_process", () => {
-  return {
-    execFileSync: vi.fn(),
-  };
-});
+const DOWNLOAD_URL = "http://localhost:3000/api/zero/web/download-file";
 
-vi.mock("fs", () => {
+vi.mock("child_process", async () => {
+  const { writeFileSync } = await vi.importActual<typeof import("fs")>("fs");
   return {
-    mkdirSync: vi.fn(),
-    unlinkSync: vi.fn(),
-  };
-});
-
-vi.mock("../../../../lib/api/domains/web", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../../lib/api/domains/web")>();
-  return {
-    ...actual,
-    downloadWebFile: vi.fn().mockResolvedValue({
-      path: "/tmp/zero-video-test.mp4",
-      mimetype: "video/mp4",
-      size: 1024,
+    execFileSync: vi.fn((command: string, args: readonly string[]) => {
+      if (command === "curl") {
+        const i = args.indexOf("-o");
+        const outPath = i >= 0 ? args[i + 1] : undefined;
+        if (outPath) {
+          writeFileSync(outPath, Buffer.from("fake-video"));
+        }
+      } else if (command === "ffmpeg") {
+        const i = args.indexOf("-y");
+        const outPath = i > 0 ? args[i - 1] : undefined;
+        if (outPath) {
+          writeFileSync(outPath, Buffer.from("fake-frame"));
+        }
+      }
+      return Buffer.from("");
     }),
   };
 });
@@ -51,11 +53,14 @@ function readStdout(): string {
 
 describe("zero video frames command", () => {
   beforeEach(() => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
     mockStdoutWrite.mockClear();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("extracts one frame per timestamp and prints JSON paths", async () => {
@@ -85,20 +90,23 @@ describe("zero video frames command", () => {
     );
   });
 
-  it("downloads via downloadWebFile when --file-id is given", async () => {
-    const { downloadWebFile } = await import("../../../../lib/api/domains/web");
+  it("downloads via the web file API when --file-id is given", async () => {
+    let requestedFileId: string | null = null;
+    server.use(
+      http.get(DOWNLOAD_URL, ({ request }) => {
+        requestedFileId = new URL(request.url).searchParams.get("file_id");
+        return new HttpResponse(new Uint8Array([1, 2, 3, 4]), {
+          headers: { "content-type": "video/mp4", "content-length": "4" },
+        });
+      }),
+    );
 
     await framesCommand.parseAsync(["--file-id", "abc-123", "--at", "5"], {
       from: "user",
     });
 
-    expect(downloadWebFile).toHaveBeenCalledWith(
-      "abc-123",
-      expect.stringContaining("zero-video-"),
-    );
-    const result = JSON.parse(readStdout()) as {
-      frames: { at: string }[];
-    };
+    expect(requestedFileId).toBe("abc-123");
+    const result = JSON.parse(readStdout()) as { frames: { at: string }[] };
     expect(result.frames[0]?.at).toBe("5");
   });
 
