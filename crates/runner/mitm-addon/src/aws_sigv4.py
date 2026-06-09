@@ -35,6 +35,7 @@ _SCOPE_SERVICE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _AMZ_DATE_RE = re.compile(r"^\d{8}T\d{6}Z$")
 _PRESIGN_EXPIRES_RE = re.compile(r"^[1-9]\d*$")
 _ACCESS_KEY_ID_RE = re.compile(r"^[A-Za-z0-9]+$")
+_SIGNED_HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
 _ASCII_CONTROL_MAX = 0x1F
 _ASCII_DELETE = 0x7F
 
@@ -228,7 +229,14 @@ def _parse_credential(credential: str) -> tuple[str, _CredentialScope]:
 
 
 def _parse_signed_headers(value: str) -> frozenset[str]:
-    headers = frozenset(part.strip().lower() for part in value.split(";") if part.strip())
+    parts = [part.strip().lower() for part in value.split(";")]
+    if (
+        not parts
+        or any(not part or not _SIGNED_HEADER_NAME_RE.fullmatch(part) for part in parts)
+        or len(parts) != len(set(parts))
+    ):
+        raise AwsSigV4SigningError("Malformed AWS signed headers")
+    headers = frozenset(parts)
     if "host" not in headers:
         raise AwsSigV4SigningError("AWS signed headers must include host")
     return headers
