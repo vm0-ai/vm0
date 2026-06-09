@@ -3505,6 +3505,17 @@ function resolveTemplates(args: ResolveTemplatesArgs): {
   };
 }
 
+function hasEmptyAwsSigv4Credential(
+  credentials: FirewallAwsSigv4AuthConfig | undefined,
+): boolean {
+  return (
+    credentials !== undefined &&
+    (credentials.accessKeyId === "" ||
+      credentials.secretAccessKey === "" ||
+      credentials.sessionToken === "")
+  );
+}
+
 export async function resolveFirewallAuth(
   db: Db,
   auth: SandboxAuth,
@@ -3605,6 +3616,9 @@ export async function resolveFirewallAuth(
     authQuery: body.authQuery,
     authAwsSigv4: body.authAwsSigv4,
   });
+  if (hasEmptyAwsSigv4Credential(resolved.awsSigv4)) {
+    return connectorNotConfigured();
+  }
 
   return {
     status: 200,

@@ -1462,6 +1462,72 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("returns connector-not-configured for empty resolved aws sigv4 credentials", async () => {
+    const fixture = await track(seedFixture());
+    const cases: readonly {
+      readonly secrets: Record<string, string>;
+      readonly authAwsSigv4: {
+        readonly accessKeyId: string;
+        readonly secretAccessKey: string;
+        readonly sessionToken?: string;
+      };
+    }[] = [
+      {
+        secrets: {
+          AWS_ACCESS_KEY_ID: "",
+          AWS_SECRET_ACCESS_KEY: "secret-access-key",
+        },
+        authAwsSigv4: {
+          accessKeyId: secretTemplate("AWS_ACCESS_KEY_ID"),
+          secretAccessKey: secretTemplate("AWS_SECRET_ACCESS_KEY"),
+        },
+      },
+      {
+        secrets: {
+          AWS_ACCESS_KEY_ID: "access-key-id",
+          AWS_SECRET_ACCESS_KEY: "",
+        },
+        authAwsSigv4: {
+          accessKeyId: secretTemplate("AWS_ACCESS_KEY_ID"),
+          secretAccessKey: secretTemplate("AWS_SECRET_ACCESS_KEY"),
+        },
+      },
+      {
+        secrets: {
+          AWS_ACCESS_KEY_ID: "access-key-id",
+          AWS_SECRET_ACCESS_KEY: "secret-access-key",
+          AWS_SESSION_TOKEN: "",
+        },
+        authAwsSigv4: {
+          accessKeyId: secretTemplate("AWS_ACCESS_KEY_ID"),
+          secretAccessKey: secretTemplate("AWS_SECRET_ACCESS_KEY"),
+          sessionToken: secretTemplate("AWS_SESSION_TOKEN"),
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const response = await accept(
+        firewallClient().resolve({
+          body: {
+            encryptedSecrets: encryptedSecrets(testCase.secrets),
+            authHeaders: {},
+            authAwsSigv4: testCase.authAwsSigv4,
+          },
+          headers: authHeaders(fixture),
+        }),
+        [424],
+      );
+
+      expect(response.body).toStrictEqual({
+        error: {
+          message: "Connector not configured",
+          code: "CONNECTOR_NOT_CONFIGURED",
+        },
+      });
+    }
+  });
+
   it("resolves query, vars, pass-through, and omitted query template cases", async () => {
     const fixture = await track(seedFixture());
 
