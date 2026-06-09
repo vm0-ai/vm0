@@ -410,8 +410,9 @@ def normalize_idna_hostname(host: str) -> str:
     Returns a dot-separated lowercase ASCII hostname. Unicode labels are
     returned as canonical ``xn--`` A-labels. IDNA dot variants are translated to
     ASCII ``.``, and one optional trailing dot is removed. Empty hostnames raise
-    ``ValueError``; empty labels, multiple trailing dots, invalid labels, and
-    unsafe compatibility aliases raise ``UnicodeError``.
+    ``ValueError``; empty labels, multiple trailing dots, and invalid labels
+    raise ``UnicodeError``. Unsafe compatibility aliases raise
+    ``UnsafeIdnaCompatibilityMappingError``, a ``UnicodeError`` subclass.
 
     IPv4-literal-like input is accepted only when it is already a canonical
     dotted quad: four decimal octets, no non-decimal forms, no leading zeroes
