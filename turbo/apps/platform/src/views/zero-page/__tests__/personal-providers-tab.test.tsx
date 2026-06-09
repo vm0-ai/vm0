@@ -3,7 +3,11 @@ import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-p
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -24,6 +28,14 @@ function stalePersonalCodexProvider(): ModelProviderResponse {
     lastRefreshErrorCode: "refresh_token_expired",
     createdAt: "2026-03-01T00:00:00Z",
     updatedAt: "2026-03-20T00:00:00Z",
+  };
+}
+
+function connectedPersonalCodexProvider(): ModelProviderResponse {
+  return {
+    ...stalePersonalCodexProvider(),
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
   };
 }
 
@@ -79,6 +91,35 @@ describe("personal model providers settings", () => {
       for (const deviceAuthCode of deviceAuthCodes) {
         expect(deviceAuthCode).toHaveTextContent("PERS-1234");
       }
+    });
+  });
+
+  it("disconnects a connected personal Codex credential", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
+    await openModelSettings();
+
+    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+    expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
+    expect(within(codexRow).getByText("Connected")).toBeInTheDocument();
+
+    click(within(codexRow).getByLabelText("More options"));
+    click(await screen.findByText("Disconnect"));
+
+    await waitFor(() => {
+      expect(within(codexRow).queryByText("Connected")).not.toBeInTheDocument();
+      expect(
+        queryAllByRoleFast("button", codexRow).find((button) => {
+          return button.textContent?.trim() === "Connect";
+        }),
+      ).toBeInTheDocument();
     });
   });
 });
