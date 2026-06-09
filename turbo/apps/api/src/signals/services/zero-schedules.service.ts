@@ -26,6 +26,10 @@ import {
   scheduleToAutomation,
   type Automation,
 } from "./automations/default-interpreter";
+import {
+  deleteScheduleAutomation,
+  syncScheduleToAutomation,
+} from "./automations/schedule-dual-write";
 import { calculateNextRun, TimeTrigger } from "./automations/time-trigger";
 import {
   resolveModelFirstProviderAdmission,
@@ -683,6 +687,11 @@ export const deploySchedule$ = command(
         });
     signal.throwIfAborted();
 
+    // Dual-write the schedule into the events-first tables (data-sync only; no
+    // run is created). Keyed on automations.sourceScheduleId for idempotency.
+    await syncScheduleToAutomation(db, schedule);
+    signal.throwIfAborted();
+
     // Notify the linked chat thread so its header schedule menu refreshes the
     // thread-scoped list in real time.
     await publishChatThreadSchedulesChangedSafely(
@@ -735,6 +744,10 @@ export const disableSchedule$ = command(
       return { kind: "not_found" };
     }
 
+    // Mirror the disabled state into the events-first tables (data-sync only).
+    await syncScheduleToAutomation(db, updated);
+    signal.throwIfAborted();
+
     await publishChatThreadSchedulesChangedSafely(
       args.userId,
       updated.chatThreadId,
@@ -776,6 +789,11 @@ export const deleteSchedule$ = command(
     if (!deleted) {
       return { kind: "not_found" };
     }
+
+    // Drop the events-first mirror of the schedule (its time trigger row is
+    // removed by the FK cascade). Idempotent — a no-op when no mirror exists.
+    await deleteScheduleAutomation(db, ownership.schedule.id);
+    signal.throwIfAborted();
 
     // Notify the linked chat thread so its header schedule menu drops the
     // deleted entry in real time.
@@ -839,6 +857,11 @@ export const enableSchedule$ = command(
     if (!updated) {
       return { kind: "not_found" };
     }
+
+    // Mirror the enabled state + recomputed nextRunAt into the events-first
+    // tables (data-sync only; no run is created).
+    await syncScheduleToAutomation(db, updated);
+    signal.throwIfAborted();
 
     await publishChatThreadSchedulesChangedSafely(
       args.userId,
