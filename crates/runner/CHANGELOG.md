@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.108.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.24...runner-rs-v0.108.25) (2026-06-09)
+
+
+### Bug Fixes
+
+* bound auth base forwarding workers ([#16912](https://github.com/vm0-ai/vm0/issues/16912)) ([1620c9a](https://github.com/vm0-ai/vm0/commit/1620c9ac419ad9a315e1fc23aa00ebf37ffbb20b))
+* **mitm-addon:** handle registry json parser failures ([#16903](https://github.com/vm0-ai/vm0/issues/16903)) ([28a7fcd](https://github.com/vm0-ai/vm0/commit/28a7fcd102a5efca3f7b52adac37e39a5dc1d290))
+* release usage tracking on request cancellation ([#16907](https://github.com/vm0-ai/vm0/issues/16907)) ([f61340e](https://github.com/vm0-ai/vm0/commit/f61340e6c0c6b04e82cd55c67db07d52649da7b4))
+
 ## [0.108.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.23...runner-rs-v0.108.24) (2026-06-09)
 
 

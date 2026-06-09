@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.18](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.17...sandbox-fc-v0.37.18) (2026-06-09)
+
+
+### Bug Fixes
+
+* avoid stale command process group cleanup ([#16937](https://github.com/vm0-ai/vm0/issues/16937)) ([d899ed8](https://github.com/vm0-ai/vm0/commit/d899ed886ed1f10791488984557863818318cc6a))
+
 ## [0.37.17](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.16...sandbox-fc-v0.37.17) (2026-06-09)
 
 
