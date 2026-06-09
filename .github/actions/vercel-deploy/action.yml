@@ -157,6 +157,17 @@ runs:
             exit 1
           fi
 
+          # Diagnostic: report the prebuilt payload size composition. The
+          # archive uploaded to Vercel drives the "Deploying outputs" step, so
+          # this tells us whether static assets or function bundles dominate.
+          # Purely informational; never fail the deploy on it.
+          echo "::group::Prebuilt output size (.vercel/output)"
+          du -sh .vercel/output 2>/dev/null || true
+          du -sh .vercel/output/static .vercel/output/functions 2>/dev/null || true
+          echo "--- 40 largest files ---"
+          du -ah .vercel/output 2>/dev/null | sort -rh | head -40 || true
+          echo "::endgroup::"
+
           # Deploy prebuilt artifacts (no remote build)
           echo "Deploying prebuilt artifacts..."
           DEPLOY_ARGS=(deploy --prebuilt --archive=tgz "--token=$INPUT_VERCEL_TOKEN")
