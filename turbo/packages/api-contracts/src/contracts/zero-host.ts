@@ -79,6 +79,24 @@ export const hostedSiteRedeployPresentationHtmlRequestSchema = z.object({
   html: z.string().min(1),
 });
 
+export const presentationSpeakerNotesPatchSchema = z.object({
+  kind: z.literal("presentation-speaker-notes-patch"),
+  version: z.literal(1),
+  slides: z
+    .array(
+      z.object({
+        slideId: z.string().min(1),
+        speakerNotes: z.string().min(1),
+      }),
+    )
+    .max(500),
+});
+
+export const generatePresentationSpeakerNotesRequestSchema = z.object({
+  html: z.string().min(1).max(500_000),
+  mode: z.literal("fill-empty"),
+});
+
 export const hostedSitePrepareResponseSchema = z.object({
   siteId: z.string().uuid(),
   deploymentId: z.string().uuid(),
@@ -149,6 +167,21 @@ export const zeroHostContract = c.router({
     },
     summary: "Redeploy an existing presentation HTML hosted site",
   },
+  generatePresentationSpeakerNotes: {
+    method: "POST",
+    path: "/api/zero/host/presentation-html/speaker-notes",
+    headers: authHeadersSchema,
+    body: generatePresentationSpeakerNotesRequestSchema,
+    responses: {
+      200: presentationSpeakerNotesPatchSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      402: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Generate speaker notes for an existing presentation HTML",
+  },
 });
 
 export type ZeroHostContract = typeof zeroHostContract;
@@ -157,6 +190,12 @@ export type HostedSitePrepareRequest = z.infer<
 >;
 export type HostedSiteRedeployPresentationHtmlRequest = z.infer<
   typeof hostedSiteRedeployPresentationHtmlRequestSchema
+>;
+export type GeneratePresentationSpeakerNotesRequest = z.infer<
+  typeof generatePresentationSpeakerNotesRequestSchema
+>;
+export type PresentationSpeakerNotesPatch = z.infer<
+  typeof presentationSpeakerNotesPatchSchema
 >;
 export type HostedSitePrepareResponse = z.infer<
   typeof hostedSitePrepareResponseSchema

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyPresentationSpeakerNotesPatch,
   parsePresentationEditDraft,
   patchPresentationHtml,
   previewPresentationHtml,
@@ -115,6 +116,39 @@ describe("presentation HTML edit protocol", () => {
     expect(patched).toContain("New &lt;unsafe&gt; title");
     expect(patched).toContain('"speakerNotes": "Second slide notes"');
     expect(patched).toContain('"kind": "presentation-html"');
+  });
+
+  it("fills only empty speaker notes from a structured patch", () => {
+    const result = applyPresentationSpeakerNotesPatch({
+      slides: [
+        { id: "slide-1", title: "Old title", notes: "Old notes" },
+        { id: "slide-2", title: "Second", notes: "" },
+        { id: "slide-3", title: "Third", notes: "" },
+        { id: "slide-4", title: "Fourth", notes: "" },
+      ],
+      patch: {
+        kind: "presentation-speaker-notes-patch",
+        version: 1,
+        slides: [
+          {
+            slideId: "slide-1",
+            speakerNotes: "Should not overwrite existing notes",
+          },
+          { slideId: "slide-2", speakerNotes: "Generated notes" },
+          { slideId: "slide-3", speakerNotes: "Third notes" },
+          { slideId: "slide-4", speakerNotes: "   Trimmed notes   " },
+          { slideId: "unknown-slide", speakerNotes: "Ignored notes" },
+        ],
+      },
+    });
+
+    expect(result.appliedCount).toBe(3);
+    expect(result.slides).toStrictEqual([
+      { id: "slide-1", title: "Old title", notes: "Old notes" },
+      { id: "slide-2", title: "Second", notes: "Generated notes" },
+      { id: "slide-3", title: "Third", notes: "Third notes" },
+      { id: "slide-4", title: "Fourth", notes: "Trimmed notes" },
+    ]);
   });
 
   it("preserves nested markup in unchanged editable blocks", () => {
