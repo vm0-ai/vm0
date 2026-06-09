@@ -181,6 +181,26 @@ async fn restore_session_rejects_invalid_codex_session_id() {
 }
 
 #[tokio::test]
+async fn restore_session_rejects_short_codex_session_id_without_cleanup() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let session = ResumeSession {
+        session_id: "abc".into(),
+        session_history: "{}".into(),
+    };
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    assert!(
+        err.to_string().contains("invalid codex session_id"),
+        "got: {err}"
+    );
+    assert!(sandbox.exec_calls().is_empty());
+    assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
 async fn restore_session_fails_when_codex_cleanup_fails() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
