@@ -1,38 +1,127 @@
 import { screen, waitFor } from "@testing-library/react";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroComposesMainContract } from "@vm0/api-contracts/contracts/zero-composes";
+import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
 
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  fill,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
+import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
+const researchAgentId = "a0000000-0000-4000-a000-000000000401";
+
+function createAgent(id: string, displayName: string): TeamComposeItem {
+  return {
+    id,
+    ownerId: "test-owner-id",
+    displayName,
+    description: "Finds and summarizes information",
+    sound: null,
+    avatarUrl: null,
+    customSkills: [],
+    visibility: "public",
+    headVersionId: "version_2",
+    updatedAt: "2024-01-02T00:00:00Z",
+  };
+}
+
+function createConnector(
+  type: ConnectorType,
+  externalUsername: string,
+): ConnectorResponse {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    authMethod: "oauth",
+    externalId: `${type}-external-id`,
+    externalUsername,
+    externalEmail: null,
+    oauthScopes: ["read"],
+    connectionStatus: "connected",
+    tokenExpiresAt: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function buttonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function menuItemByText(text: string): HTMLElement {
+  const item = queryAllByRoleFast("menuitem").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!item) {
+    throw new Error(`${text} menu item not found`);
+  }
+  return item;
+}
+
+function tabByText(text: string): HTMLElement {
+  const tab = queryAllByRoleFast("tab").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!tab) {
+    throw new Error(`${text} tab not found`);
+  }
+  return tab;
+}
 
 function mockTeamAPIs(): void {
   context.mocks.data.team([
-    {
-      id: "c0000000-0000-4000-a000-000000000001",
-      displayName: null,
-      description: null,
-      sound: null,
-      avatarUrl: null,
-      headVersionId: "version_1",
-      updatedAt: "2024-01-01T00:00:00Z",
-    },
-    {
-      id: "agent-2",
-      displayName: "Research Agent",
-      description: "Finds and summarizes information",
-      sound: null,
-      avatarUrl: null,
-      headVersionId: "version_2",
-      updatedAt: "2024-01-02T00:00:00Z",
-    },
+    createAgent(zeroAgentId, "Zero"),
+    createAgent(researchAgentId, "Research Agent"),
   ]);
+  context.mocks.data.connectors([
+    createConnector("github", "octocat"),
+    createConnector("axiom", "workspace"),
+  ]);
+  context.mocks.data.schedules([
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000401",
+      agentId: researchAgentId,
+      displayName: "Research Agent",
+      name: "research-digest-loop",
+      triggerType: "loop",
+      cronExpression: null,
+      intervalSeconds: 1800,
+      timezone: "UTC",
+      prompt: "Summarize open research requests",
+      description: "Research digest",
+      enabled: true,
+      createdAt: "2026-03-02T00:00:00Z",
+      updatedAt: "2026-03-02T00:00:00Z",
+    }),
+  ]);
+  let enabledTypes: string[] = [];
+  context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    return respond(200, { enabledTypes });
+  });
+  context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
+    enabledTypes = body.enabledTypes;
+    return respond(200, { enabledTypes });
+  });
   context.mocks.api(chatThreadsContract.list, ({ respond }) => {
     return respond(200, {
       pinned: [],
@@ -44,7 +133,7 @@ function mockTeamAPIs(): void {
   });
   context.mocks.api(zeroComposesMainContract.getByName, ({ respond }) => {
     return respond(200, {
-      id: "agent-2",
+      id: researchAgentId,
       name: "research-agent",
       headVersionId: "version_2",
       content: {
@@ -79,7 +168,7 @@ function mockTeamAPIs(): void {
 }
 
 describe("team page navigation", () => {
-  it("navigates between the Agents list and an agent detail page", async () => {
+  it("navigates into an agent and manages authorization and schedule tabs", async () => {
     mockTeamAPIs();
     detachedSetupPage({ context, path: "/agents" });
 
@@ -95,6 +184,55 @@ describe("team page navigation", () => {
       expect(
         screen.getByRole("heading", { name: "Research Agent" }),
       ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText("@octocat")).toBeInTheDocument();
+      expect(screen.getByText("@workspace")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Find connectors"));
+    await fill(screen.getByPlaceholderText("Find connectors..."), "git");
+
+    await waitFor(() => {
+      expect(screen.getByText("@octocat")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("@workspace")).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Close search"));
+    await waitFor(() => {
+      expect(screen.getByText("@workspace")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Grant GitHub access"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Revoke GitHub access")).toBeInTheDocument();
+    });
+
+    click(tabByText("Scheduled"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Research Agent's scheduled tasks"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/Every 30 minutes/)[0]).toBeInTheDocument();
+
+    click(screen.getAllByLabelText("More actions for Every 30 minutes")[0]);
+    click(menuItemByText("Run now"));
+
+    await waitFor(() => {
+      expect(buttonByText("Add schedule")).toBeInTheDocument();
+    });
+
+    click(
+      screen.getAllByLabelText(
+        "Open schedule Summarize open research requests",
+      )[0],
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
     });
 
     const breadcrumbLink = screen
