@@ -319,13 +319,16 @@ fn validate_copy_exec_result(
         exec_operation::append_diagnostic(&mut stderr, "stderr truncated");
     }
     match result.termination {
-        ExecTermination::Exited { exit_code: 0 } if !stderr_truncated => {
+        ExecTermination::Exited { exit_code: 0 } if stderr.is_empty() => {
             Ok(CopyFileExecStatus::Present)
         }
-        ExecTermination::Exited { exit_code: 0 } => Err(io::Error::other(format!(
-            "copy_file stderr exceeded diagnostic limit for {path}: {}",
-            String::from_utf8_lossy(&stderr)
-        ))),
+        ExecTermination::Exited { exit_code: 0 } => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "copy_file result for {path} included stderr: {}",
+                String::from_utf8_lossy(&stderr)
+            ),
+        )),
         ExecTermination::Exited { exit_code: 66 } if missing_ok && stderr.is_empty() => {
             Ok(CopyFileExecStatus::Missing)
         }

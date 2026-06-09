@@ -78,6 +78,27 @@ async fn read_file_errors_on_truncated_stdout() {
 }
 
 #[tokio::test]
+async fn read_file_rejects_success_result_with_stderr() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let read_task =
+        tokio::spawn(async move { host.read_file("/tmp/session.txt", 1024, 5000).await });
+
+    let start = expect_exec_start(&mut guest).await;
+    send_exec_result(
+        &mut guest,
+        start.seq(),
+        ExecTermination::Exited { exit_code: 0 },
+        b"session-id\n",
+        b"unexpected stderr",
+    )
+    .await;
+
+    let err = read_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(err.to_string().contains("included stderr"));
+}
+
+#[tokio::test]
 async fn read_file_rejects_missing_result_with_output() {
     let (host, mut guest) = setup_host_and_guest().await;
     let read_task =

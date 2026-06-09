@@ -98,10 +98,18 @@ impl VsockHost {
                 "file {path} exceeded {max_bytes} bytes"
             )));
         }
+        let mut stderr = result.stderr;
         if result.stderr_truncated {
-            return Err(io::Error::other(format!(
-                "stderr while reading file {path} exceeded diagnostic limit"
-            )));
+            exec_operation::append_diagnostic(&mut stderr, "stderr truncated");
+        }
+        if !stderr.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "read_file result for {path} included stderr: {}",
+                    String::from_utf8_lossy(&stderr)
+                ),
+            ));
         }
         Ok(Some(result.stdout))
     }
