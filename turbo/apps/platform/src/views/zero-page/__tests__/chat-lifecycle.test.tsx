@@ -3,11 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
+  chatThreadGithubPrsContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
   chatThreadsContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import {
   zeroRunAgentEventsContract,
@@ -34,6 +37,7 @@ const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-test-1";
 const SCHEDULE_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
+const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
@@ -290,6 +294,106 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByRole("heading", { name: "Launch review" }),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("opens GitHub PR tracking and queues a conflict fix command from the dock", async () => {
+    mockChatLifecycle(context, {
+      threadId: GITHUB_PR_THREAD_ID,
+      threadTitle: "PR review",
+      chatMessages: [
+        {
+          id: "msg-pr-request",
+          role: "user",
+          content: "Review the failing pull request",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+    context.mocks.data.connectors([
+      {
+        id: "99999999-9999-4999-8999-999999999999",
+        type: "github",
+        authMethod: "oauth",
+        externalId: "github-octocat",
+        externalUsername: "octocat",
+        externalEmail: null,
+        oauthScopes: ["repo"],
+        connectionStatus: "connected",
+        tokenExpiresAt: null,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: ["github"] });
+    });
+    context.mocks.api(chatThreadGithubPrsContract.list, ({ respond }) => {
+      return respond(200, {
+        prs: [
+          {
+            repo: "vm0-ai/vm0",
+            number: 123,
+            title: "Fix flaky platform tests",
+            url: "https://github.com/vm0-ai/vm0/pull/123",
+            state: "open",
+            headSha: "abc123",
+            mergeStatus: "conflicts",
+            rollup: "failure",
+            checks: [
+              {
+                name: "unit tests",
+                status: "completed",
+                conclusion: "failure",
+                url: "https://github.com/vm0-ai/vm0/actions/runs/1",
+                startedAt: "2026-06-09T10:00:00Z",
+                completedAt: "2026-06-09T10:05:00Z",
+              },
+              {
+                name: "deploy preview",
+                status: "queued",
+                conclusion: null,
+                url: null,
+                startedAt: null,
+                completedAt: null,
+              },
+            ],
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${GITHUB_PR_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
+    });
+
+    click(await screen.findByLabelText("Open GitHub PR tracking"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("GitHub PR tracking")).toBeInTheDocument();
+      expect(screen.getByText("vm0-ai/vm0 #123")).toBeInTheDocument();
+      expect(screen.getByText("Fix flaky platform tests")).toBeInTheDocument();
+      expect(screen.getByText("Conflicts")).toBeInTheDocument();
+      expect(screen.getByText("unit tests")).toBeInTheDocument();
+      expect(screen.getByText("deploy preview")).toBeInTheDocument();
+    });
+
+    click(await screen.findByText("Fix conflict"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("fix pr 123 conflict & push"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close GitHub PR tracking"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("GitHub PR tracking"),
+      ).not.toBeInTheDocument();
     });
   });
 
