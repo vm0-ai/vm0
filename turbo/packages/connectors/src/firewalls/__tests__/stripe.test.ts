@@ -10,6 +10,7 @@ import {
 import {
   stripeCategories,
   stripeCategoryOrder,
+  stripeDefaultAllowed,
   stripeGenerationStats,
 } from "../stripe.generated";
 
@@ -275,12 +276,73 @@ describe("stripe firewall", () => {
     expect(stripeCategoryOrder).toContain("Treasury");
   });
 
-  it("keeps Stripe permissions default-allowed with unknown policy compatibility", () => {
+  it("defaults only low-risk Stripe readonly permissions to allow", () => {
     const policy = getDefaultFirewallPolicies("stripe");
 
-    expect(policy.policies.customer_read).toBe("allow");
-    expect(policy.policies.payment_intent_write).toBe("allow");
-    expect(policy.policies.checkout_session_read).toBe("allow");
-    expect(policy.unknownPolicy).toBe("allow");
+    expect(policy.policies.product_read).toBe("allow");
+    expect(policy.policies.plan_read).toBe("allow");
+    expect(policy.policies.coupon_read).toBe("allow");
+    expect(policy.policies.payment_method_domain_read).toBe("allow");
+    expect(policy.policies.tax_code_read).toBe("allow");
+    expect(policy.policies.customer_read).toBe("deny");
+    expect(policy.policies.charge_read).toBe("deny");
+    expect(policy.policies.event_read).toBe("deny");
+    expect(policy.policies.secret_read).toBe("deny");
+    expect(policy.policies.financial_connections_account_read).toBe("deny");
+    expect(policy.policies.identity_verification_report_read).toBe("deny");
+    expect(policy.policies.treasury_financial_account_read).toBe("deny");
+    expect(policy.policies.payment_intent_write).toBe("deny");
+    expect(policy.policies.checkout_session_write).toBe("deny");
+    expect(policy.unknownPolicy).toBe("deny");
+  });
+
+  it("keeps Stripe default-allowed permissions read-only", () => {
+    const firewall = getConnectorFirewall("stripe");
+    const permissionsByName = new Map(
+      firewall.apis.flatMap((api) => {
+        return (api.permissions ?? []).map((permission) => {
+          return [permission.name, permission] as const;
+        });
+      }),
+    );
+
+    for (const name of stripeDefaultAllowed) {
+      const permission = permissionsByName.get(name);
+      expect(permission).toBeDefined();
+      expect(
+        permission?.rules.every((rule) => {
+          return rule.startsWith("GET ") || rule.startsWith("HEAD ");
+        }),
+      ).toBe(true);
+    }
+
+    expect(stripeDefaultAllowed).toEqual([
+      "apple_pay_domain_read",
+      "billing_clock_read",
+      "billing_meter_read",
+      "climate_product_read",
+      "climate_supplier_read",
+      "country_spec_read",
+      "coupon_read",
+      "customer_portal_read",
+      "entitlements_feature_read",
+      "exchange_rate_read",
+      "payment_links_read",
+      "payment_method_configurations_read",
+      "payment_method_domain_read",
+      "plan_read",
+      "product_feature_read",
+      "product_read",
+      "promotion_code_read",
+      "shipping_rate_read",
+      "tax_code_read",
+      "tax_rate_read",
+      "tax_settings_read",
+      "terminal_configuration_read",
+    ]);
+    expect(stripeDefaultAllowed).not.toContain("customer_read");
+    expect(stripeDefaultAllowed).not.toContain("event_read");
+    expect(stripeDefaultAllowed).not.toContain("secret_read");
+    expect(stripeDefaultAllowed).not.toContain("customer_write");
   });
 });

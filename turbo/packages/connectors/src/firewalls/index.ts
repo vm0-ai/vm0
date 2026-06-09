@@ -249,6 +249,7 @@ import { streakFirewall } from "./streak.generated";
 import {
   stripeCategories,
   stripeCategoryOrder,
+  stripeDefaultAllowed,
   stripeFirewall,
 } from "./stripe.generated";
 import { supabaseFirewall } from "./supabase.generated";
@@ -778,6 +779,13 @@ const DEFAULT_ALLOWED: Partial<
   clerk: clerkDefaultAllowed,
   gmail: gmailDefaultAllowed,
   slack: slackDefaultAllowed,
+  stripe: stripeDefaultAllowed,
+};
+
+const DEFAULT_UNKNOWN_POLICIES: Partial<
+  Record<FirewallConnectorType, FirewallPolicyValue>
+> = {
+  stripe: "deny",
 };
 
 /**
@@ -792,6 +800,7 @@ export function getDefaultFirewallPolicies(
 ): FirewallPolicy {
   const allowed = DEFAULT_ALLOWED[type];
   const allowSet = allowed ? new Set<string>(allowed) : null;
+  const unknownPolicy = DEFAULT_UNKNOWN_POLICIES[type] ?? "allow";
   const config = getConnectorFirewall(type);
   const policies: Record<string, FirewallPolicyValue> = {};
   for (const api of config.apis) {
@@ -801,7 +810,7 @@ export function getDefaultFirewallPolicies(
       }
     }
   }
-  return { policies, unknownPolicy: "allow" };
+  return { policies, unknownPolicy };
 }
 
 /**

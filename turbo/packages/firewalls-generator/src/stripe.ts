@@ -27,6 +27,7 @@ import {
   fetchSpec,
   logStats,
   renderCategories,
+  renderDefaultAllowed,
   renderPermissions,
   sanitizeAndSortRules,
   writeOutput,
@@ -165,6 +166,31 @@ const OPENAPI_RESOURCE_CATEGORY_BY_ID = new Map<string, string>([
   ["terminal_refund", "Terminal"],
   ["transfer_reversal", "Connect"],
 ]);
+
+const LOW_RISK_DEFAULT_ALLOWED_PERMISSIONS = [
+  "apple_pay_domain_read",
+  "billing_clock_read",
+  "billing_meter_read",
+  "climate_product_read",
+  "climate_supplier_read",
+  "country_spec_read",
+  "coupon_read",
+  "customer_portal_read",
+  "entitlements_feature_read",
+  "exchange_rate_read",
+  "payment_links_read",
+  "payment_method_configurations_read",
+  "payment_method_domain_read",
+  "plan_read",
+  "product_feature_read",
+  "product_read",
+  "promotion_code_read",
+  "shipping_rate_read",
+  "tax_code_read",
+  "tax_rate_read",
+  "tax_settings_read",
+  "terminal_configuration_read",
+] as const;
 
 const REPRESENTATIVE_RULES: ReadonlyArray<{
   permission: string;
@@ -1290,11 +1316,42 @@ function stripeCategoryDisplayOrder(
   return ordered;
 }
 
+function isReadOnlyPermission(permission: PermissionGroup): boolean {
+  return permission.rules.every((rule) => {
+    const method = rule.split(" ", 1)[0];
+    return method === "GET" || method === "HEAD";
+  });
+}
+
+function validateDefaultAllowedPermissions(
+  permissions: PermissionGroup[],
+): void {
+  const permissionsByName = new Map(
+    permissions.map((permission) => {
+      return [permission.name, permission] as const;
+    }),
+  );
+
+  for (const name of LOW_RISK_DEFAULT_ALLOWED_PERMISSIONS) {
+    const permission = permissionsByName.get(name);
+    if (!permission) {
+      throw new Error(`Missing Stripe default-allowed permission "${name}"`);
+    }
+    if (!isReadOnlyPermission(permission)) {
+      throw new Error(
+        `Stripe default-allowed permission "${name}" is not read-only`,
+      );
+    }
+  }
+}
+
 function generateTypeScript(
   permissions: PermissionGroup[],
   categories: Record<string, string>,
   stats: BuildStats,
 ): string {
+  validateDefaultAllowedPermissions(permissions);
+
   const lines: string[] = [
     "// Auto-generated from official Stripe API data.",
     `// OpenAPI source: ${STRIPE_OPENAPI_URL}`,
@@ -1339,6 +1396,11 @@ function generateTypeScript(
       categories,
       displayOrder: stripeCategoryDisplayOrder(categories),
     }),
+  );
+  lines.push(
+    ...renderDefaultAllowed("stripeDefaultAllowed", "stripeFirewall", [
+      ...LOW_RISK_DEFAULT_ALLOWED_PERMISSIONS,
+    ]),
   );
   lines.push(...renderStats(stats));
 
