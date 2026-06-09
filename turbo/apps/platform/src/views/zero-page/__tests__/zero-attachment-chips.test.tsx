@@ -3,9 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
+const THREAD_ID = "b0000000-0000-4000-a000-000000000050";
 
 beforeEach(() => {
   context.mocks.data.userModelPreference({
@@ -100,6 +102,111 @@ describe("zero attachment chips", () => {
       expect(
         screen.queryByLabelText("Open image preview for photo.png"),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("opens persisted audio, video, and document attachments from chat history", async () => {
+    const audioUrl =
+      "https://cdn.vm7.io/artifacts/test/attachment-audio/briefing.mp3";
+    const videoUrl =
+      "https://cdn.vm7.io/artifacts/test/attachment-video/demo.mp4";
+    const jsonUrl =
+      "https://cdn.vm7.io/artifacts/test/attachment-json/status.json";
+    context.mocks.http.get(jsonUrl, () => {
+      return new Response(JSON.stringify({ status: "ready" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-attachments",
+          role: "user",
+          content: "Review these attachments",
+          attachFiles: [
+            {
+              id: "attachment-audio",
+              filename: "briefing.mp3",
+              contentType: "audio/mpeg",
+              size: 1024,
+              url: audioUrl,
+            },
+            {
+              id: "attachment-video",
+              filename: "demo.mp4",
+              contentType: "video/mp4",
+              size: 2048,
+              url: videoUrl,
+            },
+            {
+              id: "attachment-json",
+              filename: "status.json",
+              contentType: "application/json",
+              size: 32,
+              url: jsonUrl,
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Review these attachments")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open audio preview for briefing.mp3"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open json preview for status.json"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open audio preview for briefing.mp3"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-dialog-audio")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Preview demo.mp4"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Video preview for demo.mp4"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open in split view"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("artifact-sidebar-body-video"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close artifact"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open json preview for status.json"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByText(/"status": "ready"/u)).toBeInTheDocument();
     });
   });
 });
