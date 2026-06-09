@@ -185,8 +185,18 @@ async function updateOrgNameAndSlugAndRefreshCache(
   orgId: string,
   workspaceName: string,
 ): Promise<void> {
-  await updateOrgNameAndSlug(client, orgId, workspaceName);
-  await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
+  await tapError(
+    (async () => {
+      await updateOrgNameAndSlug(client, orgId, workspaceName);
+      await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
+    })(),
+    (error) => {
+      L.warn("Failed to update org name/slug (non-blocking)", {
+        orgId,
+        error,
+      });
+    },
+  );
 }
 
 async function existingDefaultAgentId(
@@ -610,19 +620,11 @@ export const setupOnboarding$ = command(
 
     if (args.workspaceName?.trim()) {
       const client = get(clerk$);
-      await tapError(
-        updateOrgNameAndSlugAndRefreshCache(
-          client,
-          writeDb,
-          args.orgId,
-          args.workspaceName,
-        ),
-        (error) => {
-          L.warn("Failed to update org name/slug (non-blocking)", {
-            orgId: args.orgId,
-            error,
-          });
-        },
+      await updateOrgNameAndSlugAndRefreshCache(
+        client,
+        writeDb,
+        args.orgId,
+        args.workspaceName,
       );
       signal.throwIfAborted();
     }
