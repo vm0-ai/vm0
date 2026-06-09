@@ -142,10 +142,22 @@ function cacheControl(file: ManifestFile): string {
 }
 
 async function serveHostedSite(request: Request, env: Env): Promise<Response> {
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
+
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method not allowed", {
       status: 405,
-      headers: { Allow: "GET, HEAD" },
+      headers: { Allow: "GET, HEAD, OPTIONS" },
     });
   }
 
@@ -199,6 +211,7 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
   headers.set("Cache-Control", cacheControl(file));
   headers.set("ETag", object.httpEtag);
   headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Access-Control-Allow-Origin", "*");
 
   return new Response(request.method === "HEAD" ? null : object.body, {
     status: 200,
