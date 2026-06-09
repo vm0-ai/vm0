@@ -1,6 +1,15 @@
 import { randomUUID } from "node:crypto";
 
 import type { z } from "zod";
+import {
+  automationRunContract,
+  automationsByNameContract,
+  automationsEnableContract,
+  automationsMainContract,
+  type AutomationListResponse,
+  type AutomationMutationResponse,
+  type AutomationResponse,
+} from "@vm0/api-contracts/contracts/automations";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import {
@@ -34,6 +43,8 @@ import {
   type ScheduleListResponse,
   type ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import {
   accept,
@@ -45,6 +56,12 @@ import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
 type ZeroRunRequest = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
+type CreateAutomationRequest = z.infer<
+  (typeof automationsMainContract.create)["body"]
+>;
+type UpdateAutomationRequest = z.infer<
+  (typeof automationsByNameContract.update)["body"]
+>;
 type DeployScheduleRequest = z.infer<
   (typeof zeroSchedulesMainContract.deploy)["body"]
 >;
@@ -157,6 +174,16 @@ function runnerHeartbeatBody(
 
 export function createRunsSchedulesApi(context: TestContext) {
   return {
+    async enableAutomations(actor: ApiTestUser): Promise<void> {
+      await accept(
+        setupApp({ context })(zeroFeatureSwitchesContract).update({
+          headers: authenticate(context, actor),
+          body: { switches: { [FeatureSwitchKey.ZeroAutomations]: true } },
+        }),
+        [200],
+      );
+    },
+
     async ensureOrgModelProvider(
       actor: ApiTestUser,
     ): Promise<{ readonly providerId: string }> {
@@ -327,6 +354,155 @@ export function createRunsSchedulesApi(context: TestContext) {
         setupApp({ context })(runnersPollContract).poll({
           headers: runnerHeaders(validAuth),
           body,
+        }),
+        statuses,
+      );
+    },
+
+    async createAutomation(
+      actor: ApiTestUser,
+      body: CreateAutomationRequest,
+    ): Promise<AutomationMutationResponse> {
+      const response = await accept(
+        setupApp({ context })(automationsMainContract).create({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        [200, 201],
+      );
+      return response.body;
+    },
+
+    async requestCreateAutomationUnchecked(
+      actor: ApiTestUser | null,
+      body: unknown,
+      statuses: readonly (200 | 201 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(automationsMainContract).create({
+          headers: authenticate(context, actor),
+          body: body as CreateAutomationRequest,
+        }),
+        statuses,
+      );
+    },
+
+    async listAutomations(actor: ApiTestUser): Promise<AutomationListResponse> {
+      const response = await accept(
+        setupApp({ context })(automationsMainContract).list({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestListAutomations(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 403)[],
+    ) {
+      return await accept(
+        setupApp({ context })(automationsMainContract).list({
+          headers: authenticate(context, actor),
+        }),
+        statuses,
+      );
+    },
+
+    async updateAutomation(
+      actor: ApiTestUser,
+      name: string,
+      body: UpdateAutomationRequest,
+    ): Promise<AutomationMutationResponse> {
+      const response = await accept(
+        setupApp({ context })(automationsByNameContract).update({
+          headers: authenticate(context, actor),
+          params: { name },
+          body,
+        }),
+        [200, 201],
+      );
+      return response.body;
+    },
+
+    async enableAutomation(
+      actor: ApiTestUser,
+      automation: Pick<AutomationResponse, "agentId" | "name">,
+    ): Promise<AutomationResponse> {
+      const response = await accept(
+        setupApp({ context })(automationsEnableContract).enable({
+          headers: authenticate(context, actor),
+          params: { name: automation.name },
+          body: { agentId: automation.agentId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async disableAutomation(
+      actor: ApiTestUser,
+      automation: Pick<AutomationResponse, "agentId" | "name">,
+    ): Promise<AutomationResponse> {
+      const response = await accept(
+        setupApp({ context })(automationsEnableContract).disable({
+          headers: authenticate(context, actor),
+          params: { name: automation.name },
+          body: { agentId: automation.agentId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestRunAutomation(
+      actor: ApiTestUser | null,
+      automationId: string,
+      statuses: readonly (
+        | 201
+        | 400
+        | 401
+        | 402
+        | 403
+        | 404
+        | 409
+        | 429
+        | 503
+      )[],
+    ) {
+      return await accept(
+        setupApp({ context })(automationRunContract).run({
+          headers: authenticate(context, actor),
+          body: { automationId },
+        }),
+        statuses,
+      );
+    },
+
+    async deleteAutomation(
+      actor: ApiTestUser,
+      automation: Pick<AutomationResponse, "agentId" | "name">,
+    ): Promise<void> {
+      await accept(
+        setupApp({ context })(automationsByNameContract).delete({
+          headers: authenticate(context, actor),
+          params: { name: automation.name },
+          query: { agentId: automation.agentId },
+        }),
+        [204],
+      );
+    },
+
+    async requestDeleteAutomation(
+      actor: ApiTestUser | null,
+      automation: Pick<AutomationResponse, "agentId" | "name">,
+      statuses: readonly (204 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(automationsByNameContract).delete({
+          headers: authenticate(context, actor),
+          params: { name: automation.name },
+          query: { agentId: automation.agentId },
         }),
         statuses,
       );

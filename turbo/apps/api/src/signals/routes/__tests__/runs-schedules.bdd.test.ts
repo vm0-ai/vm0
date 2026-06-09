@@ -471,6 +471,164 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
   });
 });
 
+describe("AUTOMATIONS-01: automation lifecycle through the public API", () => {
+  it("creates, lists, updates, toggles, runs, and deletes an automation through API requests", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const actor = bdd.user();
+    const outsider = bdd.user();
+    const { agentId } = await createAgentWithModelProvider(actor);
+    const automationName = uniqueScheduleName("bdd-automation");
+
+    await api.enableAutomations(actor);
+    await api.enableAutomations(outsider);
+
+    const unauthorizedList = await api.requestListAutomations(null, [401]);
+    expectApiError(unauthorizedList.body);
+    expect(unauthorizedList.body.error.code).toBe("UNAUTHORIZED");
+
+    const invalidBody = await api.requestCreateAutomationUnchecked(
+      actor,
+      {
+        name: automationName,
+        agentId,
+        prompt: "missing a trigger",
+        timezone: "UTC",
+      },
+      [400],
+    );
+    expectApiError(invalidBody.body);
+    expect(invalidBody.body.error.code).toBe("BAD_REQUEST");
+
+    const created = await api.createAutomation(actor, {
+      name: automationName,
+      agentId,
+      intervalSeconds: 60,
+      prompt: "Run the automation status report.",
+      description: "Automation BDD report",
+      timezone: "UTC",
+      enabled: false,
+    });
+    expect(created.created).toBeTruthy();
+    expect(created.automation).toMatchObject({
+      name: automationName,
+      agentId,
+      enabled: false,
+      triggerType: "loop",
+      intervalSeconds: 60,
+      prompt: "Run the automation status report.",
+      description: "Automation BDD report",
+    });
+
+    const listedAfterCreate = await api.listAutomations(actor);
+    expect(
+      findSchedule(listedAfterCreate.automations, created.automation.id),
+    ).toMatchObject({
+      id: created.automation.id,
+      name: automationName,
+      triggerType: "loop",
+      enabled: false,
+    });
+
+    const schedulesAfterCreate = await api.listSchedules(actor);
+    expect(
+      findSchedule(schedulesAfterCreate.schedules, created.automation.id),
+    ).toMatchObject({
+      id: created.automation.id,
+      name: automationName,
+      triggerType: "loop",
+      enabled: false,
+    });
+
+    const updated = await api.updateAutomation(actor, automationName, {
+      agentId,
+      cronExpression: "0 9 * * *",
+      prompt: "Run the updated automation report.",
+      description: "Updated automation BDD report",
+      timezone: "America/New_York",
+      enabled: true,
+    });
+    expect(updated.created).toBeFalsy();
+    expect(updated.automation.id).toBe(created.automation.id);
+    expect(updated.automation).toMatchObject({
+      name: automationName,
+      agentId,
+      enabled: false,
+      triggerType: "cron",
+      cronExpression: "0 9 * * *",
+      timezone: "America/New_York",
+      prompt: "Run the updated automation report.",
+      description: "Updated automation BDD report",
+      chatThreadId: created.automation.chatThreadId,
+    });
+    expect(updated.automation.nextRunAt).not.toBeNull();
+
+    const listedAfterUpdate = await api.listAutomations(actor);
+    expect(
+      findSchedule(listedAfterUpdate.automations, updated.automation.id),
+    ).toMatchObject({
+      id: updated.automation.id,
+      name: automationName,
+      triggerType: "cron",
+      cronExpression: "0 9 * * *",
+      enabled: false,
+    });
+
+    const schedulesAfterUpdate = await api.listSchedules(actor);
+    expect(
+      findSchedule(schedulesAfterUpdate.schedules, updated.automation.id),
+    ).toMatchObject({
+      id: updated.automation.id,
+      name: automationName,
+      triggerType: "cron",
+      cronExpression: "0 9 * * *",
+      enabled: false,
+      chatThreadId: created.automation.chatThreadId,
+    });
+
+    const disabled = await api.disableAutomation(actor, updated.automation);
+    expect(disabled.enabled).toBeFalsy();
+
+    const enabled = await api.enableAutomation(actor, updated.automation);
+    expect(enabled.enabled).toBeTruthy();
+    expect(enabled.nextRunAt).not.toBeNull();
+
+    const outsiderRun = await api.requestRunAutomation(
+      outsider,
+      updated.automation.id,
+      [404],
+    );
+    expectApiError(outsiderRun.body);
+    expect(outsiderRun.body.error.code).toBe("NOT_FOUND");
+
+    const deniedRun = await api.requestRunAutomation(
+      actor,
+      updated.automation.id,
+      [402],
+    );
+    expectApiError(deniedRun.body);
+    expect(deniedRun.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    await api.deleteAutomation(actor, updated.automation);
+    const listedAfterDelete = await api.listAutomations(actor);
+    expect(
+      findSchedule(listedAfterDelete.automations, updated.automation.id),
+    ).toBeUndefined();
+    const schedulesAfterDelete = await api.listSchedules(actor);
+    expect(
+      findSchedule(schedulesAfterDelete.schedules, updated.automation.id),
+    ).toBeUndefined();
+
+    const deleteAgain = await api.requestDeleteAutomation(
+      actor,
+      updated.automation,
+      [404],
+    );
+    expectApiError(deleteAgain.body);
+    expect(deleteAgain.body.error.code).toBe("NOT_FOUND");
+  });
+});
+
 describe("SCHED-02: cron routes", () => {
   it("rejects invalid cron auth and accepts safe no-work cron routes with valid auth", async () => {
     const api = createRunsSchedulesApi(context);
