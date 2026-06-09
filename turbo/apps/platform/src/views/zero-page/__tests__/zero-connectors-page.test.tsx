@@ -62,6 +62,19 @@ function buttonByText(
   return button;
 }
 
+function connectorCardByLabel(label: string): HTMLElement {
+  const labelElement = screen
+    .getAllByTestId("connector-card-label")
+    .find((element) => {
+      return element.textContent === label;
+    });
+  const card = labelElement?.closest(".zero-card");
+  if (!(card instanceof HTMLElement)) {
+    throw new Error(`${label} connector card not found`);
+  }
+  return card;
+}
+
 function mockConnectors(
   connectors: {
     type: ConnectorType;
@@ -310,6 +323,26 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("repo")).toBeInTheDocument();
       expect(screen.getByText("project")).toBeInTheDocument();
+    });
+    await userEvent.keyboard("{Escape}");
+
+    context.mocks.browser.open(createMockAuthWindow());
+    click(screen.getByLabelText("Connect Base44"));
+
+    const deviceDialog = await screen.findByRole("dialog", { name: "Base44" });
+    click(buttonByText("Connect Base44", deviceDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("VM0-DEVICE");
+    });
+    click(screen.getByTestId("connector-oauth-device-open"));
+
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("Base44")).getByText("Connected"),
+      ).toBeInTheDocument();
     });
   });
 
