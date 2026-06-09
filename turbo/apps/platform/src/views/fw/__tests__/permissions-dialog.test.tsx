@@ -248,6 +248,67 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     expect(queryButtonByText("Reset")).toBeUndefined();
   });
 
+  it("disables connector reset when there is no persisted or draft state to reset", async () => {
+    mockAPIs({ connectorType: "notion" });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    expect(getButtonByText("Reset")).toBeDisabled();
+    expect(screen.getByText("Apply")).toBeDisabled();
+  });
+
+  it("allows applying reset when an explicit grant matches the visible default state", async () => {
+    const resetQueries: unknown[] = [];
+    const upsertBodies: unknown[] = [];
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [mockGrant("notion", "insert_comments", "allow")],
+    });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.reset, ({ query, respond }) => {
+        resetQueries.push(query);
+        return respond(204);
+      }),
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        upsertBodies.push(body);
+        return respond(200, createMockUserPermissionGrantResponse(body));
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    const row = getPermissionRow("insert_comments");
+    expect(getPolicyButton(row, "Allow")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByText("Apply")).toBeDisabled();
+
+    click(getButtonByText("Reset"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Apply")).toBeEnabled();
+    });
+    click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(resetQueries).toHaveLength(1);
+    });
+    expect(resetQueries[0]).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "notion",
+    });
+    expect(upsertBodies).toHaveLength(0);
+  });
+
   it("stages connector reset and persists it only after Apply", async () => {
     const resetQueries: unknown[] = [];
     const upsertBodies: unknown[] = [];
@@ -382,20 +443,44 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     });
     await openPermissionsDrawer("Notion");
 
-    const row = getPermissionRow("insert_comments");
     click(getButtonByText("Reset"));
     await waitFor(() => {
-      expect(getPolicyButton(row, "Allow")).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
+      expect(
+        getPolicyButton(getPermissionRow("insert_comments"), "Allow"),
+      ).toHaveAttribute("aria-pressed", "true");
     });
-    click(getPolicyButton(row, "Deny"));
+    click(getPolicyButton(getPermissionRow("read_content"), "Deny"));
     click(screen.getByText("Apply"));
 
     await waitFor(() => {
-      expect(events).toStrictEqual(["reset", "upsert:insert_comments:deny"]);
+      expect(events).toStrictEqual(["reset", "upsert:read_content:deny"]);
     });
+  });
+
+  it("disables Apply when reset edits return to the original explicit grant state", async () => {
+    mockAPIs({
+      connectorType: "notion",
+      userPermissionGrants: [mockGrant("notion", "insert_comments", "deny")],
+    });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
+    });
+    await openPermissionsDrawer("Notion");
+
+    click(getButtonByText("Reset"));
+    await waitFor(() => {
+      expect(
+        getPolicyButton(getPermissionRow("insert_comments"), "Allow"),
+      ).toHaveAttribute("aria-pressed", "true");
+    });
+    click(getPolicyButton(getPermissionRow("insert_comments"), "Deny"));
+
+    expect(
+      getPolicyButton(getPermissionRow("insert_comments"), "Deny"),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Apply")).toBeDisabled();
   });
 
   it("renders permission names and descriptions in flat list (FW-D-031)", async () => {

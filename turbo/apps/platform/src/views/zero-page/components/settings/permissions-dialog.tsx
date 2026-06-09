@@ -43,6 +43,10 @@ import type {
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { ConnectorIcon } from "./connector-icons.tsx";
+import {
+  connectorDraftDiffersFromDefault,
+  hasConnectorResetPersistedEffect,
+} from "./permission-grant-reset-state.ts";
 import { permissionGrantExpiryText } from "../../../../signals/permission-allow/permission-grant-expiration.ts";
 import type { PermissionPolicy } from "../../../../signals/zero-page/settings/permissions.ts";
 import {
@@ -108,6 +112,7 @@ interface PermissionsDrawerFooterProps {
   readonly readOnly?: boolean;
   readonly resetEnabled?: boolean;
   readonly canReset: boolean;
+  readonly resetAvailable: boolean;
   readonly saving: boolean;
   readonly canApply: boolean;
   readonly onReset: () => void;
@@ -1171,6 +1176,7 @@ function PermissionsDrawerFooter({
   readOnly,
   resetEnabled,
   canReset,
+  resetAvailable,
   saving,
   canApply,
   onReset,
@@ -1183,7 +1189,11 @@ function PermissionsDrawerFooter({
     <SheetFooter className="gap-2 sm:justify-between sm:space-x-0">
       <div>
         {showReset && (
-          <Button variant="outline" onClick={onReset} disabled={saving}>
+          <Button
+            variant="outline"
+            onClick={onReset}
+            disabled={saving || !resetAvailable}
+          >
             Reset
           </Button>
         )}
@@ -1264,6 +1274,12 @@ export function PermissionsDrawer({
     currentUnknownPolicy: unknownPolicy,
     initialUnknownPolicy,
   });
+  const hasDefaultPolicyChanges = connectorDraftDiffersFromDefault({
+    currentPolicies: policiesForRef,
+    defaultPolicies: defaultPolicyState.policies,
+    currentUnknownPolicy: unknownPolicy,
+    defaultUnknownPolicy: defaultPolicyState.unknownPolicy,
+  });
   const hasExpirationChanges = hasGrantExpirationChanges({
     expirationEnabled,
     explicitGrants: effectiveExplicitGrants,
@@ -1271,10 +1287,30 @@ export function PermissionsDrawer({
     unknownPolicy,
     selections: expirationSelections,
   });
+  const hasExpirationDraftSelections =
+    Object.keys(expirationSelections).length > 0;
+  const hasResetPersistedEffect = hasConnectorResetPersistedEffect({
+    resetPending,
+    explicitGrants,
+    permissionNames: permissions.map((permission) => {
+      return permission.name;
+    }),
+    policies,
+    unknownPolicy,
+    defaultPolicies: defaultPolicyState.policies,
+    defaultUnknownPolicy: defaultPolicyState.unknownPolicy,
+    expirationEnabled,
+    selections: expirationSelections,
+  });
+  const resetAvailable =
+    explicitGrants.size > 0 ||
+    hasDefaultPolicyChanges ||
+    hasExpirationDraftSelections;
   const canApply = canApplyPermissionPolicies({
     config,
     saving,
-    hasChanges: hasPermissionChanges || hasExpirationChanges || resetPending,
+    hasChanges:
+      hasPermissionChanges || hasExpirationChanges || hasResetPersistedEffect,
   });
   const unknownGrant = effectiveExplicitGrants.get(UNKNOWN_PERMISSION_GRANT);
   const unknownSelectedExpiration =
@@ -1489,6 +1525,7 @@ export function PermissionsDrawer({
           readOnly={readOnly}
           resetEnabled={resetEnabled}
           canReset={config !== null}
+          resetAvailable={resetAvailable}
           saving={saving}
           canApply={canApply}
           onReset={handleResetConnector}
