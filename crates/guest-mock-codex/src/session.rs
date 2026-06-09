@@ -194,11 +194,7 @@ fn read_session_bytes_for_append_in_store(codex_home: &Path, path: &Path) -> io:
         Err(err) if is_filesystem_loop_error(&err) => return Err(invalid_session_file_error(path)),
         Err(err) => return Err(err),
     };
-    if !file
-        .metadata()
-        .ok()
-        .is_some_and(|metadata| metadata.file_type().is_file())
-    {
+    if !file.metadata()?.file_type().is_file() {
         return Err(invalid_session_file_error(path));
     }
     let mut buf = Vec::new();
@@ -561,11 +557,7 @@ impl StoreDir {
             }
             Err(err) => return Err(err),
         };
-        if file
-            .metadata()
-            .ok()
-            .is_some_and(|metadata| metadata.file_type().is_file())
-        {
+        if file.metadata()?.file_type().is_file() {
             Ok(())
         } else {
             Err(invalid_session_file_error(path))
@@ -687,11 +679,7 @@ fn lock_session(codex_home: &Path, thread_id: &str) -> io::Result<SessionLock> {
         .file_name()
         .ok_or_else(|| invalid_session_file_error(&lock_path))?;
     let file = lock_dir.open_or_create_child_file(lock_name)?;
-    if !file
-        .metadata()
-        .ok()
-        .is_some_and(|metadata| metadata.file_type().is_file())
-    {
+    if !file.metadata()?.file_type().is_file() {
         return Err(invalid_session_file_error(&lock_path));
     }
     // SAFETY: `file.as_raw_fd()` is an open fd owned by `file`, and `flock`

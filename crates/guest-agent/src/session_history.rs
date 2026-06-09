@@ -231,11 +231,10 @@ fn find_and_read_codex_session_file_recursive(
                 Err(e) if should_skip_unusable_codex_entry(&e) => continue,
                 Err(e) => return Err(read_history_error(&path, e)),
             };
-            if !file
+            let metadata = file
                 .metadata()
-                .ok()
-                .is_some_and(|metadata| metadata.file_type().is_file())
-            {
+                .map_err(|err| read_history_error(&path, err))?;
+            if !metadata.file_type().is_file() {
                 continue;
             }
             if let Some(existing) = found.as_ref() {
