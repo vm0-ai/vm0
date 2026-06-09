@@ -16,6 +16,15 @@ from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
 _ForwardResponse = tuple[int, bytes, dict[str, str]]
+_X_FIREWALL_NAME = "x"
+_X_TRACKING_PATH = "/2/users/by"
+_DEFAULT_RUN_ID = "run-conn-1"
+_DEFAULT_SANDBOX_MARKER = "tok-conn"
+_MODEL_PROVIDER_FIREWALL_NAME = "model-provider:anthropic-api-key"
+_MODEL_PROVIDER_RUN_ID = "run-model-1"
+_MODEL_PROVIDER_SANDBOX_MARKER = "tok-model"
+_MODEL_PROVIDER_PATH = "/v1/messages"
+_AUTH_URL_REWRITE_REQUEST_BODY = b'{"ok":true}'
 
 
 class _ForwardProbe:
@@ -93,42 +102,55 @@ def usage_pending_path(tmp_path: Path) -> Iterator[Path]:
         usage.counters.reset_for_tests()
 
 
-def _write_billable_tracking_registry(tmp_path: Path) -> Path:
-    firewall_name = "model-provider:anthropic-api-key"
+def _write_billable_x_tracking_registry(
+    tmp_path: Path,
+    *,
+    include_encrypted_secrets: bool = True,
+) -> Path:
     return _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
             tmp_path,
-            firewall_name=firewall_name,
+            firewall_name=_X_FIREWALL_NAME,
             api_entry={
-                "base": "https://api.anthropic.com",
-                "auth": {"headers": {"x-api-key": "test-key"}},
-                "permissions": [{"name": "messages", "rules": ["POST /v1/messages"]}],
+                "base": "https://api.x.com",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read-posts", "rules": [f"GET {_X_TRACKING_PATH}"]}],
             },
             network_policy={
-                "allow": ["messages"],
+                "allow": ["read-posts"],
                 "deny": [],
                 "ask": [],
                 "unknownPolicy": "deny",
             },
-            billable_firewalls=[firewall_name],
+            billable_firewalls=[_X_FIREWALL_NAME],
+            include_encrypted_secrets=include_encrypted_secrets,
         ),
     )
 
 
-def _write_non_billable_tracking_registry(tmp_path: Path) -> Path:
-    registry_dir = tmp_path / "non-billable-registry"
-    registry_dir.mkdir()
-    firewall_name = "model-provider:anthropic-api-key"
+def _write_model_provider_tracking_registry(
+    tmp_path: Path,
+    *,
+    billable: bool = False,
+    vm_fields: dict[str, object] | None = None,
+    registry_dir: Path | None = None,
+    run_id: str = _DEFAULT_RUN_ID,
+    sandbox_marker: str = _DEFAULT_SANDBOX_MARKER,
+) -> Path:
+    registry_root = registry_dir or tmp_path
+    registry_root.mkdir(parents=True, exist_ok=True)
     return _write_registry(
-        registry_dir,
+        registry_root,
         vm_info=_single_firewall_vm(
-            registry_dir,
-            firewall_name=firewall_name,
+            registry_root,
+            run_id=run_id,
+            sandbox_marker=sandbox_marker,
+            firewall_name=_MODEL_PROVIDER_FIREWALL_NAME,
             api_entry={
                 "base": "https://api.anthropic.com",
                 "auth": {"headers": {"x-api-key": "test-key"}},
-                "permissions": [{"name": "messages", "rules": ["POST /v1/messages"]}],
+                "permissions": [{"name": "messages", "rules": [f"POST {_MODEL_PROVIDER_PATH}"]}],
             },
             network_policy={
                 "allow": ["messages"],
@@ -136,17 +158,64 @@ def _write_non_billable_tracking_registry(tmp_path: Path) -> Path:
                 "ask": [],
                 "unknownPolicy": "deny",
             },
+            billable_firewalls=[_MODEL_PROVIDER_FIREWALL_NAME] if billable else None,
+            vm_fields=vm_fields,
         ),
     )
 
 
-def _billable_tracking_flow(real_flow):
+def _x_tracking_flow(real_flow):
+    return real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.x.com",
+        path=_X_TRACKING_PATH,
+        method="GET",
+    )
+
+
+def _model_provider_tracking_flow(real_flow):
     return real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host="api.anthropic.com",
-        path="/v1/messages",
+        path=_MODEL_PROVIDER_PATH,
         method="POST",
+    )
+
+
+def _write_billable_auth_url_rewrite_registry(tmp_path: Path) -> Path:
+    return _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            run_id="run-rewrite-1",
+            sandbox_marker="tok-rewrite",
+            firewall_name="webhook",
+            api_entry={
+                "base": "https://placeholder.example.com",
+                "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
+                "permissions": [{"name": "send", "rules": ["POST /"]}],
+            },
+            network_policy={
+                "allow": ["send"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            billable_firewalls=["webhook"],
+        ),
+    )
+
+
+def _auth_url_rewrite_flow(real_flow):
+    return real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="placeholder.example.com",
+        path="/",
+        method="POST",
+        request_body=_AUTH_URL_REWRITE_REQUEST_BODY,
     )
 
 
@@ -156,32 +225,10 @@ async def test_billable_flow_is_tracked_before_responseheaders(
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
-    headers,
 ):
     """Drain sees billable requests after request() even before responseheaders()."""
-    reg_path = _write_registry(
-        tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            firewall_name="x",
-            api_entry={
-                "base": "https://api.x.com",
-                "auth": {"headers": {"Authorization": "Bearer token"}},
-                "permissions": [{"name": "read-posts", "rules": ["GET /2/users/by"]}],
-            },
-            network_policy={
-                "allow": ["read-posts"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-            billable_firewalls=["x"],
-        ),
-    )
-
-    flow = real_flow(
-        with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
-    )
+    reg_path = _write_billable_x_tracking_registry(tmp_path)
+    flow = _x_tracking_flow(real_flow)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -207,29 +254,8 @@ async def test_billable_flow_error_releases_tracking_after_request(
     fake_firewall_headers,
 ):
     """Connection errors release billable tracking created by request()."""
-    reg_path = _write_registry(
-        tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            firewall_name="x",
-            api_entry={
-                "base": "https://api.x.com",
-                "auth": {"headers": {"Authorization": "Bearer token"}},
-                "permissions": [{"name": "read-posts", "rules": ["GET /2/users/by"]}],
-            },
-            network_policy={
-                "allow": ["read-posts"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-            billable_firewalls=["x"],
-        ),
-    )
-
-    flow = real_flow(
-        with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
-    )
+    reg_path = _write_billable_x_tracking_registry(tmp_path)
+    flow = _x_tracking_flow(real_flow)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -268,9 +294,9 @@ async def test_duplicate_terminal_hooks_do_not_double_decrement_usage_flow(
     fake_firewall_headers,
 ):
     """Duplicate terminal hooks release a tracked flow at most once."""
-    reg_path = _write_billable_tracking_registry(tmp_path)
-    first_flow = _billable_tracking_flow(real_flow)
-    second_flow = _billable_tracking_flow(real_flow)
+    reg_path = _write_model_provider_tracking_registry(tmp_path, billable=True)
+    first_flow = _model_provider_tracking_flow(real_flow)
+    second_flow = _model_provider_tracking_flow(real_flow)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -331,10 +357,13 @@ async def test_untracked_terminal_hook_does_not_decrement_other_usage_flow(
     fake_firewall_headers,
 ):
     """A terminal hook for an untracked flow leaves other tracked flows in flight."""
-    billable_reg_path = _write_billable_tracking_registry(tmp_path)
-    non_billable_reg_path = _write_non_billable_tracking_registry(tmp_path)
-    tracked_flow = _billable_tracking_flow(real_flow)
-    untracked_flow = _billable_tracking_flow(real_flow)
+    billable_reg_path = _write_model_provider_tracking_registry(tmp_path, billable=True)
+    non_billable_reg_path = _write_model_provider_tracking_registry(
+        tmp_path,
+        registry_dir=tmp_path / "non-billable-registry",
+    )
+    tracked_flow = _model_provider_tracking_flow(real_flow)
+    untracked_flow = _model_provider_tracking_flow(real_flow)
 
     with (
         mitm_ctx(registry_path=str(billable_reg_path), api_url="https://api.vm0.ai"),
@@ -391,33 +420,14 @@ async def test_untracked_terminal_hook_does_not_decrement_other_usage_flow(
 
 
 async def test_local_firewall_error_leaves_usage_flows_drained(
-    tmp_path, usage_pending_path, real_flow, mitm_ctx, headers
+    tmp_path, usage_pending_path, real_flow, mitm_ctx
 ):
     """Local auth failures do not enqueue usage and must not leak drain counters."""
-    reg_path = _write_registry(
+    reg_path = _write_billable_x_tracking_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            firewall_name="x",
-            api_entry={
-                "base": "https://api.x.com",
-                "auth": {"headers": {"Authorization": "Bearer token"}},
-                "permissions": [{"name": "read-posts", "rules": ["GET /2/users/by"]}],
-            },
-            network_policy={
-                "allow": ["read-posts"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-            billable_firewalls=["x"],
-            include_encrypted_secrets=False,
-        ),
+        include_encrypted_secrets=False,
     )
-
-    flow = real_flow(
-        with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
-    )
+    flow = _x_tracking_flow(real_flow)
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
@@ -439,29 +449,8 @@ async def test_unexpected_request_exception_releases_tracking(
     tmp_path, usage_pending_path, real_flow, mitm_ctx
 ):
     """Unexpected request-hook failures must not leak start-time or usage counters."""
-    reg_path = _write_registry(
-        tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            firewall_name="x",
-            api_entry={
-                "base": "https://api.x.com",
-                "auth": {"headers": {"Authorization": "Bearer token"}},
-                "permissions": [{"name": "read-posts", "rules": ["GET /2/users/by"]}],
-            },
-            network_policy={
-                "allow": ["read-posts"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-            billable_firewalls=["x"],
-        ),
-    )
-
-    flow = real_flow(
-        with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
-    )
+    reg_path = _write_billable_x_tracking_registry(tmp_path)
+    flow = _x_tracking_flow(real_flow)
 
     async def return_invalid_auth_after_tracking(*_args, **_kwargs):
         usage.write_pending_snapshot(flush_request_id="during-auth-failure")
@@ -496,8 +485,8 @@ async def test_request_cancellation_releases_tracking_during_auth_resolution(
     tmp_path, usage_pending_path, real_flow, mitm_ctx
 ):
     """Cancelled auth resolution must not leak request-time usage tracking."""
-    reg_path = _write_billable_tracking_registry(tmp_path)
-    flow = _billable_tracking_flow(real_flow)
+    reg_path = _write_billable_x_tracking_registry(tmp_path)
+    flow = _x_tracking_flow(real_flow)
 
     async def cancel_auth_after_tracking(*_args, **_kwargs):
         usage.write_pending_snapshot(flush_request_id="during-auth-cancel")
@@ -535,38 +524,14 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
-    headers,
 ):
     """Non-billable model providers without observation metadata are not tracked."""
-    firewall_name = "model-provider:anthropic-api-key"
-    reg_path = _write_registry(
+    reg_path = _write_model_provider_tracking_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            run_id="run-model-1",
-            sandbox_marker="tok-model",
-            firewall_name=firewall_name,
-            api_entry={
-                "base": "https://api.anthropic.com",
-                "auth": {"headers": {"x-api-key": "test-key"}},
-                "permissions": [{"name": "messages", "rules": ["POST /v1/messages"]}],
-            },
-            network_policy={
-                "allow": ["messages"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-        ),
+        run_id=_MODEL_PROVIDER_RUN_ID,
+        sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
     )
-
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="api.anthropic.com",
-        path="/v1/messages",
-        method="POST",
-    )
+    flow = _model_provider_tracking_flow(real_flow)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -574,7 +539,7 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     ):
         await mitm_addon.request(flow)
 
-    assert flow.metadata["firewall_name"] == firewall_name
+    assert flow.metadata["firewall_name"] == _MODEL_PROVIDER_FIREWALL_NAME
     assert flow.metadata["cli_agent_type"] == "claude-code"
     assert flow.metadata["firewall_billable"] is False
     usage.write_pending_snapshot(flush_request_id="request-1")
@@ -591,36 +556,13 @@ async def test_non_billable_observable_model_provider_is_tracked_before_response
     tmp_path, usage_pending_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
     """BYOK model observations drain during shutdown even without billing."""
-    firewall_name = "model-provider:anthropic-api-key"
-    reg_path = _write_registry(
+    reg_path = _write_model_provider_tracking_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            run_id="run-model-1",
-            sandbox_marker="tok-model",
-            firewall_name=firewall_name,
-            api_entry={
-                "base": "https://api.anthropic.com",
-                "auth": {"headers": {"x-api-key": "test-key"}},
-                "permissions": [{"name": "messages", "rules": ["POST /v1/messages"]}],
-            },
-            network_policy={
-                "allow": ["messages"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-            vm_fields={"modelUsageProvider": "claude-sonnet-4-6"},
-        ),
+        run_id=_MODEL_PROVIDER_RUN_ID,
+        sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
+        vm_fields={"modelUsageProvider": "claude-sonnet-4-6"},
     )
-
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="api.anthropic.com",
-        path="/v1/messages",
-        method="POST",
-    )
+    flow = _model_provider_tracking_flow(real_flow)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -628,7 +570,7 @@ async def test_non_billable_observable_model_provider_is_tracked_before_response
     ):
         await mitm_addon.request(flow)
 
-    assert flow.metadata["firewall_name"] == firewall_name
+    assert flow.metadata["firewall_name"] == _MODEL_PROVIDER_FIREWALL_NAME
     assert flow.metadata["firewall_billable"] is False
     assert flow.metadata["model_usage_provider"] == "claude-sonnet-4-6"
     usage.write_pending_snapshot(flush_request_id="request-1")
@@ -645,40 +587,17 @@ async def test_billable_model_provider_records_model_usage_provider(
     tmp_path, usage_pending_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
     """Registry modelUsageProvider is available to model usage reporting."""
-    firewall_name = "model-provider:anthropic-api-key"
-    reg_path = _write_registry(
+    reg_path = _write_model_provider_tracking_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            run_id="run-model-1",
-            sandbox_marker="tok-model",
-            firewall_name=firewall_name,
-            api_entry={
-                "base": "https://api.anthropic.com",
-                "auth": {"headers": {"x-api-key": "test-key"}},
-                "permissions": [{"name": "messages", "rules": ["POST /v1/messages"]}],
-            },
-            network_policy={
-                "allow": ["messages"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-            billable_firewalls=[firewall_name],
-            vm_fields={
-                "cliAgentType": "codex",
-                "modelUsageProvider": "claude-opus-4-6",
-            },
-        ),
+        billable=True,
+        run_id=_MODEL_PROVIDER_RUN_ID,
+        sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
+        vm_fields={
+            "cliAgentType": "codex",
+            "modelUsageProvider": "claude-opus-4-6",
+        },
     )
-
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="api.anthropic.com",
-        path="/v1/messages",
-        method="POST",
-    )
+    flow = _model_provider_tracking_flow(real_flow)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -686,7 +605,7 @@ async def test_billable_model_provider_records_model_usage_provider(
     ):
         await mitm_addon.request(flow)
 
-    assert flow.metadata["firewall_name"] == firewall_name
+    assert flow.metadata["firewall_name"] == _MODEL_PROVIDER_FIREWALL_NAME
     assert flow.metadata["cli_agent_type"] == "codex"
     assert flow.metadata["firewall_billable"] is True
     assert flow.metadata["model_usage_provider"] == "claude-opus-4-6"
@@ -704,36 +623,8 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
     tmp_path, usage_pending_path, real_flow, mitm_ctx
 ):
     """Inline auth.base responses still pair request-time tracking with response()."""
-    reg_path = _write_registry(
-        tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            run_id="run-rewrite-1",
-            sandbox_marker="tok-rewrite",
-            firewall_name="webhook",
-            api_entry={
-                "base": "https://placeholder.example.com",
-                "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
-                "permissions": [{"name": "send", "rules": ["POST /"]}],
-            },
-            network_policy={
-                "allow": ["send"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-            billable_firewalls=["webhook"],
-        ),
-    )
-
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="placeholder.example.com",
-        path="/",
-        method="POST",
-        request_body=b'{"ok":true}',
-    )
+    reg_path = _write_billable_auth_url_rewrite_registry(tmp_path)
+    flow = _auth_url_rewrite_flow(real_flow)
     token_meta = {
         "headers": {},
         "base": "https://real.example.com/webhook",
@@ -806,36 +697,8 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
     tmp_path, usage_pending_path, real_flow, mitm_ctx
 ):
     """Failed inline auth.base forwarding is a local response and drains immediately."""
-    reg_path = _write_registry(
-        tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            run_id="run-rewrite-1",
-            sandbox_marker="tok-rewrite",
-            firewall_name="webhook",
-            api_entry={
-                "base": "https://placeholder.example.com",
-                "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
-                "permissions": [{"name": "send", "rules": ["POST /"]}],
-            },
-            network_policy={
-                "allow": ["send"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-            billable_firewalls=["webhook"],
-        ),
-    )
-
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="placeholder.example.com",
-        path="/",
-        method="POST",
-        request_body=b'{"ok":true}',
-    )
+    reg_path = _write_billable_auth_url_rewrite_registry(tmp_path)
+    flow = _auth_url_rewrite_flow(real_flow)
     token_meta = {
         "headers": {},
         "base": "https://real.example.com/webhook",
