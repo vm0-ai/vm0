@@ -64,6 +64,28 @@ function activeProBillingStatus(): BillingStatusResponse {
   };
 }
 
+function activeTeamBillingStatus(): BillingStatusResponse {
+  return {
+    ...activeProBillingStatus(),
+    tier: "team",
+    credits: 130_000,
+    currentPeriodEnd: "2026-05-01T00:00:00Z",
+    creditBreakdown: [
+      {
+        category: "plan",
+        tier: "team",
+        label: "Team credits",
+        credits: 120_000,
+      },
+      {
+        category: "payAsYouGo",
+        label: "Purchased credits",
+        credits: 10_000,
+      },
+    ],
+  };
+}
+
 function mockBillingStory(): void {
   let billingStatus = activeProBillingStatus();
 
@@ -249,6 +271,123 @@ describe("organization billing settings", () => {
       expect(window.location.href).toBe(
         "https://billing.stripe.com/checkout/credit-purchase",
       );
+    });
+  });
+
+  it("schedules and restores a team plan downgrade from the pricing page", async () => {
+    let billingStatus = activeTeamBillingStatus();
+
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "team-org",
+      name: "Team Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus);
+    });
+    context.mocks.api(
+      zeroBillingDowngradeContract.create,
+      ({ body, respond }) => {
+        const targetTier = body.targetTier === "pro" ? "pro" : "pro-suspend";
+        billingStatus = {
+          ...billingStatus,
+          cancelAtPeriodEnd: targetTier === "pro-suspend",
+          scheduledChange:
+            targetTier === "pro"
+              ? {
+                  type: "downgrade",
+                  targetTier: "pro",
+                  effectiveDate: "2026-05-01T00:00:00Z",
+                }
+              : {
+                  type: "cancel",
+                  targetTier: "pro-suspend",
+                  effectiveDate: "2026-05-01T00:00:00Z",
+                },
+        };
+        return respond(200, {
+          success: true,
+          effectiveDate: "2026-05-01T00:00:00Z",
+        });
+      },
+    );
+    context.mocks.api(zeroBillingRestoreContract.create, ({ respond }) => {
+      billingStatus = {
+        ...billingStatus,
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+      };
+      return respond(200, { status: "restored" });
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Team plan")).toBeInTheDocument();
+      expect(screen.getByText("Renews May 1, 2026")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Downgrade"));
+    const downgradeDialog = await screen.findByRole("dialog", {
+      name: "Downgrade plan",
+    });
+    expect(
+      within(downgradeDialog).getByText("Choose which plan to downgrade to."),
+    ).toBeInTheDocument();
+    const proOption = within(downgradeDialog)
+      .getByText("Pro")
+      .closest("button");
+    if (!proOption) {
+      throw new Error("Pro downgrade option not found");
+    }
+    click(proOption);
+    click(buttonByText("Downgrade to Pro", downgradeDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Downgrade scheduled. Your current plan stays active until May 1, 2026.",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Restore plan")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Your Team plan will downgrade to Pro on May 1, 2026.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Compare all plans"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Downgrades to Pro on May 1, 2026").length,
+      ).toBeGreaterThan(0);
+    });
+
+    click(screen.getByText("Restore plan"));
+    const restoreDialog = await screen.findByRole("dialog", {
+      name: "Restore Team plan?",
+    });
+    expect(
+      within(restoreDialog).getByText(
+        "This will cancel the scheduled downgrade to Pro. Your Team plan will continue renewing.",
+      ),
+    ).toBeInTheDocument();
+    click(buttonByText("Restore plan", restoreDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Plan restored. Your subscription will renew normally.",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Current plan")).toBeInTheDocument();
+      expect(
+        screen.queryByText("Downgrades to Pro on May 1, 2026"),
+      ).not.toBeInTheDocument();
     });
   });
 });
