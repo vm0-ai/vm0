@@ -207,5 +207,14 @@ describe("zero schedule page", () => {
       expect(screen.queryByText("Morning brief")).not.toBeInTheDocument();
     });
     expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
+
+    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
+    click(menuItemByText("Edit"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Office AC" }),
+      ).toBeInTheDocument();
+    });
   });
 });
