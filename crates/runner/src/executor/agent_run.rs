@@ -2,8 +2,8 @@ use std::time::{Duration, Instant};
 
 use agent_diagnostics::FailureDiagnostic;
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ProcessControlMode, ProcessOutputMode, Sandbox,
-    StartProcessRequest,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ProcessControlMode, ProcessOutputMode,
+    ProcessTerminationKind, Sandbox, StartProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -79,6 +79,7 @@ pub(super) fn cancelled_agent_process_exit(
     stream_overflowed: bool,
 ) -> sandbox::ProcessExit {
     let mut exit = sandbox::ProcessExit::new(pid, EXIT_SIGKILL, Vec::new(), Vec::new());
+    exit.termination = ProcessTerminationKind::Cancelled;
     exit.stream_overflowed = stream_overflowed;
     exit
 }
@@ -471,11 +472,18 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             // handoff.
             guest_error.unwrap_or_else(|| agent_exit_failure_message(exit.exit_code))
         };
-        Some(ExecutionFailure::new(
-            exit.exit_code,
-            error,
-            failure_diagnostic,
-        ))
+        Some(if exit.termination == ProcessTerminationKind::TimedOut {
+            ExecutionFailure::runner_job_timeout(
+                exit.exit_code,
+                error,
+                failure_diagnostic,
+                JOB_TIMEOUT,
+                t.elapsed(),
+                exit.guest_duration_ms,
+            )
+        } else {
+            ExecutionFailure::new(exit.exit_code, error, failure_diagnostic)
+        })
     } else {
         None
     };

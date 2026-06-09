@@ -12,9 +12,9 @@ use async_trait::async_trait;
 use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessCancelHandle,
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
-    ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig,
-    SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
-    SandboxOperationReason, StartProcessRequest,
+    ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, ProcessTerminationKind,
+    Sandbox, SandboxConfig, SandboxError, SandboxIdleTransition, SandboxInvalidStateContext,
+    SandboxOperation, SandboxOperationReason, StartProcessRequest,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
@@ -1527,6 +1527,13 @@ fn supervised_exec_result_to_process_exit(
 ) -> ProcessExit {
     let (stdout, stdout_truncated) = captured_output_bytes(result.stdout);
     let (mut stderr, stderr_truncated) = captured_output_bytes(result.stderr);
+    let termination = match result.termination {
+        ExecTermination::Exited { .. } => ProcessTerminationKind::Exited,
+        ExecTermination::TimedOut => ProcessTerminationKind::TimedOut,
+        ExecTermination::Cancelled => ProcessTerminationKind::Cancelled,
+        ExecTermination::StartFailed => ProcessTerminationKind::StartFailed,
+        ExecTermination::WaitFailed => ProcessTerminationKind::WaitFailed,
+    };
     let exit_code = match result.termination {
         ExecTermination::Exited { exit_code } => exit_code,
         ExecTermination::TimedOut => {
@@ -1550,6 +1557,8 @@ fn supervised_exec_result_to_process_exit(
 
     ProcessExit {
         pid,
+        termination,
+        guest_duration_ms: Some(result.duration_ms),
         exit_code,
         stdout,
         stderr,
@@ -4896,24 +4905,34 @@ mod tests {
 
     #[test]
     fn supervised_exec_result_to_process_exit_maps_terminal_edge_states() {
-        for (termination, diagnostic, expected_code, expected_stderr) in [
+        for (termination, diagnostic, expected_code, expected_stderr, expected_termination) in [
             (
                 ExecTermination::TimedOut,
                 "",
                 EXEC_TIMEOUT_EXIT_CODE,
                 "Timeout",
+                ProcessTerminationKind::TimedOut,
             ),
             (
                 ExecTermination::Cancelled,
                 "cancel diagnostic",
                 1,
                 "Cancelled\ncancel diagnostic",
+                ProcessTerminationKind::Cancelled,
             ),
             (
                 ExecTermination::StartFailed,
                 "spawn failed",
                 1,
                 "spawn failed",
+                ProcessTerminationKind::StartFailed,
+            ),
+            (
+                ExecTermination::WaitFailed,
+                "wait failed",
+                1,
+                "wait failed",
+                ProcessTerminationKind::WaitFailed,
             ),
         ] {
             let exit = supervised_exec_result_to_process_exit(
@@ -4932,6 +4951,8 @@ mod tests {
             );
 
             assert_eq!(exit.exit_code, expected_code);
+            assert_eq!(exit.termination, expected_termination);
+            assert_eq!(exit.guest_duration_ms, Some(10));
             assert_eq!(String::from_utf8(exit.stderr).unwrap(), expected_stderr);
             assert_eq!(exit.diagnostic, diagnostic);
         }

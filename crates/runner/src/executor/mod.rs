@@ -186,6 +186,17 @@ pub struct ExecutionFailure {
     pub exit_code: i32,
     pub error: String,
     pub diagnostic: Option<FailureDiagnostic>,
+    pub kind: ExecutionFailureKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionFailureKind {
+    Generic,
+    RunnerJobTimeout {
+        timeout_ms: u128,
+        elapsed_ms: u128,
+        guest_duration_ms: Option<u32>,
+    },
 }
 
 impl ExecutionFailure {
@@ -200,6 +211,29 @@ impl ExecutionFailure {
             exit_code,
             error,
             diagnostic,
+            kind: ExecutionFailureKind::Generic,
+        }
+    }
+
+    #[must_use]
+    pub fn runner_job_timeout(
+        exit_code: i32,
+        error: impl Into<String>,
+        diagnostic: Option<FailureDiagnostic>,
+        timeout: Duration,
+        elapsed: Duration,
+        guest_duration_ms: Option<u32>,
+    ) -> Self {
+        let error = non_empty_failure_error(exit_code, error.into());
+        Self {
+            exit_code,
+            error,
+            diagnostic,
+            kind: ExecutionFailureKind::RunnerJobTimeout {
+                timeout_ms: timeout.as_millis(),
+                elapsed_ms: elapsed.as_millis(),
+                guest_duration_ms,
+            },
         }
     }
 

@@ -459,10 +459,34 @@ impl ProcessOutputMode {
     }
 }
 
+/// Terminal state reported by the process provider.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProcessTerminationKind {
+    /// The process exited with an ordinary exit code.
+    Exited,
+    /// The provider timed the process out.
+    TimedOut,
+    /// The provider cancelled the process.
+    Cancelled,
+    /// The provider failed to start the process.
+    StartFailed,
+    /// The provider failed while waiting for the process.
+    WaitFailed,
+}
+
 /// Terminal status and output metadata for a started guest process.
 pub struct ProcessExit {
     /// Guest process id reported by the provider.
     pub pid: u32,
+    /// Structured terminal state reported by the provider.
+    ///
+    /// This is separate from `exit_code`: providers still synthesize an exit
+    /// code for timeout, cancel, start, and wait failures so older callers can
+    /// continue using the existing completion code.
+    pub termination: ProcessTerminationKind,
+    /// Guest-reported wall-clock duration in milliseconds, when the provider has
+    /// terminal duration metadata.
+    pub guest_duration_ms: Option<u32>,
     /// Process exit code, or a provider-synthesized code for timeout, cancel,
     /// start, or wait failures.
     pub exit_code: i32,
@@ -495,12 +519,15 @@ pub struct ProcessExit {
 impl ProcessExit {
     /// Construct a process exit result with no truncation or stream metadata.
     ///
-    /// The returned value sets `stdout_truncated` and `stderr_truncated` to
-    /// `false`, `diagnostic` to an empty string, and `stream_overflowed` to
-    /// `false`.
+    /// The returned value sets `termination` to
+    /// [`ProcessTerminationKind::Exited`], `guest_duration_ms` to `None`,
+    /// `stdout_truncated` and `stderr_truncated` to `false`, `diagnostic` to an
+    /// empty string, and `stream_overflowed` to `false`.
     pub fn new(pid: u32, exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
         Self {
             pid,
+            termination: ProcessTerminationKind::Exited,
+            guest_duration_ms: None,
             exit_code,
             stdout,
             stderr,
@@ -623,6 +650,8 @@ mod tests {
 
         assert_eq!(exit.pid, 42);
         assert_eq!(exit.exit_code, 7);
+        assert_eq!(exit.termination, ProcessTerminationKind::Exited);
+        assert_eq!(exit.guest_duration_ms, None);
         assert_eq!(exit.stdout, b"out");
         assert_eq!(exit.stderr, b"err");
         assert!(!exit.stdout_truncated);
