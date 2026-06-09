@@ -11,7 +11,7 @@
   "scripts": {
     "build": "pnpm build:native && pnpm build:electron && pnpm build:cli && pnpm build:renderer",
     "build:cli": "tsup src/vm0-computer.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --external electron && chmod +x dist/vm0-computer.js",
-    "build:electron": "tsup src/main.ts src/preload.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --clean --external electron",
+    "build:electron": "tsup --config tsup.electron.config.js",
     "build:native": "node scripts/build-native-helper.js",
     "build:renderer": "vite build --config vite.renderer.config.ts",
     "check-types": "tsc --noEmit",
