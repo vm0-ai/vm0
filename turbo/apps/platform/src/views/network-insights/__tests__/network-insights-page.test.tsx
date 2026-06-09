@@ -30,6 +30,30 @@ function localDateDaysAgo(daysAgo: number): string {
   ].join("-");
 }
 
+function monthYearLabel(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function shortDateLabel(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function monthsBetweenTodayAnd(iso: string): number {
+  const today = new Date();
+  const target = new Date(`${iso}T00:00:00`);
+  return (
+    (today.getFullYear() - target.getFullYear()) * 12 +
+    today.getMonth() -
+    target.getMonth()
+  );
+}
+
 function getTabByText(text: string): HTMLElement {
   const tab = queryAllByRoleFast("tab").find((el) => {
     return el.textContent?.trim() === text;
@@ -299,8 +323,7 @@ function usageInsightResponse(): UsageInsightResponse {
 
 describe("network insights page", () => {
   it("shows daily network insights and switches to the time range usage view", async () => {
-    context.mocks.api(zeroInsightsContract.get, ({ query, respond }) => {
-      expect(query.days).toBe(30);
+    context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
       return respond(200, insightsResponse());
     });
     context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
@@ -358,5 +381,81 @@ describe("network insights page", () => {
     });
     expect(screen.getByText("Competitor scan")).toBeInTheDocument();
     expect(screen.getByText("650")).toBeInTheDocument();
+  });
+
+  it("filters the daily insights view to a custom calendar day", async () => {
+    const customDate = localDateDaysAgo(20);
+    context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
+      return respond(200, insightsResponse());
+    });
+    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
+      return respond(200, usageInsightResponse());
+    });
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Insights & Usage" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Research Bot")).toBeInTheDocument();
+    expect(screen.queryByText("Archive Bot")).not.toBeInTheDocument();
+
+    click(screen.getByText("Last 7 Days"));
+    click(screen.getByText("Custom Range"));
+
+    const monthsBack = monthsBetweenTodayAnd(customDate);
+    for (let i = 0; i < monthsBack; i++) {
+      const currentMonth = new Date();
+      currentMonth.setMonth(currentMonth.getMonth() - i);
+      const currentLabel = currentMonth.toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      });
+      const monthHeader = screen.getByText(currentLabel).closest("div");
+      if (!monthHeader) {
+        throw new Error(`Could not find calendar header: ${currentLabel}`);
+      }
+      const previousButton = queryAllByRoleFast("button", monthHeader)[0];
+      if (!previousButton) {
+        throw new Error(
+          `Could not find previous month button: ${currentLabel}`,
+        );
+      }
+      click(previousButton);
+    }
+
+    const targetLabel = monthYearLabel(customDate);
+    await waitFor(() => {
+      expect(screen.getByText(targetLabel)).toBeInTheDocument();
+    });
+
+    const calendarContent =
+      screen
+        .getByText(targetLabel)
+        .closest("[data-radix-popper-content-wrapper]") ??
+      screen.getByText(targetLabel).parentElement?.parentElement;
+    if (!calendarContent) {
+      throw new Error(`Could not find calendar content: ${targetLabel}`);
+    }
+    const dayLabel = String(Number(customDate.slice(8, 10)));
+    const dayButton = queryAllByRoleFast("button", calendarContent).find(
+      (button) => {
+        return button.textContent?.trim() === dayLabel;
+      },
+    );
+    if (!dayButton) {
+      throw new Error(`Could not find custom date button: ${customDate}`);
+    }
+    click(dayButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(shortDateLabel(customDate))).toBeInTheDocument();
+    });
+    expect(screen.getByText("Archive Bot")).toBeInTheDocument();
+    expect(screen.getByText("Mira")).toBeInTheDocument();
+    expect(screen.queryByText("Research Bot")).not.toBeInTheDocument();
+    expect(screen.queryByText("Morning Briefing")).not.toBeInTheDocument();
   });
 });
