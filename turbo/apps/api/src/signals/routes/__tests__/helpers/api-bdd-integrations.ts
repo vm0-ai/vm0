@@ -40,6 +40,10 @@ import {
 import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+import {
+  zeroSlackBrowserConnectContract,
+  type ZeroSlackBrowserConnectQuery,
+} from "@vm0/api-contracts/contracts/zero-slack-browser-connect";
 import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
 import { zeroSlackOauthContract } from "@vm0/api-contracts/contracts/zero-slack-oauth";
 
@@ -408,6 +412,21 @@ export function createBddIntegrationApi(context: TestContext) {
         client.complete({
           headers: authenticate(context, routeMocks, actor),
           body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestSlackBrowserConnect(
+      actor: ApiTestUser | null,
+      query: ZeroSlackBrowserConnectQuery,
+      statuses: readonly 307[],
+    ) {
+      const client = setupApp({ context })(zeroSlackBrowserConnectContract);
+      return await accept(
+        client.connect({
+          extraHeaders: extraHeaders(authenticate(context, routeMocks, actor)),
+          query,
         }),
         statuses,
       );

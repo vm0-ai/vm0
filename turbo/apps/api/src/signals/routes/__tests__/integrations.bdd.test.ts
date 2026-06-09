@@ -174,6 +174,43 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     expect(invalidPayload.body).toStrictEqual({ error: "Invalid payload" });
   });
 
+  it("keeps Slack browser-connect redirect boundaries visible through APIs", async () => {
+    const admin = integrations.user();
+
+    const unauthenticated = await integrations.requestSlackBrowserConnect(
+      null,
+      {
+        w: "TBDD",
+        u: "UBDD",
+      },
+      [307],
+    );
+    expect(unauthenticated.headers.get("location") ?? "").toContain(
+      "/sign-in?redirect_url=",
+    );
+
+    const invalidLink = await integrations.requestSlackBrowserConnect(
+      admin,
+      {},
+      [307],
+    );
+    expect(invalidLink.headers.get("location") ?? "").toContain(
+      "/settings/slack?error=Invalid%20connect%20link.",
+    );
+
+    const missingWorkspace = await integrations.requestSlackBrowserConnect(
+      admin,
+      {
+        w: "TBDD",
+        u: "UBDD",
+      },
+      [307],
+    );
+    expect(missingWorkspace.headers.get("location") ?? "").toContain(
+      "Workspace%20not%20found.",
+    );
+  });
+
   it("keeps unauthenticated, not-installed, non-admin, and provider-config errors visible through APIs", async () => {
     const admin = integrations.user();
     const member = integrations.user({
