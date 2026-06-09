@@ -74,9 +74,14 @@ impl VsockHost {
             .await?;
         if result.exit_code == MISSING_FILE_EXIT_CODE {
             if result.stdout_truncated || !result.stdout.is_empty() {
+                let stdout_detail = if result.stdout_truncated {
+                    "stdout truncated"
+                } else {
+                    "stdout"
+                };
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("read_file missing result for {path} included stdout"),
+                    format!("read_file missing result for {path} included {stdout_detail}"),
                 ));
             }
             let mut stderr = result.stderr;
@@ -95,9 +100,13 @@ impl VsockHost {
             return Ok(None);
         }
         if result.exit_code != 0 {
+            let mut stderr = result.stderr;
+            if result.stderr_truncated {
+                exec_operation::append_diagnostic(&mut stderr, "stderr truncated");
+            }
             return Err(io::Error::other(format!(
                 "failed to read file {path}: {}",
-                String::from_utf8_lossy(&result.stderr)
+                String::from_utf8_lossy(&stderr)
             )));
         }
         if result.stdout_truncated {

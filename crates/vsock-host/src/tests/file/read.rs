@@ -124,6 +124,34 @@ async fn read_file_rejects_missing_result_with_output() {
 }
 
 #[tokio::test]
+async fn read_file_rejects_missing_result_with_truncated_stdout() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let read_task =
+        tokio::spawn(async move { host.read_file("/tmp/missing.txt", 1024, 5000).await });
+
+    let start = expect_exec_start(&mut guest).await;
+    let payload = vsock_proto::encode_exec_result(
+        ExecTermination::Exited { exit_code: 66 },
+        12,
+        ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: true,
+        },
+        ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: false,
+        },
+        "",
+    )
+    .unwrap();
+    send_raw_exec_result(&mut guest, start.seq(), payload).await;
+
+    let err = read_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(err.to_string().contains("stdout truncated"));
+}
+
+#[tokio::test]
 async fn read_file_rejects_missing_result_with_stderr() {
     let (host, mut guest) = setup_host_and_guest().await;
     let read_task =
@@ -169,6 +197,34 @@ async fn read_file_rejects_missing_result_with_truncated_stderr() {
 
     let err = read_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(err.to_string().contains("stderr truncated"));
+}
+
+#[tokio::test]
+async fn read_file_preserves_truncated_stderr_on_nonzero_exit() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let read_task =
+        tokio::spawn(async move { host.read_file("/tmp/unreadable.txt", 1024, 5000).await });
+
+    let start = expect_exec_start(&mut guest).await;
+    let payload = vsock_proto::encode_exec_result(
+        ExecTermination::Exited { exit_code: 1 },
+        12,
+        ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: false,
+        },
+        ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: true,
+        },
+        "",
+    )
+    .unwrap();
+    send_raw_exec_result(&mut guest, start.seq(), payload).await;
+
+    let err = read_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Other);
     assert!(err.to_string().contains("stderr truncated"));
 }
 
