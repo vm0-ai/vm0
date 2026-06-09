@@ -25,6 +25,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use sandbox::*;
 
+const MOCK_COPY_FILE_MAX_BYTES: u64 = 64 * 1024 * 1024;
+
 /// Ignore mutex poisoning and take the lock anyway.
 ///
 /// Callers here are test doubles; surfacing a poison error would appear as
@@ -955,8 +957,8 @@ impl MockSandbox {
     /// Return this sandbox's recorded read-file calls.
     ///
     /// The returned vector is a cloned snapshot in recorded order. Calls are
-    /// recorded before mock validation errors such as invalid guest paths or
-    /// zero `max_bytes` are returned.
+    /// recorded before mock validation errors such as invalid guest paths,
+    /// oversized `max_bytes`, or zero `max_bytes` are returned.
     pub fn read_file_calls(&self) -> Vec<ReadFileCall> {
         self.read_file_calls.lock_ignoring_poison().clone()
     }
@@ -973,9 +975,9 @@ impl MockSandbox {
     ///
     /// The returned vector is a cloned snapshot in recorded order. Calls are
     /// recorded before mock validation errors such as invalid guest paths,
-    /// zero `max_bytes`, zero timeout, or invalid host paths are returned.
-    /// Copy-file calls are sandbox-local; shared overrides do not expose a
-    /// copy-file call accessor.
+    /// oversized `max_bytes`, zero `max_bytes`, zero timeout, or invalid host
+    /// paths are returned. Copy-file calls are sandbox-local; shared overrides
+    /// do not expose a copy-file call accessor.
     pub fn copy_file_calls(&self) -> Vec<CopyFileCall> {
         self.copy_file_calls.lock_ignoring_poison().clone()
     }
@@ -1154,6 +1156,13 @@ impl Sandbox for MockSandbox {
                 max_bytes,
             });
         validate_mock_guest_file_path(SandboxOperation::ReadFile, "read_file", path)?;
+        if max_bytes > u64::from(u32::MAX) {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::ReadFile,
+                reason: SandboxOperationReason::Other,
+                message: "mock read_file max_bytes exceeds exec capture limit".into(),
+            });
+        }
         if max_bytes == 0 {
             return Err(SandboxError::Operation {
                 operation: SandboxOperation::ReadFile,
@@ -1209,6 +1218,15 @@ impl Sandbox for MockSandbox {
                 operation: SandboxOperation::CopyFile,
                 reason: SandboxOperationReason::Other,
                 message: "mock copy_file max_bytes must be positive".into(),
+            });
+        }
+        if options.max_bytes > MOCK_COPY_FILE_MAX_BYTES {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::CopyFile,
+                reason: SandboxOperationReason::Other,
+                message: format!(
+                    "mock copy_file max_bytes must be at most {MOCK_COPY_FILE_MAX_BYTES}"
+                ),
             });
         }
         if options.timeout.is_zero() {
@@ -2142,6 +2160,26 @@ mod tests {
         );
         assert!(!path.exists());
 
+        let err = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: MOCK_COPY_FILE_MAX_BYTES + 1,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: true,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_operation_error(
+            err,
+            SandboxOperation::CopyFile,
+            SandboxOperationReason::Other,
+            "max_bytes must be at most",
+        );
+        assert!(!path.exists());
+
         let result = sandbox
             .copy_file(
                 "/tmp/system.log",
@@ -2270,6 +2308,22 @@ mod tests {
             SandboxOperationReason::Other,
             "max_bytes must be positive",
         );
+
+        sandbox.push_read_file_result(Ok(Some(b"after oversized max\n".to_vec())));
+        let err = sandbox
+            .read_file("/tmp/system.log", u64::from(u32::MAX) + 1)
+            .await
+            .unwrap_err();
+
+        assert_operation_error(
+            err,
+            SandboxOperation::ReadFile,
+            SandboxOperationReason::Other,
+            "max_bytes exceeds exec capture limit",
+        );
+
+        let result = sandbox.read_file("/tmp/system.log", 1024).await.unwrap();
+        assert_eq!(result.as_deref(), Some(&b"after oversized max\n"[..]));
 
         sandbox.push_read_file_result(Ok(Some(b"after invalid max\n".to_vec())));
         let err = sandbox.read_file("/tmp/system.log", 0).await.unwrap_err();
