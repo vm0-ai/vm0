@@ -17,6 +17,8 @@ mod process;
 mod quiesce;
 mod shell_command;
 mod shutdown;
+#[cfg(test)]
+mod test_support;
 mod threading;
 mod user;
 mod wait;
