@@ -18,6 +18,7 @@
 //! ```
 
 use std::collections::VecDeque;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -37,6 +38,35 @@ impl<T> LockIgnoringPoison<T> for Mutex<T> {
     fn lock_ignoring_poison(&self) -> MutexGuard<'_, T> {
         self.lock().unwrap_or_else(|e| e.into_inner())
     }
+}
+
+fn mock_copy_file_error(message: impl Into<String>) -> SandboxError {
+    SandboxError::Operation {
+        operation: SandboxOperation::CopyFile,
+        reason: SandboxOperationReason::Other,
+        message: message.into(),
+    }
+}
+
+fn validate_mock_copy_host_path(host_path: &Path) -> Result<()> {
+    let path_bytes = host_path.as_os_str().as_bytes();
+    if path_bytes.is_empty() {
+        return Err(mock_copy_file_error(
+            "mock copy_file host path must not be empty",
+        ));
+    }
+    if path_bytes.contains(&0) {
+        return Err(mock_copy_file_error(
+            "mock copy_file host path contains NUL bytes",
+        ));
+    }
+    if host_path.file_name().is_none() || path_bytes.ends_with(b"/") || path_bytes.ends_with(b"/.")
+    {
+        return Err(mock_copy_file_error(
+            "mock copy_file host path must name a file",
+        ));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -917,8 +947,8 @@ impl MockSandbox {
     /// Return this sandbox's recorded copy-file calls.
     ///
     /// The returned vector is a cloned snapshot in recorded order. Calls are
-    /// recorded before mock validation errors such as zero `max_bytes` or zero
-    /// timeout are returned. Copy-file calls are sandbox-local; shared
+    /// recorded before mock validation errors such as zero `max_bytes`, zero
+    /// timeout, or invalid host paths are returned. Copy-file calls are sandbox-local; shared
     /// overrides do not expose a copy-file call accessor.
     pub fn copy_file_calls(&self) -> Vec<CopyFileCall> {
         self.copy_file_calls.lock_ignoring_poison().clone()
@@ -1145,6 +1175,7 @@ impl Sandbox for MockSandbox {
                 timeout: options.timeout,
                 missing_ok: options.missing_ok,
             });
+        validate_mock_copy_host_path(host_path)?;
         if options.max_bytes == 0 {
             return Err(SandboxError::Operation {
                 operation: SandboxOperation::CopyFile,
@@ -2042,6 +2073,27 @@ mod tests {
             "timeout must be positive",
         );
         assert!(!path.exists());
+
+        for invalid_host_path in ["", ".", "/tmp/", "/tmp/.", "/tmp/bad\0host.log"] {
+            let err = sandbox
+                .copy_file(
+                    "/tmp/system.log",
+                    Path::new(invalid_host_path),
+                    CopyFileOptions {
+                        max_bytes: 1024,
+                        timeout: Duration::from_secs(5),
+                        missing_ok: true,
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert_operation_error(
+                err,
+                SandboxOperation::CopyFile,
+                SandboxOperationReason::Other,
+                "host path",
+            );
+        }
     }
 
     #[tokio::test]
