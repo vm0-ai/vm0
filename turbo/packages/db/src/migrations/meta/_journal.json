@@ -3067,6 +3067,13 @@
       "when": 1780901960840,
       "tag": "0437_minor_rumiko_fujikawa",
       "breakpoints": true
+    },
+    {
+      "idx": 438,
+      "version": "7",
+      "when": 1780974019944,
+      "tag": "0438_slow_klaw",
+      "breakpoints": true
     }
   ]
 }

@@ -79,6 +79,7 @@ import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
 import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
 import * as memoryChangeItemSchema from "./schema/memory-change-item";
+import * as automationSchema from "./schema/automation";
 
 export const schema = {
   ...userSchema,
@@ -162,4 +163,5 @@ export const schema = {
   ...bankingSchema,
   ...memoryChangeSummarySchema,
   ...memoryChangeItemSchema,
+  ...automationSchema,
 };
