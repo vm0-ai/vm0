@@ -20,6 +20,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 
 const context = testContext();
@@ -383,6 +384,32 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     expect(audioV1.body.error.message).toBe(
       "This endpoint does not accept the provided credential type",
     );
+
+    const authApi = createAuthOrgAgentsBddApi(context);
+    const apiKey = await authApi.createApiKey(admin, {
+      name: "BDD audio v1",
+      expiresInDays: 1,
+    });
+
+    const unsupportedAudio = await api.requestAudioTranscriptionV1WithBearer(
+      apiKey.token,
+      new Blob([new Uint8Array([0, 0])], { type: "text/plain" }),
+      [400],
+    );
+    expectApiError(unsupportedAudio.body);
+    expect(unsupportedAudio.body.error.message).toBe(
+      "Unsupported audio format. Send raw 16 kHz mono signed 16-bit PCM as application/octet-stream.",
+    );
+
+    const rateLimitedAudio = await api.requestAudioTranscriptionV1WithBearer(
+      apiKey.token,
+      new Blob([new Uint8Array([0, 0])], {
+        type: "application/octet-stream",
+      }),
+      [429],
+    );
+    expectApiError(rateLimitedAudio.body);
+    expect(rateLimitedAudio.body.error.code).toBe("DAILY_RATE_LIMIT_EXCEEDED");
 
     const unauthenticatedTts = await api.requestVoiceTts(
       null,

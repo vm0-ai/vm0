@@ -10,15 +10,26 @@ import { zeroEmailInboundContract } from "@vm0/api-contracts/contracts/zero-emai
 import {
   webhookBuiltInGenerationBytePlusContract,
   webhookBuiltInGenerationFalContract,
+  webhookCheckpointsContract,
+  webhookCheckpointsPrepareHistoryContract,
   webhookClerkContract,
+  webhookCompleteContract,
+  webhookEventsContract,
   webhookGithubContract,
+  webhookHeartbeatContract,
+  webhookModelUsageObservationContract,
+  webhookStoragesCommitContract,
+  webhookStoragesPrepareContract,
   webhookStripeContract,
+  webhookTelemetryContract,
+  webhookUsageEventContract,
 } from "@vm0/api-contracts/contracts/webhooks";
 import { Webhook } from "svix";
 import type { z } from "zod";
 
 import { env, mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
+import { generateSandboxToken } from "../../../auth/tokens";
 import {
   accept,
   setupApp,
@@ -26,6 +37,34 @@ import {
 } from "../../../../__tests__/test-helpers";
 
 type EventConsumerPayload = z.input<typeof eventConsumerPayloadSchema>;
+type AgentEventsBody = z.infer<(typeof webhookEventsContract.send)["body"]>;
+type AgentCompleteBody = z.infer<
+  (typeof webhookCompleteContract.complete)["body"]
+>;
+type AgentCheckpointBody = z.infer<
+  (typeof webhookCheckpointsContract.create)["body"]
+>;
+type AgentCheckpointPrepareHistoryBody = z.infer<
+  (typeof webhookCheckpointsPrepareHistoryContract.prepare)["body"]
+>;
+type AgentHeartbeatBody = z.infer<
+  (typeof webhookHeartbeatContract.send)["body"]
+>;
+type AgentTelemetryBody = z.infer<
+  (typeof webhookTelemetryContract.send)["body"]
+>;
+type AgentUsageEventBody = z.infer<
+  (typeof webhookUsageEventContract.send)["body"]
+>;
+type AgentModelUsageObservationBody = z.infer<
+  (typeof webhookModelUsageObservationContract.send)["body"]
+>;
+type AgentStoragePrepareBody = z.infer<
+  (typeof webhookStoragesPrepareContract.prepare)["body"]
+>;
+type AgentStorageCommitBody = z.infer<
+  (typeof webhookStoragesCommitContract.commit)["body"]
+>;
 
 interface Vm0SignatureHeaders {
   readonly "x-vm0-signature": string;
@@ -36,6 +75,10 @@ interface SvixHeaders {
   readonly "svix-id": string;
   readonly "svix-timestamp": string;
   readonly "svix-signature": string;
+}
+
+interface SandboxWebhookHeaders {
+  readonly authorization?: string;
 }
 
 type BuiltInGenerationProvider = "fal" | "byteplus";
@@ -76,6 +119,19 @@ function resendSvixHeaders(body: unknown): SvixHeaders {
       timestamp,
       serializedTsRestBody(body),
     ),
+  };
+}
+
+function sandboxWebhookHeaders(args: {
+  readonly runId: string;
+  readonly tokenRunId?: string;
+}): SandboxWebhookHeaders {
+  return {
+    authorization: `Bearer ${generateSandboxToken(
+      "user_bdd_sandbox_webhook",
+      args.tokenRunId ?? args.runId,
+      "org_bdd_sandbox_webhook",
+    )}`,
   };
 }
 
@@ -284,6 +340,292 @@ export function createWebhookCallbackApi(context: TestContext) {
         ).process({
           headers,
           body: body as unknown as EventConsumerPayload,
+        }),
+        statuses,
+      );
+    },
+
+    sandboxWebhookHeaders,
+
+    async requestAgentEvents(
+      body: AgentEventsBody,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookEventsContract).send({
+          headers,
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentEventsUnchecked(
+      body: unknown,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookEventsContract).send({
+          headers,
+          body: body as AgentEventsBody,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentComplete(
+      body: AgentCompleteBody,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookCompleteContract).complete({
+          headers,
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentCompleteUnchecked(
+      body: unknown,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookCompleteContract).complete({
+          headers,
+          body: body as AgentCompleteBody,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentCheckpoint(
+      body: AgentCheckpointBody,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookCheckpointsContract).create({
+          headers,
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentCheckpointUnchecked(
+      body: unknown,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookCheckpointsContract).create({
+          headers,
+          body: body as AgentCheckpointBody,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentCheckpointPrepareHistory(
+      body: AgentCheckpointPrepareHistoryBody,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookCheckpointsPrepareHistoryContract).prepare(
+          {
+            headers,
+            body,
+          },
+        ),
+        statuses,
+      );
+    },
+
+    async requestAgentCheckpointPrepareHistoryUnchecked(
+      body: unknown,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookCheckpointsPrepareHistoryContract).prepare(
+          {
+            headers,
+            body: body as AgentCheckpointPrepareHistoryBody,
+          },
+        ),
+        statuses,
+      );
+    },
+
+    async requestAgentHeartbeat(
+      body: AgentHeartbeatBody,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookHeartbeatContract).send({
+          headers,
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentHeartbeatUnchecked(
+      body: unknown,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookHeartbeatContract).send({
+          headers,
+          body: body as AgentHeartbeatBody,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentTelemetry(
+      body: AgentTelemetryBody,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookTelemetryContract).send({
+          headers,
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentTelemetryUnchecked(
+      body: unknown,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookTelemetryContract).send({
+          headers,
+          body: body as AgentTelemetryBody,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentUsageEvent(
+      body: AgentUsageEventBody,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookUsageEventContract).send({
+          headers,
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentUsageEventUnchecked(
+      body: unknown,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookUsageEventContract).send({
+          headers,
+          body: body as AgentUsageEventBody,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentModelUsageObservation(
+      body: AgentModelUsageObservationBody,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookModelUsageObservationContract).send({
+          headers,
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentModelUsageObservationUnchecked(
+      body: unknown,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookModelUsageObservationContract).send({
+          headers,
+          body: body as AgentModelUsageObservationBody,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentStoragePrepare(
+      body: AgentStoragePrepareBody,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 413 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookStoragesPrepareContract).prepare({
+          headers,
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentStoragePrepareUnchecked(
+      body: unknown,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (400 | 401 | 404 | 413 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookStoragesPrepareContract).prepare({
+          headers,
+          body: body as AgentStoragePrepareBody,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentStorageCommit(
+      body: AgentStorageCommitBody,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (200 | 400 | 401 | 404 | 409 | 413 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookStoragesCommitContract).commit({
+          headers,
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestAgentStorageCommitUnchecked(
+      body: unknown,
+      headers: SandboxWebhookHeaders,
+      statuses: readonly (400 | 401 | 404 | 409 | 413 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookStoragesCommitContract).commit({
+          headers,
+          body: body as AgentStorageCommitBody,
         }),
         statuses,
       );

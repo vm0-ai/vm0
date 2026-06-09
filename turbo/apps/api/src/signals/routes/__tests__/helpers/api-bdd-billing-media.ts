@@ -604,6 +604,23 @@ export function createBillingMediaApi(context: TestContext) {
       );
     },
 
+    async requestAudioTranscriptionV1WithBearer(
+      token: string,
+      body: Blob,
+      statuses: readonly (200 | 400 | 401 | 402 | 403 | 413 | 429 | 500)[],
+      contentType = body.type,
+    ) {
+      const client = setupApp({ context })(audioTranscriptionsV1Contract);
+      return await accept(
+        client.transcribe({
+          headers: { authorization: `Bearer ${token}` },
+          extraHeaders: contentType ? { "content-type": contentType } : {},
+          body,
+        }),
+        statuses,
+      );
+    },
+
     async requestVoiceSpeech(
       actor: ApiTestUser | null,
       body: { readonly text?: string; readonly voice?: string },

@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomInt } from "node:crypto";
 
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { HttpResponse, http } from "msw";
@@ -72,6 +72,16 @@ function telegramSendMessage() {
       });
     },
   );
+}
+
+function agentPhoneVerificationSend(status: 200 | 503 = 200) {
+  return http.post("https://api.agentphone.test/v1/messages", () => {
+    return HttpResponse.json({ ok: status === 200 }, { status });
+  });
+}
+
+function uniquePhoneHandle() {
+  return `+1555${randomInt(1_000_000, 9_999_999)}`;
 }
 
 function serializedTsRestBody(body: string): string {
@@ -1124,6 +1134,41 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       error: {
         message: "AgentPhone is not configured",
         code: "NOT_CONFIGURED",
+      },
+    });
+
+    integrations.configureAgentPhoneProvider();
+    server.use(agentPhoneVerificationSend());
+    const phoneHandle = uniquePhoneHandle();
+    const sent = await integrations.requestStartAgentPhoneLink(
+      actor,
+      { phoneHandle },
+      [200],
+    );
+    expect(sent.body).toStrictEqual({
+      phoneHandle,
+      verificationSent: true,
+    });
+
+    const cooledDown = await integrations.requestStartAgentPhoneLink(
+      actor,
+      { phoneHandle },
+      [429],
+    );
+    expect(cooledDown.body).toMatchObject({
+      error: { code: "TOO_MANY_REQUESTS" },
+    });
+
+    server.use(agentPhoneVerificationSend(503));
+    const unavailable = await integrations.requestStartAgentPhoneLink(
+      integrations.user(),
+      { phoneHandle: uniquePhoneHandle() },
+      [503],
+    );
+    expect(unavailable.body).toStrictEqual({
+      error: {
+        message: "AgentPhone verification text could not be sent",
+        code: "PROVIDER_UNAVAILABLE",
       },
     });
 

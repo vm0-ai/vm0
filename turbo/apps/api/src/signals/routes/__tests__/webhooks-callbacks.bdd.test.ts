@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
+import { nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
+import { expectApiError } from "./helpers/api-bdd";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
@@ -268,5 +270,314 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
       [401],
     );
     expect(invalidBody.body).toStrictEqual({ error: "Invalid JSON body" });
+  });
+});
+
+describe("WHCB-05: sandbox agent webhook boundaries", () => {
+  it("rejects malformed, unauthenticated, mismatched, and missing-run sandbox reports", async () => {
+    const runId = randomUUID();
+    const mismatchedRunId = randomUUID();
+    const headers = api.sandboxWebhookHeaders({ runId });
+    const mismatchedHeaders = api.sandboxWebhookHeaders({
+      runId,
+      tokenRunId: mismatchedRunId,
+    });
+
+    const malformedHeartbeat = await api.requestAgentHeartbeatUnchecked(
+      {},
+      {},
+      [400],
+    );
+    expectApiError(malformedHeartbeat.body);
+    expect(malformedHeartbeat.body.error.code).toBe("BAD_REQUEST");
+
+    const unauthenticatedHeartbeat = await api.requestAgentHeartbeat(
+      { runId },
+      {},
+      [401],
+    );
+    expectApiError(unauthenticatedHeartbeat.body);
+    expect(unauthenticatedHeartbeat.body.error.code).toBe("UNAUTHORIZED");
+
+    const mismatchedTelemetry = await api.requestAgentTelemetry(
+      {
+        runId,
+        systemLog: "runner booted",
+        metrics: [
+          {
+            ts: nowDate().toISOString(),
+            cpu: 1,
+            mem_used: 2,
+            mem_total: 4,
+            disk_used: 8,
+            disk_total: 16,
+          },
+        ],
+      },
+      mismatchedHeaders,
+      [401],
+    );
+    expectApiError(mismatchedTelemetry.body);
+    expect(mismatchedTelemetry.body.error.code).toBe("UNAUTHORIZED");
+
+    const missingHeartbeatRun = await api.requestAgentHeartbeat(
+      { runId },
+      headers,
+      [404],
+    );
+    expectApiError(missingHeartbeatRun.body);
+    expect(missingHeartbeatRun.body.error.code).toBe("NOT_FOUND");
+
+    const malformedUsageEvent = await api.requestAgentUsageEventUnchecked(
+      {
+        runId,
+        events: [],
+      },
+      headers,
+      [400],
+    );
+    expectApiError(malformedUsageEvent.body);
+    expect(malformedUsageEvent.body.error.code).toBe("BAD_REQUEST");
+
+    const missingUsageRun = await api.requestAgentUsageEvent(
+      {
+        runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: "github",
+            category: "api_request",
+            quantity: 1,
+          },
+        ],
+      },
+      headers,
+      [404],
+    );
+    expectApiError(missingUsageRun.body);
+    expect(missingUsageRun.body.error.code).toBe("NOT_FOUND");
+
+    const malformedModelUsage =
+      await api.requestAgentModelUsageObservationUnchecked(
+        {
+          runId,
+          events: [
+            {
+              idempotencyKey: randomUUID(),
+              model: "claude-sonnet-4-6",
+              category: "tokens.input",
+              quantity: 0,
+            },
+          ],
+        },
+        headers,
+        [400],
+      );
+    expectApiError(malformedModelUsage.body);
+    expect(malformedModelUsage.body.error.code).toBe("BAD_REQUEST");
+
+    const missingModelUsageRun = await api.requestAgentModelUsageObservation(
+      {
+        runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            model: "claude-sonnet-4-6",
+            category: "tokens.input",
+            quantity: 1,
+          },
+        ],
+      },
+      headers,
+      [404],
+    );
+    expectApiError(missingModelUsageRun.body);
+    expect(missingModelUsageRun.body.error.code).toBe("NOT_FOUND");
+
+    const missingTelemetryRun = await api.requestAgentTelemetry(
+      {
+        runId,
+        networkLogs: [
+          {
+            timestamp: nowDate().toISOString(),
+            host: "example.test",
+            port: 443,
+            method: "GET",
+            url: "https://example.test/status",
+            status: 200,
+            latency_ms: 12,
+            request_size: 5,
+            response_size: 8,
+          },
+        ],
+        sandboxOperations: [
+          {
+            ts: nowDate().toISOString(),
+            action_type: "checkpoint",
+            duration_ms: 3,
+            success: true,
+          },
+        ],
+      },
+      headers,
+      [404],
+    );
+    expectApiError(missingTelemetryRun.body);
+    expect(missingTelemetryRun.body.error.code).toBe("NOT_FOUND");
+  });
+});
+
+describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
+  it("rejects malformed, mismatched, and missing-run sandbox artifact reports", async () => {
+    const runId = randomUUID();
+    const hash = "a".repeat(64);
+    const headers = api.sandboxWebhookHeaders({ runId });
+    const mismatchedHeaders = api.sandboxWebhookHeaders({
+      runId,
+      tokenRunId: randomUUID(),
+    });
+
+    const malformedEvents = await api.requestAgentEventsUnchecked(
+      { runId, events: [] },
+      headers,
+      [400],
+    );
+    expectApiError(malformedEvents.body);
+    expect(malformedEvents.body.error.code).toBe("BAD_REQUEST");
+
+    const mismatchedEvents = await api.requestAgentEvents(
+      {
+        runId,
+        events: [{ type: "system", sequenceNumber: 0 }],
+      },
+      mismatchedHeaders,
+      [401],
+    );
+    expectApiError(mismatchedEvents.body);
+    expect(mismatchedEvents.body.error.code).toBe("UNAUTHORIZED");
+
+    const missingEventsRun = await api.requestAgentEvents(
+      {
+        runId,
+        events: [{ type: "system", sequenceNumber: 0 }],
+      },
+      headers,
+      [404],
+    );
+    expectApiError(missingEventsRun.body);
+    expect(missingEventsRun.body.error.code).toBe("NOT_FOUND");
+
+    const malformedComplete = await api.requestAgentCompleteUnchecked(
+      { runId },
+      headers,
+      [400],
+    );
+    expectApiError(malformedComplete.body);
+    expect(malformedComplete.body.error.code).toBe("BAD_REQUEST");
+
+    const missingCompleteRun = await api.requestAgentComplete(
+      {
+        runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+        sandboxId: "sandbox-bdd",
+        sandboxReuseResult: "poolMiss",
+      },
+      headers,
+      [404],
+    );
+    expectApiError(missingCompleteRun.body);
+    expect(missingCompleteRun.body.error.code).toBe("NOT_FOUND");
+
+    const malformedCheckpoint = await api.requestAgentCheckpointUnchecked(
+      {
+        runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: "session-bdd",
+        cliAgentSessionHistoryHash: "not-a-sha",
+      },
+      headers,
+      [400],
+    );
+    expectApiError(malformedCheckpoint.body);
+    expect(malformedCheckpoint.body.error.code).toBe("BAD_REQUEST");
+
+    const missingCheckpointRun = await api.requestAgentCheckpoint(
+      {
+        runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: "session-bdd",
+        cliAgentSessionHistoryHash: hash,
+      },
+      headers,
+      [404],
+    );
+    expectApiError(missingCheckpointRun.body);
+    expect(missingCheckpointRun.body.error.code).toBe("NOT_FOUND");
+
+    const malformedHistoryPrepare =
+      await api.requestAgentCheckpointPrepareHistoryUnchecked(
+        { runId, hash, size: 0 },
+        headers,
+        [400],
+      );
+    expectApiError(malformedHistoryPrepare.body);
+    expect(malformedHistoryPrepare.body.error.code).toBe("BAD_REQUEST");
+
+    const mismatchedStoragePrepare = await api.requestAgentStoragePrepare(
+      {
+        runId,
+        storageName: "artifact-bdd",
+        storageType: "artifact",
+        files: [{ path: "index.txt", hash, size: 5 }],
+      },
+      mismatchedHeaders,
+      [401],
+    );
+    expectApiError(mismatchedStoragePrepare.body);
+    expect(mismatchedStoragePrepare.body.error.code).toBe("UNAUTHORIZED");
+
+    const malformedStoragePrepare =
+      await api.requestAgentStoragePrepareUnchecked(
+        {
+          runId,
+          storageName: "",
+          storageType: "artifact",
+          files: [{ path: "index.txt", hash, size: 5 }],
+        },
+        headers,
+        [400],
+      );
+    expectApiError(malformedStoragePrepare.body);
+    expect(malformedStoragePrepare.body.error.code).toBe("BAD_REQUEST");
+
+    const mismatchedStorageCommit = await api.requestAgentStorageCommit(
+      {
+        runId,
+        storageName: "artifact-bdd",
+        storageType: "artifact",
+        versionId: randomUUID(),
+        files: [{ path: "index.txt", hash, size: 5 }],
+      },
+      mismatchedHeaders,
+      [401],
+    );
+    expectApiError(mismatchedStorageCommit.body);
+    expect(mismatchedStorageCommit.body.error.code).toBe("UNAUTHORIZED");
+
+    const malformedStorageCommit = await api.requestAgentStorageCommitUnchecked(
+      {
+        runId,
+        storageName: "artifact-bdd",
+        storageType: "artifact",
+        versionId: "",
+        files: [{ path: "index.txt", hash, size: 5 }],
+      },
+      headers,
+      [400],
+    );
+    expectApiError(malformedStorageCommit.body);
+    expect(malformedStorageCommit.body.error.code).toBe("BAD_REQUEST");
   });
 });
