@@ -1,5 +1,7 @@
 use crate::LOG_TAG;
 use guest_common::{log_info, log_warn};
+use std::cell::OnceCell;
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fs;
 use std::io;
@@ -16,7 +18,20 @@ use std::path::{Path, PathBuf};
 ///   the mountpoint directory and clean its contents.
 /// - Otherwise: `remove_dir_all` (clean slate).
 pub(crate) fn cleanup_stale_paths(cleanup_paths: &[String], preserved: &[String]) {
-    cleanup_stale_paths_with_mount_detector(cleanup_paths, preserved, cleanup_path_is_mount_point);
+    cleanup_stale_paths_with_mountinfo_loader(cleanup_paths, preserved, cleanup_mountinfo);
+}
+
+fn cleanup_stale_paths_with_mountinfo_loader<L>(
+    cleanup_paths: &[String],
+    preserved: &[String],
+    load_mountinfo: L,
+) where
+    L: Fn() -> io::Result<String>,
+{
+    let detector = CleanupMountPointDetector::new(load_mountinfo);
+    cleanup_stale_paths_with_mount_detector(cleanup_paths, preserved, |path| {
+        detector.is_mount_point(path)
+    });
 }
 
 fn cleanup_stale_paths_with_mount_detector<M>(
@@ -128,26 +143,58 @@ fn entry_overlaps_preserved_path(entry_path: &Path, preserved: &[String]) -> boo
     })
 }
 
-fn cleanup_path_is_mount_point(path: &Path) -> bool {
-    let path = match absolute_path_without_following_final_symlink(path) {
-        Ok(path) => path,
-        Err(e) => {
-            log_warn!(
-                LOG_TAG,
-                "Failed to resolve cleanup path {}: {e}",
-                path.display()
-            );
-            return false;
-        }
-    };
+struct CleanupMountPointDetector<L>
+where
+    L: Fn() -> io::Result<String>,
+{
+    load_mountinfo: L,
+    mount_points: OnceCell<Option<HashSet<PathBuf>>>,
+}
 
-    match fs::read_to_string("/proc/self/mountinfo") {
-        Ok(mountinfo) => mountinfo_contains_mount_point(&mountinfo, &path),
-        Err(e) => {
-            log_warn!(LOG_TAG, "Failed to read /proc/self/mountinfo: {e}");
-            false
+impl<L> CleanupMountPointDetector<L>
+where
+    L: Fn() -> io::Result<String>,
+{
+    fn new(load_mountinfo: L) -> Self {
+        Self {
+            load_mountinfo,
+            mount_points: OnceCell::new(),
         }
     }
+
+    fn is_mount_point(&self, path: &Path) -> bool {
+        let path = match absolute_path_without_following_final_symlink(path) {
+            Ok(path) => path,
+            Err(e) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Failed to resolve cleanup path {}: {e}",
+                    path.display()
+                );
+                return false;
+            }
+        };
+
+        self.mount_points()
+            .is_some_and(|mount_points| mount_points.contains(&path))
+    }
+
+    fn mount_points(&self) -> Option<&HashSet<PathBuf>> {
+        let load_mountinfo = &self.load_mountinfo;
+        self.mount_points
+            .get_or_init(|| match load_mountinfo() {
+                Ok(mountinfo) => Some(mount_points_from_mountinfo(&mountinfo)),
+                Err(e) => {
+                    log_warn!(LOG_TAG, "Failed to read /proc/self/mountinfo: {e}");
+                    None
+                }
+            })
+            .as_ref()
+    }
+}
+
+fn cleanup_mountinfo() -> io::Result<String> {
+    fs::read_to_string("/proc/self/mountinfo")
 }
 
 fn absolute_path_without_following_final_symlink(path: &Path) -> io::Result<PathBuf> {
@@ -158,13 +205,16 @@ fn absolute_path_without_following_final_symlink(path: &Path) -> io::Result<Path
     }
 }
 
-fn mountinfo_contains_mount_point(mountinfo: &str, path: &Path) -> bool {
-    mountinfo.lines().any(|line| {
-        let Some(encoded_mount_point) = line.split_whitespace().nth(4) else {
-            return false;
-        };
-        decode_mountinfo_path(encoded_mount_point) == path
-    })
+fn mount_points_from_mountinfo(mountinfo: &str) -> HashSet<PathBuf> {
+    mountinfo
+        .lines()
+        .filter_map(mount_point_from_mountinfo_line)
+        .collect()
+}
+
+fn mount_point_from_mountinfo_line(line: &str) -> Option<PathBuf> {
+    let encoded_mount_point = line.split_whitespace().nth(4)?;
+    Some(decode_mountinfo_path(encoded_mount_point))
 }
 
 fn decode_mountinfo_path(encoded: &str) -> PathBuf {
@@ -214,6 +264,7 @@ fn is_octal_digit(byte: u8) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
     use std::ffi::OsStr;
 
     fn disable_system_log() {
@@ -222,6 +273,13 @@ mod tests {
 
     fn path_string(path: &Path) -> String {
         path.to_string_lossy().into_owned()
+    }
+
+    fn mountinfo_line(path: &Path) -> String {
+        format!(
+            "36 25 0:32 / {} rw,relatime - ext4 /dev/vdb rw\n",
+            path.display()
+        )
     }
 
     #[test]
@@ -257,6 +315,89 @@ mod tests {
         assert!(child.join("skill.md").exists());
         // Stale file at parent level removed
         assert!(!parent.join("CLAUDE.md").exists());
+    }
+
+    #[test]
+    fn cleanup_mountinfo_detector_loads_mountinfo_once_for_multiple_paths() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first");
+        let second = dir.path().join("second");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        fs::write(first.join("stale.txt"), "old").unwrap();
+        fs::write(second.join("stale.txt"), "old").unwrap();
+
+        let mountinfo = format!("{}{}", mountinfo_line(&first), mountinfo_line(&second));
+        let load_count = Cell::new(0);
+
+        cleanup_stale_paths_with_mountinfo_loader(
+            &[path_string(&first), path_string(&second)],
+            &[],
+            || {
+                load_count.set(load_count.get() + 1);
+                Ok(mountinfo.clone())
+            },
+        );
+
+        assert_eq!(load_count.get(), 1);
+        assert!(first.exists());
+        assert!(second.exists());
+        assert!(!first.join("stale.txt").exists());
+        assert!(!second.join("stale.txt").exists());
+    }
+
+    #[test]
+    fn cleanup_preserved_children_do_not_load_mountinfo() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("workspace");
+        let child = parent.join("cache");
+        fs::create_dir_all(&child).unwrap();
+        fs::write(parent.join("stale.txt"), "old").unwrap();
+        fs::write(child.join("keep.txt"), "keep").unwrap();
+        let load_count = Cell::new(0);
+
+        cleanup_stale_paths_with_mountinfo_loader(
+            &[path_string(&parent)],
+            &[path_string(&child)],
+            || {
+                load_count.set(load_count.get() + 1);
+                Ok(String::new())
+            },
+        );
+
+        assert_eq!(load_count.get(), 0);
+        assert!(parent.exists());
+        assert!(child.join("keep.txt").exists());
+        assert!(!parent.join("stale.txt").exists());
+    }
+
+    #[test]
+    fn cleanup_mountinfo_read_failure_is_cached_for_pass() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first");
+        let second = dir.path().join("second");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        let load_count = Cell::new(0);
+
+        cleanup_stale_paths_with_mountinfo_loader(
+            &[path_string(&first), path_string(&second)],
+            &[],
+            || {
+                load_count.set(load_count.get() + 1);
+                Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "mountinfo unavailable",
+                ))
+            },
+        );
+
+        assert_eq!(load_count.get(), 1);
+        assert!(!first.exists());
+        assert!(!second.exists());
     }
 
     #[test]
@@ -434,10 +575,7 @@ mod tests {
 37 25 0:33 / /home/user rw,relatime - ext4 /dev/root rw
 ";
 
-        assert!(mountinfo_contains_mount_point(
-            mountinfo,
-            Path::new("/home/user/workspace"),
-        ));
+        assert!(mount_points_from_mountinfo(mountinfo).contains(Path::new("/home/user/workspace")));
     }
 
     #[test]
@@ -447,29 +585,26 @@ mod tests {
 37 25 0:33 / /home/user rw,relatime - ext4 /dev/root rw
 ";
 
-        assert!(!mountinfo_contains_mount_point(
-            mountinfo,
-            Path::new("/home/user/workspace"),
-        ));
+        assert!(
+            !mount_points_from_mountinfo(mountinfo).contains(Path::new("/home/user/workspace"))
+        );
     }
 
     #[test]
     fn mountinfo_decodes_escaped_mount_point_path() {
         let mountinfo = r"36 25 0:32 / /home/user/work\040space rw,relatime - ext4 /dev/vdb rw";
 
-        assert!(mountinfo_contains_mount_point(
-            mountinfo,
-            Path::new("/home/user/work space"),
-        ));
+        assert!(
+            mount_points_from_mountinfo(mountinfo).contains(Path::new("/home/user/work space"))
+        );
     }
 
     #[test]
     fn mountinfo_returns_false_for_non_mount_path() {
         let mountinfo = "36 25 0:32 / /home/user rw,relatime - ext4 /dev/root rw";
 
-        assert!(!mountinfo_contains_mount_point(
-            mountinfo,
-            Path::new("/home/user/workspace"),
-        ));
+        assert!(
+            !mount_points_from_mountinfo(mountinfo).contains(Path::new("/home/user/workspace"))
+        );
     }
 }
