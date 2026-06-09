@@ -42,12 +42,17 @@ _forward_request_executor_state: tuple[int, ThreadPoolExecutor] | None = None
 
 def reset_forward_request_state_for_tests() -> None:
     """Reset forwarder worker state between tests."""
+    shutdown_forward_request_executor(wait=True)
+
+
+def shutdown_forward_request_executor(*, wait: bool) -> None:
+    """Shut down auth.base forwarding workers."""
     global _forward_request_executor_state
 
     state = _forward_request_executor_state
     _forward_request_executor_state = None
     if state is not None:
-        state[1].shutdown(wait=True, cancel_futures=True)
+        state[1].shutdown(wait=wait, cancel_futures=True)
 
 
 class ForwardedResponseTooLargeError(Exception):

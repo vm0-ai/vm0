@@ -30,14 +30,17 @@ from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports ---
 #
-# Usage/body_utils/matching/registry/response_streaming are imported by module
+# auth_base_forwarder/body_utils/matching/registry/response_streaming/usage
+# are imported by module
 # (not selective `from X import ...`)
 # so that:
-#   1. Cross-module calls read as ``usage.X(...)`` / ``body_utils.X(...)`` /
-#      ``matching.X(...)`` / ``registry.X(...)`` / ``response_streaming.X(...)``,
+#   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
+#      ``body_utils.X(...)`` / ``matching.X(...)`` / ``registry.X(...)`` /
+#      ``response_streaming.X(...)`` / ``usage.X(...)``,
 #      making the module boundary visible at call sites.
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
+import auth_base_forwarder
 import body_utils
 import flow_metadata_keys as metadata_keys
 import matching
@@ -1090,13 +1093,15 @@ def error(flow: http.HTTPFlow) -> None:
 
 
 def done():
-    """Flush pending usage reports before mitmproxy exits.
+    """Flush pending usage reports and forwarding workers before mitmproxy exits.
 
     Runner-triggered flush workers and shutdown flush share
     ``_usage_flush_signal_lock``. Waiting here keeps shutdown from closing the
     executor while a SIGUSR1 worker is still converting buffered usage into
     webhook reports. After that, ``shutdown(wait=True)`` drains submitted
-    webhook futures during graceful stop.
+    webhook futures during graceful stop. Auth.base forwarding does not need
+    to finish queued work during shutdown, so its executor cancels queued
+    futures without waiting for slow upstream responses.
     """
     try:
         # Wait for any in-flight runner-triggered flush before closing the
@@ -1107,7 +1112,10 @@ def done():
         try:
             usage.webhook.usage_executor.shutdown(wait=True)
         finally:
-            shutdown_log_writer()
+            try:
+                auth_base_forwarder.shutdown_forward_request_executor(wait=False)
+            finally:
+                shutdown_log_writer()
 
 
 # ============================================================================
