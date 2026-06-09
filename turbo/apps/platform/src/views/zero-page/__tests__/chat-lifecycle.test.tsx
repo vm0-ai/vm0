@@ -40,6 +40,7 @@ const SCHEDULE_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
 const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
 const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
 const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
+const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
@@ -279,6 +280,52 @@ describe("chat lifecycle", () => {
     });
     await waitFor(() => {
       expect(screen.getByText("Burst 119")).toBeInTheDocument();
+    });
+  });
+
+  it("loads older chat history from the thread control", async () => {
+    const olderReply = "Earlier launch notes from last week.";
+
+    mockChatLifecycle(context, {
+      threadId: HISTORY_THREAD_ID,
+      threadTitle: "History review",
+      historyMessages: [
+        {
+          role: "assistant",
+          content: olderReply,
+          runId: undefined,
+          createdAt: "2026-06-02T10:00:00Z",
+        },
+      ],
+      chatMessages: [
+        {
+          role: "user",
+          content: "Continue the launch review",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Current launch risks are ready.",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${HISTORY_THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current launch risks are ready."),
+      ).toBeInTheDocument();
+      expect(buttonByText("Load history")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(olderReply)).not.toBeInTheDocument();
+
+    click(buttonByText("Load history"));
+
+    await waitFor(() => {
+      expect(screen.getByText(olderReply)).toBeInTheDocument();
+      expect(queryButtonByText("Load history")).not.toBeInTheDocument();
     });
   });
 
