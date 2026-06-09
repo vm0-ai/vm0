@@ -18,6 +18,12 @@ _UNSUPPORTED_S3_EXPRESS_SIGNING_NAME = "s3express"
 _STREAMING_PAYLOAD_PREFIX = "STREAMING-"
 _CREDENTIAL_SCOPE_PARTS = 5
 _AUTH_PARAM_RE = re.compile(r"([A-Za-z]+)=([^,]+)")
+_SCOPE_DATE_RE = re.compile(r"^\d{8}$")
+_SCOPE_REGION_RE = re.compile(r"^(?:[A-Za-z0-9._-]+|\*)$")
+_SCOPE_SERVICE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_ACCESS_KEY_ID_RE = re.compile(r"^[A-Za-z0-9]+$")
+_ASCII_CONTROL_MAX = 0x1F
+_ASCII_DELETE = 0x7F
 
 
 class AwsSigV4SigningError(Exception):
@@ -62,11 +68,14 @@ def sign_request(
     credentials: AwsSigV4Credentials,
 ) -> tuple[str, list[tuple[str, str]]]:
     """Return a URL/header pair re-signed with real AWS credentials."""
+    _validate_credentials(credentials)
     context = _classify_request(url, headers)
     if context.algorithm == _ASYMMETRIC_ALGORITHM:
         raise AwsSigV4SigningError("SigV4A is not supported by this runner")
     if context.algorithm != _HMAC_ALGORITHM:
         raise AwsSigV4SigningError("Unsupported AWS signing algorithm")
+    if context.scope.region == "*":
+        raise AwsSigV4SigningError("Wildcard AWS signing region requires SigV4A")
     if context.scope.service == _UNSUPPORTED_S3_EXPRESS_SIGNING_NAME:
         raise AwsSigV4SigningError("S3 Express signing is not supported by this runner")
 
@@ -97,10 +106,7 @@ def _classify_request(
     headers: list[tuple[str, str]],
 ) -> _SigningContext:
     auth_header = _first_header(headers, "authorization")
-    query_pairs = urllib.parse.parse_qsl(
-        urllib.parse.urlsplit(url).query,
-        keep_blank_values=True,
-    )
+    query_pairs = _parse_query_pairs(urllib.parse.urlsplit(url).query)
     query_algorithm = _first_query_value(query_pairs, "X-Amz-Algorithm")
     if auth_header and query_algorithm:
         raise AwsSigV4SigningError("Ambiguous AWS auth location")
@@ -175,6 +181,12 @@ def _parse_credential_scope(credential: str) -> _CredentialScope:
     service = parts[3]
     if not date or not region or not service:
         raise AwsSigV4SigningError("Incomplete AWS credential scope")
+    if (
+        not _SCOPE_DATE_RE.fullmatch(date)
+        or not _SCOPE_REGION_RE.fullmatch(region)
+        or not _SCOPE_SERVICE_RE.fullmatch(service)
+    ):
+        raise AwsSigV4SigningError("Malformed AWS credential scope")
     return _CredentialScope(date=date, region=region, service=service)
 
 
@@ -324,7 +336,7 @@ def _canonical_uri(path: str, *, is_s3: bool) -> str:
 
 
 def _canonical_query_string(query: str) -> str:
-    pairs = urllib.parse.parse_qsl(query, keep_blank_values=True)
+    pairs = _parse_query_pairs(query)
     encoded = [(_aws_quote(key), _aws_quote(value)) for key, value in pairs]
     encoded.sort()
     return "&".join(f"{key}={value}" for key, value in encoded)
@@ -418,7 +430,7 @@ def _replace_query_signing_params(
     parts = urllib.parse.urlsplit(url)
     filtered = [
         (key, value)
-        for key, value in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+        for key, value in _parse_query_pairs(parts.query)
         if key
         not in {
             "X-Amz-Algorithm",
@@ -456,6 +468,32 @@ def _encode_query_pairs(pairs: list[tuple[str, str]]) -> str:
 
 def _aws_quote(value: str) -> str:
     return urllib.parse.quote(value, safe="-_.~")
+
+
+def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
+    if not query:
+        return []
+
+    pairs: list[tuple[str, str]] = []
+    for raw_pair in query.split("&"):
+        if not raw_pair:
+            continue
+        raw_key, _separator, raw_value = raw_pair.partition("=")
+        pairs.append((urllib.parse.unquote(raw_key), urllib.parse.unquote(raw_value)))
+    return pairs
+
+
+def _validate_credentials(credentials: AwsSigV4Credentials) -> None:
+    if not _ACCESS_KEY_ID_RE.fullmatch(credentials.access_key_id):
+        raise AwsSigV4SigningError("Invalid AWS access key ID")
+    if _has_ascii_control(credentials.secret_access_key):
+        raise AwsSigV4SigningError("Invalid AWS secret access key")
+    if credentials.session_token is not None and _has_ascii_control(credentials.session_token):
+        raise AwsSigV4SigningError("Invalid AWS session token")
+
+
+def _has_ascii_control(value: str) -> bool:
+    return any(ord(char) <= _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE for char in value)
 
 
 def _first_header(headers: list[tuple[str, str]], name: str) -> str | None:
