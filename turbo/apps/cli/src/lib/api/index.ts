@@ -184,6 +184,14 @@ export {
   resolveZeroAutomationByAgent,
 } from "./domains/zero-automations";
 
+// Domain modules - Webhook Automations
+export {
+  createWebhookAutomation,
+  listWebhookAutomations,
+  deleteWebhookAutomation,
+  type WebhookAutomationResponse,
+} from "./domains/webhook-automations";
+
 // Domain modules - Zero Runs
 export { getZeroRunAgentEvents } from "./domains/zero-runs";
 
