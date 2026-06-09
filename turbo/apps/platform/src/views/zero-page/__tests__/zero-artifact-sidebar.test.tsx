@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   chatThreadByIdContract,
+  chatThreadArtifactsContract,
   chatThreadMessagesContract,
   chatThreadsContract,
+  type ChatThreadArtifactFile,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
@@ -18,9 +20,11 @@ const THREAD_ID = "b0000000-0000-4000-a000-000000000040";
 const THREAD_PATH = `/chats/${THREAD_ID}`;
 
 function setupChatThread({
+  artifactFiles,
   content,
   path = THREAD_PATH,
 }: {
+  artifactFiles?: ChatThreadArtifactFile[];
   content: string;
   path?: string;
 }): void {
@@ -93,8 +97,27 @@ function setupChatThread({
       totalCount: 0,
     });
   });
+  if (artifactFiles) {
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [{ runId: "run-artifact", files: artifactFiles }],
+      });
+    });
+  }
 
   detachedSetupPage({ context, path });
+}
+
+function artifactFile(url: string): ChatThreadArtifactFile {
+  return {
+    id: "artifact-release-notes",
+    filename: "release-notes.md",
+    contentType: "text/markdown",
+    size: 42,
+    url,
+    createdAt: "2026-03-10T00:00:01Z",
+    googleDriveSync: { status: "not_synced" },
+  };
 }
 
 describe("zero artifact sidebar", () => {
@@ -170,6 +193,41 @@ describe("zero artifact sidebar", () => {
     await user.click(screen.getByTestId("artifact-sidebar-image-reset-zoom"));
     await waitFor(() => {
       expect(zoomLevel).toHaveTextContent("100%");
+    });
+  });
+
+  it("shares an artifact and exposes download destinations from the sidebar", async () => {
+    const user = userEvent.setup({ delay: null });
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/release-notes.md";
+    context.mocks.browser.clipboardWriteText();
+    context.mocks.data.connectors([]);
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Release notes\n\nThe artifact is ready.", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    setupChatThread({
+      artifactFiles: [artifactFile(markdownUrl)],
+      content: `[Release notes](${markdownUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(markdownUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByText("The artifact is ready.")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Share artifact"));
+    await waitFor(() => {
+      expect(screen.getByText("Link copied")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Download artifact"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Download")).toBeInTheDocument();
+      expect(screen.getByText("Connect Google Drive")).toBeInTheDocument();
     });
   });
 });
