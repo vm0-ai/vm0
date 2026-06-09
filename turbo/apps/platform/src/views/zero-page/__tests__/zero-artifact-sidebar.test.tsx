@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
+import JSZip from "jszip";
 
 import {
   chatThreadByIdContract,
@@ -28,6 +29,19 @@ const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000040";
 const THREAD_PATH = `/chats/${THREAD_ID}`;
+const CONTENT_TYPES_NS =
+  "http://schemas.openxmlformats.org/package/2006/content-types";
+const RELATIONSHIPS_NS =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
+const OFFICE_RELATIONSHIPS_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PRESENTATION_NS =
+  "http://schemas.openxmlformats.org/presentationml/2006/main";
+const PRESENTATION_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml";
+const SLIDE_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
+const SLIDE_REL_TYPE = `${OFFICE_RELATIONSHIPS_NS}/slide`;
 
 function setupChatThread({
   artifactFiles,
@@ -179,6 +193,111 @@ function presentationHtml(): string {
     </section>
   </body>
 </html>`;
+}
+
+function presentationPptxBlob(): Promise<Blob> {
+  const zip = new JSZip();
+  zip.file(
+    "[Content_Types].xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="${CONTENT_TYPES_NS}">
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="${PRESENTATION_CONTENT_TYPE}"/>
+  <Override PartName="/ppt/slides/slide1.xml" ContentType="${SLIDE_CONTENT_TYPE}"/>
+  <Override PartName="/ppt/slides/slide2.xml" ContentType="${SLIDE_CONTENT_TYPE}"/>
+</Types>`,
+  );
+  zip.file(
+    "ppt/presentation.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:p="${PRESENTATION_NS}" xmlns:r="${OFFICE_RELATIONSHIPS_NS}">
+  <p:sldIdLst>
+    <p:sldId id="256" r:id="rId1"/>
+    <p:sldId id="257" r:id="rId2"/>
+  </p:sldIdLst>
+</p:presentation>`,
+  );
+  zip.file(
+    "ppt/_rels/presentation.xml.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="${RELATIONSHIPS_NS}">
+  <Relationship Id="rId1" Type="${SLIDE_REL_TYPE}" Target="slides/slide1.xml"/>
+  <Relationship Id="rId2" Type="${SLIDE_REL_TYPE}" Target="slides/slide2.xml"/>
+</Relationships>`,
+  );
+  zip.file(
+    "ppt/slides/_rels/slide1.xml.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${RELATIONSHIPS_NS}"/>`,
+  );
+  zip.file(
+    "ppt/slides/_rels/slide2.xml.rels",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${RELATIONSHIPS_NS}"/>`,
+  );
+  return zip.generateAsync({ type: "blob" });
+}
+
+function captureDownloads(signal: AbortSignal): string[] {
+  const downloads: string[] = [];
+  const onClick = (event: MouseEvent) => {
+    if (event.target instanceof HTMLAnchorElement && event.target.download) {
+      event.preventDefault();
+      downloads.push(event.target.download);
+    }
+  };
+  document.addEventListener("click", onClick, true);
+  signal.addEventListener(
+    "abort",
+    () => {
+      document.removeEventListener("click", onClick, true);
+    },
+    { once: true },
+  );
+  return downloads;
+}
+
+function completePresentationPptxExport(
+  frame: HTMLIFrameElement,
+  blob: Blob,
+): void {
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      data: {
+        blob,
+        status: "success",
+        type: "vm0-presentation-pptx-export",
+      },
+      source: frame.contentWindow,
+    }),
+  );
+}
+
+function setupPresentationArtifactThread(presentationUrl: string): void {
+  context.mocks.http.get(presentationUrl, () => {
+    return new Response(presentationHtml(), {
+      headers: { "Content-Type": "text/html" },
+    });
+  });
+  context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+    return new Response(presentationHtml(), {
+      headers: { "Content-Type": "text/html" },
+    });
+  });
+  setupChatThread({
+    artifactFiles: [
+      artifactFile(presentationUrl, {
+        id: "artifact-quarterly-roadmap",
+        filename: "quarterly-roadmap.html",
+        contentType: "text/html",
+        artifactKind: "presentation-html",
+        size: 1024,
+      }),
+    ],
+    content: `[Quarterly roadmap](${presentationUrl})`,
+    featureSwitches: {
+      [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
+    },
+    path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
+  });
 }
 
 function getArtifactTab(container: HTMLElement, label: string): HTMLElement {
@@ -407,18 +526,41 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("downloads a presentation artifact as PPTX from the sidebar", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
+    const downloads = captureDownloads(context.signal);
+    setupPresentationArtifactThread(presentationUrl);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Download (.pptx)")).toBeInTheDocument();
+    });
+    click(menuItemByText("Download (.pptx)"));
+
+    const exportFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation PPTX export"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
+
+    await waitFor(() => {
+      expect(downloads).toContain("quarterly-roadmap.pptx");
+      expect(
+        document.querySelector('iframe[title="Presentation PPTX export"]'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("opens a presentation artifact in the editor and saves speaker notes on close", async () => {
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
-    context.mocks.http.get(presentationUrl, () => {
-      return new Response(presentationHtml(), {
-        headers: { "Content-Type": "text/html" },
-      });
-    });
-    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
-      return new Response(presentationHtml(), {
-        headers: { "Content-Type": "text/html" },
-      });
-    });
     context.mocks.api(
       zeroHostContract.redeployPresentationHtml,
       ({ respond }) => {
@@ -431,22 +573,7 @@ describe("zero artifact sidebar", () => {
         });
       },
     );
-    setupChatThread({
-      artifactFiles: [
-        artifactFile(presentationUrl, {
-          id: "artifact-quarterly-roadmap",
-          filename: "quarterly-roadmap.html",
-          contentType: "text/html",
-          artifactKind: "presentation-html",
-          size: 1024,
-        }),
-      ],
-      content: `[Quarterly roadmap](${presentationUrl})`,
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
-      },
-      path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
-    });
+    setupPresentationArtifactThread(presentationUrl);
 
     await waitFor(() => {
       expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
