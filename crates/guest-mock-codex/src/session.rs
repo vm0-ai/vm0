@@ -2,13 +2,15 @@ use chrono::NaiveDate;
 use serde_json::Value;
 use std::ffi::{OsStr, OsString};
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use uuid::Uuid;
 
 #[cfg(unix)]
 use std::ffi::CString;
+#[cfg(unix)]
+use std::io::Read;
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd};
 #[cfg(unix)]
