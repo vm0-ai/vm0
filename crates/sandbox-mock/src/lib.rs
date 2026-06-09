@@ -2101,6 +2101,7 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"valid log\n");
         std::fs::remove_file(&path).unwrap();
 
+        sandbox.push_copy_file_result(Ok(b"opts ok\n".to_vec()));
         let err = sandbox
             .copy_file(
                 "/tmp/system.log",
@@ -2140,6 +2141,22 @@ mod tests {
             "timeout must be positive",
         );
         assert!(!path.exists());
+
+        let result = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.bytes_copied, 8);
+        assert_eq!(std::fs::read(&path).unwrap(), b"opts ok\n");
+        std::fs::remove_file(&path).unwrap();
 
         sandbox.push_copy_file_result(Ok(b"host ok\n".to_vec()));
         for invalid_host_path in ["", ".", "/tmp/", "/tmp/.", "/tmp/bad\0host.log"] {
