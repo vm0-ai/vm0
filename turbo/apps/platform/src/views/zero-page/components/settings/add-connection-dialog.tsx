@@ -795,13 +795,13 @@ function ExternalCodePendingContent({
   const connectorLabel = CONNECTOR_TYPES[type].label;
   return (
     <div className="flex flex-col gap-3">
-      {method.connectNotice ? (
-        <ConnectorAuthMethodConnectNotice notice={method.connectNotice} />
-      ) : null}
       <p className="text-sm text-muted-foreground">
         Open {connectorLabel} sign-in, then paste the authorization code
         displayed by {connectorLabel}.
       </p>
+      {method.connectNotice ? (
+        <ConnectorAuthMethodConnectNotice notice={method.connectNotice} />
+      ) : null}
       <div className="flex items-center gap-2">
         <Button
           type="button"
