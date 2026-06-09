@@ -1405,7 +1405,7 @@ function connectorOutputTargetKey(target: ConnectorOutputTarget): string {
   return `${target.kind}:${target.name}`;
 }
 
-function validateRequiredConnectorTokenSecrets(args: {
+function validateConnectorTokenOutputRequirements(args: {
   readonly type: AuthGrantConnectorType;
   readonly outputs: ConnectorTokenOutputValues;
   readonly requiredOutputNames: readonly string[];
@@ -1534,7 +1534,7 @@ async function prepareConnectorTokenState(args: {
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<PreparedConnectorTokenState> {
-  validateRequiredConnectorTokenSecrets({
+  validateConnectorTokenOutputRequirements({
     type: args.type,
     outputs: args.outputs,
     requiredOutputNames: args.requiredOutputNames,

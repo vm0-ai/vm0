@@ -2360,6 +2360,69 @@ describe("GET /api/connectors/:type/callback", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("rejects method-specific grant responses missing required variable outputs", async () => {
+    const originalExchangeCode = testOauthApiProvider.grant.exchangeCode;
+    const malformedResult = {
+      ...dynamicTestOAuthApiExchangeResult(),
+      outputs: {
+        initialAccessToken: "dynamic-access-token",
+        initialRefreshToken: "dynamic-refresh-token",
+      },
+    };
+    testOauthApiProvider.grant.exchangeCode = () => {
+      return Promise.resolve(
+        malformedResult as DynamicTestOAuthApiExchangeResult,
+      );
+    };
+    restoreDynamicTestOAuthExchange = () => {
+      testOauthApiProvider.grant.exchangeCode = originalExchangeCode;
+    };
+
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      authMethod: "api",
+      userId,
+      orgId,
+      state: "state-123",
+    });
+
+    const response = await requestCallback({
+      type: "test-oauth",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expectConnectorErrorRedirect(response, {
+      type: "test-oauth",
+      message: "OAuth authorization failed. Please try again.",
+    });
+    await expect(
+      findConnector({
+        orgId,
+        userId,
+        type: "test-oauth",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_API_ACCESS_TOKEN",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findVariable({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_API_TENANT_ID",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("deletes legacy manual grant rows only for the stored auth method", async () => {
     restoreTestOauthManualGrantAuthMethods =
       configureTestOauthManualGrantAuthMethods();
