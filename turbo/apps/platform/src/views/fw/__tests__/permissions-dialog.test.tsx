@@ -245,7 +245,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
 
-    expect(queryButtonByText("Reset")).toBeUndefined();
+    expect(queryButtonByText("Restore")).toBeUndefined();
   });
 
   it("disables connector reset when there is no persisted or draft state to reset", async () => {
@@ -257,7 +257,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     });
     await openPermissionsDrawer("Notion");
 
-    expect(getButtonByText("Reset")).toBeDisabled();
+    expect(getButtonByText("Restore")).toBeDisabled();
     expect(screen.getByText("Apply")).toBeDisabled();
   });
 
@@ -292,7 +292,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     );
     expect(screen.getByText("Apply")).toBeDisabled();
 
-    click(getButtonByText("Reset"));
+    click(getButtonByText("Restore"));
 
     await waitFor(() => {
       expect(screen.getByText("Apply")).toBeEnabled();
@@ -339,7 +339,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
       "true",
     );
 
-    click(getButtonByText("Reset"));
+    click(getButtonByText("Restore"));
     await waitFor(() => {
       expect(getPolicyButton(row, "Allow")).toHaveAttribute(
         "aria-pressed",
@@ -373,7 +373,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     });
     await openPermissionsDrawer("Notion");
 
-    click(getButtonByText("Reset"));
+    click(getButtonByText("Restore"));
     click(screen.getByText("Cancel"));
     await waitFor(() => {
       expect(
@@ -413,7 +413,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
       expect(screen.getByText("< 1 hour")).toBeInTheDocument();
     });
 
-    click(getButtonByText("Reset"));
+    click(getButtonByText("Restore"));
 
     await waitFor(() => {
       expect(screen.queryByText("< 1 hour")).not.toBeInTheDocument();
@@ -443,7 +443,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     });
     await openPermissionsDrawer("Notion");
 
-    click(getButtonByText("Reset"));
+    click(getButtonByText("Restore"));
     await waitFor(() => {
       expect(
         getPolicyButton(getPermissionRow("insert_comments"), "Allow"),
@@ -469,7 +469,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     });
     await openPermissionsDrawer("Notion");
 
-    click(getButtonByText("Reset"));
+    click(getButtonByText("Restore"));
     await waitFor(() => {
       expect(
         getPolicyButton(getPermissionRow("insert_comments"), "Allow"),
@@ -828,7 +828,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
       "true",
     );
 
-    click(getButtonByText("Reset"));
+    click(getButtonByText("Restore"));
 
     await waitFor(() => {
       expect(getPolicyButton(adminRow, "Deny")).toHaveAttribute(

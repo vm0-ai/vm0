@@ -1194,7 +1194,7 @@ function PermissionsDrawerFooter({
             onClick={onReset}
             disabled={saving || !resetAvailable}
           >
-            Reset
+            Restore
           </Button>
         )}
       </div>
