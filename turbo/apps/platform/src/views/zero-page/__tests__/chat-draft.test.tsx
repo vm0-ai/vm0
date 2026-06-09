@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -13,7 +13,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -81,6 +81,21 @@ function mockThreadDetails(): void {
 
 function textarea(): HTMLTextAreaElement {
   return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+}
+
+function chatClipboardHtml(payload: {
+  text: string;
+  attachments: {
+    id: string | null;
+    url: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }[];
+}): string {
+  return `<div data-vm0-chat-message="${encodeURIComponent(
+    JSON.stringify(payload),
+  )}"></div>`;
 }
 
 async function navigateToThread(threadId: string): Promise<void> {
@@ -233,6 +248,50 @@ describe("chat drafts", () => {
       ).toBeInTheDocument();
       expect(screen.queryByTitle("failed.txt")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Remove ok.txt")).toBeInTheDocument();
+    });
+  });
+
+  it("restores copied chat text and attachments from the clipboard", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-copied-attachment";
+    const pastedText = "Please use the copied brief";
+    const filename = "product-brief.md";
+
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const input = await waitFor(() => {
+      return textarea();
+    });
+    await user.click(input);
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        getData: (type: string) => {
+          if (type === "text/html") {
+            return chatClipboardHtml({
+              text: pastedText,
+              attachments: [
+                {
+                  id: "copied-brief",
+                  url: "https://cdn.vm7.io/artifacts/test/copied-brief/product-brief.md",
+                  filename,
+                  contentType: "text/markdown",
+                  size: 42,
+                },
+              ],
+            });
+          }
+          return "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(input).toHaveValue(pastedText);
+      expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
     });
   });
 });
