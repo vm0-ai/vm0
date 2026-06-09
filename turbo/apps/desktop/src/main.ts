@@ -43,6 +43,7 @@ import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import { installDesktopAutoUpdates } from "./desktop-auto-updates";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
+import { installDesktopTray, type DesktopTrayController } from "./desktop-tray";
 import { DesktopAuthSession } from "./desktop-auth-session";
 import {
   installDesktopAuthIpc,
@@ -88,16 +89,39 @@ const localRendererUrl = desktopRendererUrl();
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
 const COMPUTER_USE_QUIT_STOP_TIMEOUT_MS = 1_000;
+const MAC_ACCESSIBILITY_SETTINGS_URL =
+  "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+const MAC_SCREEN_RECORDING_SETTINGS_URL =
+  "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
 let mainWindow: BrowserWindow | null = null;
 let appIsQuitting = false;
 let computerUseQuitStopStarted = false;
 let computerUseNativeBackendDisposed = false;
+let desktopTray: DesktopTrayController | null = null;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
 let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
 const computerUseNativeBackend = createComputerUseNativeBackend();
 setComputerUsePermissionNativeBackend(computerUseNativeBackend);
+
+function refreshDesktopTray(): void {
+  desktopTray?.refresh();
+}
+
+function refreshDesktopTrayAuth(): void {
+  desktopTray?.refreshAuth();
+}
+
+function notifyComputerUseChanged(): void {
+  notifyDesktopComputerUseChanged();
+  refreshDesktopTray();
+}
+
+function notifyAuthChanged(): void {
+  notifyDesktopAuthChanged();
+  refreshDesktopTrayAuth();
+}
 
 async function runAuthWindow(request: {
   readonly url: string;
@@ -139,7 +163,7 @@ function getAuthSession(): DesktopAuthSession {
     consumeUrl: (code) => buildDesktopAuthConsumeUrl(config.webUrl, code),
     selectOrgUrl: desktopAuthSelectOrgUrl,
     runAuthWindow,
-    onChange: notifyDesktopAuthChanged,
+    onChange: notifyAuthChanged,
     onAuthCompleted: maybeStartComputerUseAfterAuth,
   });
 
@@ -227,7 +251,7 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
     }
     computerUseBlockedHostState =
       startupGate.status === "blocked" ? startupGate.host : null;
-    notifyDesktopComputerUseChanged();
+    notifyComputerUseChanged();
     return getComputerUseBridgeState();
   }
 
@@ -254,7 +278,7 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
           snapshotStore: computerUseSnapshotStore,
         });
       },
-      onChange: notifyDesktopComputerUseChanged,
+      onChange: notifyComputerUseChanged,
     });
   }
   await computerUseRuntime.start();
@@ -263,13 +287,13 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
 
 async function requestComputerUsePermission(): Promise<DesktopComputerUseState> {
   await requestComputerUseAccessibilityPermission();
-  notifyDesktopComputerUseChanged();
+  notifyComputerUseChanged();
   return getComputerUseBridgeState();
 }
 
 async function requestComputerUseScreenRecording(): Promise<DesktopComputerUseState> {
   await requestComputerUseScreenRecordingPermission();
-  notifyDesktopComputerUseChanged();
+  notifyComputerUseChanged();
   return getComputerUseBridgeState();
 }
 
@@ -278,7 +302,7 @@ async function refreshComputerUsePermissions(): Promise<DesktopComputerUseState>
   if (!hasRequiredComputerUsePermissions(permissions)) {
     computerUseBlockedHostState = null;
   }
-  notifyDesktopComputerUseChanged();
+  notifyComputerUseChanged();
   return getComputerUseBridgeState();
 }
 
@@ -301,7 +325,7 @@ function refreshComputerUsePermissionsForState(): void {
       console.warn("Unable to refresh native Computer Use permissions", error);
     })
     .finally(() => {
-      notifyDesktopComputerUseChanged();
+      notifyComputerUseChanged();
     });
 }
 
@@ -351,6 +375,37 @@ function installDesktopAuth(): void {
       allowedAppOrigins: config.allowedAppOrigins,
     },
   );
+}
+
+function installTray(): void {
+  desktopTray = installDesktopTray({
+    displayName: config.identity.displayName,
+    iconPath: appIconPath(),
+    getComputerUseState: getComputerUseBridgeState,
+    getAuthState: () => getAuthSession().getAuthState(),
+    showMainWindow: async () => {
+      await createMainWindow();
+    },
+    startComputerUse: async () => {
+      await startComputerUseRuntime();
+    },
+    refreshStatus: async () => {
+      await refreshComputerUsePermissions();
+    },
+    openSignIn: () => {
+      openExternal(desktopAuthStartUrl);
+    },
+    switchWorkspace: () => getAuthSession().selectOrganization(),
+    openAccessibilitySettings: () => {
+      openExternal(MAC_ACCESSIBILITY_SETTINGS_URL);
+    },
+    openScreenRecordingSettings: () => {
+      openExternal(MAC_SCREEN_RECORDING_SETTINGS_URL);
+    },
+    quit: () => {
+      app.quit();
+    },
+  });
 }
 
 function applyApplicationMenu(): void {
@@ -661,10 +716,10 @@ async function maybeStartComputerUseAfterAuth(): Promise<void> {
   computerUseRuntime = null;
   computerUseBlockedHostState = null;
   await runtime?.stop();
-  notifyDesktopAuthChanged();
-  notifyDesktopComputerUseChanged();
+  notifyAuthChanged();
+  notifyComputerUseChanged();
   const permissions = await refreshComputerUsePermissionState();
-  notifyDesktopComputerUseChanged();
+  notifyComputerUseChanged();
   if (hasRequiredComputerUsePermissions(permissions)) {
     await startComputerUseRuntime();
   }
@@ -779,6 +834,7 @@ if (!hasSingleInstanceLock) {
     refreshComputerUsePermissionsForState();
     const desktopAuthSession = getAuthSession();
     installDesktopAuth();
+    installTray();
     queueDesktopAuthCallbackArgv(process.argv);
 
     const pendingCode = desktopAuthSession.takePendingCode();
