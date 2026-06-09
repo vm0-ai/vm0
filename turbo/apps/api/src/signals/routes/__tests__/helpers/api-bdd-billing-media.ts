@@ -623,7 +623,11 @@ export function createBillingMediaApi(context: TestContext) {
 
     async requestVoiceSpeech(
       actor: ApiTestUser | null,
-      body: { readonly text?: string; readonly voice?: string },
+      body: {
+        readonly text?: string;
+        readonly voice?: string;
+        readonly instructions?: string;
+      },
       statuses: readonly VoiceSpeechStatus[],
     ) {
       const client = setupApp({ context })(zeroVoiceIoSpeechContract);
@@ -653,6 +657,17 @@ export function createBillingMediaApi(context: TestContext) {
         readonly size?: string;
         readonly quality?: string;
         readonly background?: string;
+        readonly outputFormat?: string;
+        readonly outputCompression?: number;
+        readonly moderation?: string;
+        readonly seed?: number;
+        readonly safetyTolerance?: string;
+        readonly enhancePrompt?: boolean;
+        readonly imageUrl?: string;
+        readonly imageUrls?: readonly unknown[];
+        readonly maskImageUrl?: string;
+        readonly inputFidelity?: string;
+        readonly imagePromptStrength?: number;
       },
       statuses: readonly ImageIoStatus[],
     ) {
@@ -671,7 +686,16 @@ export function createBillingMediaApi(context: TestContext) {
         readonly aspectRatio?: string;
         readonly duration?: string;
         readonly resolution?: string;
+        readonly generateAudio?: boolean;
+        readonly negativePrompt?: string;
         readonly seed?: number;
+        readonly autoFix?: boolean;
+        readonly safetyTolerance?: string;
+        readonly imageUrls?: readonly string[];
+        readonly videoUrls?: readonly string[];
+        readonly audioUrls?: readonly string[];
+        readonly firstFrameImageUrl?: string;
+        readonly lastFrameImageUrl?: string;
       },
       statuses: readonly VideoIoStatus[],
     ) {

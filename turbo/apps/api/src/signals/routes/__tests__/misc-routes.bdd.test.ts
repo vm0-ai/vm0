@@ -1,7 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
+import { env } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-helpers";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
@@ -14,6 +15,14 @@ function testActors() {
   const admin = base.user();
   const member = base.user({ orgId: admin.orgId, orgRole: "org:member" });
   return { api, admin, member };
+}
+
+function unsubscribeToken(userId: string): string {
+  const signature = createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
+    .update(`unsubscribe:${userId}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `${userId}.${signature}`;
 }
 
 describe("MISC-01: organization logo and profile-adjacent API boundaries", () => {
@@ -118,6 +127,22 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       error: "Missing token",
     });
 
+    const missingUnsubscribePost = await api.requestEmailUnsubscribe(
+      undefined,
+      [400],
+    );
+    expect(missingUnsubscribePost.body).toStrictEqual({
+      error: "Missing token",
+    });
+
+    const invalidUnsubscribePage = await api.requestEmailUnsubscribePage(
+      "not-a-valid-token",
+      [400],
+    );
+    expect(invalidUnsubscribePage.body).toStrictEqual({
+      error: "Invalid token",
+    });
+
     const invalidUnsubscribeToken = await api.requestEmailUnsubscribe(
       "not-a-valid-token",
       [400],
@@ -125,6 +150,20 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     expect(invalidUnsubscribeToken.body).toStrictEqual({
       error: "Invalid token",
     });
+
+    const validToken = unsubscribeToken(`user_${randomUUID()}`);
+    const unsubscribePage = await api.requestEmailUnsubscribePage(
+      validToken,
+      [200],
+    );
+    expect(unsubscribePage.headers.get("content-type")).toContain("text/html");
+    if (typeof unsubscribePage.body !== "string") {
+      throw new Error("Expected unsubscribe page to return HTML");
+    }
+    expect(unsubscribePage.body).toContain("You have been unsubscribed");
+
+    const unsubscribed = await api.requestEmailUnsubscribe(validToken, [200]);
+    expect(unsubscribed.body).toStrictEqual({ unsubscribed: true });
 
     const logs = await api.listLogs(admin);
     expect(logs.body.data).toStrictEqual([]);

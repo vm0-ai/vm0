@@ -497,6 +497,59 @@ describe("CHAT-02 chat messages and visible validation", () => {
     expectApiError(retry.body);
     expect(retry.body.error.code).toBe("BAD_REQUEST");
     expect(retry.body.error.message).toBe("Client thread id is already in use");
+
+    const otherAgent = await bdd.createAgent(actor, {
+      displayName: "Client-thread mismatch branch agent",
+    });
+    const reusedClientThreadForOtherAgent = await api.requestSendMessage(
+      actor,
+      {
+        agentId: otherAgent.agentId,
+        prompt: "Reuse a client thread id for another agent",
+        clientThreadId,
+      },
+      [404],
+    );
+    expectApiError(reusedClientThreadForOtherAgent.body);
+    expect(reusedClientThreadForOtherAgent.body.error.code).toBe("NOT_FOUND");
+
+    const peer = bdd.user({ orgId: actor.orgId });
+    const ownerThread = await api.createThread(actor, {
+      agentId: agent.agentId,
+      title: "Owner-only send target",
+    });
+    const peerSendToOwnerThread = await api.requestSendMessage(
+      peer,
+      {
+        agentId: agent.agentId,
+        threadId: ownerThread.id,
+        prompt: "Post into another user's thread",
+      },
+      [404],
+    );
+    expectApiError(peerSendToOwnerThread.body);
+    expect(peerSendToOwnerThread.body.error.code).toBe("NOT_FOUND");
+
+    const modelSelected = await api.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "Persist the model selected at send time",
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.4-mini",
+        },
+      },
+      [201],
+    );
+    if (modelSelected.status !== 201) {
+      throw new Error("Expected model-selected chat send to create a thread");
+    }
+    const modelSelectedThread = await api.readThread(
+      actor,
+      modelSelected.body.threadId,
+    );
+    expect(modelSelectedThread.selectedModel).toBe("gpt-5.4-mini");
   });
 
   it("lists visible messages and rejects invalid send requests without hidden fixtures", async () => {

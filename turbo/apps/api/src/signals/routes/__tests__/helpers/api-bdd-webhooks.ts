@@ -220,8 +220,16 @@ function sandboxWebhookHeaders(args: {
 
 export function createWebhookCallbackApi(context: TestContext) {
   return {
+    disableStripeWebhookSecret(): void {
+      mockOptionalEnv("STRIPE_WEBHOOK_SECRET", undefined);
+    },
+
     configureStripeWebhookSecret(): void {
       mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
+    },
+
+    acceptNextStripeWebhookEvent(event: unknown): void {
+      context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
     },
 
     rejectNextStripeWebhookSignature(): void {
@@ -276,6 +284,10 @@ export function createWebhookCallbackApi(context: TestContext) {
 
     configureGithubWebhookSecret(): void {
       mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", "github-bdd-secret");
+    },
+
+    disableGithubWebhookSecret(): void {
+      mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", undefined);
     },
 
     configureResendWebhookSecret(): void {

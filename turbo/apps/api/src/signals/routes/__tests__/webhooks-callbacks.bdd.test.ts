@@ -11,6 +11,29 @@ const context = testContext();
 const api = createWebhookCallbackApi(context);
 
 describe("WHCB-01: third-party webhook verification boundaries", () => {
+  it("reports unconfigured third-party webhooks through public responses", async () => {
+    api.disableStripeWebhookSecret();
+    const stripe = await api.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "sig_bdd" },
+      [503],
+    );
+    expect(stripe.body).toStrictEqual({
+      error: "Stripe billing is not configured",
+    });
+
+    api.disableGithubWebhookSecret();
+    const githubBody = "{}";
+    const github = await api.requestGithubWebhook(
+      githubBody,
+      api.signedGithubWebhookHeaders(githubBody, "ping"),
+      [503],
+    );
+    expect(github.body).toStrictEqual({
+      error: "GitHub App integration is not configured",
+    });
+  });
+
   it("rejects Stripe requests with missing or invalid signatures", async () => {
     api.configureStripeWebhookSecret();
 
@@ -28,6 +51,18 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     expect(invalidSignature.body).toStrictEqual({
       error: "Invalid webhook signature",
     });
+
+    api.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_${randomUUID()}`,
+      type: "charge.succeeded",
+      data: { object: { id: `ch_bdd_${randomUUID()}` } },
+    });
+    const ignored = await api.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(ignored.body).toBe("OK");
   });
 
   it("rejects Clerk requests when webhook verification is missing or invalid", async () => {
@@ -139,6 +174,36 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       [400],
     );
     expect(invalidIssues.body).toStrictEqual({
+      error: "Invalid payload structure",
+    });
+
+    const invalidPullRequestBody = JSON.stringify({ action: "opened" });
+    const invalidPullRequest = await api.requestGithubWebhook(
+      invalidPullRequestBody,
+      api.signedGithubWebhookHeaders(invalidPullRequestBody, "pull_request"),
+      [400],
+    );
+    expect(invalidPullRequest.body).toStrictEqual({
+      error: "Invalid payload structure",
+    });
+
+    const invalidIssueCommentBody = JSON.stringify({ action: "created" });
+    const invalidIssueComment = await api.requestGithubWebhook(
+      invalidIssueCommentBody,
+      api.signedGithubWebhookHeaders(invalidIssueCommentBody, "issue_comment"),
+      [400],
+    );
+    expect(invalidIssueComment.body).toStrictEqual({
+      error: "Invalid payload structure",
+    });
+
+    const invalidInstallationBody = JSON.stringify({ action: "created" });
+    const invalidInstallation = await api.requestGithubWebhook(
+      invalidInstallationBody,
+      api.signedGithubWebhookHeaders(invalidInstallationBody, "installation"),
+      [400],
+    );
+    expect(invalidInstallation.body).toStrictEqual({
       error: "Invalid payload structure",
     });
   });
@@ -284,6 +349,21 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
     );
     expect(bounceResponse.body).toStrictEqual({ received: true });
 
+    context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
+    const complaintBody = {
+      type: "email.complained",
+      data: {
+        email_id: `email_bdd_complaint_${randomUUID()}`,
+        to: [`complaint-${randomUUID()}@example.test`],
+      },
+    };
+    const complaintResponse = await api.requestResendInboundWebhook(
+      complaintBody,
+      api.signedResendWebhookHeaders(complaintBody),
+      [200],
+    );
+    expect(complaintResponse.body).toStrictEqual({ received: true });
+
     const malformedReceived = {
       type: "email.received",
       data: { email_id: "email_bdd_missing_sender" },
@@ -294,6 +374,39 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
       [200],
     );
     expect(malformedResponse.body).toStrictEqual({ received: true });
+
+    api.disableResendApiKey();
+    const unrecognizedOrgAddress = {
+      type: "email.received",
+      data: {
+        email_id: `email_bdd_unrecognized_${randomUUID()}`,
+        to: [`bad+alias-${randomUUID()}@example.test`],
+        from: "sender@example.test",
+        subject: "Unrecognized org",
+      },
+    };
+    const unrecognizedOrgResponse = await api.requestResendInboundWebhook(
+      unrecognizedOrgAddress,
+      api.signedResendWebhookHeaders(unrecognizedOrgAddress),
+      [200],
+    );
+    expect(unrecognizedOrgResponse.body).toStrictEqual({ received: true });
+
+    const invalidReplyAddress = {
+      type: "email.received",
+      data: {
+        email_id: `email_bdd_reply_${randomUUID()}`,
+        to: [`reply+bad-token-${randomUUID()}@example.test`],
+        from: "sender@example.test",
+        subject: "Invalid reply",
+      },
+    };
+    const invalidReplyResponse = await api.requestResendInboundWebhook(
+      invalidReplyAddress,
+      api.signedResendWebhookHeaders(invalidReplyAddress),
+      [200],
+    );
+    expect(invalidReplyResponse.body).toStrictEqual({ received: true });
   });
 
   it("skips email trigger callbacks while outbound email is not configured", async () => {

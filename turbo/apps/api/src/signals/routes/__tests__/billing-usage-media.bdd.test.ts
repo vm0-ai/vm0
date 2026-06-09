@@ -451,6 +451,14 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
       "Unsupported voice: not-a-voice",
     );
 
+    const missingSpeechText = await api.requestVoiceSpeech(
+      admin,
+      { text: "   ", voice: "marin" },
+      [400],
+    );
+    expectApiError(missingSpeechText.body);
+    expect(missingSpeechText.body.error.message).toBe("text is required");
+
     api.configureGemini();
     const invalidGeminiPrompt = await api.requestGenerateImage(
       admin,
@@ -488,6 +496,190 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
       "Unsupported image model: not-a-model",
     );
 
+    const unsupportedImageSize = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        size: "42x42",
+      },
+      [400],
+    );
+    expectApiError(unsupportedImageSize.body);
+    expect(unsupportedImageSize.body.error.message).toContain(
+      "Unsupported image size",
+    );
+
+    const unsupportedImageQuality = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        quality: "best",
+      },
+      [400],
+    );
+    expectApiError(unsupportedImageQuality.body);
+    expect(unsupportedImageQuality.body.error.message).toBe(
+      "Unsupported image quality: best",
+    );
+
+    const unsupportedImageBackground = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        background: "magic",
+      },
+      [400],
+    );
+    expectApiError(unsupportedImageBackground.body);
+    expect(unsupportedImageBackground.body.error.message).toBe(
+      "Unsupported image background: magic",
+    );
+
+    const transparentGptImage2 = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        model: "gpt-image-2",
+        background: "transparent",
+      },
+      [400],
+    );
+    expectApiError(transparentGptImage2.body);
+    expect(transparentGptImage2.body.error.message).toBe(
+      "gpt-image-2 does not support transparent backgrounds",
+    );
+
+    const unsupportedImageFormat = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        outputFormat: "gif",
+      },
+      [400],
+    );
+    expectApiError(unsupportedImageFormat.body);
+    expect(unsupportedImageFormat.body.error.message).toBe(
+      "Unsupported image output format: gif",
+    );
+
+    const unsupportedImageCompression = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        outputFormat: "png",
+        outputCompression: 50,
+      },
+      [400],
+    );
+    expectApiError(unsupportedImageCompression.body);
+    expect(unsupportedImageCompression.body.error.message).toBe(
+      "outputCompression is only supported for jpeg or webp output",
+    );
+
+    const unsupportedImageModeration = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        moderation: "strict",
+      },
+      [400],
+    );
+    expectApiError(unsupportedImageModeration.body);
+    expect(unsupportedImageModeration.body.error.message).toBe(
+      "Unsupported image moderation: strict",
+    );
+
+    const unsupportedImageSeed = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        seed: 1,
+      },
+      [400],
+    );
+    expectApiError(unsupportedImageSeed.body);
+    expect(unsupportedImageSeed.body.error.message).toBe(
+      "seed is not supported for gpt-image-1",
+    );
+
+    const unsupportedImageSafetyTolerance = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        safetyTolerance: "6",
+      },
+      [400],
+    );
+    expectApiError(unsupportedImageSafetyTolerance.body);
+    expect(unsupportedImageSafetyTolerance.body.error.message).toBe(
+      "safetyTolerance is not supported for gpt-image-1",
+    );
+
+    const unsupportedImageEnhancePrompt = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        enhancePrompt: true,
+      },
+      [400],
+    );
+    expectApiError(unsupportedImageEnhancePrompt.body);
+    expect(unsupportedImageEnhancePrompt.body.error.message).toBe(
+      "enhancePrompt is not supported for gpt-image-1",
+    );
+
+    const invalidSourceImages = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        imageUrls: ["https://assets.example.test/source.png", ""],
+      },
+      [400],
+    );
+    expectApiError(invalidSourceImages.body);
+    expect(invalidSourceImages.body.error.message).toBe(
+      "imageUrls must contain non-empty strings",
+    );
+
+    const maskWithoutSource = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        maskImageUrl: "https://assets.example.test/mask.png",
+      },
+      [400],
+    );
+    expectApiError(maskWithoutSource.body);
+    expect(maskWithoutSource.body.error.message).toBe(
+      "maskImageUrl requires imageUrl",
+    );
+
+    const inputFidelityWithoutSource = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        inputFidelity: "high",
+      },
+      [400],
+    );
+    expectApiError(inputFidelityWithoutSource.body);
+    expect(inputFidelityWithoutSource.body.error.message).toBe(
+      "inputFidelity requires imageUrl",
+    );
+
+    const invalidPromptStrength = await api.requestImageIoGenerate(
+      admin,
+      {
+        prompt: "a concise billing usage chart",
+        imagePromptStrength: 2,
+      },
+      [400],
+    );
+    expectApiError(invalidPromptStrength.body);
+    expect(invalidPromptStrength.body.error.message).toBe(
+      "imagePromptStrength must be between 0 and 1",
+    );
+
     const imageIo = await api.requestImageIoGenerate(
       admin,
       { prompt: "a concise billing usage chart" },
@@ -515,6 +707,121 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     expectApiError(unsupportedVideoRatio.body);
     expect(unsupportedVideoRatio.body.error.message).toBe(
       "Unsupported video aspect ratio: 10:1",
+    );
+
+    const unsupportedVideoDuration = await api.requestVideoIoGenerate(
+      admin,
+      {
+        prompt: "animated billing usage chart",
+        duration: "99s",
+      },
+      [400],
+    );
+    expectApiError(unsupportedVideoDuration.body);
+    expect(unsupportedVideoDuration.body.error.message).toBe(
+      "Unsupported video duration: 99s",
+    );
+
+    const unsupportedVideoResolution = await api.requestVideoIoGenerate(
+      admin,
+      {
+        prompt: "animated billing usage chart",
+        resolution: "1080p",
+      },
+      [400],
+    );
+    expectApiError(unsupportedVideoResolution.body);
+    expect(unsupportedVideoResolution.body.error.message).toBe(
+      "Unsupported video resolution for dreamina-seedance-2.0-fast: 1080p",
+    );
+
+    const invalidVideoSeed = await api.requestVideoIoGenerate(
+      admin,
+      {
+        prompt: "animated billing usage chart",
+        seed: -1,
+      },
+      [400],
+    );
+    expectApiError(invalidVideoSeed.body);
+    expect(invalidVideoSeed.body.error.message).toBe(
+      "seed must be a non-negative safe integer",
+    );
+
+    const unsupportedReferenceImages = await api.requestVideoIoGenerate(
+      admin,
+      {
+        prompt: "animated billing usage chart",
+        model: "veo3.1-fast",
+        imageUrls: ["https://assets.example.test/reference.png"],
+      },
+      [400],
+    );
+    expectApiError(unsupportedReferenceImages.body);
+    expect(unsupportedReferenceImages.body.error.message).toBe(
+      "Reference images are not supported for veo3.1-fast",
+    );
+
+    const tooManyReferenceVideos = await api.requestVideoIoGenerate(
+      admin,
+      {
+        prompt: "animated billing usage chart",
+        videoUrls: [
+          "https://assets.example.test/one.mp4",
+          "https://assets.example.test/two.mp4",
+          "https://assets.example.test/three.mp4",
+          "https://assets.example.test/four.mp4",
+        ],
+      },
+      [400],
+    );
+    expectApiError(tooManyReferenceVideos.body);
+    expect(tooManyReferenceVideos.body.error.message).toBe(
+      "reference video URLs cannot exceed 3 items",
+    );
+
+    const referenceAudioWithoutVisual = await api.requestVideoIoGenerate(
+      admin,
+      {
+        prompt: "animated billing usage chart",
+        audioUrls: ["https://assets.example.test/audio.wav"],
+      },
+      [400],
+    );
+    expectApiError(referenceAudioWithoutVisual.body);
+    expect(referenceAudioWithoutVisual.body.error.message).toBe(
+      "reference audio requires at least one image or video reference",
+    );
+
+    const tooManyReferenceAudioFiles = await api.requestVideoIoGenerate(
+      admin,
+      {
+        prompt: "animated billing usage chart",
+        imageUrls: ["https://assets.example.test/reference.png"],
+        audioUrls: [
+          "https://assets.example.test/one.wav",
+          "https://assets.example.test/two.wav",
+        ],
+      },
+      [400],
+    );
+    expectApiError(tooManyReferenceAudioFiles.body);
+    expect(tooManyReferenceAudioFiles.body.error.message).toBe(
+      "reference audio URLs cannot exceed 1 item",
+    );
+
+    const unsupportedFirstFrame = await api.requestVideoIoGenerate(
+      admin,
+      {
+        prompt: "animated billing usage chart",
+        model: "veo3.1-fast",
+        firstFrameImageUrl: "https://assets.example.test/first.png",
+      },
+      [400],
+    );
+    expectApiError(unsupportedFirstFrame.body);
+    expect(unsupportedFirstFrame.body.error.message).toBe(
+      "First frame image is not supported for veo3.1-fast",
     );
 
     const videoIo = await api.requestVideoIoGenerate(
