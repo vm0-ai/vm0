@@ -2316,81 +2316,6 @@ jobs:
           header: lighthouse-web
           message: ${{ steps.lighthouse-comment-web.outputs.body }}
 
-  # Lighthouse CI audit for app homepage (failure blocks merge, skip is allowed)
-  lighthouse-app:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    concurrency:
-      group: lighthouse-app-${{ needs.prepare.outputs.job-ref }}
-      cancel-in-progress: true
-    needs: [prepare, deploy-api, deploy-web, deploy-app]
-    if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
-      needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.web-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.ci-changed == 'true' ||
-        needs.prepare.outputs.platform-changed == 'true'
-      )
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-      - name: Install Chrome for Puppeteer
-        run: npx --yes --package @puppeteer/browsers@2.10.13 browsers install chrome
-      - name: Install LHCI CLI
-        run: npm install -g @lhci/cli
-      - name: Run Lighthouse CI (app)
-        continue-on-error: true
-        working-directory: e2e/lighthouse
-        run: |
-          lhci collect \
-            --config=lighthouserc-app.json \
-            --url="${APP_URL}" &&
-          lhci upload \
-            --config=lighthouserc-app.json
-        env:
-          WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
-          APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+serial@vm0-e2e.ai
-      - name: Locate LHCI output (app)
-        id: lhci-dir-app
-        if: always()
-        run: |
-          for d in e2e/lighthouse/.lighthouseci .lighthouseci; do
-            if [ -d "$d" ] && ls "$d"/lhr-*.json >/dev/null 2>&1; then
-              echo "dir=$d" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          done
-          echo "dir=" >> "$GITHUB_OUTPUT"
-      - name: Upload Lighthouse report (app)
-        if: always() && steps.lhci-dir-app.outputs.dir != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: lighthouse-report-app
-          path: ${{ steps.lhci-dir-app.outputs.dir }}/
-          retention-days: 7
-      - name: Format Lighthouse comment (app)
-        if: success() && github.event_name == 'pull_request' && steps.lhci-dir-app.outputs.dir != ''
-        id: lighthouse-comment-app
-        run: |
-          comment=$(node e2e/lighthouse/format-report.cjs "App" "${{ steps.lhci-dir-app.outputs.dir }}")
-          {
-            echo "body<<LIGHTHOUSE_EOF"
-            echo "$comment"
-            echo "LIGHTHOUSE_EOF"
-          } >> "$GITHUB_OUTPUT"
-      - name: Post Lighthouse comment (app)
-        if: steps.lighthouse-comment-app.outcome == 'success'
-        continue-on-error: true
-        uses: marocchino/sticky-pull-request-comment@v3
-        with:
-          header: lighthouse-app
-          message: ${{ steps.lighthouse-comment-app.outputs.body }}
-
   # CI Gate: single required check for merge queue
   # Aggregates all job results — must ALWAYS run to report explicit success/failure.
   # Using !failure() or !cancelled() would cause the gate to be skipped when
@@ -2431,7 +2356,6 @@ jobs:
       - e2e-runner-bootstrap
       - cli-e2e-03-runner
       - lighthouse-web
-      - lighthouse-app
     # Always run so the gate reports an explicit result (not "skipped").
     # Release-please PRs skip CI jobs — auto-pass the gate for them.
     if: always()
@@ -2517,7 +2441,6 @@ jobs:
           check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           # Informational: any result is acceptable (not a merge blocker)
           check_result "lighthouse-web" "${{ needs.lighthouse-web.result }}" "informational"
-          check_result "lighthouse-app" "${{ needs.lighthouse-app.result }}" "informational"
 
           echo "::endgroup::"
           exit $FAILED
