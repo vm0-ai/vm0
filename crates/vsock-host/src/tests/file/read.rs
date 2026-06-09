@@ -169,7 +169,7 @@ async fn read_file_quotes_guest_path_with_single_quote() {
     let start = expect_exec_start(&mut guest).await;
     assert_eq!(
         start.command,
-        "if test -f '/tmp/session'\\''one.txt'; then cat < '/tmp/session'\\''one.txt'; else exit 66; fi"
+        "if test -f '/tmp/session'\\''one.txt'; then cat < '/tmp/session'\\''one.txt' 2>/dev/null || { test -f '/tmp/session'\\''one.txt' || exit 66; printf '%s\\n' 'failed to read file' >&2; exit 1; }; else exit 66; fi"
     );
     send_exec_result(
         &mut guest,

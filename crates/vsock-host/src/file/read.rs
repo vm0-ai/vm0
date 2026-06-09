@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use crate::{ExecCaptureRequest, FrameWriteObserver, VsockHost, exec_operation};
 
-use super::shell_quote;
+use super::read_regular_file_command;
 
 impl VsockHost {
     /// Read a small file from the guest through exec capture.
@@ -48,10 +48,7 @@ impl VsockHost {
         }
 
         const MISSING_FILE_EXIT_CODE: i32 = 66;
-        let command = format!(
-            "if test -f {path}; then cat < {path}; else exit {MISSING_FILE_EXIT_CODE}; fi",
-            path = shell_quote(path)
-        );
+        let command = read_regular_file_command(path, MISSING_FILE_EXIT_CODE);
         let result = self
             .exec_capture_with_write_observer(
                 ExecCaptureRequest {

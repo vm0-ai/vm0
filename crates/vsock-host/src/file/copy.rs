@@ -12,7 +12,7 @@ use crate::{
     ExecStreamRequest, FrameWriteObserver, VsockHost, exec_operation,
 };
 
-use super::{file_operation_error_is_terminal, shell_quote};
+use super::{file_operation_error_is_terminal, read_regular_file_command};
 
 const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
 const COPY_TEMP_FILE_MODE: u32 = 0o600;
@@ -487,10 +487,7 @@ impl VsockHost {
             write_observer,
         } = request;
         const MISSING_FILE_EXIT_CODE: i32 = 66;
-        let command = format!(
-            "if test -f {path}; then cat < {path}; else exit {MISSING_FILE_EXIT_CODE}; fi",
-            path = shell_quote(path)
-        );
+        let command = read_regular_file_command(path, MISSING_FILE_EXIT_CODE);
         let expected_exit_codes: &[i32] = if missing_ok {
             &[MISSING_FILE_EXIT_CODE]
         } else {

@@ -10,6 +10,13 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+fn read_regular_file_command(path: &str, missing_file_exit_code: i32) -> String {
+    let path = shell_quote(path);
+    format!(
+        "if test -f {path}; then cat < {path} 2>/dev/null || {{ test -f {path} || exit {missing_file_exit_code}; printf '%s\\n' 'failed to read file' >&2; exit 1; }}; else exit {missing_file_exit_code}; fi"
+    )
+}
+
 fn file_operation_error_is_terminal(error: &io::Error) -> bool {
     !matches!(
         error.kind(),
