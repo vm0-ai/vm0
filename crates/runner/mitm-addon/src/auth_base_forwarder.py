@@ -6,12 +6,14 @@ the low-level HTTP details for that forward path.
 """
 
 import asyncio
+import contextvars
 import errno
 import http.client as http_client
 import ipaddress
 import socket
 import ssl
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 from mitmproxy import http
@@ -35,14 +37,17 @@ MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 NAT64_WELL_KNOWN_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
 
-_forward_request_semaphore_state: tuple[asyncio.AbstractEventLoop, asyncio.Semaphore] | None = None
+_forward_request_executor_state: tuple[int, ThreadPoolExecutor] | None = None
 
 
 def reset_forward_request_state_for_tests() -> None:
-    """Reset per-loop forwarder state between tests."""
-    global _forward_request_semaphore_state
+    """Reset forwarder worker state between tests."""
+    global _forward_request_executor_state
 
-    _forward_request_semaphore_state = None
+    state = _forward_request_executor_state
+    _forward_request_executor_state = None
+    if state is not None:
+        state[1].shutdown(wait=True, cancel_futures=True)
 
 
 class ForwardedResponseTooLargeError(Exception):
@@ -343,16 +348,32 @@ def _forward_request_sync(
         conn.close()
 
 
-def _get_forward_request_semaphore() -> asyncio.Semaphore:
-    global _forward_request_semaphore_state
+def _get_forward_request_executor() -> ThreadPoolExecutor:
+    global _forward_request_executor_state
 
-    loop = asyncio.get_running_loop()
-    if _forward_request_semaphore_state is None or _forward_request_semaphore_state[0] is not loop:
-        _forward_request_semaphore_state = (
-            loop,
-            asyncio.Semaphore(MAX_CONCURRENT_AUTH_BASE_FORWARDS),
+    max_workers = MAX_CONCURRENT_AUTH_BASE_FORWARDS
+    if _forward_request_executor_state is None or _forward_request_executor_state[0] != max_workers:
+        state = _forward_request_executor_state
+        _forward_request_executor_state = (
+            max_workers,
+            ThreadPoolExecutor(
+                max_workers=max_workers,
+                thread_name_prefix="auth-base-forward",
+            ),
         )
-    return _forward_request_semaphore_state[1]
+        if state is not None:
+            state[1].shutdown(wait=True, cancel_futures=True)
+    return _forward_request_executor_state[1]
+
+
+def _forward_request_sync_in_context(
+    context: contextvars.Context,
+    url: str,
+    method: str,
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+) -> tuple[int, bytes, http.Headers]:
+    return context.run(_forward_request_sync, url, method, headers, body)
 
 
 async def forward_request(
@@ -363,5 +384,14 @@ async def forward_request(
 ) -> tuple[int, bytes, http.Headers]:
     """Async wrapper for _forward_request_sync."""
     _validate_request_body_size(body)
-    async with _get_forward_request_semaphore():
-        return await asyncio.to_thread(_forward_request_sync, url, method, headers, body)
+    loop = asyncio.get_running_loop()
+    context = contextvars.copy_context()
+    return await loop.run_in_executor(
+        _get_forward_request_executor(),
+        _forward_request_sync_in_context,
+        context,
+        url,
+        method,
+        headers,
+        body,
+    )
