@@ -203,6 +203,10 @@ function appIconPath(): string {
   return path.join(__dirname, "..", "assets", "icon.png");
 }
 
+function trayIconPath(): string {
+  return path.join(__dirname, "..", "assets", "tray-iconTemplate.png");
+}
+
 function applyAppName(): void {
   app.setName(config.identity.displayName);
   app.name = config.identity.displayName;
@@ -380,7 +384,7 @@ function installDesktopAuth(): void {
 function installTray(): void {
   desktopTray = installDesktopTray({
     displayName: config.identity.displayName,
-    iconPath: appIconPath(),
+    iconPath: trayIconPath(),
     getComputerUseState: getComputerUseBridgeState,
     getAuthState: () => getAuthSession().getAuthState(),
     showMainWindow: async () => {

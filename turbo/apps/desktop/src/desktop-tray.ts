@@ -30,13 +30,10 @@ interface DesktopTrayControllerOptions {
 
 function desktopTrayIcon(iconPath: string): NativeImage {
   const image = nativeImage.createFromPath(iconPath);
-  if (process.platform !== "darwin") {
-    return image;
+  if (process.platform === "darwin") {
+    image.setTemplateImage(true);
   }
-
-  const resized = image.resize({ width: 18, height: 18 });
-  resized.setTemplateImage(true);
-  return resized;
+  return image;
 }
 
 function electronMenuItem(
