@@ -78,8 +78,11 @@ function createCustomConnector(): CustomConnectorResponse {
   };
 }
 
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
+function buttonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
   });
   if (!button) {
@@ -344,6 +347,47 @@ describe("team page navigation", () => {
       expect(
         screen.getByRole("heading", { level: 1, name: /agents/i }),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("updates connector permission policies from an agent page", async () => {
+    mockTeamAPIs();
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@workspace")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Axiom permissions"));
+
+    const permissionsDialog = await screen.findByRole("dialog");
+    expect(
+      within(permissionsDialog).getByText("Axiom permissions"),
+    ).toBeInTheDocument();
+    expect(
+      within(permissionsDialog).getByText("for Research Agent"),
+    ).toBeInTheDocument();
+
+    const permissionRow = (
+      await within(permissionsDialog).findByText("annotations|create")
+    ).closest("div")?.parentElement;
+    expect(permissionRow).toBeTruthy();
+    click(buttonByText("Deny", permissionRow!));
+    await waitFor(() => {
+      expect(buttonByText("Apply", permissionsDialog)).toBeEnabled();
+    });
+    click(buttonByText("Apply", permissionsDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+      expect(screen.queryByText("Axiom permissions")).not.toBeInTheDocument();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(screen.queryByText("Permissions updated")).not.toBeInTheDocument();
     });
   });
 });
