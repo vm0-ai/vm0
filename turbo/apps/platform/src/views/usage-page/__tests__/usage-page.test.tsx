@@ -3,18 +3,39 @@ import { zeroUsageInsightContract } from "@vm0/core";
 import { describe, expect, it } from "vitest";
 
 import {
+  click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { usageInsightFixture } from "./test-fixtures.ts";
+import {
+  usageInsightLast7DaysAgentFixture,
+  usageInsightLast7DaysSourceFixture,
+  usageInsightTodayFixture,
+} from "./test-fixtures.ts";
 
 const context = testContext();
 
+function tabByText(text: string): HTMLElement {
+  const tab = queryAllByRoleFast("tab").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!tab) {
+    throw new Error(`${text} tab not found`);
+  }
+  return tab;
+}
+
 describe("/usage page", () => {
-  it("shows linked usage details with credit totals", async () => {
-    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
-      return respond(200, usageInsightFixture);
+  it("shows linked usage details and updates totals by date range and group", async () => {
+    context.mocks.api(zeroUsageInsightContract.get, ({ query, respond }) => {
+      if (query.range === "7d" && query.groupBy === "agent") {
+        return respond(200, usageInsightLast7DaysAgentFixture);
+      }
+      if (query.range === "7d") {
+        return respond(200, usageInsightLast7DaysSourceFixture);
+      }
+      return respond(200, usageInsightTodayFixture);
     });
 
     detachedSetupPage({ context, path: "/usage" });
@@ -31,6 +52,13 @@ describe("/usage page", () => {
         ).getByText("credits"),
       ).toBeInTheDocument();
     });
+    const creditsTotals = () => {
+      return screen.getByRole("region", { name: "Credits totals" });
+    };
+    expect(within(creditsTotals()).getByText("1.3K")).toBeInTheDocument();
+    expect(within(creditsTotals()).getByText("Today")).toBeInTheDocument();
+    expect(within(creditsTotals()).getByText("Chat")).toBeInTheDocument();
+    expect(within(creditsTotals()).getByText("Slack")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText("My Schedule")).toBeInTheDocument();
@@ -47,5 +75,33 @@ describe("/usage page", () => {
         return /Chat with Agent/.test(el.textContent ?? "");
       }),
     ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Date range"));
+    click(screen.getByRole("option", { name: "Last 7 days" }));
+
+    await waitFor(() => {
+      expect(within(creditsTotals()).getByText("2.4K")).toBeInTheDocument();
+      expect(
+        within(creditsTotals()).getByText("Last 7 days"),
+      ).toBeInTheDocument();
+      expect(within(creditsTotals()).getByText("Email")).toBeInTheDocument();
+      expect(screen.getByText("Daily Digest")).toBeInTheDocument();
+      expect(screen.getByText("Roadmap Review")).toBeInTheDocument();
+    });
+
+    click(tabByText("Agent"));
+
+    await waitFor(() => {
+      expect(
+        within(creditsTotals()).getByText("Research Agent"),
+      ).toBeInTheDocument();
+      expect(within(creditsTotals()).getByText("Ops Bot")).toBeInTheDocument();
+    });
+    expect(
+      within(creditsTotals()).queryByText("Email"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(creditsTotals()).queryByText("Slack"),
+    ).not.toBeInTheDocument();
   });
 });
