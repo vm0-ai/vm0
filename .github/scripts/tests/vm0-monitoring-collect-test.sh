@@ -120,6 +120,29 @@ test_regular_file_bucket_counts() {
   assert_line "vm0_workspace_image_cache_bucket_entries{bucket=\"lt_16MiB\"} 0"
 }
 
+test_multiple_entries_aggregate_across_buckets() {
+  reset_dirs
+  mkdir -p "$cache_dir/cache-small" "$cache_dir/cache-medium"
+  dd if=/dev/zero of="$cache_dir/cache-small/current.ext4" bs=1M count=1 status=none
+  dd if=/dev/zero of="$cache_dir/cache-medium/current.ext4" bs=1M count=20 status=none
+
+  local small_allocated
+  local medium_allocated
+  local total_allocated
+  small_allocated="$(allocated_bytes "$cache_dir/cache-small/current.ext4")"
+  medium_allocated="$(allocated_bytes "$cache_dir/cache-medium/current.ext4")"
+  total_allocated="$((small_allocated + medium_allocated))"
+
+  run_metrics
+
+  assert_line "vm0_workspace_image_cache_entries 2"
+  assert_line "vm0_workspace_image_cache_allocated_bytes $total_allocated"
+  assert_line "vm0_workspace_image_cache_bucket_entries{bucket=\"lt_16MiB\"} 1"
+  assert_line "vm0_workspace_image_cache_bucket_allocated_bytes{bucket=\"lt_16MiB\"} $small_allocated"
+  assert_line "vm0_workspace_image_cache_bucket_entries{bucket=\"16MiB_64MiB\"} 1"
+  assert_line "vm0_workspace_image_cache_bucket_allocated_bytes{bucket=\"16MiB_64MiB\"} $medium_allocated"
+}
+
 test_ignores_incomplete_and_non_regular_entries() {
   reset_dirs
   mkdir -p "$cache_dir/no-current"
@@ -155,6 +178,7 @@ test_missing_cache_dir_emits_zero_metrics
 test_empty_cache_dir_emits_zero_metrics
 test_sparse_file_uses_allocated_bytes_not_logical_size
 test_regular_file_bucket_counts
+test_multiple_entries_aggregate_across_buckets
 test_ignores_incomplete_and_non_regular_entries
 test_missing_textfile_dir_fails
 
