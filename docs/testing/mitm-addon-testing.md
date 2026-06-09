@@ -38,7 +38,13 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_error_handler.py` | Error hook logging and usage cleanup |
 | `test_connection_hooks.py` | Done, TLS, TCP, and TCP logging hooks |
 | `test_registry.py` | Registry loading, caching, file watching |
-| `test_matching_patterns.py` | Low-level firewall URL, host, path, and base matching |
+| `test_matching_path.py` | Low-level firewall path matching |
+| `test_matching_host.py` | Low-level firewall host matching |
+| `test_matching_path_prefix.py` | Low-level firewall path-prefix matching |
+| `test_matching_base_url_static.py` | Static firewall base URL matching and authority normalization |
+| `test_matching_base_url_parameterized.py` | Parameterized firewall base URL matching |
+| `test_matching_mixed_segments.py` | Mixed parameter-segment matcher regressions |
+| `test_matching_anthropic_firewall_scope.py` | Anthropic firewall scope matching regressions |
 | `test_firewall_matching.py` | Raw firewall request matching and network policy behavior |
 | `test_compiled_firewall_base_matching.py` | Compiled firewall base, path, host, authority, and URL normalization matching |
 | `test_compiled_firewall_unknown_policy.py` | Compiled firewall unknown-policy and unsafe-path behavior |
