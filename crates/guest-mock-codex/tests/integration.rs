@@ -249,6 +249,33 @@ fn resume_rejects_special_lock_file_without_events() -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn resume_rejects_special_session_file_without_hanging() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    let session_path = build_session_path(dir.path(), Utc::now().date_naive(), thread_id)?;
+    if let Some(parent) = session_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    mkfifo(&session_path)?;
+
+    let out = run(dir.path(), &["exec", "resume", thread_id, "--", "hi"])?;
+
+    assert_ne!(out.status, 0);
+    assert!(
+        out.events.is_empty(),
+        "special session file should fail before emitting events: {:?}",
+        out.events
+    );
+    assert!(
+        out.stderr.contains("session path is not a regular file"),
+        "special session file should be reported: {:?}",
+        out.stderr
+    );
+    Ok(())
+}
+
 #[test]
 fn fixture_rejects_sessions_file_root_without_events() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();

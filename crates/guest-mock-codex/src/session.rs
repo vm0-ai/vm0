@@ -526,7 +526,7 @@ impl StoreDir {
 
     fn open_child_file(&self, name: &OsStr) -> io::Result<fs::File> {
         let name = cstring_child_name(name)?;
-        let flags = libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        let flags = libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK;
         // SAFETY: `self.file` is an open directory fd, `name` is a validated
         // NUL-terminated child basename, and the flags do not require a mode.
         let fd = unsafe { libc::openat(self.file.as_raw_fd(), name.as_ptr(), flags) };
