@@ -55,6 +55,30 @@ async fn send_event_masks_secrets() {
 }
 
 #[tokio::test]
+async fn send_event_masks_lowercase_percent_encoded_secret() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .body_includes(r#""data":"contains *** here""#);
+        then.status(200);
+    });
+
+    let engine = base64::engine::general_purpose::STANDARD;
+    let encoded_secret = engine.encode("token/a");
+    let masker = SecretMasker::from_raw(&encoded_secret);
+
+    let event = json!({"type": "test", "data": "contains token%2fa here"});
+    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+
+    assert!(result.is_ok());
+    mock.assert_calls_async(1).await;
+    mock.delete_async().await;
+}
+
+#[tokio::test]
 async fn send_event_captures_session_metadata_before_masking() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
