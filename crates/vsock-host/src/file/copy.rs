@@ -326,7 +326,16 @@ fn validate_copy_exec_result(
             "copy_file stderr exceeded diagnostic limit for {path}: {}",
             String::from_utf8_lossy(&stderr)
         ))),
-        ExecTermination::Exited { exit_code: 66 } if missing_ok => Ok(CopyFileExecStatus::Missing),
+        ExecTermination::Exited { exit_code: 66 } if missing_ok && stderr.is_empty() => {
+            Ok(CopyFileExecStatus::Missing)
+        }
+        ExecTermination::Exited { exit_code: 66 } if missing_ok => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "copy_file missing result for {path} included stderr: {}",
+                String::from_utf8_lossy(&stderr)
+            ),
+        )),
         ExecTermination::Exited { exit_code: 66 } => Err(io::Error::new(
             io::ErrorKind::NotFound,
             format!("guest file not found: {path}"),
