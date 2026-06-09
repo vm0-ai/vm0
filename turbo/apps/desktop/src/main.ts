@@ -400,6 +400,12 @@ function installTray(): void {
       openExternal(desktopAuthStartUrl);
     },
     switchWorkspace: () => getAuthSession().selectOrganization(),
+    requestAccessibilityPermission: async () => {
+      await requestComputerUsePermission();
+    },
+    requestScreenRecordingPermission: async () => {
+      await requestComputerUseScreenRecording();
+    },
     openAccessibilitySettings: () => {
       openExternal(MAC_ACCESSIBILITY_SETTINGS_URL);
     },

@@ -76,6 +76,8 @@ function trayActions(
     refreshStatus: vi.fn(),
     openSignIn: vi.fn(),
     switchWorkspace: vi.fn(),
+    requestAccessibilityPermission: vi.fn(),
+    requestScreenRecordingPermission: vi.fn(),
     openAccessibilitySettings: vi.fn(),
     openScreenRecordingSettings: vi.fn(),
     quit: vi.fn(),
@@ -133,7 +135,7 @@ describe("desktop tray menu", () => {
     expect(findItem(menu, "Quit")).toBeDefined();
   });
 
-  it("enables starting Computer Use when idle and signed in", () => {
+  it("enables starting Computer Use when ready and signed in", () => {
     const startComputerUse = vi.fn();
     const menu = buildDesktopTrayMenuItems(
       {
@@ -144,7 +146,7 @@ describe("desktop tray menu", () => {
       trayActions({ startComputerUse }),
     );
 
-    const computerUseMenu = submenu(findItem(menu, "Computer Use: Idle"));
+    const computerUseMenu = submenu(findItem(menu, "Computer Use: Ready"));
     const startItem = findItem(computerUseMenu, "Start Computer Use");
 
     expect(startItem.enabled).toBe(true);
@@ -167,7 +169,9 @@ describe("desktop tray menu", () => {
       trayActions({ openSignIn }),
     );
 
-    const computerUseMenu = submenu(findItem(menu, "Computer Use: Idle"));
+    const computerUseMenu = submenu(
+      findItem(menu, "Computer Use: Sign in required"),
+    );
 
     expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
     click(findItem(computerUseMenu, "Sign in to Zero"));
@@ -175,6 +179,8 @@ describe("desktop tray menu", () => {
   });
 
   it("shows permission actions when Computer Use is blocked locally", () => {
+    const requestAccessibilityPermission = vi.fn();
+    const requestScreenRecordingPermission = vi.fn();
     const openAccessibilitySettings = vi.fn();
     const openScreenRecordingSettings = vi.fn();
     const menu = buildDesktopTrayMenuItems(
@@ -187,6 +193,8 @@ describe("desktop tray menu", () => {
         authError: null,
       },
       trayActions({
+        requestAccessibilityPermission,
+        requestScreenRecordingPermission,
         openAccessibilitySettings,
         openScreenRecordingSettings,
       }),
@@ -195,6 +203,41 @@ describe("desktop tray menu", () => {
     const computerUseMenu = submenu(
       findItem(menu, "Computer Use: Needs permissions"),
     );
+    click(findItem(computerUseMenu, "Request Accessibility Permission"));
+    click(findItem(computerUseMenu, "Accessibility Settings"));
+    click(findItem(computerUseMenu, "Request Screen Recording Permission"));
+    click(findItem(computerUseMenu, "Screen Recording Settings"));
+
+    expect(requestAccessibilityPermission).toHaveBeenCalledOnce();
+    expect(requestScreenRecordingPermission).toHaveBeenCalledOnce();
+    expect(openAccessibilitySettings).toHaveBeenCalledOnce();
+    expect(openScreenRecordingSettings).toHaveBeenCalledOnce();
+  });
+
+  it("shows ready permissions and keeps settings available", () => {
+    const openAccessibilitySettings = vi.fn();
+    const openScreenRecordingSettings = vi.fn();
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "idle" }),
+        auth: signedInAuth,
+        authError: null,
+      },
+      trayActions({
+        openAccessibilitySettings,
+        openScreenRecordingSettings,
+      }),
+    );
+
+    const computerUseMenu = submenu(findItem(menu, "Computer Use: Ready"));
+    expect(findItem(computerUseMenu, "Status: Ready").enabled).toBe(false);
+    expect(findItem(computerUseMenu, "Accessibility: Ready").enabled).toBe(
+      false,
+    );
+    expect(findItem(computerUseMenu, "Screen Recording: Ready").enabled).toBe(
+      false,
+    );
+
     click(findItem(computerUseMenu, "Accessibility Settings"));
     click(findItem(computerUseMenu, "Screen Recording Settings"));
 

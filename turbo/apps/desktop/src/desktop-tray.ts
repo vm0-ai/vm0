@@ -23,6 +23,8 @@ interface DesktopTrayControllerOptions {
   readonly refreshStatus: () => Promise<void>;
   readonly openSignIn: () => void;
   readonly switchWorkspace: () => Promise<void>;
+  readonly requestAccessibilityPermission: () => Promise<void>;
+  readonly requestScreenRecordingPermission: () => Promise<void>;
   readonly openAccessibilitySettings: () => void;
   readonly openScreenRecordingSettings: () => void;
   readonly quit: () => void;
@@ -163,6 +165,18 @@ export class DesktopTrayController {
           return this.options.switchWorkspace();
         },
         { refreshAuth: true },
+      ),
+      requestAccessibilityPermission: this.runAction(
+        "request Accessibility permission",
+        () => {
+          return this.options.requestAccessibilityPermission();
+        },
+      ),
+      requestScreenRecordingPermission: this.runAction(
+        "request Screen Recording permission",
+        () => {
+          return this.options.requestScreenRecordingPermission();
+        },
       ),
       openAccessibilitySettings: this.runAction(
         "open Accessibility Settings",
