@@ -19,6 +19,7 @@ import {
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroConnectorManualGrantContract,
+  zeroConnectorExternalCodeSessionContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
   zeroConnectorScopeDiffContract,
@@ -407,6 +408,48 @@ export function createConnectorBddApi(context: TestContext) {
       );
       expectStatus(response, 200);
       return response.body;
+    },
+
+    async requestExternalCodeStart(
+      actor: ApiTestUser | null,
+      type: ConnectorType,
+      authMethod: ConnectorAuthMethodId,
+      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+    ) {
+      const client = setupApp({ context })(
+        zeroConnectorExternalCodeSessionContract,
+      );
+      return await accept(
+        client.create({
+          params: { type },
+          headers: authenticate(actor),
+          body: { authMethod },
+        }),
+        statuses,
+      );
+    },
+
+    async requestExternalCodeComplete(
+      actor: ApiTestUser | null,
+      type: ConnectorType,
+      args: {
+        readonly sessionId: string;
+        readonly sessionToken: string;
+        readonly code: string;
+      },
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(
+        zeroConnectorExternalCodeSessionContract,
+      );
+      return await accept(
+        client.complete({
+          params: { type, sessionId: args.sessionId },
+          headers: authenticate(actor),
+          body: { sessionToken: args.sessionToken, code: args.code },
+        }),
+        statuses,
+      );
     },
 
     async updateFeatureSwitches(

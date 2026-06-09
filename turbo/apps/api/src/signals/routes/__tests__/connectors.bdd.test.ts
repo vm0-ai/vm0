@@ -357,6 +357,71 @@ describe("CONN-02: OAuth device authorization", () => {
   });
 });
 
+describe("CONN-02: external-code authorization", () => {
+  it("rejects external-code sessions through visible auth, grant, switch, and session boundaries", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const missingSessionId = randomUUID();
+
+    const unauthenticated = await connectorsApi.requestExternalCodeStart(
+      null,
+      "aws",
+      "cli",
+      [401],
+    );
+    expectApiError(unauthenticated.body);
+    expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
+
+    const unsupportedGrant = await connectorsApi.requestExternalCodeStart(
+      actor,
+      "openai",
+      "api-token",
+      [400],
+    );
+    expectApiError(unsupportedGrant.body);
+    expect(unsupportedGrant.body.error.message).toContain(
+      "openai api-token auth method does not use an external-code grant",
+    );
+
+    const disabled = await connectorsApi.requestExternalCodeStart(
+      actor,
+      "aws",
+      "cli",
+      [403],
+    );
+    expectApiError(disabled.body);
+    expect(disabled.body.error.message).toBe(
+      "External-code authorization is not enabled for this connector",
+    );
+
+    const invalidCompleteBody = await connectorsApi.requestExternalCodeComplete(
+      actor,
+      "aws",
+      {
+        sessionId: missingSessionId,
+        sessionToken: "bdd-session-token",
+        code: "",
+      },
+      [400],
+    );
+    expectApiError(invalidCompleteBody.body);
+    expect(invalidCompleteBody.body.error.code).toBe("BAD_REQUEST");
+
+    const missingComplete = await connectorsApi.requestExternalCodeComplete(
+      actor,
+      "aws",
+      {
+        sessionId: missingSessionId,
+        sessionToken: "bdd-session-token",
+        code: "bdd-code",
+      },
+      [404],
+    );
+    expectApiError(missingComplete.body);
+    expect(missingComplete.body.error.code).toBe("NOT_FOUND");
+  });
+});
+
 describe("CONN-03: custom connectors and connector-owned secrets", () => {
   it("creates, patches, secrets, enables for an agent, rejects cross-org ids, and deletes through APIs", async () => {
     const bdd = createBddApi(context);
