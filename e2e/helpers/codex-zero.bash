@@ -155,7 +155,7 @@ send_chat_run_message() {
     # codex CLI executes against $OPENAI_API_KEY. Without it, CI's
     # USE_MOCK_CODEX=true env var causes guest-mock-codex to echo the prompt
     # verbatim — see crates/runner/src/executor.rs (insert_codex_env) and
-    # crates/guest-mock-codex/src/main.rs (build_events). The chat/messages contract
+    # guest_mock_codex::build_events. The chat/messages contract
     # exposes this flag via chatMessagesContract.body.debugNoMockCodex, mirroring
     # the same passthrough on /api/zero/runs.
     # Model-first selection can carry either the sentinel provider id for an org
