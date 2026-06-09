@@ -381,9 +381,38 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
-      - name: Type Check
+      # The three heavy app type-checks (api, web, @vm0/app ≈ 57% of the
+      # serial total) run in the separate lint-types-apps job below. Here we
+      # check everything else. Dependency packages resolve via source
+      # (exports point at src/*.ts, no build step), so the apps job can run
+      # its tsc standalone without re-running these — no duplicated work.
+      - name: Type Check (shared packages)
         working-directory: turbo
-        run: pnpm check-types
+        run: pnpm turbo run check-types --concurrency=1 --filter='!api' --filter='!web' --filter='!@vm0/app'
+
+  lint-types-apps:
+    needs: [detect-turbo-ts-checks]
+    runs-on: ubuntu-latest
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260525
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+      # Heaviest tsc projects, split off lint-types so they run on their own
+      # runner. Kept serial (one tsc at a time) to stay within runner memory —
+      # the same reason the root check-types uses --concurrency=1. Each app's
+      # check-types is invoked directly (pnpm --filter, not turbo) so turbo's
+      # dependsOn ^check-types does not re-run the shared packages here.
+      - name: Type Check (api)
+        working-directory: turbo
+        run: pnpm --filter api run check-types
+      - name: Type Check (@vm0/app)
+        working-directory: turbo
+        run: pnpm --filter @vm0/app run check-types
+      - name: Type Check (web)
+        working-directory: turbo
+        run: pnpm --filter web run check-types
 
   lint-format:
     needs: [detect-turbo-ts-checks]
@@ -2371,6 +2400,7 @@ jobs:
       - block-generated-firewalls
       - lint-eslint
       - lint-types
+      - lint-types-apps
       - lint-format
       - lint-knip
       - test-web
@@ -2454,6 +2484,7 @@ jobs:
           # detect-turbo-ts-checks classified this as a crates-only change set.
           check_result "lint-eslint" "${{ needs.lint-eslint.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-types" "${{ needs.lint-types.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "lint-types-apps" "${{ needs.lint-types-apps.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-format" "${{ needs.lint-format.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "lint-knip" "${{ needs.lint-knip.result }}" "$TS_CHECK_SKIP_ALLOWED"
           check_result "test-web" "${{ needs.test-web.result }}" "$TS_CHECK_SKIP_ALLOWED"
