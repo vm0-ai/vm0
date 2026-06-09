@@ -1,6 +1,8 @@
 import {
+  hideDockForHiddenMainWindow,
   shouldHideMainWindowOnClose,
   showAndFocusWindow,
+  showDockForVisibleMainWindow,
 } from "./desktop-window-lifecycle";
 import { buildDesktopWindowChromeOptions } from "./desktop-window-chrome";
 
@@ -26,6 +28,52 @@ describe("desktop window lifecycle", () => {
     expect(
       shouldHideMainWindowOnClose({ platform: "linux", isQuitting: false }),
     ).toBe(false);
+  });
+
+  it("hides the dock on macOS when the main window is hidden", () => {
+    const dock = {
+      hide: vi.fn(),
+      show: vi.fn(async () => {}),
+    };
+
+    hideDockForHiddenMainWindow({ platform: "darwin", dock });
+
+    expect(dock.hide).toHaveBeenCalledOnce();
+    expect(dock.show).not.toHaveBeenCalled();
+  });
+
+  it("does not hide the dock outside macOS", () => {
+    const dock = {
+      hide: vi.fn(),
+      show: vi.fn(async () => {}),
+    };
+
+    hideDockForHiddenMainWindow({ platform: "linux", dock });
+
+    expect(dock.hide).not.toHaveBeenCalled();
+  });
+
+  it("shows the dock on macOS when the main window is visible", async () => {
+    const dock = {
+      hide: vi.fn(),
+      show: vi.fn(async () => {}),
+    };
+
+    await showDockForVisibleMainWindow({ platform: "darwin", dock });
+
+    expect(dock.show).toHaveBeenCalledOnce();
+    expect(dock.hide).not.toHaveBeenCalled();
+  });
+
+  it("does not show the dock outside macOS", async () => {
+    const dock = {
+      hide: vi.fn(),
+      show: vi.fn(async () => {}),
+    };
+
+    await showDockForVisibleMainWindow({ platform: "linux", dock });
+
+    expect(dock.show).not.toHaveBeenCalled();
   });
 
   it("restores, shows, and focuses a hidden minimized window", () => {

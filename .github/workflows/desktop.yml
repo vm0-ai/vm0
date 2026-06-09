@@ -195,8 +195,8 @@ jobs:
 
           desktop_dir="$PWD/apps/desktop"
           version=$(node -p "require('./apps/desktop/package.json').version")
-          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero Dev-darwin-arm64-$version.zip"
-          artifact_path="apps/desktop/out/ZeroDev-darwin-arm64-preview.zip"
+          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero CU Dev-darwin-arm64-$version.zip"
+          artifact_path="apps/desktop/out/ZeroCUDev-darwin-arm64-preview.zip"
 
           if [ ! -f "$forge_zip" ]; then
             echo "No Forge preview zip artifact found: $forge_zip"
@@ -212,8 +212,8 @@ jobs:
         env:
           EXPECTED_PLATFORM_URL: ${{ steps.preview.outputs.platform-url }}
         run: |
-          artifact_path=apps/desktop/out/ZeroDev-darwin-arm64-preview.zip
-          app_dir="apps/desktop/out/Zero Dev-darwin-arm64/Zero Dev.app"
+          artifact_path=apps/desktop/out/ZeroCUDev-darwin-arm64-preview.zip
+          app_dir="apps/desktop/out/Zero CU Dev-darwin-arm64/Zero CU Dev.app"
           plist="$app_dir/Contents/Info.plist"
           runtime_config="$app_dir/Contents/Resources/app/desktop-runtime-config.json"
           if [ ! -f "$artifact_path" ]; then
@@ -265,22 +265,22 @@ jobs:
           }
           NODE
 
-          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero Dev"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero Dev"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero Dev"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero CU Dev"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero CU Dev"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero CU Dev"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop.dev"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero Dev Desktop Auth"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero CU Dev Desktop Auth"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.vm0.zero.desktop.dev"
           cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
           cmp -s apps/desktop/assets/icon.png "$app_dir/Contents/Resources/app/assets/icon.png"
 
-          unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/MacOS/Zero Dev"
-          unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/Resources/icon.icns"
-          unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/Resources/native/computer-use-helper"
-          unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/Resources/app/dist/main.js"
-          unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/Resources/app/assets/icon.png"
-          unzip -l "$artifact_path" | grep -q "Zero Dev.app/Contents/Resources/app/desktop-runtime-config.json"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/MacOS/Zero CU Dev"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/icon.icns"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/native/computer-use-helper"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/dist/main.js"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/assets/icon.png"
+          unzip -l "$artifact_path" | grep -q "Zero CU Dev.app/Contents/Resources/app/desktop-runtime-config.json"
 
       - name: Upload unsigned PR preview macOS artifact
         if: github.event_name == 'pull_request'

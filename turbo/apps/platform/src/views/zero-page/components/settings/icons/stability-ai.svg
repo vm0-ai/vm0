@@ -1,10 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
   <defs>
-    <linearGradient id="stability-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#7B2FBE"/>
-      <stop offset="100%" stop-color="#4A1580"/>
+    <linearGradient
+      id="stability-ai-bg"
+      x1="0"
+      x2="400"
+      y1="0"
+      y2="400"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#A883EB" />
+      <stop offset="0.58" stop-color="#B6A4E3" />
+      <stop offset="1" stop-color="#D7D1E6" />
     </linearGradient>
   </defs>
-  <rect width="32" height="32" rx="6" fill="url(#stability-grad)"/>
-  <path d="M21.5 10.5H13.5C12.12 10.5 11 11.62 11 13C11 14.38 12.12 15.5 13.5 15.5H18.5C19.88 15.5 21 16.62 21 18C21 19.38 19.88 20.5 18.5 20.5H10.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="400" height="400" fill="url(#stability-ai-bg)" />
+  <path
+    fill-rule="evenodd"
+    fill="#1E1E1E"
+    d="M148 97.557C113.678 104.94 94 126.211 94 155.926C94 183.294 109.11 197.079 154.4 211.029C183.951 220.131 191.7 224.407 193.952 232.858C201.958 262.902 139.516 266.875 102.132 238.701C98.63 236.062 95.513 234.153 95.206 234.461C93.542 236.124 94.948 278.49 96.711 279.817C104.292 285.524 124.526 293.19 137.948 295.442C197.889 305.494 240.904 280.871 240.985 236.46C241.044 204.721 225.171 191.011 171.5 176.442C147.095 169.818 138.195 162.029 141.283 150C146.356 130.245 197.724 130.866 226.033 151.024C229.04 153.165 229.04 153.165 228.77 131.836C228.5 110.506 228.5 110.506 223.5 107.801C205.257 97.931 169.079 93.023 148 97.557M276.5 240.217C249.048 249.904 254.389 291.708 283.462 294.708C314.733 297.936 326.79 255.235 298.5 241.455C293.01 238.781 282.28 238.177 276.5 240.217"
+  />
 </svg>

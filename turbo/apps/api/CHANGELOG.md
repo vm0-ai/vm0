@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.119.0](https://github.com/vm0-ai/vm0/compare/api-v1.118.0...api-v1.119.0) (2026-06-09)
+
+
+### Features
+
+* add staged connector permission reset ([#16840](https://github.com/vm0-ai/vm0/issues/16840)) ([c622626](https://github.com/vm0-ai/vm0/commit/c622626b687cb41e78669864422b824e328e9aeb))
+* **api:** persist run provenance (automationId + triggerId) on zero_runs ([#16897](https://github.com/vm0-ai/vm0/issues/16897)) ([56cabc2](https://github.com/vm0-ai/vm0/commit/56cabc286d3ba17222a78028f0b9aabdffb25402))
+
+
+### Bug Fixes
+
+* download hosted html artifacts ([#16611](https://github.com/vm0-ai/vm0/issues/16611)) ([732edbf](https://github.com/vm0-ai/vm0/commit/732edbfb55eb765fae2173cfa0d89cee130cf083))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.74.0
+    * @vm0/connectors bumped to 1.56.0
+    * @vm0/core bumped to 8.320.0
+    * @vm0/db bumped to 1.37.0
+
 ## [1.118.0](https://github.com/vm0-ai/vm0/compare/api-v1.117.0...api-v1.118.0) (2026-06-09)
 
 
