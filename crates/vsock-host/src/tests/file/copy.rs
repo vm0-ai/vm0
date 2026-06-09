@@ -656,6 +656,10 @@ async fn copy_file_rejects_missing_ok_result_with_streamed_output() {
     let err = copy_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     assert!(err.to_string().contains("missing result"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
     assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
     temp_dir.assert_no_vm0tmp_files();
 }
@@ -688,6 +692,10 @@ async fn copy_file_rejects_missing_ok_result_with_stderr() {
     let err = copy_task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     assert!(err.to_string().contains("included stderr"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
     assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
     temp_dir.assert_no_vm0tmp_files();
 }
