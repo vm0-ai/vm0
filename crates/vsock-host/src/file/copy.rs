@@ -571,7 +571,17 @@ impl VsockHost {
             .map_err(CopyFileToTempError::terminal)?
         {
             CopyFileExecStatus::Present => {}
-            CopyFileExecStatus::Missing => return Ok(CopyFileOutcome::Missing),
+            CopyFileExecStatus::Missing => {
+                if bytes_copied != 0 {
+                    return Err(CopyFileToTempError::terminal(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "copy_file missing result for {path} streamed {bytes_copied} bytes"
+                        ),
+                    )));
+                }
+                return Ok(CopyFileOutcome::Missing);
+            }
         }
         temp_file
             .flush()

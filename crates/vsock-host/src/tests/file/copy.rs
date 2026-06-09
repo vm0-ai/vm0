@@ -620,7 +620,7 @@ async fn copy_file_missing_ok_preserves_existing_host_file() {
 }
 
 #[tokio::test]
-async fn copy_file_missing_ok_discards_streamed_output_and_preserves_existing_host_file() {
+async fn copy_file_rejects_missing_ok_result_with_streamed_output() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let temp_dir = HostTempDir::new("vsock-host-copy-missing-output");
@@ -653,8 +653,9 @@ async fn copy_file_missing_ok_discards_streamed_output_and_preserves_existing_ho
     )
     .await;
 
-    let result = copy_task.await.unwrap().unwrap();
-    assert_eq!(result.bytes_copied, 0);
+    let err = copy_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(err.to_string().contains("missing result"));
     assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
     temp_dir.assert_no_vm0tmp_files();
 }
