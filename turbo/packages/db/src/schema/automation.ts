@@ -6,10 +6,13 @@ import {
   jsonb,
   timestamp,
   boolean,
+  integer,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
+import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
 
 /**
@@ -63,6 +66,12 @@ export const automations = pgTable(
 
     enabled: boolean("enabled").default(true).notNull(),
 
+    // Migration provenance: when an automation is created by migrating a
+    // `zero_agent_schedules` row, this links back to that origin row. Used by
+    // the U5 dual-write + backfill for idempotency (one automation per source
+    // schedule). Null for natively-created automations.
+    sourceScheduleId: uuid("source_schedule_id"),
+
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -78,6 +87,8 @@ export const automations = pgTable(
         table.orgId,
         table.userId,
       ),
+      // One automation per migrated source schedule (backfill idempotency).
+      uniqueIndex("idx_automations_source_schedule").on(table.sourceScheduleId),
     ];
   },
 );
@@ -93,6 +104,14 @@ export const automations = pgTable(
  *   inbound lookup (identity).
  * - `encryptedSecret` stores the HMAC signing secret, encrypted with the API
  *   stored-secret encryption envelope (reused from the secrets table).
+ *
+ * For time triggers (`kind ∈ {cron,once,loop}`), the config columns mirror
+ * `zero_agent_schedules` (mutually exclusive based on kind):
+ * - 'cron': cron_expression set, at_time/interval_seconds null
+ * - 'once': at_time set, cron_expression/interval_seconds null
+ * - 'loop': interval_seconds set, cron_expression/at_time null
+ * The runtime-state columns track the future time poller (built but dormant in
+ * this slice); the live `zero_agent_schedules` poller is unchanged.
  */
 export const automationTriggers = pgTable(
   "automation_triggers",
@@ -107,7 +126,7 @@ export const automationTriggers = pgTable(
         { onDelete: "cascade" },
       ),
 
-    // Trigger kind discriminator: "webhook" for now.
+    // Trigger kind discriminator: "webhook" | "cron" | "once" | "loop".
     kind: varchar("kind", { length: 32 }).notNull(),
 
     // Kind-specific extensibility.
@@ -119,6 +138,32 @@ export const automationTriggers = pgTable(
     // HMAC signing secret, encrypted with the API stored-secret envelope.
     encryptedSecret: text("encrypted_secret"),
 
+    // Time-trigger configuration (mutually exclusive based on kind).
+    cronExpression: varchar("cron_expression", { length: 100 }),
+    atTime: timestamp("at_time"),
+    intervalSeconds: integer("interval_seconds"),
+    timezone: varchar("timezone", { length: 50 }).default("UTC").notNull(),
+
+    // Time-trigger runtime state (mirrors zero_agent_schedules).
+    nextRunAt: timestamp("next_run_at"),
+    lastRunAt: timestamp("last_run_at"),
+    lastRunId: uuid("last_run_id").references(
+      () => {
+        return agentRuns.id;
+      },
+      {
+        onDelete: "set null",
+      },
+    ),
+    // Tracks consecutive failures for loop triggers (auto-disable after 3).
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    // Tracks when retry cycle started for concurrency failures (null = not retrying).
+    retryStartedAt: timestamp("retry_started_at"),
+
+    // Whether this trigger is active (mirrors zero_agent_schedules.enabled;
+    // consumed by the dormant time poller's partial index below).
+    enabled: boolean("enabled").default(true).notNull(),
+
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -128,6 +173,11 @@ export const automationTriggers = pgTable(
       uniqueIndex("idx_automation_triggers_webhook_token").on(
         table.webhookToken,
       ),
+      // Partial index for efficient time-trigger polling: enabled triggers with
+      // due next_run_at (mirrors idx_zero_agent_schedules_next_run).
+      index("idx_automation_triggers_next_run")
+        .on(table.nextRunAt)
+        .where(sql`enabled = true`),
     ];
   },
 );

@@ -58,6 +58,7 @@ describe("automations schema", () => {
     expect(automations.chatThreadId.name).toBe("chat_thread_id");
     expect(automations.interpreterKind.name).toBe("interpreter_kind");
     expect(automations.enabled.name).toBe("enabled");
+    expect(automations.sourceScheduleId.name).toBe("source_schedule_id");
     expect(automations.createdAt.name).toBe("created_at");
     expect(automations.updatedAt.name).toBe("updated_at");
   });
@@ -70,6 +71,7 @@ describe("automations schema", () => {
         "idx_automations_user_org",
         "idx_automations_chat_thread",
         "idx_automations_agent_name_org_user",
+        "idx_automations_source_schedule",
       ]),
     );
   });
@@ -84,11 +86,27 @@ describe("automations schema", () => {
     expect(automationTriggers.updatedAt.name).toBe("updated_at");
   });
 
-  it("declares the trigger automation index and unique webhook token index", () => {
+  it("keeps the expected time-trigger config and runtime-state columns stable", () => {
+    expect(automationTriggers.cronExpression.name).toBe("cron_expression");
+    expect(automationTriggers.atTime.name).toBe("at_time");
+    expect(automationTriggers.intervalSeconds.name).toBe("interval_seconds");
+    expect(automationTriggers.timezone.name).toBe("timezone");
+    expect(automationTriggers.nextRunAt.name).toBe("next_run_at");
+    expect(automationTriggers.lastRunAt.name).toBe("last_run_at");
+    expect(automationTriggers.lastRunId.name).toBe("last_run_id");
+    expect(automationTriggers.consecutiveFailures.name).toBe(
+      "consecutive_failures",
+    );
+    expect(automationTriggers.retryStartedAt.name).toBe("retry_started_at");
+    expect(automationTriggers.enabled.name).toBe("enabled");
+  });
+
+  it("declares the trigger automation, webhook token, and next-run indexes", () => {
     expect(getExtraConfigNames(automationTriggers)).toEqual(
       expect.arrayContaining([
         "idx_automation_triggers_automation",
         "idx_automation_triggers_webhook_token",
+        "idx_automation_triggers_next_run",
       ]),
     );
   });
