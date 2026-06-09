@@ -3,7 +3,7 @@
 This module defines the ASCII identity used when untrusted SNI/Host input is
 validated before firewall auth injection, when firewall bases are matched, and
 when X billing detects URL-like bare domains. It is intentionally stricter than
-generic compatibility normalization: labels that would fold into another host
+generic compatibility normalization: labels that would fold or obscure host
 identity are rejected instead of being treated as equivalent.
 
 The public helpers document caller-visible behavior only. Private tables and
@@ -112,13 +112,13 @@ _UNSAFE_UTS46_IGNORABLE_RANGES = (
 
 
 class UnsafeIdnaCompatibilityMappingError(UnicodeError):
-    """Raised when unsafe IDNA compatibility mapping would collapse identity.
+    """Raised when unsafe IDNA compatibility mapping would obscure identity.
 
     This is not an ordinary malformed-label signal. It marks input that can look
-    URL-like after compatibility processing but would fold into a different
-    ASCII/IDNA hostname. Security callers should reject it as invalid authority;
-    conservative billing callers may catch it before generic ``UnicodeError``
-    and classify the candidate as ambiguous.
+    URL-like after compatibility processing but would fold into, disappear from,
+    or be confused with a different ASCII/IDNA hostname. Security callers should
+    reject it as invalid authority; conservative billing callers may catch it
+    before generic ``UnicodeError`` and classify the candidate as ambiguous.
     """
 
 
@@ -397,10 +397,10 @@ def normalize_idna_label(label: str) -> str:
     trailing dots.
 
     Raises ``UnsafeIdnaCompatibilityMappingError`` when compatibility processing
-    would collapse the label into another host identity. Raises ``UnicodeError``
-    for ordinary invalid labels, including empty labels, invalid A-labels,
-    labels that normalize to forbidden text, and labels that exceed the DNS
-    label length limit.
+    would obscure the label's host identity. Raises ``UnicodeError`` for
+    ordinary invalid labels, including empty labels, invalid A-labels, labels
+    that normalize to forbidden text, and labels that exceed the DNS label
+    length limit.
     """
     return _normalize_label(label)
 
