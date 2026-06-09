@@ -70,6 +70,21 @@ impl VsockHost {
             )
             .await?;
         if result.exit_code == MISSING_FILE_EXIT_CODE {
+            if result.stdout_truncated || !result.stdout.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("read_file missing result for {path} included stdout"),
+                ));
+            }
+            if result.stderr_truncated || !result.stderr.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "read_file missing result for {path} included stderr: {}",
+                        String::from_utf8_lossy(&result.stderr)
+                    ),
+                ));
+            }
             return Ok(None);
         }
         if result.exit_code != 0 {
