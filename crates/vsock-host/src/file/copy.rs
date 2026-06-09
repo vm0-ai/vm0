@@ -328,7 +328,6 @@ fn copy_exec_stderr(result: &ExecOperationResult) -> io::Result<(Vec<u8>, bool)>
 fn validate_copy_exec_result(
     path: &str,
     result: ExecOperationResult,
-    missing_ok: bool,
 ) -> io::Result<CopyFileExecStatus> {
     if result.stream_overflowed {
         return Err(io::Error::other(
@@ -356,19 +355,15 @@ fn validate_copy_exec_result(
                 String::from_utf8_lossy(&stderr)
             ),
         )),
-        ExecTermination::Exited { exit_code: 66 } if missing_ok && stderr.is_empty() => {
+        ExecTermination::Exited { exit_code: 66 } if stderr.is_empty() => {
             Ok(CopyFileExecStatus::Missing)
         }
-        ExecTermination::Exited { exit_code: 66 } if missing_ok => Err(io::Error::new(
+        ExecTermination::Exited { exit_code: 66 } => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
                 "copy_file missing result for {path} included stderr: {}",
                 String::from_utf8_lossy(&stderr)
             ),
-        )),
-        ExecTermination::Exited { exit_code: 66 } => Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("guest file not found: {path}"),
         )),
         ExecTermination::Exited { exit_code } => Err(io::Error::other(format!(
             "copy_file failed for {path} with exit code {exit_code}: {}",
@@ -611,9 +606,7 @@ impl VsockHost {
         if let Some(cancel_on_drop) = &mut cancel_on_drop {
             cancel_on_drop.disarm();
         }
-        match validate_copy_exec_result(path, result, missing_ok)
-            .map_err(CopyFileToTempError::terminal)?
-        {
+        match validate_copy_exec_result(path, result).map_err(CopyFileToTempError::terminal)? {
             CopyFileExecStatus::Present => {}
             CopyFileExecStatus::Missing => {
                 if bytes_copied != 0 {
@@ -624,7 +617,13 @@ impl VsockHost {
                         ),
                     )));
                 }
-                return Ok(CopyFileOutcome::Missing);
+                if missing_ok {
+                    return Ok(CopyFileOutcome::Missing);
+                }
+                return Err(CopyFileToTempError::terminal(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("guest file not found: {path}"),
+                )));
             }
         }
         temp_file
