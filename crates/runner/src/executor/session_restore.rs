@@ -1,9 +1,10 @@
 //! CLI session restore helpers for guest agent frameworks.
 
-use sandbox::Sandbox;
+use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 use tracing::{info, warn};
 
-use super::{RunnerError, RunnerResult};
+use super::storage::format_guest_exec_failure;
+use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use crate::types::{ExecutionContext, ResumeSession};
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
@@ -139,6 +140,8 @@ pub(super) async fn restore_codex_session(
         chrono::Utc::now(),
     );
 
+    cleanup_existing_codex_session_files(sandbox, context, &session.session_id).await?;
+
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
         .await?;
@@ -148,6 +151,47 @@ pub(super) async fn restore_codex_session(
         path = %session_path,
         bytes_in = session.session_history.len(),
         "restored codex session history",
+    );
+    Ok(())
+}
+
+async fn cleanup_existing_codex_session_files(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session_id: &str,
+) -> RunnerResult<()> {
+    let cleanup_cmd = r#"root=/home/user/.codex/sessions
+if [ -d "$root" ]; then
+  id="$VM0_CODEX_RESTORE_SESSION_ID"
+  id_no_dashes="$(printf '%s' "$id" | tr -d '-')"
+  find "$root" -type f \( \
+    -name "*${id}*.jsonl" -o \
+    -name "*${id}*.jsonl.zst" -o \
+    -name "*${id_no_dashes}*.jsonl" -o \
+    -name "*${id_no_dashes}*.jsonl.zst" \
+  \) -delete
+fi"#;
+    let env = [("VM0_CODEX_RESTORE_SESSION_ID", session_id)];
+    let result = sandbox
+        .exec(&ExecRequest {
+            cmd: cleanup_cmd,
+            timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &env,
+            sudo: false,
+            stdin_bytes: None,
+            output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+        })
+        .await?;
+    if result.exit_code != 0 {
+        return Err(RunnerError::Internal(format_guest_exec_failure(
+            "codex session cleanup",
+            &result,
+        )));
+    }
+    info!(
+        run_id = %context.run_id,
+        session_id = %session_id,
+        "cleaned up existing codex session files before restore",
     );
     Ok(())
 }

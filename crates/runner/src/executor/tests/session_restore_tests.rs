@@ -1,3 +1,4 @@
+use sandbox::ExecResult;
 use sandbox_mock::MockSandbox;
 
 use super::super::session_restore::{is_valid_session_id, restore_session};
@@ -112,6 +113,9 @@ async fn restore_session_writes_codex_session() {
         ),
     };
     restore_session(&sandbox, &ctx, &session).await.unwrap();
+
+    assert_codex_cleanup_call(&sandbox);
+
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
     assert!(
@@ -135,6 +139,8 @@ async fn restore_session_writes_codex_session_with_canonical_fallback_filename()
     };
 
     restore_session(&sandbox, &ctx, &session).await.unwrap();
+
+    assert_codex_cleanup_call(&sandbox);
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
@@ -175,6 +181,32 @@ async fn restore_session_rejects_invalid_codex_session_id() {
 }
 
 #[tokio::test]
+async fn restore_session_fails_when_codex_cleanup_fails() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let session = ResumeSession {
+        session_id: "019e9154-c304-70f0-adde-36efb1be1701".into(),
+        session_history: "{}\n".into(),
+    };
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        1,
+        b"cleanup stdout".to_vec(),
+        b"cleanup failed".to_vec(),
+    )));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(
+        message.contains("codex session cleanup failed"),
+        "got: {message}"
+    );
+    assert!(message.contains("cleanup failed"), "got: {message}");
+    assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
 async fn restore_session_fails_on_write_file_error() {
     let sandbox = MockSandbox::new("test");
     let ctx = minimal_context();
@@ -185,4 +217,20 @@ async fn restore_session_fails_on_write_file_error() {
     sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
     assert!(err.to_string().contains("disk full"), "got: {err}");
+}
+
+fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert_eq!(
+        exec_calls[0].env_keys,
+        ["VM0_CODEX_RESTORE_SESSION_ID".to_string()]
+    );
+    assert!(!exec_calls[0].sudo);
+    assert!(exec_calls[0].stdin_bytes.is_none());
+    assert!(exec_calls[0].cmd.contains("/home/user/.codex/sessions"));
+    assert!(exec_calls[0].cmd.contains("find \"$root\" -type f"));
+    assert!(exec_calls[0].cmd.contains(".jsonl.zst"));
+    assert!(exec_calls[0].cmd.contains("id_no_dashes"));
+    assert!(exec_calls[0].cmd.contains("-delete"));
 }
