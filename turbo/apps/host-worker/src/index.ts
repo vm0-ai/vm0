@@ -47,6 +47,11 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
   "Access-Control-Max-Age": "86400",
 } as const;
+const STATIC_ALLOWED_ORIGINS = new Set([
+  "https://www.vm0.ai",
+  "https://vm0.ai",
+  "https://app.vm7.ai:8443",
+]);
 
 function isSubdomainOf(hostname: string, domain: string): boolean {
   return hostname.endsWith(`.${domain}`) && hostname.length > domain.length + 1;
@@ -65,16 +70,17 @@ function allowedCorsOrigin(origin: string | null): string | null {
   if (url.protocol !== "https:") {
     return null;
   }
+  const normalizedOrigin = url.origin;
+  if (STATIC_ALLOWED_ORIGINS.has(normalizedOrigin)) {
+    return normalizedOrigin;
+  }
 
   const hostname = url.hostname.toLowerCase();
-  if (
-    (isSubdomainOf(hostname, "vm0.ai") || isSubdomainOf(hostname, "vm6.ai")) &&
-    url.port === ""
-  ) {
-    return url.origin;
+  if (isSubdomainOf(hostname, "vm0.ai") || isSubdomainOf(hostname, "vm6.ai")) {
+    return normalizedOrigin;
   }
   if (isSubdomainOf(hostname, "vm7.ai") && url.port === "8443") {
-    return url.origin;
+    return normalizedOrigin;
   }
   return null;
 }
