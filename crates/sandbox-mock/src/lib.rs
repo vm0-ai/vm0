@@ -39,12 +39,39 @@ impl<T> LockIgnoringPoison<T> for Mutex<T> {
     }
 }
 
-fn mock_copy_file_error(message: impl Into<String>) -> SandboxError {
+fn mock_file_operation_error(
+    operation: SandboxOperation,
+    message: impl Into<String>,
+) -> SandboxError {
     SandboxError::Operation {
-        operation: SandboxOperation::CopyFile,
+        operation,
         reason: SandboxOperationReason::Other,
         message: message.into(),
     }
+}
+
+fn mock_copy_file_error(message: impl Into<String>) -> SandboxError {
+    mock_file_operation_error(SandboxOperation::CopyFile, message)
+}
+
+fn validate_mock_guest_file_path(
+    operation: SandboxOperation,
+    operation_name: &str,
+    path: &str,
+) -> Result<()> {
+    if path.is_empty() {
+        return Err(mock_file_operation_error(
+            operation,
+            format!("mock {operation_name} guest file path must not be empty"),
+        ));
+    }
+    if path.as_bytes().contains(&0) {
+        return Err(mock_file_operation_error(
+            operation,
+            format!("mock {operation_name} guest file path contains NUL bytes"),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_mock_copy_host_path(host_path: &Path) -> Result<()> {
@@ -928,8 +955,8 @@ impl MockSandbox {
     /// Return this sandbox's recorded read-file calls.
     ///
     /// The returned vector is a cloned snapshot in recorded order. Calls are
-    /// recorded before mock validation errors such as zero `max_bytes` are
-    /// returned.
+    /// recorded before mock validation errors such as invalid guest paths or
+    /// zero `max_bytes` are returned.
     pub fn read_file_calls(&self) -> Vec<ReadFileCall> {
         self.read_file_calls.lock_ignoring_poison().clone()
     }
@@ -1125,6 +1152,7 @@ impl Sandbox for MockSandbox {
                 path: path.to_string(),
                 max_bytes,
             });
+        validate_mock_guest_file_path(SandboxOperation::ReadFile, "read_file", path)?;
         if max_bytes == 0 {
             return Err(SandboxError::Operation {
                 operation: SandboxOperation::ReadFile,
@@ -1173,6 +1201,7 @@ impl Sandbox for MockSandbox {
                 timeout: options.timeout,
                 missing_ok: options.missing_ok,
             });
+        validate_mock_guest_file_path(SandboxOperation::CopyFile, "copy_file", path)?;
         validate_mock_copy_host_path(host_path)?;
         if options.max_bytes == 0 {
             return Err(SandboxError::Operation {
@@ -2032,6 +2061,45 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
 
+        sandbox.push_copy_file_result(Ok(b"valid log\n".to_vec()));
+        for invalid_guest_path in ["", "/tmp/bad\0path.log"] {
+            let err = sandbox
+                .copy_file(
+                    invalid_guest_path,
+                    &path,
+                    CopyFileOptions {
+                        max_bytes: 1024,
+                        timeout: Duration::from_secs(5),
+                        missing_ok: true,
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert_operation_error(
+                err,
+                SandboxOperation::CopyFile,
+                SandboxOperationReason::Other,
+                "guest file path",
+            );
+            assert!(!path.exists());
+        }
+
+        let result = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.bytes_copied, 10);
+        assert_eq!(std::fs::read(&path).unwrap(), b"valid log\n");
+        std::fs::remove_file(&path).unwrap();
+
         let err = sandbox
             .copy_file(
                 "/tmp/system.log",
@@ -2138,8 +2206,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sandbox_read_file_rejects_zero_max_bytes() {
+    async fn sandbox_read_file_rejects_invalid_options() {
         let sandbox = MockSandbox::new("test-1");
+        sandbox.push_read_file_result(Ok(Some(b"valid log\n".to_vec())));
+
+        for invalid_guest_path in ["", "/tmp/bad\0path.log"] {
+            let err = sandbox
+                .read_file(invalid_guest_path, 1024)
+                .await
+                .unwrap_err();
+
+            assert_operation_error(
+                err,
+                SandboxOperation::ReadFile,
+                SandboxOperationReason::Other,
+                "guest file path",
+            );
+        }
+
+        let result = sandbox.read_file("/tmp/system.log", 1024).await.unwrap();
+        assert_eq!(result.as_deref(), Some(&b"valid log\n"[..]));
 
         let err = sandbox.read_file("/tmp/system.log", 0).await.unwrap_err();
 
