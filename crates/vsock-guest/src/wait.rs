@@ -219,18 +219,21 @@ fn wait_done(done_rx: &mpsc::Receiver<()>) -> bool {
 
 fn kill_child_unless_done(
     done_rx: &mpsc::Receiver<()>,
-    kill_target: ProcessTreeKillTarget,
+    mut kill_target: ProcessTreeKillTarget,
     reason: KillReason,
 ) -> Option<WatchdogKill> {
     if wait_done(done_rx) {
         None
     } else {
+        refresh_process_tree_kill_target(&mut kill_target);
+        if wait_done(done_rx) {
+            return None;
+        }
         Some(kill_child(kill_target, reason))
     }
 }
 
-fn kill_child(mut kill_target: ProcessTreeKillTarget, reason: KillReason) -> WatchdogKill {
-    refresh_process_tree_kill_target(&mut kill_target);
+fn kill_child(kill_target: ProcessTreeKillTarget, reason: KillReason) -> WatchdogKill {
     let child_id = kill_target.child_id();
     // SAFETY: kill_target comes from a PID returned by Command::spawn.
     let tree_killed = unsafe { kill_process_tree_target(kill_target) };
@@ -504,7 +507,9 @@ mod tests {
             }
         };
 
-        let watchdog_kill = kill_child(stale_target, KillReason::Timeout);
+        let (_done_tx, done_rx) = mpsc::channel::<()>();
+        let watchdog_kill = kill_child_unless_done(&done_rx, stale_target, KillReason::Timeout)
+            .expect("watchdog should kill when done is not signalled");
         if !watchdog_kill.killed {
             kill_spawned_child_with_watchdog(&mut child);
             kill_pidfd_and_wait(&child_pidfd)
