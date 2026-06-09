@@ -14,6 +14,7 @@ import {
   zeroRunsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
+import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -32,6 +33,7 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-test-1";
+const SCHEDULE_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
@@ -234,6 +236,60 @@ describe("chat lifecycle", () => {
     });
     await waitFor(() => {
       expect(screen.getByText("Burst 119")).toBeInTheDocument();
+    });
+  });
+
+  it("opens a linked schedule from the chat header", async () => {
+    mockChatLifecycle(context, {
+      threadId: SCHEDULE_THREAD_ID,
+      threadTitle: "Scheduled launch review",
+      historyMessages: [
+        {
+          role: "user",
+          content: "Review launch risks",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "I'll review this on the schedule.",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+      ],
+    });
+    context.mocks.data.schedules([
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000701",
+        agentId: AGENT_ID,
+        chatThreadId: SCHEDULE_THREAD_ID,
+        name: "launch-review",
+        description: "Launch review",
+        prompt: "Review launch risks",
+        cronExpression: "30 15 * * 1-5",
+        triggerType: "cron",
+        nextRunAt: "2026-06-10T15:30:00.000Z",
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: `/chats/${SCHEDULE_THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
+      expect(screen.getByLabelText("Schedules")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Schedules"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Launch review")).toBeInTheDocument();
+      expect(screen.getByText(/Next run/u)).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Launch review"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Launch review" }),
+      ).toBeInTheDocument();
     });
   });
 
