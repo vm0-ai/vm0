@@ -270,12 +270,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatScheduledRunCard]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Collapse schedule-triggered chat runs into a status card that opens the assistant transcript in a dialog.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ChatTemplatePicker]: {
     maintainer: "linghan@vm0.ai",
     description:
