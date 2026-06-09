@@ -15,6 +15,7 @@ import type {
   ConnectorAuthMethodId,
   ConnectorType,
 } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -369,6 +370,84 @@ describe("connectors page", () => {
       expect(
         within(connectorCardByLabel("Axiom")).queryByText("Connected"),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("connects AWS with an authorization code and authorizes an agent", async () => {
+    mockConnectors([]);
+    context.mocks.data.team([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        ownerId: "test-user-123",
+        displayName: "Research Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        customSkills: [],
+        visibility: "public",
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    context.mocks.browser.open(createMockAuthWindow());
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.AwsConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText("Find connectors"),
+      ).toBeInTheDocument();
+    });
+
+    await fill(screen.getByPlaceholderText("Find connectors"), "aws");
+    click(await screen.findByLabelText("Connect AWS"));
+
+    const connectDialog = await screen.findByRole("dialog", { name: "AWS" });
+    expect(
+      within(connectDialog).getByText(
+        /temporary AWS connector expires after up to 12 hours/,
+      ),
+    ).toBeInTheDocument();
+
+    click(buttonByText("Start AWS sign-in", connectDialog));
+
+    await waitFor(() => {
+      expect(
+        buttonByText("Open AWS sign-in", connectDialog),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Open AWS sign-in", connectDialog));
+    await fill(
+      within(connectDialog).getByTestId("connector-external-code-input"),
+      "AWS-CODE",
+    );
+    click(
+      within(connectDialog).getByTestId("connector-external-code-complete"),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("You've successfully connected with AWS!"),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Research Agent"));
+    click(buttonByText("Confirm"));
+
+    await waitFor(() => {
+      expect(screen.getByText("AWS enabled for 1 agent")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("AWS")).getByText(
+          /@arn:aws:iam::000000000000:user\/mock-aws/u,
+        ),
+      ).toBeInTheDocument();
     });
   });
 
