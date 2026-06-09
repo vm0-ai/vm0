@@ -559,8 +559,9 @@ describe("zero artifact sidebar", () => {
     });
   });
 
-  it("opens a presentation artifact in the editor and saves speaker notes on close", async () => {
+  it("edits and downloads a presentation artifact from the editor", async () => {
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
+    const downloads = captureDownloads(context.signal);
     context.mocks.api(
       zeroHostContract.redeployPresentationHtml,
       ({ respond }) => {
@@ -590,11 +591,54 @@ describe("zero artifact sidebar", () => {
       expect(screen.getByLabelText("Open slide 2")).toBeInTheDocument();
     });
 
+    click(screen.getByLabelText("Open slide 2"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
+        "Explain the hiring plan.",
+      );
+    });
+
     await fill(
       screen.getByLabelText("Speaker notes"),
-      "Highlight the updated launch narrative.",
+      "Explain hiring and onboarding capacity.",
     );
 
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download edited HTML"));
+    await waitFor(() => {
+      expect(downloads).toContain("quarterly-roadmap.html");
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Presentation updated"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download edited PPTX"));
+    const exportFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation PPTX export"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
+    await waitFor(() => {
+      expect(downloads).toContain("quarterly-roadmap.pptx");
+      expect(
+        document.querySelector('iframe[title="Presentation PPTX export"]'),
+      ).not.toBeInTheDocument();
+    });
+
+    await fill(
+      screen.getByLabelText("Speaker notes"),
+      "Close with the onboarding capacity decision.",
+    );
     await waitFor(() => {
       expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     });
