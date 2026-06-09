@@ -755,7 +755,7 @@ describe("POST /api/zero/voice-io/*", () => {
         observedResponseFormat = form.get("response_format");
         return HttpResponse.json({
           text: "hello world",
-          segments: [{ start: 0.0, end: 1.5, text: " hello world" }],
+          segments: [{ start: 0, end: 1.5, text: " hello world" }],
         });
       }),
     );
@@ -770,7 +770,7 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({
       text: "hello world",
-      segments: [{ start: 0.0, end: 1.5, text: " hello world" }],
+      segments: [{ start: 0, end: 1.5, text: " hello world" }],
     });
     expect(observedModel).toBe("whisper-1");
     expect(observedResponseFormat).toBe("verbose_json");

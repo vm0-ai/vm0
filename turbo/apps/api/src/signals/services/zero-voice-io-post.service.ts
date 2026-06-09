@@ -21,6 +21,9 @@ export const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";
 export const VOICE_IO_TTS_MODEL = "gpt-4o-mini-tts";
 export const VOICE_IO_STT_MODEL = "gpt-4o-mini-transcribe";
+// Verbose transcription (per-segment timestamps) requires whisper-1;
+// gpt-4o-mini-transcribe does not return segment timestamps.
+export const VOICE_IO_STT_VERBOSE_MODEL = "whisper-1";
 export const SPEECH_CONTENT_TYPE = "audio/wav";
 export const SPEECH_RESPONSE_FORMAT = "wav";
 export const TTS_RESPONSE_FORMAT = "pcm";

@@ -20,6 +20,7 @@ import {
   recordSttUsage$,
   sttDailyPolicy$,
   VOICE_IO_STT_MODEL,
+  VOICE_IO_STT_VERBOSE_MODEL,
 } from "../services/zero-voice-io-post.service";
 import { env } from "../../lib/env";
 
@@ -107,7 +108,10 @@ const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const openaiForm = new FormData();
   openaiForm.append("file", file, file.name || "audio.webm");
-  openaiForm.append("model", verbose ? "whisper-1" : VOICE_IO_STT_MODEL);
+  openaiForm.append(
+    "model",
+    verbose ? VOICE_IO_STT_VERBOSE_MODEL : VOICE_IO_STT_MODEL,
+  );
   openaiForm.append("response_format", verbose ? "verbose_json" : "json");
 
   const openaiResponse = await fetch(OPENAI_AUDIO_TRANSCRIPTIONS_URL, {
