@@ -23,13 +23,13 @@ export const firewallPermissionSchema = z.object({
   rules: z.array(z.string()),
 });
 
-export const firewallAwsSigv4AuthSchema = z.object({
-  accessKeyId: z.string().min(1),
-  secretAccessKey: z.string().min(1),
-  sessionToken: z.string().min(1).optional(),
-  defaultRegion: z.string().min(1).optional(),
-  defaultService: z.string().min(1).optional(),
-});
+export const firewallAwsSigv4AuthSchema = z
+  .object({
+    accessKeyId: z.string().min(1),
+    secretAccessKey: z.string().min(1),
+    sessionToken: z.string().min(1).optional(),
+  })
+  .strict();
 
 const firewallAuthSchema = z
   .object({

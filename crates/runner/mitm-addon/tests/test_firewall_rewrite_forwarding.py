@@ -185,8 +185,6 @@ class TestAuthBaseUrlRewriteForwarding:
                     "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
                     "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
                     "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
-                    "defaultRegion": "${{ vars.AWS_REGION }}",
-                    "defaultService": "sts",
                 },
             },
             token_overrides={
@@ -194,8 +192,6 @@ class TestAuthBaseUrlRewriteForwarding:
                     "AKIDEXAMPLE",
                     "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
                     "real-session-token",
-                    "us-east-1",
-                    "sts",
                 ),
             },
         )

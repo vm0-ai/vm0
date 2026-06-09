@@ -791,6 +791,8 @@ def _auth_config_is_valid(api_entry: dict) -> bool:
         raw_aws_sigv4 = raw_auth["awsSigv4"]
         if not isinstance(raw_aws_sigv4, dict):
             return False
+        if set(raw_aws_sigv4) - {"accessKeyId", "secretAccessKey", "sessionToken"}:
+            return False
         if not isinstance(raw_aws_sigv4.get("accessKeyId"), str):
             return False
         if not raw_aws_sigv4["accessKeyId"]:
@@ -799,12 +801,11 @@ def _auth_config_is_valid(api_entry: dict) -> bool:
             return False
         if not raw_aws_sigv4["secretAccessKey"]:
             return False
-        for optional_key in ("sessionToken", "defaultRegion", "defaultService"):
-            optional_value = raw_aws_sigv4.get(optional_key)
-            if optional_value is not None and not isinstance(optional_value, str):
-                return False
-            if optional_value == "":
-                return False
+        optional_value = raw_aws_sigv4.get("sessionToken")
+        if optional_value is not None and not isinstance(optional_value, str):
+            return False
+        if optional_value == "":
+            return False
         if raw_auth.get("headers"):
             return False
         if raw_auth.get("query"):

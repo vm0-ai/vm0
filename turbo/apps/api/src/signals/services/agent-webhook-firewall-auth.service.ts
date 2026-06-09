@@ -123,8 +123,6 @@ interface FirewallAwsSigv4AuthConfig {
   readonly accessKeyId: string;
   readonly secretAccessKey: string;
   readonly sessionToken?: string;
-  readonly defaultRegion?: string;
-  readonly defaultService?: string;
 }
 
 interface RefreshResult {
@@ -3494,12 +3492,6 @@ function resolveTemplates(args: ResolveTemplatesArgs): {
         secretAccessKey: resolveSimple(args.authAwsSigv4.secretAccessKey),
         ...(args.authAwsSigv4.sessionToken
           ? { sessionToken: resolveSimple(args.authAwsSigv4.sessionToken) }
-          : {}),
-        ...(args.authAwsSigv4.defaultRegion
-          ? { defaultRegion: resolveSimple(args.authAwsSigv4.defaultRegion) }
-          : {}),
-        ...(args.authAwsSigv4.defaultService
-          ? { defaultService: resolveSimple(args.authAwsSigv4.defaultService) }
           : {}),
       } satisfies FirewallAwsSigv4AuthConfig)
     : undefined;

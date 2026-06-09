@@ -212,13 +212,13 @@ const firewallAuthErrorSchema = z.object({
   }),
 });
 
-const firewallAwsSigv4AuthSchema = z.object({
-  accessKeyId: z.string().min(1),
-  secretAccessKey: z.string().min(1),
-  sessionToken: z.string().min(1).optional(),
-  defaultRegion: z.string().min(1).optional(),
-  defaultService: z.string().min(1).optional(),
-});
+const firewallAwsSigv4AuthSchema = z
+  .object({
+    accessKeyId: z.string().min(1),
+    secretAccessKey: z.string().min(1),
+    sessionToken: z.string().min(1).optional(),
+  })
+  .strict();
 
 const firewallAuthResponseSchema = z.object({
   headers: z.record(z.string(), z.string()),

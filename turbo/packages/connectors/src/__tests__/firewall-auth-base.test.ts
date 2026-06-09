@@ -120,8 +120,6 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
             accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",
             secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
             sessionToken: "${{ secrets.AWS_SESSION_TOKEN }}",
-            defaultRegion: "${{ vars.AWS_REGION }}",
-            defaultService: "sts",
           },
         },
       },
@@ -138,7 +136,7 @@ describe("extractSecretNamesFromApis with auth.base and auth.query", () => {
         "AWS_SECRET_ACCESS_KEY",
         "AWS_SESSION_TOKEN",
       ],
-      vars: ["AWS_REGION"],
+      vars: [],
     });
   });
 

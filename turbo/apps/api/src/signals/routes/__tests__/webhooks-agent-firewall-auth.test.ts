@@ -1437,11 +1437,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             accessKeyId: secretTemplate("AWS_ACCESS_KEY_ID"),
             secretAccessKey: secretTemplate("AWS_SECRET_ACCESS_KEY"),
             sessionToken: secretTemplate("AWS_SESSION_TOKEN"),
-            defaultRegion: varTemplate("AWS_REGION"),
-            defaultService: "sts",
-          },
-          vars: {
-            AWS_REGION: "us-east-1",
           },
         },
         headers: authHeaders(fixture),
@@ -1455,8 +1450,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         accessKeyId: "access-key-id",
         secretAccessKey: "secret-access-key",
         sessionToken: "session-token",
-        defaultRegion: "us-east-1",
-        defaultService: "sts",
       },
       expiresAt: null,
       resolvedSecrets: [

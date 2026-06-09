@@ -16,8 +16,6 @@ def _api_entry() -> dict:
                 "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
                 "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
                 "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
-                "defaultRegion": "${{ vars.AWS_REGION }}",
-                "defaultService": "sts",
             },
         },
     }
@@ -52,8 +50,6 @@ def _auth_response() -> dict[str, object]:
             "accessKeyId": "AKIDEXAMPLE",
             "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
             "sessionToken": "real-session-token",
-            "defaultRegion": "us-east-1",
-            "defaultService": "sts",
         },
         "expiresAt": 1_800_000_000,
         "resolvedSecrets": [
@@ -123,8 +119,6 @@ async def test_re_signs_header_sigv4_request_to_reference_signature(
             "awsSigv4": {
                 "accessKeyId": "AKIDEXAMPLE",
                 "secretAccessKey": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-                "defaultRegion": "us-east-1",
-                "defaultService": "iam",
             },
             "expiresAt": 1_800_000_000,
             "resolvedSecrets": [
@@ -142,8 +136,6 @@ async def test_re_signs_header_sigv4_request_to_reference_signature(
             "awsSigv4": {
                 "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
                 "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-                "defaultRegion": "${{ vars.AWS_REGION }}",
-                "defaultService": "iam",
             },
         },
     }

@@ -34,8 +34,6 @@ class AwsSigV4Credentials:
     access_key_id: str
     secret_access_key: str
     session_token: str | None = None
-    default_region: str | None = None
-    default_service: str | None = None
 
 
 @dataclass(frozen=True)
@@ -64,7 +62,7 @@ def sign_request(
     credentials: AwsSigV4Credentials,
 ) -> tuple[str, list[tuple[str, str]]]:
     """Return a URL/header pair re-signed with real AWS credentials."""
-    context = _classify_request(url, headers, credentials)
+    context = _classify_request(url, headers)
     if context.algorithm == _ASYMMETRIC_ALGORITHM:
         raise AwsSigV4SigningError("SigV4A is not supported by this runner")
     if context.algorithm != _HMAC_ALGORITHM:
@@ -97,7 +95,6 @@ def sign_request(
 def _classify_request(
     url: str,
     headers: list[tuple[str, str]],
-    credentials: AwsSigV4Credentials,
 ) -> _SigningContext:
     auth_header = _first_header(headers, "authorization")
     query_pairs = urllib.parse.parse_qsl(
@@ -108,16 +105,15 @@ def _classify_request(
     if auth_header and query_algorithm:
         raise AwsSigV4SigningError("Ambiguous AWS auth location")
     if query_algorithm:
-        return _classify_query_request(query_pairs, query_algorithm, credentials)
+        return _classify_query_request(query_pairs, query_algorithm)
     if auth_header:
-        return _classify_header_request(auth_header, headers, credentials)
+        return _classify_header_request(auth_header, headers)
     raise AwsSigV4SigningError("Missing AWS SigV4 auth metadata")
 
 
 def _classify_header_request(
     auth_header: str,
     headers: list[tuple[str, str]],
-    credentials: AwsSigV4Credentials,
 ) -> _SigningContext:
     algorithm, params = _parse_authorization_header(auth_header)
     credential = params.get("Credential")
@@ -125,7 +121,7 @@ def _classify_header_request(
     signature = params.get("Signature")
     if not credential or not signed_headers or not signature:
         raise AwsSigV4SigningError("Malformed AWS authorization header")
-    scope = _parse_credential_scope(credential, credentials)
+    scope = _parse_credential_scope(credential)
     amz_date = _first_header(headers, "x-amz-date")
     if not amz_date:
         raise AwsSigV4SigningError("AWS SigV4 header auth requires x-amz-date")
@@ -141,7 +137,6 @@ def _classify_header_request(
 def _classify_query_request(
     query_pairs: list[tuple[str, str]],
     algorithm: str,
-    credentials: AwsSigV4Credentials,
 ) -> _SigningContext:
     credential = _first_query_value(query_pairs, "X-Amz-Credential")
     signed_headers = _first_query_value(query_pairs, "X-Amz-SignedHeaders")
@@ -150,7 +145,7 @@ def _classify_query_request(
     signature = _first_query_value(query_pairs, "X-Amz-Signature")
     if not credential or not signed_headers or not amz_date or not expires or not signature:
         raise AwsSigV4SigningError("Malformed AWS presigned query")
-    scope = _parse_credential_scope(credential, credentials)
+    scope = _parse_credential_scope(credential)
     return _SigningContext(
         location=_AuthLocation.QUERY,
         algorithm=algorithm,
@@ -171,16 +166,13 @@ def _parse_authorization_header(value: str) -> tuple[str, dict[str, str]]:
     return algorithm, params
 
 
-def _parse_credential_scope(
-    credential: str,
-    credentials: AwsSigV4Credentials,
-) -> _CredentialScope:
+def _parse_credential_scope(credential: str) -> _CredentialScope:
     parts = urllib.parse.unquote(credential).split("/")
     if len(parts) != _CREDENTIAL_SCOPE_PARTS or parts[-1] != _AWS4_REQUEST:
         raise AwsSigV4SigningError("Malformed AWS credential scope")
     date = parts[1]
-    region = parts[2] or credentials.default_region
-    service = parts[3] or credentials.default_service
+    region = parts[2]
+    service = parts[3]
     if not date or not region or not service:
         raise AwsSigV4SigningError("Incomplete AWS credential scope")
     return _CredentialScope(date=date, region=region, service=service)

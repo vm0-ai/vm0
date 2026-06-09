@@ -1317,8 +1317,6 @@ class TestFetchFirewallHeaders:
                     "accessKeyId": "access-key-id",
                     "secretAccessKey": "secret-access-key",
                     "sessionToken": "session-token",
-                    "defaultRegion": "us-east-1",
-                    "defaultService": "sts",
                 },
                 "expiresAt": expires_at,
                 "resolvedSecrets": ["API_TOKEN"],
@@ -1345,8 +1343,6 @@ class TestFetchFirewallHeaders:
             "access-key-id",
             "secret-access-key",
             "session-token",
-            "us-east-1",
-            "sts",
         )
         assert result.expires_at == expires_at
         assert result.payload.resolved_secrets == ["API_TOKEN"]
@@ -1376,8 +1372,6 @@ class TestFetchFirewallHeaders:
                     "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
                     "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
                     "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
-                    "defaultRegion": "${{ vars.AWS_REGION }}",
-                    "defaultService": "sts",
                 },
                 firewall_billable=True,
                 force_refresh=True,
@@ -1395,8 +1389,6 @@ class TestFetchFirewallHeaders:
             "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
             "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
             "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
-            "defaultRegion": "${{ vars.AWS_REGION }}",
-            "defaultService": "sts",
         }
         assert body["firewallBillable"] is True
         assert body["forceRefresh"] is True

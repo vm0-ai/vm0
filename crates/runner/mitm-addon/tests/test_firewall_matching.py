@@ -65,8 +65,6 @@ class TestCompiledFirewallRequest:
                             "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
                             "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
                             "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
-                            "defaultRegion": "${{ vars.AWS_REGION }}",
-                            "defaultService": "sts",
                         },
                     },
                     "permissions": [{"name": "identity", "rules": ["POST /"]}],
@@ -94,6 +92,32 @@ class TestCompiledFirewallRequest:
                         "awsSigv4": {
                             "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
                             "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                        },
+                    },
+                    "permissions": [{"name": "identity", "rules": ["POST /"]}],
+                }
+            ],
+            name="aws",
+        )
+        result = match_request_with_raw_firewalls(
+            "https://sts.amazonaws.com/",
+            "POST",
+            fw_configs,
+            network_policies=grant_all(fw_configs),
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "malformed_firewall_config"
+
+    def test_aws_sigv4_auth_config_rejects_unsupported_defaults(self, headers):
+        fw_configs = wrap_firewalls(
+            [
+                {
+                    "base": "https://sts.amazonaws.com",
+                    "auth": {
+                        "awsSigv4": {
+                            "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                            "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                            "defaultRegion": "${{ vars.AWS_REGION }}",
                         },
                     },
                     "permissions": [{"name": "identity", "rules": ["POST /"]}],

@@ -408,8 +408,6 @@ def _parse_optional_aws_sigv4_credentials(
         access_key_id=access_key_id,
         secret_access_key=secret_access_key,
         session_token=_parse_optional_string(value, "sessionToken"),
-        default_region=_parse_optional_string(value, "defaultRegion"),
-        default_service=_parse_optional_string(value, "defaultService"),
     )
 
 

@@ -229,6 +229,14 @@ function hasEntries(value: Record<string, string> | undefined): boolean {
 
 function isValidAwsSigv4AuthConfig(value: unknown): boolean {
   if (!isObjectRecord(value)) return false;
+  const allowedKeys = new Set([
+    "accessKeyId",
+    "secretAccessKey",
+    "sessionToken",
+  ]);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
+    return false;
+  }
   if (typeof value.accessKeyId !== "string" || value.accessKeyId === "") {
     return false;
   }
@@ -238,18 +246,12 @@ function isValidAwsSigv4AuthConfig(value: unknown): boolean {
   ) {
     return false;
   }
-  for (const optionalKey of [
-    "sessionToken",
-    "defaultRegion",
-    "defaultService",
-  ]) {
-    const optionalValue = value[optionalKey];
-    if (
-      optionalValue !== undefined &&
-      (typeof optionalValue !== "string" || optionalValue === "")
-    ) {
-      return false;
-    }
+  const optionalValue = value.sessionToken;
+  if (
+    optionalValue !== undefined &&
+    (typeof optionalValue !== "string" || optionalValue === "")
+  ) {
+    return false;
   }
   return true;
 }
