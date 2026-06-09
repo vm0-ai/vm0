@@ -257,6 +257,87 @@ async fn read_session_history_decodes_legacy_zstd_session() {
 }
 
 #[tokio::test]
+async fn read_session_history_rejects_duplicate_codex_matches() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "28"],
+        &format!("{thread_id}.jsonl"),
+        b"first\n",
+    )
+    .unwrap();
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "29"],
+        &format!("rollout-2026-04-29T11-22-37-{thread_id}.jsonl"),
+        b"second\n",
+    )
+    .unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("duplicate codex sessions must fail clearly");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Multiple Codex session files found"),
+        "expected duplicate-session error, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn read_session_history_rejects_duplicate_jsonl_and_zstd_matches() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "28"],
+        &format!("{thread_id}.jsonl"),
+        b"jsonl\n",
+    )
+    .unwrap();
+    let compressed = zstd::encode_all(b"zstd\n".as_slice(), 0).unwrap();
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "29"],
+        &format!("{thread_id}.jsonl.zst"),
+        &compressed,
+    )
+    .unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("duplicate codex sessions must include zstd matches");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Multiple Codex session files found"),
+        "expected duplicate-session error, got: {msg}"
+    );
+}
+
+#[tokio::test]
 async fn read_session_history_resolves_dash_stripped_filename() {
     // Real codex CLI prefixes filenames with `rollout-{ts}-` and the
     // concatenation strips the UUID dashes — the substring matcher must

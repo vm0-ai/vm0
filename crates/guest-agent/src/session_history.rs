@@ -79,7 +79,7 @@ fn read_codex_session_history(
     let Some(id_norm) = normalize_codex_thread_id(thread_id) else {
         return Ok(None);
     };
-    read_codex_session_history_impl(sessions_dir, &id_norm)
+    read_codex_session_history_impl(sessions_dir, thread_id, &id_norm)
 }
 
 pub(crate) fn normalize_codex_thread_id(thread_id: &str) -> Option<String> {
@@ -93,6 +93,7 @@ pub(crate) fn normalize_codex_thread_id(thread_id: &str) -> Option<String> {
 #[cfg(not(target_os = "linux"))]
 fn read_codex_session_history_impl(
     sessions_dir: &Path,
+    thread_id: &str,
     id_norm: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
     if !std::fs::symlink_metadata(sessions_dir)
@@ -102,20 +103,25 @@ fn read_codex_session_history_impl(
         return Ok(None);
     }
 
-    let Some(path) = find_codex_session_file_recursive(sessions_dir, id_norm) else {
-        return Ok(None);
-    };
-    read_history_bytes(&path).map(Some)
+    let mut found = None;
+    find_codex_session_file_recursive(sessions_dir, sessions_dir, thread_id, id_norm, &mut found)?;
+    Ok(found.map(|session| session.bytes))
 }
 
 #[cfg(not(target_os = "linux"))]
-/// DFS walk of `dir`, returning the first matching real file. Symlinks
+/// DFS walk of `dir`, recording a single matching real file. Symlinks
 /// are skipped because the Codex sessions tree is user-controlled
 /// filesystem state and checkpoint lookup must not follow it outside the
 /// expected history directory.
-fn find_codex_session_file_recursive(dir: &Path, id_norm: &str) -> Option<PathBuf> {
+fn find_codex_session_file_recursive(
+    root: &Path,
+    dir: &Path,
+    thread_id: &str,
+    id_norm: &str,
+    found: &mut Option<ResolvedCodexSession>,
+) -> Result<(), AgentError> {
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return None;
+        return Ok(());
     };
     for entry in entries.flatten() {
         let Ok(file_type) = entry.file_type() else {
@@ -123,40 +129,60 @@ fn find_codex_session_file_recursive(dir: &Path, id_norm: &str) -> Option<PathBu
         };
         let path = entry.path();
         if file_type.is_dir() {
-            if let Some(found) = find_codex_session_file_recursive(&path, id_norm) {
-                return Some(found);
-            }
+            find_codex_session_file_recursive(root, &path, thread_id, id_norm, found)?;
         } else if file_type.is_file()
             && path
                 .file_name()
                 .is_some_and(|name| codex_session_filename_matches(name, id_norm))
         {
-            return Some(path);
+            if let Some(existing) = found.as_ref() {
+                return Err(duplicate_codex_session_error(
+                    root,
+                    thread_id,
+                    &existing.path,
+                    &path,
+                ));
+            }
+            let bytes = read_history_bytes(&path)?;
+            *found = Some(ResolvedCodexSession { path, bytes });
         }
     }
 
-    None
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
 fn read_codex_session_history_impl(
     sessions_dir: &Path,
+    thread_id: &str,
     id_norm: &str,
 ) -> Result<Option<Vec<u8>>, AgentError> {
     let Ok(root) = Dir::open(sessions_dir) else {
         return Ok(None);
     };
-    find_and_read_codex_session_file_recursive(&root, sessions_dir, id_norm)
+    let mut found = None;
+    find_and_read_codex_session_file_recursive(
+        &root,
+        sessions_dir,
+        sessions_dir,
+        thread_id,
+        id_norm,
+        &mut found,
+    )?;
+    Ok(found.map(|session| session.bytes))
 }
 
 #[cfg(target_os = "linux")]
 fn find_and_read_codex_session_file_recursive(
     dir: &Dir,
+    root_path: &Path,
     dir_path: &Path,
+    thread_id: &str,
     id_norm: &str,
-) -> Result<Option<Vec<u8>>, AgentError> {
+    found: &mut Option<ResolvedCodexSession>,
+) -> Result<(), AgentError> {
     let Ok(entries) = dir.read_dir() else {
-        return Ok(None);
+        return Ok(());
     };
 
     for entry in entries.flatten() {
@@ -169,10 +195,9 @@ fn find_and_read_codex_session_file_recursive(
             let Ok(child) = dir.open_child_dir(&name) else {
                 continue;
             };
-            if let Some(found) = find_and_read_codex_session_file_recursive(&child, &path, id_norm)?
-            {
-                return Ok(Some(found));
-            }
+            find_and_read_codex_session_file_recursive(
+                &child, root_path, &path, thread_id, id_norm, found,
+            )?;
         } else if file_type.is_file() && codex_session_filename_matches(&name, id_norm) {
             let file = match dir.open_child_file(&name) {
                 Ok(file) => file,
@@ -186,11 +211,39 @@ fn find_and_read_codex_session_file_recursive(
             {
                 continue;
             }
-            return read_history_bytes_from_file(&path, file).map(Some);
+            if let Some(existing) = found.as_ref() {
+                return Err(duplicate_codex_session_error(
+                    root_path,
+                    thread_id,
+                    &existing.path,
+                    &path,
+                ));
+            }
+            let bytes = read_history_bytes_from_file(&path, file)?;
+            *found = Some(ResolvedCodexSession { path, bytes });
         }
     }
 
-    Ok(None)
+    Ok(())
+}
+
+struct ResolvedCodexSession {
+    path: PathBuf,
+    bytes: Vec<u8>,
+}
+
+fn duplicate_codex_session_error(
+    root: &Path,
+    thread_id: &str,
+    first: &Path,
+    second: &Path,
+) -> AgentError {
+    AgentError::Checkpoint(format!(
+        "Multiple Codex session files found under {} for thread_id {thread_id}: {}, {}",
+        root.display(),
+        first.display(),
+        second.display()
+    ))
 }
 
 fn codex_session_filename_matches(name: &OsStr, id_norm: &str) -> bool {
