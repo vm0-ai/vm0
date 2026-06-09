@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,6 +11,8 @@ import {
   type ChatThreadArtifactFile,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 import {
   click,
@@ -129,6 +132,22 @@ function artifactFile(
   };
 }
 
+function googleDriveConnector(): ConnectorResponse {
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    type: "google-drive",
+    authMethod: "oauth",
+    externalId: "google-drive-external-id",
+    externalUsername: "drive-user",
+    externalEmail: "drive-user@example.com",
+    oauthScopes: ["drive.file"],
+    connectionStatus: "connected",
+    tokenExpiresAt: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  };
+}
+
 function getArtifactTab(container: HTMLElement, label: string): HTMLElement {
   const tab = queryAllByRoleFast("tab", container).find((element) => {
     return element.textContent?.trim() === label;
@@ -137,6 +156,22 @@ function getArtifactTab(container: HTMLElement, label: string): HTMLElement {
     throw new Error(`${label} artifact tab not found`);
   }
   return tab;
+}
+
+function menuItemByText(text: string): HTMLElement {
+  const menuItems = queryAllByRoleFast("menuitem");
+  const item = menuItems.find((element) => {
+    return element.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!item) {
+    const labels = menuItems.map((element) => {
+      return element.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    });
+    throw new Error(
+      `${text} menu item not found. Available: ${labels.join(", ")}`,
+    );
+  }
+  return item;
 }
 
 describe("zero artifact sidebar", () => {
@@ -247,6 +282,95 @@ describe("zero artifact sidebar", () => {
     await waitFor(() => {
       expect(screen.getByText("Download")).toBeInTheDocument();
       expect(screen.getByText("Connect Google Drive")).toBeInTheDocument();
+    });
+  });
+
+  it("connects Google Drive from the sidebar and syncs an artifact", async () => {
+    const user = userEvent.setup({ delay: null });
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/release-notes.md";
+    const artifactFiles = [artifactFile(markdownUrl)];
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Release notes\n\nThe artifact is ready.", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ params, respond }) => {
+        return respond(200, {
+          authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadArtifactsContract.syncGoogleDrive,
+      ({ respond }) => {
+        artifactFiles[0] = {
+          ...artifactFiles[0]!,
+          googleDriveSync: {
+            status: "synced",
+            id: "drive-file-release-notes",
+            name: "release-notes.md",
+            webViewLink: "https://drive.test/release-notes",
+          },
+        };
+        return respond(200, {
+          id: "drive-file-release-notes",
+          name: "release-notes.md",
+          webViewLink: "https://drive.test/release-notes",
+        });
+      },
+    );
+    setupChatThread({
+      artifactFiles,
+      content: `[Release notes](${markdownUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(markdownUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByText("The artifact is ready.")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Connect Google Drive")).toBeInTheDocument();
+    });
+
+    click(menuItemByText("Connect Google Drive"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/google-drive/authorize",
+      );
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeTruthy();
+    });
+
+    context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.ably.trigger("connector:changed");
+
+    await waitFor(() => {
+      expect(screen.getByText("Synced to Google Drive")).toBeInTheDocument();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Synced to Google Drive"),
+      ).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Synced to Google Drive")).toBeInTheDocument();
     });
   });
 
