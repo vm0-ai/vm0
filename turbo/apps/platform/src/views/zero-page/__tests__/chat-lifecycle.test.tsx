@@ -38,6 +38,7 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-test-1";
 const SCHEDULE_THREAD_ID = "b0000000-0000-4000-a000-000000000701";
 const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
+const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
@@ -90,6 +91,25 @@ function makeMessage(id: string, text: string): PagedChatMessage {
     content: text,
     createdAt: "2026-05-01T00:00:00Z",
   };
+}
+
+function selectTextForInlineFeedback(element: HTMLElement): void {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  Object.defineProperty(range, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return new DOMRect(24, 32, 180, 20);
+    },
+  });
+
+  const selection = window.getSelection();
+  if (!selection) {
+    throw new Error("Selection API is not available");
+  }
+  selection.removeAllRanges();
+  selection.addRange(range);
+  document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 }
 
 describe("chat lifecycle", () => {
@@ -395,6 +415,65 @@ describe("chat lifecycle", () => {
         screen.queryByLabelText("GitHub PR tracking"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("turns selected assistant text into an inline feedback follow-up", async () => {
+    const assistantReply = "The rollout dates are unclear in this summary.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback",
+          status: "completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatInlineFeedback]: true },
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Provide feedback"));
+
+    const feedbackComment = await screen.findByPlaceholderText(
+      "What should change about this?",
+    );
+    await fill(feedbackComment, "Mention the dates before the risk summary.");
+    click(screen.getByText("Send feedback"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Feedback on this part of your reply:"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Mention the dates before the risk summary."),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByPlaceholderText("What should change about this?"),
+    ).not.toBeInTheDocument();
   });
 
   it("switches sessions without stale running or completed messages", async () => {
