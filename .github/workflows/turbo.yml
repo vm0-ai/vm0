@@ -17,6 +17,7 @@ jobs:
   # from the merge queue head_ref and check via GitHub API.
   detect-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       skip: ${{ steps.check.outputs.skip }}
     steps:
@@ -64,6 +65,7 @@ jobs:
     needs: [detect-release]
     if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       turbo-ts-checks-needed: ${{ steps.detect.outputs.turbo-ts-checks-needed }}
     steps:
@@ -104,6 +106,7 @@ jobs:
     # Skip for release-please PRs (only version bumps and changelogs)
     if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     outputs:
@@ -301,6 +304,7 @@ jobs:
   file-size-check:
     needs: [detect-release]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     steps:
@@ -340,6 +344,7 @@ jobs:
   block-generated-firewalls:
     needs: [detect-release]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     steps:
@@ -351,6 +356,7 @@ jobs:
   lint-eslint:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
@@ -375,6 +381,7 @@ jobs:
   lint-types:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
@@ -393,6 +400,7 @@ jobs:
   lint-types-apps:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
@@ -417,6 +425,7 @@ jobs:
   lint-format:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
@@ -430,6 +439,7 @@ jobs:
   lint-knip:
     needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
@@ -444,6 +454,7 @@ jobs:
   test-web:
     needs: detect-turbo-ts-checks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
@@ -490,6 +501,7 @@ jobs:
   bench-api:
     needs: [detect-turbo-ts-checks, prepare]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Run on perf branches, on PRs labeled `bench`, or on pushes to main (baseline).
     if: |
       needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true' && (
@@ -540,6 +552,7 @@ jobs:
   test-migrate:
     needs: prepare
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     # Only run when migration or schema files changed
     if: needs.prepare.outputs.migration-changed == 'true'
     container:
@@ -610,6 +623,7 @@ jobs:
     needs: [detect-turbo-ts-checks]
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     steps:
@@ -638,6 +652,7 @@ jobs:
     needs: [detect-turbo-ts-checks]
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     strategy:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
@@ -669,6 +684,7 @@ jobs:
     needs: [detect-turbo-ts-checks]
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     env:
@@ -691,6 +707,7 @@ jobs:
     needs: [detect-turbo-ts-checks]
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     strategy:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
@@ -742,6 +759,7 @@ jobs:
     needs: [detect-turbo-ts-checks]
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
     steps:
@@ -1249,6 +1267,7 @@ jobs:
   # Deploy app (Vite SPA)
   deploy-app:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     concurrency:
       group: deploy-app-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
@@ -1532,6 +1551,7 @@ jobs:
 
   build-api:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [prepare]
@@ -1551,6 +1571,7 @@ jobs:
   # Build CLI once and share via artifact — e2e jobs download instead of rebuilding
   build-cli:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [prepare]
@@ -2221,6 +2242,7 @@ jobs:
   # Uses repository-level E2B_API_KEY secret
   build-e2b-template:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [prepare]
@@ -2245,6 +2267,7 @@ jobs:
   # Lighthouse CI audit for web homepage (failure blocks merge, skip is allowed)
   lighthouse-web:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     concurrency:
       group: lighthouse-web-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
@@ -2315,6 +2338,7 @@ jobs:
   # Lighthouse CI audit for app homepage (failure blocks merge, skip is allowed)
   lighthouse-app:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     concurrency:
       group: lighthouse-app-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
@@ -2392,6 +2416,7 @@ jobs:
   # dependencies fail, and GitHub treats "skipped" as passing — defeating the purpose.
   ci-gate-turbo:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     # Runner cleanup is handled by cleanup.yml (pull_request_target:closed).
     needs:
       - detect-release

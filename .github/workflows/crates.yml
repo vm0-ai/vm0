@@ -15,6 +15,7 @@ jobs:
   # Detect release-please context across all event types (PR, push, merge queue).
   detect-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       skip: ${{ steps.check.outputs.skip }}
     steps:
@@ -57,6 +58,7 @@ jobs:
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
     outputs:
@@ -243,6 +245,7 @@ jobs:
 
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260525
     needs: [detect]
@@ -299,6 +302,7 @@ jobs:
 
   api-contracts-rust-bindings:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260525
     needs: [detect]
@@ -1552,6 +1556,7 @@ jobs:
 
   ci-gate-crates:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs:
       - detect-release
       - detect
