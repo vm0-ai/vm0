@@ -136,6 +136,7 @@ module.exports = {
       /^\/README\.md$/,
       /^\/forge\.config\.js$/,
       /^\/tsconfig\.json$/,
+      /^\/tsup\.electron\.config\.js$/,
       /^\/vite\.renderer\.config\.ts$/,
       /^\/vitest\.config\.ts$/,
     ],
