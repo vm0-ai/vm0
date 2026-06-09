@@ -485,8 +485,8 @@ async def test_request_cancellation_releases_tracking_during_auth_resolution(
     tmp_path, usage_pending_path, real_flow, mitm_ctx
 ):
     """Cancelled auth resolution must not leak request-time usage tracking."""
-    reg_path = _write_billable_tracking_registry(tmp_path)
-    flow = _billable_tracking_flow(real_flow)
+    reg_path = _write_billable_x_tracking_registry(tmp_path)
+    flow = _x_tracking_flow(real_flow)
 
     async def cancel_auth_after_tracking(*_args, **_kwargs):
         usage.write_pending_snapshot(flush_request_id="during-auth-cancel")
