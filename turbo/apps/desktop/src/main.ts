@@ -63,8 +63,10 @@ import {
   parseDesktopAuthCallbackArgv,
 } from "./desktop-auth";
 import {
+  hideDockForHiddenMainWindow,
   shouldHideMainWindowOnClose,
   showAndFocusWindow,
+  showDockForVisibleMainWindow,
 } from "./desktop-window-lifecycle";
 import { buildDesktopWindowChromeOptions } from "./desktop-window-chrome";
 import {
@@ -216,6 +218,20 @@ function applyDockIcon(): void {
   if (process.platform === "darwin" && app.dock) {
     app.dock.setIcon(appIconPath());
   }
+}
+
+function hideDockForInactiveMainWindow(): void {
+  hideDockForHiddenMainWindow({
+    platform: process.platform,
+    dock: app.dock,
+  });
+}
+
+async function showDockForActiveMainWindow(): Promise<void> {
+  await showDockForVisibleMainWindow({
+    platform: process.platform,
+    dock: app.dock,
+  });
 }
 
 function installDesktopRendererProtocol(): void {
@@ -568,10 +584,12 @@ function installMainWindowPolicy(window: BrowserWindow): void {
 
 async function createMainWindow(): Promise<BrowserWindow> {
   if (mainWindow && !mainWindow.isDestroyed()) {
+    await showDockForActiveMainWindow();
     showAndFocusWindow(mainWindow);
     return mainWindow;
   }
 
+  await showDockForActiveMainWindow();
   const window = new BrowserWindow({
     ...browserWindowOptions(),
     width: 1280,
@@ -590,6 +608,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
     ) {
       event.preventDefault();
       window.hide();
+      hideDockForInactiveMainWindow();
     }
   });
   window.on("closed", () => {
@@ -826,6 +845,7 @@ if (!hasSingleInstanceLock) {
 
   void app.whenReady().then(async () => {
     applyDockIcon();
+    hideDockForInactiveMainWindow();
     applyApplicationMenu();
     registerDesktopAuthProtocol();
     installDesktopRendererProtocol();
@@ -842,7 +862,6 @@ if (!hasSingleInstanceLock) {
     queueDesktopAuthCallbackArgv(process.argv);
 
     const pendingCode = desktopAuthSession.takePendingCode();
-    await createMainWindow();
     if (pendingCode) {
       void desktopAuthSession
         .consumeCode(pendingCode)
