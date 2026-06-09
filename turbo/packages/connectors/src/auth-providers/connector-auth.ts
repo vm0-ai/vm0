@@ -5,9 +5,11 @@ import {
   type ConnectorType,
   type AuthGrantConnectorType,
   type ConnectorDeviceAuthGrantAuthMethodId,
+  type ConnectorExternalCodeGrantAuthMethodId,
   type ConnectorDeviceAuthStartOptions,
   type ConnectorAuthMethodIdsByGrantKind,
   type DeviceAuthGrantConnectorType,
+  type ExternalCodeGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByRevokeKind,
   type ConnectorRefreshInputValues,
@@ -20,6 +22,7 @@ import {
   connectorAuthMethodRefHasRevokeKind,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodAuthCodeGrantConfig,
+  getConnectorAuthMethodExternalCodeGrantConfig,
   getConnectorAuthMethodGrantScopes,
   isStaticConfidentialConnectorAuthClient,
   parseConnectorDeviceAuthStartOptions,
@@ -34,6 +37,7 @@ import type {
   ConnectorAuthProviderRefreshResultBase,
   ConnectorAuthProviderRefreshResult,
   DeviceAuthConnectorAuthProvider,
+  ExternalCodeConnectorAuthProvider,
   RefreshTokenAccessProvider,
   TokenRevokeProvider,
 } from "./types";
@@ -43,6 +47,7 @@ import type {
 } from "./grant-result";
 import {
   type AuthUrlResult,
+  type ExternalCodeAuthorizationStartResult,
   type OAuthDeviceAuthPollResult,
   type OAuthDeviceAuthPollResultBase,
   type OAuthDeviceAuthStartResult,
@@ -51,6 +56,7 @@ import { providerEnvFromObject, type ProviderEnv } from "./provider-env";
 import { ahrefsProvider } from "./connectors/ahrefs/provider";
 import { airtableProvider } from "./connectors/airtable/provider";
 import { asanaProvider } from "./connectors/asana/provider";
+import { awsProvider } from "./connectors/aws/provider";
 import { base44Provider } from "./connectors/base44/provider";
 import { canvaProvider } from "./connectors/canva/provider";
 import { closeProvider } from "./connectors/close/provider";
@@ -109,6 +115,8 @@ import {
 } from "./connectors/test-oauth-device/provider";
 
 export type {
+  ConnectorAuthProviderGrantResult,
+  ConnectorAuthProviderGrantResultForMethod,
   ConnectorAuthProviderRefreshResultBase,
   ConnectorAuthProviderRefreshResult,
 };
@@ -136,6 +144,12 @@ type ConnectorDeviceAuthGrantProvider<
     ConnectorDeviceAuthGrantAuthMethodId<Type>,
 > = DeviceAuthConnectorAuthProvider<Type, Method>["grant"];
 
+type ConnectorExternalCodeGrantProvider<
+  Type extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<Type> =
+    ConnectorExternalCodeGrantAuthMethodId<Type>,
+> = ExternalCodeConnectorAuthProvider<Type, Method>["grant"];
+
 type ConnectorAuthCodeProviderEntry<
   Type extends AuthCodeGrantConnectorType,
   Method extends ConnectorAuthCodeGrantAuthMethodId<Type>,
@@ -148,6 +162,13 @@ type ConnectorDeviceAuthProviderEntry<
   Method extends ConnectorDeviceAuthGrantAuthMethodId<Type>,
 > = {
   readonly grant: ConnectorDeviceAuthGrantProvider<Type, Method>;
+};
+
+type ConnectorExternalCodeProviderEntry<
+  Type extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<Type>,
+> = {
+  readonly grant: ConnectorExternalCodeGrantProvider<Type, Method>;
 };
 
 type ConnectorRefreshTokenAccessProviderEntry<
@@ -186,6 +207,19 @@ type ConnectorDeviceAuthGrantProviderEntries<Type extends ConnectorType> = {
   >;
 };
 
+type ConnectorExternalCodeGrantProviderEntries<Type extends ConnectorType> = {
+  readonly [Method in ConnectorAuthMethodIdsByGrantKind<
+    Type,
+    "external-code"
+  >]: ConnectorExternalCodeProviderEntry<
+    Type & ExternalCodeGrantConnectorType,
+    Method &
+      ConnectorExternalCodeGrantAuthMethodId<
+        Type & ExternalCodeGrantConnectorType
+      >
+  >;
+};
+
 type ConnectorRefreshTokenAccessProviderEntries<Type extends ConnectorType> = {
   readonly [Method in ConnectorAuthMethodIdsByAccessKind<
     Type,
@@ -218,6 +252,7 @@ type ConnectorProviderBackedAuthMethodEntries<
   Type extends ConnectorProviderBackedType,
 > = ConnectorAuthCodeGrantProviderEntries<Type> &
   ConnectorDeviceAuthGrantProviderEntries<Type> &
+  ConnectorExternalCodeGrantProviderEntries<Type> &
   ConnectorRefreshTokenAccessProviderEntries<Type> &
   ConnectorTokenRevokeProviderEntries<Type>;
 
@@ -304,6 +339,19 @@ function deviceAuthRefreshProviderEntry<
   return { grant: provider.grant, access: provider.access };
 }
 
+function externalCodeRefreshProviderEntry<
+  Type extends ExternalCodeGrantConnectorType & RefreshTokenAccessConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<Type> &
+    ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
+>(
+  provider: ExternalCodeConnectorAuthProvider<Type, Method> & {
+    readonly access: RefreshTokenAccessProvider<Type, Method>;
+  },
+): ConnectorExternalCodeProviderEntry<Type, Method> &
+  ConnectorRefreshTokenAccessProviderEntry<Type, Method> {
+  return { grant: provider.grant, access: provider.access };
+}
+
 function refreshProviderEntry<
   Type extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
@@ -333,6 +381,13 @@ function connectorDeviceAuthGrantProviderFor<
   T extends DeviceAuthGrantConnectorType,
   Method extends ConnectorDeviceAuthGrantAuthMethodId<T>,
 >(type: T, authMethod: Method): ConnectorDeviceAuthGrantProvider<T, Method> {
+  return CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type][authMethod].grant;
+}
+
+function connectorExternalCodeGrantProviderFor<
+  T extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<T>,
+>(type: T, authMethod: Method): ConnectorExternalCodeGrantProvider<T, Method> {
   return CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type][authMethod].grant;
 }
 
@@ -378,6 +433,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   ahrefs: { oauth: authCodeRefreshProviderEntry(ahrefsProvider) },
   airtable: { oauth: authCodeRefreshProviderEntry(airtableProvider) },
   asana: { oauth: authCodeRefreshProviderEntry(asanaProvider) },
+  aws: { cli: externalCodeRefreshProviderEntry(awsProvider) },
   base44: { oauth: deviceAuthRefreshProviderEntry(base44Provider) },
   canva: { oauth: authCodeRefreshProviderEntry(canvaProvider) },
   close: { oauth: authCodeRefreshProviderEntry(closeProvider) },
@@ -463,6 +519,9 @@ type ConnectorAuthCodeResolvedMethodClient =
 type ConnectorDeviceAuthResolvedMethodClient =
   ConnectorResolvedAuthMethodClientByGrantKind<"device-auth">;
 
+type ConnectorExternalCodeResolvedMethodClient =
+  ConnectorResolvedAuthMethodClientByGrantKind<"external-code">;
+
 type ConnectorAuthCodeAuthorizationUrlArgs =
   ConnectorAuthCodeResolvedMethodClient & {
     readonly redirectUri: string;
@@ -487,6 +546,16 @@ type ConnectorDeviceAuthorizationPollCallArgs =
   ConnectorDeviceAuthResolvedMethodClient & {
     readonly deviceCode: string;
     readonly pollState?: string;
+  };
+
+type ConnectorExternalCodeAuthorizationStartCallArgs =
+  ConnectorExternalCodeResolvedMethodClient;
+
+type ConnectorExternalCodeAuthorizationCompleteCallArgs =
+  ConnectorExternalCodeResolvedMethodClient & {
+    readonly code: string;
+    readonly providerState: string;
+    readonly signal: AbortSignal;
   };
 
 type ConnectorRefreshTokenAccessCallArgs<
@@ -611,6 +680,81 @@ export async function exchangeConnectorAuthCode<
     state: args.state,
     codeVerifier: args.codeVerifier,
     oauthContext: args.oauthContext,
+  });
+}
+
+export function startConnectorExternalCodeAuthorization<
+  T extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<T>,
+>(args: {
+  readonly type: T;
+  readonly authMethod: Method;
+  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+}): Promise<ExternalCodeAuthorizationStartResult>;
+export function startConnectorExternalCodeAuthorization(
+  args: ConnectorExternalCodeAuthorizationStartCallArgs,
+): Promise<ExternalCodeAuthorizationStartResult>;
+export async function startConnectorExternalCodeAuthorization<
+  T extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<T>,
+>(args: {
+  readonly type: T;
+  readonly authMethod: Method;
+  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+}): Promise<ExternalCodeAuthorizationStartResult> {
+  const provider = connectorExternalCodeGrantProviderFor(
+    args.type,
+    args.authMethod,
+  );
+  const externalCodeGrant = getConnectorAuthMethodExternalCodeGrantConfig(
+    args.type,
+    args.authMethod,
+  );
+  return await provider.startExternalCodeAuthorization({
+    authClient: connectorAuthClientIdentityForMethod(args.authClient),
+    externalCodeGrant,
+  });
+}
+
+export function completeConnectorExternalCodeAuthorization<
+  T extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<T>,
+>(args: {
+  readonly type: T;
+  readonly authMethod: Method;
+  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+  readonly code: string;
+  readonly providerState: string;
+  readonly signal: AbortSignal;
+}): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>>;
+export function completeConnectorExternalCodeAuthorization(
+  args: ConnectorExternalCodeAuthorizationCompleteCallArgs,
+): Promise<ConnectorAuthProviderGrantResult>;
+export async function completeConnectorExternalCodeAuthorization<
+  T extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<T>,
+>(args: {
+  readonly type: T;
+  readonly authMethod: Method;
+  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+  readonly code: string;
+  readonly providerState: string;
+  readonly signal: AbortSignal;
+}): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>> {
+  const provider = connectorExternalCodeGrantProviderFor(
+    args.type,
+    args.authMethod,
+  );
+  const externalCodeGrant = getConnectorAuthMethodExternalCodeGrantConfig(
+    args.type,
+    args.authMethod,
+  );
+  return await provider.completeExternalCodeAuthorization({
+    authClient: args.authClient,
+    externalCodeGrant,
+    code: args.code,
+    providerState: args.providerState,
+    signal: args.signal,
   });
 }
 

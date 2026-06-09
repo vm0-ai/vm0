@@ -1,5 +1,102 @@
 # Changelog
 
+## [0.429.0](https://github.com/vm0-ai/vm0/compare/app-v0.428.2...app-v0.429.0) (2026-06-09)
+
+
+### Features
+
+* add aws external-code connector ([#16577](https://github.com/vm0-ai/vm0/issues/16577)) ([6aaf392](https://github.com/vm0-ai/vm0/commit/6aaf392435773785e31fb9bbba15dc820c97aed1))
+* **platform:** add presentation speaker notes export ([#16854](https://github.com/vm0-ai/vm0/issues/16854)) ([bfb47f8](https://github.com/vm0-ai/vm0/commit/bfb47f806b35d452d746c373454d908b62237e47))
+
+
+### Bug Fixes
+
+* clarify permission change undo copy ([#16861](https://github.com/vm0-ai/vm0/issues/16861)) ([cc7ce10](https://github.com/vm0-ai/vm0/commit/cc7ce10c34dd2cb06f1b5946635217521a88a6e6))
+* normalize slock connector icon fill ([#16867](https://github.com/vm0-ai/vm0/issues/16867)) ([36c5038](https://github.com/vm0-ai/vm0/commit/36c5038515e97da8d5a5f36cae45f0a24f0b5375))
+* normalize square connector icon ([#16889](https://github.com/vm0-ai/vm0/issues/16889)) ([30f9cc9](https://github.com/vm0-ai/vm0/commit/30f9cc9364b85ff095bfd7021d43f4ddd871fe75))
+* re-apply chat message font size + make line-height actually apply (15px) ([#16841](https://github.com/vm0-ai/vm0/issues/16841)) ([025acfc](https://github.com/vm0-ai/vm0/commit/025acfc827ee35d46b76f3233569f411c0eb08aa))
+* update google maps connector icon ([#16862](https://github.com/vm0-ai/vm0/issues/16862)) ([5ba6f7d](https://github.com/vm0-ai/vm0/commit/5ba6f7d19ecd4643d9ba692bf9ac43d88ab2c066))
+* update segment connector icon ([#16837](https://github.com/vm0-ai/vm0/issues/16837)) ([ab83030](https://github.com/vm0-ai/vm0/commit/ab83030597216f1d82d2fe44b257f7ef5d181534))
+* update serpapi connector icon ([#16856](https://github.com/vm0-ai/vm0/issues/16856)) ([7230f95](https://github.com/vm0-ai/vm0/commit/7230f9507eee07079adf371844e9c0c787053440))
+* update shopify connector icon ([#16866](https://github.com/vm0-ai/vm0/issues/16866)) ([ae73f9f](https://github.com/vm0-ai/vm0/commit/ae73f9fb16779c9934ac4e6911de42f2a4ba6bef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.73.0
+    * @vm0/connectors bumped to 1.55.0
+    * @vm0/core bumped to 8.319.0
+
+## [0.428.2](https://github.com/vm0-ai/vm0/compare/app-v0.428.1...app-v0.428.2) (2026-06-09)
+
+
+### Bug Fixes
+
+* normalize salesforce connector svg ([#16835](https://github.com/vm0-ai/vm0/issues/16835)) ([6f8c0e3](https://github.com/vm0-ai/vm0/commit/6f8c0e39f8754f13de535175f59d42dde569ea5d))
+* normalize scrapeninja connector svg ([#16836](https://github.com/vm0-ai/vm0/issues/16836)) ([5f1c08d](https://github.com/vm0-ai/vm0/commit/5f1c08d7db690dc553fd59522adb4db027a27fd1))
+
+## [0.428.1](https://github.com/vm0-ai/vm0/compare/app-v0.428.0...app-v0.428.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* replace recraft embedded raster icon ([#16812](https://github.com/vm0-ai/vm0/issues/16812)) ([a072f49](https://github.com/vm0-ai/vm0/commit/a072f49fb8189f1feb7f6eb5bcbb4b4311f46905))
+* replace rentcast raster connector icon ([#16825](https://github.com/vm0-ai/vm0/issues/16825)) ([453b53b](https://github.com/vm0-ai/vm0/commit/453b53bbad33a7fee01a7d3167ba5a5e98f4077a))
+* update productlane connector icon ([#16813](https://github.com/vm0-ai/vm0/issues/16813)) ([68567bd](https://github.com/vm0-ai/vm0/commit/68567bdfc9cbe654c1b5463497911e508ef9ffd0))
+* update reap connector icon ([#16806](https://github.com/vm0-ai/vm0/issues/16806)) ([3175a33](https://github.com/vm0-ai/vm0/commit/3175a33e1ef92547a34047897fa79d9663dfa0b7))
+
+## [0.428.0](https://github.com/vm0-ai/vm0/compare/app-v0.427.0...app-v0.428.0) (2026-06-09)
+
+
+### Features
+
+* add inline provide feedback on agent messages ([#16223](https://github.com/vm0-ai/vm0/issues/16223)) ([03ccac6](https://github.com/vm0-ai/vm0/commit/03ccac6771099250a365b64a3e15c7c87ac03fb6))
+* **api:** inbound webhook route + WebhookInterpreter + run submission ([#16775](https://github.com/vm0-ai/vm0/issues/16775)) ([ace24c7](https://github.com/vm0-ai/vm0/commit/ace24c7d15afb88b28c4b250a089b61ef5525a16))
+
+
+### Bug Fixes
+
+* normalize podchaser svg attributes ([#16773](https://github.com/vm0-ai/vm0/issues/16773)) ([77521f6](https://github.com/vm0-ai/vm0/commit/77521f6e4022ace85ae86194b1a17dd32da96de4))
+* normalize qiita connector svg attributes ([#16800](https://github.com/vm0-ai/vm0/issues/16800)) ([b77b2ec](https://github.com/vm0-ai/vm0/commit/b77b2ecdac4a2cdab26d1a00c60c4725af54baf4))
+* replace porkbun raster icon ([#16779](https://github.com/vm0-ai/vm0/issues/16779)) ([7162109](https://github.com/vm0-ai/vm0/commit/7162109467f5f013a16666a6c8a7cd3c35651828))
+* replace posthog icon ([#16785](https://github.com/vm0-ai/vm0/issues/16785)) ([ba1a768](https://github.com/vm0-ai/vm0/commit/ba1a768ac021cfb66bc936733123bcb8728cdd6e))
+* replace printful embedded icon ([#16792](https://github.com/vm0-ai/vm0/issues/16792)) ([c86b789](https://github.com/vm0-ai/vm0/commit/c86b7897934fc4e82c544875a04313631c4fd888))
+* use official pinecone connector icon ([#16763](https://github.com/vm0-ai/vm0/issues/16763)) ([6e52699](https://github.com/vm0-ai/vm0/commit/6e5269970f4d91dac53e3119be24aac9c18934e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.72.0
+    * @vm0/connectors bumped to 1.54.0
+    * @vm0/core bumped to 8.318.0
+
+## [0.427.0](https://github.com/vm0-ai/vm0/compare/app-v0.426.0...app-v0.427.0) (2026-06-09)
+
+
+### Features
+
+* add stripe firewall permissions from official data ([#16704](https://github.com/vm0-ai/vm0/issues/16704)) ([8e60269](https://github.com/vm0-ai/vm0/commit/8e60269c504497f0926da811835067656a2ba07d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.2
+    * @vm0/connectors bumped to 1.53.0
+    * @vm0/core bumped to 8.317.3
+
+## [0.426.0](https://github.com/vm0-ai/vm0/compare/app-v0.425.1...app-v0.426.0) (2026-06-09)
+
+
+### Features
+
+* add presentation HTML editor ([#16728](https://github.com/vm0-ai/vm0/issues/16728)) ([b1c33ca](https://github.com/vm0-ai/vm0/commit/b1c33ca770a1b342bcb77b48172fe5638e1a4ac1))
+
 ## [0.425.1](https://github.com/vm0-ai/vm0/compare/app-v0.425.0...app-v0.425.1) (2026-06-09)
 
 

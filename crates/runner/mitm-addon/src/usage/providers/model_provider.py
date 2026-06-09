@@ -27,7 +27,7 @@ from ..buffer import UsageEvent, buffer_model_usage_observations, buffer_usage_e
 from ..idempotency import (
     USAGE_EVENT_NAMESPACE_MODEL,
     USAGE_OBSERVATION_NAMESPACE_MODEL,
-    encode_uuid_name,
+    derive_usage_idempotency_key,
 )
 from ..model_tokens import MODEL_USAGE_CATEGORIES
 
@@ -150,7 +150,10 @@ def _build_usage_events(
             continue
         events.append(
             {
-                "idempotencyKey": _derive_idempotency_key(namespace, run_id, source_id, category),
+                "idempotencyKey": derive_usage_idempotency_key(
+                    namespace,
+                    (run_id, source_id, category),
+                ),
                 "kind": MODEL_USAGE_KIND,
                 "provider": provider,
                 "category": category,
@@ -158,17 +161,6 @@ def _build_usage_events(
             }
         )
     return events
-
-
-def _derive_idempotency_key(
-    namespace: uuid.UUID, run_id: str, source_id: str, category: str
-) -> str:
-    return str(
-        uuid.uuid5(
-            namespace,
-            encode_uuid_name((run_id, source_id, category)),
-        )
-    )
 
 
 def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:

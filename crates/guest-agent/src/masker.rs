@@ -21,6 +21,8 @@ const MIN_SECRET_LEN: usize = 5;
 pub struct SecretMasker {
     matcher: Option<Matcher>,
     diagnostic_matcher: Option<Matcher>,
+    url_encoded_matcher: Option<Matcher>,
+    diagnostic_url_encoded_matcher: Option<Matcher>,
 }
 
 struct Matcher {
@@ -63,39 +65,56 @@ impl SecretMasker {
 
         let mut patterns = Vec::new();
         let mut diagnostic_patterns = Vec::new();
+        let mut url_encoded_patterns = Vec::new();
+        let mut diagnostic_url_encoded_patterns = Vec::new();
         for secret in &secrets {
             if secret.len() < MIN_SECRET_LEN {
                 continue;
             }
             push_secret_patterns(secret, &mut patterns);
             push_secret_patterns(secret, &mut diagnostic_patterns);
+            push_url_encoded_secret_pattern(secret, &mut url_encoded_patterns);
+            push_url_encoded_secret_pattern(secret, &mut diagnostic_url_encoded_patterns);
             push_diagnostic_multiline_patterns(secret, &mut diagnostic_patterns);
         }
 
-        Self::build_with_diagnostic_patterns(patterns, diagnostic_patterns)
+        Self::build_with_diagnostic_patterns(
+            patterns,
+            diagnostic_patterns,
+            url_encoded_patterns,
+            diagnostic_url_encoded_patterns,
+        )
     }
 
     fn empty() -> Self {
         Self {
             matcher: None,
             diagnostic_matcher: None,
+            url_encoded_matcher: None,
+            diagnostic_url_encoded_matcher: None,
         }
     }
 
     #[cfg(test)]
     fn build(patterns: Vec<String>) -> Self {
-        Self::build_with_diagnostic_patterns(patterns.clone(), patterns)
+        Self::build_with_diagnostic_patterns(patterns.clone(), patterns, Vec::new(), Vec::new())
     }
 
     fn build_with_diagnostic_patterns(
         patterns: Vec<String>,
         diagnostic_patterns: Vec<String>,
+        url_encoded_patterns: Vec<String>,
+        diagnostic_url_encoded_patterns: Vec<String>,
     ) -> Self {
         let matcher = Self::build_matcher(&patterns);
         let diagnostic_matcher = Self::build_matcher(&diagnostic_patterns);
+        let url_encoded_matcher = Self::build_matcher(&url_encoded_patterns);
+        let diagnostic_url_encoded_matcher = Self::build_matcher(&diagnostic_url_encoded_patterns);
         Self {
             matcher,
             diagnostic_matcher,
+            url_encoded_matcher,
+            diagnostic_url_encoded_matcher,
         }
     }
 
@@ -127,7 +146,7 @@ impl SecretMasker {
 
     /// Recursively mask secrets in a JSON value tree (in-place).
     pub fn mask_value(&self, val: &mut Value) {
-        if self.matcher.is_none() {
+        if self.matcher.is_none() && self.url_encoded_matcher.is_none() {
             return;
         }
         match val {
@@ -163,9 +182,9 @@ impl SecretMasker {
 
     /// Mask diagnostic text while preserving the caller's line boundaries.
     pub(crate) fn mask_diagnostic_lines(&self, lines: Vec<String>) -> Vec<String> {
-        let Some(matcher) = self.diagnostic_matcher.as_ref() else {
+        if self.diagnostic_matcher.is_none() && self.diagnostic_url_encoded_matcher.is_none() {
             return lines;
-        };
+        }
         if lines.is_empty() {
             return lines;
         }
@@ -186,14 +205,16 @@ impl SecretMasker {
             joined.push_str(line);
             line_ends.push(joined.len());
         }
-        if !matcher.ac.is_match(&joined) {
+
+        let joined_ranges = self.diagnostic_redaction_ranges(&joined);
+        if joined_ranges.is_empty() {
             return lines;
         }
 
         let mut redactions = vec![Vec::new(); lines.len()];
-        for matched in matcher.ac.find_iter(&joined) {
-            let match_start = matched.start();
-            let match_end = matched.end();
+        for range in joined_ranges {
+            let match_start = range.start;
+            let match_end = range.end;
             let first_line = line_ends.partition_point(|&line_end| line_end <= match_start);
             for ((line_start, line_end), line_redactions) in line_starts
                 .iter()
@@ -231,12 +252,65 @@ impl SecretMasker {
     }
 
     fn masked_string(&self, s: &str) -> Option<String> {
-        let matcher = self.matcher.as_ref()?;
-        if matcher.ac.is_match(s) {
-            Some(matcher.ac.replace_all(s, &matcher.replacements))
-        } else {
-            None
+        let canonicalized = self
+            .url_encoded_matcher
+            .as_ref()
+            .and_then(|_| canonicalize_lowercase_percent_escapes(s));
+        if canonicalized.is_none() {
+            return self.matcher.as_ref().and_then(|matcher| {
+                if matcher.ac.is_match(s) {
+                    Some(matcher.ac.replace_all(s, &matcher.replacements))
+                } else {
+                    None
+                }
+            });
         }
+
+        let mut ranges = Vec::new();
+        if let Some(matcher) = self.matcher.as_ref() {
+            push_match_ranges(matcher, s, &mut ranges);
+        }
+        if let (Some(matcher), Some(canonicalized)) =
+            (self.url_encoded_matcher.as_ref(), canonicalized.as_deref())
+        {
+            push_match_ranges(matcher, canonicalized, &mut ranges);
+        }
+        let ranges = merge_overlapping_ranges(ranges);
+        if ranges.is_empty() {
+            None
+        } else {
+            Some(redact_ranges(s.to_string(), &ranges))
+        }
+    }
+
+    fn diagnostic_redaction_ranges(&self, joined: &str) -> Vec<Range<usize>> {
+        let canonicalized = self
+            .diagnostic_url_encoded_matcher
+            .as_ref()
+            .and_then(|_| canonicalize_lowercase_percent_escapes(joined));
+        if canonicalized.is_none() {
+            let Some(matcher) = self.diagnostic_matcher.as_ref() else {
+                return Vec::new();
+            };
+            if !matcher.ac.is_match(joined) {
+                return Vec::new();
+            }
+            let mut ranges = Vec::new();
+            push_match_ranges(matcher, joined, &mut ranges);
+            return ranges;
+        }
+
+        let mut ranges = Vec::new();
+        if let Some(matcher) = self.diagnostic_matcher.as_ref() {
+            push_match_ranges(matcher, joined, &mut ranges);
+        }
+        if let (Some(matcher), Some(canonicalized)) = (
+            self.diagnostic_url_encoded_matcher.as_ref(),
+            canonicalized.as_deref(),
+        ) {
+            push_match_ranges(matcher, canonicalized, &mut ranges);
+        }
+        merge_overlapping_ranges(ranges)
     }
 }
 
@@ -288,10 +362,104 @@ fn push_secret_patterns(secret: &str, patterns: &mut Vec<String>) {
     patterns.push(secret.to_string());
     let b64 = base64::engine::general_purpose::STANDARD.encode(secret);
     patterns.push(b64);
+    push_url_encoded_secret_pattern(secret, patterns);
+}
+
+fn push_url_encoded_secret_pattern(secret: &str, patterns: &mut Vec<String>) {
     let url_encoded = url_encode(secret);
     if url_encoded != secret {
         patterns.push(url_encoded);
     }
+}
+
+fn canonicalize_lowercase_percent_escapes(s: &str) -> Option<String> {
+    if !contains_lowercase_percent_escape(s.as_bytes()) {
+        return None;
+    }
+
+    let mut canonicalized = s.to_string();
+    // SAFETY: the mutation below only changes ASCII hex letters inside valid
+    // percent escapes to their ASCII uppercase forms, preserving UTF-8 validity.
+    let bytes = unsafe { canonicalized.as_bytes_mut() };
+    let mut index = 0;
+    while index < bytes.len() {
+        if let Some((first, second)) = valid_percent_escape_at(bytes, index) {
+            if let Some(first_byte) = bytes.get_mut(index + 1) {
+                *first_byte = first.to_ascii_uppercase();
+            }
+            if let Some(second_byte) = bytes.get_mut(index + 2) {
+                *second_byte = second.to_ascii_uppercase();
+            }
+            index += 3;
+        } else {
+            index += 1;
+        }
+    }
+    Some(canonicalized)
+}
+
+fn contains_lowercase_percent_escape(bytes: &[u8]) -> bool {
+    let mut index = 0;
+    while index < bytes.len() {
+        if let Some((first, second)) = valid_percent_escape_at(bytes, index) {
+            if is_ascii_lowercase_hex_digit(first) || is_ascii_lowercase_hex_digit(second) {
+                return true;
+            }
+            index += 3;
+        } else {
+            index += 1;
+        }
+    }
+    false
+}
+
+fn valid_percent_escape_at(bytes: &[u8], index: usize) -> Option<(u8, u8)> {
+    let percent = *bytes.get(index)?;
+    let first = *bytes.get(index + 1)?;
+    let second = *bytes.get(index + 2)?;
+    if percent == b'%' && is_ascii_hex_digit(first) && is_ascii_hex_digit(second) {
+        Some((first, second))
+    } else {
+        None
+    }
+}
+
+fn is_ascii_hex_digit(byte: u8) -> bool {
+    byte.is_ascii_hexdigit()
+}
+
+fn is_ascii_lowercase_hex_digit(byte: u8) -> bool {
+    matches!(byte, b'a'..=b'f')
+}
+
+fn push_match_ranges(matcher: &Matcher, haystack: &str, ranges: &mut Vec<Range<usize>>) {
+    for matched in matcher.ac.find_iter(haystack) {
+        ranges.push(matched.start()..matched.end());
+    }
+}
+
+fn merge_overlapping_ranges(mut ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
+    if ranges.len() < 2 {
+        return ranges;
+    }
+
+    ranges.sort_by_key(|range| (range.start, range.end));
+    let mut merged: Vec<Range<usize>> = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        if range.is_empty() {
+            continue;
+        }
+        if let Some(last) = merged.last_mut()
+            && range.start < last.end
+        {
+            if range.end > last.end {
+                last.end = range.end;
+            }
+            continue;
+        }
+        merged.push(range);
+    }
+    merged
 }
 
 fn push_diagnostic_multiline_patterns(secret: &str, patterns: &mut Vec<String>) {
@@ -593,6 +761,133 @@ mod tests {
         assert_eq!(masker.mask_string(secret), "***");
         assert_eq!(masker.mask_string(&encoded), "***");
         assert_eq!(masker.mask_string(&url_encode(secret)), "***");
+    }
+
+    #[test]
+    fn masks_lowercase_percent_encoded_variant() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "token/a";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_string("Bearer token%2fa here"),
+            "Bearer *** here"
+        );
+    }
+
+    #[test]
+    fn masks_mixed_case_percent_encoded_variant() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "key=value/token+abc123";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_string("url key%3dvalue%2Ftoken%2babc123"),
+            "url ***"
+        );
+    }
+
+    #[test]
+    fn mask_value_masks_lowercase_percent_encoded_variant() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "token/a";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+        let mut val = json!({
+            "outer": {
+                "inner": "contains token%2fa here"
+            }
+        });
+
+        masker.mask_value(&mut val);
+
+        assert_eq!(val["outer"]["inner"], "contains *** here");
+    }
+
+    #[test]
+    fn mask_owned_string_masks_lowercase_percent_encoded_variant() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "token/a";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_owned_string("system log token%2fa".to_string()),
+            "system log ***"
+        );
+    }
+
+    #[test]
+    fn diagnostic_lines_mask_lowercase_percent_encoded_variant() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "key=value/token+abc123";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(
+            masker.mask_diagnostic_lines(vec![
+                "before".to_string(),
+                "stderr key%3dvalue%2Ftoken%2babc123 tail".to_string(),
+                "after".to_string(),
+            ]),
+            vec![
+                "before".to_string(),
+                "stderr *** tail".to_string(),
+                "after".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn invalid_percent_escapes_do_not_match_url_encoded_secret() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "token/a";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+        let input = "token%2ga token% token%2";
+
+        assert_eq!(masker.mask_string(input), input);
+    }
+
+    #[test]
+    fn lowercase_percent_path_keeps_plain_and_base64_case_sensitive() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "Case/Secret";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+        let lowercase_base64 = encoded.to_ascii_lowercase();
+
+        assert_eq!(
+            masker.mask_string("case/secret and %2f"),
+            "case/secret and %2f"
+        );
+        assert_ne!(lowercase_base64, encoded);
+        assert_eq!(
+            masker.mask_string(&format!("{lowercase_base64} and %2f")),
+            format!("{lowercase_base64} and %2f")
+        );
+    }
+
+    #[test]
+    fn adjacent_lowercase_percent_encoded_matches_stay_separate() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "token/a";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(masker.mask_string("token%2fatoken%2fa"), "******");
+    }
+
+    #[test]
+    fn duplicate_url_encoded_ranges_redact_once_on_lowercase_percent_path() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let secret = "token/a";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+
+        assert_eq!(masker.mask_string("token%2Fa and %2f"), "*** and %2f");
     }
 
     #[test]

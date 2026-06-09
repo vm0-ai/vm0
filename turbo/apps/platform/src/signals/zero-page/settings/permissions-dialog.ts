@@ -25,6 +25,10 @@ export const setPermissionUnknownPolicy$ = command(
 );
 
 const internalFormKey$ = state<string | null>(null);
+const internalResetPending$ = state(false);
+export const permissionConnectorResetPending$ = computed((get) => {
+  return get(internalResetPending$);
+});
 
 interface ApplyPermissionPoliciesOptions {
   formKey: string;
@@ -76,6 +80,25 @@ export const setPermissionGrantExpiration$ = command(
   },
 );
 
+export const stagePermissionConnectorReset$ = command(
+  (
+    { get, set },
+    formKey: string,
+    ref: string,
+    policies: Record<string, PermissionPolicy>,
+    unknownPolicy: FirewallPolicyValue,
+  ) => {
+    if (get(internalFormKey$) !== formKey) {
+      return;
+    }
+    const all = get(internalAllPolicies$);
+    set(internalAllPolicies$, { ...all, [ref]: policies });
+    set(internalUnknownPolicy$, unknownPolicy);
+    set(internalGrantExpirations$, {});
+    set(internalResetPending$, true);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Scroll tracking
 // ---------------------------------------------------------------------------
@@ -122,6 +145,7 @@ export const initPermissionPolicies$ = command(
     set(internalFormKey$, formKey);
     set(internalAllPolicies$, policies);
     set(internalUnknownPolicy$, unknownPolicy);
+    set(internalResetPending$, false);
     set(internalScrolled$, false);
     set(internalExpandedGroups$, new Set());
   },
@@ -149,6 +173,7 @@ export const resetPermissionPolicies$ = command(
     set(internalFormKey$, null);
     set(internalAllPolicies$, {});
     set(internalUnknownPolicy$, "allow");
+    set(internalResetPending$, false);
     set(internalScrolled$, false);
     set(internalExpandedGroups$, new Set());
   },
@@ -175,6 +200,7 @@ export const applyPermissionPolicies$ = command(
     onApply: (
       policies: Record<string, Record<string, PermissionPolicy>>,
       unknownPolicy: FirewallPolicyValue,
+      resetPending: boolean,
     ) => Promise<void>,
     onClose: () => void,
     _signal: AbortSignal,
@@ -187,7 +213,8 @@ export const applyPermissionPolicies$ = command(
       throw new Error("Permission policies form is missing connector state");
     }
     const unknownPolicy = get(internalUnknownPolicy$);
-    await onApply(policies, unknownPolicy);
+    const resetPending = get(internalResetPending$);
+    await onApply(policies, unknownPolicy, resetPending);
     onClose();
   },
 );

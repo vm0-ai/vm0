@@ -6,11 +6,13 @@ import type {
   ConnectorAuthMethodIdsByAccessKind,
   ConnectorAuthMethodIdsByRevokeKind,
   ConnectorDeviceAuthGrantAuthMethodId,
+  ConnectorExternalCodeGrantAuthMethodId,
   AuthGrantConnectorType,
   ConnectorRefreshInputValues,
   ConnectorRefreshOutputValues,
   ConnectorType,
   DeviceAuthGrantConnectorType,
+  ExternalCodeGrantConnectorType,
   RefreshTokenAccessConnectorType,
   TokenRevokeConnectorType,
 } from "../connectors";
@@ -23,8 +25,11 @@ import type {
   ConnectorAuthCodeAuthorizeArgs,
   ConnectorDeviceAuthorizationPollArgs,
   ConnectorDeviceAuthorizationStartArgs,
+  ConnectorExternalCodeAuthorizationCompleteArgs,
+  ConnectorExternalCodeAuthorizationStartArgs,
   ConnectorAuthCodeExchangeArgs,
   ConnectorAuthProviderRevokeArgs,
+  ExternalCodeAuthorizationStartResult,
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
 } from "./provider-flow-types";
@@ -61,6 +66,20 @@ export interface DeviceAuthGrantProvider<
   pollDeviceAuth(
     args: ConnectorDeviceAuthorizationPollArgs<T, Method>,
   ): Promise<OAuthDeviceAuthPollResult<T, Method>>;
+}
+
+export interface ExternalCodeGrantProvider<
+  T extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<T> =
+    ConnectorExternalCodeGrantAuthMethodId<T>,
+> {
+  readonly kind: "external-code";
+  startExternalCodeAuthorization(
+    args: ConnectorExternalCodeAuthorizationStartArgs<T, Method>,
+  ): Promise<ExternalCodeAuthorizationStartResult>;
+  completeExternalCodeAuthorization(
+    args: ConnectorExternalCodeAuthorizationCompleteArgs<T, Method>,
+  ): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>>;
 }
 
 export interface NoneAccessProvider {
@@ -183,6 +202,16 @@ export type DeviceAuthConnectorAuthProvider<
     ConnectorDeviceAuthGrantAuthMethodId<T>,
 > = AuthProvider<
   DeviceAuthGrantProvider<T, Method>,
+  ConnectorAuthProviderAccess<T, Method>,
+  ConnectorAuthProviderRevoke<T, Method>
+>;
+
+export type ExternalCodeConnectorAuthProvider<
+  T extends ExternalCodeGrantConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<T> =
+    ConnectorExternalCodeGrantAuthMethodId<T>,
+> = AuthProvider<
+  ExternalCodeGrantProvider<T, Method>,
   ConnectorAuthProviderAccess<T, Method>,
   ConnectorAuthProviderRevoke<T, Method>
 >;

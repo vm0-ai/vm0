@@ -18,13 +18,14 @@
 use std::{borrow::Cow, process::Stdio};
 
 use chrono::{DateTime, Utc};
-use tokio::io::{AsyncBufRead, AsyncBufReadExt};
+use tokio::io::AsyncBufRead;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::network_log_drain::{
-    NetworkLogDrainProducer, NetworkLogDrainRequest, ReadyLine, poll_next_line_ready,
+    DrainableLineReaderExit, NetworkLogDrainProducer, NetworkLogDrainRequest,
+    run_drainable_line_reader,
 };
 use crate::network_log_manager::NetworkLogManager;
 
@@ -267,66 +268,37 @@ async fn tail_reader<R>(
     reader: R,
     network_log_manager: NetworkLogManager,
     cancel: CancellationToken,
-    mut drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
+    drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
 ) -> std::io::Result<()>
 where
     R: AsyncBufRead + Unpin,
 {
-    let mut lines = reader.lines();
-    loop {
-        tokio::select! {
-            _ = cancel.cancelled() => break,
-            request = drain_rx.recv() => {
-                let Some(request) = request else {
-                    break;
-                };
-                let outcome = drain_ready_lines(&mut lines, &network_log_manager).await;
-                request.ack();
-                if let DrainOutcome::Stop(result) = outcome {
-                    result?;
-                    break;
-                }
-            }
-            result = lines.next_line() => {
-                let line = match result {
-                    Ok(Some(l)) => l,
-                    Ok(None) => {
-                        if !cancel.is_cancelled() {
-                            warn!("dnsmasq exited unexpectedly (stderr EOF)");
-                        }
-                        break;
-                    }
-                    Err(e) => {
-                        warn!(error = %e, "dnsmasq stderr read error");
-                        break;
-                    }
-                };
-
-                handle_dns_line(&network_log_manager, &line).await;
-            }
+    let exit = run_drainable_line_reader(reader, cancel.clone(), drain_rx, move |line| {
+        let network_log_manager = network_log_manager.clone();
+        async move {
+            handle_dns_line(&network_log_manager, &line).await;
         }
-    }
-    Ok(())
-}
+    })
+    .await;
 
-enum DrainOutcome {
-    Continue,
-    Stop(std::io::Result<()>),
-}
-
-async fn drain_ready_lines<R>(
-    lines: &mut tokio::io::Lines<R>,
-    network_log_manager: &NetworkLogManager,
-) -> DrainOutcome
-where
-    R: AsyncBufRead + Unpin,
-{
-    loop {
-        match poll_next_line_ready(lines) {
-            Ok(ReadyLine::Line(line)) => handle_dns_line(network_log_manager, &line).await,
-            Ok(ReadyLine::Pending) => return DrainOutcome::Continue,
-            Ok(ReadyLine::Eof) => return DrainOutcome::Stop(Ok(())),
-            Err(e) => return DrainOutcome::Stop(Err(e)),
+    match exit {
+        DrainableLineReaderExit::Cancelled | DrainableLineReaderExit::DrainChannelClosed => Ok(()),
+        DrainableLineReaderExit::Eof { during_drain } => {
+            if !during_drain && !cancel.is_cancelled() {
+                warn!("dnsmasq exited unexpectedly (stderr EOF)");
+            }
+            Ok(())
+        }
+        DrainableLineReaderExit::ReadError {
+            during_drain,
+            error,
+        } => {
+            if during_drain {
+                Err(error)
+            } else {
+                warn!(error = %error, "dnsmasq stderr read error");
+                Ok(())
+            }
         }
     }
 }
@@ -554,9 +526,13 @@ fn network_log_row(entry: &DnsLogEntry<'_>, timestamp: DateTime<Utc>) -> serde_j
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
     use crate::ids::RunId;
     use crate::network_log_drain::NetworkLogDrainContext;
-    use tokio::io::AsyncWriteExt;
+    use tokio::io::{AsyncBufRead, AsyncRead, AsyncWriteExt, ReadBuf};
 
     fn assert_query_event(entry: &DnsLogEntry<'_>, expected_query_type: &str) {
         assert_eq!(entry.event.name(), "query");
@@ -946,6 +922,58 @@ mod tests {
         cancel.cancel();
         drop(writer);
         task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn tail_reader_returns_ok_on_normal_eof() {
+        let cancel = CancellationToken::new();
+        let (_producer, drain_rx) = NetworkLogDrainProducer::channel("dns-test");
+
+        let result = tail_reader(
+            tokio::io::BufReader::new(tokio::io::empty()),
+            NetworkLogManager::new(),
+            cancel,
+            drain_rx,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn tail_reader_returns_ok_on_normal_read_error() {
+        let cancel = CancellationToken::new();
+        let (_producer, drain_rx) = NetworkLogDrainProducer::channel("dns-test");
+
+        let result = tail_reader(FailingReader, NetworkLogManager::new(), cancel, drain_rx).await;
+
+        assert!(result.is_ok());
+    }
+
+    struct FailingReader;
+
+    impl AsyncRead for FailingReader {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "test read error",
+            )))
+        }
+    }
+
+    impl AsyncBufRead for FailingReader {
+        fn poll_fill_buf(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
+            Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "test read error",
+            )))
+        }
+
+        fn consume(self: Pin<&mut Self>, _amt: usize) {}
     }
 
     #[test]

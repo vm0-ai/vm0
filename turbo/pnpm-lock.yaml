@@ -562,6 +562,9 @@ importers:
       idb:
         specifier: ~8.0.3
         version: 8.0.3
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
       katex:
         specifier: ^0.17.0
         version: 0.17.0

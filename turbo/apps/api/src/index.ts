@@ -6,6 +6,8 @@ import { createApp } from "./app-factory";
 // Node entry used by `pnpm dev` / `pnpm start`. Vercel can't host the
 // realtime relay WebSocket — Epic #12128 pivoted to Plan D (browser-direct
 // to OpenAI), and the WS scaffolding has since been retired.
+//
+// (no-op touch to exercise the full Turbo build pipeline)
 
 const app = (() => {
   const instanceAbortController = new AbortController();

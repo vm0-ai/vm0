@@ -57,6 +57,37 @@ const GOOGLE_DRIVE_ARTIFACT_SYNC_AUTH_METHOD =
 const ARTIFACT_FLOATING_LAYER_CLASS =
   "!z-[10000] transition-[opacity,transform] duration-[180ms] ease data-[state=open]:!animate-none data-[state=closed]:!animate-none data-[state=open]:translate-y-0 data-[state=open]:opacity-100 data-[state=closed]:translate-y-2 data-[state=closed]:opacity-0";
 
+function siteSlugFromUrl(value: string): string | null {
+  if (!URL.canParse(value)) {
+    return null;
+  }
+  const slug = new URL(value).hostname.split(".")[0];
+  return slug && slug.length > 0 ? slug : null;
+}
+
+function htmlDownloadFilename(filename: string, url: string): string {
+  const trimmed = filename.trim();
+  const candidate =
+    siteSlugFromUrl(trimmed) ??
+    (trimmed === url ? siteSlugFromUrl(url) : null) ??
+    trimmed;
+  const pathSafe = candidate.replace(/[\\/]/g, "-").trim();
+  const withoutHtml = pathSafe.replace(/\.(?:html?|xhtml)$/iu, "");
+  const base =
+    withoutHtml === pathSafe ? pathSafe.replace(/\.[^/.]+$/u, "") : withoutHtml;
+  return `${base || siteSlugFromUrl(url) || "site"}.html`;
+}
+
+function artifactDownloadFilename(
+  artifactKind: ChatThreadArtifactFile["artifactKind"] | undefined,
+  filename: string,
+  url: string,
+): string {
+  return artifactKind === "hosted-site" || artifactKind === "presentation-html"
+    ? htmlDownloadFilename(filename, url)
+    : filename;
+}
+
 type WaitForGoogleDriveAndSyncArtifactsFn = (
   params: {
     readonly agentId: string;
@@ -364,6 +395,17 @@ function GoogleDriveMenuItem({
   );
 }
 
+type ArtifactDownloadMenuProps = {
+  align?: "center" | "end" | "start";
+  ariaLabel?: string;
+  artifactKind?: ChatThreadArtifactFile["artifactKind"];
+  className?: string;
+  filename: string;
+  iconSize?: number;
+  syncTarget?: ArtifactDownloadSyncTarget;
+  url: string;
+};
+
 export function ArtifactDownloadMenu({
   align = "end",
   ariaLabel = "Download options",
@@ -373,16 +415,7 @@ export function ArtifactDownloadMenu({
   iconSize = 16,
   syncTarget,
   url,
-}: {
-  align?: "center" | "end" | "start";
-  ariaLabel?: string;
-  artifactKind?: ChatThreadArtifactFile["artifactKind"];
-  className?: string;
-  filename: string;
-  iconSize?: number;
-  syncTarget?: ArtifactDownloadSyncTarget;
-  url: string;
-}) {
+}: ArtifactDownloadMenuProps) {
   const menuKey = `${url}:${filename}`;
   const openKey = useGet(artifactDownloadMenuOpenKey$);
   const openMenu = useSet(openArtifactDownloadMenu$);
@@ -394,6 +427,11 @@ export function ArtifactDownloadMenu({
   const showPresentationPptxDownload =
     artifactKind === "presentation-html" &&
     Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]);
+  const downloadFilename = artifactDownloadFilename(
+    artifactKind,
+    filename,
+    url,
+  );
   const show = () => {
     openMenu(menuKey);
   };
@@ -458,7 +496,7 @@ export function ArtifactDownloadMenu({
           onClick={() => {
             closeNow();
             detach(
-              downloadAttachmentUrl(url, pageSignal, filename),
+              downloadAttachmentUrl(url, pageSignal, downloadFilename),
               Reason.DomCallback,
               "artifact download",
             );
@@ -472,7 +510,7 @@ export function ArtifactDownloadMenu({
             onClick={() => {
               closeNow();
               downloadPresentationPptx({
-                filename,
+                filename: downloadFilename,
                 signal: pageSignal,
                 url,
               });

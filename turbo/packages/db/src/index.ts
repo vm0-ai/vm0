@@ -23,6 +23,7 @@ import * as modelUsageObservationSchema from "./schema/model-usage-observation";
 import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
+import * as connectorExternalCodeSessionSchema from "./schema/connector-external-code-session";
 import * as modelProviderAuthSessionSchema from "./schema/model-provider-auth-session";
 import * as connectorOauthDeviceAuthorizationSessionSchema from "./schema/connector-oauth-device-authorization-session";
 import * as connectorOauthStateSchema from "./schema/connector-oauth-state";
@@ -79,6 +80,7 @@ import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
 import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
 import * as memoryChangeItemSchema from "./schema/memory-change-item";
+import * as automationSchema from "./schema/automation";
 
 export const schema = {
   ...userSchema,
@@ -111,6 +113,7 @@ export const schema = {
   ...variableSchema,
   ...composeJobSchema,
   ...connectorSchema,
+  ...connectorExternalCodeSessionSchema,
   ...modelProviderAuthSessionSchema,
   ...connectorOauthDeviceAuthorizationSessionSchema,
   ...connectorOauthStateSchema,
@@ -162,4 +165,5 @@ export const schema = {
   ...bankingSchema,
   ...memoryChangeSummarySchema,
   ...memoryChangeItemSchema,
+  ...automationSchema,
 };

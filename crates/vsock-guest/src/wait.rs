@@ -219,12 +219,16 @@ fn wait_done(done_rx: &mpsc::Receiver<()>) -> bool {
 
 fn kill_child_unless_done(
     done_rx: &mpsc::Receiver<()>,
-    kill_target: ProcessTreeKillTarget,
+    mut kill_target: ProcessTreeKillTarget,
     reason: KillReason,
 ) -> Option<WatchdogKill> {
     if wait_done(done_rx) {
         None
     } else {
+        refresh_process_tree_kill_target(&mut kill_target);
+        if wait_done(done_rx) {
+            return None;
+        }
         Some(kill_child(kill_target, reason))
     }
 }
@@ -242,8 +246,69 @@ fn kill_child(kill_target: ProcessTreeKillTarget, reason: KillReason) -> Watchdo
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use std::io::Write;
+    #[cfg(target_os = "linux")]
+    use std::os::unix::fs::PermissionsExt;
+    #[cfg(target_os = "linux")]
+    use std::os::unix::process::CommandExt;
+    #[cfg(target_os = "linux")]
+    use std::path::{Path, PathBuf};
+    #[cfg(target_os = "linux")]
+    use std::process::Child;
     use std::process::{Command, Stdio};
     use std::sync::Arc;
+    #[cfg(target_os = "linux")]
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[cfg(target_os = "linux")]
+    use crate::test_support::{kill_pidfd_and_wait, open_pidfd, wait_for_pidfd_exit};
+
+    #[cfg(target_os = "linux")]
+    struct TempDirGuard(PathBuf);
+
+    #[cfg(target_os = "linux")]
+    impl Drop for TempDirGuard {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn temp_dir(label: &str) -> (PathBuf, TempDirGuard) {
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-guest-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let guard = TempDirGuard(dir.clone());
+        (dir, guard)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn wait_for_path(path: &Path, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if path.exists() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        path.exists()
+    }
+
+    #[cfg(target_os = "linux")]
+    fn kill_spawned_child_with_watchdog(child: &mut Option<Child>) {
+        if let Some(mut child) = child.take() {
+            kill_child(process_tree_kill_target(child.id()), KillReason::Cancelled);
+            let _ = child.wait();
+        }
+    }
 
     #[test]
     fn fast_exit_wait_does_not_pay_cancel_poll_interval_per_child() {
@@ -364,5 +429,111 @@ mod tests {
         );
 
         assert!(outcome.is_none());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn watchdog_kill_refreshes_stale_process_tree_target_before_signal() {
+        let (dir, _guard) = temp_dir("watchdog-refresh");
+        let fifo = dir.join("parent-fifo");
+        let ready = dir.join("ready");
+        let child_pid_path = dir.join("setsid-child-pid");
+
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg(
+                "mkfifo \"$FIFO\"; \
+                 exec 3<> \"$FIFO\"; \
+                 : > \"$READY\"; \
+                 read _ <&3; \
+                 exec 3>&-; \
+                 setsid sh -c 'printf %s \"$$\" > \"$CHILD_PID\"; sleep 60' & \
+                 wait",
+            )
+            .env("FIFO", &fifo)
+            .env("READY", &ready)
+            .env("CHILD_PID", &child_pid_path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        command.process_group(0);
+
+        let mut child = Some(command.spawn().unwrap());
+        if !wait_for_path(&ready, Duration::from_secs(2)) {
+            kill_spawned_child_with_watchdog(&mut child);
+            panic!("parent should block before spawning the setsid child");
+        }
+
+        let stale_target = process_tree_kill_target(child.as_ref().unwrap().id());
+        {
+            let mut fifo_writer = match std::fs::OpenOptions::new().write(true).open(&fifo) {
+                Ok(writer) => writer,
+                Err(e) => {
+                    kill_spawned_child_with_watchdog(&mut child);
+                    panic!("failed to open parent fifo: {e}");
+                }
+            };
+            if let Err(e) = writeln!(fifo_writer, "go") {
+                kill_spawned_child_with_watchdog(&mut child);
+                panic!("failed to write parent fifo: {e}");
+            }
+        }
+
+        if !wait_for_path(&child_pid_path, Duration::from_secs(2)) {
+            kill_spawned_child_with_watchdog(&mut child);
+            panic!("setsid child should publish its pid before watchdog kill");
+        }
+        let child_pid_text = match std::fs::read_to_string(&child_pid_path) {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child_with_watchdog(&mut child);
+                panic!("failed to read setsid child pid: {e}");
+            }
+        };
+        let child_pid: libc::pid_t = match child_pid_text.trim().parse() {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child_with_watchdog(&mut child);
+                panic!("failed to parse setsid child pid {child_pid_text:?}: {e}");
+            }
+        };
+        let child_pidfd = match open_pidfd(child_pid) {
+            Ok(pidfd) => pidfd,
+            Err(e) => {
+                kill_spawned_child_with_watchdog(&mut child);
+                // SAFETY: best-effort cleanup of a test-owned process.
+                let _ = unsafe { libc::kill(child_pid, libc::SIGKILL) };
+                panic!("failed to open pidfd for setsid child pid {child_pid}: {e}");
+            }
+        };
+
+        let (_done_tx, done_rx) = mpsc::channel::<()>();
+        let watchdog_kill = kill_child_unless_done(&done_rx, stale_target, KillReason::Timeout)
+            .expect("watchdog should kill when done is not signalled");
+        if !watchdog_kill.killed {
+            kill_spawned_child_with_watchdog(&mut child);
+            kill_pidfd_and_wait(&child_pidfd)
+                .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
+            panic!("watchdog kill should signal at least one process target");
+        }
+        assert!(matches!(watchdog_kill.reason, KillReason::Timeout));
+        let _ = child.take().unwrap().wait().unwrap();
+
+        match wait_for_pidfd_exit(&child_pidfd, Duration::from_secs(2)) {
+            Ok(true) => {}
+            Ok(false) => {
+                kill_pidfd_and_wait(&child_pidfd)
+                    .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
+                panic!(
+                    "watchdog kill should terminate delayed setsid child pid {child_pid} after refreshing stale target"
+                );
+            }
+            Err(e) => {
+                let cleanup = kill_pidfd_and_wait(&child_pidfd);
+                panic!(
+                    "failed to wait for delayed setsid child pid {child_pid} exit: {e}; cleanup={cleanup:?}"
+                );
+            }
+        }
     }
 }

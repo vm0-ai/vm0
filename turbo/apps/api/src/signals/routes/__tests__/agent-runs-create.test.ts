@@ -1357,6 +1357,88 @@ describe("POST /api/agent/runs", () => {
     });
   });
 
+  it("maps non-refreshable runtime secret aliases for refresh-token connectors", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "aws",
+      authMethod: "cli",
+      tokenExpiresAt: new Date(now() - 60_000),
+    });
+    await db.insert(secretsTable).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "AWS_ACCESS_KEY_ID",
+        encryptedValue: encryptSecretForTests("aws-access-key-id"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "AWS_SECRET_ACCESS_KEY",
+        encryptedValue: encryptSecretForTests("aws-secret-access-key"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "AWS_SESSION_TOKEN",
+        encryptedValue: encryptSecretForTests("aws-session-token"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "AWS_REGION",
+        encryptedValue: encryptSecretForTests("us-west-2"),
+        type: "connector",
+      },
+    ]);
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use AWS",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+    };
+    expect(executionContext.environment).toHaveProperty("AWS_REGION");
+    expect(executionContext.environment).toHaveProperty("AWS_DEFAULT_REGION");
+    expect(executionContext.secretConnectorMap).toMatchObject({
+      AWS_ACCESS_KEY_ID: "aws",
+      AWS_SECRET_ACCESS_KEY: "aws",
+      AWS_SESSION_TOKEN: "aws",
+      AWS_REGION: "aws",
+      AWS_DEFAULT_REGION: "aws",
+    });
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
+      AWS_ACCESS_KEY_ID: "aws-access-key-id",
+      AWS_SECRET_ACCESS_KEY: "aws-secret-access-key",
+      AWS_SESSION_TOKEN: "aws-session-token",
+      AWS_REGION: "us-west-2",
+      AWS_DEFAULT_REGION: "us-west-2",
+    });
+  });
+
   it("injects an org model provider when the compose omits a framework API key", async () => {
     const fx = await fixture();
     await store.set(

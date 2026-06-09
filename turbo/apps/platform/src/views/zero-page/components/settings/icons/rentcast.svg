@@ -1,4 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="connector logo">
-  <!-- Official brand asset source: https://cdn.prod.website-files.com/5fcfc6872ea226dee1432ecd/60242c0ebff111666e6e4a4d_favicon-web-clip.png -->
-  <image href="data:image/png;base64,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" x="0" y="0" width="256" height="256" preserveAspectRatio="xMidYMid meet"/>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 85.64 90.17"
+  role="img"
+  aria-label="connector logo"
+>
+  <defs>
+    <linearGradient
+      id="rentcast-mark-gradient"
+      x1="84.96"
+      y1="45.09"
+      x2="0.69"
+      y2="45.09"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#377DFF" />
+      <stop offset="0.03" stop-color="#3580FD" />
+      <stop offset="0.46" stop-color="#18A8EB" />
+      <stop offset="0.79" stop-color="#06C0DF" />
+      <stop offset="1" stop-color="#00C9DB" />
+    </linearGradient>
+  </defs>
+  <path
+    d="M42.76 50.08A4.74 4.74 0 0 1 38 45.27l0-32a7.08 7.08 0 0 0-14.15 0V62a4.77 4.77 0 0 1-4.76 4.86H19A4.85 4.85 0 0 1 14.17 62V34.46A7.08 7.08 0 0 0 0 34.46v48.63C0 93-.71 91.42 7.09 85l26.05-21.57c11.31-9.58 8-9.58 19.49 0L78.56 85c7.8 6.45 7.08 8 7.08-1.88v-76a7.08 7.08 0 0 0-14.15 0V62a4.84 4.84 0 0 1-4.84 4.86h-.09A4.76 4.76 0 0 1 61.81 62V24.2a7.08 7.08 0 0 0-14.15 0v21.07a4.75 4.75 0 0 1-4.8 4.81Z"
+    fill="url(#rentcast-mark-gradient)"
+  />
 </svg>

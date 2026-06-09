@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.108.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.23...runner-rs-v0.108.24) (2026-06-09)
+
+
+### Bug Fixes
+
+* clarify runner job timeout logs ([#16823](https://github.com/vm0-ai/vm0/issues/16823)) ([77edf47](https://github.com/vm0-ai/vm0/commit/77edf47a4f3c43978ea9339209d370061ec3f474))
+
+
+### Documentation
+
+* document copy file semantics ([#16788](https://github.com/vm0-ai/vm0/issues/16788)) ([57223b3](https://github.com/vm0-ai/vm0/commit/57223b35d45d50b088ac6b35d1c69d59e3c39a1a))
+
+## [0.108.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.22...runner-rs-v0.108.23) (2026-06-09)
+
+
+### Bug Fixes
+
+* **mitm-addon:** encode connector usage idempotency keys ([#16833](https://github.com/vm0-ai/vm0/issues/16833)) ([09fa9b2](https://github.com/vm0-ai/vm0/commit/09fa9b2e59b10645464b35fda404df8bc28c853c))
+* **runner:** preserve local results during submit abandon ([#16832](https://github.com/vm0-ai/vm0/issues/16832)) ([86c9060](https://github.com/vm0-ai/vm0/commit/86c9060a627537ae4937a3dd16d200607c1d13af))
+
+## [0.108.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.21...runner-rs-v0.108.22) (2026-06-09)
+
+
+### Refactoring
+
+* **runner:** share network log drain loop ([#16768](https://github.com/vm0-ai/vm0/issues/16768)) ([a399e57](https://github.com/vm0-ai/vm0/commit/a399e57e7b81b85d93e4adf80fdc73776e326357))
+* split mitm matching pattern tests ([#16790](https://github.com/vm0-ai/vm0/issues/16790)) ([3bbac7a](https://github.com/vm0-ai/vm0/commit/3bbac7a5ec5a9cb7f2159ef86a0b82046c5fb648))
+
+## [0.108.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.20...runner-rs-v0.108.21) (2026-06-09)
+
+
+### Bug Fixes
+
+* harden runner setup artifact installs ([#16764](https://github.com/vm0-ai/vm0/issues/16764)) ([a38fb37](https://github.com/vm0-ai/vm0/commit/a38fb37f2439d506f19583a965118dd065825def))
+
 ## [0.108.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.19...runner-rs-v0.108.20) (2026-06-08)
 
 

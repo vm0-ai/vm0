@@ -5,7 +5,7 @@ import {
   isFirewallConnectorType,
 } from "../firewalls/index";
 
-const CATEGORIZED_CONNECTORS = ["slack", "gmail", "vercel"] as const;
+const CATEGORIZED_CONNECTORS = ["slack", "gmail", "stripe", "vercel"] as const;
 
 function getFirewallPermissionNames(connectorType: string): Set<string> {
   if (!isFirewallConnectorType(connectorType)) {
@@ -24,7 +24,7 @@ function getFirewallPermissionNames(connectorType: string): Set<string> {
 }
 
 describe("firewall categories", () => {
-  it("should return categories for all four categorized connectors", () => {
+  it("should return categories for all categorized connectors", () => {
     for (const connector of CATEGORIZED_CONNECTORS) {
       const data = getPermissionCategories(connector);
       expect(data).not.toBeNull();

@@ -25,6 +25,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use sandbox::*;
 
+const MOCK_COPY_FILE_MAX_BYTES: u64 = 64 * 1024 * 1024;
+
 /// Ignore mutex poisoning and take the lock anyway.
 ///
 /// Callers here are test doubles; surfacing a poison error would appear as
@@ -37,6 +39,61 @@ impl<T> LockIgnoringPoison<T> for Mutex<T> {
     fn lock_ignoring_poison(&self) -> MutexGuard<'_, T> {
         self.lock().unwrap_or_else(|e| e.into_inner())
     }
+}
+
+fn mock_file_operation_error(
+    operation: SandboxOperation,
+    message: impl Into<String>,
+) -> SandboxError {
+    SandboxError::Operation {
+        operation,
+        reason: SandboxOperationReason::Other,
+        message: message.into(),
+    }
+}
+
+fn mock_copy_file_error(message: impl Into<String>) -> SandboxError {
+    mock_file_operation_error(SandboxOperation::CopyFile, message)
+}
+
+fn validate_mock_guest_file_path(
+    operation: SandboxOperation,
+    operation_name: &str,
+    path: &str,
+) -> Result<()> {
+    if path.is_empty() {
+        return Err(mock_file_operation_error(
+            operation,
+            format!("mock {operation_name} guest file path must not be empty"),
+        ));
+    }
+    if path.as_bytes().contains(&0) {
+        return Err(mock_file_operation_error(
+            operation,
+            format!("mock {operation_name} guest file path contains NUL bytes"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_mock_copy_host_path(host_path: &Path) -> Result<()> {
+    let path_text = host_path.as_os_str().to_string_lossy();
+    if path_text.is_empty() {
+        return Err(mock_copy_file_error(
+            "mock copy_file host path must not be empty",
+        ));
+    }
+    if path_text.contains('\0') {
+        return Err(mock_copy_file_error(
+            "mock copy_file host path contains NUL bytes",
+        ));
+    }
+    if host_path.file_name().is_none() || path_text.ends_with('/') || path_text.ends_with("/.") {
+        return Err(mock_copy_file_error(
+            "mock copy_file host path must name a file",
+        ));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +189,8 @@ pub struct CopyFileCall {
     pub max_bytes: u64,
     /// Timeout requested for the copy operation.
     pub timeout: Duration,
-    /// Whether a missing guest source should be accepted as a no-op.
+    /// Whether a backend-reported missing or non-regular guest source should
+    /// succeed without writing the host destination.
     pub missing_ok: bool,
 }
 
@@ -899,8 +957,8 @@ impl MockSandbox {
     /// Return this sandbox's recorded read-file calls.
     ///
     /// The returned vector is a cloned snapshot in recorded order. Calls are
-    /// recorded before mock validation errors such as zero `max_bytes` are
-    /// returned.
+    /// recorded before mock validation errors such as invalid guest paths,
+    /// oversized `max_bytes`, or zero `max_bytes` are returned.
     pub fn read_file_calls(&self) -> Vec<ReadFileCall> {
         self.read_file_calls.lock_ignoring_poison().clone()
     }
@@ -916,9 +974,10 @@ impl MockSandbox {
     /// Return this sandbox's recorded copy-file calls.
     ///
     /// The returned vector is a cloned snapshot in recorded order. Calls are
-    /// recorded before mock validation errors such as zero `max_bytes` or zero
-    /// timeout are returned. Copy-file calls are sandbox-local; shared
-    /// overrides do not expose a copy-file call accessor.
+    /// recorded before mock validation errors such as invalid guest paths,
+    /// oversized `max_bytes`, zero `max_bytes`, zero timeout, or invalid host
+    /// paths are returned. Copy-file calls are sandbox-local; shared overrides
+    /// do not expose a copy-file call accessor.
     pub fn copy_file_calls(&self) -> Vec<CopyFileCall> {
         self.copy_file_calls.lock_ignoring_poison().clone()
     }
@@ -1096,6 +1155,14 @@ impl Sandbox for MockSandbox {
                 path: path.to_string(),
                 max_bytes,
             });
+        validate_mock_guest_file_path(SandboxOperation::ReadFile, "read_file", path)?;
+        if max_bytes > u64::from(u32::MAX) {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::ReadFile,
+                reason: SandboxOperationReason::Other,
+                message: "mock read_file max_bytes exceeds exec capture limit".into(),
+            });
+        }
         if max_bytes == 0 {
             return Err(SandboxError::Operation {
                 operation: SandboxOperation::ReadFile,
@@ -1144,11 +1211,22 @@ impl Sandbox for MockSandbox {
                 timeout: options.timeout,
                 missing_ok: options.missing_ok,
             });
+        validate_mock_guest_file_path(SandboxOperation::CopyFile, "copy_file", path)?;
+        validate_mock_copy_host_path(host_path)?;
         if options.max_bytes == 0 {
             return Err(SandboxError::Operation {
                 operation: SandboxOperation::CopyFile,
                 reason: SandboxOperationReason::Other,
                 message: "mock copy_file max_bytes must be positive".into(),
+            });
+        }
+        if options.max_bytes > MOCK_COPY_FILE_MAX_BYTES {
+            return Err(SandboxError::Operation {
+                operation: SandboxOperation::CopyFile,
+                reason: SandboxOperationReason::Other,
+                message: format!(
+                    "mock copy_file max_bytes must be at most {MOCK_COPY_FILE_MAX_BYTES}"
+                ),
             });
         }
         if options.timeout.is_zero() {
@@ -1937,6 +2015,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sandbox_copy_file_missing_ok_default_preserves_existing_host_file() {
+        let sandbox = MockSandbox::new("test-1");
+        let path = std::env::temp_dir().join(format!(
+            "sandbox-mock-copy-missing-existing-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::write(&path, b"old host log").unwrap();
+
+        let result = sandbox
+            .copy_file(
+                "/tmp/missing.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: true,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.bytes_copied, 0);
+        assert_eq!(std::fs::read(&path).unwrap(), b"old host log");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
     async fn sandbox_copy_file_rejects_queued_bytes_over_max() {
         let sandbox = MockSandbox::new("test-1");
         sandbox.push_copy_file_result(Ok(b"too long".to_vec()));
@@ -1975,6 +2080,46 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
 
+        sandbox.push_copy_file_result(Ok(b"valid log\n".to_vec()));
+        for invalid_guest_path in ["", "/tmp/bad\0path.log"] {
+            let err = sandbox
+                .copy_file(
+                    invalid_guest_path,
+                    &path,
+                    CopyFileOptions {
+                        max_bytes: 1024,
+                        timeout: Duration::from_secs(5),
+                        missing_ok: true,
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert_operation_error(
+                err,
+                SandboxOperation::CopyFile,
+                SandboxOperationReason::Other,
+                "guest file path",
+            );
+            assert!(!path.exists());
+        }
+
+        let result = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.bytes_copied, 10);
+        assert_eq!(std::fs::read(&path).unwrap(), b"valid log\n");
+        std::fs::remove_file(&path).unwrap();
+
+        sandbox.push_copy_file_result(Ok(b"opts ok\n".to_vec()));
         let err = sandbox
             .copy_file(
                 "/tmp/system.log",
@@ -2014,6 +2159,80 @@ mod tests {
             "timeout must be positive",
         );
         assert!(!path.exists());
+
+        let err = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: MOCK_COPY_FILE_MAX_BYTES + 1,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: true,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_operation_error(
+            err,
+            SandboxOperation::CopyFile,
+            SandboxOperationReason::Other,
+            "max_bytes must be at most",
+        );
+        assert!(!path.exists());
+
+        let result = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.bytes_copied, 8);
+        assert_eq!(std::fs::read(&path).unwrap(), b"opts ok\n");
+        std::fs::remove_file(&path).unwrap();
+
+        sandbox.push_copy_file_result(Ok(b"host ok\n".to_vec()));
+        for invalid_host_path in ["", ".", "/tmp/", "/tmp/.", "/tmp/bad\0host.log"] {
+            let err = sandbox
+                .copy_file(
+                    "/tmp/system.log",
+                    Path::new(invalid_host_path),
+                    CopyFileOptions {
+                        max_bytes: 1024,
+                        timeout: Duration::from_secs(5),
+                        missing_ok: true,
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert_operation_error(
+                err,
+                SandboxOperation::CopyFile,
+                SandboxOperationReason::Other,
+                "host path",
+            );
+        }
+
+        let result = sandbox
+            .copy_file(
+                "/tmp/system.log",
+                &path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout: Duration::from_secs(5),
+                    missing_ok: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.bytes_copied, 8);
+        assert_eq!(std::fs::read(&path).unwrap(), b"host ok\n");
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[tokio::test]
@@ -2060,8 +2279,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sandbox_read_file_rejects_zero_max_bytes() {
+    async fn sandbox_read_file_rejects_invalid_options() {
         let sandbox = MockSandbox::new("test-1");
+        sandbox.push_read_file_result(Ok(Some(b"valid log\n".to_vec())));
+
+        for invalid_guest_path in ["", "/tmp/bad\0path.log"] {
+            let err = sandbox
+                .read_file(invalid_guest_path, 1024)
+                .await
+                .unwrap_err();
+
+            assert_operation_error(
+                err,
+                SandboxOperation::ReadFile,
+                SandboxOperationReason::Other,
+                "guest file path",
+            );
+        }
+
+        let result = sandbox.read_file("/tmp/system.log", 1024).await.unwrap();
+        assert_eq!(result.as_deref(), Some(&b"valid log\n"[..]));
 
         let err = sandbox.read_file("/tmp/system.log", 0).await.unwrap_err();
 
@@ -2071,6 +2308,35 @@ mod tests {
             SandboxOperationReason::Other,
             "max_bytes must be positive",
         );
+
+        sandbox.push_read_file_result(Ok(Some(b"after oversized max\n".to_vec())));
+        let err = sandbox
+            .read_file("/tmp/system.log", u64::from(u32::MAX) + 1)
+            .await
+            .unwrap_err();
+
+        assert_operation_error(
+            err,
+            SandboxOperation::ReadFile,
+            SandboxOperationReason::Other,
+            "max_bytes exceeds exec capture limit",
+        );
+
+        let result = sandbox.read_file("/tmp/system.log", 1024).await.unwrap();
+        assert_eq!(result.as_deref(), Some(&b"after oversized max\n"[..]));
+
+        sandbox.push_read_file_result(Ok(Some(b"after invalid max\n".to_vec())));
+        let err = sandbox.read_file("/tmp/system.log", 0).await.unwrap_err();
+
+        assert_operation_error(
+            err,
+            SandboxOperation::ReadFile,
+            SandboxOperationReason::Other,
+            "max_bytes must be positive",
+        );
+
+        let result = sandbox.read_file("/tmp/system.log", 1024).await.unwrap();
+        assert_eq!(result.as_deref(), Some(&b"after invalid max\n"[..]));
     }
 
     #[tokio::test]

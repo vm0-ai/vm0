@@ -77,6 +77,10 @@ const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
     pathname: "/api/zero/custom-connectors/:id/secret",
   },
   { methods: ["PUT"], pathname: "/api/zero/default-agent" },
+  {
+    methods: ["POST"],
+    pathname: "/api/zero/host/presentation-html/redeploy",
+  },
   { methods: ["GET"], pathname: "/api/zero/insights" },
   { methods: ["GET"], pathname: "/api/zero/insights/range" },
   { methods: ["GET", "DELETE"], pathname: "/api/zero/integrations/slack" },
@@ -142,7 +146,10 @@ const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
   { methods: ["GET"], pathname: "/api/zero/usage/insight" },
   { methods: ["GET"], pathname: "/api/zero/usage/members" },
   { methods: ["GET"], pathname: "/api/zero/usage/record" },
-  { methods: ["GET", "PUT"], pathname: "/api/zero/user-permission-grants" },
+  {
+    methods: ["GET", "PUT", "DELETE"],
+    pathname: "/api/zero/user-permission-grants",
+  },
   { methods: ["GET", "POST"], pathname: "/api/zero/user-preferences" },
   { methods: ["GET", "POST"], pathname: "/api/zero/variables" },
   { methods: ["DELETE"], pathname: "/api/zero/variables/:name" },

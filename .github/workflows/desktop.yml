@@ -89,7 +89,7 @@ jobs:
 
           desktop_dir="$PWD/apps/desktop"
           version=$(node -p "require('./apps/desktop/package.json').version")
-          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero-darwin-arm64-$version.zip"
+          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero Computer Use-darwin-arm64-$version.zip"
           artifact_path="apps/desktop/out/Zero-darwin-arm64.zip"
 
           if [ ! -f "$forge_zip" ]; then
@@ -104,7 +104,7 @@ jobs:
       - name: Verify production artifact
         run: |
           artifact_path=apps/desktop/out/Zero-darwin-arm64.zip
-          app_dir=apps/desktop/out/Zero-darwin-arm64/Zero.app
+          app_dir="apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
           plist="$app_dir/Contents/Info.plist"
           if [ ! -f "$artifact_path" ]; then
             echo "No desktop zip artifact found"
@@ -141,9 +141,9 @@ jobs:
             exit 1
           fi
 
-          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero Computer Use"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero Computer Use"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero Computer Use"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero Desktop Auth"
@@ -151,11 +151,11 @@ jobs:
           cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
           cmp -s apps/desktop/assets/icon.png "$app_dir/Contents/Resources/app/assets/icon.png"
 
-          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/MacOS/Zero"
-          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/icon.icns"
-          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/native/computer-use-helper"
-          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app/dist/main.js"
-          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app/assets/icon.png"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/MacOS/Zero Computer Use"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/icon.icns"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/native/computer-use-helper"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/dist/main.js"
+          unzip -l "$artifact_path" | grep -q "Zero Computer Use.app/Contents/Resources/app/assets/icon.png"
 
       - name: Upload unsigned macOS artifact
         uses: actions/upload-artifact@v7

@@ -21,10 +21,12 @@ import {
   type ConnectorAuthCodeGrantConfig,
   type ConnectorConfig,
   type ConnectorDeviceAuthGrantConfig,
+  type ConnectorExternalCodeGrantConfig,
   type ConnectorInvalidDefaultAuthMethodType,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
   type AuthCodeGrantConnectorType,
+  type ExternalCodeGrantConnectorType,
   type RefreshTokenAccessConnectorType,
   type TokenRevokeConnectorType,
 } from "../connectors";
@@ -46,6 +48,7 @@ import {
   hasRequiredConnectorAuthMethodScopes,
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodDeviceAuthGrantConfig,
+  getConnectorAuthMethodExternalCodeGrantConfig,
   getConnectorAuthMethodDeviceAuthStartOptionsConfig,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodRuntimeMetadata,
@@ -65,6 +68,7 @@ import {
   getConnectorOwnedVariableNames,
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
+  hasConnectorExternalCodeGrant,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
   type ConnectorAuthClient,
@@ -107,7 +111,11 @@ function getApiTokenManualGrantFields(
 }
 
 function hasConnectorAuthorizationGrant(type: ConnectorType): boolean {
-  return hasConnectorAuthCodeGrant(type) || hasConnectorDeviceAuthGrant(type);
+  return (
+    hasConnectorAuthCodeGrant(type) ||
+    hasConnectorExternalCodeGrant(type) ||
+    hasConnectorDeviceAuthGrant(type)
+  );
 }
 
 const server = setupServer();
@@ -693,12 +701,21 @@ describe("connector auth method config", () => {
 });
 
 describe("connector selected auth method capability checks", () => {
-  it("matches exactly the auth methods that declare auth-code and device-auth grants", () => {
+  it("matches exactly the auth methods that declare authorization grants", () => {
     for (const type of connectorTypeSchema.options) {
       const authMethodIds = getConfiguredConnectorAuthMethodIds(type);
       expect(hasConnectorAuthCodeGrant(type)).toBe(
         authMethodIds.some((authMethod) => {
           return connectorAuthMethodHasGrantKind(type, authMethod, "auth-code");
+        }),
+      );
+      expect(hasConnectorExternalCodeGrant(type)).toBe(
+        authMethodIds.some((authMethod) => {
+          return connectorAuthMethodHasGrantKind(
+            type,
+            authMethod,
+            "external-code",
+          );
         }),
       );
       expect(hasConnectorDeviceAuthGrant(type)).toBe(
@@ -721,6 +738,12 @@ describe("connector selected auth method capability checks", () => {
         ).toBe(
           getConnectorAuthMethod(type, authMethod)?.grant.kind ===
             "device-auth",
+        );
+        expect(
+          connectorAuthMethodHasGrantKind(type, authMethod, "external-code"),
+        ).toBe(
+          getConnectorAuthMethod(type, authMethod)?.grant.kind ===
+            "external-code",
         );
       }
     }
@@ -2414,6 +2437,15 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth", "cli", "api-token"]);
   });
 
+  it("exposes AWS CLI auth only when the AWS switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("aws", {})).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("aws", {
+        [FeatureSwitchKey.AwsConnector]: true,
+      }),
+    ).toStrictEqual(["cli"]);
+  });
+
   it("exposes BentoML API-token auth only when its switch is enabled", () => {
     expect(getAvailableConnectorAuthMethodIds("bentoml", {})).toStrictEqual([]);
     expect(
@@ -2530,6 +2562,66 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
         platformSecrets: [],
       },
     );
+  });
+
+  it("returns refresh-token access metadata for the AWS CLI method", () => {
+    expect(getConnectorAuthMethodAccessMetadata("aws", "cli")).toStrictEqual({
+      kind: "refresh-token",
+      inputs: {
+        refreshToken: {
+          valueRef: "$secrets.AWS_LOGIN_REFRESH_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "AWS_LOGIN_REFRESH_TOKEN",
+          },
+        },
+        dpopKey: {
+          valueRef: "$secrets.AWS_LOGIN_DPOP_KEY",
+          source: {
+            kind: "connector-secret",
+            name: "AWS_LOGIN_DPOP_KEY",
+          },
+        },
+        signinRegion: {
+          valueRef: "$secrets.AWS_SIGNIN_REGION",
+          source: {
+            kind: "connector-secret",
+            name: "AWS_SIGNIN_REGION",
+          },
+        },
+      },
+      outputs: {
+        refreshToken: {
+          valueRef: "$secrets.AWS_LOGIN_REFRESH_TOKEN",
+          secretName: "AWS_LOGIN_REFRESH_TOKEN",
+        },
+        accessKeyId: {
+          valueRef: "$secrets.AWS_ACCESS_KEY_ID",
+          secretName: "AWS_ACCESS_KEY_ID",
+        },
+        secretAccessKey: {
+          valueRef: "$secrets.AWS_SECRET_ACCESS_KEY",
+          secretName: "AWS_SECRET_ACCESS_KEY",
+        },
+        sessionToken: {
+          valueRef: "$secrets.AWS_SESSION_TOKEN",
+          secretName: "AWS_SESSION_TOKEN",
+        },
+      },
+      refreshableSecrets: [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+      ],
+      envBindings: {
+        AWS_ACCESS_KEY_ID: "$secrets.AWS_ACCESS_KEY_ID",
+        AWS_SECRET_ACCESS_KEY: "$secrets.AWS_SECRET_ACCESS_KEY",
+        AWS_SESSION_TOKEN: "$secrets.AWS_SESSION_TOKEN",
+        AWS_REGION: "$secrets.AWS_REGION",
+        AWS_DEFAULT_REGION: "$secrets.AWS_REGION",
+      },
+      platformSecrets: [],
+    });
   });
 
   it("returns platform-owned secret metadata for Google Ads", () => {
@@ -3148,16 +3240,21 @@ describe("getConnectorEnvBindingEntries", () => {
     expect(firewall.apis[0]?.permissions).toStrictEqual([]);
   });
 
-  it("authorization-grant auth methods keep the documented secret naming convention", () => {
+  it("OAuth auth-code auth methods keep the documented secret naming convention", () => {
     // This is a registry naming convention. Runtime behavior must use
     // grant output metadata and runtimeBindings, not infer roles from names.
     for (const type of connectorTypeSchema.options) {
-      if (!hasConnectorAuthorizationGrant(type)) continue;
+      if (!hasConnectorAuthCodeGrant(type)) continue;
 
       const oauthAuthMethodRef: ConnectorAuthMethodRef = {
         type,
         authMethod: "oauth",
       };
+      if (
+        !connectorAuthMethodRefHasGrantKind(oauthAuthMethodRef, "auth-code")
+      ) {
+        continue;
+      }
       const hasRefreshTokenAccess = connectorAuthMethodRefHasAccessKind(
         oauthAuthMethodRef,
         "refresh-token",
@@ -3637,6 +3734,28 @@ describe("connector OAuth lifecycle grant helpers", () => {
     });
   });
 
+  it("returns external-code grant config for external-code connectors", () => {
+    expectTypeOf(
+      getConnectorAuthMethodExternalCodeGrantConfig("aws", "cli"),
+    ).toEqualTypeOf<ConnectorExternalCodeGrantConfig>();
+    expect(getConnectorAuthMethodExternalCodeGrantConfig("aws", "cli")).toEqual(
+      {
+        kind: "external-code",
+        scopes: ["openid"],
+        outputs: {
+          refreshToken: "$secrets.AWS_LOGIN_REFRESH_TOKEN",
+          dpopKey: "$secrets.AWS_LOGIN_DPOP_KEY",
+          accessKeyId: "$secrets.AWS_ACCESS_KEY_ID",
+          secretAccessKey: "$secrets.AWS_SECRET_ACCESS_KEY",
+          sessionToken: "$secrets.AWS_SESSION_TOKEN",
+          signinRegion: "$secrets.AWS_SIGNIN_REGION",
+          runtimeRegion: "$secrets.AWS_REGION",
+        },
+      },
+    );
+    expectTypeOf<"aws">().toMatchTypeOf<ExternalCodeGrantConnectorType>();
+  });
+
   it("returns undefined for connectors without authorization grants", () => {
     expect(hasConnectorAuthorizationGrant("axiom")).toBe(false);
     expect(
@@ -3644,6 +3763,9 @@ describe("connector OAuth lifecycle grant helpers", () => {
     ).toBeUndefined();
     expect(
       getConnectorAuthMethodDeviceAuthGrantConfig("github", "oauth"),
+    ).toBeUndefined();
+    expect(
+      getConnectorAuthMethodExternalCodeGrantConfig("github", "oauth"),
     ).toBeUndefined();
   });
 });

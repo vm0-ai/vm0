@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.12](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.11...vsock-proto-v0.18.12) (2026-06-09)
+
+
+### Bug Fixes
+
+* **vsock-proto:** reject non-canonical legacy payloads ([#16789](https://github.com/vm0-ai/vm0/issues/16789)) ([d3ae83a](https://github.com/vm0-ai/vm0/commit/d3ae83ab251eb254768ef9d3d3ec65c3c04bc882))
+
 ## [0.18.11](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.10...vsock-proto-v0.18.11) (2026-06-07)
 
 

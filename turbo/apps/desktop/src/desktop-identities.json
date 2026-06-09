@@ -1,6 +1,6 @@
 {
   "production": {
-    "displayName": "Zero",
+    "displayName": "Zero Computer Use",
     "bundleId": "ai.vm0.zero.desktop",
     "authProtocolName": "Zero Desktop Auth",
     "authScheme": "ai.vm0.zero.desktop"

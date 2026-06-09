@@ -56,6 +56,7 @@
 //! `[1B control_flags][16B nonce]` where `control_flags` uses `SINK=0x01`.
 //! `exec_start.stdin_policy` uses 0=no explicit stdin, or 1 followed by
 //! `[4B stdin_len][stdin_bytes]` with a bounded payload.
+//! `write_file_result.success` uses 0=false and 1=true.
 //! `exec_control_result.status` is an [`ExecControlStatus`] wire value.
 //! `exec_control.request_timeout_ms` is the caller-visible budget, counted
 //! from guest receipt through local sink connection, request write, and response

@@ -157,6 +157,31 @@ class TestXConnectorUsage:
         assert by_cat["posts.read"]["quantity"] == 1
         assert by_cat["user.read"]["quantity"] == 1
 
+    def test_source_dedupe_handles_colon_bearing_run_and_flow_ids(self, tmp_path, real_flow):
+        body = json.dumps({"data": {"id": "1", "text": "hi"}}).encode()
+        first = self._make_x_flow(
+            real_flow, tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}"
+        )
+        second = self._make_x_flow(
+            real_flow, tmp_path, path="/2/tweets/2", body=body, rule="GET /2/tweets/{id}"
+        )
+        first.id = "flow"
+        second.id = "a:flow"
+
+        with self._usage_webhook_api() as webhook:
+            usage.report_connector_usage(first, "run:a")
+            usage.report_connector_usage(second, "run")
+            usage.flush_usage_events(trigger="test")
+
+        events_by_run = {body["runId"]: body["events"] for body in webhook.json_bodies()}
+        assert set(events_by_run) == {"run", "run:a"}
+        assert sum(event["quantity"] for events in events_by_run.values() for event in events) == 2
+        assert {
+            (event["kind"], event["provider"], event["category"], event["quantity"])
+            for events in events_by_run.values()
+            for event in events
+        } == {("connector", "x", "posts.read", 1)}
+
     def test_bounds_unknown_include_categories_before_buffering(self, tmp_path, real_flow):
         """Unknown includes cannot create unbounded synthetic usage categories."""
         body = json.dumps(

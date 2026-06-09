@@ -185,7 +185,7 @@ describe("resolveDesktopConfig", () => {
     expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
     expect(config.environment).toBe("production");
     expect(config.identity).toMatchObject({
-      displayName: "Zero",
+      displayName: "Zero Computer Use",
       bundleId: "ai.vm0.zero.desktop",
       authScheme: "ai.vm0.zero.desktop",
     });

@@ -3067,6 +3067,34 @@
       "when": 1780901960840,
       "tag": "0437_minor_rumiko_fujikawa",
       "breakpoints": true
+    },
+    {
+      "idx": 438,
+      "version": "7",
+      "when": 1780974019944,
+      "tag": "0438_slow_klaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 439,
+      "version": "7",
+      "when": 1780986126784,
+      "tag": "0439_premium_wendigo",
+      "breakpoints": true
+    },
+    {
+      "idx": 440,
+      "version": "7",
+      "when": 1780997397104,
+      "tag": "0440_polite_sunset_bain",
+      "breakpoints": true
+    },
+    {
+      "idx": 441,
+      "version": "7",
+      "when": 1781000353449,
+      "tag": "0441_massive_princess_powerful",
+      "breakpoints": true
     }
   ]
 }

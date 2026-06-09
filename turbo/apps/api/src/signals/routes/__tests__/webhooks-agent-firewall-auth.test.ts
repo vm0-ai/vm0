@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
@@ -47,6 +47,21 @@ import {
 const context = testContext();
 const store = createStore();
 const ORG_SENTINEL_USER_ID = "__org__";
+const AWS_TOKEN_URL = "https://us-east-1.signin.aws.amazon.com/v1/token";
+const FRESH_AWS_CREDENTIAL_ID = ["fresh", "aws", "credential", "id"].join("-");
+const STALE_AWS_CREDENTIAL_ID = ["stale", "aws", "credential", "id"].join("-");
+const STALE_ENCRYPTED_AWS_CREDENTIAL_ID = [
+  "stale",
+  "encrypted",
+  "aws",
+  "credential",
+  "id",
+].join("-");
+
+function awsDpopKey(): string {
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  return privateKey.export({ type: "sec1", format: "pem" }).toString();
+}
 
 interface FirewallFixture extends UsageInsightFixture {
   readonly composeId: string;
@@ -420,6 +435,73 @@ async function seedExpiredNotionConnector(
     accessToken: "stale-notion-token",
     refreshToken: "notion-refresh-token",
     tokenExpiresAt: new Date(now() - 60_000),
+  });
+}
+
+async function seedExpiredAwsConnector(
+  fixture: FirewallFixture,
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "aws",
+    authMethod: "cli",
+    externalId: "123456789012",
+    externalUsername: "arn:aws:iam::123456789012:user/test",
+    externalEmail: null,
+    oauthScopes: JSON.stringify(["openid"]),
+    tokenExpiresAt: new Date(now() - 60_000),
+    needsReconnect: false,
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "AWS_LOGIN_REFRESH_TOKEN",
+    value: "aws-refresh-token",
+    type: "connector",
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "AWS_LOGIN_DPOP_KEY",
+    value: awsDpopKey(),
+    type: "connector",
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "AWS_ACCESS_KEY_ID",
+    value: STALE_AWS_CREDENTIAL_ID,
+    type: "connector",
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "AWS_SECRET_ACCESS_KEY",
+    value: "stale-aws-secret-access-key",
+    type: "connector",
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "AWS_SESSION_TOKEN",
+    value: "stale-aws-session-token",
+    type: "connector",
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "AWS_SIGNIN_REGION",
+    value: "us-east-1",
+    type: "connector",
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "AWS_REGION",
+    value: "us-west-2",
+    type: "connector",
   });
 }
 
@@ -1815,6 +1897,96 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     const connector = await notionConnectorState(fixture);
     expect(connector.needsReconnect).toBeFalsy();
     expect(connector.tokenExpiresAt?.getTime()).toBeGreaterThan(now());
+  });
+
+  it("refreshes AWS credentials while preserving non-refreshable runtime region bindings", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredAwsConnector(fixture);
+    const awsRefreshRequests: unknown[] = [];
+    server.use(
+      http.post(AWS_TOKEN_URL, async ({ request }) => {
+        expect(request.headers.get("dpop")).toBeTruthy();
+        awsRefreshRequests.push(await request.json());
+        return HttpResponse.json({
+          accessToken: {
+            accessKeyId: FRESH_AWS_CREDENTIAL_ID,
+            secretAccessKey: "fresh-aws-secret-access-key",
+            sessionToken: "fresh-aws-session-token",
+          },
+          expiresIn: 900,
+          refreshToken: "rotated-aws-refresh-token",
+          tokenType: "aws_sigv4",
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            AWS_ACCESS_KEY_ID: STALE_ENCRYPTED_AWS_CREDENTIAL_ID,
+            AWS_SECRET_ACCESS_KEY: "stale-encrypted-aws-secret-access-key",
+            AWS_SESSION_TOKEN: "stale-encrypted-aws-session-token",
+            AWS_REGION: "stale-encrypted-aws-region",
+            AWS_DEFAULT_REGION: "stale-encrypted-aws-default-region",
+          }),
+          authHeaders: {
+            "X-Aws-Access-Key-Id": secretTemplate("AWS_ACCESS_KEY_ID"),
+            "X-Aws-Secret-Access-Key": secretTemplate("AWS_SECRET_ACCESS_KEY"),
+            "X-Aws-Session-Token": secretTemplate("AWS_SESSION_TOKEN"),
+            "X-Aws-Region": secretTemplate("AWS_REGION"),
+            "X-Aws-Default-Region": secretTemplate("AWS_DEFAULT_REGION"),
+          },
+          secretConnectorMap: {
+            AWS_ACCESS_KEY_ID: "aws",
+            AWS_SECRET_ACCESS_KEY: "aws",
+            AWS_SESSION_TOKEN: "aws",
+            AWS_REGION: "aws",
+            AWS_DEFAULT_REGION: "aws",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers).toMatchObject({
+      "X-Aws-Access-Key-Id": FRESH_AWS_CREDENTIAL_ID,
+      "X-Aws-Secret-Access-Key": "fresh-aws-secret-access-key",
+      "X-Aws-Session-Token": "fresh-aws-session-token",
+      "X-Aws-Region": "us-west-2",
+      "X-Aws-Default-Region": "us-west-2",
+    });
+    expect(response.body.refreshedConnectors).toStrictEqual(["aws"]);
+    expect(response.body.refreshedSecrets).toStrictEqual([
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+    ]);
+    expect(response.body.expiresAt).toBeGreaterThan(currentSecond());
+    expect(awsRefreshRequests).toStrictEqual([
+      {
+        clientId: "arn:aws:signin:::devtools/cross-device",
+        grantType: "refresh_token",
+        refreshToken: "aws-refresh-token",
+      },
+    ]);
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "AWS_LOGIN_REFRESH_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("rotated-aws-refresh-token");
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "AWS_REGION",
+        type: "connector",
+      }),
+    ).resolves.toBe("us-west-2");
   });
 
   it("serializes concurrent connector OAuth refreshes for rotated refresh tokens", async () => {

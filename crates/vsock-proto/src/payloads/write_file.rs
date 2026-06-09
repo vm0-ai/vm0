@@ -1,12 +1,15 @@
 use super::truncate_utf8_to_u16_bytes;
 use crate::error::ProtocolError;
-use crate::read::{read_u8_at, read_u16_at, read_u32_at};
+use crate::read::{
+    checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
+    expect_consumed, read_slice, read_str, read_u8, read_u16, read_u32,
+};
 use crate::wire::{WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_SUDO};
 
 /// Encode write_file payload: `[2B path_len][path][1B flags][4B content_len][content]`.
 ///
 /// Returns `Err` if path exceeds 65535 bytes (u16 field limit).
-/// Total message size is validated by [`crate::encode`].
+/// Returns `Err` if the payload cannot fit in a protocol frame.
 pub fn encode_write_file(
     path: &str,
     content: &[u8],
@@ -14,10 +17,13 @@ pub fn encode_write_file(
     append: bool,
 ) -> Result<Vec<u8>, ProtocolError> {
     let path_bytes = path.as_bytes();
-    if path_bytes.len() > u16::MAX as usize {
-        return Err(ProtocolError::PayloadTooLarge("path", path_bytes.len()));
-    }
-    let path_len = path_bytes.len() as u16;
+    let path_len = ensure_u16_len("path", path_bytes.len())?;
+    let content_len = ensure_u32_len("content", content.len())?;
+    let mut payload_len = checked_payload_len_add(2, path_bytes.len())?;
+    payload_len = checked_payload_len_add(payload_len, 1 + 4)?;
+    payload_len = checked_payload_len_add(payload_len, content.len())?;
+    ensure_payload_fits_message(payload_len)?;
+
     let mut flags = 0u8;
     if sudo {
         flags |= WRITE_FILE_FLAG_SUDO;
@@ -25,12 +31,13 @@ pub fn encode_write_file(
     if append {
         flags |= WRITE_FILE_FLAG_APPEND;
     }
-    let mut p = Vec::with_capacity(7 + path_len as usize + content.len());
+    let mut p = Vec::with_capacity(payload_len);
     p.extend_from_slice(&path_len.to_be_bytes());
     p.extend_from_slice(path_bytes);
     p.push(flags);
-    p.extend_from_slice(&(content.len() as u32).to_be_bytes());
+    p.extend_from_slice(&content_len.to_be_bytes());
     p.extend_from_slice(content);
+    debug_assert_eq!(p.len(), payload_len);
     Ok(p)
 }
 
@@ -48,24 +55,29 @@ pub fn encode_write_file_result(success: bool, error: &str) -> Vec<u8> {
 
 /// Decode write_file payload. Returns `(path, content, sudo, append)`.
 pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool), ProtocolError> {
-    let path_len = read_u16_at(payload, 0)
-        .ok_or(ProtocolError::InvalidPayload("write_file too short"))? as usize;
-    let path = std::str::from_utf8(
-        payload
-            .get(2..2 + path_len)
-            .ok_or(ProtocolError::InvalidPayload("write_file path truncated"))?,
-    )
-    .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in path"))?;
-    let flags = read_u8_at(payload, 2 + path_len)
-        .ok_or(ProtocolError::InvalidPayload("write_file too short"))?;
-    let content_len = read_u32_at(payload, 3 + path_len)
-        .ok_or(ProtocolError::InvalidPayload("write_file too short"))?
-        as usize;
-    let content = payload
-        .get(7 + path_len..7 + path_len + content_len)
-        .ok_or(ProtocolError::InvalidPayload(
-            "write_file content truncated",
-        ))?;
+    let mut offset = 0;
+    let path_len = read_u16(payload, &mut offset, "write_file too short")? as usize;
+    let path = read_str(
+        payload,
+        &mut offset,
+        path_len,
+        "write_file path truncated",
+        "invalid UTF-8 in path",
+    )?;
+    let flags = read_u8(payload, &mut offset, "write_file too short")?;
+    let known_flags = WRITE_FILE_FLAG_SUDO | WRITE_FILE_FLAG_APPEND;
+    if flags & !known_flags != 0 {
+        return Err(ProtocolError::InvalidPayload("write_file unknown flags"));
+    }
+    let content_len = read_u32(payload, &mut offset, "write_file too short")? as usize;
+    let content = read_slice(
+        payload,
+        &mut offset,
+        content_len,
+        "write_file content truncated",
+    )?;
+    expect_consumed(payload, offset, "write_file trailing bytes")?;
+
     Ok((
         path,
         content,
@@ -76,24 +88,37 @@ pub fn decode_write_file(payload: &[u8]) -> Result<(&str, &[u8], bool, bool), Pr
 
 /// Decode write_file_result payload. Returns `(success, error)`.
 pub fn decode_write_file_result(payload: &[u8]) -> Result<(bool, &str), ProtocolError> {
-    let success = read_u8_at(payload, 0)
-        .ok_or(ProtocolError::InvalidPayload("write_file_result too short"))?
-        == 1;
-    let err_len = read_u16_at(payload, 1)
-        .ok_or(ProtocolError::InvalidPayload("write_file_result too short"))?
-        as usize;
-    let error = std::str::from_utf8(payload.get(3..3 + err_len).ok_or(
-        ProtocolError::InvalidPayload("write_file_result error truncated"),
-    )?)
-    .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in error"))?;
+    let mut offset = 0;
+    let success = match read_u8(payload, &mut offset, "write_file_result too short")? {
+        0 => false,
+        1 => true,
+        _ => {
+            return Err(ProtocolError::InvalidPayload(
+                "write_file_result invalid success",
+            ));
+        }
+    };
+    let err_len = read_u16(payload, &mut offset, "write_file_result too short")? as usize;
+    let error = read_str(
+        payload,
+        &mut offset,
+        err_len,
+        "write_file_result error truncated",
+        "invalid UTF-8 in error",
+    )?;
+    expect_consumed(payload, offset, "write_file_result trailing bytes")?;
+
     Ok((success, error))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::encode;
-    use crate::wire::{MAX_MESSAGE_SIZE, MSG_WRITE_FILE};
+    use crate::wire::MAX_PAYLOAD_SIZE;
+
+    fn assert_invalid_payload(err: ProtocolError, expected: &'static str) {
+        assert!(matches!(err, ProtocolError::InvalidPayload(msg) if msg == expected));
+    }
 
     #[test]
     fn write_file_payload_roundtrip() {
@@ -142,10 +167,28 @@ mod tests {
 
     #[test]
     fn write_file_content_too_large() {
-        let big = vec![0u8; MAX_MESSAGE_SIZE];
-        let payload = encode_write_file("/tmp/f", &big, false, false).unwrap();
-        let err = encode(MSG_WRITE_FILE, 1, &payload).unwrap_err();
+        let path = "/tmp/f";
+        let payload_overhead = 2 + path.len() + 1 + 4;
+        let big = vec![0u8; MAX_PAYLOAD_SIZE - payload_overhead + 1];
+        let err = encode_write_file(path, &big, false, false).unwrap_err();
+
         assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
+    }
+
+    #[test]
+    fn write_file_content_at_payload_limit() {
+        let path = "/tmp/f";
+        let payload_overhead = 2 + path.len() + 1 + 4;
+        let content = vec![0u8; MAX_PAYLOAD_SIZE - payload_overhead];
+
+        let payload = encode_write_file(path, &content, false, false).unwrap();
+
+        assert_eq!(payload.len(), MAX_PAYLOAD_SIZE);
+        let (decoded_path, decoded_content, sudo, append) = decode_write_file(&payload).unwrap();
+        assert_eq!(decoded_path, path);
+        assert_eq!(decoded_content, content.as_slice());
+        assert!(!sudo);
+        assert!(!append);
     }
 
     #[test]
@@ -180,5 +223,79 @@ mod tests {
     #[test]
     fn decode_write_file_too_short() {
         assert!(decode_write_file(&[0; 3]).is_err());
+    }
+
+    #[test]
+    fn decode_write_file_rejects_truncated_fields() {
+        for (payload, expected) in [
+            (b"".as_slice(), "write_file too short"),
+            (&[0], "write_file too short"),
+            (&[0, 1], "write_file path truncated"),
+            (&[0, 0], "write_file too short"),
+            (&[0, 0, 0], "write_file too short"),
+            (&[0, 0, 0, 0, 0, 0, 1], "write_file content truncated"),
+        ] {
+            let err = decode_write_file(payload).unwrap_err();
+            assert_invalid_payload(err, expected);
+        }
+    }
+
+    #[test]
+    fn decode_write_file_rejects_trailing_bytes() {
+        let mut payload = encode_write_file("/tmp/test.txt", b"content", false, false).unwrap();
+        payload.push(0);
+
+        let err = decode_write_file(&payload).unwrap_err();
+
+        assert_invalid_payload(err, "write_file trailing bytes");
+    }
+
+    #[test]
+    fn decode_write_file_rejects_unknown_flags() {
+        let payload = [0, 0, 0x80, 0, 0, 0, 0];
+
+        let err = decode_write_file(&payload).unwrap_err();
+
+        assert_invalid_payload(err, "write_file unknown flags");
+    }
+
+    #[test]
+    fn decode_write_file_result_rejects_trailing_bytes() {
+        let mut payload = encode_write_file_result(false, "permission denied");
+        payload.push(0);
+
+        let err = decode_write_file_result(&payload).unwrap_err();
+
+        assert_invalid_payload(err, "write_file_result trailing bytes");
+    }
+
+    #[test]
+    fn decode_write_file_result_rejects_invalid_success() {
+        let payload = [2, 0, 0];
+
+        let err = decode_write_file_result(&payload).unwrap_err();
+
+        assert_invalid_payload(err, "write_file_result invalid success");
+    }
+
+    #[test]
+    fn decode_write_file_result_rejects_truncated_fields() {
+        for (payload, expected) in [
+            (b"".as_slice(), "write_file_result too short"),
+            (&[0], "write_file_result too short"),
+            (&[0, 0, 1], "write_file_result error truncated"),
+        ] {
+            let err = decode_write_file_result(payload).unwrap_err();
+            assert_invalid_payload(err, expected);
+        }
+    }
+
+    #[test]
+    fn decode_write_file_result_rejects_invalid_utf8() {
+        let payload = [0, 0, 1, 0xC3];
+
+        let err = decode_write_file_result(&payload).unwrap_err();
+
+        assert_invalid_payload(err, "invalid UTF-8 in error");
     }
 }

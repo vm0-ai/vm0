@@ -33,7 +33,7 @@ from typing import Literal, Protocol, TypedDict
 from logging_utils import log_proxy_entry
 
 from .counters import set_buffered_usage_events
-from .idempotency import USAGE_EVENT_NAMESPACE_AGGREGATE, encode_uuid_name
+from .idempotency import USAGE_EVENT_NAMESPACE_AGGREGATE, derive_usage_idempotency_key
 from .webhook import _enqueue_webhook
 
 DEFAULT_FLUSH_INTERVAL_SECONDS = 30.0
@@ -69,6 +69,7 @@ class _TimerHandle(Protocol):
 
 
 _TimerFactory = Callable[[float, Callable[[], None]], _TimerHandle]
+_EnqueueWebhook = Callable[[str, str, dict, str, str], bool]
 
 
 class _FlushOwnerLock(Protocol):
@@ -135,17 +136,22 @@ class UsageEventBuffer:
         jitter_ratio: float = DEFAULT_FLUSH_JITTER_RATIO,
         timer_enabled: bool = True,
         timer_factory: _TimerFactory | None = None,
+        enqueue_webhook: _EnqueueWebhook | None = None,
+        flush_owner_lock: _FlushOwnerLock | None = None,
     ) -> None:
         self._lock = threading.Lock()
         # Serializes snapshot/enqueue ownership. Ordinary flushes defer if busy;
         # shutdown waits so daemon timer work cannot outlive process teardown.
-        self._flush_owner_lock: _FlushOwnerLock = threading.Lock()
+        self._flush_owner_lock: _FlushOwnerLock = (
+            flush_owner_lock if flush_owner_lock is not None else threading.Lock()
+        )
+        self._enqueue_webhook = enqueue_webhook
         self._buffer_id = str(uuid.uuid4())
         self._flush_sequence = 0
         self._flush_interval_seconds = max(1.0, flush_interval_seconds)
         self._jitter_ratio = max(0.0, jitter_ratio)
         self._timer_enabled = timer_enabled
-        self._timer_factory = timer_factory or self._make_timer
+        self._timer_factory = timer_factory if timer_factory is not None else self._make_timer
         self._timer: _TimerHandle | None = None
         self._buckets: dict[_DestinationKey, dict[_AggregateKey, int]] = {}
         # Keep source keys across flushes so aggregate idempotency does not
@@ -317,7 +323,12 @@ class UsageEventBuffer:
             )
             _apply_dropped_batch_counts(
                 pending_flush.summaries,
-                _enqueue_batches(pending_flush.batches),
+                _enqueue_batches(
+                    pending_flush.batches,
+                    self._enqueue_webhook
+                    if self._enqueue_webhook is not None
+                    else _enqueue_webhook,
+                ),
             )
             _log_flush_summaries(
                 "completed",
@@ -543,23 +554,19 @@ class UsageEventBuffer:
         aggregate_key: _AggregateKey,
         flush_sequence: int,
     ) -> str:
-        return str(
-            uuid.uuid5(
-                USAGE_EVENT_NAMESPACE_AGGREGATE,
-                encode_uuid_name(
-                    (
-                        self._buffer_id,
-                        str(flush_sequence),
-                        destination.url,
-                        destination.sandbox_token,
-                        destination.proxy_log_path,
-                        aggregate_key.run_id,
-                        aggregate_key.kind,
-                        aggregate_key.provider,
-                        aggregate_key.category,
-                    )
-                ),
-            )
+        return derive_usage_idempotency_key(
+            USAGE_EVENT_NAMESPACE_AGGREGATE,
+            (
+                self._buffer_id,
+                str(flush_sequence),
+                destination.url,
+                destination.sandbox_token,
+                destination.proxy_log_path,
+                aggregate_key.run_id,
+                aggregate_key.kind,
+                aggregate_key.provider,
+                aggregate_key.category,
+            ),
         )
 
     @staticmethod
@@ -567,10 +574,13 @@ class UsageEventBuffer:
         return threading.Timer(delay, callback)
 
 
-def _enqueue_batches(batches: Iterable[_FlushBatch]) -> dict[str, int]:
+def _enqueue_batches(
+    batches: Iterable[_FlushBatch],
+    enqueue_webhook: _EnqueueWebhook,
+) -> dict[str, int]:
     dropped_counts: dict[str, int] = {}
     for batch in batches:
-        admitted = _enqueue_webhook(
+        admitted = enqueue_webhook(
             batch.url,
             batch.sandbox_token,
             batch.payload,
@@ -728,6 +738,8 @@ def reset_usage_buffer_for_tests(
     *,
     timer_enabled: bool = False,
     timer_factory: _TimerFactory | None = None,
+    enqueue_webhook: _EnqueueWebhook | None = None,
+    flush_owner_lock: _FlushOwnerLock | None = None,
 ) -> None:
     """Cancel pending timer work and replace singleton state for test isolation."""
     global _usage_event_buffer
@@ -735,4 +747,6 @@ def reset_usage_buffer_for_tests(
     _usage_event_buffer = UsageEventBuffer(
         timer_enabled=timer_enabled,
         timer_factory=timer_factory,
+        enqueue_webhook=enqueue_webhook,
+        flush_owner_lock=flush_owner_lock,
     )

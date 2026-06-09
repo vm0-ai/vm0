@@ -170,3 +170,34 @@ export const connectorOauthDeviceAuthSessionPollResponseSchema =
 export type ConnectorOauthDeviceAuthSessionPollResponse = z.infer<
   typeof connectorOauthDeviceAuthSessionPollResponseSchema
 >;
+
+export const connectorExternalCodeSessionStartResponseSchema = z.object({
+  sessionId: z.uuid(),
+  sessionToken: z.string(),
+  type: connectorTypeSchema,
+  status: z.literal("pending"),
+  authorizationUrl: z.string(),
+  expiresIn: z.number(),
+});
+
+export type ConnectorExternalCodeSessionStartResponse = z.infer<
+  typeof connectorExternalCodeSessionStartResponseSchema
+>;
+
+export const connectorExternalCodeSessionCompleteRequestSchema = z.object({
+  sessionToken: z.string(),
+  code: z.string().trim().min(1).max(4096),
+});
+
+export type ConnectorExternalCodeSessionCompleteRequest = z.infer<
+  typeof connectorExternalCodeSessionCompleteRequestSchema
+>;
+
+export const connectorExternalCodeSessionCompleteResponseSchema = z.object({
+  status: z.literal("complete"),
+  connector: connectorResponseSchema,
+});
+
+export type ConnectorExternalCodeSessionCompleteResponse = z.infer<
+  typeof connectorExternalCodeSessionCompleteResponseSchema
+>;

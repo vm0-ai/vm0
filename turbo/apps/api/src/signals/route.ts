@@ -62,6 +62,8 @@ import { webhooksAgentFirewallAuthRoutes } from "./routes/webhooks-agent-firewal
 import { webhooksAgentHealthUsageTelemetryRoutes } from "./routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
 import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-generations";
+import { webhookAutomationsRoutes } from "./routes/webhook-automations";
+import { webhooksAutomationRoutes } from "./routes/webhooks-automation";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
@@ -86,6 +88,7 @@ import { zeroClaudeCodeDeviceAuthRoutes } from "./routes/zero-claude-code-device
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
+import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-external-code";
 import { zeroConnectorsOauthDeviceAuthRoutes } from "./routes/zero-connectors-oauth-device-auth";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
 import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
@@ -196,6 +199,10 @@ export const ROUTES: readonly RouteEntry[] = [
   },
   ...authMeRoutes,
   ...automationsRoutes,
+  // Webhook-automation management (create/list/delete) on the new tables. Listed
+  // before the inbound webhook route so the management collection/by-id paths
+  // resolve ahead of the catch-all `:token` dispatch.
+  ...webhookAutomationsRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
@@ -217,6 +224,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...logsSearchRoutes,
   ...usageRoutes,
   ...userExportRoutes,
+  ...webhooksAutomationRoutes,
   ...webhooksClerkRoutes,
   ...webhooksBuiltInGenerationRoutes,
   ...webhooksGithubRoutes,
@@ -273,6 +281,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroComposesRoutes,
   ...zeroComputerUseRoutes,
   ...zeroCodexDeviceAuthRoutes,
+  ...zeroConnectorsExternalCodeRoutes,
   ...zeroConnectorsOauthDeviceAuthRoutes,
   ...zeroConnectorsRoutes,
   ...zeroCustomConnectorsRoutes,

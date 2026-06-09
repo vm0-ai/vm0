@@ -14,6 +14,39 @@ use super::super::support::{
 };
 use crate::{ExecOperationRequest, ExecStreamRequest, exec_operation as exec_operation_impl};
 
+fn stream_request(label: &str) -> ExecStreamRequest<'_> {
+    ExecStreamRequest {
+        timeout_ms: 5000,
+        command: "stream",
+        env: &[],
+        sudo: false,
+        label,
+        stdout: ExecOutputPolicy::Stream {
+            limit_bytes: 1024,
+            chunk_limit_bytes: 16,
+        },
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        stdin_bytes: None,
+        stream_queue_capacity: None,
+    }
+}
+
+fn operation_request(label: &str) -> ExecOperationRequest<'_> {
+    ExecOperationRequest {
+        timeout_ms: 5000,
+        command: "stream",
+        env: &[],
+        sudo: false,
+        label,
+        stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+        stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+        expected_exit_codes: &[],
+        stdin_bytes: None,
+        stream_queue_capacity: None,
+    }
+}
+
 #[tokio::test]
 async fn exec_operation_stream_rejects_zero_capacity_without_sending_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
@@ -21,19 +54,8 @@ async fn exec_operation_stream_rejects_zero_capacity_without_sending_frame() {
 
     let err = match host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "zero-capacity",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(0),
+            ..stream_request("zero-capacity")
         })
         .await
     {
@@ -53,19 +75,8 @@ async fn exec_operation_stream_rejects_oversized_capacity_without_sending_frame(
 
     let err = match host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "oversized-capacity",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(exec_operation_impl::test_support::MAX_STREAM_CAPACITY + 1),
+            ..stream_request("oversized-capacity")
         })
         .await
     {
@@ -86,19 +97,9 @@ async fn exec_operation_stream_rejects_oversized_stdin_without_sending_frame() {
 
     let err = match host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
             command: "cat",
-            env: &[],
-            sudo: false,
-            label: "stream-oversized-stdin",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
             stdin_bytes: Some(&stdin_bytes),
-            stream_queue_capacity: None,
+            ..stream_request("stream-oversized-stdin")
         })
         .await
     {
@@ -123,20 +124,12 @@ async fn exec_start_stream_policy_uses_default_receiver() {
 
     let mut handle = host
         .start_exec_operation(ExecOperationRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "default-receiver",
-            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::CaptureAndStream {
                 capture_limit_bytes: 1024,
                 stream_limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
-            expected_exit_codes: &[],
-            stdin_bytes: None,
-            stream_queue_capacity: None,
+            ..operation_request("default-receiver")
         })
         .await
         .unwrap();
@@ -174,19 +167,9 @@ async fn exec_operation_stream_sends_stdin_bytes() {
 
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
             command: "cat",
-            env: &[],
-            sudo: false,
-            label: "stream-stdin",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
             stdin_bytes: Some(b"stream-stdin"),
-            stream_queue_capacity: None,
+            ..stream_request("stream-stdin")
         })
         .await
         .unwrap();
@@ -214,16 +197,10 @@ async fn exec_start_rejects_receiver_without_stream_policy() {
 
     let err = match host
         .start_exec_operation(ExecOperationRequest {
-            timeout_ms: 5000,
             command: "capture",
-            env: &[],
-            sudo: false,
-            label: "unexpected-receiver",
-            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(1),
+            ..operation_request("unexpected-receiver")
         })
         .await
     {
@@ -243,16 +220,10 @@ async fn exec_operation_stream_rejects_non_streaming_policy() {
 
     let err = match host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
             command: "capture",
-            env: &[],
-            sudo: false,
-            label: "non-streaming-helper",
             stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
-            stream_queue_capacity: None,
+            ..stream_request("non-streaming-helper")
         })
         .await
     {
@@ -272,19 +243,13 @@ async fn exec_start_encode_error_does_not_register_or_send_frame() {
 
     let err = match host
         .start_exec_operation(ExecOperationRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "bad-policy",
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 0,
             },
             stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(1),
+            ..operation_request("bad-policy")
         })
         .await
     {
@@ -306,14 +271,7 @@ async fn exec_start_rejects_zero_timeout_without_sending_frame() {
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 0,
             command: "sleep 60",
-            env: &[],
-            sudo: false,
-            label: "zero-timeout",
-            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
-            stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
-            expected_exit_codes: &[],
-            stdin_bytes: None,
-            stream_queue_capacity: None,
+            ..operation_request("zero-timeout")
         })
         .await
     {
@@ -331,22 +289,11 @@ async fn exec_operation_stream_dispatches_stdout_stderr_and_closes_on_result() {
     let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-test",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
             stderr: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
-            expected_exit_codes: &[],
-            stdin_bytes: None,
-            stream_queue_capacity: None,
+            ..stream_request("stream-test")
         })
         .await
         .unwrap();
@@ -400,21 +347,7 @@ async fn exec_operation_stream_dispatches_stdout_stderr_and_closes_on_result() {
 async fn exec_operation_stream_handles_output_and_result_from_one_write() {
     let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
-        .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-coalesced",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
-            stream_queue_capacity: None,
-        })
+        .exec_operation_stream(stream_request("stream-coalesced"))
         .await
         .unwrap();
     let mut rx = handle.take_stream_receiver().unwrap();
@@ -454,21 +387,7 @@ async fn exec_operation_stream_handles_output_and_pending_response_from_one_writ
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let mut handle = host
-        .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-with-pending-response",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
-            stream_queue_capacity: None,
-        })
+        .exec_operation_stream(stream_request("stream-with-pending-response"))
         .await
         .unwrap();
     let mut rx = handle.take_stream_receiver().unwrap();
@@ -514,19 +433,8 @@ async fn exec_operation_stream_full_channel_closes_stream_and_marks_result() {
     let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-overflow",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(1),
+            ..stream_request("stream-overflow")
         })
         .await
         .unwrap();
@@ -572,19 +480,9 @@ async fn exec_operation_stream_many_chunks_soak_does_not_block_terminal_result()
     let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
             command: "stream-many",
-            env: &[],
-            sudo: false,
-            label: "stream-many",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(2),
+            ..stream_request("stream-many")
         })
         .await
         .unwrap();
@@ -631,19 +529,13 @@ async fn exec_output_for_non_streamed_side_poisons_connection() {
     let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-side",
             stdout: ExecOutputPolicy::Discard,
             stderr: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(1),
+            ..stream_request("stream-side")
         })
         .await
         .unwrap();
@@ -671,19 +563,8 @@ async fn exec_output_seq_gap_poisons_connection() {
     let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-seq",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(1),
+            ..stream_request("stream-seq")
         })
         .await
         .unwrap();
@@ -711,19 +592,12 @@ async fn exec_output_zero_stream_limit_accepts_empty_truncation_marker() {
     let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-zero-limit",
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 0,
                 chunk_limit_bytes: 16,
             },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(1),
+            ..stream_request("stream-zero-limit")
         })
         .await
         .unwrap();
@@ -751,19 +625,8 @@ async fn exec_output_empty_non_truncated_poisons_connection() {
     let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-empty",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(1),
+            ..stream_request("stream-empty")
         })
         .await
         .unwrap();
@@ -783,19 +646,12 @@ async fn exec_output_over_requested_chunk_limit_poisons_connection() {
     let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-limits",
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 4,
                 chunk_limit_bytes: 3,
             },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(4),
+            ..stream_request("stream-limits")
         })
         .await
         .unwrap();
@@ -823,19 +679,12 @@ async fn exec_output_over_requested_stream_limit_poisons_connection() {
     let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-total-limit",
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 4,
                 chunk_limit_bytes: 3,
             },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(4),
+            ..stream_request("stream-total-limit")
         })
         .await
         .unwrap();
@@ -872,19 +721,12 @@ async fn exec_output_after_truncation_poisons_connection() {
     let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-truncated",
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 4,
                 chunk_limit_bytes: 4,
             },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(4),
+            ..stream_request("stream-truncated")
         })
         .await
         .unwrap();
@@ -913,19 +755,8 @@ async fn exec_operation_stream_dropped_receiver_does_not_block_result() {
     let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
-            timeout_ms: 5000,
-            command: "stream",
-            env: &[],
-            sudo: false,
-            label: "stream-dropped",
-            stdout: ExecOutputPolicy::Stream {
-                limit_bytes: 1024,
-                chunk_limit_bytes: 16,
-            },
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            stdin_bytes: None,
             stream_queue_capacity: Some(1),
+            ..stream_request("stream-dropped")
         })
         .await
         .unwrap();

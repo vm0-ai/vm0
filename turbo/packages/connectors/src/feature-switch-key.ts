@@ -23,6 +23,7 @@ export enum FeatureSwitchKey {
   OutlookCalendarConnector = "outlookCalendarConnector",
   MetaAdsConnector = "metaAdsConnector",
   StripeConnector = "stripeConnector",
+  AwsConnector = "awsConnector",
   PosthogConnector = "posthogConnector",
   MailchimpConnector = "mailchimpConnector",
   ResendConnector = "resendConnector",
@@ -53,6 +54,8 @@ export enum FeatureSwitchKey {
   MemoryDevRefresh = "memoryDevRefresh",
   ChatRecommendedFollowups = "chatRecommendedFollowups",
   PresentationHtmlPptxDownload = "presentationHtmlPptxDownload",
+  ChatInlineFeedback = "chatInlineFeedback",
   ExpiringPermissionGrants = "expiringPermissionGrants",
+  ConnectorPermissionReset = "connectorPermissionReset",
   ZeroAutomations = "zeroAutomations",
 }

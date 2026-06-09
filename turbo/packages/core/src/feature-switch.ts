@@ -129,6 +129,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Stripe payment connector integration",
     enabled: false,
   },
+  [FeatureSwitchKey.AwsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the temporary AWS remote login connector",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the PostHog analytics connector",
@@ -304,10 +310,24 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatInlineFeedback]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ExpiringPermissionGrants]: {
     maintainer: "liangyou@vm0.ai",
     description:
       "Show duration controls for explicit current-user permission grants.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ConnectorPermissionReset]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Show staged connector-level reset controls for current-user permission grants.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

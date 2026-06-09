@@ -19,6 +19,14 @@ import {
   hashContent,
   writeSpecFile,
 } from "./codegen";
+import {
+  STRIPE_OPENAPI_URL,
+  STRIPE_PERMISSIONS_URL,
+  STRIPE_RESTRICTED_API_KEYS_URL,
+  STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES,
+  stripeAdditionalApiDocUrlsForResource,
+  stripeApiDocUrlsFromDescription,
+} from "./stripe-sources";
 
 type SpecEntries = Map<string, string>; // key → content
 
@@ -146,6 +154,92 @@ const slackUpdater: Updater = {
   },
 };
 
+function stripePermissionApiDocsUrls(markdown: string): string[] {
+  const urls = new Set<string>();
+  let inObjectTable = false;
+
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === "Product | Resource | Permissions | Description") {
+      inObjectTable = true;
+      continue;
+    }
+    if (inObjectTable && line.startsWith("## Event permissions")) {
+      break;
+    }
+    if (!inObjectTable || line === "" || line.startsWith("--- |")) {
+      continue;
+    }
+
+    const resource = line.split(" | ")[1]?.trim();
+    for (const url of stripeApiDocUrlsFromDescription(line)) {
+      urls.add(url);
+    }
+    if (resource) {
+      for (const url of stripeAdditionalApiDocUrlsForResource(resource)) {
+        urls.add(url);
+      }
+    }
+  }
+
+  return [...urls].sort();
+}
+
+const stripeUpdater: Updater = {
+  name: "stripe",
+  fetch: async () => {
+    const entries = new Map<string, string>();
+
+    const openapiRes = await fetchRemote(
+      STRIPE_OPENAPI_URL,
+      "stripe: OpenAPI spec",
+    );
+    entries.set(STRIPE_OPENAPI_URL, await openapiRes.text());
+
+    const permissionsRes = await fetchRemote(
+      STRIPE_PERMISSIONS_URL,
+      "stripe: permissions reference",
+    );
+    const permissionsMarkdown = await permissionsRes.text();
+    entries.set(STRIPE_PERMISSIONS_URL, permissionsMarkdown);
+
+    const restrictedKeysRes = await fetchRemote(
+      STRIPE_RESTRICTED_API_KEYS_URL,
+      "stripe: restricted API keys reference",
+    );
+    entries.set(STRIPE_RESTRICTED_API_KEYS_URL, await restrictedKeysRes.text());
+
+    const docsUrls = new Set(stripePermissionApiDocsUrls(permissionsMarkdown));
+    for (const source of STRIPE_SUPPLEMENTAL_PERMISSION_SOURCES) {
+      const sourceRes = await fetchRemote(
+        source.url,
+        `stripe: supplemental permissions ${source.resource}`,
+      );
+      const sourceMarkdown = await sourceRes.text();
+      for (const snippet of source.requiredSnippets) {
+        if (!sourceMarkdown.includes(snippet)) {
+          throw new Error(
+            `Stripe supplemental permission source ${source.url} is missing required snippet: ${snippet}`,
+          );
+        }
+      }
+      entries.set(source.url, sourceMarkdown);
+      for (const url of source.apiDocUrls) {
+        docsUrls.add(url);
+      }
+    }
+
+    const sortedDocsUrls = [...docsUrls].sort();
+    console.error(`  Found ${sortedDocsUrls.length} Stripe API docs links`);
+    for (const url of sortedDocsUrls) {
+      const res = await fetchRemote(url, `stripe: ${url}`);
+      entries.set(url, await res.text());
+    }
+
+    return entries;
+  },
+};
+
 // ── Updater registry ────────────────────────────────────────────────────
 
 const UPDATERS: Updater[] = [
@@ -191,6 +285,7 @@ const UPDATERS: Updater[] = [
   staticUpdater("strava", [
     "https://developers.strava.com/swagger/swagger.json",
   ]),
+  stripeUpdater,
   staticUpdater("vercel", ["https://openapi.vercel.sh/"]),
   staticUpdater("x", ["https://api.twitter.com/2/openapi.json"]),
   staticUpdater("xero", [

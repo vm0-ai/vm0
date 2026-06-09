@@ -334,6 +334,94 @@ async fn error_field_serializes_with_message_and_source_chain() {
 }
 
 #[tokio::test]
+async fn u128_fields_serialize_as_numbers_when_in_u64_range() {
+    let server = MockServer::start_async().await;
+
+    let numeric_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest")
+                .body_includes(r#""message":"timeout fields""#)
+                .body_includes(r#""timeout_ms":7200000"#)
+                .body_includes(r#""elapsed_ms":7200100"#)
+                .body_includes(r#""guest_duration_ms":7200084"#);
+            then.status(200).body("{}");
+        })
+        .await;
+    let string_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest")
+                .body_includes(r#""timeout_ms":"7200000""#);
+            then.status(200).body("{}");
+        })
+        .await;
+
+    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
+        .expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::error!(
+            timeout_ms = 7_200_000_u128,
+            elapsed_ms = 7_200_100_u128,
+            guest_duration_ms = Some(7_200_084_u32),
+            "timeout fields"
+        );
+    }
+    guard.shutdown().await;
+
+    numeric_mock.assert_calls_async(1).await;
+    string_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
+async fn none_option_fields_are_omitted_from_axiom_payload() {
+    let server = MockServer::start_async().await;
+
+    let event_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest")
+                .body_includes(r#""message":"timeout without guest duration""#)
+                .body_includes(r#""timeout_ms":7200000"#);
+            then.status(200).body("{}");
+        })
+        .await;
+    let guest_duration_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest")
+                .body_includes("guest_duration_ms");
+            then.status(200).body("{}");
+        })
+        .await;
+    let none_mock = server
+        .mock_async(|when, then| {
+            when.method(POST).body_includes("None");
+            then.status(200).body("{}");
+        })
+        .await;
+
+    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
+        .expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::error!(
+            timeout_ms = 7_200_000_u128,
+            guest_duration_ms = None::<u32>,
+            "timeout without guest duration"
+        );
+    }
+    guard.shutdown().await;
+
+    event_mock.assert_calls_async(1).await;
+    guest_duration_mock.assert_calls_async(0).await;
+    none_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
 async fn burst_past_channel_cap_drops_without_blocking_or_feeding_back() {
     let server = MockServer::start_async().await;
 

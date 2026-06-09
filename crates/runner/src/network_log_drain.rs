@@ -6,9 +6,10 @@ use std::time::Duration;
 
 use futures_util::future::join_all;
 use futures_util::task::noop_waker_ref;
-use tokio::io::{AsyncBufRead, Lines};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, Lines};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::ids::RunId;
@@ -161,6 +162,111 @@ pub(crate) enum ReadyLine {
     Pending,
 }
 
+#[derive(Debug)]
+pub(crate) enum DrainableLineReaderExit {
+    Cancelled,
+    DrainChannelClosed,
+    Eof {
+        during_drain: bool,
+    },
+    ReadError {
+        during_drain: bool,
+        error: std::io::Error,
+    },
+}
+
+#[derive(Debug)]
+enum DrainReadyLinesOutcome {
+    Continue,
+    Stop(DrainableLineReaderExit),
+}
+
+pub(crate) async fn run_drainable_line_reader<R, F, Fut>(
+    reader: R,
+    cancel: CancellationToken,
+    mut drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
+    mut on_line: F,
+) -> DrainableLineReaderExit
+where
+    R: AsyncBufRead + Unpin,
+    F: FnMut(String) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let mut lines = reader.lines();
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => return DrainableLineReaderExit::Cancelled,
+            request = drain_rx.recv() => {
+                let Some(request) = request else {
+                    return DrainableLineReaderExit::DrainChannelClosed;
+                };
+                let outcome = process_drain_request(&mut lines, &mut on_line, request).await;
+                if let DrainReadyLinesOutcome::Stop(exit) = outcome {
+                    return exit;
+                }
+            }
+            result = lines.next_line() => {
+                let line = match result {
+                    Ok(Some(line)) => line,
+                    Ok(None) => return DrainableLineReaderExit::Eof {
+                        during_drain: false,
+                    },
+                    Err(e) => {
+                        return DrainableLineReaderExit::ReadError {
+                            during_drain: false,
+                            error: e,
+                        };
+                    }
+                };
+                on_line(line).await;
+            }
+        }
+    }
+}
+
+async fn process_drain_request<R, F, Fut>(
+    lines: &mut Lines<R>,
+    on_line: &mut F,
+    request: NetworkLogDrainRequest,
+) -> DrainReadyLinesOutcome
+where
+    R: AsyncBufRead + Unpin,
+    F: FnMut(String) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let outcome = drain_ready_lines(lines, on_line).await;
+    request.ack();
+    outcome
+}
+
+async fn drain_ready_lines<R, F, Fut>(
+    lines: &mut Lines<R>,
+    on_line: &mut F,
+) -> DrainReadyLinesOutcome
+where
+    R: AsyncBufRead + Unpin,
+    F: FnMut(String) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    loop {
+        match poll_next_line_ready(lines) {
+            Ok(ReadyLine::Line(line)) => on_line(line).await,
+            Ok(ReadyLine::Pending) => return DrainReadyLinesOutcome::Continue,
+            Ok(ReadyLine::Eof) => {
+                return DrainReadyLinesOutcome::Stop(DrainableLineReaderExit::Eof {
+                    during_drain: true,
+                });
+            }
+            Err(e) => {
+                return DrainReadyLinesOutcome::Stop(DrainableLineReaderExit::ReadError {
+                    during_drain: true,
+                    error: e,
+                });
+            }
+        }
+    }
+}
+
 /// Poll `Lines::next_line` once without waiting for future readiness.
 ///
 /// `Lines::next_line` is cancellation-safe; when the poll returns `Pending`,
@@ -178,5 +284,269 @@ where
         Poll::Ready(Ok(None)) => Ok(ReadyLine::Eof),
         Poll::Ready(Err(e)) => Err(e),
         Poll::Pending => Ok(ReadyLine::Pending),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::path::Path;
+    use std::pin::Pin;
+    use std::sync::{Arc, Mutex};
+    use std::task::{Context, Poll};
+    use std::time::Duration;
+
+    use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader, ReadBuf};
+    use tokio::sync::oneshot;
+
+    use super::*;
+    use crate::ids::RunId;
+
+    fn drain_context(path: &Path) -> NetworkLogDrainContext<'_> {
+        NetworkLogDrainContext {
+            run_id: RunId::nil(),
+            source_ip: "10.0.0.1",
+            path,
+            generation: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn drainable_line_reader_processes_ready_line_before_ack() {
+        let path = Path::new("network.jsonl");
+        let cancel = CancellationToken::new();
+        let (producer, drain_rx) = NetworkLogDrainProducer::channel("reader-test");
+        let (mut writer, reader) = tokio::io::duplex(1024);
+        let handled = Arc::new(Mutex::new(Vec::new()));
+        let handled_for_task = handled.clone();
+        let task = tokio::spawn(run_drainable_line_reader(
+            BufReader::new(reader),
+            cancel.clone(),
+            drain_rx,
+            move |line| {
+                let handled = handled_for_task.clone();
+                async move {
+                    handled.lock().unwrap().push(line);
+                }
+            },
+        ));
+
+        writer.write_all(b"first\n").await.unwrap();
+
+        producer
+            .drain(drain_context(path), Duration::from_secs(1))
+            .await;
+
+        assert_eq!(handled.lock().unwrap().as_slice(), ["first"]);
+
+        cancel.cancel();
+        drop(writer);
+        assert!(matches!(
+            task.await.unwrap(),
+            DrainableLineReaderExit::Cancelled | DrainableLineReaderExit::Eof { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn drainable_line_reader_returns_eof_on_normal_eof() {
+        let cancel = CancellationToken::new();
+        let (_producer, drain_rx) = NetworkLogDrainProducer::channel("reader-test");
+
+        let exit = run_drainable_line_reader(
+            BufReader::new(tokio::io::empty()),
+            cancel,
+            drain_rx,
+            |_| async {},
+        )
+        .await;
+
+        assert!(matches!(
+            exit,
+            DrainableLineReaderExit::Eof {
+                during_drain: false
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn drainable_line_reader_acknowledges_eof_after_ready_lines() {
+        let handled = Arc::new(Mutex::new(Vec::new()));
+        let ack_seen_in_handler = Arc::new(Mutex::new(None));
+        let mut lines = TestReader::from_bytes(b"first\n").lines();
+        let (ack, ack_rx) = oneshot::channel();
+        let ack_rx = Arc::new(Mutex::new(ack_rx));
+        let request = NetworkLogDrainRequest { ack };
+
+        let outcome = process_drain_request(
+            &mut lines,
+            &mut |line| {
+                let handled = handled.clone();
+                let ack_seen_in_handler = ack_seen_in_handler.clone();
+                let ack_rx = ack_rx.clone();
+                async move {
+                    let ack_result = ack_rx.lock().unwrap().try_recv();
+                    *ack_seen_in_handler.lock().unwrap() = Some(ack_result.is_ok());
+                    handled.lock().unwrap().push(line);
+                }
+            },
+            request,
+        )
+        .await;
+
+        assert_eq!(*ack_seen_in_handler.lock().unwrap(), Some(false));
+        ack_rx.lock().unwrap().try_recv().unwrap();
+        assert_eq!(handled.lock().unwrap().as_slice(), ["first"]);
+        assert!(matches!(
+            outcome,
+            DrainReadyLinesOutcome::Stop(DrainableLineReaderExit::Eof { during_drain: true })
+        ));
+    }
+
+    #[tokio::test]
+    async fn drainable_line_reader_acknowledges_drain_read_error() {
+        let mut lines = TestReader::with_error(io::ErrorKind::Other).lines();
+        let (ack, ack_rx) = oneshot::channel();
+        let request = NetworkLogDrainRequest { ack };
+
+        let outcome = process_drain_request(&mut lines, &mut |_| async {}, request).await;
+
+        ack_rx.await.unwrap();
+        match outcome {
+            DrainReadyLinesOutcome::Stop(DrainableLineReaderExit::ReadError {
+                during_drain,
+                error,
+            }) => {
+                assert!(during_drain);
+                assert_eq!(error.kind(), io::ErrorKind::Other);
+            }
+            other => panic!("expected read error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn drainable_line_reader_returns_cancelled() {
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let (_producer, drain_rx) = NetworkLogDrainProducer::channel("reader-test");
+
+        let exit = run_drainable_line_reader(PendingReader, cancel, drain_rx, |_| async {}).await;
+
+        assert!(matches!(exit, DrainableLineReaderExit::Cancelled));
+    }
+
+    #[tokio::test]
+    async fn drainable_line_reader_returns_drain_channel_closed() {
+        let cancel = CancellationToken::new();
+        let (producer, drain_rx) = NetworkLogDrainProducer::channel("reader-test");
+        drop(producer);
+
+        let exit = run_drainable_line_reader(PendingReader, cancel, drain_rx, |_| async {}).await;
+
+        assert!(matches!(exit, DrainableLineReaderExit::DrainChannelClosed));
+    }
+
+    #[tokio::test]
+    async fn drainable_line_reader_returns_normal_read_error() {
+        let cancel = CancellationToken::new();
+        let (_producer, drain_rx) = NetworkLogDrainProducer::channel("reader-test");
+
+        let exit = run_drainable_line_reader(
+            TestReader::with_error(io::ErrorKind::InvalidData),
+            cancel,
+            drain_rx,
+            |_| async {},
+        )
+        .await;
+
+        match exit {
+            DrainableLineReaderExit::ReadError {
+                during_drain,
+                error,
+            } => {
+                assert!(!during_drain);
+                assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            }
+            other => panic!("expected normal read error, got {other:?}"),
+        }
+    }
+
+    struct TestReader {
+        data: &'static [u8],
+        position: usize,
+        error: Option<io::ErrorKind>,
+    }
+
+    impl TestReader {
+        fn from_bytes(data: &'static [u8]) -> Self {
+            Self {
+                data,
+                position: 0,
+                error: None,
+            }
+        }
+
+        fn with_error(kind: io::ErrorKind) -> Self {
+            Self {
+                data: &[],
+                position: 0,
+                error: Some(kind),
+            }
+        }
+    }
+
+    impl AsyncRead for TestReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            match self.as_mut().poll_fill_buf(cx) {
+                Poll::Ready(Ok(available)) => {
+                    let len = available.len().min(buf.remaining());
+                    buf.put_slice(&available[..len]);
+                    self.consume(len);
+                    Poll::Ready(Ok(()))
+                }
+                Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+                Poll::Pending => Poll::Pending,
+            }
+        }
+    }
+
+    impl AsyncBufRead for TestReader {
+        fn poll_fill_buf(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<io::Result<&[u8]>> {
+            if let Some(kind) = self.error.take() {
+                return Poll::Ready(Err(io::Error::new(kind, "test read error")));
+            }
+
+            Poll::Ready(Ok(&self.data[self.position..]))
+        }
+
+        fn consume(mut self: Pin<&mut Self>, amt: usize) {
+            self.position = self.position.saturating_add(amt).min(self.data.len());
+        }
+    }
+
+    struct PendingReader;
+
+    impl AsyncRead for PendingReader {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Pending
+        }
+    }
+
+    impl AsyncBufRead for PendingReader {
+        fn poll_fill_buf(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
+            Poll::Pending
+        }
+
+        fn consume(self: Pin<&mut Self>, _amt: usize) {}
     }
 }

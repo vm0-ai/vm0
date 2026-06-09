@@ -7,11 +7,22 @@ import json
 import threading
 from collections import deque
 from collections.abc import Callable, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, Protocol
 
 import usage
+
+_EnqueueWebhook = Callable[[str, str, dict, str, str], bool]
+
+
+class _FlushOwnerLock(Protocol):
+    def acquire(self, blocking: bool = True) -> bool:
+        raise NotImplementedError
+
+    def release(self) -> None:
+        raise NotImplementedError
 
 
 class RecordingTimer:
@@ -29,7 +40,11 @@ class RecordingTimer:
         self.cancelled = True
 
 
-def install_recording_usage_timer() -> list[RecordingTimer]:
+def install_recording_usage_timer(
+    *,
+    enqueue_webhook: _EnqueueWebhook | None = None,
+    flush_owner_lock: _FlushOwnerLock | None = None,
+) -> list[RecordingTimer]:
     """Reset the usage buffer with a timer factory that records scheduled timers."""
     timers: list[RecordingTimer] = []
 
@@ -38,8 +53,32 @@ def install_recording_usage_timer() -> list[RecordingTimer]:
         timers.append(timer)
         return timer
 
-    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+    usage.reset_usage_buffer_for_tests(
+        timer_enabled=True,
+        timer_factory=timer_factory,
+        enqueue_webhook=enqueue_webhook,
+        flush_owner_lock=flush_owner_lock,
+    )
     return timers
+
+
+@contextlib.contextmanager
+def fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
+    """Install a temporary usage executor and restore the original on exit."""
+    original = usage.webhook.usage_executor
+    executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage-test")
+    usage.webhook.usage_executor = executor
+    try:
+        yield executor
+    finally:
+        usage.webhook.usage_executor = executor
+        try:
+            try:
+                usage.flush_usage_events(trigger="shutdown")
+            finally:
+                executor.shutdown(wait=True)
+        finally:
+            usage.webhook.usage_executor = original
 
 
 @dataclass(frozen=True)

@@ -1123,9 +1123,16 @@ function OnboardingIllustrationPanel() {
         )}
       </div>
 
-      {/* Org switcher + account dropdown — bottom-left of left panel */}
-      <div className="absolute bottom-6 left-4 z-20 flex w-[240px] flex-col gap-2">
+      {/* Org switcher — top-left of left panel */}
+      <div
+        data-testid="onboarding-org-switcher-slot"
+        className="absolute left-4 top-6 z-20 w-[240px]"
+      >
         <OnboardingOrgSwitcher />
+      </div>
+
+      {/* Account dropdown — bottom-left of left panel */}
+      <div className="absolute bottom-6 left-4 z-20 w-[240px]">
         <OnboardingAccountDropdown />
       </div>
     </div>

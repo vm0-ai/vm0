@@ -106,6 +106,7 @@ interface ActiveSitePointer {
 
 type HostedSiteRow = typeof hostedSites.$inferSelect;
 type HostedDeploymentRow = typeof hostedDeployments.$inferSelect;
+type HostedSiteFile = HostedSitePrepareRequest["files"][number];
 
 type SiteDeploymentCreationResult =
   | {
@@ -341,7 +342,7 @@ function buildManifest(args: {
   readonly publicSlug: string;
   readonly artifactKind: HostedArtifactKind;
   readonly spaFallback: boolean;
-  readonly files: readonly HostedSitePrepareRequest["files"][number][];
+  readonly files: readonly HostedSiteFile[];
   readonly createdAt: Date;
 }): HostedSiteManifest {
   const manifestFiles: Record<string, HostedSiteManifestFile> = {};

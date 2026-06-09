@@ -30,6 +30,11 @@ export const listUserPermissionGrantsQuerySchema = z.object({
   agentId: agentIdSchema,
 });
 
+export const resetUserPermissionGrantsQuerySchema = z.object({
+  agentId: agentIdSchema,
+  connectorRef: connectorRefSchema,
+});
+
 const upsertUserPermissionGrantBaseRequestSchema = z.object({
   agentId: agentIdSchema,
   connectorRef: connectorRefSchema,
@@ -79,6 +84,20 @@ export const zeroUserPermissionGrantsContract = c.router({
     },
     summary: "Upsert current user's permission grant for an agent",
   },
+  reset: {
+    method: "DELETE",
+    path: "/api/zero/user-permission-grants",
+    headers: authHeadersSchema,
+    query: resetUserPermissionGrantsQuerySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Reset current user's connector permission grants for an agent",
+  },
 });
 
 export type UserPermissionGrantAction = z.infer<
@@ -92,6 +111,9 @@ export type UserPermissionGrantResponse = z.infer<
 >;
 export type ListUserPermissionGrantsQuery = z.infer<
   typeof listUserPermissionGrantsQuerySchema
+>;
+export type ResetUserPermissionGrantsQuery = z.infer<
+  typeof resetUserPermissionGrantsQuerySchema
 >;
 export type UpsertUserPermissionGrantRequest = z.infer<
   typeof upsertUserPermissionGrantRequestSchema

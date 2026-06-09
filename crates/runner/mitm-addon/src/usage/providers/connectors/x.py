@@ -7,7 +7,6 @@ through the X firewall and buffers them for aggregate platform upload.
 import json
 import re
 import urllib.parse
-import uuid
 from collections.abc import Callable, Iterable
 from typing import Literal, NamedTuple, TypedDict
 
@@ -19,7 +18,7 @@ from auth import get_api_url
 from logging_utils import log_proxy_entry
 
 from ...buffer import UsageEvent, buffer_usage_events
-from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR
+from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR, derive_usage_idempotency_key
 from ...json_selective import JsonExtractionResult, JsonSelectiveExtractor, ScalarField
 from .response_parser import ConnectorResponseParser
 from .x_billing import (
@@ -866,11 +865,9 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     for category, qty in billable_counts.items():
         # UUIDv5 from stable source inputs. The usage buffer uses this key to
         # dedupe duplicate response/error observations before aggregation.
-        idempotency_key = str(
-            uuid.uuid5(
-                USAGE_EVENT_NAMESPACE_CONNECTOR,
-                f"{run_id}:{flow.id}:{category}",
-            )
+        idempotency_key = derive_usage_idempotency_key(
+            USAGE_EVENT_NAMESPACE_CONNECTOR,
+            (run_id, flow.id, category),
         )
         events.append(
             {

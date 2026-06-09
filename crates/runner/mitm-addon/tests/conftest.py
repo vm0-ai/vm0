@@ -16,7 +16,7 @@ Fixtures here exist for two reasons:
 import contextlib
 import json
 from collections.abc import Callable, Iterator
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -32,7 +32,7 @@ import mitm_addon
 import registry
 import usage
 from tests.auth_state_helpers import clear_auth_state
-from tests.usage_helpers import UsageWebhookServer
+from tests.usage_helpers import UsageWebhookServer, fresh_usage_executor_context
 from usage.providers import connectors as _usage_connectors
 
 
@@ -406,20 +406,12 @@ def fresh_usage_executor():
     reports need a fresh executor afterwards so later tests still see a
     live pool.  This fixture owns the lifecycle: a new
     :class:`ThreadPoolExecutor` is installed before the test and the
-    original is restored after.  ``ThreadPoolExecutor.shutdown`` is
-    idempotent, so we always call it on the way out regardless of
-    whether the test already did.
+    original is restored after a shutdown-triggered final flush.
+    ``ThreadPoolExecutor.shutdown`` is idempotent, so we always call it
+    on the way out regardless of whether the test already did.
     """
-    original = usage.webhook.usage_executor
-    usage.webhook.usage_executor = ThreadPoolExecutor(
-        max_workers=4, thread_name_prefix="usage-test"
-    )
-    try:
-        yield usage.webhook.usage_executor
-    finally:
-        usage.flush_usage_events(trigger="test")
-        usage.webhook.usage_executor.shutdown(wait=True)
-        usage.webhook.usage_executor = original
+    with fresh_usage_executor_context() as executor:
+        yield executor
 
 
 @pytest.fixture

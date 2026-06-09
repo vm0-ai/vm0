@@ -60,6 +60,10 @@ const AUTOMATIONS_DISABLE_REWRITE_SOURCE = "/api/automations/:name/disable";
 const AUTOMATIONS_DISABLE_PATH_RE = /^\/api\/automations\/[^/]+\/disable$/;
 const AUTOMATIONS_ENABLE_REWRITE_SOURCE = "/api/automations/:name/enable";
 const AUTOMATIONS_ENABLE_PATH_RE = /^\/api\/automations\/[^/]+\/enable$/;
+const AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE =
+  "/api/automations/webhooks/:token";
+const AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE =
+  /^\/api\/automations\/webhooks\/[^/]+$/;
 const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
 const ZERO_SKILLS_BY_NAME_PATH_RE = /^\/api\/zero\/skills\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
@@ -301,6 +305,14 @@ const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_PATH_RE =
   new RegExp(
     `^/api/zero/connectors/[^/]+/oauth/device/sessions/${UUID_PATH_SEGMENT_PATTERN}/poll$`,
   );
+const ZERO_CONNECTORS_EXTERNAL_CODE_SESSIONS_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/external-code/sessions";
+const ZERO_CONNECTORS_EXTERNAL_CODE_SESSIONS_PATH_RE =
+  /^\/api\/zero\/connectors\/[^/]+\/external-code\/sessions$/;
+const ZERO_CONNECTORS_EXTERNAL_CODE_SESSION_COMPLETE_REWRITE_SOURCE = `/api/zero/connectors/:type/external-code/sessions/:sessionId(${UUID_PATH_SEGMENT_PATTERN})/complete`;
+const ZERO_CONNECTORS_EXTERNAL_CODE_SESSION_COMPLETE_PATH_RE = new RegExp(
+  `^/api/zero/connectors/[^/]+/external-code/sessions/${UUID_PATH_SEGMENT_PATTERN}/complete$`,
+);
 const ZERO_SLACK_OAUTH_INSTALL_REWRITE_SOURCE = "/api/zero/slack/oauth/install";
 const ZERO_SLACK_OAUTH_CONNECT_REWRITE_SOURCE = "/api/zero/slack/oauth/connect";
 const ZERO_SLACK_OAUTH_CALLBACK_REWRITE_SOURCE =
@@ -754,6 +766,16 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/connectors/:type/oauth/device/sessions/:sessionId/poll",
     ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_PATH_RE,
   ],
+  [
+    ZERO_CONNECTORS_EXTERNAL_CODE_SESSIONS_REWRITE_SOURCE,
+    "/api/zero/connectors/:type/external-code/sessions",
+    ZERO_CONNECTORS_EXTERNAL_CODE_SESSIONS_PATH_RE,
+  ],
+  [
+    ZERO_CONNECTORS_EXTERNAL_CODE_SESSION_COMPLETE_REWRITE_SOURCE,
+    "/api/zero/connectors/:type/external-code/sessions/:sessionId/complete",
+    ZERO_CONNECTORS_EXTERNAL_CODE_SESSION_COMPLETE_PATH_RE,
+  ],
   [ZERO_SLACK_OAUTH_INSTALL_REWRITE_SOURCE, "/api/zero/slack/oauth/install"],
   [ZERO_SLACK_OAUTH_CONNECT_REWRITE_SOURCE, "/api/zero/slack/oauth/connect"],
   [ZERO_SLACK_OAUTH_CALLBACK_REWRITE_SOURCE, "/api/zero/slack/oauth/callback"],
@@ -1119,6 +1141,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_SCHEDULES_ENABLE_PATH_RE,
   ],
   ["/api/automations", "/api/automations"],
+  [
+    AUTOMATIONS_WEBHOOK_INBOUND_REWRITE_SOURCE,
+    "/api/automations/webhooks/:token",
+    AUTOMATIONS_WEBHOOK_INBOUND_PATH_RE,
+  ],
   [AUTOMATIONS_RUN_REWRITE_SOURCE, "/api/automations/run"],
   [
     AUTOMATIONS_DISABLE_REWRITE_SOURCE,

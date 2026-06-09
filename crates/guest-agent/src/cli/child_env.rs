@@ -4,6 +4,12 @@ use crate::env;
 
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 const DEFAULT_SHELL: &str = "/bin/bash";
+const RUNNER_VISIBLE_CHILD_ENV_KEYS: &[&str] = &[
+    // The sandbox CLI needs the same API origin as the guest-agent in local
+    // development. Keep this list intentionally narrow: tokens and other VM0
+    // bootstrap controls must stay private to the guest-agent.
+    "VM0_API_URL",
+];
 const OPTIONAL_BASE_ENV_KEYS: &[&str] = &[
     "USER",
     "LOGNAME",
@@ -29,6 +35,9 @@ pub(super) fn apply_to_tokio_command(cmd: &mut tokio::process::Command) {
     for (key, value) in env::user_env() {
         cmd.env(key, value);
     }
+    apply_runner_visible_env(|key, value| {
+        cmd.env(key, value);
+    });
 }
 
 pub(super) fn apply_to_std_command(cmd: &mut std::process::Command) {
@@ -39,6 +48,9 @@ pub(super) fn apply_to_std_command(cmd: &mut std::process::Command) {
     for (key, value) in env::user_env() {
         cmd.env(key, value);
     }
+    apply_runner_visible_env(|key, value| {
+        cmd.env(key, value);
+    });
 }
 
 fn base_child_env() -> Vec<(&'static str, String)> {
@@ -68,6 +80,16 @@ fn base_child_env() -> Vec<(&'static str, String)> {
     }
 
     base
+}
+
+fn apply_runner_visible_env(mut apply: impl FnMut(&'static str, String)) {
+    for key in RUNNER_VISIBLE_CHILD_ENV_KEYS {
+        if let Ok(value) = std::env::var(key)
+            && !value.is_empty()
+        {
+            apply(key, value);
+        }
+    }
 }
 
 #[cfg(test)]

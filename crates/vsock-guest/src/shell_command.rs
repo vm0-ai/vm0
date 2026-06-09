@@ -10,6 +10,7 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsE
 /// Maximum length for command preview in logs
 const COMMAND_PREVIEW_MAX_LEN: usize = 100;
 const ENV_SCRIPT_PREFIX: &str = "vm0-env-";
+const ENV_SCRIPT_RANDOM_BYTES: usize = 16;
 const ENV_SCRIPT_SUFFIX: &str = ".sh";
 const ENV_SCRIPT_STALE_AFTER: Duration = Duration::from_secs(60 * 60);
 const CHOWN_UNCHANGED_UID: libc::uid_t = !0;
@@ -263,12 +264,19 @@ fn build_env_script_content(
     Ok(script)
 }
 
-fn random_hex(bytes: usize) -> io::Result<String> {
-    let mut raw = vec![0_u8; bytes];
+fn random_env_script_suffix() -> io::Result<String> {
+    let mut raw = [0_u8; ENV_SCRIPT_RANDOM_BYTES];
     File::open("/dev/urandom")?.read_exact(&mut raw)?;
-    let mut out = String::with_capacity(bytes * 2);
+    let mut out = String::with_capacity(ENV_SCRIPT_RANDOM_BYTES * 2);
     for byte in raw {
-        out.push_str(&format!("{byte:02x}"));
+        for nibble in [byte >> 4, byte & 0x0f] {
+            let digit = if nibble < 10 {
+                b'0' + nibble
+            } else {
+                b'a' + (nibble - 10)
+            };
+            out.push(char::from(digit));
+        }
     }
     Ok(out)
 }
@@ -392,7 +400,11 @@ fn create_env_script_in_dir(
     let _ = cleanup_stale_env_scripts_in(dir, SystemTime::now(), ENV_SCRIPT_STALE_AFTER);
 
     for _ in 0..16 {
-        let script_dir = dir.join(format!("{}{}", ENV_SCRIPT_PREFIX, random_hex(16)?));
+        let script_dir = dir.join(format!(
+            "{}{}",
+            ENV_SCRIPT_PREFIX,
+            random_env_script_suffix()?
+        ));
         match DirBuilder::new().mode(0o700).create(&script_dir) {
             Ok(()) => {}
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
@@ -665,6 +677,25 @@ mod tests {
         assert!(!argv.contains(secret));
         assert!(argv.contains("/bin/bash"));
         assert!(argv.contains(script.path().unwrap().to_str().unwrap()));
+    }
+
+    #[test]
+    fn env_script_directory_uses_lowercase_hex_suffix() {
+        let (dir, _guard) = temp_dir("suffix");
+        let script =
+            create_env_script_in_dir(&dir, "echo \"$FOO\"", &[("FOO", "secret")], true).unwrap();
+        let script_dir = script.path().unwrap().parent().unwrap();
+        let name = script_dir.file_name().unwrap().to_str().unwrap();
+        let suffix = name
+            .strip_prefix(ENV_SCRIPT_PREFIX)
+            .expect("env script directory name should start with prefix");
+
+        assert_eq!(suffix.len(), ENV_SCRIPT_RANDOM_BYTES * 2);
+        assert!(
+            suffix
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        );
     }
 
     #[test]

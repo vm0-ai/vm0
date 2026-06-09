@@ -72,6 +72,34 @@ export const webhookStripeContract = c.router({
   },
 });
 
+/**
+ * Automation inbound webhook contract for
+ * /api/automations/webhooks/:token.
+ *
+ * No user session: the unguessable `:token` identifies the automation trigger,
+ * and a required HMAC signature over the raw body authenticates the caller. A
+ * correctly-signed POST fires the linked automation as an agent run. The raw
+ * body is taken as a string so the signature is verified against the exact
+ * bytes received (mirrors the GitHub/Stripe webhook contracts).
+ */
+export const webhookAutomationInboundContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/automations/webhooks/:token",
+    pathParams: z.object({
+      token: z.string().min(1),
+    }),
+    body: c.type<string>(),
+    responses: {
+      200: thirdPartyWebhookOkSchema,
+      401: thirdPartyWebhookErrorSchema,
+      404: thirdPartyWebhookErrorSchema,
+      429: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle inbound automation webhooks",
+  },
+});
+
 export const webhookBuiltInGenerationFalContract = c.router({
   post: {
     method: "POST",
@@ -649,6 +677,8 @@ export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookClerkContract = typeof webhookClerkContract;
 export type WebhookGithubContract = typeof webhookGithubContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
+export type WebhookAutomationInboundContract =
+  typeof webhookAutomationInboundContract;
 export type WebhookBuiltInGenerationFalContract =
   typeof webhookBuiltInGenerationFalContract;
 export type WebhookBuiltInGenerationBytePlusContract =

@@ -33,6 +33,9 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         std::env::set_var("REQUESTS_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt");
         std::env::set_var("CARGO_HTTP_CAINFO", "/etc/ssl/certs/ca-certificates.crt");
         std::env::set_var("NPM_CONFIG_UPDATE_NOTIFIER", "false");
+        std::env::set_var("CLI_AGENT_TYPE", "claude-code");
+        std::env::set_var("VM0_APPEND_SYSTEM_PROMPT", "runner append prompt");
+        std::env::set_var("VM0_FEATURE_FLAGS", r#"{"flag":true}"#);
     }
 
     let run_id = std::env::var("VM0_RUN_ID")?;
@@ -45,6 +48,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         serde_json::to_vec(&serde_json::json!({
             "CUSTOM_USER_ENV": "visible-to-cli",
             "BASH_ENV": "/tmp/user-bash-env",
+            "VM0_API_URL": "https://user-env.example.invalid",
             "OPENAI_API_KEY": "sk-user",
             "HOME": user_home_str,
             "NODE_EXTRA_CA_CERTS": "/tmp/user-ca.pem",
@@ -82,6 +86,10 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         Some("sk-user")
     );
     assert_eq!(
+        cli_env.get("VM0_API_URL").map(String::as_str),
+        Some("http://127.0.0.1:1")
+    );
+    assert_eq!(
         cli_env.get("HOME").map(String::as_str),
         Some(user_home_str.as_str())
     );
@@ -111,6 +119,13 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 
     assert!(!cli_env.contains_key("VM0_SECRET_VALUES"));
     assert!(!cli_env.contains_key("VM0_USER_ENV_FILE"));
+    assert!(!cli_env.contains_key("VM0_RUN_ID"));
+    assert!(!cli_env.contains_key("VM0_PROMPT"));
+    assert!(!cli_env.contains_key("VM0_APPEND_SYSTEM_PROMPT"));
+    assert!(!cli_env.contains_key("VM0_SANDBOX_ID"));
+    assert!(!cli_env.contains_key("VM0_SANDBOX_REUSE_RESULT"));
+    assert!(!cli_env.contains_key("VM0_FEATURE_FLAGS"));
+    assert!(!cli_env.contains_key("CLI_AGENT_TYPE"));
     assert!(!cli_env.contains_key(process_control_ipc::BOOTSTRAP_ENV));
 
     Ok(())

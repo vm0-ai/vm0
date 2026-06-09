@@ -1,4 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="connector logo">
-  <!-- Official brand asset source: https://framerusercontent.com/images/id5ZjKRfENkLEfAMrnKLKJfqfE.png -->
-  <image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAJ1BMVEUAAAD///8aGhpERETc3Nzv7++7u7ufn5+AgIBgYGAwMDCQkJBwcHDh4iCjAAAACXBIWXMAAAsTAAALEwEAmpwYAAAADnRFWHRTb2Z0d2FyZQBGaWdtYZ6xlmMAAAEDSURBVHja7VXLEoQgDLOUIg///3t3HRi3oDsSnPFETh5o2iZtXZaJiYk7sLNE4hKPhcdvdIENA/FBSMFGOD812LB4Y+kZg6czoC5KAbUOiII5ZK1bAbxYj5SsCBzaQdo/dRemmyC/518xoBFGJdR+pO4lyO+1nkXUtwiiIthGCP5p4EdccIqA35uDbL6YQQ0P5VK9CwY4B3SxjX70FqFjGB7GV9tzQDb4GFVYB/TT4dEUAIt0CelhSNUdbRh6nNSzTyxwCbUE7GEzawn45EnEfkl80tRBEuwHwDUMdzdB2tdGoBLiOV2rY+g5BJqg/dNb0y9BbpiRabJXirmBgZ6YmHgdH9tYBkv+9ZJmAAAAAElFTkSuQmCC" x="0" y="0" width="256" height="256" preserveAspectRatio="xMidYMid meet"/>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 40 40"
+  role="img"
+  aria-label="connector logo"
+>
+  <rect width="40" height="40" fill="#000000" />
+  <path
+    d="M 29.642 24.721 L 21.662 24.721 C 26.475 23.2 29.682 19.951 29.682 15.014 C 29.682 8.928 24.829 4.733 19.072 4.733 C 14.67 4.733 11.256 8.682 11.256 15.015 C 11.256 17.03 11.668 19.211 12.203 20.938 L 9.077 20.938 L 6.033 34.018 L 17.573 34.018 L 17.573 25.047 L 22.85 34.017 L 34.783 34.017 L 29.643 24.721 Z M 18.207 20.427 C 17.035 20.427 15.907 18.169 15.907 14.913 C 15.907 11.831 17.035 9.661 18.207 9.661 C 19.379 9.661 20.507 11.831 20.507 14.913 C 20.507 18.169 19.379 20.427 18.207 20.427 Z"
+    fill="#FFFFFF"
+  />
 </svg>

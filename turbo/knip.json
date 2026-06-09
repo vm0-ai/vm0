@@ -69,6 +69,7 @@
       ],
       "ignoreDependencies": [
         "idb",
+        "dom-to-pptx",
         "katex",
         "tailwindcss",
         "typescript-eslint",

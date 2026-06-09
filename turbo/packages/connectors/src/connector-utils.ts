@@ -6,6 +6,7 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorAuthCodeGrantAuthMethodId,
   type ConnectorDeviceAuthGrantAuthMethodId,
+  type ConnectorExternalCodeGrantAuthMethodId,
   type ConnectorAuthMethodIds,
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByGrantKind,
@@ -21,6 +22,7 @@ import {
   type ConnectorAuthCodeGrantConfig,
   type ConnectorAuthClientConfig,
   type ConnectorDeviceAuthGrantConfig,
+  type ConnectorExternalCodeGrantConfig,
   type ConnectorDeviceAuthStartOptionConfig,
   type ConnectorDeviceAuthStartOptions,
   type ConnectorDeviceAuthStartOptionsConfig,
@@ -42,6 +44,7 @@ import {
   type ConnectorType,
   type AuthCodeGrantConnectorType,
   type DeviceAuthGrantConnectorType,
+  type ExternalCodeGrantConnectorType,
   type DynamicPublicConnectorAuthClientConfig,
   type StaticConfidentialConnectorAuthClientConfig,
   type StaticPublicConnectorAuthClientConfig,
@@ -336,7 +339,7 @@ export interface ConnectorGrantOutputMetadata {
 
 export type ConnectorAuthMethodGrantMetadata =
   | {
-      readonly kind: "auth-code" | "device-auth";
+      readonly kind: "auth-code" | "external-code" | "device-auth";
       readonly outputs: Readonly<Record<string, ConnectorGrantOutputMetadata>>;
     }
   | {
@@ -526,6 +529,7 @@ export function getConnectorAuthMethodGrantMetadata(
 
   switch (method.grant.kind) {
     case "auth-code":
+    case "external-code":
     case "device-auth":
       return {
         kind: method.grant.kind,
@@ -807,6 +811,24 @@ export function getConnectorAuthMethodAuthCodeGrantConfig(
   return grant?.kind === "auth-code" ? grant : undefined;
 }
 
+export function getConnectorAuthMethodExternalCodeGrantConfig<
+  Type extends ExternalCodeGrantConnectorType,
+>(
+  type: Type,
+  authMethod: ConnectorExternalCodeGrantAuthMethodId<Type>,
+): ConnectorExternalCodeGrantConfig;
+export function getConnectorAuthMethodExternalCodeGrantConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorExternalCodeGrantConfig | undefined;
+export function getConnectorAuthMethodExternalCodeGrantConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorExternalCodeGrantConfig | undefined {
+  const grant = getConnectorAuthMethod(type, authMethod)?.grant;
+  return grant?.kind === "external-code" ? grant : undefined;
+}
+
 export function getConnectorAuthMethodDeviceAuthGrantConfig<
   Type extends DeviceAuthGrantConnectorType,
 >(
@@ -962,6 +984,7 @@ function connectorGrantScopes(
 ): readonly string[] {
   switch (grant?.kind) {
     case "auth-code":
+    case "external-code":
     case "device-auth":
       return grant.scopes;
     case "manual":
@@ -1056,6 +1079,7 @@ export function getAvailableConnectorAuthMethodIds(
         break;
       }
       case "auth-code":
+      case "external-code":
       case "device-auth":
       case "manual": {
         break;
@@ -1154,7 +1178,10 @@ export type ConnectorResolvedAuthMethodClient<
   readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
 };
 
-export type ConnectorGrantKindWithAuthClient = "auth-code" | "device-auth";
+export type ConnectorGrantKindWithAuthClient =
+  | "auth-code"
+  | "external-code"
+  | "device-auth";
 
 export type ConnectorResolvedAuthMethodClientByGrantKind<
   Kind extends ConnectorGrantKindWithAuthClient,
@@ -1356,6 +1383,10 @@ export function resolveConnectorResolvedAuthMethodClientByGrantKind(
   readEnv: ConnectorEnvReader,
 ): ConnectorResolvedAuthMethodClientByGrantKind<"auth-code"> | undefined;
 export function resolveConnectorResolvedAuthMethodClientByGrantKind(
+  authMethodRef: ConnectorAuthMethodRefByGrantKind<"external-code">,
+  readEnv: ConnectorEnvReader,
+): ConnectorResolvedAuthMethodClientByGrantKind<"external-code"> | undefined;
+export function resolveConnectorResolvedAuthMethodClientByGrantKind(
   authMethodRef: ConnectorAuthMethodRefByGrantKind<"device-auth">,
   readEnv: ConnectorEnvReader,
 ): ConnectorResolvedAuthMethodClientByGrantKind<"device-auth"> | undefined;
@@ -1385,6 +1416,7 @@ function hasRuntimeAvailableAuthMethod(
     const method = getConnectorAuthMethod(type, authMethod);
     switch (method?.grant.kind) {
       case "auth-code":
+      case "external-code":
       case "device-auth": {
         if (resolveConnectorAuthClientForMethod(type, authMethod, readEnv)) {
           return true;
@@ -1568,6 +1600,14 @@ export function hasConnectorAuthCodeGrant(
   type: ConnectorType,
 ): type is AuthCodeGrantConnectorType {
   return getConnectorAuthMethodIdsForGrantKind(type, "auth-code").length > 0;
+}
+
+export function hasConnectorExternalCodeGrant(
+  type: ConnectorType,
+): type is ExternalCodeGrantConnectorType {
+  return (
+    getConnectorAuthMethodIdsForGrantKind(type, "external-code").length > 0
+  );
 }
 
 export function hasConnectorDeviceAuthGrant(

@@ -9,6 +9,7 @@ from usage.idempotency import (
     USAGE_EVENT_NAMESPACE_CONNECTOR,
     USAGE_EVENT_NAMESPACE_MODEL,
     USAGE_OBSERVATION_NAMESPACE_MODEL,
+    derive_usage_idempotency_key,
     encode_uuid_name,
 )
 
@@ -55,11 +56,47 @@ def test_encode_uuid_name_outputs_unique_uuid5_names_for_diverse_parts():
 
 def test_model_usage_idempotency_key_is_stable():
     assert (
-        str(
-            uuid.uuid5(
-                USAGE_EVENT_NAMESPACE_MODEL,
-                encode_uuid_name(("run-abc-123", "msg-usage-1", "tokens.input")),
-            )
+        derive_usage_idempotency_key(
+            USAGE_EVENT_NAMESPACE_MODEL,
+            ("run-abc-123", "msg-usage-1", "tokens.input"),
         )
         == "9461ab1d-30a7-5268-b8f1-84bb9152f7ba"
     )
+
+
+def test_model_usage_observation_idempotency_key_is_stable():
+    assert (
+        derive_usage_idempotency_key(
+            USAGE_OBSERVATION_NAMESPACE_MODEL,
+            ("run-abc-123", "msg-usage-1", "tokens.input"),
+        )
+        == "3a2e5512-9481-5f10-926b-3c35b487f71d"
+    )
+
+
+def test_connector_usage_idempotency_key_is_stable():
+    assert (
+        derive_usage_idempotency_key(
+            USAGE_EVENT_NAMESPACE_CONNECTOR,
+            ("run-abc-123", "flow-usage-1", "posts.read"),
+        )
+        == "73cfa2a9-1abd-5d93-b88d-89a46073fbde"
+    )
+
+
+def test_connector_usage_idempotency_key_uses_unambiguous_parts():
+    left_parts = ("run:a", "flow", "posts.read")
+    right_parts = ("run", "a:flow", "posts.read")
+
+    assert ":".join(left_parts) == ":".join(right_parts)
+    assert uuid.uuid5(USAGE_EVENT_NAMESPACE_CONNECTOR, ":".join(left_parts)) == uuid.uuid5(
+        USAGE_EVENT_NAMESPACE_CONNECTOR,
+        ":".join(right_parts),
+    )
+
+    left_key = derive_usage_idempotency_key(USAGE_EVENT_NAMESPACE_CONNECTOR, left_parts)
+    right_key = derive_usage_idempotency_key(USAGE_EVENT_NAMESPACE_CONNECTOR, right_parts)
+
+    assert left_key == "d59389eb-4f6d-5984-bfb1-c613cae770eb"
+    assert right_key == "23f606d4-2176-5ee8-addd-78bea9b15c77"
+    assert left_key != right_key

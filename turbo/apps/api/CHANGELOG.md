@@ -1,5 +1,67 @@
 # Changelog
 
+## [1.118.0](https://github.com/vm0-ai/vm0/compare/api-v1.117.0...api-v1.118.0) (2026-06-09)
+
+
+### Features
+
+* add aws external-code connector ([#16577](https://github.com/vm0-ai/vm0/issues/16577)) ([6aaf392](https://github.com/vm0-ai/vm0/commit/6aaf392435773785e31fb9bbba15dc820c97aed1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.73.0
+    * @vm0/connectors bumped to 1.55.0
+    * @vm0/core bumped to 8.319.0
+    * @vm0/db bumped to 1.36.0
+
+## [1.117.0](https://github.com/vm0-ai/vm0/compare/api-v1.116.2...api-v1.117.0) (2026-06-09)
+
+
+### Features
+
+* **api:** manage webhook automations (create/list/delete) behind switch ([#16776](https://github.com/vm0-ai/vm0/issues/16776)) ([770e5e4](https://github.com/vm0-ai/vm0/commit/770e5e4a7e59448ae31d99464f0f2196174d8894))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.72.0
+    * @vm0/connectors bumped to 1.54.0
+    * @vm0/core bumped to 8.318.0
+    * @vm0/db bumped to 1.35.1
+
+## [1.116.2](https://github.com/vm0-ai/vm0/compare/api-v1.116.1...api-v1.116.2) (2026-06-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.35.0
+
+## [1.116.1](https://github.com/vm0-ai/vm0/compare/api-v1.116.0...api-v1.116.1) (2026-06-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.71.2
+    * @vm0/connectors bumped to 1.53.0
+    * @vm0/core bumped to 8.317.3
+    * @vm0/db bumped to 1.34.3
+
+## [1.116.0](https://github.com/vm0-ai/vm0/compare/api-v1.115.1...api-v1.116.0) (2026-06-09)
+
+
+### Features
+
+* add presentation HTML editor ([#16728](https://github.com/vm0-ai/vm0/issues/16728)) ([b1c33ca](https://github.com/vm0-ai/vm0/commit/b1c33ca770a1b342bcb77b48172fe5638e1a4ac1))
+
 ## [1.115.1](https://github.com/vm0-ai/vm0/compare/api-v1.115.0...api-v1.115.1) (2026-06-09)
 
 

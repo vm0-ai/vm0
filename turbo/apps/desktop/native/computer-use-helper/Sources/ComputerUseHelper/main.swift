@@ -2670,7 +2670,14 @@ func appleScriptStringLiteral(_ value: String) -> String {
     return "\"\(escaped)\""
 }
 
-func runActivationScript(_ script: String, timeout: TimeInterval = 3) throws -> Bool {
+struct AppleScriptRunResult {
+    let stdout: String
+    let stderr: String
+    let status: Int32
+    let timedOut: Bool
+}
+
+func runAppleScript(_ script: String, timeout: TimeInterval = 5) throws -> AppleScriptRunResult {
     let process = Process()
     let stdoutPipe = Pipe()
     let stderrPipe = Pipe()
@@ -2678,11 +2685,7 @@ func runActivationScript(_ script: String, timeout: TimeInterval = 3) throws -> 
     process.arguments = ["-e", script]
     process.standardOutput = stdoutPipe
     process.standardError = stderrPipe
-    do {
-        try process.run()
-    } catch {
-        return false
-    }
+    try process.run()
 
     let deadline = Date().addingTimeInterval(timeout)
     while process.isRunning, Date() < deadline {
@@ -2690,12 +2693,30 @@ func runActivationScript(_ script: String, timeout: TimeInterval = 3) throws -> 
     }
     if process.isRunning {
         process.terminate()
-        return false
+        process.waitUntilExit()
+        return AppleScriptRunResult(
+            stdout: trimmedPipeOutput(stdoutPipe),
+            stderr: trimmedPipeOutput(stderrPipe),
+            status: process.terminationStatus,
+            timedOut: true
+        )
     }
 
-    _ = trimmedPipeOutput(stdoutPipe)
-    _ = trimmedPipeOutput(stderrPipe)
-    return process.terminationStatus == 0
+    return AppleScriptRunResult(
+        stdout: trimmedPipeOutput(stdoutPipe),
+        stderr: trimmedPipeOutput(stderrPipe),
+        status: process.terminationStatus,
+        timedOut: false
+    )
+}
+
+func runActivationScript(_ script: String, timeout: TimeInterval = 3) throws -> Bool {
+    do {
+        let result = try runAppleScript(script, timeout: timeout)
+        return !result.timedOut && result.status == 0
+    } catch {
+        return false
+    }
 }
 
 func foregroundActivateRunningApp(appName: String, app: NSRunningApplication) throws -> String {
@@ -2891,6 +2912,119 @@ func setAttribute(_ element: AXUIElement, _ name: CFString, _ value: CFTypeRef) 
             code: "accessibility_unavailable",
             message: "Unable to set accessibility attribute \(name): \(error.rawValue)"
         )
+    }
+}
+
+struct BrowserAddressNavigationRequest {
+    let target: BrowserAddressNavigationTarget
+    let url: String
+}
+
+func browserAddressFieldAttributes(_ element: AXUIElement) -> BrowserAddressFieldAttributes {
+    BrowserAddressFieldAttributes(
+        role: role(element),
+        identifier: stringValue(attribute(element, kAXIdentifierAttribute as CFString)),
+        description: stringValue(attribute(element, kAXDescriptionAttribute as CFString)),
+        placeholder: stringValue(attribute(element, kAXPlaceholderValueAttribute as CFString)),
+        title: stringValue(attribute(element, kAXTitleAttribute as CFString)),
+        valueSettable: attributeIsSettable(element, kAXValueAttribute as CFString) == true
+    )
+}
+
+func browserAddressNavigationRequest(
+    appName: String,
+    element: AXUIElement,
+    value: String
+) -> BrowserAddressNavigationRequest? {
+    let attributes = browserAddressFieldAttributes(element)
+    guard isBrowserAddressField(bundleId: appName, attributes: attributes),
+          let target = browserAddressNavigationTarget(bundleId: appName),
+          let normalizedURL = normalizedBrowserNavigationURL(value)
+    else {
+        return nil
+    }
+    return BrowserAddressNavigationRequest(target: target, url: normalizedURL)
+}
+
+func appleScriptFailureMessage(result: AppleScriptRunResult) -> String {
+    if result.timedOut {
+        return "Apple Events browser navigation timed out."
+    }
+    if !result.stderr.isEmpty {
+        return result.stderr
+    }
+    if !result.stdout.isEmpty {
+        return result.stdout
+    }
+    return "Apple Events browser navigation failed with status \(result.status)."
+}
+
+func throwBrowserNavigationFailure(result: AppleScriptRunResult) throws -> Never {
+    let message = appleScriptFailureMessage(result: result)
+    let lowercased = message.lowercased()
+    if message.contains("-1743") || lowercased.contains("not authorized") {
+        throw HelperFailure(
+            code: "automation_permission_denied",
+            message:
+                "macOS denied Automation permission for browser navigation. "
+                + "Allow vm0 to control the target browser in System Settings > Privacy & Security > Automation. "
+                + message
+        )
+    }
+    throw HelperFailure(code: "browser_navigation_failed", message: message)
+}
+
+func runBrowserNavigationScript(_ script: String) throws {
+    let result = try runAppleScript(script, timeout: 5)
+    guard !result.timedOut, result.status == 0 else {
+        try throwBrowserNavigationFailure(result: result)
+    }
+}
+
+func navigateBrowserAddressField(_ request: BrowserAddressNavigationRequest) throws -> [String: Any] {
+    switch request.target {
+    case .chrome:
+        let script = """
+        tell application id \(appleScriptStringLiteral(request.target.rawValue))
+          set URL of active tab of front window to \(appleScriptStringLiteral(request.url))
+        end tell
+        """
+        try runBrowserNavigationScript(script)
+        return [
+            "browserBundleId": request.target.rawValue,
+            "browserNavigationURL": request.url,
+            "browserNavigationMethod": "apple_events_active_tab_url",
+        ]
+    case .safari:
+        let setCurrentTabScript = """
+        tell application id \(appleScriptStringLiteral(request.target.rawValue))
+          set URL of current tab of front window to \(appleScriptStringLiteral(request.url))
+        end tell
+        """
+        do {
+            try runBrowserNavigationScript(setCurrentTabScript)
+            return [
+                "browserBundleId": request.target.rawValue,
+                "browserNavigationURL": request.url,
+                "browserNavigationMethod": "apple_events_current_tab_url",
+                "browserNavigationActivatedFirst": false,
+            ]
+        } catch {
+            let activateThenSetScript = """
+            tell application id \(appleScriptStringLiteral(request.target.rawValue)) to activate
+            delay 0.2
+            tell application id \(appleScriptStringLiteral(request.target.rawValue))
+              set URL of current tab of front window to \(appleScriptStringLiteral(request.url))
+            end tell
+            """
+            try runBrowserNavigationScript(activateThenSetScript)
+            return [
+                "browserBundleId": request.target.rawValue,
+                "browserNavigationURL": request.url,
+                "browserNavigationMethod": "apple_events_current_tab_url",
+                "browserNavigationActivatedFirst": true,
+            ]
+        }
     }
 }
 
@@ -4377,12 +4511,17 @@ func handleElementSetValue(_ request: [String: Any], session: ComputerUseRuntime
     let elementId = try resolveElementId(request, session: session, commandName: "element.set_value")
     let value = try requiredString(request, "value")
     let app = try resolveRunningApp(named: appName)
+    let element = try resolveElement(appName: appName, elementId: elementId)
+    let navigationRequest = browserAddressNavigationRequest(
+        appName: appName,
+        element: element,
+        value: value
+    )
     return try withFrontmostPreservation(
-        dispatchMode: "accessibility_value",
-        dispatchTarget: "element",
-        inputRisk: "targeted_app_text"
+        dispatchMode: navigationRequest == nil ? "accessibility_value" : "browser_tab_url",
+        dispatchTarget: navigationRequest == nil ? "element" : "browser_current_tab",
+        inputRisk: navigationRequest == nil ? "targeted_app_text" : "browser_navigation"
     ) {
-        let element = try resolveElement(appName: appName, elementId: elementId)
         var visualPointerShown: Bool?
         if let frame = clickableFrame(element) {
             visualPointerShown = showVisualPointerIfTargetPointVisible(
@@ -4390,8 +4529,12 @@ func handleElementSetValue(_ request: [String: Any], session: ComputerUseRuntime
                 point: CGPoint(x: frame.midX, y: frame.midY)
             )
         }
-        try setAttribute(element, kAXValueAttribute as CFString, value as CFString)
         var result: [String: Any] = [:]
+        if let navigationRequest {
+            result.merge(try navigateBrowserAddressField(navigationRequest)) { _, new in new }
+        } else {
+            try setAttribute(element, kAXValueAttribute as CFString, value as CFString)
+        }
         if let visualPointerShown {
             result["visualPointerShown"] = visualPointerShown
         }

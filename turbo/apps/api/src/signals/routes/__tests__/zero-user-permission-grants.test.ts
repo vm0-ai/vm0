@@ -5,8 +5,10 @@ import { and, eq, inArray } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewalls";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -93,6 +95,18 @@ async function readStoredGrant(args: {
   return row ?? null;
 }
 
+async function enableConnectorPermissionReset(args: {
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userFeatureSwitches).values({
+    orgId: args.orgId,
+    userId: args.userId,
+    switches: { [FeatureSwitchKey.ConnectorPermissionReset]: true },
+  });
+}
+
 describe("zero user permission grants", () => {
   const fixtures: UsageInsightFixture[] = [];
   const trackedOrgIds: string[] = [];
@@ -122,6 +136,9 @@ describe("zero user permission grants", () => {
       await db
         .delete(userPermissionGrants)
         .where(inArray(userPermissionGrants.orgId, trackedOrgIds));
+      await db
+        .delete(userFeatureSwitches)
+        .where(inArray(userFeatureSwitches.orgId, trackedOrgIds));
       trackedOrgIds.length = 0;
     }
 
@@ -365,6 +382,193 @@ describe("zero user permission grants", () => {
       }),
     });
     expect(askResponse.status).toBe(400);
+  });
+
+  it("rejects connector reset when the feature switch is disabled", async () => {
+    const fixture = await createFixture();
+    const agentId = await seedAgent(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const db = store.set(writeDb$);
+    await db.insert(userPermissionGrants).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "deny",
+    });
+    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+
+    const response = await accept(
+      client.reset({
+        query: { agentId, connectorRef: SLACK_CONNECTOR },
+        headers: AUTH_HEADERS,
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    const stored = await readStoredGrant({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+    });
+    expect(stored?.action).toBe("deny");
+  });
+
+  it("resets only the current user's selected connector grants", async () => {
+    const fixture = await createFixture();
+    const otherUserId = `user_${randomUUID()}`;
+    await seedMember({ orgId: fixture.orgId, userId: otherUserId });
+    const agentId = await seedAgent(fixture);
+    const otherAgentId = await seedAgent(fixture);
+    await enableConnectorPermissionReset(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const db = store.set(writeDb$);
+    await db.insert(userPermissionGrants).values([
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+        action: "deny",
+      },
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_WRITE_PERMISSION,
+        action: "deny",
+      },
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: "notion",
+        permission: "read_content",
+        action: "deny",
+      },
+      {
+        orgId: fixture.orgId,
+        userId: otherUserId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+        action: "allow",
+      },
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: otherAgentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+        action: "deny",
+      },
+    ]);
+    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+
+    await accept(
+      client.reset({
+        query: { agentId, connectorRef: SLACK_CONNECTOR },
+        headers: AUTH_HEADERS,
+      }),
+      [204],
+    );
+
+    await expect(
+      readStoredGrant({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      readStoredGrant({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_WRITE_PERMISSION,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      readStoredGrant({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: "notion",
+        permission: "read_content",
+      }),
+    ).resolves.toMatchObject({ action: "deny" });
+    await expect(
+      readStoredGrant({
+        orgId: fixture.orgId,
+        userId: otherUserId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+      }),
+    ).resolves.toMatchObject({ action: "allow" });
+    await expect(
+      readStoredGrant({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: otherAgentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+      }),
+    ).resolves.toMatchObject({ action: "deny" });
+  });
+
+  it("validates connector refs for connector reset", async () => {
+    const fixture = await createFixture();
+    const agentId = await seedAgent(fixture);
+    await enableConnectorPermissionReset(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+
+    const response = await accept(
+      client.reset({
+        query: { agentId, connectorRef: "not-a-real-connector" },
+        headers: AUTH_HEADERS,
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects connector reset for invisible agents", async () => {
+    const owner = await createFixture();
+    const sameOrgUserId = `user_${randomUUID()}`;
+    await seedMember({ orgId: owner.orgId, userId: sameOrgUserId });
+    const privateAgentId = await seedAgent({
+      orgId: owner.orgId,
+      userId: owner.userId,
+      visibility: "private",
+    });
+    await enableConnectorPermissionReset({
+      orgId: owner.orgId,
+      userId: sameOrgUserId,
+    });
+    mocks.clerk.session(sameOrgUserId, owner.orgId, "org:member");
+    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
+
+    const response = await accept(
+      client.reset({
+        query: { agentId: privateAgentId, connectorRef: SLACK_CONNECTOR },
+        headers: AUTH_HEADERS,
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("filters expired grants and folds active grants into legacy policies", async () => {

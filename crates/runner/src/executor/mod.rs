@@ -47,6 +47,8 @@ use api_contracts::generated::constants::runners::paths::{
 
 /// Maximum wall-clock time for a single job (2 hours).
 const JOB_TIMEOUT: Duration = Duration::from_secs(7200);
+/// Exit code used when the runner's job timeout stops an agent process.
+const JOB_TIMEOUT_EXIT_CODE: i32 = 124;
 /// Maximum time to spend writing the guest cancel frame after a user cancel.
 const PROCESS_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 /// Grace period for the guest to report a terminal status after cancel is sent.
@@ -186,6 +188,17 @@ pub struct ExecutionFailure {
     pub exit_code: i32,
     pub error: String,
     pub diagnostic: Option<FailureDiagnostic>,
+    pub kind: ExecutionFailureKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionFailureKind {
+    Generic,
+    RunnerJobTimeout {
+        timeout_ms: u128,
+        elapsed_ms: u128,
+        guest_duration_ms: Option<u32>,
+    },
 }
 
 impl ExecutionFailure {
@@ -195,11 +208,36 @@ impl ExecutionFailure {
         error: impl Into<String>,
         diagnostic: Option<FailureDiagnostic>,
     ) -> Self {
+        let exit_code = normalize_failure_exit_code(exit_code);
         let error = non_empty_failure_error(exit_code, error.into());
         Self {
             exit_code,
             error,
             diagnostic,
+            kind: ExecutionFailureKind::Generic,
+        }
+    }
+
+    #[must_use]
+    pub fn runner_job_timeout(
+        exit_code: i32,
+        error: impl Into<String>,
+        diagnostic: Option<FailureDiagnostic>,
+        timeout: Duration,
+        elapsed: Duration,
+        guest_duration_ms: Option<u32>,
+    ) -> Self {
+        let exit_code = normalize_timeout_failure_exit_code(exit_code);
+        let error = non_empty_failure_error(exit_code, error.into());
+        Self {
+            exit_code,
+            error,
+            diagnostic,
+            kind: ExecutionFailureKind::RunnerJobTimeout {
+                timeout_ms: timeout.as_millis(),
+                elapsed_ms: elapsed.as_millis(),
+                guest_duration_ms,
+            },
         }
     }
 
@@ -211,6 +249,18 @@ impl ExecutionFailure {
     #[must_use]
     pub fn cancelled() -> Self {
         Self::new(EXIT_SIGKILL, "cancelled by user", None)
+    }
+}
+
+fn normalize_failure_exit_code(exit_code: i32) -> i32 {
+    if exit_code == 0 { 1 } else { exit_code }
+}
+
+fn normalize_timeout_failure_exit_code(exit_code: i32) -> i32 {
+    if exit_code == 0 {
+        JOB_TIMEOUT_EXIT_CODE
+    } else {
+        exit_code
     }
 }
 

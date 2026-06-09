@@ -67,8 +67,8 @@ pre-commit:
       fail_text: |
         File size check failed. Some staged files exceed the 1MB limit.
         Run 'git diff --cached --name-only' to see staged files.
-    - name: block-generated-firewalls
-      run: ./scripts/block-generated-firewalls.sh
+    - name: ensure-connector-firewalls-index-only
+      run: ./scripts/ensure-connector-firewalls-index-only.sh
       fail_text: |
-        Generated firewall files must not be committed.
-        Run 'git rm --cached -- <file>' for each generated firewall file.
+        Only turbo/packages/connectors/src/firewalls/index.ts may be committed under turbo/packages/connectors/src/firewalls.
+        Run 'git rm --cached -- <file>' for each listed file.

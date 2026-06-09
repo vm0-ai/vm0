@@ -1,5 +1,6 @@
 use std::io;
 use std::os::fd::AsRawFd;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -12,12 +13,14 @@ use crate::{
     ExecStreamRequest, FrameWriteObserver, VsockHost, exec_operation,
 };
 
-use super::{file_operation_error_is_terminal, shell_quote};
+use super::{
+    file_operation_error_is_terminal, read_regular_file_command, validate_guest_file_path,
+};
 
 const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
 const COPY_TEMP_FILE_MODE: u32 = 0o600;
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
-const COPY_FILE_STREAM_CHUNK_LIMIT: u32 = 64 * 1024;
+pub(super) const COPY_FILE_STREAM_CHUNK_LIMIT: u32 = 64 * 1024;
 pub(super) const COPY_FILE_STREAM_MAX_BYTES: u64 = 64 * 1024 * 1024;
 // Copying is the one built-in streaming consumer that must tolerate the host
 // reader briefly outrunning the temp-file writer without failing the exec operation.
@@ -28,13 +31,34 @@ static COPY_TEMP_NONCE: AtomicU64 = AtomicU64::new(1);
 /// operation streaming.
 #[derive(Debug, Clone, Copy)]
 pub struct CopyFileOptions {
+    /// Maximum bytes to stream from the guest before the copy fails.
+    ///
+    /// This value must be positive and no larger than the host copy stream
+    /// limit. The copy fails if the streamed file contents exceed this byte
+    /// count.
     pub max_bytes: u64,
+    /// Guest-side copy exec timeout in milliseconds.
+    ///
+    /// This value must be positive.
     pub timeout_ms: u32,
+    /// Treat a guest helper result that reports the path does not resolve to a
+    /// regular file as a successful copy result.
+    ///
+    /// When such a helper result is treated as success, the operation returns
+    /// `bytes_copied == 0` without creating an empty host file or replacing an
+    /// existing host file.
     pub missing_ok: bool,
 }
 
+/// Result of copying a guest file to a host path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CopyFileResult {
+    /// Number of bytes copied from the guest file.
+    ///
+    /// This is `0` for a present empty guest file, which still publishes an
+    /// empty host file. It is also `0` when `missing_ok` turns a guest helper
+    /// result that reports the path does not resolve to a regular file into
+    /// success; in that case no host file is published.
     pub bytes_copied: u64,
 }
 
@@ -132,6 +156,30 @@ fn copy_temp_path(host_path: &Path, process_id: u32, seq: u32, nonce: u64) -> Pa
         .map(|name| name.to_string_lossy())
         .unwrap_or_else(|| "copy".into());
     host_path.with_file_name(format!(".{file_name}.vm0tmp-{process_id}-{seq}-{nonce}"))
+}
+
+fn validate_copy_host_path(host_path: &Path) -> io::Result<()> {
+    let path_bytes = host_path.as_os_str().as_bytes();
+    if path_bytes.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "copy_file host path must not be empty",
+        ));
+    }
+    if path_bytes.contains(&0) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "copy_file host path contains NUL bytes",
+        ));
+    }
+    if host_path.file_name().is_none() || path_bytes.ends_with(b"/") || path_bytes.ends_with(b"/.")
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "copy_file host path must name a file",
+        ));
+    }
+    Ok(())
 }
 
 async fn remove_temp_file(path: &Path) {
@@ -280,7 +328,6 @@ fn copy_exec_stderr(result: &ExecOperationResult) -> io::Result<(Vec<u8>, bool)>
 fn validate_copy_exec_result(
     path: &str,
     result: ExecOperationResult,
-    missing_ok: bool,
 ) -> io::Result<CopyFileExecStatus> {
     if result.stream_overflowed {
         return Err(io::Error::other(
@@ -298,17 +345,25 @@ fn validate_copy_exec_result(
         exec_operation::append_diagnostic(&mut stderr, "stderr truncated");
     }
     match result.termination {
-        ExecTermination::Exited { exit_code: 0 } if !stderr_truncated => {
+        ExecTermination::Exited { exit_code: 0 } if stderr.is_empty() => {
             Ok(CopyFileExecStatus::Present)
         }
-        ExecTermination::Exited { exit_code: 0 } => Err(io::Error::other(format!(
-            "copy_file stderr exceeded diagnostic limit for {path}: {}",
-            String::from_utf8_lossy(&stderr)
-        ))),
-        ExecTermination::Exited { exit_code: 66 } if missing_ok => Ok(CopyFileExecStatus::Missing),
+        ExecTermination::Exited { exit_code: 0 } => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "copy_file result for {path} included stderr: {}",
+                String::from_utf8_lossy(&stderr)
+            ),
+        )),
+        ExecTermination::Exited { exit_code: 66 } if stderr.is_empty() => {
+            Ok(CopyFileExecStatus::Missing)
+        }
         ExecTermination::Exited { exit_code: 66 } => Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("guest file not found: {path}"),
+            io::ErrorKind::InvalidData,
+            format!(
+                "copy_file missing result for {path} included stderr: {}",
+                String::from_utf8_lossy(&stderr)
+            ),
         )),
         ExecTermination::Exited { exit_code } => Err(io::Error::other(format!(
             "copy_file failed for {path} with exit code {exit_code}: {}",
@@ -334,6 +389,18 @@ fn validate_copy_exec_result(
 impl VsockHost {
     /// Stream a guest file to a host path and atomically rename it into place
     /// after the exec operation exits successfully.
+    ///
+    /// Options are validated before guest work starts. When `missing_ok` is
+    /// enabled, a guest helper result that reports the path does not resolve
+    /// to a regular file is treated as success with `bytes_copied == 0`
+    /// without publishing a host file. Host-side setup and validation errors
+    /// can still fail the operation.
+    ///
+    /// The guest path must be non-empty and must not contain NUL bytes.
+    ///
+    /// The host path must name a file destination. Empty host paths, paths
+    /// containing NUL bytes, and paths that end in a directory marker are
+    /// rejected before guest work starts.
     pub async fn copy_file(
         &self,
         path: &str,
@@ -346,6 +413,9 @@ impl VsockHost {
 
     /// Stream a guest file to a host path and report when the helper exec
     /// frame is about to be written to the guest.
+    ///
+    /// This has the same copy semantics as `copy_file`, including option
+    /// validation and `missing_ok` handling.
     pub async fn copy_file_with_write_observer(
         &self,
         path: &str,
@@ -353,6 +423,8 @@ impl VsockHost {
         options: CopyFileOptions,
         write_observer: FrameWriteObserver,
     ) -> io::Result<CopyFileResult> {
+        validate_guest_file_path(path)?;
+        validate_copy_host_path(host_path)?;
         if options.max_bytes == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -445,10 +517,7 @@ impl VsockHost {
             write_observer,
         } = request;
         const MISSING_FILE_EXIT_CODE: i32 = 66;
-        let command = format!(
-            "if test -f {path}; then cat -- {path}; else exit {MISSING_FILE_EXIT_CODE}; fi",
-            path = shell_quote(path)
-        );
+        let command = read_regular_file_command(path, MISSING_FILE_EXIT_CODE);
         let expected_exit_codes: &[i32] = if missing_ok {
             &[MISSING_FILE_EXIT_CODE]
         } else {
@@ -537,11 +606,25 @@ impl VsockHost {
         if let Some(cancel_on_drop) = &mut cancel_on_drop {
             cancel_on_drop.disarm();
         }
-        match validate_copy_exec_result(path, result, missing_ok)
-            .map_err(CopyFileToTempError::terminal)?
-        {
+        match validate_copy_exec_result(path, result).map_err(CopyFileToTempError::terminal)? {
             CopyFileExecStatus::Present => {}
-            CopyFileExecStatus::Missing => return Ok(CopyFileOutcome::Missing),
+            CopyFileExecStatus::Missing => {
+                if bytes_copied != 0 {
+                    return Err(CopyFileToTempError::terminal(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "copy_file missing result for {path} streamed {bytes_copied} bytes"
+                        ),
+                    )));
+                }
+                if missing_ok {
+                    return Ok(CopyFileOutcome::Missing);
+                }
+                return Err(CopyFileToTempError::terminal(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("guest file not found: {path}"),
+                )));
+            }
         }
         temp_file
             .flush()

@@ -1,4 +1,14 @@
-"""Shared hostname normalization helpers."""
+"""Shared hostname identity policy for MITM authority, firewall, and billing flows.
+
+This module defines the ASCII identity used when untrusted SNI/Host input is
+validated before firewall auth injection, when firewall bases are matched, and
+when X billing detects URL-like bare domains. It is intentionally stricter than
+generic compatibility normalization: labels that would fold or obscure host
+identity are rejected instead of being treated as equivalent.
+
+The public helpers document caller-visible behavior only. Private tables and
+normalization steps are implementation details, not a complete WHATWG/IDNA API.
+"""
 
 from unicodedata import bidirectional, category, normalize
 
@@ -102,7 +112,14 @@ _UNSAFE_UTS46_IGNORABLE_RANGES = (
 
 
 class UnsafeIdnaCompatibilityMappingError(UnicodeError):
-    """Raised when IDNA normalization would fold an unsafe compatibility alias."""
+    """Raised when unsafe IDNA compatibility mapping would obscure identity.
+
+    This is not an ordinary malformed-label signal. It marks input that can look
+    URL-like after compatibility processing but would fold into, disappear from,
+    or be confused with a different ASCII/IDNA hostname. Security callers should
+    reject it as invalid authority; conservative billing callers may catch it
+    before generic ``UnicodeError`` and classify the candidate as ambiguous.
+    """
 
 
 def _is_ascii(value: str) -> bool:
@@ -372,17 +389,45 @@ def _normalize_label(label: str) -> str:
 
 
 def normalize_idna_label(label: str) -> str:
-    """Normalize one hostname label with the shared IDNA policy."""
+    """Normalize one hostname label with vm0's shared IDNA policy.
+
+    Returns a lowercase ASCII label under this policy. Accepted non-ASCII input
+    is returned as a canonical ``xn--`` A-label. The function accepts exactly
+    one label; it does not split hostnames, translate IDNA dot variants, or
+    remove trailing dots.
+
+    Raises ``UnsafeIdnaCompatibilityMappingError`` when direct Unicode input
+    would obscure the label's host identity. Raises ``UnicodeError`` for
+    ordinary invalid labels, including empty labels, invalid or non-canonical
+    A-labels, labels that normalize to forbidden text, and labels that exceed
+    the DNS label length limit.
+    """
     return _normalize_label(label)
 
 
 def normalize_idna_hostname(host: str) -> str:
-    """Normalize hostnames without accepting ASCII-only compatibility aliases.
+    """Normalize one hostname with vm0's shared IDNA policy.
+
+    Returns a dot-separated lowercase ASCII host identity. Accepted Unicode
+    labels are returned as canonical ``xn--`` A-labels. For non-IPv4 hostnames,
+    IDNA dot variants are translated to ASCII ``.`` and one optional trailing dot
+    is removed. Empty hostnames raise ``ValueError``; empty labels, multiple
+    trailing dots, and invalid labels raise ``UnicodeError``. Direct Unicode
+    unsafe compatibility aliases raise ``UnsafeIdnaCompatibilityMappingError``,
+    a ``UnicodeError`` subclass; invalid or non-canonical A-labels raise
+    ordinary ``UnicodeError``.
+
+    IPv4-literal-like input is accepted only when it is already a canonical
+    dotted quad: four decimal octets, ASCII dots, no non-decimal forms, no
+    leading zeroes except ``0``, and each octet at most 255. One trailing dot is
+    allowed only when it is also an ASCII dot. Other IPv4-literal-like spellings
+    raise ``UnicodeError`` instead of being normalized to a different address.
 
     Python's built-in codec is IDNA2003 and maps labels such as ``faß`` to
-    ``fass``.  WHATWG URL parsing keeps those as A-labels instead, so encode
-    non-ASCII labels directly and reject compatibility folds that collapse to a
-    plain ASCII label such as fullwidth Latin text.
+    ``fass``. WHATWG URL parsing keeps those as A-labels instead, so this helper
+    encodes accepted non-ASCII labels and rejects unsafe compatibility mappings
+    that would obscure host identity, including folds to plain ASCII labels such
+    as fullwidth Latin text.
     """
     normalized = _normalize_hostname_dots(host)
     if not normalized:

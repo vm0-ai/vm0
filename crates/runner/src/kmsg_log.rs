@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::network_log_drain::{
-    NetworkLogDrainProducer, NetworkLogDrainRequest, ReadyLine, poll_next_line_ready,
+    NetworkLogDrainProducer, NetworkLogDrainRequest, run_drainable_line_reader,
 };
 use crate::network_log_manager::NetworkLogManager;
 
@@ -167,55 +167,17 @@ async fn run_reader<R>(
     network_log_manager: NetworkLogManager,
     cancel: CancellationToken,
     reader: R,
-    mut drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
+    drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
 ) where
     R: AsyncBufRead + Unpin,
 {
-    let mut lines = reader.lines();
-    loop {
-        tokio::select! {
-            _ = cancel.cancelled() => break,
-            request = drain_rx.recv() => {
-                let Some(request) = request else {
-                    break;
-                };
-                let stop = drain_ready_lines(&mut lines, &network_log_manager).await;
-                request.ack();
-                if stop {
-                    break;
-                }
-            }
-            result = lines.next_line() => {
-                let line = match result {
-                    Ok(Some(l)) => l,
-                    Ok(None) | Err(_) => break,
-                };
-
-                // Fast check before acquiring lock.
-                if !line.contains(LOG_PREFIX) {
-                    continue;
-                }
-
-                handle_kmsg_line(&network_log_manager, &line).await;
-            }
+    let _ = run_drainable_line_reader(reader, cancel, drain_rx, move |line| {
+        let network_log_manager = network_log_manager.clone();
+        async move {
+            handle_kmsg_line(&network_log_manager, &line).await;
         }
-    }
-}
-
-async fn drain_ready_lines<R>(
-    lines: &mut tokio::io::Lines<R>,
-    network_log_manager: &NetworkLogManager,
-) -> bool
-where
-    R: AsyncBufRead + Unpin,
-{
-    loop {
-        match poll_next_line_ready(lines) {
-            Ok(ReadyLine::Line(line)) => handle_kmsg_line(network_log_manager, &line).await,
-            Ok(ReadyLine::Pending) => return false,
-            Ok(ReadyLine::Eof) | Err(_) => return true,
-        }
-    }
+    })
+    .await;
 }
 
 async fn handle_kmsg_line(network_log_manager: &NetworkLogManager, line: &str) {

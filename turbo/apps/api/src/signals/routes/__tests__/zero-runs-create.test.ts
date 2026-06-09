@@ -2289,6 +2289,7 @@ describe("POST /api/zero/runs", () => {
     expect(decrypted).not.toHaveProperty("SLOCK_REFRESH_TOKEN");
     expect(decrypted).not.toHaveProperty("GOOGLE_ADS_DEVELOPER_TOKEN");
     expect(executionContext.secretConnectorMap).toStrictEqual({
+      SLOCK_SERVER_ID: "slock",
       SLOCK_TOKEN: "slock",
     });
     expect(executionContext.secretConnectorMetadataMap).toBeNull();

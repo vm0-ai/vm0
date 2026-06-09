@@ -42,6 +42,90 @@ interface HostedSiteManifest {
   readonly files: Record<string, ManifestFile>;
 }
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Headers": "Accept, Content-Type",
+  "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+  "Access-Control-Max-Age": "86400",
+} as const;
+const STATIC_ALLOWED_ORIGINS = new Set([
+  "https://www.vm0.ai",
+  "https://vm0.ai",
+  "https://app.vm7.ai:8443",
+]);
+
+function isSubdomainOf(hostname: string, domain: string): boolean {
+  return hostname.endsWith(`.${domain}`) && hostname.length > domain.length + 1;
+}
+
+function allowedCorsOrigin(origin: string | null): string | null {
+  if (!origin) {
+    return null;
+  }
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") {
+    return null;
+  }
+  const normalizedOrigin = url.origin;
+  if (STATIC_ALLOWED_ORIGINS.has(normalizedOrigin)) {
+    return normalizedOrigin;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  if (isSubdomainOf(hostname, "vm0.ai") || isSubdomainOf(hostname, "vm6.ai")) {
+    return normalizedOrigin;
+  }
+  if (isSubdomainOf(hostname, "vm7.ai") && url.port === "8443") {
+    return normalizedOrigin;
+  }
+  return null;
+}
+
+function appendVaryOrigin(headers: Headers): void {
+  const current = headers.get("Vary");
+  if (!current) {
+    headers.set("Vary", "Origin");
+    return;
+  }
+  const values = current.split(",").map((value) => {
+    return value.trim().toLowerCase();
+  });
+  if (!values.includes("origin")) {
+    headers.set("Vary", `${current}, Origin`);
+  }
+}
+
+function setCorsHeaders(headers: Headers, request: Request): void {
+  for (const [name, value] of Object.entries(CORS_HEADERS)) {
+    headers.set(name, value);
+  }
+  const origin = allowedCorsOrigin(request.headers.get("Origin"));
+  if (origin) {
+    headers.set("Access-Control-Allow-Origin", origin);
+  }
+  appendVaryOrigin(headers);
+}
+
+function corsResponse(response: Response, request: Request): Response {
+  const headers = new Headers(response.headers);
+  setCorsHeaders(headers, request);
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+function optionsResponse(request: Request): Response {
+  const headers = new Headers();
+  setCorsHeaders(headers, request);
+  return new Response(null, { headers, status: 204 });
+}
+
 function notFoundResponse(): Response {
   return new Response("Not found", {
     status: 404,
@@ -145,7 +229,7 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method not allowed", {
       status: 405,
-      headers: { Allow: "GET, HEAD" },
+      headers: { Allow: "GET, HEAD, OPTIONS" },
     });
   }
 
@@ -208,6 +292,11 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
 
 export default {
   fetch(request: Request, env: Env): Promise<Response> {
-    return serveHostedSite(request, env);
+    if (request.method === "OPTIONS") {
+      return Promise.resolve(optionsResponse(request));
+    }
+    return serveHostedSite(request, env).then((response) => {
+      return corsResponse(response, request);
+    });
   },
 };

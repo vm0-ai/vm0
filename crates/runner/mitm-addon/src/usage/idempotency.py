@@ -24,3 +24,8 @@ USAGE_EVENT_NAMESPACE_AGGREGATE = uuid.UUID("4c4ee19a-b1b4-47e6-aef4-642d972cf4f
 
 def encode_uuid_name(parts: tuple[str, ...]) -> str:
     return "\0".join(f"{len(part.encode('utf-8'))}:{part}" for part in parts)
+
+
+def derive_usage_idempotency_key(namespace: uuid.UUID, parts: tuple[str, ...]) -> str:
+    """Return the stable UUIDv5 usage key for length-prefixed name parts."""
+    return str(uuid.uuid5(namespace, encode_uuid_name(parts)))

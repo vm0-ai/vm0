@@ -27,7 +27,6 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
   getConnectorAuthMethodRuntimeMetadata,
   type ConnectorRuntimeBindingEntry,
@@ -217,6 +216,10 @@ interface AdditionalVolume {
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
   readonly scheduleId?: string;
+  // Run provenance: the automation + the trigger that fired this run (set by the
+  // webhook inbound path). Persisted as first-class zero_runs columns.
+  readonly automationId?: string;
+  readonly triggerId?: string;
 }
 
 interface AgentConfig {
@@ -1667,8 +1670,6 @@ interface StoredConnectorRuntimeRow {
 interface ConnectorEnvBindingSet {
   readonly connectorType: ConnectorType;
   readonly authMethod: string;
-  readonly accessKind: "static" | "refresh-token" | "none";
-  readonly refreshableSecretNames: ReadonlySet<string>;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
 }
 
@@ -1744,10 +1745,6 @@ function connectorEnvBindingSets(
 ): readonly ConnectorEnvBindingSet[] {
   return rows.map((row) => {
     const method = getConnectorAuthMethod(row.connectorType, row.authMethod);
-    const accessMetadata = getConnectorAuthMethodAccessMetadata(
-      row.connectorType,
-      row.authMethod,
-    );
     const metadata = getConnectorAuthMethodRuntimeMetadata(
       row.connectorType,
       row.authMethod,
@@ -1760,11 +1757,6 @@ function connectorEnvBindingSets(
     return {
       connectorType: row.connectorType,
       authMethod: row.authMethod,
-      accessKind: method.access.kind,
-      refreshableSecretNames:
-        accessMetadata?.kind === "refresh-token"
-          ? new Set(accessMetadata.refreshableSecrets)
-          : new Set<string>(),
       runtimeBindings: metadata.runtimeBindings,
     };
   });
@@ -1877,12 +1869,7 @@ function resolveStoredConnectorState(
   const secretConnectorMap: Record<string, string> = {};
   const environment: Record<string, string> = {};
 
-  for (const {
-    connectorType,
-    accessKind,
-    refreshableSecretNames,
-    runtimeBindings,
-  } of bindingSets) {
+  for (const { connectorType, runtimeBindings } of bindingSets) {
     for (const { envName, valueRef, optional, source } of runtimeBindings) {
       switch (source.kind) {
         case "connector-secret": {
@@ -1918,21 +1905,11 @@ function resolveStoredConnectorState(
     }
 
     // Firewall auth templates can only reference env aliases from envBindings;
-    // store the alias that points at the access secret, not the backing secret name.
-    if (accessKind === "refresh-token") {
-      for (const { envName, source } of runtimeBindings) {
-        if (
-          source.kind === "connector-secret" &&
-          refreshableSecretNames.has(source.name)
-        ) {
-          secretConnectorMap[envName] = connectorType;
-        }
-      }
-    } else if (accessKind === "static") {
-      for (const { envName, source } of runtimeBindings) {
-        if (source.kind === "connector-secret") {
-          secretConnectorMap[envName] = connectorType;
-        }
+    // store the alias that points at the connector runtime secret, not the
+    // backing secret name. Refreshability is resolved later from access metadata.
+    for (const { envName, source } of runtimeBindings) {
+      if (source.kind === "connector-secret") {
+        secretConnectorMap[envName] = connectorType;
       }
     }
   }
@@ -2781,6 +2758,8 @@ async function insertZeroRunRecord(
     id: args.runId,
     triggerSource: args.body.triggerSource ?? "cli",
     scheduleId: args.zeroRunMetadata?.scheduleId ?? null,
+    automationId: args.zeroRunMetadata?.automationId ?? null,
+    triggerId: args.zeroRunMetadata?.triggerId ?? null,
     triggerAgentId: args.zeroRunMetadata?.triggerAgentId ?? null,
     modelProvider: args.modelProvider?.type ?? null,
     modelProviderId: args.modelProvider?.id ?? null,

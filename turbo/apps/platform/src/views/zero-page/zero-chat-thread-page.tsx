@@ -66,7 +66,6 @@ import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { IN_VITEST } from "../../env.ts";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -92,6 +91,7 @@ import {
   publicAttachmentUrl,
 } from "./zero-attachment-chips.tsx";
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
+import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
@@ -128,8 +128,10 @@ import {
   type ArtifactInboxSection,
   type ArtifactRef,
   closeArtifact$,
+  closePresentationEditor$,
   currentArtifactInboxThreadId$,
   currentArtifactRef$,
+  currentPresentationEditorUrl$,
   openArtifactFromInbox$,
   openArtifactInbox$,
   setArtifactInboxQuery$,
@@ -174,6 +176,7 @@ import {
   ZeroChatComposer,
   type QueuedComposerItem,
 } from "./zero-chat-composer.tsx";
+import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
 import {
   setThreadGenerationTemplate$,
   threadGenerationTemplate$,
@@ -1345,10 +1348,7 @@ function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
         data-testid="artifact-html-preview-badge"
       >
         <iframe
-          src={IN_VITEST ? undefined : publicUrl}
-          srcDoc={
-            IN_VITEST ? "<!doctype html><html><body></body></html>" : undefined
-          }
+          src={publicUrl}
           title={`${file.filename} artifact thumbnail`}
           sandbox="allow-scripts"
           tabIndex={-1}
@@ -1965,6 +1965,16 @@ export function ZeroChatThreadPage() {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
   const artifactRef = useGet(currentArtifactRef$);
   const artifactInboxThreadId = useGet(currentArtifactInboxThreadId$);
+  const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
+  const closePresentationEditor = useSet(closePresentationEditor$);
+  const artifactFullscreen = useGet(artifactFullscreen$);
+  const features = useLastResolved(featureSwitch$);
+  const presentationHtmlEditorEnabled = Boolean(
+    features?.[FeatureSwitchKey.PresentationHtmlPptxDownload],
+  );
+  const activePresentationEditorUrl = presentationHtmlEditorEnabled
+    ? presentationEditorUrl
+    : null;
   const artifactPanelOpen =
     artifactRef !== null || artifactInboxThreadId !== null;
   // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
@@ -1973,27 +1983,48 @@ export function ZeroChatThreadPage() {
   // ChatThread whose useLastResolved has no cached value yet, leading to an
   // empty threads list and a silently dropped keypress.
   const makeChatThreadKeyDown = useChatThreadKeyDownFactory();
+  const presentationEditor = activePresentationEditorUrl ? (
+    <div
+      className={cn(
+        "flex min-w-0 bg-background",
+        artifactFullscreen ? "fixed inset-0 z-[100] min-h-0" : "w-full flex-1",
+      )}
+    >
+      <PresentationHtmlEditor
+        url={activePresentationEditorUrl}
+        onClose={closePresentationEditor}
+      />
+    </div>
+  ) : null;
 
   const threadArea = (
     <div
       ref={setKeyboardScrollRoot}
-      className="flex flex-1 min-h-0 bg-transparent"
+      className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {leftThread && (
-        <ChatThread
-          key={leftThread.threadId}
-          thread={leftThread}
-          onKeyDown={makeChatThreadKeyDown(leftThread)}
-        />
-      )}
-      {rightThread && (
+      {activePresentationEditorUrl ? (
+        !artifactFullscreen || typeof document === "undefined" ? (
+          presentationEditor
+        ) : null
+      ) : (
         <>
-          <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-          <ChatThread
-            key={rightThread.threadId}
-            thread={rightThread}
-            onKeyDown={makeChatThreadKeyDown(rightThread)}
-          />
+          {leftThread && (
+            <ChatThread
+              key={leftThread.threadId}
+              thread={leftThread}
+              onKeyDown={makeChatThreadKeyDown(leftThread)}
+            />
+          )}
+          {rightThread && (
+            <>
+              <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
+              <ChatThread
+                key={rightThread.threadId}
+                thread={rightThread}
+                onKeyDown={makeChatThreadKeyDown(rightThread)}
+              />
+            </>
+          )}
         </>
       )}
     </div>
@@ -2037,6 +2068,11 @@ export function ZeroChatThreadPage() {
         </div>
       </div>
       {lightboxUrl && <AttachmentLightbox />}
+      {activePresentationEditorUrl &&
+        artifactFullscreen &&
+        typeof document !== "undefined" &&
+        presentationEditor &&
+        createPortal(presentationEditor, document.body)}
       <ShortcutHelpDialog
         open={shortcutHelpOpen}
         onOpenChange={setShortcutHelpOpen}
@@ -2302,6 +2338,17 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const loadingHistory = loadHistoryLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
+  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
+  const rootSignal = useGet(rootSignal$);
+  const features = useLastResolved(featureSwitch$);
+  const inlineFeedbackEnabled =
+    features?.[FeatureSwitchKey.ChatInlineFeedback] ?? false;
+  const onSubmitFeedback = (prompt: string) => {
+    detach(
+      sendMessage(prompt, null, { includeDraftAttachments: false }, rootSignal),
+      Reason.DomCallback,
+    );
+  };
   const onLoadHistory = onDomEventFn(() => {
     return loadHistory(pageSignal);
   });
@@ -2354,6 +2401,10 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
 
         {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
       </div>
+
+      {inlineFeedbackEnabled && (
+        <ChatFeedbackSelection onSubmit={onSubmitFeedback} />
+      )}
     </>
   );
 }
@@ -3084,7 +3135,7 @@ function WaitingForAssistantResponse({
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
-        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-relaxed min-w-0 overflow-hidden">
+        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-[1.7] min-w-0 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0">
             <span className="zero-blocks shrink-0" style={blockStyle}>
               <span />
@@ -3248,7 +3299,7 @@ function BodyContentBlocks({
               }
               mediaPreview
               mathEnabled
-              style={{ fontSize: "inherit" }}
+              style={{ fontSize: "inherit", lineHeight: "inherit" }}
             />
           );
         }
@@ -4214,7 +4265,10 @@ function AssistantErrorContent({ error }: { error: string }) {
   return (
     <div className="flex items-start gap-2 text-destructive">
       <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
-      <Markdown source={error} style={{ fontSize: "inherit" }} />
+      <Markdown
+        source={error}
+        style={{ fontSize: "inherit", lineHeight: "inherit" }}
+      />
     </div>
   );
 }
@@ -4765,7 +4819,7 @@ function PagedUserMessage({
           <UserMessageGenerationTemplate
             generationTemplate={message.generationTemplate}
           />
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
                 <BodyContentBlocks
@@ -4837,7 +4891,7 @@ function PagedAssistantMessageItem({
 
   if (message.error) {
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-relaxed min-w-0 [overflow-wrap:anywhere]">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]">
         <AssistantErrorContent error={message.error} />
       </div>
     );
@@ -4846,7 +4900,7 @@ function PagedAssistantMessageItem({
   if (message.content) {
     const { blocks } = message;
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-relaxed min-w-0 [overflow-wrap:anywhere]">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]">
         {blocks.length > 0 ? (
           <BodyContentBlocks
             blocks={blocks}

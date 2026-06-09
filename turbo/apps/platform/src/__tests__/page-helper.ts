@@ -1,5 +1,6 @@
 import { fireEvent, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { command } from "ccstate";
 
 import type { TestContext } from "../signals/__tests__/test-helpers";
 import {
@@ -23,8 +24,54 @@ import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches.helpers";
 import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch";
+import { localStorageSignals } from "../signals/external/local-storage";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";
+
+const {
+  set$: setFeatureSwitchCacheLocalStorage$,
+  clear$: clearFeatureSwitchCacheLocalStorage$,
+} = localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
+
+const setFeatureSwitchCacheForTest$ = command(
+  ({ set }, switches: Record<FeatureSwitchKey, boolean>) => {
+    set(setFeatureSwitchCacheLocalStorage$, JSON.stringify(switches));
+  },
+);
+
+const clearFeatureSwitchCacheForTest$ = command(({ set }) => {
+  set(clearFeatureSwitchCacheLocalStorage$);
+});
+
+function ensureTestLocalStorage(): void {
+  if (typeof localStorage !== "undefined") {
+    return;
+  }
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      clear: () => {
+        values.clear();
+      },
+      getItem: (key: string) => {
+        return values.get(key) ?? null;
+      },
+      key: (index: number) => {
+        return Array.from(values.keys())[index] ?? null;
+      },
+      get length() {
+        return values.size;
+      },
+      removeItem: (key: string) => {
+        values.delete(key);
+      },
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      },
+    } satisfies Storage,
+  });
+}
 
 export async function setupPage(options: {
   context: TestContext;
@@ -50,6 +97,7 @@ export async function setupPage(options: {
   debugLoggers?: string[];
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
 }) {
+  ensureTestLocalStorage();
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 
@@ -65,14 +113,17 @@ export async function setupPage(options: {
   // Reading featureSwitch$ is synchronous, so the cache must be in place
   // before bootstrap runs (especially for `detachedSetupPage`, which does
   // not await the bootstrap-driven SWR refresh).
-  localStorage.removeItem(FEATURE_SWITCH_CACHE_KEY);
+  const defaultOrgId = "org_default";
+  const activeOrgId = options.org ? options.org.activeOrg?.id : defaultOrgId;
+  options.context.store.set(clearFeatureSwitchCacheForTest$);
   if (options.featureSwitches) {
     setMockFeatureSwitches(options.featureSwitches);
-    localStorage.setItem(
-      FEATURE_SWITCH_CACHE_KEY,
-      JSON.stringify(
-        getAllFeatureStates({ overrides: options.featureSwitches }),
-      ),
+    options.context.store.set(
+      setFeatureSwitchCacheForTest$,
+      getAllFeatureStates({
+        orgId: activeOrgId,
+        overrides: options.featureSwitches,
+      }),
     );
   }
 
@@ -95,8 +146,8 @@ export async function setupPage(options: {
     mockOrganization(options.org);
   } else {
     mockOrganization({
-      activeOrg: { id: "org_default", name: "Default Org" },
-      memberships: [{ id: "org_default" }],
+      activeOrg: { id: defaultOrgId, name: "Default Org" },
+      memberships: [{ id: defaultOrgId }],
     });
   }
   options.context.signal.addEventListener("abort", () => {

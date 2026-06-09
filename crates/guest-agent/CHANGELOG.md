@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.34.24](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.23...guest-agent-v0.34.24) (2026-06-09)
+
+
+### Bug Fixes
+
+* expose api url to sandbox cli child ([#16846](https://github.com/vm0-ai/vm0/issues/16846)) ([5906d51](https://github.com/vm0-ai/vm0/commit/5906d5101232bbebf8e2ae486a28fa9bd43f06e2))
+
+## [0.34.23](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.22...guest-agent-v0.34.23) (2026-06-09)
+
+
+### Bug Fixes
+
+* mask lowercase percent-encoded secrets ([#16769](https://github.com/vm0-ai/vm0/issues/16769)) ([6e3a625](https://github.com/vm0-ai/vm0/commit/6e3a6253fcd1556225dc4f2f8f3ba8caddf677e9))
+
+## [0.34.22](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.21...guest-agent-v0.34.22) (2026-06-09)
+
+
+### Refactoring
+
+* split telemetry delta reader ([#16765](https://github.com/vm0-ai/vm0/issues/16765)) ([7951c52](https://github.com/vm0-ai/vm0/commit/7951c525d2b7c8dccb8647d194ad2a91aeb72d79))
+
 ## [0.34.21](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.20...guest-agent-v0.34.21) (2026-06-08)
 
 ## [0.34.20](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.19...guest-agent-v0.34.20) (2026-06-08)
