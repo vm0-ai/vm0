@@ -102,14 +102,11 @@ def _write_billable_x_tracking_registry(
     tmp_path: Path,
     *,
     include_encrypted_secrets: bool = True,
-    registry_dir: Path | None = None,
 ) -> Path:
-    registry_root = registry_dir or tmp_path
-    registry_root.mkdir(parents=True, exist_ok=True)
     return _write_registry(
-        registry_root,
+        tmp_path,
         vm_info=_single_firewall_vm(
-            registry_root,
+            tmp_path,
             firewall_name=_X_FIREWALL_NAME,
             api_entry={
                 "base": "https://api.x.com",
@@ -222,7 +219,6 @@ async def test_billable_flow_is_tracked_before_responseheaders(
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
-    headers,
 ):
     """Drain sees billable requests after request() even before responseheaders()."""
     reg_path = _write_billable_x_tracking_registry(tmp_path)
@@ -418,7 +414,7 @@ async def test_untracked_terminal_hook_does_not_decrement_other_usage_flow(
 
 
 async def test_local_firewall_error_leaves_usage_flows_drained(
-    tmp_path, usage_pending_path, real_flow, mitm_ctx, headers
+    tmp_path, usage_pending_path, real_flow, mitm_ctx
 ):
     """Local auth failures do not enqueue usage and must not leak drain counters."""
     reg_path = _write_billable_x_tracking_registry(
@@ -522,7 +518,6 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
-    headers,
 ):
     """Non-billable model providers without observation metadata are not tracked."""
     reg_path = _write_model_provider_tracking_registry(tmp_path)
