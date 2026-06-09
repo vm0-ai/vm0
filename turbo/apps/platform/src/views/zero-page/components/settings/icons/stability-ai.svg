@@ -1,10 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
   <defs>
-    <linearGradient id="stability-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#7B2FBE"/>
-      <stop offset="100%" stop-color="#4A1580"/>
-    </linearGradient>
+    <radialGradient id="stability-ai-bg" cx="35%" cy="25%" r="80%">
+      <stop offset="0" stop-color="#A982F2" />
+      <stop offset="0.62" stop-color="#A08BD2" />
+      <stop offset="1" stop-color="#A99BC5" />
+    </radialGradient>
   </defs>
-  <rect width="32" height="32" rx="6" fill="url(#stability-grad)"/>
-  <path d="M21.5 10.5H13.5C12.12 10.5 11 11.62 11 13C11 14.38 12.12 15.5 13.5 15.5H18.5C19.88 15.5 21 16.62 21 18C21 19.38 19.88 20.5 18.5 20.5H10.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="200" cy="200" r="200" fill="url(#stability-ai-bg)" />
+  <path
+    fill="#1E1E1E"
+    d="M179 86L151 86L135 89L121 94L109 101L97 112L92 119L87 130L84 145L84 155L86 165L91 177L102 189L111 195L131 204L174 217L185 223L190 228L193 234L192 244L190 248L184 254L173 259L163 260L162 261L140 260L117 254L99 245L85 234L85 282L102 292L119 298L139 302L165 303L166 302L183 301L201 296L215 289L227 279L235 268L240 256L242 247L241 222L237 211L226 197L218 191L202 183L151 168L139 161L134 154L134 143L136 139L142 133L151 129L161 128L162 127L182 128L183 129L193 130L216 138L229 146L229 102L216 95L205 91Z"
+  />
+  <circle cx="292" cy="270" r="30" fill="#1E1E1E" />
 </svg>
