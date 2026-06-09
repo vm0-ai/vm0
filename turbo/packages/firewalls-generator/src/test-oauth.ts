@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     "  },",
     "  apis: [",
     "    {",
-    '      base: "https://{pr}.vm6.ai/api/test/oauth-provider",',
+    '      base: "https://${{ vars.TEST_OAUTH_TENANT_ID }}.{pr}.vm6.ai/api/test/oauth-provider",',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.TEST_OAUTH_TOKEN }}",',

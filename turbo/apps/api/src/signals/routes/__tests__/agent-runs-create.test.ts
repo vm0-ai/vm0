@@ -1411,7 +1411,10 @@ describe("POST /api/agent/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
-      readonly firewalls: readonly { readonly name: string }[];
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly { readonly base: string }[];
+      }[];
     };
     expect(executionContext.environment.TEST_OAUTH_TENANT_ID).toBe(
       "tenant-from-token-output",
@@ -1424,11 +1427,12 @@ describe("POST /api/agent/runs", () => {
     ).toMatchObject({
       TEST_OAUTH_TOKEN: "test-oauth-api-token",
     });
-    expect(
-      executionContext.firewalls.some((firewall) => {
-        return firewall.name === "test-oauth";
-      }),
-    ).toBeTruthy();
+    const firewall = executionContext.firewalls.find((entry) => {
+      return entry.name === "test-oauth";
+    });
+    expect(firewall?.apis[0]?.base).toBe(
+      "https://tenant-from-token-output.{pr}.vm6.ai/api/test/oauth-provider",
+    );
   });
 
   it("maps non-refreshable runtime secret aliases for refresh-token connectors", async () => {
