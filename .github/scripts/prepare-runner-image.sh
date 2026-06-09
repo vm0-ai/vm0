@@ -20,34 +20,58 @@ MANIFEST_PATH="${MANIFEST_PATH:-runner-image-manifest/manifest.json}"
 BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}"
 TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
+RUNNER_BIN="${TARGET_DIR}/runner"
+GUEST_BINS=(
+  guest-agent
+  guest-download
+  guest-init
+  guest-mock-claude
+  guest-mock-codex
+  guest-reseed
+  guest-write-file
+)
 
 mkdir -p "$(dirname "$MANIFEST_PATH")"
 
-echo "=== Cross-compiling guest binaries for ${TARGET_TRIPLE} ==="
-(
-  cd crates
-  cargo build --profile ci --target "$TARGET_TRIPLE" \
-    -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
-)
+restore_cached_binaries() {
+  local binary_paths=("$RUNNER_BIN")
+  [ -f "$RUNNER_BIN" ] || return 1
+  for bin in "${GUEST_BINS[@]}"; do
+    binary_paths+=("${TARGET_DIR}/${bin}")
+    [ -f "${TARGET_DIR}/${bin}" ] || return 1
+  done
+  chmod 755 "${binary_paths[@]}"
+}
 
-echo "=== Cross-compiling runner with embedded guests for ${TARGET_TRIPLE} ==="
-(
-  cd crates
-  GUEST_AGENT_PATH="target/$TARGET_TRIPLE/ci/guest-agent" \
-  GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/ci/guest-download" \
-  GUEST_INIT_PATH="target/$TARGET_TRIPLE/ci/guest-init" \
-  GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/ci/guest-mock-claude" \
-  GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/ci/guest-mock-codex" \
-  GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed" \
-  GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
-  cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
-)
+if [ "${RUNNER_BINARY_CACHE_HIT:-false}" = "true" ] && restore_cached_binaries; then
+  echo "=== Using cached runner binaries for ${TARGET_TRIPLE} ==="
+else
+  echo "=== Cross-compiling guest binaries for ${TARGET_TRIPLE} ==="
+  (
+    cd crates
+    cargo build --profile ci --target "$TARGET_TRIPLE" \
+      -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
+  )
+
+  echo "=== Cross-compiling runner with embedded guests for ${TARGET_TRIPLE} ==="
+  (
+    cd crates
+    GUEST_AGENT_PATH="target/$TARGET_TRIPLE/ci/guest-agent" \
+    GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/ci/guest-download" \
+    GUEST_INIT_PATH="target/$TARGET_TRIPLE/ci/guest-init" \
+    GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/ci/guest-mock-claude" \
+    GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/ci/guest-mock-codex" \
+    GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed" \
+    GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
+    cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
+  )
+fi
 
 sha_file() {
   sha256sum "$1" | awk '{print $1}'
 }
 
-runner_sha=$(sha_file "${TARGET_DIR}/runner")
+runner_sha=$(sha_file "$RUNNER_BIN")
 guest_sha_json=$(jq -n \
   --arg guest_agent "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-agent")" \
   --arg guest_download "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-download")" \

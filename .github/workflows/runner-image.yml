@@ -212,11 +212,41 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Resolve runner binary cache key
+        id: runner-binary-cache-key
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          {
+            printf 'target=%s\n' "$TARGET_TRIPLE"
+            printf 'profile=%s\n' "$PROFILE"
+            rustc -vV
+            cargo -V
+            git ls-files -z crates .github/scripts/prepare-runner-image.sh .github/workflows/runner-image.yml | xargs -0 sha256sum
+          } | sha256sum | awk '{print "key=runner-binaries-" $1}' >> "$GITHUB_OUTPUT"
+
+      - name: Restore runner binaries
+        id: runner-binary-cache
+        uses: actions/cache/restore@v5
+        with:
+          key: ${{ steps.runner-binary-cache-key.outputs.key }}
+          path: |
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/runner
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-agent
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-download
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-init
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-mock-claude
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-mock-codex
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-reseed
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-write-file
+
       - uses: mozilla-actions/sccache-action@v0.0.10
+        if: steps.runner-binary-cache.outputs.cache-hit != 'true'
         with:
           version: "v0.15.0"
 
       - name: Configure sccache
+        if: steps.runner-binary-cache.outputs.cache-hit != 'true'
         shell: bash
         env:
           SCCACHE_GHA_ENABLED: "true"
@@ -236,6 +266,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.runner-binary-cache.outputs.cache-hit != 'true'
         with:
           workspaces: crates -> target
           shared-key: aarch64-musl-ci
@@ -270,7 +301,24 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+          RUNNER_BINARY_CACHE_HIT: ${{ steps.runner-binary-cache.outputs.cache-hit }}
         run: .github/scripts/prepare-runner-image.sh
+
+      - name: Save runner binaries
+        if: steps.runner-binary-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          key: ${{ steps.runner-binary-cache-key.outputs.key }}
+          path: |
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/runner
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-agent
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-download
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-init
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-mock-claude
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-mock-codex
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-reseed
+            crates/target/${{ env.TARGET_TRIPLE }}/ci/guest-write-file
 
       - name: Validate manifest
         env:
