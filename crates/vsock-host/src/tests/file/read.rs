@@ -145,6 +145,34 @@ async fn read_file_rejects_missing_result_with_stderr() {
 }
 
 #[tokio::test]
+async fn read_file_rejects_missing_result_with_truncated_stderr() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let read_task =
+        tokio::spawn(async move { host.read_file("/tmp/missing.txt", 1024, 5000).await });
+
+    let start = expect_exec_start(&mut guest).await;
+    let payload = vsock_proto::encode_exec_result(
+        ExecTermination::Exited { exit_code: 66 },
+        12,
+        ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: false,
+        },
+        ExecCapturedOutput::Captured {
+            bytes: b"",
+            truncated: true,
+        },
+        "",
+    )
+    .unwrap();
+    send_raw_exec_result(&mut guest, start.seq(), payload).await;
+
+    let err = read_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(err.to_string().contains("stderr truncated"));
+}
+
+#[tokio::test]
 async fn read_file_rejects_invalid_max_bytes_without_sending_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);

@@ -79,12 +79,16 @@ impl VsockHost {
                     format!("read_file missing result for {path} included stdout"),
                 ));
             }
-            if result.stderr_truncated || !result.stderr.is_empty() {
+            let mut stderr = result.stderr;
+            if result.stderr_truncated {
+                exec_operation::append_diagnostic(&mut stderr, "stderr truncated");
+            }
+            if !stderr.is_empty() {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!(
                         "read_file missing result for {path} included stderr: {}",
-                        String::from_utf8_lossy(&result.stderr)
+                        String::from_utf8_lossy(&stderr)
                     ),
                 ));
             }
