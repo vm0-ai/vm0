@@ -45,19 +45,68 @@ interface HostedSiteManifest {
 const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Accept, Content-Type",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Max-Age": "86400",
 } as const;
 
-function setCorsHeaders(headers: Headers): void {
-  for (const [name, value] of Object.entries(CORS_HEADERS)) {
-    headers.set(name, value);
+function isSubdomainOf(hostname: string, domain: string): boolean {
+  return hostname.endsWith(`.${domain}`) && hostname.length > domain.length + 1;
+}
+
+function allowedCorsOrigin(origin: string | null): string | null {
+  if (!origin) {
+    return null;
+  }
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") {
+    return null;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  if (
+    (isSubdomainOf(hostname, "vm0.ai") || isSubdomainOf(hostname, "vm6.ai")) &&
+    url.port === ""
+  ) {
+    return url.origin;
+  }
+  if (isSubdomainOf(hostname, "vm7.ai") && url.port === "8443") {
+    return url.origin;
+  }
+  return null;
+}
+
+function appendVaryOrigin(headers: Headers): void {
+  const current = headers.get("Vary");
+  if (!current) {
+    headers.set("Vary", "Origin");
+    return;
+  }
+  const values = current.split(",").map((value) => {
+    return value.trim().toLowerCase();
+  });
+  if (!values.includes("origin")) {
+    headers.set("Vary", `${current}, Origin`);
   }
 }
 
-function corsResponse(response: Response): Response {
+function setCorsHeaders(headers: Headers, request: Request): void {
+  for (const [name, value] of Object.entries(CORS_HEADERS)) {
+    headers.set(name, value);
+  }
+  const origin = allowedCorsOrigin(request.headers.get("Origin"));
+  if (origin) {
+    headers.set("Access-Control-Allow-Origin", origin);
+  }
+  appendVaryOrigin(headers);
+}
+
+function corsResponse(response: Response, request: Request): Response {
   const headers = new Headers(response.headers);
-  setCorsHeaders(headers);
+  setCorsHeaders(headers, request);
   return new Response(response.body, {
     headers,
     status: response.status,
@@ -65,9 +114,9 @@ function corsResponse(response: Response): Response {
   });
 }
 
-function optionsResponse(): Response {
+function optionsResponse(request: Request): Response {
   const headers = new Headers();
-  setCorsHeaders(headers);
+  setCorsHeaders(headers, request);
   return new Response(null, { headers, status: 204 });
 }
 
@@ -238,8 +287,10 @@ async function serveHostedSite(request: Request, env: Env): Promise<Response> {
 export default {
   fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") {
-      return Promise.resolve(optionsResponse());
+      return Promise.resolve(optionsResponse(request));
     }
-    return serveHostedSite(request, env).then(corsResponse);
+    return serveHostedSite(request, env).then((response) => {
+      return corsResponse(response, request);
+    });
   },
 };
