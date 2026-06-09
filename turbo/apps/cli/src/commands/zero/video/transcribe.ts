@@ -4,9 +4,11 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { Command } from "commander";
 import { withErrorHandler } from "../../../lib/command";
-import { transcribeAudio } from "../../../lib/api/domains/web";
-import type { TranscribeAudioSegment } from "../../../lib/api/domains/web";
-import { downloadWebFile } from "../../../lib/api/domains/web";
+import {
+  downloadWebFile,
+  transcribeAudio,
+  type TranscribeAudioSegment,
+} from "../../../lib/api/domains/web";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -35,10 +37,15 @@ function formatTranscript(
 
 export const transcribeCommand = new Command()
   .name("transcribe")
-  .description("Transcribe audio from a video file and output structured Markdown")
+  .description(
+    "Transcribe audio from a video file and output structured Markdown",
+  )
   .option("--url <presigned-url>", "Pre-signed or public URL of the video file")
   .option("--file-id <id>", "Web file ID (alternative to --url)")
-  .option("--no-timestamps", "Output plain text only, without per-segment timestamps")
+  .option(
+    "--no-timestamps",
+    "Output plain text only, without per-segment timestamps",
+  )
   .addHelpText(
     "after",
     `
@@ -88,14 +95,19 @@ Notes:
           execFileSync(
             "ffmpeg",
             [
-              "-i", tmpVideo,
+              "-i",
+              tmpVideo,
               "-vn",
-              "-ar", "16000",
-              "-ac", "1",
-              "-b:a", "64k",
+              "-ar",
+              "16000",
+              "-ac",
+              "1",
+              "-b:a",
+              "64k",
               tmpAudio,
               "-y",
-              "-loglevel", "error",
+              "-loglevel",
+              "error",
             ],
             { stdio: ["ignore", "ignore", "pipe"] },
           );

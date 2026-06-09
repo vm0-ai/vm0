@@ -962,7 +962,7 @@ export interface TranscribeAudioSegment {
   readonly text: string;
 }
 
-export interface TranscribeAudioResult {
+interface TranscribeAudioResult {
   readonly text: string;
   readonly segments?: readonly TranscribeAudioSegment[];
 }
@@ -1003,11 +1003,7 @@ export async function transcribeAudio(
   const mimeType = mimeMap[ext] ?? "audio/mpeg";
 
   const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob([audioData], { type: mimeType }),
-    filename,
-  );
+  formData.append("file", new Blob([audioData], { type: mimeType }), filename);
 
   const response = await fetch(url, {
     method: "POST",

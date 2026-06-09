@@ -205,7 +205,11 @@ export function isTranscriptionBody(
 
 export function isVerboseTranscriptionSegment(
   value: unknown,
-): value is { readonly start: number; readonly end: number; readonly text: string } {
+): value is {
+  readonly start: number;
+  readonly end: number;
+  readonly text: string;
+} {
   return (
     isRecord(value) &&
     typeof value.start === "number" &&

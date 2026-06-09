@@ -24,9 +24,9 @@ vi.mock("fs", async (importOriginal) => {
   };
 });
 
-vi.mock("../../../lib/api/domains/web", async (importOriginal) => {
+vi.mock("../../../../lib/api/domains/web", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../../../lib/api/domains/web")>();
+    await importOriginal<typeof import("../../../../lib/api/domains/web")>();
   return {
     ...actual,
     downloadWebFile: vi.fn().mockResolvedValue({
@@ -104,7 +104,8 @@ describe("zero video transcribe command", () => {
 
   describe("with --file-id", () => {
     it("should use downloadWebFile instead of curl", async () => {
-      const { downloadWebFile } = await import("../../../lib/api/domains/web");
+      const { downloadWebFile } =
+        await import("../../../../lib/api/domains/web");
 
       server.use(
         http.post(STT_URL, () => {
@@ -125,11 +126,9 @@ describe("zero video transcribe command", () => {
 
   describe("missing arguments", () => {
     it("should exit with error when neither --url nor --file-id provided", async () => {
-      const mockExit = vi
-        .spyOn(process, "exit")
-        .mockImplementation((() => {
-          throw new Error("process.exit called");
-        }) as never);
+      const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+        throw new Error("process.exit called");
+      }) as never);
 
       await expect(
         transcribeCommand.parseAsync([], { from: "user" }),
