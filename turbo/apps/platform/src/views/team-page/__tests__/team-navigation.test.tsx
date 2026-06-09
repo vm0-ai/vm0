@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
@@ -219,6 +219,24 @@ describe("team page navigation", () => {
     expect(screen.getAllByText(/Every 30 minutes/)[0]).toBeInTheDocument();
 
     click(screen.getAllByLabelText("More actions for Every 30 minutes")[0]);
+    click(menuItemByText("Edit"));
+
+    const editDialog = await screen.findByRole("dialog");
+    expect(within(editDialog).getByText("Edit schedule")).toBeInTheDocument();
+    await fill(
+      within(editDialog).getByDisplayValue("Research digest"),
+      "Research digest summary",
+    );
+    click(buttonByText("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Schedule updated")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Research digest summary")[0],
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getAllByLabelText("More actions for Every 30 minutes")[0]);
     click(menuItemByText("Run now"));
 
     await waitFor(() => {
@@ -232,7 +250,9 @@ describe("team page navigation", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Research digest summary")[0],
+      ).toBeInTheDocument();
     });
 
     const breadcrumbLink = screen
