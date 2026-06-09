@@ -406,7 +406,7 @@ pub fn session_artifacts(codex_home: &Path) -> io::Result<Vec<PathBuf>> {
 }
 
 fn walk_existing_root(dir: &Path, f: &mut dyn FnMut(&Path)) -> io::Result<()> {
-    walk_entries(fs::read_dir(dir)?, f)
+    walk(dir, f)
 }
 
 fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) -> io::Result<()> {
