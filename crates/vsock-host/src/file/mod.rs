@@ -11,6 +11,12 @@ fn shell_quote(value: &str) -> String {
 }
 
 fn validate_guest_file_path(path: &str) -> io::Result<()> {
+    if path.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "guest file path must not be empty",
+        ));
+    }
     if path.as_bytes().contains(&0) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,

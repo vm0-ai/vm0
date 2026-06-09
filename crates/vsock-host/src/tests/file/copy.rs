@@ -196,6 +196,13 @@ async fn copy_file_rejects_invalid_options_without_sending_frame_or_creating_par
     let host_path = temp_path.join("nested/system.log");
 
     let err = host
+        .copy_file("", &host_path, copy_options(1024, 5000, true))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(!temp_path.path().exists());
+
+    let err = host
         .copy_file(
             "/tmp/bad\0path.log",
             &host_path,
