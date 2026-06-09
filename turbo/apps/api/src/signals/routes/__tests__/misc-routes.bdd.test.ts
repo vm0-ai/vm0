@@ -237,4 +237,106 @@ describe("MISC-04: model providers, policies, and logs visible state", () => {
       }),
     ).toBeFalsy();
   });
+
+  it("chains personal model provider create, update, list, and delete through public API", async () => {
+    const { api, admin } = testActors();
+
+    const unauthenticatedList = await api.listPersonalModelProviders(
+      null,
+      [401],
+    );
+    expectApiError(unauthenticatedList.body);
+
+    const initial = await api.listPersonalModelProviders(admin, [200]);
+    if (!("modelProviders" in initial.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(initial.body.modelProviders).toStrictEqual([]);
+
+    const unsupported = await api.upsertPersonalModelProvider(
+      admin,
+      {
+        type: "anthropic-api-key",
+        secret: "bdd-anthropic-key",
+      },
+      [404],
+    );
+    expectApiError(unsupported.body);
+    expect(unsupported.body.error.message).toBe(
+      'Provider "anthropic-api-key" not found',
+    );
+
+    const missingSecret = await api.upsertPersonalModelProvider(
+      admin,
+      {
+        type: "claude-code-oauth-token",
+      },
+      [400],
+    );
+    expectApiError(missingSecret.body);
+    expect(missingSecret.body.error.message).toBe(
+      'Provider "claude-code-oauth-token" requires a secret',
+    );
+
+    const created = await api.upsertPersonalModelProvider(
+      admin,
+      {
+        type: "claude-code-oauth-token",
+        secret: "bdd-claude-oauth-token",
+        selectedModel: "claude-sonnet-4-6",
+      },
+      [201],
+    );
+    expect(created.body).toMatchObject({
+      created: true,
+      provider: {
+        type: "claude-code-oauth-token",
+        secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+        selectedModel: "claude-sonnet-4-6",
+      },
+    });
+    if (!("provider" in created.body)) {
+      throw new Error("Expected personal model provider upsert response");
+    }
+    expect("secret" in created.body.provider).toBeFalsy();
+
+    const listed = await api.listPersonalModelProviders(admin, [200]);
+    if (!("modelProviders" in listed.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(listed.body.modelProviders).toHaveLength(1);
+    expect(listed.body.modelProviders[0]).toMatchObject({
+      type: "claude-code-oauth-token",
+      secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+      selectedModel: "claude-sonnet-4-6",
+    });
+
+    const updated = await api.upsertPersonalModelProvider(
+      admin,
+      {
+        type: "claude-code-oauth-token",
+        secret: "bdd-updated-claude-oauth-token",
+        selectedModel: "claude-opus-4-8",
+      },
+      [200],
+    );
+    expect(updated.body).toMatchObject({
+      created: false,
+      provider: {
+        type: "claude-code-oauth-token",
+        selectedModel: "claude-opus-4-8",
+      },
+    });
+
+    await api.deletePersonalModelProvider(
+      admin,
+      "claude-code-oauth-token",
+      [204],
+    );
+    const afterDelete = await api.listPersonalModelProviders(admin, [200]);
+    if (!("modelProviders" in afterDelete.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(afterDelete.body.modelProviders).toStrictEqual([]);
+  });
 });

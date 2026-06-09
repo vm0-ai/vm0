@@ -4,7 +4,10 @@ import {
 } from "@vm0/api-contracts/contracts/logs";
 import { pushSubscriptionsContract } from "@vm0/api-contracts/contracts/push-subscriptions";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
-import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
+import type {
+  OrgModelPoliciesResponse,
+  UpsertModelProviderRequest,
+} from "@vm0/api-contracts/contracts/model-providers";
 import {
   zeroSkillsCollectionContract,
   zeroSkillsDetailContract,
@@ -15,6 +18,10 @@ import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
+import {
+  zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProvidersMainContract,
+} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import {
   zeroUserPreferencesContract,
@@ -369,6 +376,46 @@ export function createMiscRoutesApi(context: TestContext) {
         setupApp({ context })(zeroModelProvidersByTypeContract).delete({
           headers: authenticate(context, actor),
           params: { type: "vm0" },
+        }),
+        statuses,
+      );
+    },
+
+    async listPersonalModelProviders(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroPersonalModelProvidersMainContract).list({
+          headers: authenticate(context, actor),
+        }),
+        statuses,
+      );
+    },
+
+    async upsertPersonalModelProvider(
+      actor: ApiTestUser | null,
+      body: UpsertModelProviderRequest,
+      statuses: readonly (200 | 201 | 400 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroPersonalModelProvidersMainContract).upsert({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async deletePersonalModelProvider(
+      actor: ApiTestUser | null,
+      type: "claude-code-oauth-token" | "codex-oauth-token",
+      statuses: readonly (204 | 401 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroPersonalModelProvidersByTypeContract).delete({
+          headers: authenticate(context, actor),
+          params: { type },
         }),
         statuses,
       );
