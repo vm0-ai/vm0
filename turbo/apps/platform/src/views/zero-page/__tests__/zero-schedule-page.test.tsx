@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   click,
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
@@ -116,7 +117,30 @@ describe("zero schedule page", () => {
     expect(within(createDialog).getByText("Add schedule")).toBeInTheDocument();
     expect(within(createDialog).getByText("Agent")).toBeInTheDocument();
     expect(within(createDialog).getByText("Prompt")).toBeInTheDocument();
+    await fill(
+      within(createDialog).getByLabelText("Prompt"),
+      "Draft the weekly support handoff",
+    );
     click(buttonByText("Cancel", createDialog));
+
+    const confirmClose = await screen.findByRole("alertdialog");
+    expect(
+      within(confirmClose).getByText("You have unsaved changes"),
+    ).toBeInTheDocument();
+    click(buttonByText("Continue Editing", confirmClose));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(
+      within(createDialog).getByDisplayValue(
+        "Draft the weekly support handoff",
+      ),
+    ).toBeInTheDocument();
+
+    click(buttonByText("Cancel", createDialog));
+    const discardChanges = await screen.findByRole("alertdialog");
+    click(buttonByText("Discard Changes", discardChanges));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -145,6 +169,13 @@ describe("zero schedule page", () => {
       ).toBeInTheDocument();
     });
 
+    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
+    click(menuItemByText("Run now"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
+    });
+
     click(
       screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],
     );
@@ -163,5 +194,18 @@ describe("zero schedule page", () => {
     await waitFor(() => {
       expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
     });
+
+    click(
+      screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],
+    );
+    click(menuItemByText("Delete"));
+
+    const confirmDeleteDialog = await screen.findByRole("dialog");
+    click(buttonByText("Delete", confirmDeleteDialog));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Morning brief")).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
   });
 });
