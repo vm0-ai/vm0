@@ -39,6 +39,7 @@
     "dom-to-pptx": "1.1.10",
     "highlight.js": "^11.11.1",
     "idb": "~8.0.3",
+    "jszip": "^3.10.1",
     "katex": "^0.17.0",
     "lowlight": "^3.3.0",
     "path-to-regexp": "^8.4.0",

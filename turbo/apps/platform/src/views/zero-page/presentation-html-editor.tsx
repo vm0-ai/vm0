@@ -140,6 +140,19 @@ function updateBlockText(
   });
 }
 
+function updateSlideNotes(
+  slides: readonly PresentationSlideDraft[],
+  slideId: string,
+  notes: string,
+): readonly PresentationSlideDraft[] {
+  return slides.map((slide) => {
+    if (slide.id === slideId) {
+      return { ...slide, notes };
+    }
+    return slide;
+  });
+}
+
 function editSignature(params: {
   readonly blocks: readonly PresentationEditBlock[];
   readonly slides: readonly PresentationSlideDraft[];
@@ -667,6 +680,18 @@ function updateSlideThumbnail(params: {
   }
 }
 
+function syncNotesPanel(slide: PresentationSlideDraft | undefined): void {
+  const textarea = document.querySelector<HTMLTextAreaElement>(
+    "[data-presentation-notes-input]",
+  );
+  if (textarea) {
+    textarea.dataset.presentationNotesSlideId = slide?.id ?? "";
+    if (textarea.value !== (slide?.notes ?? "")) {
+      textarea.value = slide?.notes ?? "";
+    }
+  }
+}
+
 async function ensurePresentationRedeployed(params: {
   readonly buildEditedHtml: () => string;
   readonly createClient: ZeroClientFactory;
@@ -737,6 +762,7 @@ function PresentationEditorWorkspace({
   previewHtml,
   queueSlideThumbnailUpdate,
   showSlide,
+  slidesRef,
   slides,
 }: {
   activeSlide: PresentationSlideDraft | undefined;
@@ -748,9 +774,10 @@ function PresentationEditorWorkspace({
   previewHtml: string | null;
   queueSlideThumbnailUpdate: (slideId: string) => void;
   showSlide: (slideId: string) => void;
+  slidesRef: MutableValue<readonly PresentationSlideDraft[]>;
   slides: readonly PresentationSlideDraft[];
 }) {
-  if (slides.length === 0 || blocksRef.current.length === 0 || !activeSlide) {
+  if (slides.length === 0 || !activeSlide) {
     return <UnsupportedPresentation />;
   }
   const slidePreviewHtml = (slideId: string) => {
@@ -768,20 +795,52 @@ function PresentationEditorWorkspace({
         setActiveSlideId={showSlide}
         slides={slides}
       />
-      <PreviewPane
-        html={previewHtml}
-        iframeRef={previewFrameRef}
-        updateText={(slideId, editId, text) => {
-          const block = blocksRef.current.find((candidate) => {
-            return candidate.slideId === slideId && candidate.editId === editId;
-          });
-          if (block) {
-            blocksRef.current = updateBlockText(blocksRef.current, block, text);
-            markDirty();
-            queueSlideThumbnailUpdate(slideId);
-          }
-        }}
-      />
+      <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_180px] overflow-hidden">
+        <PreviewPane
+          html={previewHtml}
+          iframeRef={previewFrameRef}
+          updateText={(slideId, editId, text) => {
+            const block = blocksRef.current.find((candidate) => {
+              return (
+                candidate.slideId === slideId && candidate.editId === editId
+              );
+            });
+            if (block) {
+              blocksRef.current = updateBlockText(
+                blocksRef.current,
+                block,
+                text,
+              );
+              markDirty();
+              queueSlideThumbnailUpdate(slideId);
+            }
+          }}
+        />
+        <section className="flex min-h-0 flex-col border-t border-border/60 bg-background">
+          <textarea
+            aria-label="Speaker notes"
+            data-presentation-notes-input="true"
+            data-presentation-notes-slide-id={activeSlide.id}
+            defaultValue={activeSlide.notes}
+            placeholder="Add speaker notes"
+            spellCheck={false}
+            onChange={(event) => {
+              const slideId =
+                event.currentTarget.dataset.presentationNotesSlideId;
+              if (!slideId) {
+                return;
+              }
+              slidesRef.current = updateSlideNotes(
+                slidesRef.current,
+                slideId,
+                event.currentTarget.value,
+              );
+              markDirty();
+            }}
+            className="min-h-0 flex-1 resize-none bg-background px-4 py-3 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground focus:bg-muted/20"
+          />
+        </section>
+      </div>
     </div>
   );
 }
@@ -798,11 +857,12 @@ function createPresentationEditorController(params: {
   readonly publishedSignatureRef: MutableValue<string>;
   readonly publishingRef: MutableValue<boolean>;
   readonly refreshPresentationHtmlPreviews: () => void;
+  readonly slidesRef: MutableValue<readonly PresentationSlideDraft[]>;
   readonly sourceUrl: string;
   readonly statusRef: MutableValue<HTMLDivElement | null>;
   readonly thumbnailUpdateFrameRef: MutableValue<number | null>;
 }) {
-  const slides = params.draft.slides;
+  const slides = params.slidesRef.current;
   const activeSlideId = params.activeSlideIdRef.current;
   const activeSlide = slides.find((slide) => {
     return slide.id === activeSlideId;
@@ -811,11 +871,14 @@ function createPresentationEditorController(params: {
     return buildPresentationEditorHtml({
       blocks: params.blocksRef.current,
       draft: params.draft,
-      slides,
+      slides: params.slidesRef.current,
     });
   };
   const currentSignature = () => {
-    return editSignature({ blocks: params.blocksRef.current, slides });
+    return editSignature({
+      blocks: params.blocksRef.current,
+      slides: params.slidesRef.current,
+    });
   };
   const setStatus = (value: string) => {
     setEditorStatus(params.statusRef, value);
@@ -870,6 +933,11 @@ function createPresentationEditorController(params: {
   };
   const showSlide = (slideId: string) => {
     params.activeSlideIdRef.current = slideId;
+    syncNotesPanel(
+      params.slidesRef.current.find((slide) => {
+        return slide.id === slideId;
+      }),
+    );
     showPresentationSlide({
       buildEditedHtml,
       previewFrameRef: params.previewFrameRef,
@@ -919,6 +987,8 @@ function PresentationEditorReady({
   const blocksRef = mutableValue<readonly PresentationEditBlock[]>(
     draft.blocks,
   );
+  const slidesRef =
+    mutableValue<readonly PresentationSlideDraft[]>(initialSlides);
   const activeSlideIdRef = mutableValue(initialSlides[0]?.id ?? "");
   const publishedSignatureRef = mutableValue(
     editSignature({ blocks: draft.blocks, slides: initialSlides }),
@@ -941,6 +1011,7 @@ function PresentationEditorReady({
     publishedSignatureRef,
     publishingRef,
     refreshPresentationHtmlPreviews,
+    slidesRef,
     sourceUrl,
     statusRef,
     thumbnailUpdateFrameRef,
@@ -1009,6 +1080,7 @@ function PresentationEditorReady({
         previewHtml={controller.previewHtml}
         queueSlideThumbnailUpdate={controller.queueSlideThumbnailUpdate}
         showSlide={controller.showSlide}
+        slidesRef={slidesRef}
         slides={controller.slides}
       />
     </div>
