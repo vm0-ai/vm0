@@ -212,6 +212,44 @@ async def test_re_signs_query_sigv4_request(real_flow, tmp_path, mitm_ctx):
     assert "PLACEHOLDER" not in flow.request.url
 
 
+async def test_re_signs_query_sigv4_request_strips_session_token_header(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    endpoint = FakeAuthEndpoint()
+    endpoint.queue_json_response(_auth_response())
+    placeholder_credential = urllib.parse.quote(
+        "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
+        safe="",
+    )
+    flow = real_flow(
+        with_response=False,
+        host="sts.amazonaws.com",
+        path=(
+            "/?Action=GetCallerIdentity&Version=2011-06-15"
+            "&X-Amz-Algorithm=AWS4-HMAC-SHA256"
+            f"&X-Amz-Credential={placeholder_credential}"
+            "&X-Amz-Date=20260101T000000Z"
+            "&X-Amz-Expires=60"
+            "&X-Amz-SignedHeaders=host"
+            "&X-Amz-Signature=placeholder"
+        ),
+        method="GET",
+        request_headers=headers(("X-Amz-Security-Token", "placeholder-session-token")),
+    )
+    flow.metadata["vm_run_id"] = "run-1"
+
+    with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+        result = await auth.handle_firewall_request(flow, _allow(_api_entry()), _vm_info(tmp_path))
+
+    assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+    assert "x-amz-security-token" not in flow.request.headers
+    query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(flow.request.url).query))
+    assert query["X-Amz-Security-Token"] == "real-session-token"
+
+
 async def test_re_signs_query_sigv4_request_preserves_literal_plus(
     real_flow,
     tmp_path,

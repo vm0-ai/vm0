@@ -261,7 +261,7 @@ def _sign_query_request(
     context: _SigningContext,
     is_s3: bool,
 ) -> tuple[str, list[tuple[str, str]]]:
-    clean_headers = _without_headers(headers, {"authorization"})
+    clean_headers = _without_headers(headers, {"authorization", "x-amz-security-token"})
     clean_headers = _upsert_header(clean_headers, "host", _host_header_value(url))
     signed_headers = frozenset(set(context.signed_headers) | {"host"})
     payload_hash = _query_payload_hash(headers, body, is_s3)
