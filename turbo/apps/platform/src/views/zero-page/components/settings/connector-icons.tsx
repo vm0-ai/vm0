@@ -236,6 +236,7 @@ const CONNECTOR_ICON_COLORFUL = {
   streak: true,
   stripe: true,
   supabase: true,
+  testrail: true,
   ticketmaster: true,
   tldv: true,
   todoist: true,
