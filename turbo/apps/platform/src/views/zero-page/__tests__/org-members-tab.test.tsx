@@ -5,6 +5,7 @@ import {
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
 import { screen, waitFor, within } from "@testing-library/react";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -28,6 +29,16 @@ function buttonByText(
     throw new Error(`${text} button not found`);
   }
   return button;
+}
+
+function menuItemByText(text: string): HTMLElement {
+  const item = queryAllByRoleFast("menuitem").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!item) {
+    throw new Error(`${text} menu item not found`);
+  }
+  return item;
 }
 
 function mockMembersStory(): void {
@@ -73,6 +84,15 @@ function mockMembersStory(): void {
         imageUrl: "",
         createdAt: "2026-01-04T00:00:00Z",
       },
+      {
+        id: "req-dan",
+        userId: "user-dan",
+        email: "dan@example.com",
+        firstName: "Dan",
+        lastName: "Reject",
+        imageUrl: "",
+        createdAt: "2026-01-05T00:00:00Z",
+      },
     ],
   };
 
@@ -99,6 +119,15 @@ function mockMembersStory(): void {
       ],
     };
     return respond(200, { message: "Invitation sent" });
+  });
+  context.mocks.api(zeroOrgInviteContract.revoke, ({ body, respond }) => {
+    response = {
+      ...response,
+      pendingInvitations: response.pendingInvitations?.filter((candidate) => {
+        return candidate.id !== body.invitationId;
+      }),
+    };
+    return respond(200, { message: "Invitation revoked" });
   });
   context.mocks.api(
     zeroOrgMembershipRequestsContract.accept,
@@ -127,6 +156,18 @@ function mockMembersStory(): void {
           : response.members,
       };
       return respond(200, { message: "Request accepted" });
+    },
+  );
+  context.mocks.api(
+    zeroOrgMembershipRequestsContract.reject,
+    ({ body, respond }) => {
+      response = {
+        ...response,
+        membershipRequests: response.membershipRequests?.filter((candidate) => {
+          return candidate.id !== body.requestId;
+        }),
+      };
+      return respond(200, { message: "Request rejected" });
     },
   );
 }
@@ -173,15 +214,73 @@ describe("organization members settings", () => {
     await fill(screen.getByPlaceholderText("Search"), "carol");
     await waitFor(() => {
       expect(screen.getByText("Carol Request")).toBeInTheDocument();
-      expect(screen.getByText("Request")).toBeInTheDocument();
+      expect(screen.getAllByText("Request")).toHaveLength(2);
     });
 
-    click(screen.getByTitle("Accept request"));
+    click(screen.getAllByTitle("Accept request")[0]!);
 
     await waitFor(() => {
       expect(screen.getByText("Carol Request")).toBeInTheDocument();
-      expect(screen.queryByText("Request")).not.toBeInTheDocument();
+      expect(screen.getByText("Dan Reject")).toBeInTheDocument();
+      expect(screen.getAllByText("Request")).toHaveLength(1);
     });
     expect(screen.getByText("carol@example.com")).toBeInTheDocument();
+
+    await fill(screen.getByPlaceholderText("Search"), "pending");
+    await waitFor(() => {
+      expect(screen.getByText("pending@example.com")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Actions for pending@example.com"));
+    click(menuItemByText("Revoke invitation"));
+
+    const cancelRevokeDialog = await screen.findByRole("dialog", {
+      name: "Revoke invitation?",
+    });
+    expect(
+      within(cancelRevokeDialog).getByText(
+        /will no longer be able to join using this invitation/i,
+      ),
+    ).toBeInTheDocument();
+    click(buttonByText("Cancel", cancelRevokeDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("pending@example.com")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Actions for pending@example.com"));
+    click(menuItemByText("Revoke invitation"));
+
+    const revokeDialog = await screen.findByRole("dialog", {
+      name: "Revoke invitation?",
+    });
+    click(buttonByText("Revoke", revokeDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Invitation revoked")).toBeInTheDocument();
+      expect(screen.queryByText("pending@example.com")).not.toBeInTheDocument();
+    });
+
+    await fill(screen.getByPlaceholderText("Search"), "dan");
+    await waitFor(() => {
+      expect(screen.getByText("Dan Reject")).toBeInTheDocument();
+      expect(screen.getByText("Request")).toBeInTheDocument();
+    });
+
+    click(screen.getByTitle("Reject request"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Membership request rejected"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Dan Reject")).not.toBeInTheDocument();
+      expect(screen.queryByText("dan@example.com")).not.toBeInTheDocument();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Membership request rejected"),
+      ).not.toBeInTheDocument();
+    });
   });
 });
