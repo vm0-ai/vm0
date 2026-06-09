@@ -415,9 +415,11 @@ def normalize_idna_hostname(host: str) -> str:
     ``UnsafeIdnaCompatibilityMappingError``, a ``UnicodeError`` subclass.
 
     IPv4-literal-like input is accepted only when it is already a canonical
-    dotted quad: four decimal octets, no non-decimal forms, no leading zeroes
-    except ``0``, and each octet at most 255. Other IPv4-literal-like spellings
-    raise ``UnicodeError`` instead of being normalized to a different address.
+    dotted quad: four decimal octets, ASCII dots, no non-decimal forms, no
+    leading zeroes except ``0``, and each octet at most 255. One trailing ASCII
+    dot is allowed, but IDNA dot variants inside an IPv4-literal-like spelling
+    are non-canonical. Other IPv4-literal-like spellings raise ``UnicodeError``
+    instead of being normalized to a different address.
 
     Python's built-in codec is IDNA2003 and maps labels such as ``faß`` to
     ``fass``. WHATWG URL parsing keeps those as A-labels instead, so this helper
