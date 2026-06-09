@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.428.1](https://github.com/vm0-ai/vm0/compare/app-v0.428.0...app-v0.428.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* replace recraft embedded raster icon ([#16812](https://github.com/vm0-ai/vm0/issues/16812)) ([a072f49](https://github.com/vm0-ai/vm0/commit/a072f49fb8189f1feb7f6eb5bcbb4b4311f46905))
+* replace rentcast raster connector icon ([#16825](https://github.com/vm0-ai/vm0/issues/16825)) ([453b53b](https://github.com/vm0-ai/vm0/commit/453b53bbad33a7fee01a7d3167ba5a5e98f4077a))
+* update productlane connector icon ([#16813](https://github.com/vm0-ai/vm0/issues/16813)) ([68567bd](https://github.com/vm0-ai/vm0/commit/68567bdfc9cbe654c1b5463497911e508ef9ffd0))
+* update reap connector icon ([#16806](https://github.com/vm0-ai/vm0/issues/16806)) ([3175a33](https://github.com/vm0-ai/vm0/commit/3175a33e1ef92547a34047897fa79d9663dfa0b7))
+
 ## [0.428.0](https://github.com/vm0-ai/vm0/compare/app-v0.427.0...app-v0.428.0) (2026-06-09)
 
 
