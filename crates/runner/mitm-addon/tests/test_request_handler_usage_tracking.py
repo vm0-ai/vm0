@@ -18,7 +18,11 @@ from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 _ForwardResponse = tuple[int, bytes, dict[str, str]]
 _X_FIREWALL_NAME = "x"
 _X_TRACKING_PATH = "/2/users/by"
+_DEFAULT_RUN_ID = "run-conn-1"
+_DEFAULT_SANDBOX_MARKER = "tok-conn"
 _MODEL_PROVIDER_FIREWALL_NAME = "model-provider:anthropic-api-key"
+_MODEL_PROVIDER_RUN_ID = "run-model-1"
+_MODEL_PROVIDER_SANDBOX_MARKER = "tok-model"
 _MODEL_PROVIDER_PATH = "/v1/messages"
 _AUTH_URL_REWRITE_REQUEST_BODY = b'{"ok":true}'
 
@@ -131,6 +135,8 @@ def _write_model_provider_tracking_registry(
     billable: bool = False,
     vm_fields: dict[str, object] | None = None,
     registry_dir: Path | None = None,
+    run_id: str = _DEFAULT_RUN_ID,
+    sandbox_marker: str = _DEFAULT_SANDBOX_MARKER,
 ) -> Path:
     registry_root = registry_dir or tmp_path
     registry_root.mkdir(parents=True, exist_ok=True)
@@ -138,8 +144,8 @@ def _write_model_provider_tracking_registry(
         registry_root,
         vm_info=_single_firewall_vm(
             registry_root,
-            run_id="run-model-1",
-            sandbox_marker="tok-model",
+            run_id=run_id,
+            sandbox_marker=sandbox_marker,
             firewall_name=_MODEL_PROVIDER_FIREWALL_NAME,
             api_entry={
                 "base": "https://api.anthropic.com",
@@ -520,7 +526,11 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     fake_firewall_headers,
 ):
     """Non-billable model providers without observation metadata are not tracked."""
-    reg_path = _write_model_provider_tracking_registry(tmp_path)
+    reg_path = _write_model_provider_tracking_registry(
+        tmp_path,
+        run_id=_MODEL_PROVIDER_RUN_ID,
+        sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
+    )
     flow = _model_provider_tracking_flow(real_flow)
 
     with (
@@ -548,6 +558,8 @@ async def test_non_billable_observable_model_provider_is_tracked_before_response
     """BYOK model observations drain during shutdown even without billing."""
     reg_path = _write_model_provider_tracking_registry(
         tmp_path,
+        run_id=_MODEL_PROVIDER_RUN_ID,
+        sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
         vm_fields={"modelUsageProvider": "claude-sonnet-4-6"},
     )
     flow = _model_provider_tracking_flow(real_flow)
@@ -578,6 +590,8 @@ async def test_billable_model_provider_records_model_usage_provider(
     reg_path = _write_model_provider_tracking_registry(
         tmp_path,
         billable=True,
+        run_id=_MODEL_PROVIDER_RUN_ID,
+        sandbox_marker=_MODEL_PROVIDER_SANDBOX_MARKER,
         vm_fields={
             "cliAgentType": "codex",
             "modelUsageProvider": "claude-opus-4-6",
