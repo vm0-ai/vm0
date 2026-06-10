@@ -1,11 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import {
+  getModelProviderFirewall,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
-import { now, nowDate } from "../../../lib/time";
+import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { clearAllDetached } from "../../utils";
@@ -14,10 +21,18 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import { createFirewallApi } from "./helpers/api-bdd-firewall";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
-import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  callbackDeliveryWithStatus,
+  createWebhookCallbackApi,
+} from "./helpers/api-bdd-webhooks";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -28,6 +43,71 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  */
 
 const context = testContext();
+
+// Sentinel provider id for model-first thread selections (the wire-protocol
+// value the chat composer sends when picking a model instead of a provider).
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
+
+function modelProviderPlaceholder(
+  type: ModelProviderType,
+  secretName: string,
+): string {
+  const placeholder =
+    getModelProviderFirewall(type)?.placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(`Missing model provider placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
+
+function connectorPlaceholder(
+  type: Parameters<typeof getConnectorFirewall>[0],
+  secretName: string,
+): string {
+  const placeholder = getConnectorFirewall(type)?.placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(`Missing connector placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
+
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function unsignedJwt(payload: Record<string, unknown>): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  return `${header}.${base64UrlEncode(JSON.stringify(payload))}.bdd-signature`;
+}
+
+/**
+ * Wire-shape `~/.codex/auth.json` paste payload for the personal
+ * codex-oauth-token provider upsert (the server parses and never stores it).
+ */
+function codexAuthJson(): string {
+  const accessExp = Math.floor(now() / 1000) + 7200;
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: unsignedJwt({ exp: accessExp }),
+      refresh_token: "rt_bdd_personal_high_entropy",
+      account_id: "ws_acct_bdd",
+      id_token: unsignedJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "ws_acct_bdd_id_token",
+          chatgpt_plan_type: "plus",
+          organization: { title: "BDD Personal" },
+        },
+        exp: accessExp,
+      }),
+    },
+  });
+}
 
 async function entitledRunActor(): Promise<{
   readonly actor: ApiTestUser;
@@ -271,6 +351,19 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    // The suspension applies to vm0-managed runs as well.
+    const vm0Rejected = await api.requestCreateRun(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "should be rejected",
+        modelProvider: "vm0",
+      },
+      [402],
+    );
+    expectApiError(vm0Rejected.body);
+    expect(vm0Rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
@@ -337,6 +430,1164 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
 
     const missing = await api.requestClaimRunnerJob(true, randomUUID(), [404]);
     expectApiError(missing.body);
+  });
+});
+
+describe("RUN-01: zero run request validation and token boundaries", () => {
+  it("rejects invalid zero run requests and run-scoped tokens without agent-run:write", async () => {
+    const api = createRunsSchedulesApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const unauthenticated = await api.requestCreateRun(
+      null,
+      { agentId: randomUUID(), prompt: "hello" },
+      [401],
+    );
+    expectApiError(unauthenticated.body);
+    expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
+
+    const missingAgent = await api.requestCreateRun(
+      actor,
+      { prompt: "hello" },
+      [400],
+    );
+    expectApiError(missingAgent.body);
+    expect(missingAgent.body.error.message).toBe("agentId is required");
+
+    const policiesRejected = await api.requestCreateRunUnchecked(
+      actor,
+      {
+        prompt: "hello",
+        agentId: randomUUID(),
+        permissionPolicies: { x: { policies: { "tweet.write": "allow" } } },
+      },
+      [400],
+    );
+    expectApiError(policiesRejected.body);
+    expect(policiesRejected.body.error.code).toBe("BAD_REQUEST");
+    expect(policiesRejected.body.error.message).toContain("permissionPolicies");
+
+    for (const tools of [[""], ["   "], ["Bash,Read"], ["--help"], [" -x"]]) {
+      const ambiguous = await api.requestCreateRun(
+        actor,
+        { prompt: "hello", agentId: randomUUID(), tools },
+        [400],
+      );
+      expectApiError(ambiguous.body);
+      expect(ambiguous.body.error.message).toContain("tools");
+      expect(ambiguous.body.error.message).toContain("Claude tool name");
+    }
+
+    const missingSession = await api.requestCreateRun(
+      actor,
+      { prompt: "hello", sessionId: randomUUID() },
+      [404],
+    );
+    expectApiError(missingSession.body);
+    expect(missingSession.body.error.message).toBe("Session not found");
+
+    // A claimed run exposes both run-scoped credentials: the agent-facing
+    // zero token (in the compose environment) and the sandbox webhook token.
+    // Neither carries agent-run:write, so nested run creation is forbidden.
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "issue run-scoped credentials",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const zeroToken = claim.environment?.ZERO_TOKEN;
+    if (!zeroToken) {
+      throw new Error(
+        "Expected claim.environment.ZERO_TOKEN to carry the run-scoped zero token",
+      );
+    }
+
+    const zeroTokenRejected = await api.requestCreateRunAs(
+      `Bearer ${zeroToken}`,
+      { agentId, prompt: "nested run" },
+      [403],
+    );
+    expectApiError(zeroTokenRejected.body);
+    expect(zeroTokenRejected.body.error.message).toContain(
+      "Missing required capability: agent-run:write",
+    );
+
+    const sandboxRejected = await api.requestCreateRunAs(
+      `Bearer ${claim.sandboxToken}`,
+      { agentId, prompt: "nested run" },
+      [403],
+    );
+    expectApiError(sandboxRejected.body);
+    expect(sandboxRejected.body.error.message).toContain(
+      "Missing required capability: agent-run:write",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("limits private agents to their owner and infers the agent from a session", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const memberRejected = await api.requestCreateRun(
+      member,
+      { agentId, prompt: "run someone else's private agent" },
+      [403],
+    );
+    expectApiError(memberRejected.body);
+    expect(memberRejected.body.error.message).toBe(
+      "Only the private agent owner can run this agent",
+    );
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "open a session",
+      modelProvider: "anthropic-api-key",
+    });
+    const inferred = await api.createRun(actor, {
+      sessionId: first.sessionId,
+      prompt: "continue without naming the agent",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(inferred.sessionId).toBe(first.sessionId);
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, inferred.runId, [200]);
+    await clearAllDetached();
+    const drained = await api.readRunQueue(actor);
+    expect(drained.body.concurrency.active).toBe(0);
+  });
+});
+
+describe("RUN-02: model provider selection and vm0 admission", () => {
+  it("gates vm0 runs on billing state and on unexpired credit grants", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+
+    // An org that never went through onboarding has no billing state at all,
+    // so vm0 runs are refused before provider resolution.
+    const uninitialized = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.configureRunnerGroup();
+    const bareAgent = await bdd.createAgent(uninitialized, {
+      displayName: "BDD uninitialized-org agent",
+      visibility: "private",
+    });
+    const noBilling = await api.requestCreateRun(
+      uninitialized,
+      { agentId: bareAgent.agentId, prompt: "vm0 run", modelProvider: "vm0" },
+      [402],
+    );
+    expectApiError(noBilling.body);
+    expect(noBilling.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    // The credit expiry is the subscription period end plus one month, so a
+    // period that ended two months ago grants credits that are already
+    // expired and never settled — vm0 admission fails whether or not a
+    // managed key happens to resolve.
+    const actor = bdd.user();
+    await api.grantProEntitlement(actor, {
+      periodEndUnix: Math.floor(now() / 1000) - 60 * 86_400,
+    });
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD expired-credits agent",
+      visibility: "private",
+    });
+    const rejected = await api.requestCreateRun(
+      actor,
+      { agentId: agent.agentId, prompt: "vm0 run", modelProvider: "vm0" },
+      [402],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("injects codex multi-auth provider credentials and proves them via firewall auth", async () => {
+    const api = createRunsSchedulesApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedOrgCodexProvider(actor, {
+      accessToken: "chatgpt-access",
+      refreshToken: "chatgpt-refresh",
+      accountId: "workspace-id",
+      idToken: "chatgpt-id-token",
+      expiresIn: 3600,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "codex oauth provider",
+      modelProvider: "codex-oauth-token",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment).toMatchObject({
+      CHATGPT_ACCESS_TOKEN: modelProviderPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCESS_TOKEN",
+      ),
+      CHATGPT_ACCOUNT_ID: modelProviderPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCOUNT_ID",
+      ),
+      OPENAI_MODEL: "gpt-5.5",
+    });
+    expect(claim.environment).not.toHaveProperty("CHATGPT_REFRESH_TOKEN");
+    expect(claim.environment).not.toHaveProperty("CHATGPT_ID_TOKEN");
+    expect(claim.secretConnectorMap).toMatchObject({
+      CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+    });
+    expect(claim.secretConnectorMap).not.toHaveProperty(
+      "CHATGPT_REFRESH_TOKEN",
+    );
+    expect(
+      claim.secretConnectorMetadataMap?.CHATGPT_ACCESS_TOKEN,
+    ).toStrictEqual({
+      sourceType: "model-provider",
+      sourceUserId: "__org__",
+      metadataKey: "codex-oauth-token",
+    });
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewall.name;
+      }),
+    ).toContain("model-provider:codex-oauth-token");
+    expect(claim.billableFirewalls).toStrictEqual([]);
+    expect(claim.modelUsageProvider).toBe("gpt-5.5");
+
+    // The encrypted secrets resolve to the seeded plaintext through the
+    // firewall-auth webhook, which is the production read surface for them.
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the codex claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.CHATGPT_ACCESS_TOKEN }}`,
+          "ChatGPT-Account-ID": `\${{ secrets.CHATGPT_ACCOUNT_ID }}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the codex firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer chatgpt-access",
+      "ChatGPT-Account-ID": "workspace-id",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("uses the requested provider instead of the caller's personal default", async () => {
+    const api = createRunsSchedulesApi(context);
+    const misc = createMiscRoutesApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await misc.upsertPersonalModelProvider(
+      actor,
+      { type: "claude-code-oauth-token", secret: "sk-ant-oat-bdd" },
+      [200, 201],
+    );
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "requested provider wins",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.cliAgentType).toBe("claude-code");
+    expect(claim.environment?.ANTHROPIC_API_KEY).toBe(
+      modelProviderPlaceholder("anthropic-api-key", "ANTHROPIC_API_KEY"),
+    );
+    expect(claim.environment?.ANTHROPIC_MODEL).toMatch(/.+/);
+    expect(claim.environment).not.toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN");
+    expect(claim.billableFirewalls).toStrictEqual([]);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("runs thread-pinned member-scope providers and mounts codex custom skills", async () => {
+    const api = createRunsSchedulesApi(context);
+    const bdd = createBddApi(context);
+    const chat = createChatFilesBddApi(context);
+    const misc = createMiscRoutesApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    proxyChatCallbackToApp();
+
+    const skillName = "bdd-codex-kit";
+    await misc.createSkill(
+      actor,
+      skillName,
+      "# BDD codex kit\nUse this skill for codex runs.",
+      [201],
+    );
+
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+
+    // A member-scoped policy routes the gpt-5.4-mini model through the
+    // personal provider; the org default stays on the anthropic provider.
+    const orgProvider = await api.ensureOrgModelProvider(actor);
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: orgProvider.providerId,
+      },
+      {
+        // Member-scope routes resolve the provider per caller at run time,
+        // so they must not pin a provider id.
+        model: "gpt-5.4-mini",
+        isDefault: false,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD codex skills agent",
+      visibility: "private",
+      customSkills: [skillName],
+    });
+    const thread = await chat.createThread(actor, { agentId: agent.agentId });
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId: agent.agentId,
+        threadId: thread.id,
+        prompt: "run on the pinned member provider",
+        modelSelection: {
+          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+          selectedModel: "gpt-5.4-mini",
+        },
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the pinned chat send to create a run");
+    }
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(sent.body.runId);
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment?.OPENAI_MODEL).toBe("gpt-5.4-mini");
+    expect(claim.environment?.CHATGPT_ACCESS_TOKEN).toBe(
+      modelProviderPlaceholder("codex-oauth-token", "CHATGPT_ACCESS_TOKEN"),
+    );
+    expect(
+      claim.secretConnectorMetadataMap?.CHATGPT_ACCESS_TOKEN,
+    ).toMatchObject({
+      sourceType: "model-provider",
+      sourceUserId: actor.userId,
+    });
+
+    const mountPaths =
+      claim.storageManifest?.storages.map((storage) => {
+        return storage.mountPath;
+      }) ?? [];
+    expect(mountPaths).toContain(`/home/user/.codex/skills/${skillName}`);
+    expect(
+      mountPaths.some((mountPath) => {
+        return mountPath.startsWith("/home/user/.claude/skills/");
+      }),
+    ).toBeFalsy();
+
+    await api.requestCancelRun(actor, sent.body.runId, [200]);
+    await clearAllDetached();
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, sent.body.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+});
+
+describe("RUN-02: stored connector injection into claimed runs", () => {
+  it("injects oauth connector tokens with billable firewalls and resolvable secrets", async () => {
+    const api = createRunsSchedulesApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-access",
+      refreshToken: "x-bdd-refresh",
+    });
+    const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
+    expect(enabled).toContain("x");
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the x connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.X_TOKEN).toBe(
+      connectorPlaceholder("x", "X_TOKEN"),
+    );
+    expect(claim.environment).not.toHaveProperty("X_ACCESS_TOKEN");
+    expect(claim.environment).not.toHaveProperty("X_REFRESH_TOKEN");
+    expect(claim.secretConnectorMap).toMatchObject({ X_TOKEN: "x" });
+    expect(claim.secretConnectorMap).not.toHaveProperty("X_REFRESH_TOKEN");
+    expect(claim.secretConnectorMetadataMap ?? null).toBeNull();
+
+    const xFirewall = claim.firewalls?.find((firewall) => {
+      return firewall.name === "x";
+    });
+    expect(xFirewall?.apis[0]?.auth?.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.X_TOKEN }}`,
+    );
+    expect(claim.billableFirewalls).toContain("x");
+    expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
+
+    // The stored access token is only readable through the firewall-auth
+    // webhook with the claimed run's sandbox token.
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the x claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: { Authorization: `Bearer \${{ secrets.X_TOKEN }}` },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the x firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer x-bdd-access",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("injects manual-grant api-token connectors and their optional variables", async () => {
+    const api = createRunsSchedulesApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      GITLAB_TOKEN: "glpat-bdd",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["gitlab"]);
+
+    const withoutHost = await api.createRun(actor, {
+      agentId,
+      prompt: "use gitlab without the optional host",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const bareClaim = await api.claimRunnerJob(withoutHost.runId);
+    expect(bareClaim.environment?.GITLAB_TOKEN).toBe(
+      connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
+    );
+    expect(bareClaim.environment).not.toHaveProperty("GITLAB_HOST");
+    expect(bareClaim.secretConnectorMap).toMatchObject({
+      GITLAB_TOKEN: "gitlab",
+    });
+
+    // Reconnecting with the optional variable threads it into the next run.
+    await connectors.connectManualGrant(actor, "gitlab", "api-token", {
+      GITLAB_TOKEN: "glpat-bdd",
+      GITLAB_HOST: "gitlab.example.com",
+    });
+    const withHost = await api.createRun(actor, {
+      agentId,
+      prompt: "use gitlab with the optional host",
+      modelProvider: "anthropic-api-key",
+    });
+    const hostClaim = await api.claimRunnerJob(withHost.runId);
+    expect(hostClaim.environment?.GITLAB_TOKEN).toBe(
+      connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
+    );
+    expect(hostClaim.environment?.GITLAB_HOST).toBe("gitlab.example.com");
+
+    await api.requestCancelRun(actor, withoutHost.runId, [200]);
+    await api.requestCancelRun(actor, withHost.runId, [200]);
+    await clearAllDetached();
+    const drained = await api.readRunQueue(actor);
+    expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("keeps refresh-owned connector secrets out of the sandbox environment", async () => {
+    const api = createRunsSchedulesApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(actor, "lark", "api-token", {
+      LARK_APP_ID: "lark-app-id",
+      LARK_APP_SECRET: "lark-app-secret",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["lark"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use lark before any cached access token exists",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.LARK_TOKEN).toBe(
+      connectorPlaceholder("lark", "LARK_TOKEN"),
+    );
+    expect(claim.environment).not.toHaveProperty("LARK_APP_ID");
+    expect(claim.environment).not.toHaveProperty("LARK_APP_SECRET");
+    expect(claim.environment).not.toHaveProperty("LARK_ACCESS_TOKEN");
+    expect(claim.secretConnectorMap).toMatchObject({ LARK_TOKEN: "lark" });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("withholds platform secrets from the sandbox environment", async () => {
+    const api = createRunsSchedulesApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token-bdd");
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "google-ads",
+      authMethod: "oauth",
+      accessToken: "google-ads-bdd-access",
+      refreshToken: "google-ads-bdd-refresh",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["google-ads"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use google ads",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment).not.toHaveProperty("GOOGLE_ADS_DEVELOPER_TOKEN");
+    expect(claim.secretConnectorMap).toMatchObject({
+      GOOGLE_ADS_TOKEN: "google-ads",
+    });
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewall.name;
+      }),
+    ).toContain("google-ads");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("ignores plain user secrets named like connector tokens", async () => {
+    const api = createRunsSchedulesApi(context);
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    // axiom is enabled on the agent but never connected; a user secret with
+    // the connector's token name must not impersonate the connector.
+    await api.enableAgentConnectors(actor, agentId, ["axiom"]);
+    await authOrg.setSecret(actor, {
+      name: "AXIOM_TOKEN",
+      value: "xaat-plain-user-secret",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "run without a connected axiom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment).not.toHaveProperty("AXIOM_TOKEN");
+    expect(
+      claim.firewalls?.some((firewall) => {
+        return firewall.name === "axiom";
+      }),
+    ).toBeFalsy();
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("resolves compose secret references into direct run environments", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await authOrg.setSecret(actor, {
+      name: "SHARED_TOKEN",
+      value: "user-shared-secret",
+    });
+    const composeName = `bdd-secret-refs-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: {
+            ANTHROPIC_API_KEY: "bdd-inline-key",
+            EXTERNAL_TOKEN: `\${{ secrets.SHARED_TOKEN }}`,
+          },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "resolve referenced secrets",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.EXTERNAL_TOKEN).toBe("user-shared-secret");
+    expect(claim.secretValues).toContain("user-shared-secret");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+});
+
+describe("RUN-02: custom connectors, grants, and network policies", () => {
+  it("injects enabled custom connector firewalls with resolvable org secrets", async () => {
+    const api = createRunsSchedulesApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const slug = `bdd-internal-${randomUUID().slice(0, 8)}`;
+    const custom = await connectors.createCustomConnector(actor, {
+      slug,
+      displayName: "BDD Internal API",
+      prefixes: ["https://*.internal.example.com/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "custom-secret-value",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const secretKey = `CUSTOM_${custom.id.replaceAll("-", "").toUpperCase()}`;
+    const customFirewall = claim.firewalls?.find((firewall) => {
+      return firewall.name === slug;
+    });
+    expect(customFirewall?.apis[0]?.base).toBe(
+      "https://{hostWildcard1}.internal.example.com/api/",
+    );
+    expect(customFirewall?.apis[0]?.auth?.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.${secretKey} }}`,
+    );
+    expect(claim.networkPolicies?.[slug]?.unknownPolicy).toBe("allow");
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the custom claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the custom firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer custom-secret-value",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("keeps connector-owned vars out of custom connector base urls", async () => {
+    const api = createRunsSchedulesApi(context);
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(actor, "zendesk", "api-token", {
+      ZENDESK_API_TOKEN: "zendesk-token-bdd",
+      ZENDESK_EMAIL: "connector@example.com",
+      ZENDESK_SUBDOMAIN: "connector-subdomain",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["zendesk"]);
+    await authOrg.setVariable(actor, {
+      name: "ZENDESK_SUBDOMAIN",
+      value: "user-subdomain",
+    });
+
+    // Custom connector prefixes are contract-validated as literal URLs, so
+    // `${{ vars.* }}` templates are not API-constructible there; the var
+    // boundary is asserted on the built-in zendesk firewall base instead.
+    const slug = `bdd-vars-${randomUUID().slice(0, 8)}`;
+    const custom = await connectors.createCustomConnector(actor, {
+      slug,
+      displayName: "BDD Vars Custom",
+      prefixes: ["https://internal.example.com/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(actor, custom.id, "custom-bdd");
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "expand custom and connector bases",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const customFirewall = claim.firewalls?.find((firewall) => {
+      return firewall.name === slug;
+    });
+    const zendeskFirewall = claim.firewalls?.find((firewall) => {
+      return firewall.name === "zendesk";
+    });
+    expect(customFirewall?.apis[0]?.base).toBe(
+      "https://internal.example.com/api/",
+    );
+    // The zendesk base resolves from the connector-owned variable, not the
+    // user variable of the same name.
+    expect(zendeskFirewall?.apis[0]?.base).toBe(
+      "https://connector-subdomain.zendesk.com",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("applies, scopes, expires, and snapshots user permission grants", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+
+    // The grants agent is public so a same-org member can write their own
+    // grants for it without being the owner.
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD grants agent",
+    });
+    const agentId = agent.agentId;
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-grants",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["slack"]);
+
+    async function claimSlackPolicy(prompt: string): Promise<{
+      readonly allow: readonly string[];
+      readonly deny: readonly string[];
+      readonly unknownPolicy?: string;
+    }> {
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+      const claim = await api.claimRunnerJob(run.runId);
+      await api.requestCancelRun(actor, run.runId, [200]);
+      await clearAllDetached();
+      const policy = claim.networkPolicies?.slack;
+      if (!policy) {
+        throw new Error("Expected a slack network policy on the claim");
+      }
+      return policy;
+    }
+
+    await api.heartbeatRunner(runnerGroup);
+    const defaults = await claimSlackPolicy("no grants yet");
+    expect(defaults.allow).toContain("channels:read");
+    expect(defaults.allow).toContain("users:read");
+    expect(defaults.deny).toContain("chat:write");
+    expect(defaults.unknownPolicy).toBe("allow");
+
+    // Grants across every expiry arm; the list API shows the stored expiry.
+    await api.upsertUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "allow",
+      expiresIn: "1h",
+    });
+    await api.upsertUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "files:read",
+      action: "allow",
+      expiresIn: "24h",
+    });
+    await api.upsertUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "search:read",
+      action: "allow",
+      expiresIn: "7d",
+    });
+    await api.upsertUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "groups:read",
+      action: "allow",
+    });
+    const grants = await api.listUserPermissionGrants(actor, agentId);
+    const expiryByPermission = new Map(
+      grants.map((grant) => {
+        return [grant.permission, grant.expiresAt];
+      }),
+    );
+    expect(expiryByPermission.get("chat:write")).toStrictEqual(
+      expect.any(String),
+    );
+    expect(expiryByPermission.get("files:read")).toStrictEqual(
+      expect.any(String),
+    );
+    expect(expiryByPermission.get("search:read")).toStrictEqual(
+      expect.any(String),
+    );
+    expect(expiryByPermission.get("groups:read")).toBeNull();
+
+    // A same-org member's own grant never leaks into the owner's runs.
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    await api.upsertUserPermissionGrant(member, {
+      agentId,
+      connectorRef: "slack",
+      permission: "files:write",
+      action: "allow",
+    });
+
+    const granted = await claimSlackPolicy("granted permissions");
+    expect(granted.allow).toContain("chat:write");
+    expect(granted.allow).toContain("files:read");
+    expect(granted.deny).not.toContain("chat:write");
+    expect(granted.deny).toContain("files:write");
+
+    // Two hours later the 1h grant is expired while the 24h grant holds.
+    mockNow(now() + 2 * 3_600_000);
+    const expired = await claimSlackPolicy("after the 1h grant expired");
+    expect(expired.deny).toContain("chat:write");
+    expect(expired.allow).toContain("files:read");
+
+    // Unknown-permission grants flip only the unknown policy.
+    await api.upsertUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: UNKNOWN_PERMISSION_GRANT,
+      action: "deny",
+    });
+    const unknownDenied = await claimSlackPolicy("deny unknown permissions");
+    expect(unknownDenied.unknownPolicy).toBe("deny");
+    expect(unknownDenied.allow).toContain("channels:read");
+    expect(unknownDenied.deny).toContain("chat:write");
+
+    // The grant snapshot is baked into the queued run: flipping the grant
+    // after creation does not change the already-created run's policy.
+    await api.upsertUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "allow",
+    });
+    const snapshotRun = await api.createRun(actor, {
+      agentId,
+      prompt: "snapshot the grant state",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.upsertUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "deny",
+    });
+    const snapshotClaim = await api.claimRunnerJob(snapshotRun.runId);
+    expect(snapshotClaim.networkPolicies?.slack?.allow).toContain("chat:write");
+    expect(snapshotClaim.networkPolicies?.slack?.deny).not.toContain(
+      "chat:write",
+    );
+
+    await api.requestCancelRun(actor, snapshotRun.runId, [200]);
+    await clearAllDetached();
+    const drained = await api.readRunQueue(actor);
+    expect(drained.body.concurrency.active).toBe(0);
+  });
+});
+
+describe("RUN-01: zero runner context, queue promotion, and skills", () => {
+  it("injects agent identity, tool hints, and user info into the runner context", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+
+    await bdd.setupOnboarding(actor, {
+      displayName: "BDD Context Agent",
+      timezone: "America/Los_Angeles",
+    });
+    // Reading the current user caches the Clerk name/email used by the
+    // run context's user-info section.
+    await bdd.readMe(actor);
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Research Bot",
+      description: "Finds release details",
+      sound: "direct",
+      visibility: "private",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "summarize release",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
+    expect(appendSystemPrompt).toContain("# Agent Identity");
+    expect(appendSystemPrompt).toContain("Your name is Research Bot.");
+    expect(appendSystemPrompt).toContain("Your role: Finds release details");
+    expect(appendSystemPrompt).toContain(
+      "Be brief and to the point. Skip pleasantries and filler",
+    );
+    expect(appendSystemPrompt).toContain("# Agent Tools");
+    for (const toolHint of [
+      "zero web download-file -h",
+      "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime",
+      "`agent-browser` for browser automation and inspection",
+      "Local dev servers are useful for agent-side verification",
+      "For static web artifacts, Zero provides `zero host <dir> --site <slug> [--spa]` to publish a directory containing `index.html` to a public URL that users can open; for HTML presentations, include `--artifact-kind presentation-html`",
+      "For apps or services that require a long-running backend, database, worker, external service, or framework-specific runtime",
+      "for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help`",
+      "zero connector status <type>",
+      "zero doctor check-connector --help",
+      "zero generate -h",
+      "zero doctor credit",
+      "zero credit <credits>",
+      "zero doctor permission-deny --help",
+      "zero doctor permission-change --help",
+      "--duration 1h|24h|7d|always",
+      "zero skill --help",
+      "zero developer-support --help",
+      "zero maps --help",
+    ]) {
+      expect(appendSystemPrompt).toContain(toolHint);
+    }
+    for (const otherIntegrationHint of [
+      "zero slack download-file -h",
+      "zero github download-file -h",
+      "zero telegram download-file -h",
+      "zero phone download-file -h",
+    ]) {
+      expect(appendSystemPrompt).not.toContain(otherIntegrationHint);
+    }
+    expect(appendSystemPrompt).toContain("# Current User Info");
+    expect(appendSystemPrompt).toContain("Name: BDD User");
+    expect(appendSystemPrompt).toContain(`Email: ${actor.email}`);
+    expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
+
+    expect(claim.disallowedTools).toStrictEqual([
+      "CronCreate",
+      "CronList",
+      "CronDelete",
+      "ScheduleWakeup",
+      "AskUserQuestion",
+      "Skill(loop)",
+      "Skill(loop *)",
+    ]);
+    expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
+    const zeroToken = claim.environment?.ZERO_TOKEN;
+    expect(zeroToken).toMatch(/^vm0_sandbox_/);
+    if (!zeroToken) {
+      throw new Error("Expected the claim to expose the zero token");
+    }
+    expect(claim.secretValues).toContain(zeroToken);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("promotes queued runs with feature flags and a fresh api start time", async () => {
+    const api = createRunsSchedulesApi(context);
+    const computerUse = createComputerUseBddApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ComputerUse]: true,
+      [FeatureSwitchKey.SandboxIoLimiters]: true,
+    });
+
+    const firstStartedAt = now();
+    mockNow(firstStartedAt);
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run three",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+    const queueState = await api.readRunQueue(actor);
+    expect(queueState.body.queue[0]?.runId).toBe(queued.runId);
+
+    // The promoted run's api start time is the promotion time, not the
+    // original request time (both stay inside the pending-run TTL window).
+    const promotedAt = firstStartedAt + 120_000;
+    mockNow(promotedAt);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await clearAllDetached();
+    const promoted = await api.readRun(actor, queued.runId);
+    expect(promoted.status).toBe("pending");
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(queued.runId);
+    expect(claim.featureFlags).toMatchObject({
+      [FeatureSwitchKey.ComputerUse]: true,
+      [FeatureSwitchKey.SandboxIoLimiters]: true,
+    });
+    expect(claim.apiStartTime).toBe(promotedAt);
+
+    // Even with the computer-use switch on, a run-scoped zero token issued
+    // without a host binding cannot reach computer-use write routes.
+    const zeroToken = claim.environment?.ZERO_TOKEN;
+    if (!zeroToken) {
+      throw new Error("Expected the promoted claim to expose the zero token");
+    }
+    const writeRejected =
+      await computerUse.requestCreateComputerUseWriteCommand(
+        { bearer: zeroToken },
+        [403],
+      );
+    expectApiError(writeRejected.body);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await clearAllDetached();
+    const drained = await api.readRunQueue(actor);
+    expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("mounts custom skills for claude-code zero agents", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const misc = createMiscRoutesApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+
+    const skillName = "bdd-claude-kit";
+    await misc.createSkill(
+      actor,
+      skillName,
+      "# BDD claude kit\nUse this skill in claude runs.",
+      [201],
+    );
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD claude skills agent",
+      visibility: "private",
+      customSkills: [skillName],
+    });
+
+    const run = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "use the custom skill",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.cliAgentType).toBe("claude-code");
+    expect(
+      claim.storageManifest?.storages.map((storage) => {
+        return storage.mountPath;
+      }),
+    ).toContain(`/home/user/.claude/skills/${skillName}`);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
   });
 });
 
@@ -738,6 +1989,151 @@ describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () =
   });
 });
 
+describe("HOOK-01: agent callback summaries through replayed deliveries", () => {
+  const AGENT_CALLBACK_PATH = "/api/internal/callbacks/agent";
+  const OPENROUTER_COMPLETIONS_URL =
+    "https://openrouter.ai/api/v1/chat/completions";
+
+  it("summarizes completed runs replayed through the agent callback route", async () => {
+    const api = createRunsSchedulesApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    // The nested trigger-agent producer is not API-constructible (zero tokens
+    // exclude agent-run:write), so this chain captures the real dispatcher
+    // deliveries of a chat run and replays them into the agent path:
+    // callbackRoute resolves the row by the body's callbackId, never by path,
+    // so a legitimately signed delivery verifies on any callback route.
+    const deliveries = webhooks.captureInternalCallbackDeliveries(
+      "/api/internal/callbacks/chat",
+    );
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    const openRouterRequests: {
+      readonly messages: readonly {
+        readonly role: string;
+        readonly content: string;
+      }[];
+    }[] = [];
+    server.use(
+      http.post(OPENROUTER_COMPLETIONS_URL, async ({ request }) => {
+        openRouterRequests.push(
+          (await request.json()) as (typeof openRouterRequests)[number],
+        );
+        return HttpResponse.json({
+          choices: [{ message: { content: "Agent delegated the task." } }],
+        });
+      }),
+    );
+
+    const { runId } = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "Summarize the delegated research task.",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+    const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+
+    // A sandbox heartbeat dispatches a progress delivery; replaying it hits
+    // the agent route's non-completed early return without touching Axiom.
+    await webhooks.requestAgentHeartbeat({ runId }, sandboxHeaders, [200]);
+    await clearAllDetached();
+    const progressDelivery = callbackDeliveryWithStatus(deliveries, "progress");
+    const queryCallsBeforeProgress =
+      context.mocks.axiom.query.mock.calls.length;
+    const progressReplay = await webhooks.replayInternalCallback(
+      AGENT_CALLBACK_PATH,
+      progressDelivery,
+    );
+    expect(progressReplay.status).toBe(200);
+    await expect(progressReplay.json()).resolves.toStrictEqual({
+      success: true,
+    });
+    expect(context.mocks.axiom.query.mock.calls).toHaveLength(
+      queryCallsBeforeProgress,
+    );
+
+    const historyHash = createHash("sha256")
+      .update(`bdd session history ${runId}`)
+      .digest("hex");
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-agent-cb-cli-${runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    await clearAllDetached();
+    const completed = await api.readRun(actor, runId);
+    expect(completed.status).toBe("completed");
+    const completedDelivery = callbackDeliveryWithStatus(
+      deliveries,
+      "completed",
+    );
+
+    // The agent route reads the run output back through the Axiom boundary.
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      return Promise.resolve(
+        apl.includes("agent-run-events")
+          ? [
+              {
+                sequenceNumber: 0,
+                eventType: "result",
+                eventData: { result: "Delegated task finished cleanly." },
+              },
+            ]
+          : [],
+      );
+    });
+
+    // Without an OpenRouter key the summary generation is skipped silently.
+    const noKeyReplay = await webhooks.replayInternalCallback(
+      AGENT_CALLBACK_PATH,
+      completedDelivery,
+    );
+    expect(noKeyReplay.status).toBe(200);
+    await expect(noKeyReplay.json()).resolves.toStrictEqual({ success: true });
+    expect(openRouterRequests).toHaveLength(0);
+
+    // With a key the replay produces exactly one summarize completion call
+    // carrying the agent trigger source and the run output.
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    const summaryReplay = await webhooks.replayInternalCallback(
+      AGENT_CALLBACK_PATH,
+      completedDelivery,
+    );
+    expect(summaryReplay.status).toBe(200);
+    await expect(summaryReplay.json()).resolves.toStrictEqual({
+      success: true,
+    });
+    expect(openRouterRequests).toHaveLength(1);
+    expect(openRouterRequests[0]?.messages[0]?.content).toContain(
+      "Summarize the result of this agent agent run",
+    );
+    expect(openRouterRequests[0]?.messages[1]?.content).toContain(
+      "Delegated task finished cleanly.",
+    );
+
+    const tamperedReplay = await webhooks.replayInternalCallback(
+      AGENT_CALLBACK_PATH,
+      completedDelivery,
+      { signature: webhooks.tamperedSignature(completedDelivery) },
+    );
+    expect(tamperedReplay.status).toBe(401);
+
+    context.mocks.axiom.query.mockReset();
+    context.mocks.axiom.query.mockResolvedValue([]);
+  });
+});
+
 describe("HOOK-02: event-consumer dispatch failures", () => {
   it("surfaces required event-consumer failures and recovers on retry", async () => {
     const api = createRunsSchedulesApi(context);
@@ -866,6 +2262,116 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       ]),
     );
 
+    // Codex item.completed batches persist only non-blank agent_message text.
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "item.completed",
+            sequenceNumber: 3,
+            item: {
+              id: "item_bdd_3",
+              type: "agent_message",
+              text: "Codex follow-up note",
+            },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 4,
+            item: {
+              id: "cmd_bdd_4",
+              type: "command_execution",
+              command: "ls",
+              exit_code: 0,
+              output: "README.md",
+            },
+          },
+          {
+            type: "item.completed",
+            sequenceNumber: 5,
+            item: { id: "item_bdd_5", type: "agent_message", text: "   " },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const afterCodex = await chat.listThreadMessages(actor, threadId);
+    const codexPersisted = afterCodex.messages.filter((message) => {
+      return message.role === "assistant" && message.runId === runId;
+    });
+    expect(codexPersisted).toHaveLength(3);
+    expect(
+      codexPersisted.map((message) => {
+        return message.content;
+      }),
+    ).toContain("Codex follow-up note");
+
+    // Assistant batches without visible text leave the thread unchanged.
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 6,
+            message: {
+              id: "msg_bdd_6",
+              content: [
+                { type: "tool_use", id: "tool_bdd_1", name: "bash", input: {} },
+              ],
+            },
+          },
+          {
+            type: "assistant",
+            sequenceNumber: 7,
+            message: {
+              id: "msg_bdd_7",
+              content: [{ type: "text", text: "" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    const afterSilent = await chat.listThreadMessages(actor, threadId);
+    expect(
+      afterSilent.messages.filter((message) => {
+        return message.role === "assistant" && message.runId === runId;
+      }),
+    ).toHaveLength(3);
+
+    // Assistant text on a run without a chat thread changes no thread state.
+    const threadsBefore = await chat.listThreads(actor);
+    const detachedRun = await api.createRun(actor, {
+      agentId,
+      prompt: "report events without a thread",
+      modelProvider: "anthropic-api-key",
+    });
+    const detachedClaim = await api.claimRunnerJob(detachedRun.runId);
+    await webhooks.requestAgentEvents(
+      {
+        runId: detachedRun.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: {
+              id: "msg_bdd_detached",
+              content: [{ type: "text", text: "No thread receives this" }],
+            },
+          },
+        ],
+      },
+      { authorization: `Bearer ${detachedClaim.sandboxToken}` },
+      [200],
+    );
+    const threadsAfter = await chat.listThreads(actor);
+    expect(threadsAfter.totalCount).toBe(threadsBefore.totalCount);
+
+    await api.requestCancelRun(actor, detachedRun.runId, [200]);
     await api.requestCancelRun(actor, runId, [200]);
     await clearAllDetached();
     const cancelled = await api.readRun(actor, runId);

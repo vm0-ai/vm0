@@ -67,6 +67,7 @@ import {
   type ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { createApp } from "../../../../app-factory";
@@ -102,6 +103,9 @@ type DeployScheduleRequest = z.infer<
 >;
 type OrgModelPolicyRequest = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
+>;
+type OrgModelProviderUpsertRequest = z.infer<
+  (typeof zeroModelProvidersMainContract.upsert)["body"]
 >;
 type RunnerHeartbeatBody = z.infer<
   (typeof runnersHeartbeatContract.heartbeat)["body"]
@@ -230,7 +234,13 @@ export function createRunsSchedulesApi(context: TestContext) {
       context.mocks.axiom.query.mockResolvedValue([]);
     },
 
-    async grantProEntitlement(actor: ApiTestUser): Promise<{
+    // `periodEndUnix` moves the granted subscription period (and therefore
+    // the credit expiry, period end + 1 month) — a far-past period end yields
+    // an org whose entire credit balance is already expired.
+    async grantProEntitlement(
+      actor: ApiTestUser,
+      options: { readonly periodEndUnix?: number } = {},
+    ): Promise<{
       readonly customerId: string;
       readonly subscriptionId: string;
       readonly invoiceId: string;
@@ -281,7 +291,11 @@ export function createRunsSchedulesApi(context: TestContext) {
               data: [
                 {
                   parent: { type: "subscription_item_details" },
-                  period: { end: Math.floor(now() / 1000) + 30 * 86_400 },
+                  period: {
+                    end:
+                      options.periodEndUnix ??
+                      Math.floor(now() / 1000) + 30 * 86_400,
+                  },
                 },
               ],
             },
@@ -482,6 +496,61 @@ export function createRunsSchedulesApi(context: TestContext) {
       );
     },
 
+    /**
+     * Replaces the caller's enabled connector types for an agent through
+     * PUT /api/zero/agents/:id/user-connectors and returns the visible set.
+     */
+    async enableAgentConnectors(
+      actor: ApiTestUser,
+      agentId: string,
+      connectorTypes: readonly string[],
+    ): Promise<readonly string[]> {
+      const response = await accept(
+        setupApp({ context })(zeroUserConnectorsContract).update({
+          headers: authenticate(context, actor),
+          params: { id: agentId },
+          body: { enabledTypes: [...connectorTypes] },
+        }),
+        [200],
+      );
+      return response.body.enabledTypes;
+    },
+
+    /**
+     * Upserts an org-level model provider with an arbitrary contract body
+     * (single secret or multi-auth secrets map) and returns the provider id.
+     */
+    async createOrgModelProvider(
+      actor: ApiTestUser,
+      body: OrgModelProviderUpsertRequest,
+    ): Promise<{ readonly providerId: string }> {
+      const response = await accept(
+        setupApp({ context })(zeroModelProvidersMainContract).upsert({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        [200, 201],
+      );
+      return { providerId: response.body.provider.id };
+    },
+
+    /**
+     * Replaces the org model-first policies with the given request-shaped
+     * list (the PUT is a wholesale replace of supported-run-model rows).
+     */
+    async updateOrgModelPolicies(
+      actor: ApiTestUser,
+      policies: OrgModelPolicyRequest["policies"],
+    ): Promise<void> {
+      await accept(
+        setupApp({ context })(zeroModelPoliciesMainContract).update({
+          headers: authenticate(context, actor),
+          body: { policies },
+        }),
+        [200],
+      );
+    },
+
     async ensureOrgModelProvider(
       actor: ApiTestUser,
     ): Promise<{ readonly providerId: string }> {
@@ -541,6 +610,24 @@ export function createRunsSchedulesApi(context: TestContext) {
         setupApp({ context })(zeroRunsMainContract).create({
           headers: authenticate(context, actor),
           body: body as ZeroRunRequest,
+        }),
+        statuses,
+      );
+    },
+
+    /**
+     * Creates a zero run with a raw bearer credential (run-scoped zero token
+     * or sandbox token taken from a runner claim) instead of a Clerk session.
+     */
+    async requestCreateRunAs(
+      authorization: string,
+      body: ZeroRunRequest,
+      statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroRunsMainContract).create({
+          headers: { authorization },
+          body,
         }),
         statuses,
       );
