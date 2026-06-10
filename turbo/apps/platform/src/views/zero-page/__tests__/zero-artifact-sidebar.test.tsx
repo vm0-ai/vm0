@@ -708,7 +708,10 @@ describe("zero artifact sidebar", () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/run-2/chart.png";
     const videoUrl = "https://cdn.vm7.io/artifacts/test/run-2/demo.mp4";
     const markdownUrl = "https://cdn.vm7.io/artifacts/test/run-2/notes.md";
+    const textUrl = "https://cdn.vm7.io/artifacts/test/run-2/memo.txt";
+    const jsonUrl = "https://cdn.vm7.io/artifacts/test/run-2/status.json";
     const htmlUrl = "https://cdn.vm7.io/artifacts/test/run-2/site.html";
+    const hostedSiteUrl = "https://customer-launch-a1b2c3d4.sites.vm7.io";
     const fileUrl = "/artifacts/test/run-2/archive.bin";
 
     setupChatThread({
@@ -725,7 +728,10 @@ ${videoUrl}
 ${imageUrl}
 ${videoUrl}
 [Release notes](${markdownUrl})
+[Operations memo](${textUrl})
+${jsonUrl}
 [Launch site](${htmlUrl})
+${hostedSiteUrl}
 Download the archive here: ${fileUrl}.`,
     });
 
@@ -737,10 +743,32 @@ Download the archive here: ${fileUrl}.`,
         "aria-label",
         "Open markdown preview for notes.md",
       );
-      expect(screen.getByTestId("attachment-preview-html")).toHaveAttribute(
+      expect(screen.getByTestId("attachment-preview-text")).toHaveAttribute(
+        "aria-label",
+        "Open text preview for memo.txt",
+      );
+      expect(screen.getByTestId("attachment-preview-json")).toHaveAttribute(
+        "aria-label",
+        "Open json preview for status.json",
+      );
+      const htmlPreview = screen
+        .getAllByTestId("attachment-preview-html")
+        .find((element) => {
+          return (
+            element.getAttribute("aria-label") ===
+            "Open html preview for Launch site"
+          );
+        });
+      expect(htmlPreview).toHaveAttribute(
         "aria-label",
         "Open html preview for Launch site",
       );
+      expect(screen.getByText("Customer Launch")).toBeInTheDocument();
+      expect(
+        document.querySelector(
+          'iframe[title="Site preview for Customer Launch"]',
+        ),
+      ).toBeInTheDocument();
       expect(screen.getByTestId("attachment-preview-file")).toHaveAttribute(
         "aria-label",
         "Download archive.bin",

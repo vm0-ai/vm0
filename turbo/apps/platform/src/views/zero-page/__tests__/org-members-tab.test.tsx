@@ -61,9 +61,18 @@ function mockMembersStory(): void {
         email: "bob@example.com",
         firstName: "Bob",
         lastName: "Member",
-        imageUrl: "",
+        imageUrl: "https://example.test/bob.png",
         role: "member",
         joinedAt: "2026-01-02T00:00:00Z",
+      },
+      {
+        userId: "user-eve",
+        email: "eve@example.com",
+        firstName: "Eve",
+        lastName: "Admin",
+        imageUrl: "",
+        role: "admin",
+        joinedAt: "2026-01-02T12:00:00Z",
       },
     ],
     pendingInvitations: [
@@ -129,6 +138,29 @@ function mockMembersStory(): void {
     };
     return respond(200, { message: "Invitation revoked" });
   });
+  context.mocks.api(zeroOrgMembersContract.updateRole, ({ body, respond }) => {
+    response = {
+      ...response,
+      members: response.members.map((member) => {
+        return member.email === body.email
+          ? { ...member, role: body.role }
+          : member;
+      }),
+    };
+    return respond(200, { message: "Role updated" });
+  });
+  context.mocks.api(
+    zeroOrgMembersContract.removeMember,
+    ({ body, respond }) => {
+      response = {
+        ...response,
+        members: response.members.filter((member) => {
+          return member.email !== body.email;
+        }),
+      };
+      return respond(200, { message: "Member removed" });
+    },
+  );
   context.mocks.api(
     zeroOrgMembershipRequestsContract.accept,
     ({ body, respond }) => {
@@ -180,6 +212,14 @@ async function openMembersTab(): Promise<void> {
       screen.getByRole("heading", { name: "Members" }),
     ).toBeInTheDocument();
   });
+}
+
+function rowByEmail(email: string): HTMLElement {
+  const row = screen.getByText(email).closest(".grid");
+  if (!row) {
+    throw new Error(`${email} member row not found`);
+  }
+  return row as HTMLElement;
 }
 
 describe("organization members settings", () => {
@@ -250,6 +290,62 @@ describe("organization members settings", () => {
     await waitFor(() => {
       expect(
         screen.queryByText("Membership request rejected"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("changes roles, removes a member, and lets an admin self-demote", async () => {
+    mockMembersStory();
+    await openMembersTab();
+
+    click(screen.getByLabelText("Actions for bob@example.com"));
+    click(menuItemByText("Make admin"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Updated role for bob@example.com"),
+      ).toBeInTheDocument();
+      expect(
+        within(rowByEmail("bob@example.com")).getByText("Admin"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Actions for bob@example.com"));
+    click(menuItemByText("Remove from org"));
+
+    const removeDialog = await screen.findByRole("dialog", {
+      name: "Remove member?",
+    });
+    expect(
+      within(removeDialog).getByText(/lose access to all resources/u),
+    ).toBeInTheDocument();
+    click(buttonByText("Remove", removeDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Removed bob@example.com")).toBeInTheDocument();
+      expect(screen.queryByText("bob@example.com")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Actions for alice@example.com"));
+    click(menuItemByText("Switch to member"));
+
+    const selfDemoteDialog = await screen.findByRole("dialog", {
+      name: "Switch to member?",
+    });
+    expect(
+      within(selfDemoteDialog).getByText(/lose admin privileges/u),
+    ).toBeInTheDocument();
+    click(buttonByText("Confirm", selfDemoteDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Updated role for alice@example.com"),
+      ).toBeInTheDocument();
+      expect(
+        within(rowByEmail("alice@example.com")).getByText("Member"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Actions for alice@example.com"),
       ).not.toBeInTheDocument();
     });
   });

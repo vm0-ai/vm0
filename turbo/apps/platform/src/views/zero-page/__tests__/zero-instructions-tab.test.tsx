@@ -151,7 +151,7 @@ describe("zero instructions tab", () => {
       "Ordered list",
       "Blockquote",
     ]) {
-      click(await screen.findByTitle(title));
+      await user.click(await screen.findByTitle(title));
     }
     await user.click(editor);
     await user.keyboard(

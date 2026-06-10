@@ -173,6 +173,93 @@ describe("works page", () => {
     });
   });
 
+  it("refreshes Slack status from realtime events", async () => {
+    let slackStatus: SlackOrgStatus = {
+      isConnected: false,
+      isInstalled: false,
+      isAdmin: true,
+      installUrl: "https://slack.com/oauth/install?state=abc",
+      connectUrl: null,
+      reinstallUrl: null,
+      scopeMismatch: false,
+      workspaceName: null,
+      agentOrgSlug: null,
+      environment: {
+        requiredSecrets: [],
+        requiredVars: [],
+        missingSecrets: [],
+        missingVars: [],
+      },
+    };
+    context.mocks.api(
+      zeroIntegrationsSlackContract.getStatus,
+      ({ respond }) => {
+        return respond(200, slackStatus);
+      },
+    );
+
+    setupWorksPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("slack-install-button")).toBeInTheDocument();
+      expect(context.mocks.ably.hasSubscription("slack:changed")).toBeTruthy();
+    });
+
+    slackStatus = {
+      ...slackStatus,
+      isInstalled: true,
+      connectUrl: "https://slack.com/oauth/connect?state=def",
+      workspaceName: "VM0 HQ",
+    };
+    context.mocks.ably.trigger("slack:changed");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Slack installed successfully"),
+      ).toBeInTheDocument();
+    });
+
+    slackStatus = {
+      ...slackStatus,
+      isConnected: true,
+      connectUrl: null,
+    };
+    context.mocks.ably.trigger("slack:changed");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Slack connected successfully"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Connected (VM0 HQ)")).toBeInTheDocument();
+    });
+
+    slackStatus = {
+      ...slackStatus,
+      isConnected: false,
+      connectUrl: "https://slack.com/oauth/connect?state=ghi",
+    };
+    context.mocks.ably.trigger("slack:changed");
+
+    await waitFor(() => {
+      expect(screen.getByText("Disconnected from Slack")).toBeInTheDocument();
+    });
+
+    slackStatus = {
+      ...slackStatus,
+      isInstalled: false,
+      connectUrl: null,
+      workspaceName: null,
+    };
+    context.mocks.ably.trigger("slack:changed");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Slack workspace uninstalled"),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("slack-install-button")).toBeInTheDocument();
+    });
+  });
+
   it("manages Slack disconnect, uninstall, and permission-update actions", async () => {
     const disconnectDeferred = context.mocks.deferred<void>();
     const openMock = context.mocks.browser.open();

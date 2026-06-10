@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { zeroScheduleRunContract } from "@vm0/api-contracts/contracts/zero-schedules";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -320,6 +321,28 @@ describe("zero schedule page", () => {
     await waitFor(() => {
       expect(screen.getByText(/Run started/u)).toBeInTheDocument();
       expect(screen.getByText("View activity")).toBeInTheDocument();
+      expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
+    });
+  });
+
+  it("surfaces run-now failures from the schedule list", async () => {
+    mockSchedulePageStory();
+    context.mocks.api(zeroScheduleRunContract.run, ({ respond }) => {
+      return respond(503, {
+        error: {
+          message: "Runner queue unavailable",
+          code: "PROVIDER_UNAVAILABLE",
+        },
+      });
+    });
+
+    await openScheduleList();
+
+    click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
+    click(menuItemByText("Run now"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Runner queue unavailable")).toBeInTheDocument();
       expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
     });
   });

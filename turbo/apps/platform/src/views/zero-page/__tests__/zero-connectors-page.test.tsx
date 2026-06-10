@@ -229,6 +229,15 @@ describe("connectors page", () => {
       within(expiredAxiomCard).getByText("Connection expired"),
     ).toBeInTheDocument();
     expect(within(expiredAxiomCard).getByText("Reconnect")).toBeInTheDocument();
+
+    click(within(expiredAxiomCard).getByText("Reconnect"));
+
+    const reconnectDialog = await screen.findByRole("dialog", {
+      name: "Axiom",
+    });
+    expect(
+      within(reconnectDialog).getByText("Connection expired"),
+    ).toBeInTheDocument();
   });
 
   it("lets users browse connectors by grouped categories", async () => {
@@ -361,6 +370,9 @@ describe("connectors page", () => {
 
   it("shows Google connector approval guidance", async () => {
     mockConnectors([]);
+    mockConnectorOauthStart();
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -375,10 +387,25 @@ describe("connectors page", () => {
       ).toBeInTheDocument();
       expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
     });
+
+    const gmailDialog = screen.getByRole("dialog", { name: "Gmail" });
+    click(buttonByText("Connect", gmailDialog));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/gmail/authorize",
+      );
+      expect(
+        within(gmailDialog).getByText("Connecting..."),
+      ).toBeInTheDocument();
+    });
   });
 
   it("opens OAuth scope review changes", async () => {
     mockConnectors([{ type: "github", oauthScopes: [] }]);
+    mockConnectorOauthStart();
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
     context.mocks.api(
       zeroConnectorScopeDiffContract.getScopeDiff,
       ({ respond }) => {
@@ -401,6 +428,22 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("repo")).toBeInTheDocument();
       expect(screen.getByText("project")).toBeInTheDocument();
+    });
+
+    const reviewDialog = screen.getByRole("dialog", {
+      name: "GitHub — Permissions Update",
+    });
+    click(within(reviewDialog).getByText("Reconnect"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/github/authorize",
+      );
+      expect(
+        screen.getAllByText((_, element) => {
+          return element?.textContent?.includes("Connecting") ?? false;
+        }).length,
+      ).toBeGreaterThan(0);
     });
   });
 
@@ -557,6 +600,59 @@ describe("connectors page", () => {
       ).toHaveTextContent("VM0-DEVICE");
     });
     click(screen.getByTestId("connector-oauth-device-open"));
+  });
+
+  it("starts Stripe device authorization with the default mode", async () => {
+    mockConnectors([]);
+    let capturedStartBody: unknown = null;
+    context.mocks.api(
+      zeroConnectorOauthDeviceAuthSessionContract.create,
+      ({ body, params, respond }) => {
+        capturedStartBody = body;
+        return respond(200, {
+          sessionId: "00000000-0000-4000-8000-000000000123",
+          sessionToken: "mock-stripe-device-session-token",
+          type: params.type,
+          status: "pending",
+          userCode: "STRIPE-DEVICE",
+          verificationUri: "https://oauth.test/stripe/device",
+          verificationUriComplete:
+            "https://oauth.test/stripe/device?user_code=STRIPE-DEVICE",
+          expiresIn: 300,
+          interval: 1,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.StripeConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Stripe")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Connect Stripe"));
+
+    const stripeDialog = await screen.findByRole("dialog", { name: "Stripe" });
+    expect(
+      within(stripeDialog).getByText("Sign in with Stripe"),
+    ).toBeInTheDocument();
+    expect(within(stripeDialog).getByText("Mode")).toBeInTheDocument();
+    expect(within(stripeDialog).getByText("Test")).toBeInTheDocument();
+
+    click(buttonByText("Connect Stripe", stripeDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("STRIPE-DEVICE");
+      expect(capturedStartBody).toMatchObject({
+        authMethod: "cli",
+        options: { mode: "test" },
+      });
+    });
   });
 
   it("shows a retryable error when a device-auth verification page is blocked", async () => {

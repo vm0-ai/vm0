@@ -18,6 +18,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { createMockScheduleResponse } from "../../../mocks/handlers/api-schedules.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { splitChatThreadListResponse } from "./chat-test-helpers.ts";
@@ -916,6 +917,84 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Disabled")).toBeInTheDocument();
+    });
+  });
+
+  it("shows account switching, add-account, and sign-out actions", async () => {
+    prepareDefaultAgent();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        imageUrl: "https://cdn.vm0.test/users/alex.png",
+        clientSessions: [
+          {
+            id: "test-session-id",
+            status: "active",
+            user: {
+              fullName: "Alex Rivera",
+              imageUrl: "https://cdn.vm0.test/users/alex.png",
+              primaryEmailAddress: {
+                emailAddress: "alex.rivera@example.test",
+              },
+            },
+          },
+          {
+            id: "session-jamie",
+            status: "active",
+            user: {
+              fullName: "Jamie Chen",
+              imageUrl: "https://cdn.vm0.test/users/jamie.png",
+              primaryEmailAddress: {
+                emailAddress: "jamie.chen@example.test",
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    let menu = await openAccountMenu();
+    click(within(menu).getByText("Switch account"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Jamie Chen")).toBeInTheDocument();
+      expect(screen.getByText("jamie.chen@example.test")).toBeInTheDocument();
+      expect(screen.getByText("Add account")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Add account"));
+    await waitFor(() => {
+      expect(mockedClerk.openSignIn).toHaveBeenCalledWith();
+    });
+
+    menu = await openAccountMenu();
+    click(within(menu).getByText("Switch account"));
+    click(await screen.findByText("Jamie Chen"));
+
+    await waitFor(() => {
+      expect(mockedClerk.setActive).toHaveBeenCalledWith(
+        expect.objectContaining({ session: "session-jamie" }),
+      );
+    });
+
+    menu = await openAccountMenu();
+    click(within(menu).getByText("Sign out"));
+
+    await waitFor(() => {
+      expect(mockedClerk.signOut).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "test-session-id",
+          redirectUrl: expect.stringContaining("/sign-in?redirect_url="),
+        }),
+      );
     });
   });
 });

@@ -5,6 +5,7 @@ import { command } from "ccstate";
 import type { TestContext } from "../signals/__tests__/test-helpers";
 import {
   clearMockedAuth,
+  type MockedClientSession,
   type MockedInvitation,
   type MockedMembership,
   mockOrganization,
@@ -86,6 +87,9 @@ export async function setupPage(options: {
     fullName: string;
     email?: string;
     firstName?: string;
+    imageUrl?: string;
+    createOrganizationEnabled?: boolean;
+    clientSessions?: MockedClientSession[];
   } | null;
   session?: { token: string } | null;
   org?: {

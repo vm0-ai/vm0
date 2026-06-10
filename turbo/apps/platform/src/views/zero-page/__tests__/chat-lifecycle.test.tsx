@@ -1072,6 +1072,59 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows template labels on historical user messages", async () => {
+    const threadId = "template-message-history";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Template labels",
+      chatMessages: [
+        {
+          id: "msg-template-presentation",
+          role: "user",
+          content: "Create the business review deck",
+          runId: "run-template-presentation",
+          generationTemplate: {
+            type: "presentation",
+            selection: {
+              designSystemId: "retired-design-system",
+              templateId: "template:html-ppt-quarterly-business-review",
+            },
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-template-video",
+          role: "user",
+          content: "Create a product walkthrough video",
+          runId: "run-template-video",
+          generationTemplate: {
+            type: "video",
+            selection: { stylePresetId: "template:phone-demo" },
+          },
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.VideoTemplatePicker]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Message template Quarterly business review"),
+      ).toHaveTextContent("Slides");
+      expect(
+        screen.getByLabelText("Message template Phone demo"),
+      ).toHaveTextContent("Video");
+    });
+  });
+
   it("copies a user message with legacy inline attachments from chat history", async () => {
     const clipboard = context.mocks.browser.clipboardWrite();
     const threadId = "legacy-attachment-copy";

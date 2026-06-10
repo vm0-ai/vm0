@@ -6,6 +6,7 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -131,6 +132,69 @@ describe("zero org switcher", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+  });
+
+  it("creates a new workspace from the org switcher menu", async () => {
+    context.mocks.data.org({
+      id: "org_current",
+      name: "Solo",
+      slug: "solo",
+      role: "admin",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+        createOrganizationEnabled: true,
+      },
+      org: {
+        activeOrg: {
+          id: "org_current",
+          name: "Solo",
+          slug: "solo",
+        },
+        memberships: [
+          {
+            id: "membership_current",
+            organization: {
+              id: "org_current",
+              name: "Solo",
+            },
+          },
+        ],
+      },
+    });
+
+    const orgSwitcher = await waitFor(() => {
+      const label = screen.getByText("Solo");
+      const trigger = label.closest("button");
+      if (!trigger) {
+        throw new Error("Org switcher trigger not found");
+      }
+      return trigger;
+    });
+
+    click(orgSwitcher);
+
+    await waitFor(() => {
+      expect(screen.getByText("Create workspace")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Create workspace"));
+
+    await waitFor(() => {
+      expect(mockedClerk.createOrganization).toHaveBeenCalledWith({
+        name: expect.stringMatching(/^workspace-/u),
+        slug: expect.stringMatching(/^workspace-/u),
+      });
+      expect(mockedClerk.setActive).toHaveBeenCalledWith({
+        organization: "new-org-id",
+      });
     });
   });
 });

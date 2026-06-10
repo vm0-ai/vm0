@@ -186,6 +186,201 @@ function detailedActivityEvents(): AgentEvent[] {
   ];
 }
 
+function complexGroupedActivityEvents(): AgentEvent[] {
+  return [
+    {
+      sequenceNumber: 0,
+      eventType: "assistant",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "text",
+              text: "I will inspect the release automation failure.",
+            },
+            {
+              type: "tool_use",
+              id: "tool-read-config",
+              name: "Read",
+              input: { file_path: "src/release/config.ts" },
+            },
+            {
+              type: "tool_use",
+              id: "tool-read-runner",
+              name: "Read",
+              input: { file_path: "src/release/runner.ts" },
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T16:00:01Z",
+    },
+    {
+      sequenceNumber: 1,
+      eventType: "user",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-read-config",
+              content: "export const releaseConfig = true;",
+              is_error: false,
+            },
+          ],
+        },
+        tool_use_result: { durationMs: 45, bytes: 512 },
+      },
+      createdAt: "2026-03-10T16:00:02Z",
+    },
+    {
+      sequenceNumber: 2,
+      eventType: "user",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-read-runner",
+              content:
+                "line 1\nline 2\nline 3\nline 4\nrelease runner timed out",
+              is_error: false,
+            },
+          ],
+        },
+        tool_use_result: { durationMs: 1234, bytes: 2048 },
+      },
+      createdAt: "2026-03-10T16:00:03Z",
+    },
+    {
+      sequenceNumber: 3,
+      eventType: "assistant",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-write-empty",
+              name: "Write",
+              input: {
+                file_path: "src/release/notes.md",
+                content: "Release notes placeholder",
+              },
+            },
+            {
+              type: "tool_use",
+              id: "tool-skill-fail",
+              name: "Skill",
+              input: {
+                skill: "release-auditor",
+                args: "dry-run",
+              },
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T16:00:04Z",
+    },
+    {
+      sequenceNumber: 4,
+      eventType: "user",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-write-empty",
+              content: "",
+              is_error: false,
+            },
+          ],
+        },
+        tool_use_result: { durationMs: 20 },
+      },
+      createdAt: "2026-03-10T16:00:05Z",
+    },
+    {
+      sequenceNumber: 5,
+      eventType: "user",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-skill-fail",
+              content: "release-auditor failed\nmissing deploy token",
+              is_error: true,
+            },
+          ],
+        },
+        tool_use_result: { durationMs: 2345 },
+      },
+      createdAt: "2026-03-10T16:00:06Z",
+    },
+    {
+      sequenceNumber: 6,
+      eventType: "user",
+      eventData: {
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "orphan-tool",
+              content: "orphan cleanup result",
+              is_error: false,
+            },
+          ],
+        },
+        tool_use_result: { durationMs: 77 },
+      },
+      createdAt: "2026-03-10T16:00:07Z",
+    },
+    {
+      sequenceNumber: 7,
+      eventType: "system",
+      eventData: {
+        subtype: "task_started",
+        task_id: "release-task",
+        description: "Run release validation",
+      },
+      createdAt: "2026-03-10T16:00:08Z",
+    },
+    {
+      sequenceNumber: 8,
+      eventType: "system",
+      eventData: {
+        subtype: "task_progress",
+        task_id: "release-task",
+        summary: "Still checking release validation",
+      },
+      createdAt: "2026-03-10T16:00:09Z",
+    },
+    {
+      sequenceNumber: 9,
+      eventType: "system",
+      eventData: {
+        subtype: "task_notification",
+        task_id: "release-task",
+        status: "failed",
+        summary: "Release validation failed",
+      },
+      createdAt: "2026-03-10T16:00:10Z",
+    },
+    {
+      sequenceNumber: 10,
+      eventType: "result",
+      eventData: {
+        type: "result",
+        is_error: true,
+        result: "Release automation still needs a deploy token.",
+        num_turns: 2,
+        duration_ms: 4000,
+      },
+      createdAt: "2026-03-10T16:00:11Z",
+    },
+  ];
+}
+
 function checkoutNetworkLogs(): NetworkLogEntry[] {
   return [
     {
@@ -782,6 +977,72 @@ describe("activity detail polling", () => {
       screen.getByText("[Binary data, 15B base64-encoded]"),
     ).toBeInTheDocument();
     expect(screen.getByText("truncated")).toBeInTheDocument();
+  });
+
+  it("shows collapsed repeated tools and failed task output", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000499";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Release Automation Run",
+          status: "failed",
+          prompt: "Debug release automation",
+          error: "missing deploy token",
+          startedAt: "2026-03-10T16:00:01Z",
+          completedAt: "2026-03-10T16:00:11Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: complexGroupedActivityEvents(),
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Release Automation Run" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("missing deploy token")).toBeInTheDocument();
+    expect(
+      screen.getByText("I will inspect the release automation failure."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2 files")).toBeInTheDocument();
+    expect(screen.getByText("src/release/config.ts")).toBeInTheDocument();
+    expect(
+      screen.getByText("export const releaseConfig = true;"),
+    ).toBeInTheDocument();
+    click(screen.getByText("+2 lines (2.0 KB)"));
+    expect(screen.getByText(/release runner timed out/u)).toBeInTheDocument();
+    expect(screen.getByText("Release notes placeholder")).toBeInTheDocument();
+    expect(screen.getByText("(empty output)")).toBeInTheDocument();
+    expect(screen.getAllByText("release-auditor")).not.toHaveLength(0);
+    expect(screen.getAllByText("dry-run")).not.toHaveLength(0);
+    expect(screen.getAllByText("release-auditor failed")).not.toHaveLength(0);
+    expect(screen.getByText("orphan cleanup result")).toBeInTheDocument();
+    expect(screen.getByText("Run release validation")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Still checking release validation"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Release automation still needs a deploy token."),
+    ).toBeInTheDocument();
   });
 
   it("filters network logs by type and expands non-HTTP details", async () => {

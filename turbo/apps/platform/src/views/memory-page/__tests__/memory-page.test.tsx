@@ -3,6 +3,7 @@ import {
   zeroMemoryContract,
   type MemoryDetailResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
+import { zeroMemoryDevRefreshContract } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
 import {
   zeroMemoryActivityContract,
   type MemoryActivityResponse,
@@ -221,17 +222,30 @@ describe("memory page", () => {
     context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
       return respond(200, memoryDetailResponse());
     });
+    context.mocks.api(zeroMemoryDevRefreshContract.refresh, ({ respond }) => {
+      return respond(200, { summarized: 2 });
+    });
 
     detachedSetupPage({
       context,
       path: "/memory",
-      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.MemoryDevRefresh]: true,
+      },
     });
 
     await waitFor(() => {
       expect(screen.getByText("launch preferences")).toBeInTheDocument();
     });
     expect(screen.getByText("2 memory files changed")).toBeInTheDocument();
+
+    click(screen.getAllByTitle("Force-refresh memory summaries")[0]!);
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Refreshed 2 memory summaries").length,
+      ).toBeGreaterThan(0);
+    });
 
     click(getButtonContaining("View files"));
     await waitFor(() => {

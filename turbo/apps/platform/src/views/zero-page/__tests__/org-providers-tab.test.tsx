@@ -174,8 +174,11 @@ async function openAddApiKeyModelDialog(): Promise<void> {
   });
 }
 
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((element) => {
+function buttonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((element) => {
     return element.textContent?.replace(/\s+/g, " ").trim() === text;
   });
   if (!button) {
@@ -340,6 +343,52 @@ describe("organization model providers settings", () => {
     expect(
       within(oauthRow).getByText("Claude Code (OAuth token)"),
     ).toBeInTheDocument();
+  });
+
+  it("adds a workspace Codex subscription model route", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+    await openProvidersTab();
+
+    click(buttonByText("Add model"));
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: "GPT-5.5" }));
+    click(screen.getByRole("radio", { name: /Codex subscription/u }));
+    click(buttonByText("Add model", dialog));
+
+    const codexRow = await screen.findByTestId("org-model-policy-row-gpt-5.5");
+    expect(within(codexRow).getByText("GPT-5.5")).toBeInTheDocument();
+    expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("default-model-row")).getByRole("combobox"),
+    ).toHaveTextContent("GPT-5.5");
+  });
+
+  it("reassigns the workspace default model when deleting the default route", async () => {
+    mockApiKeyModelRouteStory();
+    await openProvidersTab();
+
+    const defaultRow = screen.getByTestId("default-model-row");
+    expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
+      "DeepSeek V4 Pro",
+    );
+
+    const deepseekRow = await screen.findByTestId(
+      "org-model-policy-row-deepseek-v4-pro",
+    );
+    click(within(deepseekRow).getByLabelText("Actions for DeepSeek V4 Pro"));
+    click(menuItemByText("Delete model"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("org-model-policy-row-deepseek-v4-pro"),
+      ).not.toBeInTheDocument();
+      expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
+        "Claude Opus 4.7",
+      );
+    });
   });
 
   it("changes the workspace default model and surfaces missing provider routes", async () => {

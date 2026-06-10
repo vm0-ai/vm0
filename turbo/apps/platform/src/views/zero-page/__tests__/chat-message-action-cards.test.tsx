@@ -1,5 +1,9 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import {
+  zeroUserPermissionGrantsContract,
+  type UserPermissionGrantResponse,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -105,6 +109,84 @@ describe("chat message action cards", () => {
     await waitFor(() => {
       expect(
         within(permissionCard).getByText("Permissions updated"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("lets users deny a permission request from an assistant message", async () => {
+    const user = userEvent.setup({ delay: null });
+    const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`;
+    let grants: UserPermissionGrantResponse[] = [
+      {
+        agentId: AGENT_ID,
+        connectorRef: "slack",
+        permission: "admin.analytics:read",
+        action: "allow",
+        expiresAt: null,
+        createdAt: "2026-06-09T10:30:00Z",
+        updatedAt: "2026-06-09T10:30:00Z",
+      },
+    ];
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, grants);
+    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.upsert,
+      ({ body, respond }) => {
+        const grant: UserPermissionGrantResponse = {
+          agentId: body.agentId,
+          connectorRef: body.connectorRef,
+          permission: body.permission,
+          action: body.action,
+          expiresAt: null,
+          createdAt: grants[0]?.createdAt ?? "2026-06-09T10:30:00Z",
+          updatedAt: "2026-06-09T11:02:00Z",
+        };
+        grants = [grant];
+        return respond(200, grant);
+      },
+    );
+
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-deny`,
+      threadTitle: "Permission action",
+      chatMessages: [
+        {
+          id: "msg-user-permission-deny-request",
+          role: "user",
+          content: "Block Slack analytics access",
+          runId: "run-permission-deny",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-permission-deny-card",
+          role: "assistant",
+          content: permissionDenyUrl,
+          runId: "run-permission-deny",
+          status: "completed",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-deny`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    expect(
+      within(permissionCard).getByText("Slack permissions"),
+    ).toBeInTheDocument();
+    expect(
+      within(permissionCard).getByText("Deny admin.analytics:read"),
+    ).toBeInTheDocument();
+
+    await user.click(within(permissionCard).getByText("Confirm"));
+
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Permission denied"),
       ).toBeInTheDocument();
     });
   });
