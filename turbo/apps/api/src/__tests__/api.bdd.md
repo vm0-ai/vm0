@@ -118,6 +118,8 @@ below. This file is filled in family-by-family as work proceeds.
   updates (timezone / pins / sendMode / capture) each preserve the rest.
 - **CHAIN-FEATURE-SWITCH** ✅ — GET empty → set → merge → override → GET → clear
   (DELETE) → GET empty.
+- **CHAIN-API-KEY** ✅ — create PAT (token once) → list (prefix only) → create
+  2nd → list newest-first → delete → list excludes → delete again 404.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -427,3 +429,18 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Coverage verified (source-only): `zero-feature-switches.ts` (18/1/3) and
   `feature-switches.service.ts` (22/4/8) unchanged; source-wide covered
   statements 25039 → 25043.
+
+### Round 9 — API KEYS (CHAIN-API-KEY)
+
+- Extended `createBddApi` with `apiKeys` (`apiKeysContract`) and `apiKeyById`
+  (`apiKeysByIdContract`) clients.
+- Added `zero-api-keys.bdd.test.ts`: CHAIN-API-KEY (create returns the full
+  token once → list exposes only the prefix → second create → newest-first
+  order → delete → list excludes → delete again 404), create-body validation
+  (empty name / non-positive / above-cap expiry), and unauthenticated / no-org
+  boundaries.
+- Reduced `zero-api-keys.test.ts` to the sorted-with-`lastUsedAt` case
+  (GAP-APIKEY-TIMESTAMPS: controlled clocks + a non-null `lastUsedAt` aren't
+  expressible via the API) and deleted `zero-api-keys-delete.test.ts` whole.
+- Coverage verified (source-only): `zero-api-keys.ts` (23/2) and
+  `zero-api-keys-delete.ts` (11/2) unchanged vs the `main` baseline.
