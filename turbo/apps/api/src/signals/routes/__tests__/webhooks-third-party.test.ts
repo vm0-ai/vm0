@@ -329,6 +329,12 @@ function setupGitHubApiMocks(args: {
         return HttpResponse.json({ id: 2468 });
       },
     ),
+    http.delete(
+      "https://api.github.com/repos/:owner/:repo/issues/comments/:commentId/reactions/:reactionId",
+      () => {
+        return HttpResponse.json({});
+      },
+    ),
   );
   return { capturedComments };
 }
