@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { zeroUsageInsightContract } from "@vm0/core";
 import { describe, expect, it } from "vitest";
 
@@ -87,6 +87,26 @@ describe("/usage page", () => {
       expect(within(creditsTotals()).getByText("Email")).toBeInTheDocument();
       expect(screen.getByText("Daily Digest")).toBeInTheDocument();
       expect(screen.getByText("Roadmap Review")).toBeInTheDocument();
+    });
+
+    const chart = creditsTotals().querySelector("svg");
+    if (!(chart instanceof SVGSVGElement)) {
+      throw new Error("usage chart not found");
+    }
+    fireEvent.mouseMove(chart, { clientX: 300, clientY: 80 });
+
+    await waitFor(() => {
+      expect(within(creditsTotals()).getByText("Chat:")).toBeInTheDocument();
+      expect(within(creditsTotals()).getByText("Slack:")).toBeInTheDocument();
+      expect(within(creditsTotals()).getByText("Email:")).toBeInTheDocument();
+    });
+
+    fireEvent.mouseLeave(chart);
+
+    await waitFor(() => {
+      expect(
+        within(creditsTotals()).queryByText("Chat:"),
+      ).not.toBeInTheDocument();
     });
 
     click(tabByText("Agent"));

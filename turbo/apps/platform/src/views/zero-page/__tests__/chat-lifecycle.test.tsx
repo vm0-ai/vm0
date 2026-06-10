@@ -657,6 +657,7 @@ describe("chat lifecycle", () => {
 
   it("turns selected assistant text into an inline feedback follow-up", async () => {
     const assistantReply = "The rollout dates are unclear in this summary.";
+    context.mocks.browser.clipboardWriteText();
 
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
@@ -690,6 +691,12 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Copy"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Copied")).toBeInTheDocument();
     });
 
     click(screen.getByText("Provide feedback"));

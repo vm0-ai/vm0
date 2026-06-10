@@ -510,6 +510,55 @@ function getButtonByText(text: string): HTMLElement {
 }
 
 describe("activity detail polling", () => {
+  it("shows recovery guidance for a failed activity", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000098";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Model Setup Run",
+          status: "failed",
+          error: "No model provider configured for this workspace",
+          completedAt: "2026-03-10T14:56:03Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Model Setup Run" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(
+      screen.getByText("No model provider configured"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Configure a model provider to start running agents."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("$ zero model-provider set --help"),
+    ).toBeInTheDocument();
+  });
+
   it("renders events that arrive after an initially empty activity history", async () => {
     let eventsAvailable = false;
     let status: LogDetail["status"] = "running";

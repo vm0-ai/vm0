@@ -30,6 +30,16 @@ function renderPreferencesPage(): void {
   detachedSetupPage({ context, path: "/settings" });
 }
 
+function getButtonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.trim() === text;
+  });
+  if (!button) {
+    throw new Error(`Button not found: ${text}`);
+  }
+  return button;
+}
+
 describe("preferences page", () => {
   it("switches between preference tabs", async () => {
     context.mocks.data.userPreferences(createMockPreferences());
@@ -38,6 +48,14 @@ describe("preferences page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
+    });
+
+    const darkButton = getButtonByText("Dark");
+    click(darkButton);
+
+    await waitFor(() => {
+      expect(darkButton).toHaveAttribute("aria-pressed", "true");
+      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     });
 
     click(screen.getByText("Time Zone"));
