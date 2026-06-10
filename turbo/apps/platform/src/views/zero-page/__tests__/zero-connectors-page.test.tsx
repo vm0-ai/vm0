@@ -30,6 +30,8 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
+const HOURS_MS = 60 * 60 * 1000;
+
 function mockConnectorOauthStart(): void {
   context.mocks.api(
     zeroConnectorOauthStartContract.start,
@@ -201,7 +203,11 @@ describe("connectors page", () => {
   it("lets users search connectors and browse grouped categories", async () => {
     mockConnectors([
       { type: "github", externalUsername: "octocat" },
-      { type: "openai", authMethod: "api-token" },
+      {
+        type: "openai",
+        authMethod: "api-token",
+        tokenExpiresAt: new Date(Date.now() + 26 * HOURS_MS).toISOString(),
+      },
     ]);
 
     detachedSetupPage({ context, path: "/connectors" });
@@ -212,6 +218,9 @@ describe("connectors page", () => {
       ).toBeInTheDocument();
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
+    expect(
+      within(connectorCardByLabel("OpenAI")).getByText("Expires in 2 days"),
+    ).toBeInTheDocument();
 
     const engineeringSection = screen.getByTestId(
       "connector-category-engineering-team-execution",
