@@ -11,6 +11,7 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import {
   agentComposes,
   agentComposeVersions,
@@ -73,6 +74,20 @@ function modelProviderSecretPlaceholder(
     getModelProviderFirewall(type)?.placeholders?.[secretName];
   if (!placeholder) {
     throw new Error(`Missing model provider placeholder for ${secretName}`);
+  }
+  return placeholder;
+}
+
+function connectorFirewallPlaceholder(
+  connectorType: "aws",
+  secretName: string,
+): string {
+  const placeholder =
+    getConnectorFirewall(connectorType).placeholders?.[secretName];
+  if (!placeholder) {
+    throw new Error(
+      `Missing connector firewall placeholder for ${connectorType}.${secretName}`,
+    );
   }
   return placeholder;
 }
@@ -1596,9 +1611,18 @@ describe("POST /api/agent/runs", () => {
     expect(decryptedSecrets).not.toHaveProperty("AWS_REGION");
     expect(decryptedSecrets).not.toHaveProperty("AWS_DEFAULT_REGION");
     expect(executionContext.environment).toMatchObject({
-      AWS_ACCESS_KEY_ID: "ASIAC0FFEE5AFE10CA1C",
-      AWS_SECRET_ACCESS_KEY: "C0ffee5afe10ca1C0ffee5afe10ca1C0ffee5afe",
-      AWS_SESSION_TOKEN: "C0ffee5afe10ca1C0ffee5afe10ca1C0ffee5afe10ca1",
+      AWS_ACCESS_KEY_ID: connectorFirewallPlaceholder(
+        "aws",
+        "AWS_ACCESS_KEY_ID",
+      ),
+      AWS_SECRET_ACCESS_KEY: connectorFirewallPlaceholder(
+        "aws",
+        "AWS_SECRET_ACCESS_KEY",
+      ),
+      AWS_SESSION_TOKEN: connectorFirewallPlaceholder(
+        "aws",
+        "AWS_SESSION_TOKEN",
+      ),
       AWS_REGION: "us-west-2",
       AWS_DEFAULT_REGION: "us-west-2",
     });

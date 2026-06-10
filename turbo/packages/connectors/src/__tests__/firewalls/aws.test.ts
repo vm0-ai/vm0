@@ -8,11 +8,18 @@ import {
   isFirewallConnectorType,
 } from "../../firewalls/index";
 
+const FORBIDDEN_PLACEHOLDER_WORD_RE = /placeholder|fake|dummy|test|example/i;
+
 function matchesAwsFirewall(url: string): boolean {
   const firewall = getConnectorFirewall("aws");
   return firewall.apis.some((api) => {
     return matchFirewallBaseUrl(url, api.base) !== null;
   });
+}
+
+function expectRecognizablePlaceholder(value: string | undefined): void {
+  expect(value).toBeDefined();
+  expect(value).not.toMatch(FORBIDDEN_PLACEHOLDER_WORD_RE);
 }
 
 describe("aws firewall", () => {
@@ -61,11 +68,18 @@ describe("aws firewall", () => {
       "AWS_SECRET_ACCESS_KEY",
       "AWS_SESSION_TOKEN",
     ]);
-    expect(firewall.placeholders).toMatchObject({
-      AWS_ACCESS_KEY_ID: "ASIAC0FFEE5AFE10CA1C",
-      AWS_SECRET_ACCESS_KEY: "C0ffee5afe10ca1C0ffee5afe10ca1C0ffee5afe",
-      AWS_SESSION_TOKEN: "C0ffee5afe10ca1C0ffee5afe10ca1C0ffee5afe10ca1",
-    });
+    expect(firewall.placeholders?.AWS_ACCESS_KEY_ID).toMatch(
+      /^ASIA[A-Z0-9]{16}$/,
+    );
+    expect(firewall.placeholders?.AWS_SECRET_ACCESS_KEY).toMatch(
+      /^[A-Za-z0-9/+=]{40}$/,
+    );
+    expect(firewall.placeholders?.AWS_SESSION_TOKEN).toMatch(
+      /^[A-Za-z0-9/+=]{20,}$/,
+    );
+    expectRecognizablePlaceholder(firewall.placeholders?.AWS_ACCESS_KEY_ID);
+    expectRecognizablePlaceholder(firewall.placeholders?.AWS_SECRET_ACCESS_KEY);
+    expectRecognizablePlaceholder(firewall.placeholders?.AWS_SESSION_TOKEN);
     expect(getDefaultFirewallPolicies("aws")).toStrictEqual({
       policies: {},
       unknownPolicy: "allow",
