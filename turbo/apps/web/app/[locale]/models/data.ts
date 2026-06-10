@@ -93,6 +93,36 @@ export function isReasoningModel(m: ModelEntry): m is ReasoningModelEntry {
 
 export const MODELS: ModelEntry[] = [
   {
+    slug: "claude-fable-5",
+    modelId: "claude-fable-5",
+    name: "Claude Fable 5",
+    vendor: "Anthropic",
+    category: "reasoning",
+    multiplier: 3.3,
+    contextWindowK: 1000,
+    promptCaching: true,
+    modalities: ["Text", "Vision", "Code"],
+    releasedToVm0: "June 9, 2026",
+    pricing: {
+      inputUsd: 10,
+      outputUsd: 50,
+      cacheReadUsd: 1,
+      cacheWriteUsd: 12.5,
+    },
+    vm0Tier: "core",
+    byoKeyLabel: "Anthropic API key",
+    defaultFor: [],
+    comparisonSlugs: [
+      "Claude Opus 4.8",
+      "Claude Opus 4.7",
+      "Claude Sonnet 4.6",
+      "GPT-5.5",
+      "DeepSeek V4 Pro",
+    ],
+    alternativeSlugs: ["claude-opus-4-8", "claude-sonnet-4-6", "gpt-5-5"],
+  },
+
+  {
     slug: "claude-opus-4-8",
     modelId: "claude-opus-4-8",
     name: "Claude Opus 4.8",

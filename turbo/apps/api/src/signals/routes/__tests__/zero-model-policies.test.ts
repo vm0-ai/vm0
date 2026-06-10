@@ -438,6 +438,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
         return policy.model;
       }),
     ).toStrictEqual([
+      "claude-fable-5",
       "claude-opus-4-8",
       "claude-opus-4-6",
       "claude-sonnet-4-6",
