@@ -7,9 +7,26 @@ const PLACEHOLDER_VALUE =
 
 const ENDPOINTS = [
   "https://cloudresourcemanager.googleapis.com",
+  "https://serviceusage.googleapis.com",
+  "https://iam.googleapis.com",
+  "https://iamcredentials.googleapis.com",
+  "https://compute.googleapis.com",
+  "https://appengine.googleapis.com",
+  "https://sqladmin.googleapis.com",
   "https://bigquery.googleapis.com",
   "https://storage.googleapis.com",
   "https://run.googleapis.com",
+  "https://cloudbuild.googleapis.com",
+  "https://artifactregistry.googleapis.com",
+  "https://container.googleapis.com",
+  "https://cloudfunctions.googleapis.com",
+  "https://secretmanager.googleapis.com",
+  "https://logging.googleapis.com",
+  "https://monitoring.googleapis.com",
+  "https://cloudbilling.googleapis.com",
+  "https://pubsub.googleapis.com",
+  "https://firestore.googleapis.com",
+  "https://spanner.googleapis.com",
 ] as const;
 
 function generateTypeScript(): string {
