@@ -533,6 +533,20 @@ def _decompress_zlib_json_usage_body(
     return bytes(out), None
 
 
+def _validate_complete_zstd_frames(data: bytes) -> str | None:
+    remaining_data = data
+    while remaining_data:
+        obj = zstandard.ZstdDecompressor().decompressobj()
+        try:
+            obj.decompress(remaining_data)
+        except zstandard.ZstdError:
+            return "invalid compressed body"
+        if not obj.eof:
+            return "incomplete compressed body"
+        remaining_data = obj.unused_data
+    return None
+
+
 def _decompress_zstd_json_usage_body(data: bytes, max_output: int) -> tuple[bytes, str | None]:
     if max_output <= 0:
         return b"", None
@@ -550,19 +564,7 @@ def _decompress_zstd_json_usage_body(data: bytes, max_output: int) -> tuple[byte
 
     if extra:
         return body, None
-    if data and not body:
-        try:
-            # A fresh decompressobj exposes eof, which distinguishes a
-            # complete empty zstd frame from an incomplete prefix. The
-            # gzip/deflate and brotli branches already get equivalent
-            # completion signals through their codec-specific helpers.
-            obj = zstandard.ZstdDecompressor().decompressobj()
-            obj.decompress(data)
-        except zstandard.ZstdError:
-            return body, "incomplete compressed body"
-        if not obj.eof:
-            return body, "incomplete compressed body"
-    return body, None
+    return body, _validate_complete_zstd_frames(data)
 
 
 def decompress_json_usage_body(
