@@ -15,6 +15,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
   createBddApi,
@@ -690,6 +691,155 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
       imageSize: "1024x1024",
       seed: 123,
     });
+  });
+
+  it("queues and completes a video generation through Stripe credits, BytePlus callback, and status GET", async () => {
+    const { api, admin } = testActors();
+    await completeVisibleOnboarding(api, admin);
+    if (!admin.orgId) {
+      throw new Error("Expected video generation test user to have an org");
+    }
+
+    const webhooks = createWebhookCallbackApi(context);
+    webhooks.configureStripeWebhookSecret();
+    webhooks.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_video_credit_${randomUUID()}`,
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: `cs_bdd_video_credit_${randomUUID()}`,
+          invoice: null,
+          subscription: null,
+          customer: null,
+          metadata: {
+            purpose: "credit_purchase",
+            orgId: admin.orgId,
+            creditsAmount: "1000000",
+          },
+          payment_status: "paid",
+        },
+      },
+    });
+    const credits = await webhooks.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(credits.body).toBe("OK");
+
+    const afterCredits = await api.readBillingStatus(admin);
+    expect(afterCredits.credits).toBe(1_000_000);
+
+    mockEnv("BYTEPLUS_API_KEY", "test-byteplus-key");
+    context.mocks.ably.createTokenRequest.mockResolvedValueOnce({
+      keyName: "ably-key",
+      timestamp: 1_700_000_000,
+      capability: JSON.stringify({ [`user:${admin.userId}`]: ["subscribe"] }),
+      nonce: "nonce",
+      mac: "mac",
+    });
+    context.mocks.s3.send.mockResolvedValue({});
+    server.use(
+      http.post(
+        "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          expect(body).toMatchObject({
+            model: "dreamina-seedance-2-0-fast-260128",
+            resolution: "480p",
+            ratio: "16:9",
+            duration: 4,
+            generate_audio: false,
+          });
+          return HttpResponse.json({
+            id: `byteplus_bdd_${randomUUID()}`,
+            status: "queued",
+          });
+        },
+      ),
+      http.get("https://assets.example.test/generated-bdd-video.mp4", () => {
+        return new HttpResponse(new Uint8Array([0, 0, 0, 24]).buffer, {
+          status: 200,
+          headers: { "Content-Type": "video/mp4" },
+        });
+      }),
+    );
+
+    const queued = await api.requestVideoIoGenerate(
+      admin,
+      {
+        prompt: "animated billing usage chart",
+        duration: "4s",
+        resolution: "480p",
+        generateAudio: false,
+        seed: 456,
+      },
+      [202],
+    );
+    if (queued.status !== 202) {
+      throw new Error(
+        `Expected video generation to queue, got ${queued.status}`,
+      );
+    }
+    const generationId = apiUuid(queued.body.generationId);
+    expect(queued.body).toMatchObject({
+      type: "video",
+      status: "queued",
+    });
+
+    const running = await api.readBuiltInGeneration(admin, generationId, [200]);
+    if (running.status !== 200) {
+      throw new Error(`Expected running generation, got ${running.status}`);
+    }
+    expect(running.body).toMatchObject({
+      generationId,
+      type: "video",
+      status: "running",
+    });
+
+    const completed = await webhooks.requestBytePlusGenerationWebhook({
+      generationId,
+      token: webhooks.bytePlusGenerationWebhookToken(generationId),
+      body: {
+        id: "byteplus-bdd-completed",
+        status: "succeeded",
+        content: {
+          video: {
+            url: "https://assets.example.test/generated-bdd-video.mp4",
+            content_type: "video/mp4",
+          },
+        },
+      },
+      statuses: [200],
+    });
+    expect(completed.body).toBe("OK");
+
+    const finalGeneration = await api.readBuiltInGeneration(
+      admin,
+      generationId,
+      [200],
+    );
+    if (finalGeneration.status !== 200) {
+      throw new Error(
+        `Expected completed generation, got ${finalGeneration.status}`,
+      );
+    }
+    expect(finalGeneration.body.status).toBe("completed");
+    expect(finalGeneration.body.result).toMatchObject({
+      contentType: "video/mp4",
+      durationSeconds: 4,
+      model: "dreamina-seedance-2-0-fast-260128",
+      aspectRatio: "16:9",
+      duration: "4s",
+      resolution: "480p",
+      generateAudio: false,
+      sourceUrl: "https://assets.example.test/generated-bdd-video.mp4",
+      requestId: "byteplus-bdd-completed",
+    });
+
+    const afterCompletion = await api.readBillingStatus(admin);
+    expect(afterCompletion.credits).toBeGreaterThan(0);
+    expect(afterCompletion.credits).toBeLessThan(1_000_000);
   });
 
   it("chains media quota, generation gates, TTS, and status reads through API-visible state", async () => {
