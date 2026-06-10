@@ -3,6 +3,222 @@
   <head>
     <title>Zero</title>
     <meta charset="UTF-8" />
+    <style>
+      body {
+        margin: 0;
+      }
+
+      #root {
+        display: none;
+      }
+
+      .browser-upgrade {
+        background: #ffffff;
+        box-sizing: border-box;
+        color: #14171d;
+        display: flex;
+        font-family:
+          "Noto Sans",
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        overflow: hidden;
+        padding: 24px;
+        position: relative;
+        width: 100%;
+      }
+
+      .browser-upgrade * {
+        box-sizing: border-box;
+      }
+
+      .browser-upgrade::before {
+        background-image: radial-gradient(
+          ellipse 120% 80% at 50% -20%,
+          rgba(248, 249, 251, 0.9),
+          transparent 50%
+        );
+        background-size: 100% 100%;
+        content: "";
+        inset: 0;
+        position: absolute;
+        z-index: 0;
+      }
+
+      [data-browser-supported="true"] #root {
+        display: block;
+      }
+
+      [data-browser-supported="true"] .browser-upgrade {
+        display: none;
+      }
+
+      .browser-upgrade__center {
+        position: relative;
+        width: 100%;
+        z-index: 1;
+      }
+
+      .browser-upgrade__panel {
+        background: #ffffff;
+        border: 0.7px solid #dce1e8;
+        border-radius: 16px;
+        box-shadow:
+          0 2px 12px rgba(113, 120, 133, 0.04),
+          0 0 0 0.5px rgba(113, 120, 133, 0.02);
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        align-items: center;
+        margin: 0 auto;
+        max-width: 384px;
+        padding: 32px;
+        text-align: center;
+      }
+
+      .browser-upgrade__icon {
+        align-items: center;
+        display: flex;
+        height: 40px;
+        justify-content: center;
+        width: 40px;
+      }
+
+      .browser-upgrade__icon img {
+        display: block;
+        height: 40px;
+        width: 40px;
+      }
+
+      .browser-upgrade__copy {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .browser-upgrade h1 {
+        color: #14171d;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: 0;
+        line-height: 24px;
+        margin: 0;
+      }
+
+      .browser-upgrade p {
+        color: #5d6572;
+        font-size: 14px;
+        line-height: 22px;
+        margin: 0;
+      }
+
+      .browser-upgrade__actions {
+        width: 100%;
+      }
+
+      .browser-upgrade a {
+        background: #ed4e01;
+        border: 1px solid #ed4e01;
+        border-radius: 8px;
+        box-sizing: border-box;
+        color: #ffffff;
+        display: inline-block;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 20px;
+        min-height: 40px;
+        padding: 9px 14px;
+        text-align: center;
+        text-decoration: none;
+        width: 100%;
+      }
+
+      .browser-upgrade a:hover {
+        background: #d94600;
+        border-color: #d94600;
+      }
+
+      @media (max-width: 520px) {
+        .browser-upgrade__panel {
+          padding: 24px 20px;
+        }
+      }
+    </style>
+    <script>
+      (function () {
+        var ua = navigator.userAgent || "";
+        var supported = true;
+        var upgradeTarget = {
+          actionLabel: "Update browser",
+          actionUrl: "https://www.google.com/chrome/",
+          description:
+            "Zero does not support your current browser version. Update your browser to continue.",
+          title: "Update your browser to continue",
+        };
+        var iosPattern = /\b(?:iPhone|iPad|iPod)\b.*\bOS (\d+)(?:_(\d+))?/;
+        var iosMatch = iosPattern.exec(ua);
+        var chromeMatch = /\b(?:Chrome|CriOS|HeadlessChrome)\/(\d+)/.exec(ua);
+
+        if (iosMatch) {
+          upgradeTarget = {
+            actionLabel: "Update iOS",
+            actionUrl: "https://support.apple.com/HT204204",
+            description:
+              "Zero does not support your current browser version. Update iOS to continue.",
+            title: "Update iOS to continue",
+          };
+          var iosMajor = parseInt(iosMatch[1], 10);
+          var iosMinor = iosMatch[2] ? parseInt(iosMatch[2], 10) : 0;
+          if (!isNaN(iosMajor) && !isNaN(iosMinor)) {
+            supported = iosMajor > 16 || (iosMajor === 16 && iosMinor >= 4);
+          }
+        } else if (chromeMatch && !/\b(?:Edg|OPR|SamsungBrowser)\//.test(ua)) {
+          upgradeTarget = {
+            actionLabel: "Update Chrome",
+            actionUrl: "https://www.google.com/chrome/",
+            description:
+              "Zero does not support your current browser version. Update Chrome to continue.",
+            title: "Update Chrome to continue",
+          };
+          var chromeMajor = parseInt(chromeMatch[1], 10);
+          if (!isNaN(chromeMajor)) {
+            supported = chromeMajor >= 111;
+          }
+        } else {
+          var safariMatch = /\bVersion\/(\d+)(?:\.(\d+))?.*\bSafari\//.exec(ua);
+          if (
+            safariMatch &&
+            !/\b(?:Chrome|CriOS|Chromium|Edg|OPR|FxiOS)\//.test(ua)
+          ) {
+            upgradeTarget = {
+              actionLabel: "Update Safari",
+              actionUrl: "https://support.apple.com/safari",
+              description:
+                "Zero does not support your current browser version. Update Safari to continue.",
+              title: "Update Safari to continue",
+            };
+            var safariMajor = parseInt(safariMatch[1], 10);
+            var safariMinor = safariMatch[2] ? parseInt(safariMatch[2], 10) : 0;
+            if (!isNaN(safariMajor) && !isNaN(safariMinor)) {
+              supported =
+                safariMajor > 16 || (safariMajor === 16 && safariMinor >= 4);
+            }
+          }
+        }
+
+        window.__vm0BrowserUpgrade = upgradeTarget;
+        window.__vm0BrowserSupported = supported;
+        document.documentElement.setAttribute(
+          "data-browser-supported",
+          supported ? "true" : "false",
+        );
+      })();
+    </script>
     <script>
       (function () {
         if ("%VITE_VERCEL_ENV%" !== "production") return;
@@ -127,7 +343,11 @@
         if (t === "dark") document.documentElement.classList.add("dark");
       })();
     </script>
-    <script type="module" src="/src/main.ts" defer></script>
+    <script type="module">
+      if (window.__vm0BrowserSupported === true) {
+        import("/src/main.ts");
+      }
+    </script>
     <script>
       function __initPlausible() {
         var url = "%VITE_PLAUSIBLE_SCRIPT_URL%";
@@ -165,6 +385,49 @@
     </script>
   </head>
   <body>
+    <div class="browser-upgrade" role="status" aria-live="polite">
+      <div class="browser-upgrade__center">
+        <div class="browser-upgrade__panel">
+          <div class="browser-upgrade__icon" aria-hidden="true">
+            <img src="/icon.svg" alt="" />
+          </div>
+          <div class="browser-upgrade__copy">
+            <h1 id="browser-upgrade-title">Update your browser to continue</h1>
+            <p id="browser-upgrade-description">
+              Zero does not support your current browser version. Update your
+              browser to continue.
+            </p>
+          </div>
+          <div class="browser-upgrade__actions">
+            <a
+              id="browser-upgrade-action"
+              href="https://www.google.com/chrome/"
+            >
+              Update browser
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var target = window.__vm0BrowserUpgrade;
+        if (!target) return;
+
+        var title = document.getElementById("browser-upgrade-title");
+        var description = document.getElementById(
+          "browser-upgrade-description",
+        );
+        var action = document.getElementById("browser-upgrade-action");
+
+        if (title) title.textContent = target.title;
+        if (description) description.textContent = target.description;
+        if (action) {
+          action.textContent = target.actionLabel;
+          action.href = target.actionUrl;
+        }
+      })();
+    </script>
     <div id="root">
       <style>
         body {

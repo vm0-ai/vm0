@@ -1,8 +1,7 @@
 use super::super::super::*;
 use super::super::support::{
-    context_with_session, context_with_workspace_image_cache_enabled,
-    mock_run_config_with_overrides, push_job, seed_idle_pool, shutdown, test_profiles,
-    wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
+    context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool, shutdown,
+    test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
     wait_workspace_cache_sessions,
 };
 use super::support::assert_no_completion_for_run;
@@ -112,7 +111,7 @@ async fn assert_workspace_cache_after_failed_park(
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    let context = context_with_workspace_image_cache_enabled(run_id, session_id);
+    let context = context_with_session(run_id, session_id);
     push_job(&env, run_id, "vm0/default", Some(context));
 
     wait_gate
@@ -212,7 +211,7 @@ async fn assert_workspace_cache_after_late_cancellation(
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    let context = context_with_workspace_image_cache_enabled(run_id, session_id);
+    let context = context_with_session(run_id, session_id);
     push_job(&env, run_id, "vm0/default", Some(context));
     let cancel_handle = wait_cancel_handle(&cancel_tokens, run_id, Duration::from_secs(5)).await;
 
