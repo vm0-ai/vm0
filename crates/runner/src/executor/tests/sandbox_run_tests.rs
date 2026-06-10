@@ -1393,6 +1393,62 @@ async fn execute_job_reuse_succeeds() {
 }
 
 #[tokio::test]
+async fn execute_job_reuse_uses_workspace_cache_when_configured() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = SessionWorkspaceCache::new(runner_paths);
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache.clone());
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    let session_id = "sess-cache-reuse-default";
+    let factory = MockSandboxFactory::new();
+    let sandbox = factory
+        .create(sandbox::SandboxConfig {
+            id: SandboxId::new_v4(),
+            resources: sandbox::ResourceLimits {
+                cpu_count: params.vcpu,
+                memory_mb: params.memory_mb,
+            },
+            device_rate_limits: params.device_rate_limits.clone(),
+            workspace_drive: None,
+        })
+        .await
+        .expect("create sandbox");
+    let source_ip = sandbox.source_ip().to_owned();
+    let (idle_sandbox, _lease) = make_reusable_idle_sandbox(sandbox, source_ip, session_id).await;
+
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        session_id: session_id.into(),
+        session_history: r#"{"type":"init"}"#.into(),
+    });
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (reuse_outcome, _telemetry) =
+        execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
+
+    assert_eq!(reuse_outcome.exit_code(), 0);
+    assert!(reuse_outcome.workspace_image.is_some());
+    assert!(reuse_outcome.workspace_promotable);
+
+    let checkout = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            run_id: RunId::new_v4(),
+            sandbox_id: SandboxId::new_v4(),
+            profile_name: &params.profile_name,
+            session_id: Some(session_id),
+            working_dir: CANONICAL_WORKING_DIR,
+            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(checkout.result(), WorkspaceCacheCheckoutResult::LockBusy);
+}
+
+#[tokio::test]
 async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache_entry() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
