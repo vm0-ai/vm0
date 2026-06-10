@@ -649,7 +649,6 @@ function mockStripeWebhookEnv(): void {
 }
 
 function mockGoogleAdsOfflineConversionEnv(): void {
-  mockOptionalEnv("GOOGLE_ADS_OFFLINE_CONVERSIONS_ENABLED", "true");
   mockOptionalEnv("GOOGLE_ADS_OFFLINE_CUSTOMER_ID", "100-130-2527");
   mockOptionalEnv("GOOGLE_ADS_OFFLINE_DEVELOPER_TOKEN", "developer-token");
   mockOptionalEnv("GOOGLE_ADS_OFFLINE_CLIENT_ID", "oauth-client-id");

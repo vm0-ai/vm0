@@ -60,12 +60,6 @@ function firstConfiguredEnv(...names: readonly string[]): string | null {
   return null;
 }
 
-function googleAdsOfflineConversionsEnabled(): boolean {
-  return (
-    firstConfiguredEnv("GOOGLE_ADS_OFFLINE_CONVERSIONS_ENABLED") === "true"
-  );
-}
-
 function normalizeGoogleAdsCustomerId(value: string): string {
   return value.replaceAll("-", "").trim();
 }
@@ -82,10 +76,6 @@ function conversionActionForKind(
 function googleAdsOfflineConversionConfig(
   kind: GoogleAdsOfflineConversionKind,
 ): GoogleAdsOfflineConversionConfig | null {
-  if (!googleAdsOfflineConversionsEnabled()) {
-    return null;
-  }
-
   const customerId = firstConfiguredEnv("GOOGLE_ADS_OFFLINE_CUSTOMER_ID");
   const developerToken = firstConfiguredEnv(
     "GOOGLE_ADS_OFFLINE_DEVELOPER_TOKEN",

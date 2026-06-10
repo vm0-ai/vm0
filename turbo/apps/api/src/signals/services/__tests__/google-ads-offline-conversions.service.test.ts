@@ -12,12 +12,7 @@ const GOOGLE_ADS_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_ADS_UPLOAD_URL =
   "https://googleads.googleapis.com/v24/customers/1001302527:uploadClickConversions";
 
-function configureGoogleAdsOfflineConversionEnv(args?: {
-  readonly enabled?: boolean;
-}): void {
-  if (args?.enabled !== false) {
-    mockOptionalEnv("GOOGLE_ADS_OFFLINE_CONVERSIONS_ENABLED", "true");
-  }
+function configureGoogleAdsOfflineConversionEnv(): void {
   mockOptionalEnv("GOOGLE_ADS_OFFLINE_CUSTOMER_ID", "100-130-2527");
   mockOptionalEnv("GOOGLE_ADS_OFFLINE_LOGIN_CUSTOMER_ID", "999-888-7777");
   mockOptionalEnv("GOOGLE_ADS_OFFLINE_DEVELOPER_TOKEN", "developer-token");
@@ -44,34 +39,6 @@ describe("Google Ads offline conversions", () => {
     expect(
       formatGoogleAdsConversionDateTime(new Date("2026-06-10T12:34:56.789Z")),
     ).toBe("2026-06-10 12:34:56+00:00");
-  });
-
-  it("does not call Google Ads unless legacy upload is explicitly enabled", async () => {
-    configureGoogleAdsOfflineConversionEnv({ enabled: false });
-    let tokenCalls = 0;
-    let uploadCalls = 0;
-
-    server.use(
-      http.post(GOOGLE_ADS_TOKEN_URL, () => {
-        tokenCalls += 1;
-        return HttpResponse.json({ access_token: "access-token" });
-      }),
-      http.post(GOOGLE_ADS_UPLOAD_URL, () => {
-        uploadCalls += 1;
-        return HttpResponse.json({ results: [], jobId: "123" });
-      }),
-    );
-
-    await uploadGoogleAdsOfflineConversion({
-      kind: "free_trial",
-      tier: "pro",
-      transactionId: "cs_test_disabled",
-      conversionTime: new Date("2026-06-10T12:34:56.000Z"),
-      metadata: { gclid: "test-gclid" },
-    });
-
-    expect(tokenCalls).toBe(0);
-    expect(uploadCalls).toBe(0);
   });
 
   it("uploads free trial conversions with checkout session order id", async () => {
@@ -180,7 +147,6 @@ describe("Google Ads offline conversions", () => {
   });
 
   it("uses the shared Google Ads login customer fallback", async () => {
-    mockOptionalEnv("GOOGLE_ADS_OFFLINE_CONVERSIONS_ENABLED", "true");
     mockOptionalEnv("GOOGLE_ADS_OFFLINE_CUSTOMER_ID", "1001302527");
     mockOptionalEnv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "123-456-7890");
     mockOptionalEnv("GOOGLE_ADS_OFFLINE_DEVELOPER_TOKEN", "developer-token");
