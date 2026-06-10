@@ -129,9 +129,9 @@ describe("schedule list view - time and timezone (SCHED-D-083)", () => {
         id: "f0000001-0000-4000-a000-000000000001",
         displayName: "Zero",
         name: "morning-briefing",
-        cronExpression: "0 9 * * 1-5",
+        cronExpression: "0 1 * * 1-5",
         prompt: "Summarize yesterday's threads",
-        timezone: "America/New_York",
+        timezone: "Asia/Shanghai",
       }),
     ]);
     detachedSetupPage({ context, path: "/schedules?tab=list" });
@@ -142,7 +142,7 @@ describe("schedule list view - time and timezone (SCHED-D-083)", () => {
       ).toBeInTheDocument();
     });
     // Timezone rendered with underscores replaced by spaces
-    expect(screen.getAllByText(/America\/New York/)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/Asia\/Shanghai/)[0]).toBeInTheDocument();
   });
 });
 
