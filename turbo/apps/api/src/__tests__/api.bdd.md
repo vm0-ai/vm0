@@ -1575,3 +1575,74 @@ and `zero-billing-invoices.test.ts`.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm -F api exec vitest run` all clean.
+
+### Round 37 — Mixed-family batch (push, slack, webhooks, model-providers, connectors, telegram upload)
+
+Migrates 6 legacy route tests into 11 BDD `it()`s:
+
+- `zero-push-subscriptions.test.ts` (5→2): auth + validation
+  chain (401 unauth → 400 invalid body), 201 register +
+  upsert + stale cleanup chain (201 first register → 201
+  upsert on same endpoint → 201 register wipes stale
+  subscriptions older than 7 days).
+- `webhooks-built-in-generations.test.ts` (4→2): auth +
+  failure chain (401 bad token → 200 ignored inactive
+  job → 200 ERROR marks job failed with failure log →
+  200 byteplus InvalidParameter marks job failed with
+  BYTEPLUS_INVALID_PARAMETER), 200 ignored chain (200
+  byteplus succeeded on inactive job is ignored).
+- `zero-integrations-telegram-upload-init.test.ts` (3→2):
+  401 unauth, 200 success chain (presigned URL + S3
+  public endpoint → 200 large payload (50MB+1) passes
+  without rejection).
+- `zero-slack-channels.test.ts` (6→3): auth boundary
+  (401 unauth → 401 no-org → 404 no installation), 200
+  success chain (member-only filter + alphabetical sort
+  → pagination across 2 pages), 200 empty (no channels
+  with bot membership).
+- `zero-me-model-providers-list.test.ts` (5→3): auth
+  boundary (401 unauth → 401 no-org), 200 empty (no
+  personal providers), 200 scoped list (alice sees only
+  her own claude-code-oauth-token → bob sees only his own
+  in the same org).
+- `zero-connectors-by-type-get.test.ts` (6→3): auth
+  boundary (401 unauth → 401 no-org → 404 no connector),
+  200 success + 404 legacy chain (200 returns the
+  connector with the requested type → 404 for legacy
+  user-owned secret without a connector row), 200 sandbox
+  token chain (sandbox JWT with `connector:read` is
+  accepted).
+
+Service-Level Exceptions noted:
+
+- `webhooks-built-in-generations.bdd.test.ts` uses
+  `createApp` + `app.request` directly (not the ts-rest
+  client) because the `c.type<string>()` body shape is not
+  consumable by the ts-rest test client — same pattern as
+  every other webhook BDD test in the suite. The HMAC
+  webhook token is computed inline from
+  `SECRETS_ENCRYPTION_KEY` because the production
+  `sign...` helper is not exported.
+- `zero-push-subscriptions.bdd.test.ts` uses direct DB
+  reads against `push_subscriptions` since the route only
+  exposes POST (no GET/list).
+- `zero-connectors-by-type-get.bdd.test.ts` seeds
+  connector rows via `writeDb$` because no public route
+  creates a connector.
+- `zero-me-model-providers-list.bdd.test.ts` seeds
+  model providers + secrets via `writeDb$` for the same
+  reason.
+- This round deletes
+  `webhooks-built-in-generations.test.ts`,
+  `zero-integrations-telegram-upload-init.test.ts`,
+  `zero-push-subscriptions.test.ts`,
+  `zero-slack-channels.test.ts`,
+  `zero-me-model-providers-list.test.ts`,
+  `zero-connectors-by-type-get.test.ts`.
+
+Net test count: 29 legacy `it()`s → 11 BDD `it()`s (62%
+reduction). No per-file coverage regression for the
+covered route files.
+
+Quality gates: `pnpm -F api exec vitest run` (253 files /
+3225 tests) all clean.

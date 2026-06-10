@@ -7,14 +7,21 @@ import { http, HttpResponse } from "msw";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import {
-  type SlackInstallationFixture,
   deleteSlackInstallation$,
   seedSlackInstallation$,
+  type SlackInstallationFixture,
 } from "./helpers/zero-slack-channels";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+
+// BDD migration of the legacy `zero-slack-channels.test.ts`.
+// The 6 legacy `it()`s collapse into 3 BDD `it()`s: (1) auth
+// boundary chain (401 unauth → 401 no-org → 404 no
+// installation), (2) 200 success chain (member-only filter +
+// alphabetical sort + pagination across 2 pages), (3) 200
+// empty chain (no channels with bot membership).
 
 const context = testContext();
 const store = createStore();
@@ -22,67 +29,64 @@ const mocks = createZeroRouteMocks(context);
 
 const SLACK_LIST_URL = "https://slack.com/api/conversations.list";
 
-describe("GET /api/zero/slack/channels", () => {
-  const track = createFixtureTracker<SlackInstallationFixture>((fixture) => {
-    return store.set(deleteSlackInstallation$, fixture, context.signal);
-  });
+function authHeaders(): { readonly authorization: string } {
+  return { authorization: "Bearer clerk-session" };
+}
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroSlackChannelsContract);
+function client() {
+  return setupApp({ context })(zeroSlackChannelsContract);
+}
 
-    const response = await accept(client.list({ headers: {} }), [401]);
+const track = createFixtureTracker<SlackInstallationFixture>((fixture) => {
+  return store.set(deleteSlackInstallation$, fixture, context.signal);
+});
 
-    expect(response.body).toStrictEqual({
+describe("BDD GET /api/zero/slack/channels — auth boundary", () => {
+  it("gwt-wt-wt: 401 unauth → 401 no-org → 404 no installation", async () => {
+    const c = client();
+
+    // When + Then: 401 with no auth header.
+    const noAuth = await accept(c.list({ headers: {} }), [401]);
+    expect(noAuth.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("returns 401 when the authenticated session has no organization", async () => {
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, null);
+    // Given: an authenticated session with no org.
+    mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
+    // When + Then: still 401.
+    const noOrg = await accept(c.list({ headers: authHeaders() }), [401]);
+    expect(noOrg.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("returns 404 when no Slack installation exists for the org", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
+    // Given: an authenticated session with an org but no
+    // Slack installation.
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    // When + Then: 404.
+    const noInstallation = await accept(
+      c.list({ headers: authHeaders() }),
       [404],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(noInstallation.body).toStrictEqual({
       error: {
         message: "No Slack installation found for this org",
         code: "NOT_FOUND",
       },
     });
   });
+});
 
-  it("returns channels where the bot is a member", async () => {
+describe("BDD GET /api/zero/slack/channels — 200 success chain", () => {
+  it("gwt-wt-wt: 200 member-only filter + alphabetical sort → 200 pagination across 2 pages", async () => {
+    // Given: a Slack installation + a stubbed Slack API
+    // returning 4 channels (3 member, 1 not-joined) on a
+    // single page.
     const fixture = await track(
       store.set(seedSlackInstallation$, {}, context.signal),
     );
     mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId);
-
     server.use(
       http.get(SLACK_LIST_URL, () => {
         return HttpResponse.json({
@@ -98,15 +102,12 @@ describe("GET /api/zero/slack/channels", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
+    // When + Then: 200 with the 3 member channels sorted
+    // alphabetically (alpha, general, random).
     const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+      client().list({ headers: authHeaders() }),
       [200],
     );
-
     expect(response.body).toStrictEqual({
       channels: [
         { id: "C004", name: "alpha" },
@@ -114,14 +115,14 @@ describe("GET /api/zero/slack/channels", () => {
         { id: "C002", name: "random" },
       ],
     });
-  });
 
-  it("handles pagination across multiple pages", async () => {
-    const fixture = await track(
+    // Given: a fresh installation + a paginated Slack API
+    // that returns 1 channel + a cursor on page 1, then
+    // 1 channel + an empty cursor on page 2.
+    const fixture2 = await track(
       store.set(seedSlackInstallation$, {}, context.signal),
     );
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId);
-
+    mocks.clerk.session(`user_${randomUUID()}`, fixture2.orgId);
     let callCount = 0;
     server.use(
       http.get(SLACK_LIST_URL, ({ request }) => {
@@ -142,16 +143,12 @@ describe("GET /api/zero/slack/channels", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    // When + Then: 200 with channels from both pages.
+    const paginated = await accept(
+      client().list({ headers: authHeaders() }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(paginated.body).toStrictEqual({
       channels: [
         { id: "C001", name: "page-one" },
         { id: "C002", name: "page-two" },
@@ -159,13 +156,16 @@ describe("GET /api/zero/slack/channels", () => {
     });
     expect(callCount).toBe(2);
   });
+});
 
-  it("returns an empty array when no channels have bot membership", async () => {
+describe("BDD GET /api/zero/slack/channels — 200 empty", () => {
+  it("gwt-wt-wt: 200 empty array when no channels have bot membership", async () => {
+    // Given: a Slack installation + a stubbed Slack API
+    // returning only non-member channels.
     const fixture = await track(
       store.set(seedSlackInstallation$, {}, context.signal),
     );
     mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId);
-
     server.use(
       http.get(SLACK_LIST_URL, () => {
         return HttpResponse.json({
@@ -176,15 +176,11 @@ describe("GET /api/zero/slack/channels", () => {
       }),
     );
 
-    const client = setupApp({ context })(zeroSlackChannelsContract);
-
-    const response = await accept(
-      client.list({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    // When + Then: 200 with an empty list.
+    const empty = await accept(
+      client().list({ headers: authHeaders() }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({ channels: [] });
+    expect(empty.body).toStrictEqual({ channels: [] });
   });
 });
