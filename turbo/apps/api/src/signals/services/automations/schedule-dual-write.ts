@@ -2,10 +2,23 @@ import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import type { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { eq } from "drizzle-orm";
 
+import { logger } from "../../../lib/log";
 import type { Db } from "../../external/db";
+import { tapError } from "../../utils";
+
+const log = logger("api:automations:schedule-dual-write");
 
 /** Interpreter key persisted for schedule-mirrored automations. */
 const TIME_INTERPRETER_KIND = "time";
+
+/**
+ * Postgres unique-constraint violation (SQLSTATE 23505). The known collision:
+ * `idx_automations_agent_name_org_user` when a schedule shares its name with a
+ * natively-created (e.g. webhook) automation on the same agent.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "23505";
+}
 
 type ScheduleRow = typeof zeroAgentSchedules.$inferSelect;
 
@@ -95,7 +108,7 @@ function triggerValuesFromSchedule(
  * but NEVER creates a run (the live `executeDueSchedules$` poller remains the
  * only schedule executor; the trigger poller is dormant).
  */
-export async function syncScheduleToAutomation(
+async function syncScheduleToAutomation(
   db: Db,
   schedule: ScheduleRow,
 ): Promise<void> {
@@ -134,16 +147,57 @@ export async function syncScheduleToAutomation(
 }
 
 /**
+ * Best-effort `syncScheduleToAutomation`: the mirror is a transition aid, so a
+ * mirror-write failure must never fail the user's schedule operation — the
+ * primary `zero_agent_schedules` write has already committed by the time this
+ * runs. Failures are logged (with a `uniqueConflict` flag for the known
+ * agent+name+org+user collision with natively-created automations) and
+ * swallowed; aborts still propagate.
+ */
+export async function syncScheduleToAutomationSafely(
+  db: Db,
+  schedule: ScheduleRow,
+): Promise<void> {
+  await tapError(syncScheduleToAutomation(db, schedule), (error) => {
+    log.error("Schedule mirror sync failed; schedule operation unaffected", {
+      scheduleId: schedule.id,
+      agentId: schedule.agentId,
+      scheduleName: schedule.name,
+      uniqueConflict: isUniqueViolation(error),
+      error,
+    });
+  });
+}
+
+/**
  * Remove the events-first mirror of a schedule: delete the `automations` row
  * keyed on `sourceScheduleId` (its time trigger row is removed by the FK
  * cascade). Idempotent — a no-op when no mirror exists. Counterpart to
  * `syncScheduleToAutomation` for the schedule-delete path.
  */
-export async function deleteScheduleAutomation(
+async function deleteScheduleAutomation(
   db: Db,
   scheduleId: string,
 ): Promise<void> {
   await db
     .delete(automations)
     .where(eq(automations.sourceScheduleId, scheduleId));
+}
+
+/**
+ * Best-effort `deleteScheduleAutomation`: same contract as
+ * `syncScheduleToAutomationSafely` — a mirror-delete failure must never fail
+ * the user's schedule delete. Failures are logged and swallowed; aborts still
+ * propagate.
+ */
+export async function deleteScheduleAutomationSafely(
+  db: Db,
+  scheduleId: string,
+): Promise<void> {
+  await tapError(deleteScheduleAutomation(db, scheduleId), (error) => {
+    log.error("Schedule mirror delete failed; schedule delete unaffected", {
+      scheduleId,
+      error,
+    });
+  });
 }

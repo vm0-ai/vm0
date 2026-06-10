@@ -1,5 +1,6 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -330,6 +331,57 @@ describe("schedule dual-write to events-first tables", () => {
     }
 
     await expect(runCountForOrg(fixture.orgId)).resolves.toBe(0);
+  });
+
+  it("deploys the schedule even when the mirror write hits a name collision", async () => {
+    // A natively-created (webhook) automation already occupies the
+    // (agent, name, org, user) slot the mirror insert will want — the
+    // idx_automations_agent_name_org_user unique index makes the mirror
+    // insert throw. Best-effort dual-write must swallow it.
+    const db = store.set(writeDb$);
+    const [thread] = await db
+      .insert(chatThreads)
+      .values({ userId: fixture.userId, agentComposeId: fixture.composeId })
+      .returning({ id: chatThreads.id });
+    expect(thread).toBeDefined();
+    if (!thread) {
+      return;
+    }
+    await db.insert(automations).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "collide",
+      instruction: "Native webhook automation",
+      agentId: fixture.composeId,
+      chatThreadId: thread.id,
+      interpreterKind: "webhook",
+    });
+
+    const result = await store.set(
+      deploySchedule$,
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        body: {
+          agentId: fixture.composeId,
+          name: "collide",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Collide with native automation",
+          enabled: true,
+        },
+      },
+      context.signal,
+    );
+
+    // The schedule deploy itself succeeds; only the mirror is missing.
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") {
+      return;
+    }
+    const scheduleId = result.response.schedule.id;
+    await expect(loadSchedule(scheduleId)).resolves.toBeDefined();
+    await expect(readMirror(scheduleId)).resolves.toBeNull();
   });
 
   it("is a no-op delete when the schedule has no mirror", async () => {

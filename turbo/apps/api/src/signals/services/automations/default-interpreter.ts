@@ -4,6 +4,10 @@ import type {
   ScheduleCronCallbackPayload,
   ScheduleLoopCallbackPayload,
 } from "@vm0/api-contracts/contracts/internal-callbacks-schedule";
+import type {
+  TriggerCronCallbackPayload,
+  TriggerLoopCallbackPayload,
+} from "@vm0/api-contracts/contracts/internal-callbacks-trigger";
 import type { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 
 import { internalApiBaseUrl } from "../../../lib/internal-api-url";
@@ -103,8 +107,9 @@ export interface WebhookTriggerEvent {
  * U4). Like the schedule time fire it is instruction-only — no inbound payload —
  * but it tags the run with the originating automation + the firing
  * `automation_triggers` row (run provenance, U3) instead of a schedule id, and
- * attaches no reschedule callback because the poller advances `next_run_at`
- * inline. `triggerId` is the firing trigger row.
+ * attaches the trigger-keyed reschedule callback (the claim cleared
+ * `next_run_at`; the callback advances it). `triggerId` is the firing trigger
+ * row.
  */
 interface AutomationTimeTriggerEvent {
   readonly kind: "automation-time";
@@ -315,6 +320,49 @@ function buildScheduleCallbacks(automation: Automation): RunCallback[] {
 }
 
 /**
+ * Trigger-table time-fire callbacks: the recurrence-specific reschedule
+ * callback keyed on the firing `automation_triggers` row (next_run_at /
+ * consecutive-failure bookkeeping in the trigger callback route) plus the chat
+ * callback — the events-first counterpart of `buildScheduleCallbacks`. Only the
+ * chat callback writes the run summary (D9), so callback dispatch order is safe.
+ */
+function buildTriggerCallbacks(
+  automation: Automation,
+  triggerId: string,
+): RunCallback[] {
+  const callbacks: RunCallback[] = [];
+
+  if (automation.triggerType === "loop") {
+    const payload: TriggerLoopCallbackPayload = { triggerId };
+    callbacks.push({
+      url: `${internalApiBaseUrl()}/api/internal/callbacks/trigger/loop`,
+      secret: generateCallbackSecret(),
+      payload,
+    });
+  } else if (
+    automation.triggerType === "cron" ||
+    automation.triggerType === "once"
+  ) {
+    const payload: TriggerCronCallbackPayload = {
+      triggerId,
+      ...(automation.cronExpression && {
+        cronExpression: automation.cronExpression,
+      }),
+      timezone: automation.timezone,
+    };
+    callbacks.push({
+      url: `${internalApiBaseUrl()}/api/internal/callbacks/trigger/cron`,
+      secret: generateCallbackSecret(),
+      payload,
+    });
+  }
+
+  callbacks.push(buildChatCallback(automation));
+
+  return callbacks;
+}
+
+/**
  * The single default Automation interpreter. It builds the agent-run input from
  * `(automation, triggerEvent)`:
  *
@@ -353,14 +401,14 @@ export class DefaultInterpreter {
     if (triggerEvent.kind === "automation-time") {
       // Automation-table time fire (dormant trigger poller): same instruction-only
       // schedule context as the schedule fire, but tagged with the automation +
-      // firing trigger (provenance) and carrying no reschedule callback — the
-      // poller advances next_run_at itself.
+      // firing trigger (provenance) and carrying the trigger-keyed reschedule
+      // callback — the claim cleared next_run_at, the callback advances it.
       return Promise.resolve({
         prompt: automation.prompt,
         agentId: automation.agentId,
         chatThreadId: automation.chatThreadId,
         appendSystemPrompt: buildScheduleAppendSystemPrompt(automation),
-        callbacks: [buildChatCallback(automation)],
+        callbacks: buildTriggerCallbacks(automation, triggerEvent.triggerId),
         zeroRunMetadata: {
           automationId: automation.id,
           triggerId: triggerEvent.triggerId,

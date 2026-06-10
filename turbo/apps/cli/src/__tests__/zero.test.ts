@@ -37,6 +37,7 @@ describe("zero CLI program", () => {
       "computer-use",
       "generate",
       "web",
+      "video",
       "host",
       "maps",
       "banking",
@@ -63,7 +64,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 27 commands", () => {
-    expect(commandNames).toHaveLength(27);
+  it("should have exactly 28 commands", () => {
+    expect(commandNames).toHaveLength(28);
   });
 });

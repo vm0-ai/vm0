@@ -35,6 +35,7 @@ export enum FeatureSwitchKey {
   Banking = "banking",
   Lab = "lab",
   AuditLink = "auditLink",
+  AudioInput = "audioInput",
   AudioOutput = "audioOutput",
   SkillsViewer = "skillsViewer",
   TestOauthConnector = "testOauthConnector",

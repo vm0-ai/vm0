@@ -1,13 +1,13 @@
 import type { ReactNode, Ref } from "react";
 import {
   IconDownload,
-  IconFileTypeHtml,
   IconLoader2,
   IconPresentation,
+  IconSparkles,
   IconX,
 } from "@tabler/icons-react";
-import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { cn } from "@vm0/ui";
+import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { accept } from "../../lib/accept.ts";
@@ -24,6 +24,7 @@ import {
   readablePresentationResourceUrl,
 } from "./presentation-html-pptx-download.ts";
 import {
+  applyPresentationSpeakerNotesPatch,
   parsePresentationEditDraft,
   patchPresentationHtml,
   previewPresentationHtml,
@@ -110,21 +111,25 @@ async function redeployPresentationHtml(params: {
   return completed.body.url;
 }
 
-function htmlFilename(filename: string): string {
-  return filename.replace(/\.(html?|xhtml)$/i, "") + ".html";
-}
-
-function downloadHtml(html: string, filename: string): void {
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const anchor = document.createElement("a");
-  anchor.href = URL.createObjectURL(blob);
-  anchor.download = htmlFilename(filename);
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => {
-    URL.revokeObjectURL(anchor.href);
-  }, 0);
+async function generatePresentationSpeakerNotes(params: {
+  readonly createClient: ZeroClientFactory;
+  readonly html: string;
+  readonly signal: AbortSignal;
+}) {
+  params.signal.throwIfAborted();
+  const client = params.createClient(zeroHostContract, { apiBase: "api" });
+  const completed = await accept(
+    client.generatePresentationSpeakerNotes({
+      body: {
+        html: params.html,
+        mode: "fill-empty",
+      },
+      fetchOptions: { signal: params.signal },
+    }),
+    [200],
+    { toast: false },
+  );
+  return completed.body;
 }
 
 function updateBlockText(
@@ -177,15 +182,15 @@ function editSignature(params: {
 function PresentationEditorHeader({
   busyRef,
   onClose,
-  onDownloadHtml,
   onDownloadPptx,
+  onGenerateSpeakerNotes,
   statusRef,
   title,
 }: {
   busyRef?: Ref<SVGSVGElement>;
   onClose: () => void;
-  onDownloadHtml: (() => void) | undefined;
   onDownloadPptx: (() => void) | undefined;
+  onGenerateSpeakerNotes: (() => void) | undefined;
   statusRef?: Ref<HTMLDivElement>;
   title: string;
 }) {
@@ -213,17 +218,6 @@ function PresentationEditorHeader({
       <button
         type="button"
         data-presentation-editor-action="true"
-        aria-label="Download edited HTML"
-        disabled={!onDownloadHtml}
-        onClick={onDownloadHtml}
-        className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-      >
-        <IconFileTypeHtml size={16} stroke={1.5} />
-        HTML
-      </button>
-      <button
-        type="button"
-        data-presentation-editor-action="true"
         aria-label="Download edited PPTX"
         disabled={!onDownloadPptx}
         onClick={onDownloadPptx}
@@ -231,6 +225,17 @@ function PresentationEditorHeader({
       >
         <IconDownload size={16} stroke={1.5} />
         PPTX
+      </button>
+      <button
+        type="button"
+        data-presentation-editor-action="true"
+        aria-label="Generate PPT script"
+        title="Generate PPT script"
+        disabled={!onGenerateSpeakerNotes}
+        onClick={onGenerateSpeakerNotes}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+      >
+        <IconSparkles size={16} stroke={1.5} />
       </button>
       <button
         type="button"
@@ -258,8 +263,8 @@ function PresentationEditorShell({
     <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <PresentationEditorHeader
         onClose={onClose}
-        onDownloadHtml={undefined}
         onDownloadPptx={undefined}
+        onGenerateSpeakerNotes={undefined}
         title={title}
       />
       {children}
@@ -845,6 +850,75 @@ function PresentationEditorWorkspace({
   );
 }
 
+async function runFillEmptySpeakerNotes(ctx: {
+  readonly buildEditedHtml: () => string;
+  readonly markDirty: () => void;
+  readonly params: {
+    readonly activeSlideIdRef: MutableValue<string>;
+    readonly createClient: ZeroClientFactory;
+    readonly pageSignal: AbortSignal;
+    readonly slidesRef: MutableValue<readonly PresentationSlideDraft[]>;
+  };
+  readonly setPublishing: (publishing: boolean) => void;
+  readonly setStatus: (value: string) => void;
+}): Promise<void> {
+  const { params } = ctx;
+  if (
+    !params.slidesRef.current.some((slide) => {
+      return slide.notes.trim().length === 0;
+    })
+  ) {
+    toast.info("All speaker notes are filled");
+    return;
+  }
+
+  ctx.setPublishing(true);
+  ctx.setStatus("Generating speaker notes");
+  const generated = await tapError(
+    generatePresentationSpeakerNotes({
+      createClient: params.createClient,
+      html: ctx.buildEditedHtml(),
+      signal: params.pageSignal,
+    }).finally(() => {
+      ctx.setPublishing(false);
+    }),
+    (error) => {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Speaker notes generation failed",
+        );
+      }
+    },
+  );
+  if (!generated) {
+    return;
+  }
+
+  const result = applyPresentationSpeakerNotesPatch({
+    patch: generated,
+    slides: params.slidesRef.current,
+  });
+  if (result.appliedCount === 0) {
+    toast.info("No speaker notes were added");
+    return;
+  }
+
+  params.slidesRef.current = result.slides;
+  syncNotesPanel(
+    params.slidesRef.current.find((slide) => {
+      return slide.id === params.activeSlideIdRef.current;
+    }),
+  );
+  ctx.markDirty();
+  toast.success(
+    `Added speaker notes to ${String(result.appliedCount)} slide${
+      result.appliedCount === 1 ? "" : "s"
+    }`,
+  );
+}
+
 function createPresentationEditorController(params: {
   readonly activeSlideIdRef: MutableValue<string>;
   readonly blocksRef: MutableValue<readonly PresentationEditBlock[]>;
@@ -931,6 +1005,15 @@ function createPresentationEditorController(params: {
       sourceUrl: params.sourceUrl,
     });
   };
+  const fillEmptySpeakerNotes = () => {
+    return runFillEmptySpeakerNotes({
+      buildEditedHtml,
+      markDirty,
+      params,
+      setPublishing,
+      setStatus,
+    });
+  };
   const showSlide = (slideId: string) => {
     params.activeSlideIdRef.current = slideId;
     syncNotesPanel(
@@ -957,6 +1040,7 @@ function createPresentationEditorController(params: {
     activeSlideId,
     buildEditedHtml,
     ensureRedeployed,
+    fillEmptySpeakerNotes,
     markDirty,
     previewHtml,
     queueSlideThumbnailUpdate,
@@ -1036,18 +1120,6 @@ function PresentationEditorReady({
           busyRef.current = node;
         }}
         onClose={closeAfterPublish}
-        onDownloadHtml={() => {
-          runEditorTaskIfIdle({
-            publishingRef,
-            reason: "presentation html editor html download",
-            task: async () => {
-              if (!(await controller.ensureRedeployed())) {
-                return;
-              }
-              downloadHtml(controller.buildEditedHtml(), filename);
-            },
-          });
-        }}
         onDownloadPptx={() => {
           runEditorTaskIfIdle({
             publishingRef,
@@ -1063,6 +1135,13 @@ function PresentationEditorReady({
                 signal: pageSignal,
               });
             },
+          });
+        }}
+        onGenerateSpeakerNotes={() => {
+          runEditorTaskIfIdle({
+            publishingRef,
+            reason: "presentation html editor speaker notes generation",
+            task: controller.fillEmptySpeakerNotes,
           });
         }}
         statusRef={(node) => {
