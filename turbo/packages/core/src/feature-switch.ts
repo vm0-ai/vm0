@@ -55,7 +55,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
   },
   [FeatureSwitchKey.CloudflareConnector]: {
-    maintainer: "ethan@vm0.ai",
+    maintainer: "liangyou@vm0.ai",
     description: "Enable the Cloudflare OAuth connector",
     enabled: false,
   },
