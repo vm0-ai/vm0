@@ -51,6 +51,10 @@ import {
   zeroLogsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
+import {
+  onboardingStatusContract,
+  onboardingSetupContract,
+} from "@vm0/api-contracts/contracts/onboarding";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import {
   zeroSchedulesByNameContract,
@@ -229,6 +233,14 @@ export function createBddApi(context: TestContext) {
      * activity is needed for non-empty buckets; the auth, timezone/range
      * validation and empty-buckets cases are reachable directly. */
     usageInsight: setupApp({ context })(zeroUsageInsightContract),
+    /** ts-rest client for `/api/zero/onboarding/status` (per-user onboarding
+     * state). */
+    onboardingStatus: setupApp({ context })(onboardingStatusContract),
+    /** ts-rest client for `/api/zero/onboarding/setup` (admin one-shot default
+     * agent creation). Creating the default agent is free, so the happy path is
+     * reachable; the disabled-connector 422 and Clerk-org-update variants need
+     * seeded connectors / Clerk mocks and stay in the kept legacy. */
+    onboardingSetup: setupApp({ context })(onboardingSetupContract),
     /** ts-rest client for `/api/zero/connectors/:type` (get/delete by type). A
      * connected connector needs the OAuth/manual connect flow; the
      * auth/not-found rejections are reachable directly. */

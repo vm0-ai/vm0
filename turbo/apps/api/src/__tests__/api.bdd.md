@@ -1213,3 +1213,22 @@ First USAGE-family reduce.
 - Reduced `zero-usage-members.test.ts` (8 -> 6) and `zero-usage-insight.test.ts`
   (21 -> 16).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 54 — ONBOARDING STATUS + SETUP (CHAIN-ONBOARDING-REJECTIONS, reduce-legacy + GWT chain)
+
+- Extended `createBddApi` with the `onboardingStatus`
+  (`/api/zero/onboarding/status`) and `onboardingSetup`
+  (`/api/zero/onboarding/setup`) clients.
+- Added `zero-onboarding-rejections.bdd.test.ts` with three chains: (1) status
+  rejects unauthenticated callers (401) and reports the no-org / fresh-admin /
+  non-admin-member states; (2) setup rejects unauthenticated, org-less and
+  non-admin callers (401/401/403 "Only org admins can run onboarding setup");
+  (3) a full Given-When-Then — an admin runs setup, a default agent is created
+  (creating the agent is free), the agent then appears in `agents.list`, and
+  `onboarding/status` reports `hasDefaultAgent` with the new `defaultAgentId`.
+- The disabled-connector 422, paid-org payment handling, default-agent metadata
+  and Clerk-org name/slug update variants need seeded connectors / tiers / Clerk
+  mocks and stay in the kept legacy.
+- Reduced `zero-onboarding-status.test.ts` (9 -> 5, dropped the orphaned
+  `randomUUID` import) and `zero-onboarding-setup.test.ts` (14 -> 11).
+- Coverage verified (source-only): no regressions vs `main`.

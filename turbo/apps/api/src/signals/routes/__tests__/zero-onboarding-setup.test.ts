@@ -285,53 +285,6 @@ describe("POST /api/zero/onboarding/setup", () => {
     return store.set(deleteOnboardingSetupFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(
-      apiClient().setup({ headers: {}, body: { displayName: "Zero" } }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no active organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const response = await accept(
-      apiClient().setup({
-        headers: authHeaders(),
-        body: { displayName: "Zero" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 403 when an org member runs setup", async () => {
-    const fixture = await track(createFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const response = await accept(
-      apiClient().setup({
-        headers: authHeaders(),
-        body: { displayName: "Zero" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Only org admins can run onboarding setup",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
   it("creates the default agent and keeps onboarding pending for an admin", async () => {
     const fixture = await track(createFixture());
     mockAdminSession(fixture);
