@@ -161,6 +161,7 @@ jobs:
               turbo/packages/connectors/src/connector-utils.ts | \
               turbo/packages/connectors/src/connectors.ts | \
               turbo/packages/connectors/src/connectors/* | \
+              turbo/packages/connectors/src/feature-switch-key.ts | \
               turbo/packages/connectors/src/firewall-expander.ts | \
               turbo/packages/connectors/src/firewall-loader.ts | \
               turbo/packages/connectors/src/firewall-rule-matcher.ts | \
