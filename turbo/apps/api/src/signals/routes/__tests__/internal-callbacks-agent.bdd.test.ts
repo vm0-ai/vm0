@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
-import { describe, expect, it } from "vitest";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
@@ -22,6 +21,23 @@ import {
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+
+// BDD migration of the legacy `internal-callbacks-agent.test.ts`.
+// The 6 legacy `it()`s collapse into 3 BDD `it()`s: (1) auth + 404
+// chain (401 bad signature → 404 no callback record), (2) progress
+// + failed chain (200 progress does not mutate the run + no
+// axiom query → 200 failed does not generate a summary + no axiom
+// query), (3) completed chain (200 completed generates +
+// persists a summary when the lightweight model is available →
+// 200 completed without OPENROUTER_API_KEY returns success
+// without a summary).
+//
+// Service-Level Exception: post-callback state is verified
+// via direct DB reads against `zero_runs.summary` because no
+// public GET endpoint exists for the internal callback flow.
+// The fixture is seeded via `seedUsageInsightFixture$` +
+// `seedCompose$` + `seedRun$` (all Service-Level Exceptions:
+// no public route creates these rows in this configuration).
 
 const context = testContext();
 const store = createStore();
@@ -115,51 +131,83 @@ async function runSummary(runId: string): Promise<string | null> {
   return row?.summary ?? null;
 }
 
-describe("POST /api/internal/callbacks/agent", () => {
-  const track = createFixtureTracker<AgentCallbackFixture>((fixture) => {
-    return deleteFixture(fixture);
-  });
+const track = createFixtureTracker<AgentCallbackFixture>((fixture) => {
+  return deleteFixture(fixture);
+});
 
-  it("rejects requests with invalid signatures", async () => {
+describe("BDD POST /api/internal/callbacks/agent — auth + 404 chain", () => {
+  it("gwt-wt-wt: 401 invalid signature → 404 no callback record", async () => {
+    // Given: a fixture + a seeded agent run + callback.
     const fixture = await track(seedFixture());
     const { runId, callbackId } = await seedAgentRun(fixture);
 
-    const response = await postCallback(
+    // When: post with the wrong HMAC secret.
+    const badSig = await postCallback(
       { callbackId, runId, status: "completed", payload: {} },
       "wrong-secret",
     );
 
-    expect(response.status).toBe(401);
-  });
+    // Then: 401.
+    expect(badSig.status).toBe(401);
 
-  it("returns 404 when no callback record exists", async () => {
-    const response = await postCallback({
+    // Given: a request with the right signature but no
+    // matching callback record.
+    const missing = await postCallback({
       runId: "00000000-0000-0000-0000-000000000000",
       status: "completed",
       payload: {},
     });
 
-    expect(response.status).toBe(404);
+    // When + Then: 404.
+    expect(missing.status).toBe(404);
   });
+});
 
-  it("returns success without mutating the run for progress callbacks", async () => {
+describe("BDD POST /api/internal/callbacks/agent — progress + failed chain", () => {
+  it("gwt-wt-wt: 200 progress does not mutate the run + no axiom query → 200 failed does not generate a summary + no axiom query", async () => {
+    // Given: a fixture + a seeded agent run.
     const fixture = await track(seedFixture());
     const { runId, callbackId } = await seedAgentRun(fixture);
 
-    const response = await postCallback({
+    // When: post a progress callback.
+    const progress = await postCallback({
       callbackId,
       runId,
       status: "progress",
       payload: {},
     });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    // Then: 200 + no run summary persisted + no axiom query.
+    expect(progress.status).toBe(200);
+    await expect(progress.json()).resolves.toStrictEqual({ success: true });
     await expect(runSummary(runId)).resolves.toBeNull();
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
-  });
 
-  it("generates and persists a summary for completed callbacks", async () => {
+    // Given: a fresh fixture + a failed callback.
+    const failedFx = await track(seedFixture());
+    const failedRun = await seedAgentRun(failedFx);
+
+    // When: post a failed callback.
+    const failed = await postCallback({
+      callbackId: failedRun.callbackId,
+      runId: failedRun.runId,
+      status: "failed",
+      error: "Agent run failed",
+      payload: {},
+    });
+
+    // Then: 200 + no run summary + no axiom query.
+    expect(failed.status).toBe(200);
+    await expect(failed.json()).resolves.toStrictEqual({ success: true });
+    await expect(runSummary(failedRun.runId)).resolves.toBeNull();
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+});
+
+describe("BDD POST /api/internal/callbacks/agent — completed chain", () => {
+  it("gwt-wt-wt: 200 completed generates + persists a summary when OpenRouter is available → 200 completed without OPENROUTER_API_KEY returns success without a summary", async () => {
+    // Given: a fixture + a seeded agent run + an Axiom
+    // result event + a stubbed OpenRouter response.
     const fixture = await track(seedFixture());
     const { runId, callbackId } = await seedAgentRun(fixture);
     context.mocks.axiom.query.mockResolvedValueOnce([
@@ -177,55 +225,42 @@ describe("POST /api/internal/callbacks/agent", () => {
       }),
     );
 
-    const response = await postCallback({
+    // When: post a completed callback.
+    const completed = await postCallback({
       callbackId,
       runId,
       status: "completed",
       payload: {},
     });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    // Then: 200 + the run summary is persisted.
+    expect(completed.status).toBe(200);
+    await expect(completed.json()).resolves.toStrictEqual({ success: true });
     await expect(runSummary(runId)).resolves.toBe("Agent delegated the task.");
-  });
 
-  it("returns success without a summary when the lightweight model is unavailable", async () => {
-    const fixture = await track(seedFixture());
-    const { runId, callbackId } = await seedAgentRun(fixture);
+    // Given: a fresh fixture + a seeded run + an Axiom
+    // result event but no OPENROUTER_API_KEY.
+    const noKeyFx = await track(seedFixture());
+    const noKeyRun = await seedAgentRun(noKeyFx);
     context.mocks.axiom.query.mockResolvedValueOnce([
       {
         eventType: "result",
         eventData: { result: "Task completed successfully." },
       },
     ]);
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
 
-    const response = await postCallback({
-      callbackId,
-      runId,
+    // When: post a completed callback.
+    const noKey = await postCallback({
+      callbackId: noKeyRun.callbackId,
+      runId: noKeyRun.runId,
       status: "completed",
       payload: {},
     });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ success: true });
-    await expect(runSummary(runId)).resolves.toBeNull();
-  });
-
-  it("returns success without generating summaries for failed callbacks", async () => {
-    const fixture = await track(seedFixture());
-    const { runId, callbackId } = await seedAgentRun(fixture);
-
-    const response = await postCallback({
-      callbackId,
-      runId,
-      status: "failed",
-      error: "Agent run failed",
-      payload: {},
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ success: true });
-    await expect(runSummary(runId)).resolves.toBeNull();
-    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+    // Then: 200 + no run summary.
+    expect(noKey.status).toBe(200);
+    await expect(noKey.json()).resolves.toStrictEqual({ success: true });
+    await expect(runSummary(noKeyRun.runId)).resolves.toBeNull();
   });
 });

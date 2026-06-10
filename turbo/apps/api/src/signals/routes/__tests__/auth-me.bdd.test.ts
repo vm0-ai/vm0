@@ -5,12 +5,23 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { createStore } from "ccstate";
 import { eq, inArray } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockNow } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
+
+// BDD migration of the legacy `auth-me.test.ts`. The 7 legacy
+// `it()`s collapse into 3 BDD `it()`s: (1) auth boundary (401
+// unauth → 200 returns email after Clerk lookup + cache is
+// populated), (2) 200 token types (sandbox token → zero token
+// with `file:write` capability → zero token with no
+// capabilities), (3) 200 cache chain (fresh cache short-circuits
+// Clerk → stale cache refreshes from Clerk + re-caches).
+//
+// Service-Level Exception: post-fetch cache state is verified
+// via direct DB reads against `user_cache` because no follow-up
+// endpoint for a single user cache row exists.
 
 const NOW_MS = Date.parse("2026-05-12T04:00:00.000Z");
 const context = testContext();
@@ -130,11 +141,7 @@ async function readUserCache(userId: string): Promise<{
   return cached ?? null;
 }
 
-beforeEach(() => {
-  mockNow(NOW_MS);
-});
-
-describe("GET /api/auth/me", () => {
+describe("BDD GET /api/auth/me — auth boundary", () => {
   let seededUserCacheIds: string[] = [];
 
   afterEach(async () => {
@@ -148,20 +155,19 @@ describe("GET /api/auth/me", () => {
     await writeDb.delete(userCache).where(inArray(userCache.userId, ids));
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = apiClient();
+  it("gwt-wt-wt: 401 unauth → 200 returns email after Clerk lookup + cache is populated", async () => {
+    mockNow(NOW_MS);
 
-    const response = await accept(client.me({ headers: {} }), [401]);
-
-    expect(response.body).toStrictEqual({
+    // When + Then: 401 with no auth header.
+    const noAuth = await accept(apiClient().me({ headers: {} }), [401]);
+    expect(noAuth.body).toStrictEqual({
       error: {
         message: "Not authenticated",
         code: "UNAUTHORIZED",
       },
     });
-  });
 
-  it("returns authenticated user info with email", async () => {
+    // Given: a fresh user + a Clerk session.
     const userId = `user_${randomUUID()}`;
     seededUserCacheIds.push(userId);
     mockSession(userId);
@@ -173,10 +179,15 @@ describe("GET /api/auth/me", () => {
         }),
       ],
     });
-    const client = apiClient();
 
-    const response = await accept(client.me({ headers: authHeaders() }), [200]);
+    // When: call /api/auth/me.
+    const response = await accept(
+      apiClient().me({ headers: authHeaders() }),
+      [200],
+    );
 
+    // Then: 200 with userId + email + the user cache row is
+    // populated.
     expect(response.body).toStrictEqual({
       userId,
       email: "test@example.com",
@@ -190,119 +201,152 @@ describe("GET /api/auth/me", () => {
       cachedAt: new Date(NOW_MS),
     });
   });
+});
 
-  it("accepts sandbox tokens without a required capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    seededUserCacheIds.push(userId);
-    const token = sandboxToken(userId);
+describe("BDD GET /api/auth/me — 200 token types", () => {
+  let seededUserCacheIds: string[] = [];
+
+  afterEach(async () => {
+    if (seededUserCacheIds.length === 0) {
+      return;
+    }
+
+    const ids = seededUserCacheIds;
+    seededUserCacheIds = [];
+    const writeDb = store.set(writeDb$);
+    await writeDb.delete(userCache).where(inArray(userCache.userId, ids));
+  });
+
+  it("gwt-wt-wt: sandbox token → zero token with `file:write` capability → zero token with no capabilities", async () => {
+    mockNow(NOW_MS);
+
+    // Given: a sandbox token for a fresh user.
+    const sandboxUserId = `user_${randomUUID()}`;
+    seededUserCacheIds.push(sandboxUserId);
+    const sandboxJwt = sandboxToken(sandboxUserId);
     context.mocks.clerk.users.getUserList.mockResolvedValue({
-      data: [clerkUser(userId, "sandbox@example.com")],
+      data: [clerkUser(sandboxUserId, "sandbox@example.com")],
     });
-    const client = apiClient();
 
-    const response = await accept(
-      client.me({ headers: authHeaders(token) }),
+    // When + Then: 200 with the sandbox user's email.
+    const sandbox = await accept(
+      apiClient().me({ headers: authHeaders(sandboxJwt) }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({
-      userId,
+    expect(sandbox.body).toStrictEqual({
+      userId: sandboxUserId,
       email: "sandbox@example.com",
     });
-  });
 
-  it("accepts zero tokens with file:write capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    seededUserCacheIds.push(userId);
+    // Given: a zero token with `file:write` capability.
+    const fileUserId = `user_${randomUUID()}`;
+    seededUserCacheIds.push(fileUserId);
     mockNoMembership();
-    const token = zeroToken(userId, ["file:write"]);
+    const fileJwt = zeroToken(fileUserId, ["file:write"]);
     context.mocks.clerk.users.getUserList.mockResolvedValue({
-      data: [clerkUser(userId, "file@example.com")],
+      data: [clerkUser(fileUserId, "file@example.com")],
     });
-    const client = apiClient();
 
-    const response = await accept(
-      client.me({ headers: authHeaders(token) }),
+    // When + Then: 200 with the file user's email.
+    const file = await accept(
+      apiClient().me({ headers: authHeaders(fileJwt) }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({
-      userId,
+    expect(file.body).toStrictEqual({
+      userId: fileUserId,
       email: "file@example.com",
     });
-  });
 
-  it("accepts zero tokens with no capabilities", async () => {
-    const userId = `user_${randomUUID()}`;
-    seededUserCacheIds.push(userId);
+    // Given: a zero token with no capabilities.
+    const emptyUserId = `user_${randomUUID()}`;
+    seededUserCacheIds.push(emptyUserId);
     mockNoMembership();
-    const token = zeroToken(userId, []);
+    const emptyJwt = zeroToken(emptyUserId, []);
     context.mocks.clerk.users.getUserList.mockResolvedValue({
-      data: [clerkUser(userId, "empty-capabilities@example.com")],
+      data: [clerkUser(emptyUserId, "empty-capabilities@example.com")],
     });
-    const client = apiClient();
 
-    const response = await accept(
-      client.me({ headers: authHeaders(token) }),
+    // When + Then: 200 with the empty-capabilities user's
+    // email.
+    const empty = await accept(
+      apiClient().me({ headers: authHeaders(emptyJwt) }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({
-      userId,
+    expect(empty.body).toStrictEqual({
+      userId: emptyUserId,
       email: "empty-capabilities@example.com",
     });
   });
+});
 
-  it("uses a fresh cached email without fetching a Clerk profile", async () => {
-    const userId = `user_${randomUUID()}`;
-    const token = sandboxToken(userId);
+describe("BDD GET /api/auth/me — 200 cache chain", () => {
+  let seededUserCacheIds: string[] = [];
+
+  afterEach(async () => {
+    if (seededUserCacheIds.length === 0) {
+      return;
+    }
+
+    const ids = seededUserCacheIds;
+    seededUserCacheIds = [];
+    const writeDb = store.set(writeDb$);
+    await writeDb.delete(userCache).where(inArray(userCache.userId, ids));
+  });
+
+  it("gwt-wt-wt: fresh cached email short-circuits Clerk → stale cache refreshes from Clerk + re-caches", async () => {
+    mockNow(NOW_MS);
+
+    // Given: a sandbox token + a fresh cache row (1s old).
+    const cachedUserId = `user_${randomUUID()}`;
+    const cachedToken = sandboxToken(cachedUserId);
     await seedUserCache(
       seededUserCacheIds,
-      userId,
+      cachedUserId,
       "cached@example.com",
       new Date(NOW_MS - 1000),
     );
-    const client = apiClient();
 
-    const response = await accept(
-      client.me({ headers: authHeaders(token) }),
+    // When + Then: 200 with the cached email; Clerk is not
+    // called.
+    const cached = await accept(
+      apiClient().me({ headers: authHeaders(cachedToken) }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({
-      userId,
+    expect(cached.body).toStrictEqual({
+      userId: cachedUserId,
       email: "cached@example.com",
     });
     expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
-  });
 
-  it("resolves stale cached email from Clerk for the response", async () => {
-    const userId = `user_${randomUUID()}`;
-    const token = sandboxToken(userId);
+    // Given: a sandbox token + a stale cache row (16min old) +
+    // Clerk returns a fresh email.
+    const staleUserId = `user_${randomUUID()}`;
+    seededUserCacheIds.push(staleUserId);
+    const staleToken = sandboxToken(staleUserId);
     await seedUserCache(
       seededUserCacheIds,
-      userId,
+      staleUserId,
       "stale@example.com",
       new Date(NOW_MS - 16 * 60 * 1000),
     );
     context.mocks.clerk.users.getUserList.mockResolvedValue({
-      data: [clerkUser(userId, "fresh@example.com")],
+      data: [clerkUser(staleUserId, "fresh@example.com")],
     });
-    const client = apiClient();
 
-    const response = await accept(
-      client.me({ headers: authHeaders(token) }),
+    // When + Then: 200 with the fresh email; Clerk is called
+    // + the cache is refreshed.
+    const stale = await accept(
+      apiClient().me({ headers: authHeaders(staleToken) }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({
-      userId,
+    expect(stale.body).toStrictEqual({
+      userId: staleUserId,
       email: "fresh@example.com",
     });
     expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
-      userId: [userId],
+      userId: [staleUserId],
     });
-    await expect(readUserCache(userId)).resolves.toStrictEqual({
+    await expect(readUserCache(staleUserId)).resolves.toStrictEqual({
       email: "fresh@example.com",
       name: null,
       cachedAt: new Date(NOW_MS),

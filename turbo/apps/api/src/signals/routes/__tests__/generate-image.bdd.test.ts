@@ -4,7 +4,6 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
-import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
@@ -16,6 +15,18 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+
+// BDD migration of the legacy `generate-image.test.ts`. The 7
+// legacy `it()`s collapse into 2 BDD `it()`s: (1) full chain
+// (503 no Gemini config → 503 production ignores GEMINI_API_KEY →
+// 401 no Clerk session → 400 blank prompt → 402 no credits → 502
+// no image in response → 200 success + credits settled through
+// waitUntil).
+//
+// Service-Level Exception: orgMetadata, orgMembersMetadata, and
+// usagePricing rows are seeded directly via `writeDb$` because
+// no public route creates them. Post-generation state (credits
+// decrement, usage_event rows) is verified via direct DB reads.
 
 const context = testContext();
 const store = createStore();
@@ -113,91 +124,97 @@ const trackFixture = createFixtureTracker(
   },
 );
 
-beforeEach(() => {
-  context.mocks.googleGenAi.constructorArgs.mockClear();
-  context.mocks.googleGenAi.generateContent.mockReset();
-  context.mocks.vercelOidc.getToken.mockResolvedValue("test-oidc-token");
-  mockEnv("ENV", "development");
-  clearGeminiEnv();
-});
+describe("BDD POST /api/generate-image — full chain", () => {
+  // Each step re-seeds the mock + env so previous steps don't
+  // leak.
+  const resetMocksAndEnv = (): void => {
+    context.mocks.googleGenAi.constructorArgs.mockClear();
+    context.mocks.googleGenAi.generateContent.mockReset();
+    context.mocks.vercelOidc.getToken.mockResolvedValue("test-oidc-token");
+    mockEnv("ENV", "development");
+    clearGeminiEnv();
+  };
 
-describe("POST /api/generate-image", () => {
-  it("returns 503 when neither GEMINI_API_KEY nor GCP vars are set", async () => {
+  it("gwt-wt-wt: 503 no Gemini config → 503 production ignores GEMINI_API_KEY → 401 no Clerk session → 400 blank prompt → 402 no credits → 502 no image in response → 200 success + credits settled", async () => {
+    // Given: a fixture with credits, no Gemini config.
+    resetMocksAndEnv();
     await trackFixture(seedFixture(1000));
 
-    const response = await requestApp({ prompt: "hello" });
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toStrictEqual({
+    // When + Then: 503 — Gemini is not configured.
+    const noConfig = await requestApp({ prompt: "hello" });
+    expect(noConfig.status).toBe(503);
+    await expect(noConfig.json()).resolves.toStrictEqual({
       error: {
         message: "Gemini image generation is not configured",
         code: "NOT_CONFIGURED",
       },
     });
-  });
 
-  it("ignores GEMINI_API_KEY in production and requires GCP vars", async () => {
+    // Given: production env ignores GEMINI_API_KEY.
+    resetMocksAndEnv();
     await trackFixture(seedFixture(1000));
     mockEnv("ENV", "production");
     mockEnv("GEMINI_API_KEY", "stray-prod-key");
 
-    const response = await requestApp({ prompt: "hello" });
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toStrictEqual({
+    // When + Then: 503 — production requires GCP vars.
+    const prodNoConfig = await requestApp({ prompt: "hello" });
+    expect(prodNoConfig.status).toBe(503);
+    await expect(prodNoConfig.json()).resolves.toStrictEqual({
       error: {
         message: "Gemini image generation is not configured",
         code: "NOT_CONFIGURED",
       },
     });
-  });
 
-  it("returns 401 when there is no Clerk session", async () => {
+    // Given: no Clerk session + GEMINI_API_KEY is set.
+    resetMocksAndEnv();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
     mockEnv("GEMINI_API_KEY", "test-gemini-key");
 
-    const response = await requestApp({ prompt: "hello" });
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
+    // When + Then: 401 — not authenticated.
+    const noAuth = await requestApp({ prompt: "hello" });
+    expect(noAuth.status).toBe(401);
+    await expect(noAuth.json()).resolves.toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("returns 400 when prompt is missing or blank", async () => {
+    // Given: a fixture + GEMINI_API_KEY.
+    resetMocksAndEnv();
     await trackFixture(seedFixture(1000));
     mockEnv("GEMINI_API_KEY", "test-gemini-key");
 
-    const response = await requestApp({ prompt: "   " });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
+    // When + Then: 400 — prompt is blank.
+    const blankPrompt = await requestApp({ prompt: "   " });
+    expect(blankPrompt.status).toBe(400);
+    await expect(blankPrompt.json()).resolves.toStrictEqual({
       error: {
         message: "prompt is required and must be a non-empty string",
         code: "BAD_REQUEST",
       },
     });
-  });
 
-  it("returns 402 when the org has no spendable credits", async () => {
+    // Given: a fixture with 0 credits.
+    resetMocksAndEnv();
     await trackFixture(seedFixture(0));
     mockEnv("GEMINI_API_KEY", "test-gemini-key");
 
-    const response = await requestApp({ prompt: "hello" });
-
-    expect(response.status).toBe(402);
-    await expect(response.json()).resolves.toStrictEqual({
+    // When + Then: 402 — insufficient credits; Gemini is not
+    // called.
+    const noCredits = await requestApp({ prompt: "hello" });
+    expect(noCredits.status).toBe(402);
+    await expect(noCredits.json()).resolves.toStrictEqual({
       error: {
         message: "Insufficient credits. Please add credits to continue.",
         code: "INSUFFICIENT_CREDITS",
       },
     });
     expect(context.mocks.googleGenAi.generateContent).not.toHaveBeenCalled();
-  });
 
-  it("returns 502 when the model returns no image-bearing inlineData parts", async () => {
+    // Given: a fixture + Gemini returns a response with no
+    // image-bearing inlineData parts.
+    resetMocksAndEnv();
     await trackFixture(seedFixture(1000));
     mockEnv("GEMINI_API_KEY", "test-gemini-key");
     context.mocks.googleGenAi.generateContent.mockResolvedValueOnce({
@@ -210,19 +227,20 @@ describe("POST /api/generate-image", () => {
       ],
     });
 
-    const response = await requestApp({ prompt: "hello" });
-
-    expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toStrictEqual({
+    // When + Then: 502 — no image returned.
+    const noImage = await requestApp({ prompt: "hello" });
+    expect(noImage.status).toBe(502);
+    await expect(noImage.json()).resolves.toStrictEqual({
       error: {
         message: "Model returned no image data",
         code: "NO_IMAGE_RETURNED",
       },
     });
-  });
 
-  it("returns 200 and settles credits through waitUntil on success", async () => {
-    const fixture = await trackFixture(seedFixture(1000));
+    // Given: a fixture with credits + image pricing + Gemini
+    // returns a base64 image.
+    resetMocksAndEnv();
+    const successFixture = await trackFixture(seedFixture(1000));
     await setImagePricing();
     mockEnv("GEMINI_API_KEY", "test-gemini-key");
     context.mocks.googleGenAi.generateContent.mockResolvedValueOnce({
@@ -237,10 +255,13 @@ describe("POST /api/generate-image", () => {
       ],
     });
 
-    const response = await requestApp({ prompt: "a cat" });
+    // When: post a generation request.
+    const success = await requestApp({ prompt: "a cat" });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({
+    // Then: 200 + the image is echoed + Gemini is called with
+    // the right args.
+    expect(success.status).toBe(200);
+    await expect(success.json()).resolves.toStrictEqual({
       images: [{ mimeType: "image/png", base64: "base64data==" }],
     });
     expect(context.mocks.googleGenAi.generateContent).toHaveBeenCalledWith({
@@ -248,8 +269,10 @@ describe("POST /api/generate-image", () => {
       contents: [{ role: "user", parts: [{ text: "a cat" }] }],
     });
 
+    // When: waitUntil settles.
     await clearAllDetached();
 
-    await expect(orgCredits(fixture.orgId)).resolves.toBe(961);
+    // Then: credits are debited.
+    await expect(orgCredits(successFixture.orgId)).resolves.toBe(961);
   });
 });

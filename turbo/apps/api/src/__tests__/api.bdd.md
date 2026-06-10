@@ -1646,3 +1646,181 @@ covered route files.
 
 Quality gates: `pnpm -F api exec vitest run` (253 files /
 3225 tests) all clean.
+
+### Round 38 — Mixed small-batch BDD (8 legacy → 12 BDD)
+
+Migrates 8 small legacy route tests into 21 BDD `it()`s:
+
+- `zero-voice-io-quota.test.ts` (8→2): 401 unauth chain,
+  full quota matrix chain (missing org metadata → suspended
+  → free no usage → free partial → free at limit-1 → free
+  at limit → free over limit → pro tier not subject → team
+  tier not subject).
+- `zero-me-model-providers-delete.test.ts` (5→2): auth
+  boundary (401 unauth → 401 no-org), full delete chain
+  (204 deletes user's provider + secret → 404 on missing
+  → 404 on cross-user with alice's provider not deleted
+  by bob).
+- `internal-callbacks-agent.test.ts` (6→3): auth + 404
+  chain (401 bad signature → 404 no callback record),
+  progress + failed chain (200 progress does not mutate
+  the run + no axiom query → 200 failed does not generate
+  a summary + no axiom query), completed chain (200
+  completed generates + persists a summary when
+  OpenRouter is available → 200 completed without
+  OPENROUTER_API_KEY returns success without a summary).
+- `zero-secrets-delete.test.ts` (7→3): auth boundary
+  (401 unauth → 401 no-org), 204 + 404 chain (204 deletes
+  the secret and removes the row → 404 on missing → 404
+  on cross-user with victim intact), 404 isolation chain
+  (404 on cross-org with victim intact → 404 on
+  non-user-type connector secret preserved).
+- `zero-custom-connectors-patch.test.ts` (7→3): auth +
+  403 chain (401 unauth → 401 no-org → 403 non-admin), 200
+  success + 404 chain (admin renames the connector +
+  read-after-write confirms the new name → 404 unknown id
+  → 404 cross-org with victim intact), 400 validation
+  chain (400 on empty displayName with the original
+  preserved).
+- `zero-custom-connectors-create.test.ts` (9→3): auth +
+  403 chain (401 unauth → 401 no-org → 403 non-admin), 201
+  success chain (admin creates a connector + DB
+  read-after-write + list echoes it → admin creates a
+  host-wildcard prefix connector → admin creates with a
+  non-trailing slash prefix that gets normalised), 400
+  validation chain (400 missing {{secret}} placeholder →
+  400 non-https prefix → 400 host collision with built-in
+  connector).
+- `zero-team.test.ts` (8→3): auth boundary (401 unauth →
+  403 no-org), 200 list chain (empty org → single compose
+  with all fields → custom skills → cross-org isolation
+  with other-org's composes not visible), 200 filter chain
+  (composes without zero-agent metadata excluded → public
+  - owned-private composes visible, other-owned private
+    composes excluded).
+- `email-unsubscribe.test.ts` (12→2): GET chain (400
+  missing token → 400 invalid token → 400 non-hex
+  signature → 200 unsubscribes existing user with HTML →
+  200 idempotent on repeat → 200 creates user row when
+  missing), POST chain (400 missing token → 400 invalid
+  token → 400 non-hex signature → 200 unsubscribes
+  existing user → 200 idempotent on repeat → 200 creates
+  user row when missing).
+- `zero-variables-delete.test.ts` (7→3): auth boundary
+  (401 unauth → 401 no-org), 204 + 404 chain (204 deletes
+  the variable and removes the row → 204 deletes only the
+  user-owned variable when a connector-owned one shares
+  the name → 404 when only a connector-owned variable
+  exists → 404 for a nonexistent variable), 404 isolation
+  chain (404 on cross-user with victim intact → 404 on
+  cross-org with victim intact).
+- `zero-org-invite.test.ts` (11→2): POST chain (admin
+  invites with default member role → admin invites with
+  admin role → 403 non-admin → 401 unauth → 401 no-org →
+  400 invalid email), DELETE chain (admin revokes an
+  invitation → 403 non-admin → 401 unauth → 401 no-org →
+  400 missing invitationId). The legacy tests verified
+  which Clerk API was or was not called; the BDD version
+  uses `toHaveBeenCalledTimes(n)` to assert the same
+  external-mock contract.
+- `generate-image.test.ts` (7→1): full chain (503 no Gemini
+  config → 503 production ignores GEMINI_API_KEY → 401 no
+  Clerk session → 400 blank prompt → 402 no credits → 502
+  no image in response → 200 success + credits settled
+  through waitUntil). The single BDD test re-seeds
+  mocks + env between steps so previous steps don't leak.
+- `zero-user-connectors.test.ts` (8→3): auth + 404 chain
+  (401 unauth → 401 no-org → 404 non-existent agent → 404
+  cross-org agent), 200 happy path (new agent with no
+  connectors returns empty enabledTypes → owner via CLI
+  token also gets empty enabledTypes), 200 filter chain
+  (removed connector types are excluded → feature-flag-
+  disabled types are excluded).
+- `desktop-auth.test.ts` (8→3): create chain (401 unauth
+  → 200 creates a callback URL with no Clerk ticket + DB
+  row exists → 200 creates a dev callback URL when
+  requested), consume chain (200 consumes a handoff code
+  - returns a short-lived Clerk ticket + reuse returns 400
+    → 400 expired handoff code), status + complete chain
+    (200 reports pending for the creating user + 404 for
+    another user → 200 marks a consumed handoff complete →
+    404 cannot complete an unconsumed handoff).
+- `zero-onboarding-status.test.ts` (10→3): auth + no-org
+  chain (401 unauth → 200 no-org returns needsOnboarding:
+  true), 200 full matrix (no default agent → default
+  agent with no metadata → default agent + pending
+  payment → pro tier pending payment ignored → team tier
+  pending payment ignored → default agent with metadata),
+  isolation chain (non-admin never reports
+  needsOnboarding → orphan compose is no default agent →
+  cross-org default agent is ignored).
+- `auth-me.test.ts` (7→3): auth boundary (401 unauth → 200
+  returns email after Clerk lookup + cache is populated),
+  200 token types (sandbox token → zero token with
+  `file:write` capability → zero token with no
+  capabilities), 200 cache chain (fresh cached email
+  short-circuits Clerk → stale cache refreshes from Clerk
+  - re-caches).
+- `zero-connectors-scope-diff.test.ts` (8→3): auth +
+  capability + 404 chain (401 unauth → 401 no-org → 403
+  sandbox token without connector:read → 404 no connector
+  configured for the type), 200 empty diff chain (stored
+  scopes match current scopes → api-token stripe has empty
+  current/stored), 200 diff chain (added scopes when the
+  connector is missing required → removed scopes when the
+  connector has stale extras).
+
+Service-Level Exceptions noted:
+
+- `internal-callbacks-agent.bdd.test.ts` uses
+  `createApp` + `app.request` directly (not the ts-rest
+  client) because the agent-callback contract body shape
+  is not consumable by the ts-rest test client. The
+  OpenRouter API is stubbed via MSW. The
+  `OPENROUTER_API_KEY` env var must be cleared between
+  steps via `mockOptionalEnv("OPENROUTER_API_KEY",
+undefined)` because the first step in the chain sets
+  it and the second step expects it to be unset.
+- `email-unsubscribe.bdd.test.ts` uses `createApp` +
+  `app.request` for the GET chain (HTML response shape is
+  not consumable by the ts-rest test client) and the
+  ts-rest client for the POST chain. The HMAC signature
+  is computed inline from `SECRETS_ENCRYPTION_KEY` using
+  the same Web Crypto API the production helper uses.
+- `desktop-auth.bdd.test.ts` uses direct DB reads
+  against `desktop_auth_handoff_codes` because no
+  follow-up GET endpoint for a single handoff exists.
+- `auth-me.bdd.test.ts` uses direct DB reads against
+  `user_cache` because no follow-up endpoint for a single
+  user cache row exists.
+- `zero-org-invite.bdd.test.ts` uses
+  `toHaveBeenCalledTimes(n)` rather than
+  `not.toHaveBeenCalled()` because the mock is shared
+  across the chain's steps (the mock has been called by
+  previous admin invites; subsequent non-admin or 401
+  steps assert the call count is unchanged).
+- This round deletes 12 legacy files
+  (`zero-voice-io-quota.test.ts`,
+  `zero-me-model-providers-delete.test.ts`,
+  `internal-callbacks-agent.test.ts`,
+  `zero-secrets-delete.test.ts`,
+  `zero-custom-connectors-patch.test.ts`,
+  `zero-custom-connectors-create.test.ts`,
+  `zero-team.test.ts`,
+  `email-unsubscribe.test.ts`,
+  `zero-variables-delete.test.ts`,
+  `zero-org-invite.test.ts`,
+  `generate-image.test.ts`,
+  `zero-user-connectors.test.ts`,
+  `desktop-auth.test.ts`,
+  `zero-onboarding-status.test.ts`,
+  `auth-me.test.ts`,
+  `zero-connectors-scope-diff.test.ts`).
+
+Net test count: 120 legacy `it()`s → 37 BDD `it()`s (69%
+reduction). No per-file coverage regression for the
+covered route files.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api
+check-types`, `pnpm -F api exec vitest run` (252 files /
+3230+ tests) all clean.

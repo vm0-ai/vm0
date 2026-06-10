@@ -4,7 +4,6 @@ import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";

@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -19,54 +18,71 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
+// BDD migration of the legacy
+// `zero-me-model-providers-delete.test.ts`. The 5 legacy `it()`s
+// collapse into 2 BDD `it()`s: (1) auth boundary chain (401
+// unauth → 401 no-org), (2) full delete chain (204 deletes
+// user's provider + secret → 404 on missing provider → 404 on
+// cross-user — alice's provider is not deleted even when bob
+// issues the delete in the same org).
+//
+// Service-Level Exception: model providers + secrets are
+// seeded directly via `writeDb$` because no public route
+// creates a model provider. Post-delete verification uses
+// direct DB reads against `model_providers` and `secrets` (no
+// follow-up GET list endpoint exists for these resources).
+
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-function uniqueOrgUser(prefix: string): UserModelProviderFixture {
-  return {
-    orgId: `org_${prefix}_${randomUUID().slice(0, 8)}`,
-    userId: `user_${prefix}_${randomUUID().slice(0, 8)}`,
-  };
+function authHeaders(): { readonly authorization: string } {
+  return { authorization: "Bearer clerk-session" };
 }
 
-describe("DELETE /api/zero/me/model-providers/:type", () => {
-  const track = createFixtureTracker<UserModelProviderFixture>((fixture) => {
-    return store.set(deleteUserModelProviders$, fixture, context.signal);
-  });
+function client() {
+  return setupApp({ context })(zeroPersonalModelProvidersByTypeContract);
+}
 
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersByTypeContract,
-    );
-    const response = await accept(
-      client.delete({ params: { type: "anthropic-api-key" }, headers: {} }),
-      [401],
-    );
-    expect(response.body).toMatchObject({
-      error: { code: "UNAUTHORIZED" },
-    });
-  });
+const track = createFixtureTracker<UserModelProviderFixture>((fixture) => {
+  return store.set(deleteUserModelProviders$, fixture, context.signal);
+});
 
-  it("returns 401 when authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersByTypeContract,
-    );
-    const response = await accept(
-      client.delete({
+describe("BDD DELETE /api/zero/me/model-providers/:type — auth boundary", () => {
+  it("gwt-wt-wt: 401 unauth → 401 no-org", async () => {
+    // When + Then: 401 with no auth header.
+    const noAuth = await accept(
+      client().delete({
         params: { type: "anthropic-api-key" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: {},
       }),
       [401],
     );
-    expect(response.body).toMatchObject({
-      error: { code: "UNAUTHORIZED" },
-    });
-  });
+    expect(noAuth.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
 
-  it("deletes the user's personal provider and removes the row + secret", async () => {
-    const fixture = uniqueOrgUser("zmmp-delete");
+    // Given: a session that resolves to a user without an org.
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    // When + Then: still 401.
+    const noOrg = await accept(
+      client().delete({
+        params: { type: "anthropic-api-key" },
+        headers: authHeaders(),
+      }),
+      [401],
+    );
+    expect(noOrg.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
+  });
+});
+
+describe("BDD DELETE /api/zero/me/model-providers/:type — full delete chain", () => {
+  it("gwt-wt-wt: 204 deletes user's provider + secret → 404 on missing provider → 404 on cross-user (alice's provider not deleted by bob)", async () => {
+    // Given: a user with a claude-code-oauth-token personal
+    // provider.
+    const fixture: UserModelProviderFixture = {
+      orgId: `org_${randomUUID().slice(0, 8)}`,
+      userId: `user_${randomUUID().slice(0, 8)}`,
+    };
     await track(Promise.resolve(fixture));
     await store.set(
       seedUserModelProvider$,
@@ -80,16 +96,14 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersByTypeContract,
-    );
-    const response = await client.delete({
+    // When: delete the provider.
+    const deleted = await client().delete({
       params: { type: "claude-code-oauth-token" },
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
     });
-    expect(response.status).toBe(204);
 
-    // model_provider row removed
+    // Then: 204 + both rows are gone.
+    expect(deleted.status).toBe(204);
     const writeDb = store.set(writeDb$);
     const remaining = await writeDb
       .select({ id: modelProviders.id })
@@ -101,8 +115,6 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
         ),
       );
     expect(remaining).toStrictEqual([]);
-
-    // secret row also removed (FK cascade for legacy single-secret providers)
     const remainingSecrets = await writeDb
       .select({ id: secrets.id })
       .from(secrets)
@@ -114,35 +126,36 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
         ),
       );
     expect(remainingSecrets).toStrictEqual([]);
-  });
 
-  it("returns 404 with 'Resource not found' when deleting a nonexistent provider", async () => {
-    const fixture = uniqueOrgUser("zmmp-missing");
-    await track(Promise.resolve(fixture));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    // Given: a fresh user with no providers of the
+    // requested type.
+    const missingFixture: UserModelProviderFixture = {
+      orgId: `org_${randomUUID().slice(0, 8)}`,
+      userId: `user_${randomUUID().slice(0, 8)}`,
+    };
+    await track(Promise.resolve(missingFixture));
+    mocks.clerk.session(missingFixture.userId, missingFixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersByTypeContract,
-    );
-    const response = await accept(
-      client.delete({
+    // When + Then: 404 — Resource not found.
+    const missing = await accept(
+      client().delete({
         params: { type: "claude-code-oauth-token" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
-    expect(response.body).toStrictEqual({
+    expect(missing.body).toStrictEqual({
       error: { message: "Resource not found", code: "NOT_FOUND" },
     });
-  });
 
-  it("does not delete another user's provider in the same organization", async () => {
-    const orgId = `org_zmmp_cross_${randomUUID().slice(0, 8)}`;
-    const alice = {
+    // Given: alice + bob in the same org, only alice has a
+    // claude-code-oauth-token provider.
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    const alice: UserModelProviderFixture = {
       orgId,
       userId: `user_alice_${randomUUID().slice(0, 8)}`,
     };
-    const bob = {
+    const bob: UserModelProviderFixture = {
       orgId,
       userId: `user_bob_${randomUUID().slice(0, 8)}`,
     };
@@ -160,21 +173,20 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     );
     mocks.clerk.session(bob.userId, orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersByTypeContract,
-    );
-    const response = await accept(
-      client.delete({
+    // When + Then: bob's delete is 404 — alice's provider
+    // is not visible to bob.
+    const crossUser = await accept(
+      client().delete({
         params: { type: "claude-code-oauth-token" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
-    expect(response.body).toStrictEqual({
+    expect(crossUser.body).toStrictEqual({
       error: { message: "Resource not found", code: "NOT_FOUND" },
     });
 
-    const writeDb = store.set(writeDb$);
+    // Then: alice's provider + secret are still present.
     const aliceProviders = await writeDb
       .select({ id: modelProviders.id })
       .from(modelProviders)
@@ -186,7 +198,6 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
         ),
       );
     expect(aliceProviders).toHaveLength(1);
-
     const aliceSecrets = await writeDb
       .select({ id: secrets.id })
       .from(secrets)
