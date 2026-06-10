@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type {
   UsageRecordResponse,
   UsageRecordRow,
@@ -97,6 +97,64 @@ describe("credit balance settings section", () => {
     });
     expect(within(dialog).getByText("All sources")).toBeInTheDocument();
     expect(within(dialog).queryByText("Team usage")).not.toBeInTheDocument();
+  });
+
+  it("closes the settings dialog when a usage row is clicked", async () => {
+    setMockOrg({ role: "member" });
+    setUsageRows([
+      usageRow({ title: "Member chat", source: "chat", index: 1 }),
+    ]);
+
+    const dialog = await openCreditBalanceSection();
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("Member chat")).toBeInTheDocument();
+    });
+
+    click(within(dialog).getByText("Member chat"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps the settings dialog open when a usage row is opened in a new tab", async () => {
+    setMockOrg({ role: "member" });
+    setUsageRows([
+      usageRow({ title: "Member chat", source: "chat", index: 1 }),
+    ]);
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    try {
+      const dialog = await openCreditBalanceSection();
+
+      await waitFor(() => {
+        expect(within(dialog).getByText("Member chat")).toBeInTheDocument();
+      });
+
+      const rowLink = within(dialog).getByText("Member chat").closest("a");
+      expect(rowLink).not.toBeNull();
+
+      fireEvent.click(rowLink as HTMLElement, { metaKey: true });
+
+      await waitFor(() => {
+        expect(openSpy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "/chats/00000000-0000-4000-a000-000000000001",
+          ),
+          "_blank",
+        );
+      });
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("dialog")).getByText("Member chat"),
+      ).toBeInTheDocument();
+    } finally {
+      openSpy.mockRestore();
+    }
   });
 
   it("loads additional personal rows and filters by source", async () => {
