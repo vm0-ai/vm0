@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.110.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.110.2...runner-rs-v0.110.3) (2026-06-10)
+
+
+### Bug Fixes
+
+* filter unsafe resolved auth headers ([#17053](https://github.com/vm0-ai/vm0/issues/17053)) ([53ae1aa](https://github.com/vm0-ai/vm0/commit/53ae1aa5f89acb05f3399c0c47e25d5c0e0f788a))
+
 ## [0.110.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.110.1...runner-rs-v0.110.2) (2026-06-10)
 
 

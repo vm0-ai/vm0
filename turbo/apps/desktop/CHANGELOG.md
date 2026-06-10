@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.7.0...desktop-v0.8.0) (2026-06-10)
+
+
+### Features
+
+* remove desktop setup guidance panels ([#17062](https://github.com/vm0-ai/vm0/issues/17062)) ([80ca467](https://github.com/vm0-ai/vm0/commit/80ca46711fd178da7393b2ffbf5833513a69dae8))
+
 ## [0.7.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.6.0...desktop-v0.7.0) (2026-06-10)
 
 

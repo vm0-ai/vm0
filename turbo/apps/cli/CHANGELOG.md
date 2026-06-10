@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.187.0](https://github.com/vm0-ai/vm0/compare/cli-v9.186.2...cli-v9.187.0) (2026-06-10)
+
+
+### Features
+
+* add enterprise zero maps places fieldsets ([#17024](https://github.com/vm0-ai/vm0/issues/17024)) ([9d38554](https://github.com/vm0-ai/vm0/commit/9d38554464b72359bc97dc3dfdca93d44717f9d5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.79.0
+    * @vm0/connectors bumped to 1.61.0
+    * @vm0/core bumped to 8.323.0
+
 ## [9.186.2](https://github.com/vm0-ai/vm0/compare/cli-v9.186.1...cli-v9.186.2) (2026-06-10)
 
 
