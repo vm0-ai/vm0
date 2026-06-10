@@ -206,8 +206,12 @@ if [ -d "$root" ]; then
   find "$root" \( -type f -o -type l \) \( \
     -iname "*${id}*.jsonl" -o \
     -iname "*${id}*.jsonl.zst" -o \
+    -iname "*${id}*.jsonl.vm0tmp-*" -o \
+    -iname "*${id}*.jsonl.zst.vm0tmp-*" -o \
     -iname "*${id_no_dashes}*.jsonl" -o \
-    -iname "*${id_no_dashes}*.jsonl.zst" \
+    -iname "*${id_no_dashes}*.jsonl.zst" -o \
+    -iname "*${id_no_dashes}*.jsonl.vm0tmp-*" -o \
+    -iname "*${id_no_dashes}*.jsonl.zst.vm0tmp-*" \
   \) -delete
 fi"#;
     let env = [
