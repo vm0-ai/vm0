@@ -3,6 +3,7 @@ import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
+import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
 import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 
@@ -14,7 +15,6 @@ import {
 } from "./helpers/zero-route-test";
 import {
   deleteOrgMetadata$,
-  getOrgMetadataDefaultAgent$,
   seedOrgMetadata$,
 } from "./helpers/zero-org-metadata";
 import { seedCompose$ } from "./helpers/zero-usage-insight";
@@ -38,6 +38,17 @@ function uniqueOrgUser(prefix: string): OrgFixture {
 async function deleteAgentCompose(composeId: string): Promise<void> {
   const db = store.set(writeDb$);
   await db.delete(agentComposes).where(eq(agentComposes.id, composeId));
+}
+
+async function getDefaultAgentIdThroughOnboarding(): Promise<string | null> {
+  const client = setupApp({ context })(onboardingStatusContract);
+  const response = await accept(
+    client.getStatus({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  return response.body.defaultAgentId;
 }
 
 describe("PUT /api/zero/default-agent", () => {
@@ -122,7 +133,7 @@ describe("PUT /api/zero/default-agent", () => {
     expect(response.body.agentId).toBe(composeId);
   });
 
-  it("writes the default agent to org_metadata (DB read-after-write)", async () => {
+  it("reads the default agent through onboarding status after setting it", async () => {
     const fixture = uniqueOrgUser("zda-write");
     await trackOrg(Promise.resolve(fixture));
     const { composeId } = await store.set(
@@ -140,11 +151,7 @@ describe("PUT /api/zero/default-agent", () => {
     });
     expect(response.status).toBe(200);
 
-    const stored = await store.set(
-      getOrgMetadataDefaultAgent$,
-      fixture.orgId,
-      context.signal,
-    );
+    const stored = await getDefaultAgentIdThroughOnboarding();
     expect(stored).toBe(composeId);
   });
 
@@ -171,10 +178,9 @@ describe("PUT /api/zero/default-agent", () => {
     expect(response.body.agentId).toBe(composeId);
   });
 
-  it("upsert creates the org_metadata row when missing", async () => {
+  it("shows the default agent in onboarding status when metadata is missing", async () => {
     const fixture = uniqueOrgUser("zda-upsert-create");
     await trackOrg(Promise.resolve(fixture));
-    // Ensure the org_metadata row does NOT exist before the PUT
     await store.set(deleteOrgMetadata$, fixture.orgId, context.signal);
 
     const { composeId } = await store.set(
@@ -196,11 +202,7 @@ describe("PUT /api/zero/default-agent", () => {
     }
     expect(response.body.agentId).toBe(composeId);
 
-    const stored = await store.set(
-      getOrgMetadataDefaultAgent$,
-      fixture.orgId,
-      context.signal,
-    );
+    const stored = await getDefaultAgentIdThroughOnboarding();
     expect(stored).toBe(composeId);
   });
 
@@ -309,7 +311,7 @@ describe("PUT /api/zero/default-agent", () => {
     expect(second.body).toMatchObject({ error: { code: "CONFLICT" } });
   });
 
-  it("does not update org_metadata when 409 conflict prevents unsetting", async () => {
+  it("keeps onboarding status stable when 409 conflict prevents unsetting", async () => {
     const fixture = uniqueOrgUser("zda-no-clobber");
     await trackOrg(Promise.resolve(fixture));
     const { composeId } = await store.set(
@@ -335,12 +337,7 @@ describe("PUT /api/zero/default-agent", () => {
     });
     expect(second.status).toBe(409);
 
-    // org_metadata should still hold the original value
-    const stored = await store.set(
-      getOrgMetadataDefaultAgent$,
-      fixture.orgId,
-      context.signal,
-    );
+    const stored = await getDefaultAgentIdThroughOnboarding();
     expect(stored).toBe(composeId);
   });
 
@@ -384,13 +381,9 @@ describe("PUT /api/zero/default-agent", () => {
     expect(set2.body.agentId).toBe(second.composeId);
   });
 
-  it("upsert creates the org_metadata row when org_metadata never existed", async () => {
-    // Differs from the "missing row" case by also exercising the
-    // seedOrgMetadata helper for a freshly-seeded org row.
+  it("shows the default agent in onboarding status after overwriting empty metadata", async () => {
     const fixture = uniqueOrgUser("zda-fresh-org");
     await trackOrg(Promise.resolve(fixture));
-    // Seed an empty row first to mimic an org that has only the metadata
-    // shell but no default-agent yet, then immediately overwrite by PUT.
     await store.set(
       seedOrgMetadata$,
       { orgId: fixture.orgId, defaultAgentId: null },
@@ -416,11 +409,7 @@ describe("PUT /api/zero/default-agent", () => {
     }
     expect(response.body.agentId).toBe(composeId);
 
-    const stored = await store.set(
-      getOrgMetadataDefaultAgent$,
-      fixture.orgId,
-      context.signal,
-    );
+    const stored = await getDefaultAgentIdThroughOnboarding();
     expect(stored).toBe(composeId);
   });
 });

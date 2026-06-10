@@ -30,23 +30,6 @@ export const seedOrgMetadata$ = command(
   },
 );
 
-export const getOrgMetadataDefaultAgent$ = command(
-  async (
-    { set },
-    orgId: string,
-    signal: AbortSignal,
-  ): Promise<string | null> => {
-    const db = set(writeDb$);
-    const [row] = await db
-      .select({ defaultAgentId: orgMetadata.defaultAgentId })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-    signal.throwIfAborted();
-    return row?.defaultAgentId ?? null;
-  },
-);
-
 export const deleteOrgMetadata$ = command(
   async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);

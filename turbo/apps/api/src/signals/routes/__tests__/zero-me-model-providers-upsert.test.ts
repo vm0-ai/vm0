@@ -23,6 +23,17 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
+async function listPersonalModelProviders() {
+  const client = setupApp({ context })(zeroPersonalModelProvidersMainContract);
+  const response = await accept(
+    client.list({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  return response.body.modelProviders;
+}
+
 function uniqueOrgUser(prefix: string): UserModelProviderFixture {
   return {
     orgId: `org_${prefix}_${randomUUID().slice(0, 8)}`,
@@ -142,7 +153,16 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       created: true,
     });
 
-    // DB read-after-write proves encrypt path.
+    const providers = await listPersonalModelProviders();
+    expect(providers).toHaveLength(1);
+    expect(providers[0]).toMatchObject({
+      type: "claude-code-oauth-token",
+      framework: "claude-code",
+      secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+      isDefault: false,
+    });
+
+    // Internal storage assertion covers the intentionally hidden encrypt path.
     const writeDb = store.set(writeDb$);
     const [row] = await writeDb
       .select({ encryptedValue: secrets.encryptedValue })
@@ -317,7 +337,17 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       },
     });
 
-    // DB read-after-write: 4 derived CHATGPT_* secrets persisted.
+    const providers = await listPersonalModelProviders();
+    expect(providers).toHaveLength(1);
+    expect(providers[0]).toMatchObject({
+      type: "codex-oauth-token",
+      authMethod: "auth_json",
+      workspaceName: "Personal Acme",
+      planType: "plus",
+      needsReconnect: false,
+    });
+
+    // Internal storage assertion covers the intentionally hidden raw secret names.
     const writeDb = store.set(writeDb$);
     const rows = await writeDb
       .select({ name: secrets.name })
