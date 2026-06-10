@@ -35,6 +35,16 @@ export const hostedSiteSlugSuffixSchema = z
     "Site slug suffix must use lowercase letters, numbers, and hyphens, and must start and end with a letter or number",
   );
 
+export const hostedSitePublicSlugSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(MAX_HOSTED_SITE_PUBLIC_SLUG_LENGTH)
+  .regex(
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/,
+    "Hosted site public slug must use lowercase letters, numbers, and hyphens, and must start and end with a letter or number",
+  );
+
 export const hostedSiteFileSchema = z.object({
   path: z.string().min(1).max(1024).regex(/^\//, "File path must start with /"),
   size: z.number().int().nonnegative(),
@@ -113,6 +123,16 @@ export const hostedSiteCompleteResponseSchema = z.object({
   status: z.literal("ready"),
 });
 
+export const hostedSiteFilesResponseSchema = z.object({
+  siteId: z.string().uuid(),
+  deploymentId: z.string().uuid(),
+  publicSlug: hostedSitePublicSlugSchema,
+  url: z.string().url(),
+  fileCount: z.number().int().nonnegative(),
+  size: z.number().int().nonnegative(),
+  files: z.array(hostedSiteFileSchema),
+});
+
 export const zeroHostContract = c.router({
   prepare: {
     method: "POST",
@@ -149,6 +169,24 @@ export const zeroHostContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Complete a static hosted-site deployment",
+  },
+  files: {
+    method: "GET",
+    path: "/api/zero/host/sites/:publicSlug/files",
+    pathParams: z.object({
+      publicSlug: hostedSitePublicSlugSchema,
+    }),
+    headers: authHeadersSchema,
+    responses: {
+      200: hostedSiteFilesResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List active hosted-site files for an owned site",
   },
   redeployPresentationHtml: {
     method: "POST",
@@ -202,4 +240,7 @@ export type HostedSitePrepareResponse = z.infer<
 >;
 export type HostedSiteCompleteResponse = z.infer<
   typeof hostedSiteCompleteResponseSchema
+>;
+export type HostedSiteFilesResponse = z.infer<
+  typeof hostedSiteFilesResponseSchema
 >;
