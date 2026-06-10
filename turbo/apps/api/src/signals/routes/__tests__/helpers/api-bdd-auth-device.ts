@@ -1,11 +1,26 @@
 import { Buffer } from "node:buffer";
 
+import type { z } from "zod";
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import {
   cliAuthApproveContract,
   cliAuthDeviceContract,
+  cliAuthOrgContract,
   cliAuthTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth";
+import {
+  cliAuthTestApproveContract,
+  cliAuthTestCodexOauthContract,
+  cliAuthTestConnectorContract,
+  cliAuthTestEnableConnectorContract,
+  cliAuthTestTokenContract,
+} from "@vm0/api-contracts/contracts/cli-auth-test";
+import {
+  agentComposeApiContentSchema,
+  composesMainContract,
+} from "@vm0/api-contracts/contracts/composes";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import {
   type DesktopAuthCallbackScheme,
   desktopAuthConsumeContract,
@@ -34,6 +49,7 @@ import {
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import { createApp } from "../../../../app-factory";
 import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
 import type { ApiTestUser } from "./api-bdd";
@@ -47,6 +63,21 @@ interface CliApproveBody {
   readonly device_code: string;
   readonly timezone?: string;
 }
+
+interface TestEmailQuery {
+  readonly email?: string;
+}
+
+type SeedTestConnectorBody = z.infer<
+  (typeof cliAuthTestConnectorContract.create)["body"]
+>;
+type SeedTestEnableConnectorBody = z.infer<
+  (typeof cliAuthTestEnableConnectorContract.create)["body"]
+>;
+type SeedTestCodexOauthBody = z.infer<
+  (typeof cliAuthTestCodexOauthContract.create)["body"]
+>;
+type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor ? { authorization: "Bearer clerk-session" } : {};
@@ -146,6 +177,27 @@ function makeCodexTokenResponse(scope: "org" | "personal") {
   };
 }
 
+export function makeCodexAuthJson(
+  args: {
+    readonly planType?: string;
+    readonly workspaceName?: string;
+  } = {},
+): string {
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: makeJwt({ exp: Math.floor(now() / 1000) + 7200 }),
+      refresh_token: "rt_synthetic_authjson_seed_high_entropy",
+      account_id: "ws_acct_plain",
+      id_token: makeCodexIdToken({
+        accountId: "ws_acct_id_token",
+        planType: args.planType ?? "plus",
+        workspaceName: args.workspaceName ?? "Acme",
+      }),
+    },
+  });
+}
+
 interface CodexDeviceAuthProviderRecorder {
   readonly userCode: unknown[];
   readonly deviceToken: unknown[];
@@ -235,6 +287,25 @@ export function createAuthDeviceApiActions(context: TestContext) {
     return authHeaders(actor);
   }
 
+  async function postRawJson(
+    path: string,
+    body: string,
+    headers: Record<string, string> = {},
+  ): Promise<{ readonly status: number; readonly body: unknown }> {
+    const response = await createApp({ signal: context.signal }).request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body,
+    });
+    const contentType = response.headers.get("content-type") ?? "";
+    return {
+      status: response.status,
+      body: contentType.includes("application/json")
+        ? await response.json()
+        : await response.text(),
+    };
+  }
+
   return {
     callbackCode: codeFromCallbackUrl,
     callbackHandoffId: handoffIdFromCallbackUrl,
@@ -272,6 +343,157 @@ export function createAuthDeviceApiActions(context: TestContext) {
         client.approve({ headers: authenticate(actor), body }),
         statuses,
       );
+    },
+
+    seedClerkDirectory(actor: ApiTestUser): void {
+      setClerkReads(context, actor);
+    },
+
+    async requestCliApprovalWithBearer(
+      token: string,
+      body: CliApproveBody,
+      statuses: readonly (200 | 400 | 401 | 403)[],
+    ) {
+      const client = setupApp({ context })(cliAuthApproveContract);
+      return await accept(
+        client.approve({
+          headers: { authorization: `Bearer ${token}` },
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestOrgSwitch(
+      token: string | null,
+      body: { readonly slug: string },
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      const client = setupApp({ context })(cliAuthOrgContract);
+      return await accept(
+        client.switchOrg({
+          headers: token ? { authorization: `Bearer ${token}` } : {},
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestOrgSwitchRaw(token: string, rawBody: string) {
+      return await postRawJson("/api/cli/auth/org", rawBody, {
+        authorization: `Bearer ${token}`,
+      });
+    },
+
+    async requestTestToken(
+      query: TestEmailQuery,
+      statuses: readonly (200 | 404)[],
+    ) {
+      const client = setupApp({ context })(cliAuthTestTokenContract);
+      return await accept(client.create({ query, body: {} }), statuses);
+    },
+
+    async requestTestTokenRaw(headers: Record<string, string> = {}) {
+      return await postRawJson(
+        "/api/cli/auth/test-token",
+        JSON.stringify({}),
+        headers,
+      );
+    },
+
+    async provisionTestOrg(actor: ApiTestUser): Promise<{
+      readonly accessToken: string;
+      readonly userId: string;
+    }> {
+      setClerkReads(context, actor);
+      const client = setupApp({ context })(cliAuthTestTokenContract);
+      const response = await accept(
+        client.create({ query: { email: actor.email }, body: {} }),
+        [200],
+      );
+      return {
+        accessToken: response.body.access_token,
+        userId: response.body.user_id,
+      };
+    },
+
+    async requestTestApprove(
+      query: TestEmailQuery,
+      body: { readonly device_code?: string },
+      statuses: readonly (200 | 400 | 404)[],
+    ) {
+      const client = setupApp({ context })(cliAuthTestApproveContract);
+      return await accept(client.approve({ query, body }), statuses);
+    },
+
+    async requestTestApproveRaw(rawBody: string) {
+      return await postRawJson("/api/cli/auth/test-approve", rawBody);
+    },
+
+    async requestTestConnector(
+      query: TestEmailQuery,
+      body: SeedTestConnectorBody,
+      statuses: readonly (200 | 400 | 404)[],
+    ) {
+      const client = setupApp({ context })(cliAuthTestConnectorContract);
+      return await accept(client.create({ query, body }), statuses);
+    },
+
+    async requestTestConnectorRaw(rawBody: string) {
+      return await postRawJson("/api/cli/auth/test-connector", rawBody);
+    },
+
+    async requestTestEnableConnector(
+      query: TestEmailQuery,
+      body: SeedTestEnableConnectorBody,
+      statuses: readonly (200 | 400 | 404)[],
+    ) {
+      const client = setupApp({ context })(cliAuthTestEnableConnectorContract);
+      return await accept(client.create({ query, body }), statuses);
+    },
+
+    async requestTestEnableConnectorRaw(rawBody: string) {
+      return await postRawJson("/api/cli/auth/test-enable-connector", rawBody);
+    },
+
+    async requestTestCodexOauth(
+      query: TestEmailQuery,
+      body: SeedTestCodexOauthBody,
+      statuses: readonly (200 | 400 | 404)[],
+    ) {
+      const client = setupApp({ context })(cliAuthTestCodexOauthContract);
+      return await accept(client.create({ query, body }), statuses);
+    },
+
+    async requestTestCodexOauthRaw(rawBody: string) {
+      return await postRawJson("/api/cli/auth/test-codex-oauth", rawBody);
+    },
+
+    async createCompose(actor: ApiTestUser, content: ComposeContent) {
+      const client = setupApp({ context })(composesMainContract);
+      const response = await accept(
+        client.create({ headers: authenticate(actor), body: { content } }),
+        [200, 201],
+      );
+      return response.body;
+    },
+
+    async readUserConnectors(actor: ApiTestUser, agentId: string) {
+      const client = setupApp({ context })(zeroUserConnectorsContract);
+      const response = await accept(
+        client.get({ params: { id: agentId }, headers: authenticate(actor) }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async readBillingStatus(actor: ApiTestUser) {
+      const client = setupApp({ context })(zeroBillingStatusContract);
+      const response = await accept(
+        client.get({ headers: authenticate(actor) }),
+        [200],
+      );
+      return response.body;
     },
 
     async readMeWithBearer(
