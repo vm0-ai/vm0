@@ -1,4 +1,4 @@
-import { createHmac, randomInt } from "node:crypto";
+import { createHmac, randomInt, randomUUID } from "node:crypto";
 
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { HttpResponse, http } from "msw";
@@ -135,11 +135,10 @@ function uniquePhoneHandle() {
   return `+1555${randomInt(1_000_000, 9_999_999)}`;
 }
 
-function serializedTsRestBody(body: string): string {
-  return JSON.stringify(body);
-}
-
-function agentPhoneWebhookHeaders(body: string): {
+function agentPhoneWebhookHeaders(
+  body: string,
+  webhookId = "evt-bdd-agentphone",
+): {
   readonly "x-webhook-signature": string;
   readonly "x-webhook-timestamp": string;
   readonly "x-webhook-event": string;
@@ -151,11 +150,11 @@ function agentPhoneWebhookHeaders(body: string): {
       "sha256",
       AGENTPHONE_WEBHOOK_SECRET,
     )
-      .update(`${timestamp}.${serializedTsRestBody(body)}`)
+      .update(`${timestamp}.${body}`)
       .digest("hex")}`,
     "x-webhook-timestamp": timestamp,
     "x-webhook-event": "agent.message",
-    "x-webhook-id": "evt-bdd-agentphone",
+    "x-webhook-id": webhookId,
   };
 }
 
@@ -1938,5 +1937,131 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       [400],
     );
     expect(malformed.body).toBe("Bad Request");
+
+    const ignoredLifecycleEvent = JSON.stringify({
+      event: "agent.status",
+      data: { agentId: "agt-bdd-agentphone" },
+    });
+    const ignoredLifecycle = await integrations.requestAgentPhoneWebhook(
+      ignoredLifecycleEvent,
+      agentPhoneWebhookHeaders(
+        ignoredLifecycleEvent,
+        `evt-bdd-agentphone-${randomUUID()}`,
+      ),
+      [200],
+    );
+    expect(ignoredLifecycle.body).toBe("OK");
+
+    const unsupportedChannelEvent = JSON.stringify({
+      event: "agent.message",
+      channel: "fax",
+      data: {
+        agentId: "agt-bdd-agentphone",
+        from: "+15555551212",
+        to: "+19039853128",
+        message: "unsupported channel",
+      },
+    });
+    const unsupportedChannel = await integrations.requestAgentPhoneWebhook(
+      unsupportedChannelEvent,
+      agentPhoneWebhookHeaders(
+        unsupportedChannelEvent,
+        `evt-bdd-agentphone-${randomUUID()}`,
+      ),
+      [200],
+    );
+    expect(unsupportedChannel.body).toBe("OK");
+
+    const missingFieldsEvent = JSON.stringify({
+      event: "agent.message",
+      channel: "sms",
+      data: {
+        agentId: "agt-bdd-agentphone",
+        to: "+19039853128",
+        message: "missing sender",
+      },
+    });
+    const missingFields = await integrations.requestAgentPhoneWebhook(
+      missingFieldsEvent,
+      agentPhoneWebhookHeaders(
+        missingFieldsEvent,
+        `evt-bdd-agentphone-${randomUUID()}`,
+      ),
+      [200],
+    );
+    expect(missingFields.body).toBe("OK");
+
+    const wrongDestinationEvent = JSON.stringify({
+      event: "agent.message",
+      channel: "sms",
+      data: {
+        agentId: "agt-bdd-agentphone",
+        from: "+15555551212",
+        to: "+15555550000",
+        message: "wrong destination",
+      },
+    });
+    const wrongDestination = await integrations.requestAgentPhoneWebhook(
+      wrongDestinationEvent,
+      agentPhoneWebhookHeaders(
+        wrongDestinationEvent,
+        `evt-bdd-agentphone-${randomUUID()}`,
+      ),
+      [200],
+    );
+    expect(wrongDestination.body).toBe("OK");
+
+    integrations.configureAgentPhoneProvider();
+    integrations.configureAgentPhoneWebhook();
+    server.use(agentPhoneVerificationSend());
+    const smsWebhookId = `evt-bdd-agentphone-${randomUUID()}`;
+    const incomingSmsEvent = JSON.stringify({
+      event: "agent.message",
+      channel: "sms",
+      data: {
+        id: `msg-bdd-agentphone-${randomUUID()}`,
+        agentId: "agt-bdd-agentphone",
+        from: uniquePhoneHandle(),
+        to: "+19039853128",
+        message: "/connect",
+      },
+    });
+    const incomingSms = await integrations.requestAgentPhoneWebhook(
+      incomingSmsEvent,
+      agentPhoneWebhookHeaders(incomingSmsEvent, smsWebhookId),
+      [200],
+    );
+    expect(incomingSms.body).toBe("OK");
+
+    const duplicateSms = await integrations.requestAgentPhoneWebhook(
+      incomingSmsEvent,
+      agentPhoneWebhookHeaders(incomingSmsEvent, smsWebhookId),
+      [200],
+    );
+    expect(duplicateSms.body).toBe("OK");
+
+    const unmentionedGroupEvent = JSON.stringify({
+      event: "agent.message",
+      channel: "imessage",
+      data: {
+        id: `msg-bdd-agentphone-${randomUUID()}`,
+        agentId: "agt-bdd-agentphone",
+        from: `sender-${randomUUID()}@example.test`,
+        to: "+19039853128",
+        message: "group update without a Zero mention",
+        conversationId: `group-${randomUUID()}`,
+        isGroup: true,
+        mentioned: false,
+      },
+    });
+    const unmentionedGroup = await integrations.requestAgentPhoneWebhook(
+      unmentionedGroupEvent,
+      agentPhoneWebhookHeaders(
+        unmentionedGroupEvent,
+        `evt-bdd-agentphone-${randomUUID()}`,
+      ),
+      [200],
+    );
+    expect(unmentionedGroup.body).toBe("OK");
   });
 });

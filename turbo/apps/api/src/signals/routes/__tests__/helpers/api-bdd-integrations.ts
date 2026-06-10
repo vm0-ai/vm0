@@ -137,6 +137,7 @@ type SlackIngressPath =
   | "/api/zero/slack/interactive";
 type SlackIngressStatus = 200 | 400 | 401 | 503;
 type SlackDownloadStatus = 200 | 400 | 401 | 404 | 413 | 502;
+type AgentPhoneWebhookStatus = 200 | 400 | 401 | 404;
 
 interface SlackIngressResponse {
   readonly status: SlackIngressStatus;
@@ -146,6 +147,12 @@ interface SlackIngressResponse {
 
 interface SlackDownloadResponse {
   readonly status: SlackDownloadStatus;
+  readonly body: unknown;
+  readonly headers: Headers;
+}
+
+interface AgentPhoneWebhookResponse {
+  readonly status: AgentPhoneWebhookStatus;
   readonly body: unknown;
   readonly headers: Headers;
 }
@@ -271,6 +278,53 @@ async function requestRawSlackIngress(
     }
     default: {
       throw new Error(`Unexpected Slack ingress status ${response.status}`);
+    }
+  }
+}
+
+async function requestRawAgentPhoneWebhook(
+  context: TestContext,
+  body: string,
+  headers: {
+    readonly "x-webhook-signature"?: string;
+    readonly "x-webhook-timestamp"?: string;
+    readonly "x-webhook-event"?: string;
+    readonly "x-webhook-id"?: string;
+  },
+): Promise<AgentPhoneWebhookResponse> {
+  const response = await createApp({ signal: context.signal }).request(
+    "/api/agentphone/webhook",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...headers,
+      },
+      body,
+    },
+  );
+  const result = {
+    body: await parseRawResponseBody(response),
+    headers: response.headers,
+  };
+
+  switch (response.status) {
+    case 200: {
+      return { status: 200, ...result };
+    }
+    case 400: {
+      return { status: 400, ...result };
+    }
+    case 401: {
+      return { status: 401, ...result };
+    }
+    case 404: {
+      return { status: 404, ...result };
+    }
+    default: {
+      throw new Error(
+        `Unexpected AgentPhone webhook status ${response.status}`,
+      );
     }
   }
 }
@@ -1014,12 +1068,8 @@ export function createBddIntegrationApi(context: TestContext) {
       },
       statuses: readonly (200 | 400 | 401 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
       return await accept(
-        client.webhook({
-          headers,
-          body,
-        }),
+        requestRawAgentPhoneWebhook(context, body, headers),
         statuses,
       );
     },

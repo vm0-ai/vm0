@@ -65,6 +65,155 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     expect(ignored.body).toBe("OK");
   });
 
+  it("accepts signed Stripe events that do not require existing billing state", async () => {
+    api.configureStripeWebhookSecret();
+
+    api.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_${randomUUID()}`,
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: `cs_bdd_${randomUUID()}`,
+          invoice: `in_bdd_${randomUUID()}`,
+          subscription: null,
+          customer: null,
+          metadata: { purpose: "credit_purchase" },
+        },
+      },
+    });
+    const creditPurchaseCheckout = await api.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(creditPurchaseCheckout.body).toBe("OK");
+
+    api.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_${randomUUID()}`,
+      type: "checkout.session.async_payment_succeeded",
+      data: {
+        object: {
+          id: `cs_bdd_${randomUUID()}`,
+          invoice: null,
+          subscription: null,
+          customer: null,
+          metadata: { purpose: "one_time_purchase" },
+          payment_status: "unpaid",
+        },
+      },
+    });
+    const unpaidOneTimeCheckout = await api.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(unpaidOneTimeCheckout.body).toBe("OK");
+
+    api.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_${randomUUID()}`,
+      type: "invoice.paid",
+      data: {
+        object: {
+          id: `in_bdd_${randomUUID()}`,
+          customer: null,
+          metadata: null,
+          subtotal: null,
+          lines: { data: [] },
+          parent: null,
+        },
+      },
+    });
+    const invoiceWithoutSubscription = await api.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(invoiceWithoutSubscription.body).toBe("OK");
+
+    api.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_${randomUUID()}`,
+      type: "customer.subscription.created",
+      data: {
+        object: {
+          id: `sub_bdd_${randomUUID()}`,
+          customer: null,
+          status: "active",
+          metadata: null,
+          cancel_at_period_end: false,
+          items: { data: [] },
+        },
+      },
+    });
+    const subscriptionCreatedWithoutCustomer = await api.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(subscriptionCreatedWithoutCustomer.body).toBe("OK");
+
+    api.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_${randomUUID()}`,
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          id: `sub_bdd_${randomUUID()}`,
+          status: "active",
+          metadata: null,
+          cancel_at_period_end: false,
+          items: { data: [] },
+        },
+        previous_attributes: { cancel_at_period_end: true },
+      },
+    });
+    const subscriptionUpdatedWithoutOrg = await api.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(subscriptionUpdatedWithoutOrg.body).toBe("OK");
+
+    api.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_${randomUUID()}`,
+      type: "customer.subscription.deleted",
+      data: {
+        object: {
+          id: `sub_bdd_${randomUUID()}`,
+          metadata: null,
+        },
+      },
+    });
+    const subscriptionDeletedWithoutOrg = await api.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(subscriptionDeletedWithoutOrg.body).toBe("OK");
+
+    api.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_${randomUUID()}`,
+      type: "subscription_schedule.released",
+      data: { object: { id: `sched_bdd_${randomUUID()}` } },
+    });
+    const releasedScheduleWithoutOrg = await api.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(releasedScheduleWithoutOrg.body).toBe("OK");
+
+    api.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_${randomUUID()}`,
+      type: "subscription_schedule.canceled",
+      data: { object: { id: `sched_bdd_${randomUUID()}` } },
+    });
+    const canceledScheduleWithoutOrg = await api.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(canceledScheduleWithoutOrg.body).toBe("OK");
+  });
+
   it("rejects Clerk requests when webhook verification is missing or invalid", async () => {
     api.configureClerkWebhookSecret();
 
@@ -206,6 +355,112 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     expect(invalidInstallation.body).toStrictEqual({
       error: "Invalid payload structure",
     });
+  });
+
+  it("accepts signed GitHub events that do not dispatch work", async () => {
+    api.configureGithubWebhookSecret();
+    const user = { id: 42, login: "bdd-user", type: "User" };
+    const bot = { id: 43, login: "zero[bot]", type: "Bot" };
+    const repository = { full_name: "vm0-ai/vm0" };
+    const installation = { id: 12_345 };
+    const issue = {
+      number: 123,
+      title: "BDD issue",
+      body: "No bot mention here.",
+      labels: [],
+      user,
+    };
+
+    const closedIssueBody = JSON.stringify({
+      action: "closed",
+      issue,
+      repository,
+      installation,
+      sender: user,
+    });
+    const closedIssue = await api.requestGithubWebhook(
+      closedIssueBody,
+      api.signedGithubWebhookHeaders(closedIssueBody, "issues"),
+      [200],
+    );
+    expect(closedIssue.body).toBe("OK");
+
+    const synchronizedPullRequestBody = JSON.stringify({
+      action: "synchronize",
+      pull_request: issue,
+      repository,
+      installation,
+      sender: user,
+    });
+    const synchronizedPullRequest = await api.requestGithubWebhook(
+      synchronizedPullRequestBody,
+      api.signedGithubWebhookHeaders(
+        synchronizedPullRequestBody,
+        "pull_request",
+      ),
+      [200],
+    );
+    expect(synchronizedPullRequest.body).toBe("OK");
+
+    const editedCommentBody = JSON.stringify({
+      action: "edited",
+      issue,
+      comment: { id: 456, body: "@Zero please help", user },
+      repository,
+      installation,
+      sender: user,
+    });
+    const editedComment = await api.requestGithubWebhook(
+      editedCommentBody,
+      api.signedGithubWebhookHeaders(editedCommentBody, "issue_comment"),
+      [200],
+    );
+    expect(editedComment.body).toBe("OK");
+
+    const botCommentBody = JSON.stringify({
+      action: "created",
+      issue,
+      comment: { id: 457, body: "@Zero please help", user: bot },
+      repository,
+      installation,
+      sender: bot,
+    });
+    const botComment = await api.requestGithubWebhook(
+      botCommentBody,
+      api.signedGithubWebhookHeaders(botCommentBody, "issue_comment"),
+      [200],
+    );
+    expect(botComment.body).toBe("OK");
+
+    const unmentionedCommentBody = JSON.stringify({
+      action: "created",
+      issue,
+      comment: { id: 458, body: "plain follow-up", user },
+      repository,
+      installation,
+      sender: user,
+    });
+    const unmentionedComment = await api.requestGithubWebhook(
+      unmentionedCommentBody,
+      api.signedGithubWebhookHeaders(unmentionedCommentBody, "issue_comment"),
+      [200],
+    );
+    expect(unmentionedComment.body).toBe("OK");
+
+    const ignoredInstallationBody = JSON.stringify({
+      action: "suspend",
+      installation: {
+        id: 67_890,
+        account: { id: 98_765, login: "vm0-ai", type: "Organization" },
+      },
+      sender: { id: 42, login: "bdd-user" },
+    });
+    const ignoredInstallation = await api.requestGithubWebhook(
+      ignoredInstallationBody,
+      api.signedGithubWebhookHeaders(ignoredInstallationBody, "installation"),
+      [200],
+    );
+    expect(ignoredInstallation.body).toBe("OK");
   });
 });
 
