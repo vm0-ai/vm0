@@ -28,6 +28,7 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
         std::env::set_var("VM0_PROMPT", "@exit-after-result");
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
+        std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("USE_MOCK_CLAUDE", "true");
         std::env::set_var(
             "VM0_MOCK_CLAUDE_PATH",
