@@ -1,9 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
+import { createApp } from "../../../app-factory";
+import { mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
+import { server } from "../../../mocks/server";
 import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
@@ -11,6 +15,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
@@ -48,6 +53,41 @@ async function entitledRunActor(): Promise<{
     visibility: "private",
   });
   return { actor, agentId: agent.agentId, runnerGroup, granted };
+}
+
+const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
+
+function proxyChatCallbackToApp(): void {
+  server.use(
+    http.post(CHAT_CALLBACK_URL, async ({ request }) => {
+      const app = createApp({ signal: context.signal });
+      return await app.request("/api/internal/callbacks/chat", {
+        method: "POST",
+        headers: request.headers,
+        body: await request.text(),
+      });
+    }),
+  );
+}
+
+async function sendChatRunMessage(
+  actor: ApiTestUser,
+  body: {
+    readonly agentId: string;
+    readonly prompt: string;
+    readonly threadId?: string;
+  },
+): Promise<{ readonly runId: string; readonly threadId: string }> {
+  const chat = createChatFilesBddApi(context);
+  const sent = await chat.requestSendMessage(
+    actor,
+    { ...body, modelProvider: "anthropic-api-key" },
+    [201],
+  );
+  if (sent.status !== 201 || sent.body.runId === null) {
+    throw new Error("Expected the entitled chat send to create a run");
+  }
+  return { runId: sent.body.runId, threadId: sent.body.threadId };
 }
 
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
@@ -326,6 +366,107 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
   });
 });
 
+describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () => {
+  it("delivers, fails, and retries chat run callbacks through cancellation side effects", async () => {
+    const api = createRunsSchedulesApi(context);
+    const chat = createChatFilesBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "bdd-bypass");
+
+    const rejectedDeliveries: {
+      readonly body: string;
+      readonly signature: string | null;
+      readonly timestamp: string | null;
+      readonly bypass: string | null;
+    }[] = [];
+    server.use(
+      http.post(CHAT_CALLBACK_URL, async ({ request }) => {
+        rejectedDeliveries.push({
+          body: await request.text(),
+          signature: request.headers.get("x-vm0-signature"),
+          timestamp: request.headers.get("x-vm0-timestamp"),
+          bypass: request.headers.get("x-vercel-protection-bypass"),
+        });
+        return HttpResponse.json({ error: "boom" }, { status: 500 });
+      }),
+    );
+
+    const first = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "first cancellable chat run",
+    });
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await clearAllDetached();
+
+    const firstCancelled = await api.readRun(actor, first.runId);
+    expect(firstCancelled.status).toBe("cancelled");
+    expect(rejectedDeliveries).toHaveLength(1);
+    expect(rejectedDeliveries[0]).toMatchObject({
+      signature: expect.stringMatching(/.+/),
+      timestamp: expect.stringMatching(/^\d+$/),
+      bypass: "bdd-bypass",
+    });
+    const rejectedBody: unknown = JSON.parse(
+      rejectedDeliveries[0]?.body ?? "{}",
+    );
+    expect(rejectedBody).toMatchObject({
+      callbackId: expect.stringMatching(/[0-9a-f-]{36}/),
+      runId: first.runId,
+      status: "failed",
+      error: "Run cancelled",
+      payload: { threadId: first.threadId, agentId },
+    });
+
+    let unreachableDispatches = 0;
+    server.use(
+      http.post(CHAT_CALLBACK_URL, () => {
+        unreachableDispatches += 1;
+        return HttpResponse.error();
+      }),
+    );
+
+    const second = await sendChatRunMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "second cancellable chat run",
+    });
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await clearAllDetached();
+
+    const secondCancelled = await api.readRun(actor, second.runId);
+    expect(secondCancelled.status).toBe("cancelled");
+    expect(unreachableDispatches).toBe(1);
+
+    proxyChatCallbackToApp();
+
+    const third = await sendChatRunMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "third cancellable chat run",
+    });
+    await api.requestCancelRun(actor, third.runId, [200]);
+    // The delivered callback acknowledges immediately and persists its chat
+    // side effects in a nested detached task, so drain twice.
+    await clearAllDetached();
+    await clearAllDetached();
+
+    const thirdCancelled = await api.readRun(actor, third.runId);
+    expect(thirdCancelled.status).toBe("cancelled");
+
+    const messages = await chat.listThreadMessages(actor, first.threadId);
+    const cancelNote = messages.messages.find((message) => {
+      return message.role === "assistant" && message.runId === third.runId;
+    });
+    if (!cancelNote || cancelNote.role !== "assistant") {
+      throw new Error(
+        "Expected the delivered chat callback to append an assistant message",
+      );
+    }
+    expect(cancelNote.runLifecycleEvent).toBe("cancelled");
+    expect(cancelNote.content).toStrictEqual(expect.any(String));
+  });
+});
+
 describe("HOOK-02: event-consumer dispatch failures", () => {
   it("surfaces required event-consumer failures and recovers on retry", async () => {
     const api = createRunsSchedulesApi(context);
@@ -367,6 +508,97 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
       [200],
     );
     expect(recovered.status).toBe(200);
+  });
+});
+
+describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () => {
+  it("persists assistant events into the linked thread and swallows optional consumer failures", async () => {
+    const api = createRunsSchedulesApi(context);
+    const chat = createChatFilesBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    proxyChatCallbackToApp();
+
+    const { runId, threadId } = await sendChatRunMessage(actor, {
+      agentId,
+      prompt: "bdd assistant events",
+    });
+
+    const pending = await api.readRun(actor, runId);
+    expect(pending.status).toBe("pending");
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: {
+              id: "msg_bdd_1",
+              content: [{ type: "text", text: "Hello from BDD events" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    const afterFirst = await chat.listThreadMessages(actor, threadId);
+    const firstAssistant = afterFirst.messages.find((message) => {
+      return message.role === "assistant" && message.runId === runId;
+    });
+    expect(firstAssistant?.content).toBe("Hello from BDD events");
+
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("chat assistant publish failed"),
+    );
+    const swallowed = await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 2,
+            message: {
+              id: "msg_bdd_2",
+              content: [{ type: "text", text: "Survives optional failure" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(swallowed.status).toBe(200);
+
+    const afterSecond = await chat.listThreadMessages(actor, threadId);
+    const persisted = afterSecond.messages.filter((message) => {
+      return message.role === "assistant" && message.runId === runId;
+    });
+    expect(persisted).toHaveLength(2);
+    expect(
+      persisted.map((message) => {
+        return message.content;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        "Hello from BDD events",
+        "Survives optional failure",
+      ]),
+    );
+
+    await api.requestCancelRun(actor, runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, runId);
+    expect(cancelled.status).toBe("cancelled");
   });
 });
 
@@ -422,6 +654,93 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
 
     const record = await billing.readUsageRecord(actor);
     expect(record.status).toBe(200);
+  });
+
+  it("aggregates usage members across organization users", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const billing = createBillingMediaApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const beforeUsage = await billing.readUsageMembers(actor);
+    expect(beforeUsage.body.period).not.toBeNull();
+    expect(beforeUsage.body.members).toStrictEqual([]);
+
+    const member = bdd.user({ orgId: actor.orgId });
+    const memberAgent = await bdd.createAgent(member, {
+      displayName: "BDD member usage agent",
+      visibility: "private",
+    });
+
+    const actorRun = await api.createRun(actor, {
+      agentId,
+      prompt: "actor usage",
+      modelProvider: "anthropic-api-key",
+    });
+    const memberRun = await api.createRun(member, {
+      agentId: memberAgent.agentId,
+      prompt: "member usage",
+      modelProvider: "anthropic-api-key",
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const actorClaim = await api.claimRunnerJob(actorRun.runId);
+    const memberClaim = await api.claimRunnerJob(memberRun.runId);
+
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId: actorRun.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: "github",
+            category: "api_request",
+            quantity: 1,
+          },
+        ],
+      },
+      { authorization: `Bearer ${actorClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId: memberRun.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: "github",
+            category: "api_request",
+            quantity: 2,
+          },
+        ],
+      },
+      { authorization: `Bearer ${memberClaim.sandboxToken}` },
+      [200],
+    );
+    await billing.processUsageEvents();
+
+    const aggregated = await billing.readUsageMembers(actor);
+    expect(aggregated.body.members).toHaveLength(2);
+    expect(
+      aggregated.body.members.map((entry) => {
+        return entry.userId;
+      }),
+    ).toStrictEqual(expect.arrayContaining([actor.userId, member.userId]));
+    for (const entry of aggregated.body.members) {
+      expect(entry.email).toStrictEqual(expect.any(String));
+      expect(entry.inputTokens).toBe(0);
+      expect(entry.outputTokens).toBe(0);
+      expect(entry.creditsCharged).toBeGreaterThanOrEqual(0);
+    }
+
+    await api.requestCancelRun(actor, actorRun.runId, [200]);
+    await api.requestCancelRun(member, memberRun.runId, [200]);
+    await clearAllDetached();
+    const settled = await api.readRunQueue(actor);
+    expect(settled.body.concurrency.active).toBe(0);
   });
 });
 
@@ -500,7 +819,9 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
         ],
       },
     });
-    await api.runSafeCronRoutes(true);
+    const unauthorizedReconcile = await api.reconcileBillingCron(false);
+    expect(unauthorizedReconcile.status).toBe(401);
+    await api.reconcileBillingCron(true);
 
     const status = await billing.readBillingStatus(actor);
     expect(status.tier).toBe("pro");
@@ -517,7 +838,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
       metadata: {},
       items: { data: [] },
     });
-    await api.runSafeCronRoutes(true);
+    await api.reconcileBillingCron(true);
     const skipped = await billing.readBillingStatus(actor);
     expect(skipped.tier).toBe("pro");
   });
@@ -546,7 +867,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
         ],
       },
     });
-    await api.runSafeCronRoutes(true);
+    await api.reconcileBillingCron(true);
     const synced = await billing.readBillingStatus(actor);
     expect(synced.tier).toBe("pro");
 
@@ -569,7 +890,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
       },
     });
     await failSubscription(granted);
-    await api.runSafeCronRoutes(true);
+    await api.reconcileBillingCron(true);
 
     const downgraded = await billing.readBillingStatus(actor);
     expect(downgraded.tier).not.toBe("pro");
@@ -592,7 +913,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
       metadata: {},
       items: { data: [] },
     });
-    await api.runSafeCronRoutes(true);
+    await api.reconcileBillingCron(true);
 
     const cleared = await billing.readBillingStatus(actor);
     expect(cleared.tier).not.toBe("pro");

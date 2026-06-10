@@ -803,6 +803,14 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expectApiError(unauthenticatedHeartbeat.body);
     expect(unauthenticatedHeartbeat.body.error.code).toBe("UNAUTHORIZED");
 
+    const nonSandboxBearerHeartbeat = await api.requestAgentHeartbeat(
+      { runId },
+      { authorization: "Bearer not-a-sandbox-token" },
+      [401],
+    );
+    expectApiError(nonSandboxBearerHeartbeat.body);
+    expect(nonSandboxBearerHeartbeat.body.error.code).toBe("UNAUTHORIZED");
+
     const mismatchedTelemetry = await api.requestAgentTelemetry(
       {
         runId,
