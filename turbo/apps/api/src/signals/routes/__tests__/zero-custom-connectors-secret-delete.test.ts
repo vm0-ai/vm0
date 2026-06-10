@@ -1,30 +1,110 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
-import { zeroCustomConnectorSecretContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
+import {
+  zeroCustomConnectorByIdContract,
+  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorsContract,
+  type CustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
-import {
-  deleteCustomConnectorOrg$,
-  seedCustomConnectorOrg$,
-  type CustomConnectorFixture,
-} from "./helpers/zero-custom-connectors";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
+interface CustomConnectorFixture {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connector: CustomConnectorResponse;
+}
+
+interface OrgSession {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+function validConnectorBody() {
+  return {
+    displayName: "Example",
+    prefixes: ["https://api.example.com/"],
+    headerName: "Authorization",
+    headerTemplate: "Bearer {{secret}}",
+  };
+}
+
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
+async function createConnector(
+  track: (
+    fixturePromise: Promise<CustomConnectorFixture>,
+  ) => Promise<CustomConnectorFixture>,
+  fixture: OrgSession = {
+    orgId: `org_${randomUUID()}`,
+    userId: `user_${randomUUID()}`,
+  },
+) {
+  mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+  const client = setupApp({ context })(zeroCustomConnectorsContract);
+  const response = await accept(
+    client.create({
+      body: validConnectorBody(),
+      headers: authHeaders(),
+    }),
+    [201],
+  );
+  return track(Promise.resolve({ ...fixture, connector: response.body }));
+}
+
+async function setSecret(connectorId: string, value = "sk_live_xyz") {
+  const client = setupApp({ context })(zeroCustomConnectorSecretContract);
+  await accept(
+    client.set({
+      params: { id: connectorId },
+      body: { value },
+      headers: authHeaders(),
+    }),
+    [204],
+  );
+}
+
+async function deleteSecret(connectorId: string) {
+  const client = setupApp({ context })(zeroCustomConnectorSecretContract);
+  const response = await accept(
+    client.delete({
+      params: { id: connectorId },
+      headers: authHeaders(),
+    }),
+    [204],
+  );
+  expect(response.body).toBeUndefined();
+}
+
+async function listConnectors() {
+  const client = setupApp({ context })(zeroCustomConnectorsContract);
+  const response = await accept(client.list({ headers: authHeaders() }), [200]);
+  return response.body.connectors;
+}
+
 describe("DELETE /api/zero/custom-connectors/:id/secret", () => {
-  const track = createFixtureTracker<CustomConnectorFixture>((fixture) => {
-    return store.set(deleteCustomConnectorOrg$, fixture, context.signal);
-  });
+  const track = createFixtureTracker<CustomConnectorFixture>(
+    async (fixture) => {
+      mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+      await accept(
+        client.delete({
+          params: { id: fixture.connector.id },
+          headers: authHeaders(),
+        }),
+        [204, 404],
+      );
+    },
+  );
 
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context })(zeroCustomConnectorSecretContract);
@@ -50,145 +130,88 @@ describe("DELETE /api/zero/custom-connectors/:id/secret", () => {
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
-  it("clears the caller's secret on success (DB read-after-write)", async () => {
-    const fixture = await track(
-      store.set(seedCustomConnectorOrg$, { withSecret: true }, context.signal),
-    );
+  it("clears the caller's secret on success", async () => {
+    const fixture = await createConnector(track);
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    await setSecret(fixture.connector.id);
 
-    const client = setupApp({ context })(zeroCustomConnectorSecretContract);
-    const response = await accept(
-      client.delete({
-        params: { id: fixture.connectorId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [204],
-    );
-    expect(response.body).toBeUndefined();
+    const beforeDelete = await listConnectors();
+    expect(beforeDelete).toContainEqual({
+      ...fixture.connector,
+      hasSecret: true,
+    });
 
-    const writeDb = store.set(writeDb$);
-    const rows = await writeDb
-      .select()
-      .from(orgCustomConnectorSecrets)
-      .where(
-        and(
-          eq(orgCustomConnectorSecrets.connectorId, fixture.connectorId),
-          eq(orgCustomConnectorSecrets.userId, fixture.userId),
-        ),
-      );
-    expect(rows).toHaveLength(0);
+    await deleteSecret(fixture.connector.id);
+
+    const afterDelete = await listConnectors();
+    expect(afterDelete).toContainEqual(fixture.connector);
 
     // Parity with web: no realtime publish on secret-clear.
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
   it("is idempotent — second delete still 204 and changes nothing", async () => {
-    const fixture = await track(
-      store.set(seedCustomConnectorOrg$, {}, context.signal),
-    );
+    const fixture = await createConnector(track);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(zeroCustomConnectorSecretContract);
     for (let i = 0; i < 2; i++) {
-      const response = await accept(
-        client.delete({
-          params: { id: fixture.connectorId },
-          headers: { authorization: "Bearer clerk-session" },
-        }),
-        [204],
-      );
-      expect(response.body).toBeUndefined();
+      await deleteSecret(fixture.connector.id);
     }
 
-    const writeDb = store.set(writeDb$);
-    const rows = await writeDb
-      .select()
-      .from(orgCustomConnectorSecrets)
-      .where(eq(orgCustomConnectorSecrets.connectorId, fixture.connectorId));
-    expect(rows).toHaveLength(0);
+    const connectors = await listConnectors();
+    expect(connectors).toContainEqual(fixture.connector);
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
   it("does not leak across users sharing a connector", async () => {
-    const fixture = await track(
-      store.set(seedCustomConnectorOrg$, { withSecret: true }, context.signal),
-    );
-    // Seed a second user's secret on the same connector.
+    const fixture = await createConnector(track);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await setSecret(fixture.connector.id);
+
     const otherUserId = `user_${randomUUID().slice(0, 8)}`;
-    const writeDbSeed = store.set(writeDb$);
-    await writeDbSeed.insert(orgCustomConnectorSecrets).values({
-      connectorId: fixture.connectorId,
-      userId: otherUserId,
-      orgId: fixture.orgId,
-      encryptedValue: "other-user-secret",
-    });
+    mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
+    await setSecret(fixture.connector.id, "other-user-secret");
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(zeroCustomConnectorSecretContract);
-    await accept(
-      client.delete({
-        params: { id: fixture.connectorId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [204],
-    );
+    await deleteSecret(fixture.connector.id);
 
-    const writeDb = store.set(writeDb$);
-    const survivors = await writeDb
-      .select()
-      .from(orgCustomConnectorSecrets)
-      .where(eq(orgCustomConnectorSecrets.connectorId, fixture.connectorId));
-    expect(survivors).toHaveLength(1);
-    expect(survivors[0]?.userId).toBe(otherUserId);
+    const callerConnectors = await listConnectors();
+    expect(callerConnectors).toContainEqual(fixture.connector);
 
-    // The fixture tracker only deletes the connector-owned cascade, but the
-    // unmanaged extra row also lives on this connector and is cleaned by
-    // deleteCustomConnectorOrg$ on afterEach. No explicit cleanup needed.
+    mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
+    const otherUserConnectors = await listConnectors();
+    expect(otherUserConnectors).toContainEqual({
+      ...fixture.connector,
+      hasSecret: true,
+    });
   });
 
   it("does not leak across orgs (same userId in two orgs)", async () => {
     const sharedUserId = `user_${randomUUID().slice(0, 8)}`;
-    const orgAFixture = await track(
-      store.set(
-        seedCustomConnectorOrg$,
-        { userId: sharedUserId, withSecret: true },
-        context.signal,
-      ),
-    );
-    const orgBFixture = await track(
-      store.set(
-        seedCustomConnectorOrg$,
-        { userId: sharedUserId, withSecret: true },
-        context.signal,
-      ),
-    );
+    const orgAFixture = await createConnector(track, {
+      orgId: `org_${randomUUID()}`,
+      userId: sharedUserId,
+    });
+    await setSecret(orgAFixture.connector.id);
+
+    const orgBFixture = await createConnector(track, {
+      orgId: `org_${randomUUID()}`,
+      userId: sharedUserId,
+    });
+    await setSecret(orgBFixture.connector.id);
 
     // Authenticate as sharedUser in orgA. DELETE orgA's connector secret.
     mocks.clerk.session(sharedUserId, orgAFixture.orgId);
-    const client = setupApp({ context })(zeroCustomConnectorSecretContract);
-    await accept(
-      client.delete({
-        params: { id: orgAFixture.connectorId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [204],
-    );
+    await deleteSecret(orgAFixture.connector.id);
 
-    // orgA secret gone; orgB secret survives.
-    const writeDb = store.set(writeDb$);
-    const orgARows = await writeDb
-      .select()
-      .from(orgCustomConnectorSecrets)
-      .where(
-        eq(orgCustomConnectorSecrets.connectorId, orgAFixture.connectorId),
-      );
-    expect(orgARows).toHaveLength(0);
-    const orgBRows = await writeDb
-      .select()
-      .from(orgCustomConnectorSecrets)
-      .where(
-        eq(orgCustomConnectorSecrets.connectorId, orgBFixture.connectorId),
-      );
-    expect(orgBRows).toHaveLength(1);
+    const orgAConnectors = await listConnectors();
+    expect(orgAConnectors).toContainEqual(orgAFixture.connector);
+
+    mocks.clerk.session(sharedUserId, orgBFixture.orgId);
+    const orgBConnectors = await listConnectors();
+    expect(orgBConnectors).toContainEqual({
+      ...orgBFixture.connector,
+      hasSecret: true,
+    });
   });
 });

@@ -1,19 +1,27 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 
-import { zeroCustomConnectorByIdContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
+import {
+  zeroCustomConnectorByIdContract,
+  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorsContract,
+  type CustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import {
+  createFixtureTracker,
+  createZeroRouteMocks,
+} from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+interface CustomConnectorFixture {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly connector: CustomConnectorResponse;
+}
 
 function uniqueOrg(prefix: string) {
   const userId = `user_${prefix}_${randomUUID().slice(0, 8)}`;
@@ -21,37 +29,70 @@ function uniqueOrg(prefix: string) {
   return { userId, orgId };
 }
 
-async function seedCustomConnector(orgId: string, userId: string) {
-  const id = randomUUID();
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(orgCustomConnectors).values({
-    id,
-    orgId,
-    slug: `seed-${randomUUID().slice(0, 8)}`,
+function validConnectorBody() {
+  return {
     displayName: "Seeded",
-    prefixes: ["https://api.example.org/"],
+    prefixes: ["https://api.example.com/"],
     headerName: "Authorization",
     headerTemplate: "Bearer {{secret}}",
-    createdBy: userId,
-  });
-  return id;
+  };
 }
 
-async function seedConnectorSecret(
-  orgId: string,
-  userId: string,
-  connectorId: string,
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
+async function createConnector(
+  track: (
+    fixturePromise: Promise<CustomConnectorFixture>,
+  ) => Promise<CustomConnectorFixture>,
+  fixture = uniqueOrg("zcc-del"),
 ) {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(orgCustomConnectorSecrets).values({
-    connectorId,
-    userId,
-    orgId,
-    encryptedValue: "fake-encrypted-blob",
-  });
+  mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+  const client = setupApp({ context })(zeroCustomConnectorsContract);
+  const response = await accept(
+    client.create({
+      body: validConnectorBody(),
+      headers: authHeaders(),
+    }),
+    [201],
+  );
+  return track(Promise.resolve({ ...fixture, connector: response.body }));
+}
+
+async function setSecret(connectorId: string) {
+  const client = setupApp({ context })(zeroCustomConnectorSecretContract);
+  await accept(
+    client.set({
+      params: { id: connectorId },
+      body: { value: "sk_live_xyz" },
+      headers: authHeaders(),
+    }),
+    [204],
+  );
+}
+
+async function listConnectors() {
+  const client = setupApp({ context })(zeroCustomConnectorsContract);
+  const response = await accept(client.list({ headers: authHeaders() }), [200]);
+  return response.body.connectors;
 }
 
 describe("DELETE /api/zero/custom-connectors/:id", () => {
+  const track = createFixtureTracker<CustomConnectorFixture>(
+    async (fixture) => {
+      mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+      await accept(
+        client.delete({
+          params: { id: fixture.connector.id },
+          headers: authHeaders(),
+        }),
+        [204, 404],
+      );
+    },
+  );
+
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context })(zeroCustomConnectorByIdContract);
     const response = await accept(
@@ -64,15 +105,14 @@ describe("DELETE /api/zero/custom-connectors/:id", () => {
   });
 
   it("returns 401 when the authenticated session has no active organization", async () => {
-    const { userId, orgId } = uniqueOrg("zcc-del-no-org");
-    const id = await seedCustomConnector(orgId, userId);
+    const { userId } = uniqueOrg("zcc-del-no-org");
     mocks.clerk.session(userId, null);
 
     const client = setupApp({ context })(zeroCustomConnectorByIdContract);
     const response = await accept(
       client.delete({
-        params: { id },
-        headers: { authorization: "Bearer clerk-session" },
+        params: { id: randomUUID() },
+        headers: authHeaders(),
       }),
       [401],
     );
@@ -81,16 +121,15 @@ describe("DELETE /api/zero/custom-connectors/:id", () => {
     });
   });
 
-  it("returns 403 for non-admin members and leaves the row in place", async () => {
-    const { userId, orgId } = uniqueOrg("zcc-del-member");
-    const id = await seedCustomConnector(orgId, userId);
-    mocks.clerk.session(userId, orgId, "org:member");
+  it("returns 403 for non-admin members and leaves the connector visible", async () => {
+    const fixture = await createConnector(track, uniqueOrg("zcc-del-member"));
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const client = setupApp({ context })(zeroCustomConnectorByIdContract);
     const response = await accept(
       client.delete({
-        params: { id },
-        headers: { authorization: "Bearer clerk-session" },
+        params: { id: fixture.connector.id },
+        headers: authHeaders(),
       }),
       [403],
     );
@@ -101,13 +140,8 @@ describe("DELETE /api/zero/custom-connectors/:id", () => {
       },
     });
 
-    // Sanity: the row is still there (delete was rejected, not silently performed).
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ id: orgCustomConnectors.id })
-      .from(orgCustomConnectors)
-      .where(eq(orgCustomConnectors.id, id));
-    expect(row?.id).toBe(id);
+    const connectors = await listConnectors();
+    expect(connectors).toContainEqual(fixture.connector);
   });
 
   it("returns 404 for an unknown id", async () => {
@@ -118,7 +152,7 @@ describe("DELETE /api/zero/custom-connectors/:id", () => {
     const response = await accept(
       client.delete({
         params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -127,54 +161,37 @@ describe("DELETE /api/zero/custom-connectors/:id", () => {
     });
   });
 
-  it("deletes connector as admin and cascades secrets", async () => {
-    const { userId, orgId } = uniqueOrg("zcc-del-cascade");
-    const id = await seedCustomConnector(orgId, userId);
-    await seedConnectorSecret(orgId, userId, id);
-    mocks.clerk.session(userId, orgId, "org:admin");
+  it("deletes connector as admin and removes it from the connector list", async () => {
+    const fixture = await createConnector(track, uniqueOrg("zcc-del-cascade"));
+    await setSecret(fixture.connector.id);
 
-    // Pre-condition: secret row exists.
-    const writeDb = store.set(writeDb$);
-    const [secretBefore] = await writeDb
-      .select({ connectorId: orgCustomConnectorSecrets.connectorId })
-      .from(orgCustomConnectorSecrets)
-      .where(eq(orgCustomConnectorSecrets.connectorId, id));
-    expect(secretBefore?.connectorId).toBe(id);
+    const beforeDelete = await listConnectors();
+    expect(beforeDelete).toContainEqual({
+      ...fixture.connector,
+      hasSecret: true,
+    });
 
     const client = setupApp({ context })(zeroCustomConnectorByIdContract);
     const response = await client.delete({
-      params: { id },
-      headers: { authorization: "Bearer clerk-session" },
+      params: { id: fixture.connector.id },
+      headers: authHeaders(),
     });
     expect(response.status).toBe(204);
 
-    // Connector row removed
-    const [connectorRow] = await writeDb
-      .select({ id: orgCustomConnectors.id })
-      .from(orgCustomConnectors)
-      .where(eq(orgCustomConnectors.id, id));
-    expect(connectorRow).toBeUndefined();
-
-    // Secret row also removed (cascade)
-    const [secretRow] = await writeDb
-      .select({ connectorId: orgCustomConnectorSecrets.connectorId })
-      .from(orgCustomConnectorSecrets)
-      .where(eq(orgCustomConnectorSecrets.connectorId, id));
-    expect(secretRow).toBeUndefined();
+    const afterDelete = await listConnectors();
+    expect(afterDelete).toStrictEqual([]);
   });
 
-  it("returns 404 for a connector in another org and leaves the row in place", async () => {
-    const orgA = uniqueOrg("zcc-del-orgA");
-    const id = await seedCustomConnector(orgA.orgId, orgA.userId);
-
+  it("returns 404 for a connector in another org and leaves it visible to the owner org", async () => {
+    const fixture = await createConnector(track, uniqueOrg("zcc-del-orgA"));
     const orgB = uniqueOrg("zcc-del-orgB");
     mocks.clerk.session(orgB.userId, orgB.orgId, "org:admin");
 
     const client = setupApp({ context })(zeroCustomConnectorByIdContract);
     const response = await accept(
       client.delete({
-        params: { id },
-        headers: { authorization: "Bearer clerk-session" },
+        params: { id: fixture.connector.id },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -182,12 +199,8 @@ describe("DELETE /api/zero/custom-connectors/:id", () => {
       error: { code: "NOT_FOUND" },
     });
 
-    // Sanity: the connector is still there in org A.
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ id: orgCustomConnectors.id, orgId: orgCustomConnectors.orgId })
-      .from(orgCustomConnectors)
-      .where(eq(orgCustomConnectors.id, id));
-    expect(row?.orgId).toBe(orgA.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const connectors = await listConnectors();
+    expect(connectors).toContainEqual(fixture.connector);
   });
 });
