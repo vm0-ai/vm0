@@ -465,6 +465,24 @@ Drop only after confirming the behavior is covered by a BDD case above:
 | Service exceptions and service migrations                      |          136 | Service exceptions list plus API BDD mappings | Keep listed exceptions; migrate the rest                    |
 | Platform/static app behavior                                   |           25 | OPS-02                                        | Keep focused boundary/static checks                         |
 
+## Migration Audit — Deleted Legacy Families
+
+Legacy test files deleted after verifying full-suite per-file coverage stayed >= the main baseline without them (only the documented wall-clock jitter files differ):
+
+| Deleted legacy file                                                                                    | BDD replacement                                          | Verified by                          |
+| ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- | ------------------------------------ |
+| `health.test.ts`                                                                                       | OPS-02 in `hooks-ops.bdd.test.ts`                        | full-suite per-file diff vs baseline |
+| `zero-feature-switches.test.ts`                                                                        | OPS-01 in `hooks-ops.bdd.test.ts`                        | same                                 |
+| `zero-chat-threads-pin.test.ts`, `zero-chat-threads-unpin.test.ts`, `zero-chat-threads-rename.test.ts` | CHAT-01 mutation chain in `chat-files.bdd.test.ts`       | same                                 |
+| `zero-voice-io-quota.test.ts`                                                                          | FILE-02 in `billing-usage-media.bdd.test.ts`             | same                                 |
+| `zero-me-model-providers-list.test.ts`                                                                 | MISC-04 in `misc-routes.bdd.test.ts`                     | same                                 |
+| `desktop-auth.test.ts`                                                                                 | AUTH-02 in `auth-device.bdd.test.ts`                     | same                                 |
+| `cron-telegram-cleanup.test.ts`                                                                        | SCHED-02 safe-cron chain in `runs-schedules.bdd.test.ts` | same                                 |
+| `zero-integrations-telegram-upload-init.test.ts`                                                       | INT-02 in `integrations.bdd.test.ts`                     | same                                 |
+| `email-unsubscribe.test.ts`                                                                            | MISC-02 in `misc-routes.bdd.test.ts`                     | same                                 |
+
+Candidates whose primary route file is BDD-covered but whose deletion regressed collateral service files (kept alive; the regression shows what the next BDD round must cover first): `zero-slack-{events,commands,interactive}` (zero-slack-webhooks.service), `zero-connectors-external-code`, `zero-connectors-oauth-device-auth`, `zero-{codex,claude-code}-device-auth` (device-auth services), `zero-custom-connectors*` (zero-connector-data.service), `zero-memory` (zero-memory-detail.service), `webhooks-agent-events`, `zero-usage-members`, `cron-{execute-schedules,aggregate-usage,reconcile-billing-entitlements,drain-email-outbox}`, `zero-realtime-token`, `zero-onboarding-status`, `zero-runs-cancel`.
+
 ## Migration Audit Table Template
 
 Before deleting an existing test file, fill this table for that file or route family:
