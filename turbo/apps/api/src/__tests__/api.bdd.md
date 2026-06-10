@@ -1094,3 +1094,15 @@ First STORAGE-family reduce.
   test-ordering coupling the original masked.
 - Coverage verified (source-only): `zero-uploads-prepare.ts` (26/10) and
   `zero-uploads-complete.ts` (31/19) unchanged vs `main`. No regressions.
+
+### Round 46 — UPLOAD COMPLETE REJECTIONS (CHAIN-UPLOADS-COMPLETE-REJECTIONS, reduce-legacy)
+
+- Added `zero-uploads-complete-rejections.bdd.test.ts` (reusing the `uploads`
+  client): unauthenticated 401, a zero token without file:write 403, a non-uuid
+  id 400, and an unsupported content type 400.
+- Reduced `zero-uploads-complete.test.ts` from 12 to 8 cases, removing the
+  reachable rejections. The kept cases record uploads + run/chat-thread
+  associations against a prepared upload + S3 object (GAP-UPLOAD-COMPLETE).
+- Coverage verified (source-only): `zero-uploads-complete.ts` (31/19) unchanged
+  vs `main`. No regressions. Completes the STORAGE uploads pair (prepare +
+  complete).
