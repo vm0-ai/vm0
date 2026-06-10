@@ -41,6 +41,7 @@ fn cleanup_run_files(ops_file: &str) {
 
 unsafe fn setup_api_env(mock_path: &Path, workdir: &Path, api_url: &str) -> Result<(), String> {
     unsafe {
+        std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
         std::env::set_var("USE_MOCK_CLAUDE", "true");
         std::env::set_var("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "3");

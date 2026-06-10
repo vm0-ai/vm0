@@ -182,6 +182,7 @@ pub unsafe fn setup_env(
 ) -> Result<(), String> {
     unsafe {
         // Route the CLI binary resolution to the cargo-built mock.
+        std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
         std::env::set_var("USE_MOCK_CLAUDE", "true");
         std::env::set_var(
