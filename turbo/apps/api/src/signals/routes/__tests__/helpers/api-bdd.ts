@@ -19,6 +19,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
+import { zeroOrgInviteContract } from "@vm0/api-contracts/contracts/zero-org-members";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -163,6 +164,8 @@ export function createBddApi(context: TestContext) {
     ),
     /** ts-rest client for `/api/zero/org/list` (list the caller's orgs). */
     orgList: setupApp({ context })(zeroOrgListContract),
+    /** ts-rest client for `/api/zero/org/invite` (invite/revoke org members). */
+    orgInvite: setupApp({ context })(zeroOrgInviteContract),
     /** ts-rest client for `/api/zero/attribution/signup` (record first-touch
      * signup attribution into Clerk private metadata). */
     attribution: setupApp({ context })(zeroAttributionContract),

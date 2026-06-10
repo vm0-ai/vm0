@@ -745,3 +745,17 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Deleted `health.test.ts` whole.
 - Coverage verified (source-only): `health.ts` (3/0) and `health-auth-probe.ts`
   (18/10) unchanged vs `main`. No regressions.
+
+### Round 28 — ORG INVITE (CHAIN-ORG-INVITE)
+
+- Extended `createBddApi` with the `orgInvite` (invite/revoke) client.
+- Added `zero-org-invite.bdd.test.ts`: an admin invites with the default role
+  (Clerk receives org:member, scoped to org + inviter) and the admin role
+  (org:admin), and revokes an invitation; non-admin members get 403,
+  unauthenticated and no-org requests 401, invalid email / missing invitationId
+  400, and none of the rejected paths reach Clerk. Clerk owns the invitation
+  lifecycle, so the role/identity mapping is verified through the Clerk
+  invitation mock and the message via the real response.
+- Deleted `zero-org-invite.test.ts` whole.
+- Coverage verified (source-only): `zero-org-invite.ts` (28/10/2) unchanged vs
+  `main`. No regressions.
