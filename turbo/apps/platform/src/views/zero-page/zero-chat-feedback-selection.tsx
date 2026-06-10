@@ -8,7 +8,6 @@ import {
   IconCheck,
   IconCopy,
   IconMessageCircle,
-  IconPlus,
   IconX,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
@@ -23,7 +22,6 @@ import {
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  addFeedbackComment$,
   captureFeedbackSelection$,
   copyFeedbackSelection$,
   dismissFeedback$,
@@ -236,7 +234,6 @@ export function ChatFeedbackTray({
   const editingId = useGet(feedbackEditingIdValue$);
   const sendCount = useGet(feedbackSendCountValue$);
   const setNote = useSet(setFeedbackDraftNote$);
-  const addComment = useSet(addFeedbackComment$);
   const editComment = useSet(editFeedbackComment$);
   const removeComment = useSet(removeFeedbackComment$);
   const submit = useSet(submitFeedback$);
@@ -245,8 +242,6 @@ export function ChatFeedbackTray({
   if (!active) {
     return null;
   }
-
-  const draftHasNote = (draft?.note.trim().length ?? 0) > 0;
 
   const handleSubmit = () => {
     const prompt = submit();
@@ -258,11 +253,11 @@ export function ChatFeedbackTray({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter adds the comment, Shift+Enter inserts a newline — matching the main
-    // composer. Escape closes the tray.
+    // Enter sends, Shift+Enter inserts a newline — matching the main composer.
+    // Escape closes the tray.
     if (matchShortcut("enter", event)) {
       event.preventDefault();
-      addComment();
+      handleSubmit();
     } else if (matchShortcut("escape", event)) {
       event.preventDefault();
       dismiss();
@@ -319,7 +314,7 @@ export function ChatFeedbackTray({
 
           {draft ? (
             <>
-              <blockquote className="mb-2 max-h-28 overflow-y-auto rounded-r-md border-l-[3px] border-border bg-muted/40 px-3 py-2 text-xs italic leading-5 text-muted-foreground">
+              <blockquote className="mb-3 max-h-28 overflow-y-auto rounded-r-md border-l-[3px] border-border bg-muted/40 px-3 py-2 text-xs italic leading-5 text-muted-foreground">
                 {draft.quote}
               </blockquote>
               <textarea
@@ -335,28 +330,17 @@ export function ChatFeedbackTray({
                 className="w-full resize-none rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:border-primary focus:outline-none focus:ring-[3px] focus:ring-primary/10"
               />
             </>
-          ) : (
-            <div className="rounded-lg border border-dashed border-border bg-gray-50 px-3 py-3 text-center text-xs text-muted-foreground">
-              Select any text in the reply to add another comment
-            </div>
-          )}
+          ) : null}
 
-          <div className="mt-3 flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={addComment}
-              disabled={!draftHasNote}
-              className="gap-1.5"
-            >
-              <IconPlus size={14} stroke={2} />
-              {editingId !== null ? "Save comment" : "Add comment"}
-            </Button>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="text-xs leading-snug text-muted-foreground">
+              Select more text and click Provide feedback to add another comment
+            </span>
             <Button
               size="sm"
               onClick={handleSubmit}
               disabled={sendCount === 0}
-              className="gap-1.5"
+              className="shrink-0 gap-1.5"
             >
               <IconArrowUp size={14} stroke={2} />
               {sendCount === 0

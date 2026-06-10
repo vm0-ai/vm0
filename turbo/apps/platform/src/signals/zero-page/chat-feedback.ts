@@ -146,29 +146,11 @@ const commitDraft$ = command(({ get, set }) => {
   set(feedbackEditingId$, null);
 });
 
-export const addFeedbackComment$ = command(({ set }) => {
-  set(commitDraft$);
-});
-
-// A newly selected passage becomes the next draft; any in-progress note is
-// committed first so it is never lost.
-const loadDraftFromSelection$ = command(({ set }, quote: string) => {
-  set(commitDraft$);
-  set(feedbackDraft$, { quote, note: "" });
-  set(feedbackEditingId$, null);
-});
-
-// Watch the document selection. While the tray is open, a fresh selection
-// becomes the next draft passage; otherwise it drives the floating toolbar.
+// Watch the document selection and drive the floating toolbar. The toolbar
+// shows whether or not the tray is open — selecting another passage and
+// clicking "Provide feedback" again is how a further comment is added.
 export const captureFeedbackSelection$ = command(({ get, set }) => {
   const found = readAssistantSelection();
-  if (get(feedbackActive$)) {
-    if (found) {
-      set(loadDraftFromSelection$, found.text);
-      window.getSelection()?.removeAllRanges();
-    }
-    return;
-  }
   if (!found) {
     if (get(feedbackSelection$) !== null) {
       set(feedbackSelection$, null);
@@ -187,11 +169,16 @@ export const captureFeedbackSelection$ = command(({ get, set }) => {
   });
 });
 
-// Open the tray and seed the draft with the passage under the toolbar.
+// "Provide feedback" on a passage. When the tray is already open, commit the
+// in-progress note first (so nothing is lost) and make this passage the new
+// draft; otherwise open the tray seeded with it.
 export const startFeedback$ = command(({ get, set }) => {
   const selection = get(feedbackSelection$);
   if (!selection) {
     return;
+  }
+  if (get(feedbackActive$)) {
+    set(commitDraft$);
   }
   set(feedbackActive$, true);
   set(feedbackDraft$, { quote: selection.text, note: "" });
