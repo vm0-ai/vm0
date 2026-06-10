@@ -417,15 +417,7 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
   };
 }
 
-export function AgentChatPage() {
-  const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const currentChatAgentDisplayName = useLastResolved(
-    currentChatAgentDisplayName$,
-  );
-
-  const sendNewThread = useSet(sendNewThreadOptimistically$);
-  const generationTemplate = useGet(newThreadGenerationTemplate$);
-  const setGenerationTemplate = useSet(setNewThreadGenerationTemplate$);
+function useNewThreadComputerUse() {
   const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
   const computerUseHosts =
     computerUseHostsLoadable.state === "hasData"
@@ -437,6 +429,33 @@ export function AgentChatPage() {
     storedComputerUseHostId,
   );
   const setComputerUseHostId = useSet(setNewThreadComputerUseHostId$);
+
+  return {
+    selectedComputerUseHostId,
+    clearComputerUseHostId: () => {
+      setComputerUseHostId(null);
+    },
+    computerUse: {
+      hosts: computerUseHosts,
+      loading: computerUseHostsLoadable.state === "loading",
+      selectedHostId: selectedComputerUseHostId,
+      onChange: setComputerUseHostId,
+      downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+    },
+  };
+}
+
+export function AgentChatPage() {
+  const currentChatAgentId = useLastResolved(currentChatAgentId$);
+  const currentChatAgentDisplayName = useLastResolved(
+    currentChatAgentDisplayName$,
+  );
+
+  const sendNewThread = useSet(sendNewThreadOptimistically$);
+  const generationTemplate = useGet(newThreadGenerationTemplate$);
+  const setGenerationTemplate = useSet(setNewThreadGenerationTemplate$);
+  const { selectedComputerUseHostId, clearComputerUseHostId, computerUse } =
+    useNewThreadComputerUse();
   const rootSignal = useGet(rootSignal$);
   const pageSignal = useGet(pageSignal$);
   const {
@@ -468,6 +487,7 @@ export function AgentChatPage() {
           },
           rootSignal,
         );
+        clearComputerUseHostId();
       })(),
       Reason.DomCallback,
     );
@@ -535,13 +555,7 @@ export function AgentChatPage() {
               value: generationTemplate,
               onChange: setGenerationTemplate,
             }}
-            computerUse={{
-              hosts: computerUseHosts,
-              loading: computerUseHostsLoadable.state === "loading",
-              selectedHostId: selectedComputerUseHostId,
-              onChange: setComputerUseHostId,
-              downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
-            }}
+            computerUse={computerUse}
             modelPickerLoading={modelPickerLoading}
             submitBlocker={submitBlockerProps}
           />
