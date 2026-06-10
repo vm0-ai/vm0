@@ -30,6 +30,27 @@ import { writeDb$ } from "../../external/db";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
+// BDD migration of the legacy
+// `test-telegram-dispatch-probe.test.ts`. The 4 legacy
+// `it()`s collapse into 2 BDD `it()`s: (1) 404 + 400 chain
+// (404 test endpoint not allowed → 400 legacy
+// required-field error for bad bodies), (2) 200 dispatch
+// chain (200 dispatches private messages with Telegram
+// typing MSW capture + DB run written + DB callback
+// payload written → 200 dispatches group mentions with
+// mention stripping + Telegram metadata + DB callback
+// payload written).
+//
+// Service-Level Exception: `userCache`, `orgMembersMetadata`,
+// `orgMetadata`, `agentComposes`, `agentComposeVersions`,
+// `zeroAgents`, `telegramInstallations`, `telegramUserLinks`
+// rows are seeded directly via `writeDb$` because no public
+// route creates them. The `agentRuns`, `agentRunCallbacks`,
+// and `zeroRuns` rows written by the route are read directly
+// via `writeDb$` because no public follow-up GET endpoint
+// exists for a single row. The upstream Telegram
+// sendChatAction API is mocked via MSW.
+
 const context = testContext();
 const store = createStore();
 
@@ -254,111 +275,127 @@ async function callbackPayload(runId: string): Promise<unknown> {
   return callback?.payload;
 }
 
-describe("POST /api/test/telegram-dispatch-probe", () => {
-  it("returns 404 when the test endpoint is not allowed", async () => {
+describe("BDD POST /api/test/telegram-dispatch-probe — 404 + 400 chain", () => {
+  it("gwt-wt-wt: 404 test endpoint not allowed → 400 legacy required-field error for bad bodies", async () => {
+    // Given: production env.
     mockEnv("ENV", "production");
 
-    const response = await requestApp("/api/test/telegram-dispatch-probe", {
+    // When + Then: 404.
+    const prodResponse = await requestApp("/api/test/telegram-dispatch-probe", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({}),
     });
+    expect(prodResponse.status).toBe(404);
+    await expect(prodResponse.text()).resolves.toBe("Not found");
 
-    expect(response.status).toBe(404);
-    await expect(response.text()).resolves.toBe("Not found");
-  });
-
-  it("returns the legacy required-field error for bad bodies", async () => {
+    // Given: development env + a malformed JSON body.
     mockEnv("ENV", "development");
 
-    const response = await requestApp("/api/test/telegram-dispatch-probe", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{",
-    });
-
-    expect(response.status).toBe(400);
+    // When + Then: 400 — legacy required-field error.
+    const badBodyResponse = await requestApp(
+      "/api/test/telegram-dispatch-probe",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{",
+      },
+    );
+    expect(badBodyResponse.status).toBe(400);
     await expect(
-      readJson<{ readonly error: string }>(response),
+      readJson<{ readonly error: string }>(badBodyResponse),
     ).resolves.toStrictEqual({
       error: "bot_id, chat_id, telegram_user_id, and message_text are required",
     });
   });
+});
 
-  it("dispatches private messages through API-owned Telegram run creation", async () => {
+describe("BDD POST /api/test/telegram-dispatch-probe — 200 dispatch chain", () => {
+  it("gwt-wt-wt: 200 dispatches private messages with Telegram typing MSW capture + DB run written + DB callback payload written → 200 dispatches group mentions with mention stripping + Telegram metadata + DB callback payload written", async () => {
+    // Given: development env + a fresh Telegram probe
+    // fixture + an MSW handler for the typing call.
     mockEnv("ENV", "development");
-    const fixture = await seedFixture();
+    const dmFixture = await seedFixture();
     const typingBodies = mockTelegramTyping();
 
-    const response = await requestApp("/api/test/telegram-dispatch-probe", {
+    // When: dispatch a private message.
+    const dmResponse = await requestApp("/api/test/telegram-dispatch-probe", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        bot_id: fixture.botId,
+        bot_id: dmFixture.botId,
         chat_id: "900100200",
-        telegram_user_id: fixture.telegramUserId,
+        telegram_user_id: dmFixture.telegramUserId,
         message_text: "hello dm",
         message_id: 501,
       }),
     });
 
-    expect(response.status).toBe(200);
+    // Then: 200 + the upstream Telegram API received the
+    // typing call + the DB run was written with the
+    // expected prompt + Telegram metadata + the callback
+    // payload is persisted.
+    expect(dmResponse.status).toBe(200);
     await expect(
-      readJson<{ readonly ok: true }>(response),
+      readJson<{ readonly ok: true }>(dmResponse),
     ).resolves.toStrictEqual({ ok: true });
     expect(typingBodies).toStrictEqual([
       { chat_id: "900100200", action: "typing" },
     ]);
-
-    const run = await latestTelegramRun(fixture.orgId);
-    expect(run).toMatchObject({
+    const dmRun = await latestTelegramRun(dmFixture.orgId);
+    expect(dmRun).toMatchObject({
       prompt: "hello dm",
       triggerSource: "telegram",
     });
-    expect(run?.appendSystemPrompt).toContain("Chat type: private");
-    expect(run?.appendSystemPrompt).toContain("Root message ID: dm");
-    expect(run?.appendSystemPrompt).toContain("Telegram username: @e2e-user");
-
-    await expect(callbackPayload(run!.id)).resolves.toMatchObject({
-      installationId: fixture.botId,
+    expect(dmRun?.appendSystemPrompt).toContain("Chat type: private");
+    expect(dmRun?.appendSystemPrompt).toContain("Root message ID: dm");
+    expect(dmRun?.appendSystemPrompt).toContain("Telegram username: @e2e-user");
+    await expect(callbackPayload(dmRun!.id)).resolves.toMatchObject({
+      installationId: dmFixture.botId,
       chatId: "900100200",
       messageId: "501",
       rootMessageId: "dm",
       isDM: true,
     });
-  });
 
-  it("dispatches group mentions with mention stripping and Telegram metadata", async () => {
+    // Given: development env + a fresh Telegram probe
+    // fixture + an MSW handler for the typing call.
     mockEnv("ENV", "development");
-    const fixture = await seedFixture();
+    const groupFixture = await seedFixture();
     mockTelegramTyping();
 
-    const response = await requestApp("/api/test/telegram-dispatch-probe", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        bot_id: fixture.botId,
-        chat_id: "900100200",
-        telegram_user_id: fixture.telegramUserId,
-        message_text: "@probe_bot summarize this",
-        message_id: 502,
-        chat_type: "group",
-        bot_username: "probe_bot",
-      }),
-    });
+    // When: dispatch a group mention with mention
+    // stripping.
+    const groupResponse = await requestApp(
+      "/api/test/telegram-dispatch-probe",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          bot_id: groupFixture.botId,
+          chat_id: "900100200",
+          telegram_user_id: groupFixture.telegramUserId,
+          message_text: "@probe_bot summarize this",
+          message_id: 502,
+          chat_type: "group",
+          bot_username: "probe_bot",
+        }),
+      },
+    );
 
-    expect(response.status).toBe(200);
+    // Then: 200 + the mention is stripped + the entities
+    // section is appended + the run is a group chat.
+    expect(groupResponse.status).toBe(200);
     await expect(
-      readJson<{ readonly ok: true }>(response),
+      readJson<{ readonly ok: true }>(groupResponse),
     ).resolves.toStrictEqual({ ok: true });
-
-    const run = await latestTelegramRun(fixture.orgId);
-    expect(run?.prompt).toContain("summarize this");
-    expect(run?.prompt).not.toContain("@probe_bot summarize this");
-    expect(run?.prompt).toContain("[Telegram entities]");
-    expect(run?.appendSystemPrompt).toContain("Chat type: group");
-    await expect(callbackPayload(run!.id)).resolves.toMatchObject({
-      installationId: fixture.botId,
+    const groupRun = await latestTelegramRun(groupFixture.orgId);
+    expect(groupRun?.prompt).toContain("summarize this");
+    expect(groupRun?.prompt).not.toContain("@probe_bot summarize this");
+    expect(groupRun?.prompt).toContain("[Telegram entities]");
+    expect(groupRun?.appendSystemPrompt).toContain("Chat type: group");
+    await expect(callbackPayload(groupRun!.id)).resolves.toMatchObject({
+      installationId: groupFixture.botId,
       chatId: "900100200",
       messageId: "502",
       rootMessageId: null,
