@@ -65,6 +65,7 @@ interface InvoiceInput {
   readonly id: string;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
+  readonly amount_paid?: number | null;
   readonly subtotal?: number | null;
   readonly lines: {
     readonly data: readonly {
@@ -1427,6 +1428,10 @@ function customerIdFromInvoice(invoice: InvoiceInput): string | null {
     : (invoice.customer?.id ?? null);
 }
 
+function invoiceAmountPaidCents(invoice: InvoiceInput): number {
+  return typeof invoice.amount_paid === "number" ? invoice.amount_paid : 0;
+}
+
 function subscriptionPeriodEndFromInvoice(
   invoice: InvoiceInput,
   orgId: string,
@@ -1718,13 +1723,9 @@ async function handleCheckoutCompleted(
     source: "checkout.session.completed",
   });
   const tier = tierFromSubscription(subscription);
-  if (
-    tier &&
-    (subscription.status === "trialing" || subscription.status === "active")
-  ) {
+  if (tier && subscription.status === "trialing") {
     await uploadGoogleAdsOfflineConversion({
-      kind:
-        subscription.status === "trialing" ? "free_trial" : "paid_subscriber",
+      kind: "free_trial",
       tier,
       transactionId: session.id,
       conversionTime,
@@ -1824,6 +1825,7 @@ async function handleInvoicePaid(
     return null;
   }
 
+  const amountPaidCents = invoiceAmountPaidCents(invoice);
   const processed = await db.transaction(async (tx) => {
     return await processSubscriptionInvoicePaid(tx, {
       invoice,
@@ -1833,21 +1835,18 @@ async function handleInvoicePaid(
       details,
     });
   });
-  if (
-    processed &&
-    typeof invoice.subtotal === "number" &&
-    invoice.subtotal > 0
-  ) {
+  if (processed && amountPaidCents > 0) {
     await uploadGoogleAdsOfflineConversion({
       kind: "paid_subscriber",
       tier: details.tier,
-      transactionId: subscriptionId,
+      transactionId: invoice.id,
       conversionTime,
       metadata: mergedStripeMetadata(
         details.subscription.metadata,
         invoice.parent?.subscription_details?.metadata,
         invoice.metadata,
       ),
+      conversionValueUsd: amountPaidCents / 100,
     });
   }
   return processed ? org.orgId : null;

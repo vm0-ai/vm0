@@ -112,7 +112,11 @@ GOOGLE_OAUTH_CLIENT_SECRET=op://Development/google/GOOGLE_OAUTH_CLIENT_SECRET
 GOOGLE_ADS_DEVELOPER_TOKEN=op://Development/google/GOOGLE_ADS_DEVELOPER_TOKEN
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_ID
 
-# Optional: Google Ads offline conversion upload from Stripe webhooks
+# Optional: Google Ads offline conversion upload from Stripe webhooks.
+# Uses the legacy Google Ads API UploadClickConversions path. Only enable for
+# developer tokens allowlisted for this path; new adopters should use Google Ads
+# Data Manager API instead.
+GOOGLE_ADS_OFFLINE_CONVERSIONS_ENABLED=false
 GOOGLE_ADS_OFFLINE_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_OFFLINE_CUSTOMER_ID
 GOOGLE_ADS_OFFLINE_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_OFFLINE_LOGIN_CUSTOMER_ID
 GOOGLE_ADS_OFFLINE_DEVELOPER_TOKEN=op://Development/google/GOOGLE_ADS_DEVELOPER_TOKEN

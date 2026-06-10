@@ -12,7 +12,12 @@ const GOOGLE_ADS_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_ADS_UPLOAD_URL =
   "https://googleads.googleapis.com/v24/customers/1001302527:uploadClickConversions";
 
-function configureGoogleAdsOfflineConversionEnv(): void {
+function configureGoogleAdsOfflineConversionEnv(args?: {
+  readonly enabled?: boolean;
+}): void {
+  if (args?.enabled !== false) {
+    mockOptionalEnv("GOOGLE_ADS_OFFLINE_CONVERSIONS_ENABLED", "true");
+  }
   mockOptionalEnv("GOOGLE_ADS_OFFLINE_CUSTOMER_ID", "100-130-2527");
   mockOptionalEnv("GOOGLE_ADS_OFFLINE_LOGIN_CUSTOMER_ID", "999-888-7777");
   mockOptionalEnv("GOOGLE_ADS_OFFLINE_DEVELOPER_TOKEN", "developer-token");
@@ -39,6 +44,34 @@ describe("Google Ads offline conversions", () => {
     expect(
       formatGoogleAdsConversionDateTime(new Date("2026-06-10T12:34:56.789Z")),
     ).toBe("2026-06-10 12:34:56+00:00");
+  });
+
+  it("does not call Google Ads unless legacy upload is explicitly enabled", async () => {
+    configureGoogleAdsOfflineConversionEnv({ enabled: false });
+    let tokenCalls = 0;
+    let uploadCalls = 0;
+
+    server.use(
+      http.post(GOOGLE_ADS_TOKEN_URL, () => {
+        tokenCalls += 1;
+        return HttpResponse.json({ access_token: "access-token" });
+      }),
+      http.post(GOOGLE_ADS_UPLOAD_URL, () => {
+        uploadCalls += 1;
+        return HttpResponse.json({ results: [], jobId: "123" });
+      }),
+    );
+
+    await uploadGoogleAdsOfflineConversion({
+      kind: "free_trial",
+      tier: "pro",
+      transactionId: "cs_test_disabled",
+      conversionTime: new Date("2026-06-10T12:34:56.000Z"),
+      metadata: { gclid: "test-gclid" },
+    });
+
+    expect(tokenCalls).toBe(0);
+    expect(uploadCalls).toBe(0);
   });
 
   it("uploads free trial conversions with checkout session order id", async () => {
@@ -107,7 +140,7 @@ describe("Google Ads offline conversions", () => {
     });
   });
 
-  it("uploads paid subscriber conversions with subscription order id", async () => {
+  it("uploads paid subscriber conversions with invoice order id and paid amount", async () => {
     configureGoogleAdsOfflineConversionEnv();
     let uploadBody: unknown = null;
 
@@ -124,9 +157,10 @@ describe("Google Ads offline conversions", () => {
     await uploadGoogleAdsOfflineConversion({
       kind: "paid_subscriber",
       tier: "team",
-      transactionId: "sub_test_team",
+      transactionId: "inv_test_team",
       conversionTime: new Date("2026-06-10T13:00:00.000Z"),
       metadata: { gbraid: "test-gbraid" },
+      conversionValueUsd: 123.45,
     });
 
     expect(uploadBody).toStrictEqual({
@@ -135,9 +169,9 @@ describe("Google Ads offline conversions", () => {
           gbraid: "test-gbraid",
           conversionAction: "customers/1001302527/conversionActions/9876543210",
           conversionDateTime: "2026-06-10 13:00:00+00:00",
-          conversionValue: 200,
+          conversionValue: 123.45,
           currencyCode: "USD",
-          orderId: "sub_test_team",
+          orderId: "inv_test_team",
           conversionEnvironment: "WEB",
         },
       ],
@@ -146,6 +180,7 @@ describe("Google Ads offline conversions", () => {
   });
 
   it("uses the shared Google Ads login customer fallback", async () => {
+    mockOptionalEnv("GOOGLE_ADS_OFFLINE_CONVERSIONS_ENABLED", "true");
     mockOptionalEnv("GOOGLE_ADS_OFFLINE_CUSTOMER_ID", "1001302527");
     mockOptionalEnv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "123-456-7890");
     mockOptionalEnv("GOOGLE_ADS_OFFLINE_DEVELOPER_TOKEN", "developer-token");
@@ -161,7 +196,7 @@ describe("Google Ads offline conversions", () => {
       http.post(GOOGLE_ADS_TOKEN_URL, () => {
         return HttpResponse.json({ access_token: "access-token" });
       }),
-      http.post(GOOGLE_ADS_UPLOAD_URL, async ({ request }) => {
+      http.post(GOOGLE_ADS_UPLOAD_URL, ({ request }) => {
         captured.uploadHeaders = request.headers;
         return HttpResponse.json({ results: [], jobId: "456" });
       }),
@@ -178,6 +213,53 @@ describe("Google Ads offline conversions", () => {
     expect(requiredValue(captured.uploadHeaders).get("login-customer-id")).toBe(
       "1234567890",
     );
+  });
+
+  it("retries transient Google Ads upload failures", async () => {
+    configureGoogleAdsOfflineConversionEnv();
+    let uploadCalls = 0;
+    let uploadBody: unknown = null;
+
+    server.use(
+      http.post(GOOGLE_ADS_TOKEN_URL, () => {
+        return HttpResponse.json({ access_token: "access-token" });
+      }),
+      http.post(GOOGLE_ADS_UPLOAD_URL, async ({ request }) => {
+        uploadCalls += 1;
+        if (uploadCalls === 1) {
+          return HttpResponse.json(
+            { error: { message: "temporary unavailable" } },
+            { status: 503 },
+          );
+        }
+        uploadBody = await request.json();
+        return HttpResponse.json({ results: [], jobId: "789" });
+      }),
+    );
+
+    await uploadGoogleAdsOfflineConversion({
+      kind: "free_trial",
+      tier: "pro",
+      transactionId: "cs_test_retry",
+      conversionTime: new Date("2026-06-10T12:34:56.000Z"),
+      metadata: { gclid: "test-gclid" },
+    });
+
+    expect(uploadCalls).toBe(2);
+    expect(uploadBody).toStrictEqual({
+      conversions: [
+        {
+          gclid: "test-gclid",
+          conversionAction: "customers/1001302527/conversionActions/7615812424",
+          conversionDateTime: "2026-06-10 12:34:56+00:00",
+          conversionValue: 20,
+          currencyCode: "USD",
+          orderId: "cs_test_retry",
+          conversionEnvironment: "WEB",
+        },
+      ],
+      partialFailure: true,
+    });
   });
 
   it("does not call Google Ads when no click id is available", async () => {
