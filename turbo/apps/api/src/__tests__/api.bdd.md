@@ -810,3 +810,21 @@ so there is no API-first way to exercise just the mapping.
 - Deleted `zero-org-logo.test.ts` whole.
 - Coverage verified (source-only): `zero-org-logo.ts` (60/46/8) unchanged vs
   `main`. No regressions.
+
+### Round 32 — TEAM LISTING (CHAIN-TEAM)
+
+- Extended `createBddApi` with the `team` client.
+- Added `zero-team.bdd.test.ts`: a fresh org has an empty team; an agent created
+  with skills + metadata is listed in full (id / ownerId / displayName /
+  description / sound / avatarUrl / customSkills / visibility / headVersionId /
+  updatedAt); the team is scoped to the active org and shows every public agent
+  plus the caller's own private agents while excluding other members' private
+  agents and other orgs' agents (all members + agents built via the public
+  agents/skills API across `actAsAdmin`/`actAsMember`); and unauthenticated 401 /
+  no-org 403 boundaries.
+- Deleted `zero-team.test.ts` whole. The "compose without zero-agent metadata"
+  exclusion is a SQL join filter (GAP-STANDALONE-COMPOSE) with no unique JS
+  branch — deleting the whole legacy left `zero-team.ts` (8/2/1) unchanged
+  (DROP-TEAM-STANDALONE-COMPOSE).
+- Coverage verified (source-only): `zero-team.ts` (8/2/1) unchanged vs `main`.
+  No regressions.
