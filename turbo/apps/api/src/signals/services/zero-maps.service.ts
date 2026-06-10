@@ -25,8 +25,10 @@ const GEOCODING_CATEGORY = "geocoding";
 const DIRECTIONS_CATEGORY = "routes.directions";
 const DIRECTIONS_ADVANCED_CATEGORY = "routes.directions.advanced";
 const PLACES_TEXT_SEARCH_PRO_CATEGORY = "places.text_search.pro";
+const PLACES_TEXT_SEARCH_ENTERPRISE_CATEGORY = "places.text_search.enterprise";
 const PLACES_DETAILS_ESSENTIALS_CATEGORY = "places.details.essentials";
 const PLACES_DETAILS_PRO_CATEGORY = "places.details.pro";
+const PLACES_DETAILS_ENTERPRISE_CATEGORY = "places.details.enterprise";
 
 const GOOGLE_GEOCODING_URL =
   "https://maps.googleapis.com/maps/api/geocode/json";
@@ -36,12 +38,14 @@ const GOOGLE_PLACES_SEARCH_TEXT_URL =
   "https://places.googleapis.com/v1/places:searchText";
 const GOOGLE_PLACES_DETAILS_BASE_URL = "https://places.googleapis.com/v1/";
 
-const PLACE_SEARCH_FIELD_MASK =
+const PLACE_SEARCH_PRO_FIELD_MASK =
   "places.id,places.name,places.displayName,places.formattedAddress,places.location,places.types";
+const PLACE_SEARCH_ENTERPRISE_FIELD_MASK = `${PLACE_SEARCH_PRO_FIELD_MASK},places.googleMapsUri,places.priceLevel,places.priceRange`;
 const PLACE_DETAILS_ESSENTIALS_FIELD_MASK =
   "id,name,formattedAddress,location,types,viewport,plusCode";
 const PLACE_DETAILS_PRO_FIELD_MASK =
   "id,name,displayName,formattedAddress,location,types,viewport,plusCode,googleMapsUri,businessStatus";
+const PLACE_DETAILS_ENTERPRISE_FIELD_MASK = `${PLACE_DETAILS_PRO_FIELD_MASK},priceLevel,priceRange,rating,userRatingCount,regularOpeningHours,currentOpeningHours,websiteUri,nationalPhoneNumber`;
 const DEFAULT_LOCATION_BIAS_RADIUS_METERS = 50_000;
 
 interface CreditCheckRow extends Record<string, unknown> {
@@ -52,6 +56,8 @@ interface CreditCheckRow extends Record<string, unknown> {
 }
 
 type ErrorStatus = 400 | 402 | 502 | 503;
+type PlaceSearchFieldset = ZeroMapsPlacesSearchRequest["fields"];
+type PlaceDetailFieldset = ZeroMapsPlacesDetailsRequest["fields"];
 
 interface MapsErrorResponse {
   readonly status: ErrorStatus;
@@ -248,13 +254,31 @@ function locationBiasFromOptions(
   };
 }
 
-function placeDetailsFieldMask(fields: "essentials" | "pro"): string {
+function placeSearchFieldMask(fields: PlaceSearchFieldset): string {
+  return fields === "enterprise"
+    ? PLACE_SEARCH_ENTERPRISE_FIELD_MASK
+    : PLACE_SEARCH_PRO_FIELD_MASK;
+}
+
+function placeSearchBillingCategory(fields: PlaceSearchFieldset): string {
+  return fields === "enterprise"
+    ? PLACES_TEXT_SEARCH_ENTERPRISE_CATEGORY
+    : PLACES_TEXT_SEARCH_PRO_CATEGORY;
+}
+
+function placeDetailsFieldMask(fields: PlaceDetailFieldset): string {
+  if (fields === "enterprise") {
+    return PLACE_DETAILS_ENTERPRISE_FIELD_MASK;
+  }
   return fields === "pro"
     ? PLACE_DETAILS_PRO_FIELD_MASK
     : PLACE_DETAILS_ESSENTIALS_FIELD_MASK;
 }
 
-function placeDetailsBillingCategory(fields: "essentials" | "pro"): string {
+function placeDetailsBillingCategory(fields: PlaceDetailFieldset): string {
+  if (fields === "enterprise") {
+    return PLACES_DETAILS_ENTERPRISE_CATEGORY;
+  }
   return fields === "pro"
     ? PLACES_DETAILS_PRO_CATEGORY
     : PLACES_DETAILS_ESSENTIALS_CATEGORY;
@@ -596,11 +620,12 @@ export const zeroMapsPlacesSearch$ = command(
       return locationBias;
     }
 
+    const billingCategory = placeSearchBillingCategory(args.body.fields);
     const creditError = await set(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
-        category: PLACES_TEXT_SEARCH_PRO_CATEGORY,
+        category: billingCategory,
       },
       signal,
     );
@@ -621,7 +646,7 @@ export const zeroMapsPlacesSearch$ = command(
         headers: {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask": PLACE_SEARCH_FIELD_MASK,
+          "X-Goog-FieldMask": placeSearchFieldMask(args.body.fields),
         },
         body: JSON.stringify(requestBody),
         signal,
@@ -638,7 +663,7 @@ export const zeroMapsPlacesSearch$ = command(
         orgId: args.auth.orgId,
         userId: args.auth.userId,
         runId: runIdForUsage(args.auth),
-        category: PLACES_TEXT_SEARCH_PRO_CATEGORY,
+        category: billingCategory,
       },
       signal,
     );
@@ -646,7 +671,7 @@ export const zeroMapsPlacesSearch$ = command(
       operation: "places.search",
       provider: PROVIDER,
       creditsCharged,
-      billingCategory: PLACES_TEXT_SEARCH_PRO_CATEGORY,
+      billingCategory,
       billingQuantity: 1,
       result,
     };

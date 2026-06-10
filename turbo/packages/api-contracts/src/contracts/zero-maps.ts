@@ -6,7 +6,8 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 const travelModeSchema = z.enum(["driving", "walking", "bicycling", "transit"]);
-const placeDetailFieldsetSchema = z.enum(["essentials", "pro"]);
+const placeSearchFieldsetSchema = z.enum(["pro", "enterprise"]);
+const placeDetailFieldsetSchema = z.enum(["essentials", "pro", "enterprise"]);
 
 export const zeroMapsOperationSchema = z.enum([
   "geocode",
@@ -48,6 +49,7 @@ export const zeroMapsPlacesSearchRequestSchema = z.object({
   radius: z.number().int().positive().optional(),
   limit: z.number().int().min(1).max(20).default(5),
   region: z.string().trim().min(1).optional(),
+  fields: placeSearchFieldsetSchema.default("pro"),
 });
 
 export const zeroMapsPlacesDetailsRequestSchema = z.object({
