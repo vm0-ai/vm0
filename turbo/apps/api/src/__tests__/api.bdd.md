@@ -98,13 +98,28 @@ below. This file is filled in family-by-family as work proceeds.
 
 ## Migration state
 
-Families fully (or near-fully, modulo a documented gap) converted to API-first
-BDD: AGENT lifecycle + connectors, VARIABLE, SECRET, USER-PREFERENCES,
+**Families fully (or near-fully, modulo a documented gap) converted to API-first
+BDD:** AGENT lifecycle + connectors, VARIABLE, SECRET, USER-PREFERENCES,
 FEATURE-SWITCH, API-KEY, PERSONAL-MODEL-PROVIDER, COMPOSE read/list/by-name/
 metadata, CUSTOM-CONNECTOR list/CRUD/secrets, CHAT-THREAD metadata/create/patch/
-list, ORG list/invite/membership-requests/logo/team, USER-MODEL-PREFERENCE,
-ATTRIBUTION, AUTH-ME, REALTIME-TOKEN, DESKTOP-UPDATES, HEALTH, BILLING
-redeem-code.
+list, ORG (list/invite/membership-requests/logo/team/delete/get/update/leave/
+members — complete), USER-MODEL-PREFERENCE, ATTRIBUTION, AUTH-ME, REALTIME-TOKEN,
+DESKTOP-UPDATES, HEALTH.
+
+**Gap families reduced** (Rounds 33–44): for each, the API-reachable subset —
+the auth / capability / role / body-validation / admission / not-found
+rejections that fire _before_ the gap-blocked work — is now converted to an
+API-first `*.bdd.test.ts`, and the legacy is reduced to the seeded/external
+cases (kept with a documented `GAP-*`). Coverage parity verified each round
+(several reduces improved coverage; the coverage gate caught and corrected an
+over-reach in the auto-recharge reduce). Done: RUN (create rejections; read/
+cancel/queue rejections — `GAP-RUN-CREDITS`); BILLING **complete** (redeem-code
+full, plus portal / invoices / checkout / downgrade / restore / auto-recharge
+reductions — `GAP-STRIPE-CUSTOMER/SUBSCRIPTION`, `GAP-ORG-TIER`); SCHEDULE
+(enable/disable/delete rejections — `GAP-SCHEDULE-DEPLOY`); ORG **complete**
+(delete + get/update/leave + members rejections — `GAP-ORG-DELETE-CASCADE`,
+`GAP-ORG-STATE`, `GAP-CLERK-MEMBERSHIP`); INTEGRATION (github installation read
+rejections — `GAP-GITHUB-INSTALL`).
 
 Two categories make up the remainder:
 
@@ -116,17 +131,15 @@ Two categories make up the remainder:
    `test-oauth-provider-get.test.ts`. No rewrite is required; renaming to
    `.bdd.test.ts` would be cosmetic.
 
-2. **Gap-blocked families** — RUN, CHAT messages, BILLING checkout/status/
-   invoices, INTEGRATION (slack/telegram/github), WEBHOOK, SCHEDULE, MEDIA
-   (`*-io-*`, generate-image), STORAGE (`storages*`, uploads), and org/
-   org-members CRUD. Their preconditions — in-flight runs (sandbox admission),
-   seeded chat messages, Stripe customers/subscriptions, OAuth-connected
-   connectors, org membership cache, org metadata — have **no public API to
-   construct**, so a clean migration is impossible without production changes the
-   issue forbids. These can only be reduced (migrate the minority of
-   API-reachable cases, keep documented gap-legacy for the rest), which yields
-   marginal legacy reduction because the kept gap-legacy still covers the bulk of
-   their source branches.
+2. **Remaining gap families to reduce** — CHAT messages, the rest of INTEGRATION
+   (slack/telegram, github link/patch/delete), WEBHOOK, MEDIA (`*-io-*`,
+   generate-image), STORAGE (`storages*`, uploads), connectors (oauth/device/
+   manual), USAGE, LOGS, CRON, ONBOARDING, device-auth. Each follows the same
+   reduce-legacy recipe as Rounds 33–44: convert the pre-gap rejection subset,
+   keep documented gap-legacy for the seeded/external cases (in-flight runs,
+   seeded chat messages, OAuth-connected connectors, S3 objects, signed
+   webhooks). The reachable subset per file is typically small (2–6 cases), so
+   these are incremental.
 
 ## Chained scenario candidates
 
