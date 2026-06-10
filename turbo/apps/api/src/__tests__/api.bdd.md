@@ -124,6 +124,8 @@ below. This file is filled in family-by-family as work proceeds.
   delete → list excludes → delete again 404.
 - **CHAIN-COMPOSE-READ** ✅ — create agent → read its compose by id → 404 for
   unknown / malformed / cross-org.
+- **CHAIN-COMPOSE-LIST** ✅ — create agents → list composes → delete one →
+  list excludes → GET 404.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -479,3 +481,17 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Deleted `zero-composes-by-id.test.ts` whole.
 - Coverage verified (source-only): `agent-composes-read.ts` (32/15) and the
   other compose route/service files unchanged vs the `main` baseline.
+
+### Round 12 — COMPOSE LIST (CHAIN-COMPOSE-LIST)
+
+- Extended `createBddApi` with the `composesList` (`zeroComposesListContract`)
+  client (delete reuses `composesById`).
+- Extended `zero-composes-by-id.bdd.test.ts` with list + delete chains: create
+  agents → list composes → delete one (204) → list excludes → GET 404, plus the
+  unauthenticated / no-org-400 (list) / unknown-404 / cross-org-404 (delete)
+  branches.
+- Deleted `zero-composes-list.test.ts` whole. Kept `zero-composes-delete.test.ts`
+  for its 409 "pending run references the compose" case, which needs a
+  DB-seeded pending run (GAP-PENDING-RUN, revisits with the RUN family).
+- Coverage verified (source-only): `zero-composes.ts` (45/13) and the other
+  compose route/service files unchanged vs the `main` baseline.

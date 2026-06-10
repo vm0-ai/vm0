@@ -105,4 +105,106 @@ describe("compose read by id (API-first BDD)", () => {
     });
     expect(owner.orgId).toStrictEqual(expect.any(String));
   });
+
+  it("lists the org's composes and excludes a deleted one", async () => {
+    const api = createBddApi(context);
+    api.allowInstructionsStorage();
+    api.actAsAdmin();
+
+    // Then a new org has no composes.
+    const empty = await accept(
+      api.composesList.list({ query: {}, headers: SESSION_AUTH }),
+      [200],
+    );
+    expect(empty.body).toStrictEqual({ composes: [] });
+
+    // Given two agents (composes) created through the API.
+    const first = await accept(
+      api.agents.create({ headers: SESSION_AUTH, body: { displayName: "A" } }),
+      [201],
+    );
+    const second = await accept(
+      api.agents.create({ headers: SESSION_AUTH, body: { displayName: "B" } }),
+      [201],
+    );
+
+    // Then both appear in the list.
+    const listed = await accept(
+      api.composesList.list({ query: {}, headers: SESSION_AUTH }),
+      [200],
+    );
+    expect(
+      listed.body.composes
+        .map((compose) => {
+          return compose.id;
+        })
+        .sort(),
+    ).toStrictEqual([first.body.agentId, second.body.agentId].sort());
+
+    // When one compose is deleted. Then the list excludes it and GET 404s.
+    await accept(
+      api.composesById.delete({
+        params: { id: first.body.agentId },
+        headers: SESSION_AUTH,
+      }),
+      [204],
+    );
+    const afterDelete = await accept(
+      api.composesList.list({ query: {}, headers: SESSION_AUTH }),
+      [200],
+    );
+    expect(
+      afterDelete.body.composes.map((compose) => {
+        return compose.id;
+      }),
+    ).toStrictEqual([second.body.agentId]);
+    await accept(
+      api.composesById.getById({
+        params: { id: first.body.agentId },
+        headers: SESSION_AUTH,
+      }),
+      [404],
+    );
+  });
+
+  it("rejects compose list/delete without auth or organization, and unknown/cross-org delete", async () => {
+    const api = createBddApi(context);
+    api.allowInstructionsStorage();
+
+    // Unauthenticated.
+    await accept(api.composesList.list({ query: {}, headers: {} }), [401]);
+    await accept(
+      api.composesById.delete({ params: { id: randomUUID() }, headers: {} }),
+      [401],
+    );
+
+    // A list with no active organization reports 400.
+    api.actAsNoOrg();
+    await accept(
+      api.composesList.list({ query: {}, headers: SESSION_AUTH }),
+      [400],
+    );
+
+    // Unknown id and a compose owned by a different org.
+    api.actAsAdmin();
+    await accept(
+      api.composesById.delete({
+        params: { id: randomUUID() },
+        headers: SESSION_AUTH,
+      }),
+      [404],
+    );
+    const created = await accept(
+      api.agents.create({ headers: SESSION_AUTH, body: { displayName: "X" } }),
+      [201],
+    );
+    api.actAsAdmin();
+    await accept(
+      api.composesById.delete({
+        params: { id: created.body.agentId },
+        headers: SESSION_AUTH,
+      }),
+      [404],
+    );
+  });
 });
