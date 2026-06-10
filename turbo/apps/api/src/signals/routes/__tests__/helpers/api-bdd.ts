@@ -26,6 +26,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
+import { zeroOrgDeleteContract } from "@vm0/api-contracts/contracts/zero-org";
 import {
   zeroRunsByIdContract,
   zeroRunsCancelContract,
@@ -205,6 +206,10 @@ export function createBddApi(context: TestContext) {
     orgLogo: setupApp({ context })(zeroOrgLogoContract),
     /** ts-rest client for `/api/zero/team` (list the org's agents/composes). */
     team: setupApp({ context })(zeroTeamContract),
+    /** ts-rest client for `/api/zero/org/delete`. The successful cascade delete
+     * needs seeded org data; only the auth/validation/identity rejections are
+     * reachable (org identity + slug come from the Clerk mock). */
+    orgDelete: setupApp({ context })(zeroOrgDeleteContract),
     /** ts-rest client for `/api/zero/runs` (create a run). The funded happy path
      * needs seeded credits with no API surface; only the pre-admission
      * rejections (auth/validation/credits/ownership) are reachable. */

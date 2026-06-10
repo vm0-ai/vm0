@@ -11,10 +11,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 
-import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { now } from "../../../lib/time";
-import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
@@ -59,26 +56,6 @@ const trackCleanup = createFixtureTracker(
 
 function uniqueId(prefix: string): string {
   return `${prefix}_${randomUUID().slice(0, 8)}`;
-}
-
-function currentSecond(): number {
-  return Math.floor(now() / 1000);
-}
-
-function zeroToken(args: {
-  readonly userId: string;
-  readonly orgId: string;
-}): string {
-  const seconds = currentSecond();
-  return signSandboxJwtForTests({
-    scope: "zero",
-    userId: args.userId,
-    orgId: args.orgId,
-    runId: uniqueId("run"),
-    capabilities: [],
-    iat: seconds,
-    exp: seconds + 600,
-  });
 }
 
 async function seedOrg(args: {
@@ -193,175 +170,6 @@ async function readSlackConnection(
 }
 
 describe("POST /api/zero/org/delete", () => {
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(zeroOrgDeleteContract);
-
-    const response = await accept(
-      client.delete({ headers: {}, body: { slug: "delete-test" } }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when authenticated without an active org", async () => {
-    mocks.clerk.session(uniqueId("user"), null);
-    const client = setupApp({ context })(zeroOrgDeleteContract);
-
-    const response = await accept(
-      client.delete({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { slug: "delete-test" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("rejects zero tokens", async () => {
-    const token = zeroToken({
-      userId: uniqueId("user"),
-      orgId: uniqueId("org"),
-    });
-    const client = setupApp({ context })(zeroOrgDeleteContract);
-
-    const response = await accept(
-      client.delete({
-        headers: { authorization: `Bearer ${token}` },
-        body: { slug: "delete-test" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error).toStrictEqual({
-      message: "This endpoint is not available for sandbox tokens",
-      code: "FORBIDDEN",
-    });
-    expect(
-      context.mocks.clerk.organizations.getOrganization,
-    ).not.toHaveBeenCalled();
-    expect(
-      context.mocks.clerk.organizations.getOrganizationMembershipList,
-    ).not.toHaveBeenCalled();
-    expect(
-      context.mocks.clerk.organizations.deleteOrganization,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 for an invalid body", async () => {
-    const userId = uniqueId("user");
-    const orgId = uniqueId("org");
-    const slug = `org-${randomUUID().slice(0, 8)}`;
-    await seedOrg({ userId, orgId, role: "admin", slug });
-    mocks.clerk.session(userId, orgId, "org:admin");
-    const app = createApp({ signal: context.signal });
-
-    const response = await app.request("/api/zero/org/delete", {
-      method: "POST",
-      headers: {
-        authorization: "Bearer clerk-session",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({}),
-    });
-    const body = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(body).toMatchObject({ error: { code: "BAD_REQUEST" } });
-    expect(
-      context.mocks.clerk.organizations.deleteOrganization,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 when the slug does not match the active org", async () => {
-    const userId = uniqueId("user");
-    const orgId = uniqueId("org");
-    const slug = `org-${randomUUID().slice(0, 8)}`;
-    await seedOrg({ userId, orgId, role: "admin", slug });
-    mocks.clerk.session(userId, orgId, "org:admin");
-    const client = setupApp({ context })(zeroOrgDeleteContract);
-
-    const response = await accept(
-      client.delete({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { slug: `different-${randomUUID().slice(0, 8)}` },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Organization name does not match",
-        code: "BAD_REQUEST",
-      },
-    });
-    expect(
-      context.mocks.clerk.organizations.deleteOrganization,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("returns 403 for non-admin members", async () => {
-    const userId = uniqueId("user");
-    const orgId = uniqueId("org");
-    const slug = `org-${randomUUID().slice(0, 8)}`;
-    await seedOrg({ userId, orgId, role: "member", slug });
-    mocks.clerk.session(userId, orgId, "org:member");
-    const client = setupApp({ context })(zeroOrgDeleteContract);
-
-    const response = await accept(
-      client.delete({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { slug },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Only admins can delete the organization",
-        code: "FORBIDDEN",
-      },
-    });
-    expect(
-      context.mocks.clerk.organizations.getOrganizationMembershipList,
-    ).not.toHaveBeenCalled();
-    expect(
-      context.mocks.clerk.organizations.deleteOrganization,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("returns 404 when the org identity is missing", async () => {
-    const userId = uniqueId("user");
-    const orgId = uniqueId("org");
-    await trackCleanup(Promise.resolve({ orgId }));
-    await store.set(writeDb$).insert(orgMetadata).values({ orgId });
-    mocks.clerk.session(userId, orgId, "org:admin");
-    context.mocks.clerk.organizations.getOrganization.mockRejectedValue({
-      statusCode: 404,
-    });
-    const client = setupApp({ context })(zeroOrgDeleteContract);
-
-    const response = await accept(
-      client.delete({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { slug: "missing-org" },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Resource not found", code: "NOT_FOUND" },
-    });
-    expect(
-      context.mocks.clerk.organizations.deleteOrganization,
-    ).not.toHaveBeenCalled();
-  });
-
   it("deletes the organization through Clerk and cleans member-local rows", async () => {
     const adminUserId = uniqueId("user-admin");
     const memberUserId = uniqueId("user-member");

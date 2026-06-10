@@ -946,3 +946,19 @@ But every rejection \_before* the credit check is reachable.
 - Coverage verified (source-only): `zero-queue-position.ts` (9/2),
   `zero-runs-cancel.ts` (14/4), `queue-position.service.ts` (10/5), and
   `zero-run-cancel.service.ts` (38/16) unchanged vs `main`. No regressions.
+
+### Round 38 — ORG DELETE REJECTIONS (CHAIN-ORG-DELETE, reduce-legacy)
+
+- Extended `createBddApi` with the `orgDelete` client.
+- Added `zero-org-delete.bdd.test.ts`: unauthenticated 401, no-org 401, and a
+  zero-token 403 (Clerk untouched); a non-admin member 403; an admin with a
+  missing slug 400; an admin whose confirmation slug does not match the Clerk
+  org 400; and a 404 when Clerk `getOrganization` reports no identity. The org
+  identity + slug come from the Clerk mock and the role from the session, so all
+  rejections are reachable without seeding.
+- Reduced `zero-org-delete.test.ts` from 8 to 1 case, keeping only the
+  successful cascade delete (deletes through Clerk and cleans member-local rows),
+  which seeds org cache / integrations / members (GAP-ORG-DELETE-CASCADE).
+- Coverage verified (source-only): `zero-org-delete.ts` (13/4) unchanged;
+  `zero-org-data.service.ts` 199/106 -> 204/118 (the Clerk-mock rejection paths
+  cover more `deleteZeroOrg$` branches than the legacy). No regressions.
