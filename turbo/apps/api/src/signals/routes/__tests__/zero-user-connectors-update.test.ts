@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
-import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  zeroAgentsByIdContract,
+  zeroAgentsMainContract,
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   agentComposes,
@@ -11,19 +14,11 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { userConnectors } from "@vm0/db/schema/user-connector";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { generateCliToken, signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
-import {
-  deleteSkillsForFixture$,
-  seedAgentForInstructions$,
-  seedSkillsFixture$,
-  seedUserConnector$,
-  type SkillsFixture,
-} from "./helpers/zero-skills";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -45,8 +40,70 @@ function agentsClient() {
   return setupApp({ context })(zeroAgentsMainContract);
 }
 
+function agentsByIdClient() {
+  return setupApp({ context })(zeroAgentsByIdContract);
+}
+
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+interface ZeroAgentRouteFixture {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+}
+
+async function createAgentThroughApi(): Promise<ZeroAgentRouteFixture> {
+  const userId = `user_${randomUUID()}`;
+  const orgId = `org_${randomUUID()}`;
+  mocks.clerk.session(userId, orgId);
+  context.mocks.s3.send.mockResolvedValue({});
+
+  const response = await accept(
+    agentsClient().create({
+      headers: authHeaders(),
+      body: { displayName: "Connector Update Test Agent" },
+    }),
+    [201],
+  );
+
+  return { orgId, userId, agentId: response.body.agentId };
+}
+
+async function deleteAgentThroughApi(
+  fixture: ZeroAgentRouteFixture,
+): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  await accept(
+    agentsByIdClient().delete({
+      params: { id: fixture.agentId },
+      headers: authHeaders(),
+    }),
+    [204, 404],
+  );
+}
+
+async function getEnabledTypesThroughApi(
+  agentId: string,
+  headers: ReturnType<typeof authHeaders> = authHeaders(),
+): Promise<readonly string[]> {
+  const response = await accept(
+    apiClient().get({
+      params: { id: agentId },
+      headers,
+    }),
+    [200],
+  );
+  return response.body.enabledTypes;
+}
+
+function expectEnabledTypes(
+  actual: readonly string[],
+  expected: readonly string[],
+): void {
+  expect(new Set(actual)).toStrictEqual(new Set(expected));
+  expect(actual).toHaveLength(expected.length);
 }
 
 async function cliAuthHeaders(fixture: {
@@ -81,30 +138,9 @@ async function cliAuthHeaders(fixture: {
 }
 
 describe("PUT /api/zero/agents/:id/user-connectors", () => {
-  const track = createFixtureTracker<SkillsFixture>((fixture) => {
-    return store.set(deleteSkillsForFixture$, fixture, context.signal);
+  const trackAgent = createFixtureTracker<ZeroAgentRouteFixture>((fixture) => {
+    return deleteAgentThroughApi(fixture);
   });
-
-  async function getEnabledTypes(
-    orgId: string,
-    userId: string,
-    agentId: string,
-  ): Promise<string[]> {
-    const writeDb = store.set(writeDb$);
-    const rows = await writeDb
-      .select({ connectorType: userConnectors.connectorType })
-      .from(userConnectors)
-      .where(
-        and(
-          eq(userConnectors.orgId, orgId),
-          eq(userConnectors.userId, userId),
-          eq(userConnectors.agentId, agentId),
-        ),
-      );
-    return rows.map((r) => {
-      return r.connectorType;
-    });
-  }
 
   async function getAgentHeadVersion(
     agentId: string,
@@ -117,49 +153,61 @@ describe("PUT /api/zero/agents/:id/user-connectors", () => {
     return row?.headVersionId;
   }
 
-  it("sets connector permissions and persists them (read-after-write)", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    const { agentId } = await store.set(
-      seedAgentForInstructions$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
+  it("sets, replaces, dedupes, and clears connector permissions", async () => {
+    const fixture = await trackAgent(createAgentThroughApi());
     mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    await expect(
+      getEnabledTypesThroughApi(fixture.agentId),
+    ).resolves.toStrictEqual([]);
 
     const response = await accept(
       apiClient().update({
-        params: { id: agentId },
+        params: { id: fixture.agentId },
         headers: authHeaders(),
-        body: { enabledTypes: ["github", "slack"] },
+        body: { enabledTypes: ["github", "slack", "github"] },
       }),
       [200],
     );
+    expectEnabledTypes(response.body.enabledTypes, ["github", "slack"]);
 
-    expect(new Set(response.body.enabledTypes)).toStrictEqual(
-      new Set(["github", "slack"]),
+    const readAfterSet = await getEnabledTypesThroughApi(fixture.agentId);
+    expectEnabledTypes(readAfterSet, ["github", "slack"]);
+
+    const replaceResponse = await accept(
+      apiClient().update({
+        params: { id: fixture.agentId },
+        headers: authHeaders(),
+        body: { enabledTypes: ["linear"] },
+      }),
+      [200],
     );
-
+    expect(replaceResponse.body.enabledTypes).toStrictEqual(["linear"]);
     await expect(
-      getEnabledTypes(fixture.orgId, fixture.userId, agentId),
-    ).resolves.toStrictEqual(expect.arrayContaining(["github", "slack"]));
+      getEnabledTypesThroughApi(fixture.agentId),
+    ).resolves.toStrictEqual(["linear"]);
+
+    const clearResponse = await accept(
+      apiClient().update({
+        params: { id: fixture.agentId },
+        headers: authHeaders(),
+        body: { enabledTypes: [] },
+      }),
+      [200],
+    );
+    expect(clearResponse.body.enabledTypes).toStrictEqual([]);
+    await expect(
+      getEnabledTypesThroughApi(fixture.agentId),
+    ).resolves.toStrictEqual([]);
   });
 
   it("rejects connector permissions for disabled connector types", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    const { agentId } = await store.set(
-      seedAgentForInstructions$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
+    const fixture = await trackAgent(createAgentThroughApi());
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
       apiClient().update({
-        params: { id: agentId },
+        params: { id: fixture.agentId },
         headers: authHeaders(),
         body: { enabledTypes: ["bentoml"] },
       }),
@@ -171,24 +219,18 @@ describe("PUT /api/zero/agents/:id/user-connectors", () => {
       "Connector types are not available: bentoml",
     );
     await expect(
-      getEnabledTypes(fixture.orgId, fixture.userId, agentId),
+      getEnabledTypesThroughApi(fixture.agentId),
     ).resolves.toStrictEqual([]);
   });
 
   it("accepts a CLI token when updating connector permissions", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    const { agentId } = await store.set(
-      seedAgentForInstructions$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
+    const fixture = await trackAgent(createAgentThroughApi());
+    const cliHeaders = await cliAuthHeaders(fixture);
 
     const response = await accept(
       apiClient().update({
-        params: { id: agentId },
-        headers: await cliAuthHeaders(fixture),
+        params: { id: fixture.agentId },
+        headers: cliHeaders,
         body: { enabledTypes: ["github"] },
       }),
       [200],
@@ -196,116 +238,12 @@ describe("PUT /api/zero/agents/:id/user-connectors", () => {
 
     expect(response.body.enabledTypes).toStrictEqual(["github"]);
     await expect(
-      getEnabledTypes(fixture.orgId, fixture.userId, agentId),
+      getEnabledTypesThroughApi(fixture.agentId, cliHeaders),
     ).resolves.toStrictEqual(["github"]);
   });
 
-  it("replaces existing permissions atomically", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    const { agentId } = await store.set(
-      seedAgentForInstructions$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    await accept(
-      apiClient().update({
-        params: { id: agentId },
-        headers: authHeaders(),
-        body: { enabledTypes: ["github", "slack"] },
-      }),
-      [200],
-    );
-
-    const response = await accept(
-      apiClient().update({
-        params: { id: agentId },
-        headers: authHeaders(),
-        body: { enabledTypes: ["linear"] },
-      }),
-      [200],
-    );
-    expect(response.body.enabledTypes).toStrictEqual(["linear"]);
-
-    await expect(
-      getEnabledTypes(fixture.orgId, fixture.userId, agentId),
-    ).resolves.toStrictEqual(["linear"]);
-  });
-
-  it("dedupes duplicate entries in enabledTypes", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    const { agentId } = await store.set(
-      seedAgentForInstructions$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      apiClient().update({
-        params: { id: agentId },
-        headers: authHeaders(),
-        body: { enabledTypes: ["slack", "github", "slack"] },
-      }),
-      [200],
-    );
-
-    expect(new Set(response.body.enabledTypes)).toStrictEqual(
-      new Set(["slack", "github"]),
-    );
-    expect(response.body.enabledTypes).toHaveLength(2);
-
-    await expect(
-      getEnabledTypes(fixture.orgId, fixture.userId, agentId),
-    ).resolves.toHaveLength(2);
-  });
-
-  it("clears all permissions with an empty array", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    const { agentId } = await store.set(
-      seedAgentForInstructions$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    await store.set(
-      seedUserConnector$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        agentId,
-        connectorType: "github",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      apiClient().update({
-        params: { id: agentId },
-        headers: authHeaders(),
-        body: { enabledTypes: [] },
-      }),
-      [200],
-    );
-
-    expect(response.body.enabledTypes).toStrictEqual([]);
-    await expect(
-      getEnabledTypes(fixture.orgId, fixture.userId, agentId),
-    ).resolves.toStrictEqual([]);
-  });
-
   it("returns 404 for a non-existent agent", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const fakeId = randomUUID();
 
     const response = await accept(
@@ -323,19 +261,12 @@ describe("PUT /api/zero/agents/:id/user-connectors", () => {
   });
 
   it("returns 400 for invalid connector types", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    const { agentId } = await store.set(
-      seedAgentForInstructions$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
+    const fixture = await trackAgent(createAgentThroughApi());
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
       apiClient().update({
-        params: { id: agentId },
+        params: { id: fixture.agentId },
         headers: authHeaders(),
         body: { enabledTypes: ["github", "not-a-connector"] },
       }),
@@ -366,14 +297,8 @@ describe("PUT /api/zero/agents/:id/user-connectors", () => {
   });
 
   it("recomposes the agent when its compose head version is stale", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    const { agentId } = await store.set(
-      seedAgentForInstructions$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
+    const fixture = await trackAgent(createAgentThroughApi());
+    const agentId = fixture.agentId;
     const STALE_VERSION = "f".repeat(64);
     const writeDb = store.set(writeDb$);
     await writeDb
@@ -405,19 +330,9 @@ describe("PUT /api/zero/agents/:id/user-connectors", () => {
   });
 
   it("skips recomposition when the compose head version is current", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
+    const fixture = await trackAgent(createAgentThroughApi());
     mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const createResponse = await accept(
-      agentsClient().create({
-        headers: authHeaders(),
-        body: {},
-      }),
-      [201],
-    );
-    const agentId = createResponse.body.agentId;
+    const agentId = fixture.agentId;
     const before = await getAgentHeadVersion(agentId);
     if (!before) {
       throw new Error("Expected created agent to have a compose head version");
