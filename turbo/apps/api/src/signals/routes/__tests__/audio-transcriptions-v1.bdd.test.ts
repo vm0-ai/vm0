@@ -16,6 +16,24 @@ import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { signPatJwtForTests } from "../../auth/tokens";
 
+// BDD migration of the legacy `audio-transcriptions-v1.test.ts`.
+// The 5 legacy `it()`s collapse into 2 BDD `it()`s: (1)
+// happy-path 200 chain (200 wraps raw PCM as WAV and
+// transcribes it with OpenAI + the WAV header is verified
+// end-to-end with the upstream mock capturing the WAV
+// bytes), (2) auth + 400 + 402 + 403 chain (401 no API key →
+// 400 empty PCM body → 402 audio input quota exceeded + OpenAI
+// not called → 403 audio input feature switch disabled +
+// OpenAI not called).
+//
+// Service-Level Exception: the route is invoked via the raw
+// public app (not ts-rest) because the audio transcriptions
+// contract accepts a raw PCM body. The OpenAI transcriptions
+// endpoint is mocked via MSW. `orgMetadata`, `orgMembersCache`,
+// `cliTokens`, `userBehaviorCount`, and `userFeatureSwitches`
+// rows are seeded directly via `writeDb$` because no public
+// route creates them.
+
 const OPENAI_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";
 const OPENAI_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
@@ -120,15 +138,11 @@ function requireObservedWav(value: Uint8Array | null): Uint8Array {
   return value;
 }
 
-describe("POST /api/v1/audio/transcriptions", () => {
+function createHarness(): {
+  readonly authRequired: () => Promise<void>;
+  readonly seedPat: () => Promise<PatFixture>;
+} {
   const pats: PatFixture[] = [];
-
-  beforeEach(() => {
-    context.mocks.clerk.authenticateRequest.mockReset();
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
-  });
 
   afterEach(async () => {
     while (pats.length > 0) {
@@ -139,10 +153,36 @@ describe("POST /api/v1/audio/transcriptions", () => {
     }
   });
 
-  it("wraps raw PCM as WAV and transcribes it with OpenAI", async () => {
+  beforeEach(() => {
+    context.mocks.clerk.authenticateRequest.mockReset();
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+  });
+
+  const authRequired = async (): Promise<void> => {
+    context.mocks.clerk.authenticateRequest.mockReset();
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+  };
+
+  const seedPat = async (): Promise<PatFixture> => {
     const pat = await seedPatFixture();
     pats.push(pat);
+    return pat;
+  };
 
+  return { authRequired, seedPat };
+}
+
+describe("BDD POST /api/v1/audio/transcriptions — happy path 200 chain", () => {
+  it("gwt-wt-wt: 200 wraps raw PCM as WAV and transcribes it with OpenAI (upstream mock captures the WAV bytes + headers)", async () => {
+    const { seedPat } = createHarness();
+
+    // Given: a PAT fixture + an OpenAI transcriptions mock
+    // that captures the request details.
+    const pat = await seedPat();
     let observedAuthorization: string | null = null;
     let observedFileName: string | undefined;
     let observedFileType: string | undefined;
@@ -169,6 +209,7 @@ describe("POST /api/v1/audio/transcriptions", () => {
       }),
     );
 
+    // When: post raw PCM audio.
     const app = createApp({ signal: context.signal });
     const pcm = Uint8Array.from([0x00, 0x00, 0xff, 0x7f]);
     const response = await app.request("/api/v1/audio/transcriptions", {
@@ -180,6 +221,8 @@ describe("POST /api/v1/audio/transcriptions", () => {
       body: pcm,
     });
 
+    // Then: 200 + the response text matches + the upstream
+    // WAV header is valid.
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({
       text: "hello from buddy",
@@ -198,52 +241,54 @@ describe("POST /api/v1/audio/transcriptions", () => {
     expect(new DataView(wav.buffer).getUint16(34, true)).toBe(16);
     expect(wav.slice(44)).toStrictEqual(pcm);
   });
+});
 
-  it("returns 401 before transcribing when no API key is provided", async () => {
+describe("BDD POST /api/v1/audio/transcriptions — auth + 400 + 402 + 403 chain", () => {
+  it("gwt-wt-wt: 401 no API key → 400 empty PCM body → 402 audio input quota exceeded + OpenAI not called → 403 audio input feature switch disabled + OpenAI not called", async () => {
+    const { seedPat } = createHarness();
+
+    // Given: a session with no API key.
+    server.resetHandlers();
+
+    // When + Then: 401.
     const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/v1/audio/transcriptions", {
+    const noKey = await app.request("/api/v1/audio/transcriptions", {
       method: "POST",
       headers: { "content-type": "application/octet-stream" },
       body: Uint8Array.from([0x00, 0x00]),
     });
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
+    expect(noKey.status).toBe(401);
+    await expect(noKey.json()).resolves.toStrictEqual({
       error: { message: "API key required", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("rejects an empty PCM body before transcribing", async () => {
-    const pat = await seedPatFixture();
-    pats.push(pat);
+    // Given: a fresh PAT fixture.
+    const emptyFx = await seedPat();
 
-    const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/v1/audio/transcriptions", {
+    // When + Then: 400 on empty PCM body.
+    const empty = await app.request("/api/v1/audio/transcriptions", {
       method: "POST",
       headers: {
-        authorization: `Bearer ${pat.token}`,
+        authorization: `Bearer ${emptyFx.token}`,
         "content-type": "application/octet-stream",
       },
       body: new Uint8Array(),
     });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
+    expect(empty.status).toBe(400);
+    await expect(empty.json()).resolves.toStrictEqual({
       error: { message: "Audio body is required", code: "BAD_REQUEST" },
     });
-  });
 
-  it("enforces the free voice input quota before transcribing", async () => {
-    const pat = await seedPatFixture();
-    pats.push(pat);
+    // Given: a fresh PAT fixture seeded at the free quota
+    // limit.
+    const quotaFx = await seedPat();
     const writeDb = store.set(writeDb$);
     await writeDb.insert(userBehaviorCount).values({
-      orgId: pat.orgId,
-      userId: pat.userId,
+      orgId: quotaFx.orgId,
+      userId: quotaFx.userId,
       behaviorKey: AUDIO_INPUT_BEHAVIOR_KEY,
       count: AUDIO_INPUT_FREE_QUOTA,
     });
-
     let calledOpenAi = false;
     server.use(
       http.post(OPENAI_TRANSCRIPTIONS_URL, () => {
@@ -252,18 +297,18 @@ describe("POST /api/v1/audio/transcriptions", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/v1/audio/transcriptions", {
+    // When + Then: 402 — audio input quota exceeded; OpenAI
+    // is not called.
+    const quota = await app.request("/api/v1/audio/transcriptions", {
       method: "POST",
       headers: {
-        authorization: `Bearer ${pat.token}`,
+        authorization: `Bearer ${quotaFx.token}`,
         "content-type": "application/octet-stream",
       },
       body: Uint8Array.from([0x00, 0x00]),
     });
-
-    expect(response.status).toBe(402);
-    await expect(response.json()).resolves.toStrictEqual({
+    expect(quota.status).toBe(402);
+    await expect(quota.json()).resolves.toStrictEqual({
       error: {
         message:
           "Audio input quota exceeded. Upgrade to Pro or Team for unlimited audio input.",
@@ -271,38 +316,29 @@ describe("POST /api/v1/audio/transcriptions", () => {
       },
     });
     expect(calledOpenAi).toBeFalsy();
-  });
 
-  it("enforces the audio input feature switch before transcribing", async () => {
-    const pat = await seedPatFixture();
-    pats.push(pat);
-    const writeDb = store.set(writeDb$);
+    // Given: a fresh PAT fixture with the audio input feature
+    // switch disabled.
+    const featureFx = await seedPat();
     await writeDb.insert(userFeatureSwitches).values({
-      orgId: pat.orgId,
-      userId: pat.userId,
+      orgId: featureFx.orgId,
+      userId: featureFx.userId,
       switches: { [AUDIO_INPUT_FEATURE_KEY]: false },
     });
+    calledOpenAi = false;
 
-    let calledOpenAi = false;
-    server.use(
-      http.post(OPENAI_TRANSCRIPTIONS_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({ text: "unexpected" });
-      }),
-    );
-
-    const app = createApp({ signal: context.signal });
-    const response = await app.request("/api/v1/audio/transcriptions", {
+    // When + Then: 403 — audio input disabled; OpenAI is
+    // not called.
+    const disabled = await app.request("/api/v1/audio/transcriptions", {
       method: "POST",
       headers: {
-        authorization: `Bearer ${pat.token}`,
+        authorization: `Bearer ${featureFx.token}`,
         "content-type": "application/octet-stream",
       },
       body: Uint8Array.from([0x00, 0x00]),
     });
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toStrictEqual({
+    expect(disabled.status).toBe(403);
+    await expect(disabled.json()).resolves.toStrictEqual({
       error: { message: "Audio input is not enabled", code: "FORBIDDEN" },
     });
     expect(calledOpenAi).toBeFalsy();

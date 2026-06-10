@@ -1948,3 +1948,62 @@ covered route files.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api
 check-types`, `pnpm -F api exec vitest run` all clean.
+
+### Round 40 — Mixed small-batch BDD (3 legacy → 7 BDD)
+
+Migrates 3 small legacy route tests into 7 BDD `it()`s:
+
+- `zero-user-preferences.test.ts` (12→3): GET chain (401
+  unauth → 401 no-org → 200 persisted preferences → 200
+  defaults when no preference row exists), POST auth +
+  400 chain (401 unauth → 401 no-org → 400 invalid
+  timezone → 400 empty body), POST 200 success chain (200
+  creates with all supported fields + GET echoes → 200
+  updates each of `timezone`, `pinnedAgentIds`, `sendMode`,
+  and `captureNetworkBodiesRemaining` independently
+  without changing other fields).
+- `audio-transcriptions-v1.test.ts` (5→2): 200 happy-path
+  chain (200 wraps raw PCM as WAV + transcribes with
+  OpenAI + WAV header is verified end-to-end with the
+  upstream mock capturing the WAV bytes), auth + 400 +
+  402 + 403 chain (401 no API key → 400 empty PCM body →
+  402 audio input quota exceeded + OpenAI not called →
+  403 audio input feature switch disabled + OpenAI not
+  called). Uses a `createHarness()` factory inside each
+  describe so the mutable `pats` array satisfies the
+  `api/no-package-variable` lint rule (mutable
+  package-scope arrays are forbidden; the factory closes
+  over the array inside the describe block).
+- `zero-integrations-telegram-upload-complete.test.ts`
+  (4→2): auth + 404 chain (403 no org context → 404 bot
+  id not owned by the org), 200/400 success chain (200
+  sends the uploaded file URL through the requested
+  Telegram bot with full DB read-after-write verification
+  of the `runUploadedFiles` row → 400 Telegram rejects
+  the sendDocument call with the upstream error
+  forwarded).
+
+Service-Level Exceptions noted:
+
+- `audio-transcriptions-v1.bdd.test.ts` uses a
+  `createHarness()` factory inside each describe so the
+  mutable `pats` array satisfies the
+  `api/no-package-variable` lint rule (mutable
+  package-scope arrays are forbidden; the factory closes
+  over the array inside the describe block).
+- `zero-integrations-telegram-upload-complete.bdd.test.ts`
+  mocks the upstream Telegram `sendDocument` API via MSW.
+  The `runUploadedFiles` row created by the route is read
+  directly via `writeDb$` because no public follow-up GET
+  endpoint exists for a single uploaded file.
+- This round deletes 3 legacy files
+  (`zero-user-preferences.test.ts`,
+  `audio-transcriptions-v1.test.ts`,
+  `zero-integrations-telegram-upload-complete.test.ts`).
+
+Net test count: 21 legacy `it()`s → 7 BDD `it()`s (67%
+reduction). No per-file coverage regression for the
+covered route files.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api
+check-types`, `pnpm -F api exec vitest run` all clean.
