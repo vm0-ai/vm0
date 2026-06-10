@@ -1006,6 +1006,49 @@ class TestHandleFirewallRequest:
         assert body["connectors"] == ["codex-oauth-token"]
         assert body["failureReason"] == "upstream_provider"
 
+    async def test_structured_api_4xx_error_blocks_without_auth_mutation(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
+                "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
+                "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        api_error = auth.FirewallAuthApiError(
+            status=403,
+            code="FORBIDDEN",
+            message="Firewall auth denied",
+        )
+
+        with (
+            patch.object(
+                auth,
+                "get_firewall_headers",
+                AsyncMock(side_effect=api_error),
+            ),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        assert flow.metadata["firewall_action"] == "BLOCK"
+        assert flow.metadata["firewall_error"] == "FORBIDDEN"
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["existing"] == "1"
+        body = json.loads(flow.response.content)
+        assert body["error"] == "FORBIDDEN"
+        assert body["message"] == "Firewall auth denied"
+        assert body["permission"] == "github"
+        assert body["base"] == "https://api.github.com"
+        assert "connectors" not in body
+
     async def test_invalid_billable_auth_expiry_returns_502(self, real_flow, mitm_ctx, tmp_path):
         flow = _firewall_flow(real_flow)
         proxy_log_path = tmp_path / "proxy.jsonl"
