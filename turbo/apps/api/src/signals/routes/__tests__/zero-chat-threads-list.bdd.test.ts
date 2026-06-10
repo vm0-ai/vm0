@@ -59,13 +59,19 @@ describe("chat thread list (API-first BDD)", () => {
       [200],
     );
     expect(all.body.pinned).toStrictEqual([]);
-    expect(new Set(all.body.threads.map((thread) => thread.id))).toStrictEqual(
-      new Set([a, b, c]),
-    );
+    expect(
+      new Set(
+        all.body.threads.map((thread) => {
+          return thread.id;
+        }),
+      ),
+    ).toStrictEqual(new Set([a, b, c]));
     expect(all.body.hasMore).toBeFalsy();
     expect(all.body.nextCursor).toBeNull();
     expect(all.body.totalCount).toBe(3);
-    const itemC = all.body.threads.find((thread) => thread.id === c);
+    const itemC = all.body.threads.find((thread) => {
+      return thread.id === c;
+    });
     expect(itemC).toMatchObject({
       title: "C",
       isRead: true,
@@ -73,8 +79,8 @@ describe("chat thread list (API-first BDD)", () => {
     });
     expect(itemC?.agent.id).toBe(agentId);
     expect(itemC?.agent).toHaveProperty("avatarUrl");
-    expect(itemC?.createdAt).toEqual(expect.any(String));
-    expect(itemC?.updatedAt).toEqual(expect.any(String));
+    expect(itemC?.createdAt).toStrictEqual(expect.any(String));
+    expect(itemC?.updatedAt).toStrictEqual(expect.any(String));
     expect(itemC?.pinnedAt ?? null).toBeNull();
     expect(itemC?.renamedAt ?? null).toBeNull();
     expect(itemC?.hasDraft ?? false).toBeFalsy();
@@ -88,10 +94,18 @@ describe("chat thread list (API-first BDD)", () => {
       api.chatThreads.list({ headers: SESSION_AUTH }),
       [200],
     );
-    expect(pinned.body.pinned.map((thread) => thread.id)).toStrictEqual([a]);
-    expect(pinned.body.pinned[0]?.pinnedAt).toEqual(expect.any(String));
     expect(
-      new Set(pinned.body.threads.map((thread) => thread.id)),
+      pinned.body.pinned.map((thread) => {
+        return thread.id;
+      }),
+    ).toStrictEqual([a]);
+    expect(pinned.body.pinned[0]?.pinnedAt).toStrictEqual(expect.any(String));
+    expect(
+      new Set(
+        pinned.body.threads.map((thread) => {
+          return thread.id;
+        }),
+      ),
     ).toStrictEqual(new Set([b, c]));
 
     // When a thread is renamed. Then its row carries the new title + renamedAt.
@@ -107,9 +121,11 @@ describe("chat thread list (API-first BDD)", () => {
       api.chatThreads.list({ headers: SESSION_AUTH }),
       [200],
     );
-    const itemB = renamed.body.threads.find((thread) => thread.id === b);
+    const itemB = renamed.body.threads.find((thread) => {
+      return thread.id === b;
+    });
     expect(itemB?.title).toBe("B renamed");
-    expect(itemB?.renamedAt).toEqual(expect.any(String));
+    expect(itemB?.renamedAt).toStrictEqual(expect.any(String));
 
     // When a draft is saved. Then the row reports hasDraft.
     await accept(
@@ -125,7 +141,9 @@ describe("chat thread list (API-first BDD)", () => {
       [200],
     );
     expect(
-      drafted.body.threads.find((thread) => thread.id === c)?.hasDraft,
+      drafted.body.threads.find((thread) => {
+        return thread.id === c;
+      })?.hasDraft,
     ).toBeTruthy();
   });
 
@@ -150,9 +168,11 @@ describe("chat thread list (API-first BDD)", () => {
       api.chatThreads.list({ query: { limit: 1 }, headers: SESSION_AUTH }),
       [200],
     );
-    expect(page1.body.pinned.map((thread) => thread.id)).toStrictEqual([
-      ids[0],
-    ]);
+    expect(
+      page1.body.pinned.map((thread) => {
+        return thread.id;
+      }),
+    ).toStrictEqual([ids[0]]);
     expect(page1.body.threads).toHaveLength(1);
     expect(page1.body.hasMore).toBeTruthy();
     expect(page1.body.nextCursor).not.toBeNull();
@@ -172,8 +192,12 @@ describe("chat thread list (API-first BDD)", () => {
     expect(page2.body.nextCursor).toBeNull();
     expect(
       new Set([
-        ...page1.body.threads.map((thread) => thread.id),
-        ...page2.body.threads.map((thread) => thread.id),
+        ...page1.body.threads.map((thread) => {
+          return thread.id;
+        }),
+        ...page2.body.threads.map((thread) => {
+          return thread.id;
+        }),
       ]),
     ).toStrictEqual(new Set([ids[1], ids[2]]));
 
@@ -185,9 +209,11 @@ describe("chat thread list (API-first BDD)", () => {
       }),
       [200],
     );
-    expect(garbled.body.pinned.map((thread) => thread.id)).toStrictEqual([
-      ids[0],
-    ]);
+    expect(
+      garbled.body.pinned.map((thread) => {
+        return thread.id;
+      }),
+    ).toStrictEqual([ids[0]]);
   });
 
   it("scopes by agentId, isolates orgs, and rejects unauthenticated / no-org", async () => {
@@ -209,7 +235,11 @@ describe("chat thread list (API-first BDD)", () => {
       }),
       [200],
     );
-    expect(scoped.body.threads.map((thread) => thread.id)).toStrictEqual([t1]);
+    expect(
+      scoped.body.threads.map((thread) => {
+        return thread.id;
+      }),
+    ).toStrictEqual([t1]);
     expect(scoped.body.threads[0]?.agent.id).toBe(agent1);
 
     // An unknown agent is not found.

@@ -40,8 +40,8 @@ describe("chat thread create + draft patch (API-first BDD)", () => {
       [201],
     );
     expect(titled.body.title).toBe("My thread");
-    expect(titled.body.id).toEqual(expect.any(String));
-    expect(titled.body.createdAt).toEqual(expect.any(String));
+    expect(titled.body.id).toStrictEqual(expect.any(String));
+    expect(titled.body.createdAt).toStrictEqual(expect.any(String));
 
     // When a thread is created with a client id and no title. Then the row id
     // is the client id and the title is null.
@@ -62,7 +62,11 @@ describe("chat thread create + draft patch (API-first BDD)", () => {
       [200],
     );
     expect(
-      new Set(listed.body.threads.map((thread) => thread.id)),
+      new Set(
+        listed.body.threads.map((thread) => {
+          return thread.id;
+        }),
+      ),
     ).toStrictEqual(new Set([titled.body.id, clientThreadId]));
 
     // When a draft (content + attachment) is saved. Then the detail reflects it.

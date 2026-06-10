@@ -47,9 +47,11 @@ describe("chat thread metadata (API-first BDD)", () => {
       [200],
     );
     expect(initial.body.pinned).toStrictEqual([]);
-    expect(initial.body.threads.map((thread) => thread.id)).toStrictEqual([
-      threadId,
-    ]);
+    expect(
+      initial.body.threads.map((thread) => {
+        return thread.id;
+      }),
+    ).toStrictEqual([threadId]);
     expect(initial.body.threads[0]?.title).toBe("Initial");
     expect(initial.body.threads[0]?.pinnedAt ?? null).toBeNull();
 
@@ -65,10 +67,12 @@ describe("chat thread metadata (API-first BDD)", () => {
       api.chatThreads.list({ headers: SESSION_AUTH }),
       [200],
     );
-    expect(afterPin.body.pinned.map((thread) => thread.id)).toStrictEqual([
-      threadId,
-    ]);
-    expect(afterPin.body.pinned[0]?.pinnedAt).toEqual(expect.any(String));
+    expect(
+      afterPin.body.pinned.map((thread) => {
+        return thread.id;
+      }),
+    ).toStrictEqual([threadId]);
+    expect(afterPin.body.pinned[0]?.pinnedAt).toStrictEqual(expect.any(String));
     expect(afterPin.body.threads).toStrictEqual([]);
 
     // When the thread is unpinned. Then it returns to the non-pinned segment.
@@ -84,9 +88,11 @@ describe("chat thread metadata (API-first BDD)", () => {
       [200],
     );
     expect(afterUnpin.body.pinned).toStrictEqual([]);
-    expect(afterUnpin.body.threads.map((thread) => thread.id)).toStrictEqual([
-      threadId,
-    ]);
+    expect(
+      afterUnpin.body.threads.map((thread) => {
+        return thread.id;
+      }),
+    ).toStrictEqual([threadId]);
     expect(afterUnpin.body.threads[0]?.pinnedAt ?? null).toBeNull();
 
     // When the thread is renamed. Then the new title and renamedAt are visible.
@@ -110,7 +116,7 @@ describe("chat thread metadata (API-first BDD)", () => {
       api.chatThreads.list({ headers: SESSION_AUTH }),
       [200],
     );
-    expect(renamedListed.body.threads[0]?.renamedAt).toEqual(
+    expect(renamedListed.body.threads[0]?.renamedAt).toStrictEqual(
       expect.any(String),
     );
 

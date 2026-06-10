@@ -35,7 +35,7 @@ describe("user model preference (API-first BDD)", () => {
       [200],
     );
     expect(pinned.body.selectedModel).toBe("claude-sonnet-4-6");
-    expect(pinned.body.updatedAt).toEqual(expect.any(String));
+    expect(pinned.body.updatedAt).toStrictEqual(expect.any(String));
     const afterPin = await accept(
       api.userModelPreference.get({ headers: SESSION_AUTH }),
       [200],
