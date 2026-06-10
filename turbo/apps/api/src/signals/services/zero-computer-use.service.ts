@@ -171,7 +171,7 @@ function normalizeCapabilities(capabilities: readonly string[]): string[] {
     .slice(0, 50);
 }
 
-function hostIsOnline(host: ComputerUseHostRow, now: Date): boolean {
+export function hostIsOnline(host: ComputerUseHostRow, now: Date): boolean {
   return (
     host.status === "online" &&
     host.revokedAt === null &&
@@ -617,12 +617,22 @@ async function failStaleRunningComputerUseCommands(
 function resolveComputerUseCommandTargets(params: {
   readonly onlineHosts: readonly ComputerUseHostRow[];
   readonly kind: ComputerUseCommandKind;
+  readonly targetHostId?: string;
 }): ResolveComputerUseCommandTargetsResult {
   if (params.onlineHosts.length === 0) {
     return { status: "host_offline" };
   }
 
-  const supported = params.onlineHosts.filter((host) => {
+  const candidates = params.targetHostId
+    ? params.onlineHosts.filter((host) => {
+        return host.id === params.targetHostId;
+      })
+    : params.onlineHosts;
+  if (candidates.length === 0) {
+    return { status: "host_offline" };
+  }
+
+  const supported = candidates.filter((host) => {
     return hostSupportsCommand(host, params.kind);
   });
   if (supported.length === 0) {
@@ -950,6 +960,7 @@ export const createComputerUseCommand$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly runId?: string;
+      readonly targetHostId?: string;
       readonly kind: ComputerUseCommandKind;
       readonly payload: ComputerUseCommandPayload;
       readonly timeoutMs?: number;
@@ -986,6 +997,7 @@ export const createComputerUseCommand$ = command(
     const target = resolveComputerUseCommandTargets({
       onlineHosts,
       kind: params.kind,
+      targetHostId: params.targetHostId,
     });
     if (target.status !== "resolved") {
       return target;
@@ -1045,6 +1057,7 @@ export const getComputerUseCommand$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly commandId: string;
+      readonly hostId?: string;
     },
     signal: AbortSignal,
   ) => {
@@ -1071,6 +1084,9 @@ export const getComputerUseCommand$ = command(
             eq(computerUseCommands.orgId, params.orgId),
             eq(computerUseCommands.userId, params.userId),
             eq(computerUseCommands.id, params.commandId),
+            ...(params.hostId
+              ? [eq(computerUseCommands.hostId, params.hostId)]
+              : []),
           ),
         )
         .limit(1);
@@ -1088,6 +1104,7 @@ export const getComputerUseCommandScreenshot$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly commandId: string;
+      readonly hostId?: string;
     },
     signal: AbortSignal,
   ): Promise<{
@@ -1106,6 +1123,9 @@ export const getComputerUseCommandScreenshot$ = command(
           eq(computerUseCommands.orgId, params.orgId),
           eq(computerUseCommands.userId, params.userId),
           eq(computerUseCommands.id, params.commandId),
+          ...(params.hostId
+            ? [eq(computerUseCommands.hostId, params.hostId)]
+            : []),
         ),
       )
       .limit(1);

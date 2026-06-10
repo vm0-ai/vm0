@@ -7,7 +7,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
 import {
   agentComposes,
   agentComposeVersions,
@@ -18,6 +18,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -174,6 +175,30 @@ async function seedFixture(): Promise<ChatMessageFixture> {
   return { userId, orgId, agentId, versionId };
 }
 
+async function seedOnlineComputerUseHost(
+  fixture: ChatMessageFixture,
+): Promise<string> {
+  const writeDb = store.set(writeDb$);
+  const [host] = await writeDb
+    .insert(computerUseHosts)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      displayName: "Zero Desktop",
+      tokenHash: `host_${randomUUID()}`,
+      appVersion: "0.1.0",
+      osVersion: "macOS 15",
+      supportedCapabilities: ["apps.list"],
+      permissions: { accessibility: true, screenRecording: true },
+      lastSeenAt: nowDate(),
+    })
+    .returning({ id: computerUseHosts.id });
+  if (!host) {
+    throw new Error("Failed to seed computer-use host");
+  }
+  return host.id;
+}
+
 async function deleteFixture(fixture: ChatMessageFixture): Promise<void> {
   const writeDb = store.set(writeDb$);
   const threadRows = await writeDb
@@ -217,6 +242,14 @@ async function deleteFixture(fixture: ChatMessageFixture): Promise<void> {
   if (threadIds.length > 0) {
     await writeDb.delete(chatThreads).where(inArray(chatThreads.id, threadIds));
   }
+  await writeDb
+    .delete(computerUseHosts)
+    .where(
+      and(
+        eq(computerUseHosts.orgId, fixture.orgId),
+        eq(computerUseHosts.userId, fixture.userId),
+      ),
+    );
   await writeDb
     .delete(userFeatureSwitches)
     .where(
@@ -606,6 +639,51 @@ describe("POST /api/zero/chat/messages", () => {
     );
   });
 
+  it("adds video generation template guidance to appendSystemPrompt", async () => {
+    const fixture = await track(seedFixture());
+    const item = VIDEO_STYLE_PRESETS.find((preset) => {
+      return preset.id === "tech-minimalist-reveal";
+    })!;
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "make a product video",
+      generationTemplate: {
+        type: "video",
+        selection: {
+          stylePresetId: item.id,
+        },
+      },
+    });
+    await clearAllDetached();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+
+    expect(run?.prompt).toBe("make a product video");
+    expect(run?.appendSystemPrompt).toContain(`## Video Style: ${item.nameEn}`);
+    expect(run?.appendSystemPrompt).toContain(
+      `- Visual Tone: ${item.dimensions.visualTone}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `- Camera Style: ${item.dimensions.cameraStyle}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `- Style Reference: ${item.dimensions.styleReference}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      "safe for all audiences, positive and uplifting, no violence, no explicit content",
+    );
+    expect(run?.appendSystemPrompt).not.toContain(item.scene);
+  });
+
   it("rejects unknown generation template resources", async () => {
     const fixture = await track(seedFixture());
     const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
@@ -651,6 +729,26 @@ describe("POST /api/zero/chat/messages", () => {
     expect(unknownDesignSystem.body.error.message).toBe(
       "Unknown generation template design system",
     );
+
+    const unknownVideoStyle = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a product video",
+          generationTemplate: {
+            type: "video",
+            selection: {
+              stylePresetId: "video-style:missing",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(unknownVideoStyle.body.error.message).toBe(
+      "Unknown video style preset",
+    );
   });
 
   it("rejects generation templates that do not support presentation", async () => {
@@ -678,6 +776,63 @@ describe("POST /api/zero/chat/messages", () => {
     expect(response.body.error.message).toBe(
       "Generation template does not support the requested type",
     );
+  });
+
+  it("adds video style preset guidance to appendSystemPrompt", async () => {
+    const fixture = await track(seedFixture());
+    const preset = VIDEO_STYLE_PRESETS[0]!;
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "make a cinematic video",
+      generationTemplate: {
+        type: "video",
+        selection: {
+          stylePresetId: preset.id,
+        },
+      },
+    });
+    await clearAllDetached();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+
+    expect(run?.appendSystemPrompt).toContain(
+      `## Video Style: ${preset.nameEn}`,
+    );
+    expect(run?.appendSystemPrompt).toContain("- Visual Tone:");
+    expect(run?.appendSystemPrompt).toContain("- Style Reference:");
+    expect(run?.appendSystemPrompt).toContain(
+      "safe for all audiences, positive and uplifting, no violence, no explicit content",
+    );
+  });
+
+  it("rejects unknown video style preset", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a video",
+          generationTemplate: {
+            type: "video",
+            selection: {
+              stylePresetId: "preset:missing",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(response.body.error.message).toBe("Unknown video style preset");
   });
 
   it("queues generation template when the thread has an active run", async () => {
@@ -1085,7 +1240,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
-  it("passes enabled feature switch overrides into generated ZERO_TOKEN capabilities", async () => {
+  it("does not grant computer-use capability without a selected host", async () => {
     const fixture = await track(seedFixture());
     await store
       .set(writeDb$)
@@ -1107,9 +1262,47 @@ describe("POST /api/zero/chat/messages", () => {
 
     const secrets = await runExecutionSecrets(response.body.runId!);
     const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
-    expect(zeroAuth?.capabilities).toContain("computer-use:write");
+    expect(zeroAuth?.capabilities).not.toContain("computer-use:write");
     expect(zeroAuth?.capabilities).toContain("host:read");
     expect(zeroAuth?.capabilities).toContain("host:write");
+  });
+
+  it("grants computer-use capability to the selected online host", async () => {
+    const fixture = await track(seedFixture());
+    await store
+      .set(writeDb$)
+      .insert(userFeatureSwitches)
+      .values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        switches: {
+          [FeatureSwitchKey.ComputerUse]: true,
+        },
+        updatedAt: nowDate(),
+      });
+    const hostId = await seedOnlineComputerUseHost(fixture);
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "open remote browser",
+      computerUseHostId: hostId,
+    });
+    await clearAllDetached();
+
+    const secrets = await runExecutionSecrets(response.body.runId!);
+    const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
+    expect(zeroAuth).toMatchObject({
+      computerUseHostId: hostId,
+      capabilities: expect.arrayContaining(["computer-use:write"]),
+    });
+
+    const [thread] = await store
+      .set(writeDb$)
+      .select({ computerUseHostId: chatThreads.computerUseHostId })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, response.body.threadId))
+      .limit(1);
+    expect(thread?.computerUseHostId).toBe(hostId);
   });
 
   it("persists attachments on the user message and injects them into the run prompt", async () => {

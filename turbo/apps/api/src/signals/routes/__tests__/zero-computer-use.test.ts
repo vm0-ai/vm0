@@ -61,6 +61,7 @@ function mintZeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly capabilities: readonly ZeroCapability[];
+  readonly computerUseHostId?: string;
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
@@ -69,6 +70,9 @@ function mintZeroToken(args: {
     orgId: args.orgId,
     runId: `run_${randomUUID()}`,
     capabilities: args.capabilities,
+    ...(args.computerUseHostId
+      ? { computerUseHostId: args.computerUseHostId }
+      : {}),
     iat: seconds,
     exp: seconds + 3600,
   });
@@ -200,6 +204,33 @@ describe("desktop computer-use runtime", () => {
 
     expect(response.body.error.message).toBe(
       "Missing required capability: computer-use:write",
+    );
+  });
+
+  it("rejects zero-token computer-use commands without a host grant", async () => {
+    const fixture = await createOrgFixture();
+    await seedComputerUseHost({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      hostToken: "host-token",
+    });
+    const client = setupApp({ context })(zeroComputerUseCommandContract);
+    const token = mintZeroToken({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      capabilities: ["computer-use:write"],
+    });
+
+    const response = await accept(
+      client.create({
+        body: { kind: "apps.list", timeoutMs: 15_000 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Computer-use host is not authorized for this run",
     );
   });
 
@@ -385,16 +416,11 @@ describe("desktop computer-use runtime", () => {
       hostToken: "host-token-2",
     });
     const commandClient = setupApp({ context })(zeroComputerUseCommandContract);
-    const token = mintZeroToken({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      capabilities: ["computer-use:write"],
-    });
 
     const response = await accept(
       commandClient.create({
         body: { kind: "app.state", app: "Safari", timeoutMs: 15_000 },
-        headers: { authorization: `Bearer ${token}` },
+        headers: { authorization: "Bearer clerk-session" },
       }),
       [409],
     );
@@ -402,6 +428,64 @@ describe("desktop computer-use runtime", () => {
     expect(response.body.error.message).toBe(
       "Multiple active computer-use hosts are online",
     );
+  });
+
+  it("routes zero-token commands only to the granted host", async () => {
+    const fixture = await createOrgFixture();
+    const grantedHostToken = "host-token-1";
+    const otherHostToken = "host-token-2";
+    const grantedHostId = await seedComputerUseHost({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      hostToken: grantedHostToken,
+    });
+    await seedComputerUseHost({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      hostToken: otherHostToken,
+    });
+    const commandClient = setupApp({ context })(zeroComputerUseCommandContract);
+    const hostClient = setupApp({ context })(
+      zeroComputerUseHostCommandsContract,
+    );
+    const token = mintZeroToken({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      capabilities: ["computer-use:write"],
+      computerUseHostId: grantedHostId,
+    });
+
+    const created = await accept(
+      commandClient.create({
+        body: { kind: "app.state", app: "Safari", timeoutMs: 15_000 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    const otherNext = await accept(
+      hostClient.next({
+        body: { supportedCapabilities: [...supportedCapabilities] },
+        headers: { authorization: `Bearer ${otherHostToken}` },
+      }),
+      [200],
+    );
+    const grantedNext = await accept(
+      hostClient.next({
+        body: { supportedCapabilities: [...supportedCapabilities] },
+        headers: { authorization: `Bearer ${grantedHostToken}` },
+      }),
+      [200],
+    );
+
+    expect(otherNext.body.status).toBe("idle");
+    expect(grantedNext.body.status).toBe("command");
+    if (grantedNext.body.status !== "command") {
+      throw new Error("expected command");
+    }
+    expect(grantedNext.body.command).toMatchObject({
+      id: created.body.commandId,
+      hostId: grantedHostId,
+    });
   });
 
   it("runs a read command through the host claim and complete flow", async () => {
@@ -420,6 +504,7 @@ describe("desktop computer-use runtime", () => {
       orgId: fixture.orgId,
       userId: fixture.userId,
       capabilities: ["computer-use:write"],
+      computerUseHostId: hostId,
     });
 
     const created = await accept(
@@ -483,7 +568,7 @@ describe("desktop computer-use runtime", () => {
     mockNow(baseTime);
     const fixture = await createOrgFixture();
     const hostToken = "host-token";
-    await seedComputerUseHost({
+    const hostId = await seedComputerUseHost({
       orgId: fixture.orgId,
       userId: fixture.userId,
       hostToken,
@@ -497,6 +582,7 @@ describe("desktop computer-use runtime", () => {
       orgId: fixture.orgId,
       userId: fixture.userId,
       capabilities: ["computer-use:write"],
+      computerUseHostId: hostId,
     });
 
     const first = await accept(
@@ -578,6 +664,7 @@ describe("desktop computer-use runtime", () => {
       orgId: fixture.orgId,
       userId: fixture.userId,
       capabilities: ["computer-use:write"],
+      computerUseHostId: hostId,
     });
 
     const created = await accept(
@@ -664,7 +751,7 @@ describe("desktop computer-use runtime", () => {
   it("offloads succeeded screenshots to object storage and exposes a keyless pointer", async () => {
     const fixture = await createOrgFixture();
     const hostToken = "host-token";
-    await seedComputerUseHost({
+    const hostId = await seedComputerUseHost({
       orgId: fixture.orgId,
       userId: fixture.userId,
       hostToken,
@@ -677,6 +764,7 @@ describe("desktop computer-use runtime", () => {
       orgId: fixture.orgId,
       userId: fixture.userId,
       capabilities: ["computer-use:write"],
+      computerUseHostId: hostId,
     });
 
     const puts: Record<string, unknown>[] = [];
@@ -764,7 +852,7 @@ describe("desktop computer-use runtime", () => {
   it("streams stored screenshots through the proxy and blocks other users", async () => {
     const fixture = await createOrgFixture();
     const hostToken = "host-token";
-    await seedComputerUseHost({
+    const hostId = await seedComputerUseHost({
       orgId: fixture.orgId,
       userId: fixture.userId,
       hostToken,
@@ -777,6 +865,7 @@ describe("desktop computer-use runtime", () => {
       orgId: fixture.orgId,
       userId: fixture.userId,
       capabilities: ["computer-use:write"],
+      computerUseHostId: hostId,
     });
 
     const pngBytes = Buffer.from("proxy-png-bytes");
@@ -830,10 +919,16 @@ describe("desktop computer-use runtime", () => {
     expect(receivedBytes.equals(pngBytes)).toBeTruthy();
 
     const otherFixture = await createOrgFixture();
+    const otherHostId = await seedComputerUseHost({
+      orgId: otherFixture.orgId,
+      userId: otherFixture.userId,
+      hostToken: "other-host-token",
+    });
     const otherToken = mintZeroToken({
       orgId: otherFixture.orgId,
       userId: otherFixture.userId,
       capabilities: ["computer-use:write"],
+      computerUseHostId: otherHostId,
     });
     const otherResponse = await app.request(
       `/api/zero/computer-use/commands/${created.body.commandId}/screenshot`,

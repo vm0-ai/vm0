@@ -42,7 +42,7 @@ const BACKFILL_SQL = readFileSync(
 const REFRESH_SQL = readFileSync(
   fileURLToPath(
     new URL(
-      "../../../../../../../packages/db/src/migrations/0447_fuzzy_paibok.sql",
+      "../../../../../../../packages/db/src/migrations/0448_moaning_rattler.sql",
       import.meta.url,
     ),
   ),

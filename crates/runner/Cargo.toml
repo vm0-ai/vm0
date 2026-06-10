@@ -61,6 +61,7 @@ guest-write-file = { workspace = true }
 httpmock = { workspace = true }
 sandbox-mock = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+tracing-test-support.workspace = true
 
 [lints]
 workspace = true

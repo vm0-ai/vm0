@@ -703,7 +703,7 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
       </div>
       <CheckboxRow
         title="Keep Mac awake"
-        subtitle="Prevents automatic system sleep. Display may still turn off."
+        subtitle="Prevents automatic system sleep and display sleep."
         meta={state.keepAwake.active ? "Active" : "Off"}
         checked={state.keepAwake.enabled}
         disabled={keepAwakeLoadable.state === "loading"}

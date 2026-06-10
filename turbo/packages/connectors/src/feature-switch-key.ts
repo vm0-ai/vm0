@@ -51,6 +51,7 @@ export enum FeatureSwitchKey {
   SandboxIoLimiters = "sandboxIoLimiters",
   ChatGithubPrTracking = "chatGithubPrTracking",
   ChatTemplatePicker = "chatTemplatePicker",
+  VideoTemplatePicker = "videoTemplatePicker",
   MemoryViewer = "memoryViewer",
   MemoryDevRefresh = "memoryDevRefresh",
   ChatRecommendedFollowups = "chatRecommendedFollowups",

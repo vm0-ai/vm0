@@ -105,6 +105,31 @@ interface ZeroRunMetadata {
   readonly triggerId?: string;
 }
 
+interface CreateZeroRunCommandArgs {
+  readonly auth: AuthContext & { readonly orgId: string };
+  readonly body: ZeroRunCreateBody;
+  readonly apiStartTime: number;
+  readonly triggerSource?: TriggerSource;
+  readonly appendSystemPrompt?: string;
+  readonly userInfoExtras?: Pick<
+    UserInfo,
+    | "slackDisplayName"
+    | "slackUserId"
+    | "telegramDisplayName"
+    | "telegramUsername"
+    | "telegramUserId"
+    | "telegramLanguage"
+    | "agentphoneHandle"
+  >;
+  readonly callbacks?: readonly RunCallback[];
+  readonly chatThreadId?: string;
+  readonly computerUseHostId?: string;
+  readonly modelProviderId?: string;
+  readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
+  readonly selectedModelOverride?: string;
+  readonly zeroRunMetadata?: ZeroRunMetadata;
+}
+
 function forbidden(message: string) {
   return {
     status: 403 as const,
@@ -657,33 +682,7 @@ export const createZeroIntegrationRun$ = command(
 );
 
 export const createZeroRun$ = command(
-  async (
-    { set },
-    args: {
-      readonly auth: AuthContext & { readonly orgId: string };
-      readonly body: ZeroRunCreateBody;
-      readonly apiStartTime: number;
-      readonly triggerSource?: TriggerSource;
-      readonly appendSystemPrompt?: string;
-      readonly userInfoExtras?: Pick<
-        UserInfo,
-        | "slackDisplayName"
-        | "slackUserId"
-        | "telegramDisplayName"
-        | "telegramUsername"
-        | "telegramUserId"
-        | "telegramLanguage"
-        | "agentphoneHandle"
-      >;
-      readonly callbacks?: readonly RunCallback[];
-      readonly chatThreadId?: string;
-      readonly modelProviderId?: string;
-      readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
-      readonly selectedModelOverride?: string;
-      readonly zeroRunMetadata?: ZeroRunMetadata;
-    },
-    signal: AbortSignal,
-  ) => {
+  async ({ set }, args: CreateZeroRunCommandArgs, signal: AbortSignal) => {
     const db = set(writeDb$);
     const agentId =
       args.body.agentId ??
@@ -780,6 +779,7 @@ export const createZeroRun$ = command(
           ...(args.callbacks ?? []),
         ],
         includeZeroTokenSecret: true,
+        zeroTokenComputerUseHostId: args.computerUseHostId,
         enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,
         injectSkillVolumes: { customSkills: agent.customSkills },

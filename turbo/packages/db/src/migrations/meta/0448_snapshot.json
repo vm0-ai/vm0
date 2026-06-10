@@ -1,6 +1,6 @@
 {
-  "id": "af295cf9-3eee-47b1-b49a-4b63698f4893",
-  "prevId": "12723f23-fa2f-45c8-81e9-2f62a0155aa3",
+  "id": "09e24e94-1cf6-4c8c-bc42-b1414643f61e",
+  "prevId": "af295cf9-3eee-47b1-b49a-4b63698f4893",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1684,12 +1684,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
-        },
-        "retry_started_at": {
-          "name": "retry_started_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
         },
         "enabled": {
           "name": "enabled",

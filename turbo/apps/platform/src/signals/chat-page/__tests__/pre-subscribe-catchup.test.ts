@@ -31,6 +31,7 @@ function createThread(activeRunIds: string[]): ChatThread {
     isLegacySession: false,
     draftContent: null,
     draftAttachments: null,
+    computerUseHostId: null,
     modelProviderId: null,
     selectedModel: null,
   };

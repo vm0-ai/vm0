@@ -159,9 +159,9 @@ pub fn build_and_locate_mock() -> Result<PathBuf, String> {
 ///
 /// `sigterm_grace_secs` / `sigkill_grace_secs` control how long the
 /// FSM waits before each signal escalation. Signal-exit tests want
-/// them small (~1s) for fast convergence; the happy-path test wants
-/// sigterm grace large enough that the bound "elapsed < sigterm grace"
-/// survives cold-CI fork+exec jitter.
+/// them small (~1s) for fast convergence; the happy-path test can use
+/// a sigterm grace larger than its outer timeout so post-result reap
+/// cannot mask the natural clean-exit assertion.
 ///
 /// # Side effects
 ///
@@ -182,6 +182,7 @@ pub unsafe fn setup_env(
 ) -> Result<(), String> {
     unsafe {
         // Route the CLI binary resolution to the cargo-built mock.
+        std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
         std::env::set_var("USE_MOCK_CLAUDE", "true");
         std::env::set_var(

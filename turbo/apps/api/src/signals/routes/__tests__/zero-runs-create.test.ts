@@ -822,7 +822,7 @@ describe("POST /api/zero/runs", () => {
     if (!zeroToken) {
       throw new Error("expected ZERO_TOKEN");
     }
-    expect(verifyZeroToken(zeroToken)?.capabilities).toContain(
+    expect(verifyZeroToken(zeroToken)?.capabilities).not.toContain(
       "computer-use:write",
     );
   });

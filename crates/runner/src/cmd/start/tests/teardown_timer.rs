@@ -1,63 +1,7 @@
 use super::super::*;
-use std::collections::BTreeMap;
-use std::fmt;
-use std::sync::{Arc, Mutex};
-use tracing::field::{Field, Visit};
-use tracing::{Event, Subscriber, info};
-use tracing_subscriber::layer::{Context, Layer};
+use tracing::info;
 use tracing_subscriber::prelude::*;
-
-#[derive(Clone, Default)]
-struct CapturedEvents {
-    events: Arc<Mutex<Vec<CapturedEvent>>>,
-}
-
-#[derive(Clone, Debug, Default)]
-struct CapturedEvent {
-    fields: BTreeMap<String, String>,
-    field_kinds: BTreeMap<String, &'static str>,
-}
-
-impl CapturedEvents {
-    fn entries(&self) -> Vec<CapturedEvent> {
-        self.events.lock().unwrap().clone()
-    }
-
-    fn clear(&self) {
-        self.events.lock().unwrap().clear();
-    }
-}
-
-impl<S> Layer<S> for CapturedEvents
-where
-    S: Subscriber,
-{
-    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-        let mut visitor = CapturedEvent::default();
-        event.record(&mut visitor);
-        self.events.lock().unwrap().push(visitor);
-    }
-}
-
-impl Visit for CapturedEvent {
-    fn record_str(&mut self, field: &Field, value: &str) {
-        self.fields
-            .insert(field.name().to_string(), value.to_string());
-        self.field_kinds.insert(field.name().to_string(), "str");
-    }
-
-    fn record_u64(&mut self, field: &Field, value: u64) {
-        self.fields
-            .insert(field.name().to_string(), value.to_string());
-        self.field_kinds.insert(field.name().to_string(), "u64");
-    }
-
-    fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-        self.fields
-            .insert(field.name().to_string(), format!("{value:?}"));
-        self.field_kinds.insert(field.name().to_string(), "debug");
-    }
-}
+use tracing_test_support::{CapturedEvent, CapturedEvents};
 
 fn event_with_message<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
     events

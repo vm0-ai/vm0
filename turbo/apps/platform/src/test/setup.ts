@@ -45,6 +45,41 @@ globalThis.IDBRequest = IDBRequest;
 globalThis.IDBTransaction = IDBTransaction;
 globalThis.IDBVersionChangeEvent = IDBVersionChangeEvent;
 
+function ensureTestLocalStorage(): void {
+  const currentLocalStorage = globalThis.localStorage;
+  if (
+    typeof currentLocalStorage !== "undefined" &&
+    typeof currentLocalStorage.getItem === "function" &&
+    typeof currentLocalStorage.setItem === "function"
+  ) {
+    return;
+  }
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      clear: () => {
+        values.clear();
+      },
+      getItem: (key: string) => {
+        return values.get(key) ?? null;
+      },
+      key: (index: number) => {
+        return Array.from(values.keys())[index] ?? null;
+      },
+      get length() {
+        return values.size;
+      },
+      removeItem: (key: string) => {
+        values.delete(key);
+      },
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      },
+    } satisfies Storage,
+  });
+}
+
 // vitest.config.ts sets disableIframePageLoading: true so happy-dom does not
 // make real TCP connections when an iframe src is set to an external URL.
 // happy-dom dispatches the resulting NotSupportedError as a window error event
@@ -71,6 +106,8 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  ensureTestLocalStorage();
+
   // Override console.error to throw on unexpected errors.
   // - NotSupportedError / AbortError: expected happy-dom noise, silently ignored.
   // - "not wrapped in act(...)": unavoidable with our async bootstrap pattern

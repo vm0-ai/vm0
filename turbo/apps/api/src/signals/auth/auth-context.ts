@@ -146,6 +146,9 @@ const zeroAuth$ = command(
       orgId: zeroAuth.orgId,
       runId: zeroAuth.runId,
       capabilities: [...zeroAuth.capabilities],
+      ...(zeroAuth.computerUseHostId
+        ? { computerUseHostId: zeroAuth.computerUseHostId }
+        : {}),
     };
 
     const membership = await set(

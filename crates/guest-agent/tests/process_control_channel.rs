@@ -141,6 +141,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     let workdir = tmp.path().to_string_lossy().into_owned();
     let mock_path = mock.to_string_lossy().into_owned();
     let env = [
+        ("CLI_AGENT_TYPE", "claude-code"),
         ("VM0_MOCK_CLAUDE_PATH", mock_path.as_str()),
         ("USE_MOCK_CLAUDE", "true"),
         ("VM0_POST_RESULT_SIGTERM_GRACE_SECS", "1"),

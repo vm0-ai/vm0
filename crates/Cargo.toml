@@ -19,6 +19,7 @@ members = [
     "sandbox",
     "sandbox-fc",
     "sandbox-mock",
+    "tracing-test-support",
     "vsock-guest",
     "vsock-host",
     "vsock-proto",
@@ -47,6 +48,7 @@ nbd-cow = { path = "nbd-cow" }
 sandbox = { path = "sandbox" }
 sandbox-fc = { path = "sandbox-fc" }
 sandbox-mock = { path = "sandbox-mock" }
+tracing-test-support = { path = "tracing-test-support" }
 vsock-guest = { path = "vsock-guest" }
 vsock-host = { path = "vsock-host" }
 vsock-proto = { path = "vsock-proto" }

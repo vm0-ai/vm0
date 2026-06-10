@@ -287,6 +287,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.VideoTemplatePicker]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Show the Video style picker tab in the Zero chat composer for AI video generation with curated style presets.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.MemoryViewer]: {
     maintainer: "lancy@vm0.ai",
     description:
