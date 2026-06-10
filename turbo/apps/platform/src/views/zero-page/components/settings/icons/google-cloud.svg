@@ -1,6 +1,73 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <path fill="#f8bb16" d="M322.4 140.9 278.3 64.1H162.6c-10.3 0-19.9 5.5-24.9 14.5L44.1 241.7c-5.1 8.9-5.1 19.7 0 28.7l35.6 62.1 44-76.4 66.2-115.2h132.5Z"/>
-  <path fill="#ea4334" d="M468.2 241.7 374.6 78.6c-5.2-8.9-14.7-14.5-24.9-14.5h-71.4l44.1 76.8 66.2 115.2-66.2 115.2h88l57.8-100.9c5-8.9 5-19.8 0-28.7Z"/>
-  <path fill="#0074bc" d="M410.3 371.2H189.7L123.5 256l-44 76.4 58 101c5.2 8.9 14.7 14.5 24.9 14.5h187.1c10.3 0 19.9-5.5 24.9-14.5l35.9-62.2Z"/>
-  <path fill="#e2e3e4" d="M322.2 371.2H189.6L123.5 256l66.2-115.2h132.5L388.6 256l-66.4 115.2ZM256 198.5c-31.9 0-57.6 25.7-57.6 57.6s25.7 57.6 57.6 57.6 57.6-25.7 57.6-57.6-25.8-57.6-57.6-57.6Z"/>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="192"
+  height="192"
+  viewBox="0 0 192 192"
+>
+  <defs>
+    <clipPath id="google-cloud-mark">
+      <path
+        clip-rule="evenodd"
+        d="M96 20c28.06 0 52.17 16.74 62.96 40.74.74 1.64 1.91 3.04 3.39 4.07 14.49 10.07 23.93 26.94 23.64 46.03-.45 30.2-25.7 54.16-55.9 54.16H56.86C29.02 165 5.66 142.22 6 114.38 6.21 97.01 15.28 81.8 28.86 73 36.08 42.6 63.39 20 95.99 20Zm0 34c-18.22 0-33.21 13.94-34.85 31.73l-.97 10.54-9.89 3.78C44.24 102.36 40 108.21 40 115.01c0 8.84 7.16 16 16 16h75c11.6 0 21-9.4 21-21 0-8.6-5.17-16.03-12.65-19.27l-7.45-3.24-2.16-7.83C125.65 64.86 112.07 54 96 54"
+      />
+    </clipPath>
+    <radialGradient
+      id="google-cloud-red"
+      cx="0"
+      cy="0"
+      r="1"
+      gradientTransform="matrix(74 0 0 74 58 58)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#EA4335" />
+      <stop offset="0.58" stop-color="#EA4335" stop-opacity="0.75" />
+      <stop offset="1" stop-color="#EA4335" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient
+      id="google-cloud-yellow"
+      cx="0"
+      cy="0"
+      r="1"
+      gradientTransform="matrix(94 0 0 94 121 56)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#FBBC04" />
+      <stop offset="0.62" stop-color="#FBBC04" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#FBBC04" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient
+      id="google-cloud-green"
+      cx="0"
+      cy="0"
+      r="1"
+      gradientTransform="matrix(104 0 0 104 143 129)"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#34A853" />
+      <stop offset="0.68" stop-color="#34A853" stop-opacity="0.9" />
+      <stop offset="1" stop-color="#34A853" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient
+      id="google-cloud-blue"
+      x1="7"
+      x2="130"
+      y1="161"
+      y2="68"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop stop-color="#0087FF" />
+      <stop offset="0.52" stop-color="#009DFF" />
+      <stop offset="1" stop-color="#1A73E8" />
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#google-cloud-mark)">
+    <rect width="192" height="192" fill="url(#google-cloud-blue)" />
+    <rect width="192" height="192" fill="url(#google-cloud-green)" />
+    <rect width="192" height="192" fill="url(#google-cloud-yellow)" />
+    <rect width="192" height="192" fill="url(#google-cloud-red)" />
+    <path
+      fill="#0087FF"
+      d="M56 64.99c15.59 0 29.52 7.14 38.69 18.32l-23.88 23.88-3.21-3.21c-2.92-3.07-7.04-4.99-11.61-4.99-8.84 0-16 7.16-16 16 0 6.22 3.55 11.62 8.74 14.26l-24.42 24.42C13.13 144.5 5.99 130.58 5.99 114.99c0-27.61 22.39-50 50-50Z"
+    />
+  </g>
 </svg>
