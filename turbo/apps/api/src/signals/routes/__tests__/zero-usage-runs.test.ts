@@ -72,54 +72,6 @@ describe("GET /api/zero/usage/runs", () => {
     return store.set(deleteUsageFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when not authenticated", async () => {
-    const response = await accept(
-      apiClient().get({ query: {}, headers: {} }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 403 for non-admin users", async () => {
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const response = await accept(
-      apiClient().get({ query: {}, headers: authHeaders() }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Only org admins can view run usage",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
-  it("returns empty result when no runs have processed usage events", async () => {
-    mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      apiClient().get({ query: {}, headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      runs: [],
-      pagination: { page: 1, pageSize: 20, total: 0 },
-    });
-  });
-
   it("returns per-run records with credit totals", async () => {
     mockClerkUserLookup();
     const fixture = await track(
@@ -241,49 +193,6 @@ describe("GET /api/zero/usage/runs", () => {
       inputTokens: 123,
       outputTokens: 45,
       creditsCharged: 67,
-    });
-  });
-
-  it("rejects invalid runId format", async () => {
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      apiClient().get({
-        query: { runId: "not-a-uuid" },
-        headers: authHeaders(),
-      }),
-      [400],
-    );
-
-    expect(response.body.error.code).toBe("BAD_REQUEST");
-  });
-
-  it("returns empty result for runId without processed usage", async () => {
-    mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const run = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      apiClient().get({
-        query: { runId: run.runId },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      runs: [],
-      pagination: { page: 1, pageSize: 20, total: 0 },
     });
   });
 

@@ -21,6 +21,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
@@ -204,6 +205,10 @@ export function createBddApi(context: TestContext) {
      * presigned-URL success path needs S3 + org context; the
      * auth/capability/validation rejections are reachable directly. */
     uploads: setupApp({ context })(zeroUploadsContract),
+    /** ts-rest client for `/api/zero/usage/runs` (per-run usage). A fresh org
+     * has no processed usage, so the empty result is reachable; populated rows
+     * need seeded runs/usage events (GAP-USAGE-EVENTS). */
+    usageRuns: setupApp({ context })(zeroUsageRunsContract),
     /** ts-rest client for `/api/zero/org/invite` (invite/revoke org members). */
     orgInvite: setupApp({ context })(zeroOrgInviteContract),
     /** ts-rest client for `/api/zero/org/membership-requests` (accept/reject). */

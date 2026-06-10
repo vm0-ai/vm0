@@ -1106,3 +1106,19 @@ First STORAGE-family reduce.
 - Coverage verified (source-only): `zero-uploads-complete.ts` (31/19) unchanged
   vs `main`. No regressions. Completes the STORAGE uploads pair (prepare +
   complete).
+
+### Round 47 — USAGE RUNS DEFAULT + REJECTIONS (CHAIN-USAGE-RUNS-REJECTIONS, reduce-legacy)
+
+First USAGE-family reduce.
+
+- Extended `createBddApi` with the `usageRuns` client.
+- Added `zero-usage-runs-rejections.bdd.test.ts`: unauthenticated 401, non-admin
+  403, an empty page for an org with no processed usage (both unscoped and for a
+  known runId), and a malformed runId 400.
+- Reduced `zero-usage-runs.test.ts` from 15 to 10 cases, removing the reachable
+  rejections + empty-result cases. The kept cases report populated per-run
+  credit records, which need seeded runs + processed usage events
+  (GAP-USAGE-EVENTS).
+- Coverage verified (source-only): `zero-usage-runs.ts` (12/4) unchanged vs
+  `main`. No regressions. (Note: module-scope mutable objects trip the custom
+  `api/no-package-variable` lint rule — expose them as functions in test files.)
