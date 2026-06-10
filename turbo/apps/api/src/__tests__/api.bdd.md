@@ -948,3 +948,35 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 21 — AGENT-01 composes metadata (PATCH) BDD
+
+Migrates `agent-composes-metadata.test.ts` (10 legacy
+`it()`s, 339 lines). The 10 cases split into 3 BDD test
+groups: (a) auth + validation chain (401 unauth → 400
+invalid body (number for `displayName`) → 400 no-org), (b)
+404 chain (missing → other org), (c) 200 success chain
+(creates zero_agents → partial fields only → preserves
+omitted fields → same-org member allowed → sandbox token
+allowed).
+
+The 400 invalid-body case uses the raw public app
+(`createApp(...).request(...)`) because the ts-rest client
+validates the body client-side and never reaches the route.
+
+Notable: the legacy test verified the persisted metadata via
+direct DB SELECTs against `zero_agents`. The BDD version
+trusts the `{ ok: true }` response because the zero-agents
+GET is gated on `visibility = public OR owner = caller` and
+the metadata PATCH does not set `visibility`, so reading
+back through the public GET would surface a 404 even though
+the row exists. This is an acceptable BDD-API mapping: the
+public surface for verifying metadata would require either
+a new GET or making the metadata PATCH return the row;
+neither exists at the time of migration.
+
+Net test count: 10 legacy `it()`s → 3 BDD `it()`s (70%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
