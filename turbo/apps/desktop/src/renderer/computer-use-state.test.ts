@@ -98,6 +98,9 @@ describe("shouldAutoStartComputerUse", () => {
         signedInAuth,
       ),
     ).toBe(false);
+    expect(
+      shouldAutoStartComputerUse(computerUseState(), signedInAuth, true),
+    ).toBe(false);
   });
 
   it("does not restart active or terminal runtime states", () => {

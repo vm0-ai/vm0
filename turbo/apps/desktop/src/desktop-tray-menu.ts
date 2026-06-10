@@ -37,6 +37,7 @@ export interface DesktopTrayMenuItem {
 export interface DesktopTrayMenuActions {
   readonly showMainWindow: () => void;
   readonly startComputerUse: () => void;
+  readonly stopComputerUse: () => void;
   readonly refreshStatus: () => void;
   readonly openSignIn: () => void;
   readonly switchWorkspace: () => void;
@@ -105,6 +106,12 @@ function canStartComputerUse(state: DesktopTrayMenuState): boolean {
   );
 }
 
+function canStopComputerUse(state: DesktopTrayMenuState): boolean {
+  return (
+    state.computerUse.supported && state.computerUse.host.status === "online"
+  );
+}
+
 function authActionForComputerUse(
   state: DesktopTrayMenuState,
   actions: DesktopTrayMenuActions,
@@ -158,6 +165,11 @@ function buildComputerUseSubmenu(
       label: "Start Computer Use",
       enabled: canStartComputerUse(state),
       click: actions.startComputerUse,
+    },
+    {
+      label: "Stop Computer Use",
+      enabled: canStopComputerUse(state),
+      click: actions.stopComputerUse,
     },
   ];
   if (authAction) {

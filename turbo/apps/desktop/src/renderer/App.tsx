@@ -13,6 +13,7 @@ import {
   IconMaximize,
   IconPhoto,
   IconPlayerPlay,
+  IconPlayerStop,
   IconRefresh,
   IconShieldCheck,
   IconUserCircle,
@@ -40,6 +41,7 @@ import {
   signOutDesktop$,
   setupComputerUseBridge$,
   startComputerUse$,
+  stopComputerUse$,
 } from "./computer-use-state";
 
 type HostStatus = DesktopComputerUseState["host"]["status"];
@@ -461,6 +463,7 @@ function RuntimePanel({
   readonly state: DesktopComputerUseState;
 }) {
   const [startLoadable, start] = useLoadableSet(startComputerUse$);
+  const [stopLoadable, stop] = useLoadableSet(stopComputerUse$);
   const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
   const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
   const [keepAwakeLoadable, setKeepAwakeEnabled] =
@@ -484,6 +487,8 @@ function RuntimePanel({
     state.host.status === "connecting" ||
     state.host.status === "online" ||
     startLoadable.state === "loading";
+  const stopDisabled =
+    state.host.status !== "online" || stopLoadable.state === "loading";
 
   return (
     <Panel title="Runtime" icon={<IconActivityHeartbeat size={18} />}>
@@ -533,6 +538,16 @@ function RuntimePanel({
           disabled={startDisabled}
         >
           Start
+        </IconButton>
+        <IconButton
+          tone="danger"
+          icon={<IconPlayerStop size={15} />}
+          onClick={() => {
+            void stop();
+          }}
+          disabled={stopDisabled}
+        >
+          Stop
         </IconButton>
         <IconButton
           icon={<IconRefresh size={15} />}

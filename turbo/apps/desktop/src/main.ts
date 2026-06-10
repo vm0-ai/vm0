@@ -113,6 +113,7 @@ const MAC_SCREEN_RECORDING_SETTINGS_URL =
 let mainWindow: BrowserWindow | null = null;
 let appIsQuitting = false;
 let computerUseQuitStopStarted = false;
+let computerUseManualStopRequested = false;
 let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
@@ -308,7 +309,14 @@ function releaseKeepAwake(): void {
   keepAwakeController?.release();
 }
 
-async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
+async function startComputerUseRuntime(
+  options: { readonly userInitiated?: boolean } = {},
+): Promise<DesktopComputerUseState> {
+  if (computerUseManualStopRequested && options.userInitiated !== true) {
+    return getComputerUseBridgeState();
+  }
+  computerUseManualStopRequested = false;
+
   const permissions = await refreshComputerUsePermissionState();
   let startupGate: ComputerUseStartupGate = { status: "missing_permissions" };
   if (hasRequiredComputerUsePermissions(permissions)) {
@@ -356,6 +364,13 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
   return getComputerUseBridgeState();
 }
 
+async function stopComputerUseRuntime(): Promise<DesktopComputerUseState> {
+  computerUseManualStopRequested = true;
+  await computerUseRuntime?.stop();
+  notifyComputerUseChanged();
+  return getComputerUseBridgeState();
+}
+
 async function requestComputerUsePermission(): Promise<DesktopComputerUseState> {
   await requestComputerUseAccessibilityPermission();
   notifyComputerUseChanged();
@@ -383,6 +398,7 @@ function installComputerUse(): void {
       getState: getComputerUseBridgeState,
       refreshPermissions: refreshComputerUsePermissions,
       start: startComputerUseRuntime,
+      stop: stopComputerUseRuntime,
       requestAccessibilityPermission: requestComputerUsePermission,
       requestScreenRecordingPermission: requestComputerUseScreenRecording,
       setKeepAwakeEnabled,
@@ -481,7 +497,10 @@ function installTray(): void {
       await createMainWindow();
     },
     startComputerUse: async () => {
-      await startComputerUseRuntime();
+      await startComputerUseRuntime({ userInitiated: true });
+    },
+    stopComputerUse: async () => {
+      await stopComputerUseRuntime();
     },
     refreshStatus: async () => {
       await refreshComputerUsePermissions();
@@ -856,7 +875,7 @@ async function maybeStartComputerUseAfterAuth(): Promise<void> {
   const permissions = await refreshComputerUsePermissionState();
   notifyComputerUseChanged();
   if (hasRequiredComputerUsePermissions(permissions)) {
-    await startComputerUseRuntime();
+    await startComputerUseRuntime({ userInitiated: true });
   }
 }
 
