@@ -257,9 +257,6 @@ export const dismissFeedback$ = command(({ get, set }) => {
 // Scrolling detaches the toolbar from its passage, so hide it. The docked tray
 // is pinned above the composer, not to the selection, so it stays put.
 export const dismissFeedbackOnScroll$ = command(({ get, set }) => {
-  if (get(feedbackActive$)) {
-    return;
-  }
   if (get(feedbackSelection$) === null) {
     return;
   }
