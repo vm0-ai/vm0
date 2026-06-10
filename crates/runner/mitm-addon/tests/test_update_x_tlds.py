@@ -53,6 +53,24 @@ class _ReadFailureOpener:
         return _ReadFailureResponse()
 
 
+class _InvalidUtf8Response:
+    status = update_x_tlds.HTTPStatus.OK
+
+    def __enter__(self) -> _InvalidUtf8Response:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return b"\xff"
+
+
+class _InvalidUtf8Opener:
+    def open(self, request: object, timeout: int) -> _InvalidUtf8Response:
+        return _InvalidUtf8Response()
+
+
 def _build_failing_opener(*handlers: object) -> _FailingOpener:
     return _FailingOpener()
 
@@ -65,8 +83,19 @@ def _build_read_failure_opener(*handlers: object) -> _ReadFailureOpener:
     return _ReadFailureOpener()
 
 
+def _build_invalid_utf8_opener(*handlers: object) -> _InvalidUtf8Opener:
+    return _InvalidUtf8Opener()
+
+
 def _source_text(version: str, tlds: Iterable[str]) -> str:
     return f"# Version {version}, Last Updated test\n" + "\n".join(sorted(tlds)) + "\n"
+
+
+def _write_generated_snapshot(path: Path) -> None:
+    path.write_text(
+        update_x_tlds.render_module(IANA_TLD_VERSION, tuple(sorted(IANA_TLDS))),
+        encoding="utf-8",
+    )
 
 
 def _run_update_script(*args: str) -> subprocess.CompletedProcess[str]:
@@ -179,6 +208,17 @@ def test_fetch_source_reports_response_read_failure_as_fetch_error(monkeypatch):
     assert "IncompleteRead" in message
 
 
+def test_fetch_source_reports_invalid_utf8_body_as_fetch_error(monkeypatch):
+    monkeypatch.setattr(update_x_tlds.urllib.request, "build_opener", _build_invalid_utf8_opener)
+
+    with pytest.raises(update_x_tlds.TldFetchError) as exc_info:
+        update_x_tlds.fetch_source()
+
+    message = str(exc_info.value)
+    assert f"failed to fetch {update_x_tlds.SOURCE_URL}:" in message
+    assert "invalid UTF-8" in message
+
+
 def test_default_update_cli_reports_fetch_failure_without_replacing_output(
     tmp_path, monkeypatch, capsys
 ):
@@ -195,6 +235,79 @@ def test_default_update_cli_reports_fetch_failure_without_replacing_output(
     assert captured.out == ""
     assert f"failed to fetch {update_x_tlds.SOURCE_URL}:" in captured.err
     assert "dns failed" in captured.err
+    assert "Traceback" not in captured.err
+    assert output.read_text(encoding="utf-8") == original
+
+
+def test_update_cli_reports_malformed_source_without_replacing_output(
+    tmp_path, monkeypatch, capsys
+):
+    source = tmp_path / "tlds.txt"
+    source.write_text("COM\nORG\n", encoding="utf-8")
+    output = tmp_path / "x_tlds.py"
+    original = "# existing generated snapshot\n"
+    output.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [str(_UPDATE_SCRIPT), "--source-file", str(source)])
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "IANA TLD source is missing the version header" in captured.err
+    assert "Traceback" not in captured.err
+    assert output.read_text(encoding="utf-8") == original
+
+
+def test_update_script_reports_malformed_source_without_traceback(tmp_path):
+    source = tmp_path / "tlds.txt"
+    source.write_text("COM\nORG\n", encoding="utf-8")
+
+    completed = _run_update_script("--source-file", str(source))
+
+    assert completed.returncode == 1
+    assert completed.stdout == ""
+    assert "IANA TLD source is missing the version header" in completed.stderr
+    assert "Traceback" not in completed.stderr
+
+
+def test_update_cli_reports_invalid_utf8_source_without_replacing_output(
+    tmp_path, monkeypatch, capsys
+):
+    source = tmp_path / "tlds.txt"
+    source.write_bytes(b"\xff")
+    output = tmp_path / "x_tlds.py"
+    original = "# existing generated snapshot\n"
+    output.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [str(_UPDATE_SCRIPT), "--source-file", str(source)])
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert str(source) in captured.err
+    assert "invalid UTF-8" in captured.err
+    assert "Traceback" not in captured.err
+    assert output.read_text(encoding="utf-8") == original
+
+
+def test_update_cli_reports_missing_source_file_without_replacing_output(
+    tmp_path, monkeypatch, capsys
+):
+    source = tmp_path / "missing-tlds.txt"
+    output = tmp_path / "x_tlds.py"
+    original = "# existing generated snapshot\n"
+    output.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [str(_UPDATE_SCRIPT), "--source-file", str(source)])
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert str(source) in captured.err
+    assert "failed to read IANA TLD source file" in captured.err
     assert "Traceback" not in captured.err
     assert output.read_text(encoding="utf-8") == original
 
@@ -292,6 +405,90 @@ def test_check_source_cli_reports_set_drift(tmp_path):
     assert "IANA TLD set drift detected" in completed.stderr
     assert f"added: {added_tld}" in completed.stderr
     assert f"removed: {removed_tld}" in completed.stderr
+
+
+def test_check_source_cli_reports_malformed_source_without_traceback(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "tlds.txt"
+    source.write_text("COM\nORG\n", encoding="utf-8")
+    output = tmp_path / "x_tlds.py"
+    _write_generated_snapshot(output)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(_UPDATE_SCRIPT), "--check-source", "--source-file", str(source)],
+    )
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "IANA TLD source is missing the version header" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_check_source_cli_reports_invalid_utf8_source_without_traceback(
+    tmp_path, monkeypatch, capsys
+):
+    source = tmp_path / "tlds.txt"
+    source.write_bytes(b"\xff")
+    output = tmp_path / "x_tlds.py"
+    _write_generated_snapshot(output)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(_UPDATE_SCRIPT), "--check-source", "--source-file", str(source)],
+    )
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert str(source) in captured.err
+    assert "invalid UTF-8" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_check_source_cli_reports_missing_source_file_without_traceback(
+    tmp_path, monkeypatch, capsys
+):
+    source = tmp_path / "missing-tlds.txt"
+    output = tmp_path / "x_tlds.py"
+    _write_generated_snapshot(output)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(_UPDATE_SCRIPT), "--check-source", "--source-file", str(source)],
+    )
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+
+    assert update_x_tlds.main() == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert str(source) in captured.err
+    assert "failed to read IANA TLD source file" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_check_source_cli_does_not_hide_invalid_generated_snapshot(tmp_path, monkeypatch):
+    source = tmp_path / "tlds.txt"
+    source.write_text(_source_text("1", {"com"}), encoding="utf-8")
+    output = tmp_path / "x_tlds.py"
+    output.write_text(
+        'IANA_TLD_VERSION = ""\nIANA_TLDS = frozenset({"com"})\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(_UPDATE_SCRIPT), "--check-source", "--source-file", str(source)],
+    )
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+
+    with pytest.raises(ValueError, match="invalid IANA_TLD_VERSION"):
+        update_x_tlds.main()
 
 
 def test_check_source_cli_requires_source_file():

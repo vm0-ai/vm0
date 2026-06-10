@@ -565,26 +565,27 @@ async fn handle_message(
             }
             if let Some(messages) = msg.messages {
                 for (i, m) in messages.into_iter().enumerate() {
-                    let raw = m.data.unwrap_or(serde_json::Value::Null);
-                    let data = decode_data(raw, m.encoding.as_deref());
-                    let id =
-                        m.id.or_else(|| msg.id.as_ref().map(|pid| format!("{pid}:{i}")));
-                    let timestamp = m.timestamp.or(msg.timestamp);
-                    let event = Event::Message(Message {
-                        name: m.name,
-                        data,
-                        id,
-                        client_id: m.client_id,
-                        timestamp,
-                    });
-                    // Use try_send (non-blocking) for messages: if the consumer
-                    // falls behind, we drop messages rather than stalling the
-                    // event loop (which would block heartbeat processing and
-                    // cause spurious reconnects). Status events (Connected,
-                    // Disconnected, Error) use .send().await because they must
-                    // not be lost.
-                    match p.event_tx.try_send(event) {
-                        Ok(()) => {}
+                    // Use try_reserve (non-blocking) for messages: if the
+                    // consumer falls behind, we drop messages before payload
+                    // decoding rather than stalling the event loop or doing
+                    // work for messages that will be discarded. Status events
+                    // (Connected, Disconnected, Error) use .send().await
+                    // because they must not be lost.
+                    match p.event_tx.try_reserve() {
+                        Ok(permit) => {
+                            let raw = m.data.unwrap_or(serde_json::Value::Null);
+                            let data = decode_data(raw, m.encoding.as_deref());
+                            let id =
+                                m.id.or_else(|| msg.id.as_ref().map(|pid| format!("{pid}:{i}")));
+                            let timestamp = m.timestamp.or(msg.timestamp);
+                            permit.send(Event::Message(Message {
+                                name: m.name,
+                                data,
+                                id,
+                                client_id: m.client_id,
+                                timestamp,
+                            }));
+                        }
                         Err(mpsc::error::TrySendError::Full(_)) => {
                             p.dropped_messages += 1;
                             tracing::warn!(
@@ -973,8 +974,60 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
 mod tests {
     use super::super::state::ConnState;
     use super::*;
-    use crate::protocol::ErrorInfo;
+    use std::collections::BTreeMap;
+    use std::fmt;
+    use std::sync::{Arc, Mutex};
+
+    use crate::protocol::{AblyMessage, ErrorInfo};
     use crate::types::{TokenDetails, TokenRequest};
+    use tracing::Subscriber;
+    use tracing::field::{Field, Visit};
+    use tracing_subscriber::layer::{Context, Layer};
+    use tracing_subscriber::prelude::*;
+
+    #[derive(Clone, Default)]
+    struct CapturedEvents {
+        events: Arc<Mutex<Vec<BTreeMap<String, String>>>>,
+    }
+
+    impl CapturedEvents {
+        fn entries(&self) -> Vec<BTreeMap<String, String>> {
+            self.events.lock().unwrap().clone()
+        }
+    }
+
+    impl<S> Layer<S> for CapturedEvents
+    where
+        S: Subscriber,
+    {
+        fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+            let mut visitor = CapturedFields::default();
+            event.record(&mut visitor);
+            self.events.lock().unwrap().push(visitor.fields);
+        }
+    }
+
+    #[derive(Default)]
+    struct CapturedFields {
+        fields: BTreeMap<String, String>,
+    }
+
+    impl Visit for CapturedFields {
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+            self.fields
+                .insert(field.name().to_string(), format!("{value:?}"));
+        }
+    }
 
     fn test_event_loop_state(event_tx: mpsc::Sender<Event>) -> EventLoopState {
         let timing = TimingConfig::default();
@@ -1025,6 +1078,13 @@ mod tests {
             matches!(event_rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
             "expected no status event"
         );
+    }
+
+    fn captured_contains(events: &[BTreeMap<String, String>], needle: &str) -> bool {
+        events
+            .iter()
+            .flat_map(BTreeMap::values)
+            .any(|value| value.contains(needle))
     }
 
     #[test]
@@ -1085,6 +1145,85 @@ mod tests {
             event => panic!("expected Disconnected, got {event:?}"),
         }
         assert_event_channel_empty(&mut event_rx);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn full_message_channel_drops_before_decoding_payload() {
+        let (event_tx, mut event_rx) = mpsc::channel(1);
+        event_tx.try_send(Event::Connected).unwrap();
+        let mut state = test_event_loop_state(event_tx);
+        let (_close_tx, mut close_rx) = oneshot::channel();
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let action = handle_message(
+            &mut state,
+            ProtocolMessage {
+                action: action::MESSAGE,
+                channel: Some("ch".to_string()),
+                messages: Some(vec![AblyMessage {
+                    data: Some(serde_json::json!("{not-json")),
+                    encoding: Some("json".to_string()),
+                    ..Default::default()
+                }]),
+                ..Default::default()
+            },
+            &mut close_rx,
+        )
+        .await;
+
+        assert_eq!(action, LoopAction::Continue);
+        assert_eq!(state.dropped_messages, 1);
+        assert!(
+            matches!(event_rx.try_recv(), Ok(Event::Connected)),
+            "expected pre-filled event to remain queued"
+        );
+        assert_event_channel_empty(&mut event_rx);
+        let events = captured.entries();
+        assert!(
+            captured_contains(&events, "event channel full, dropping message"),
+            "expected full-channel warning, got {events:#?}"
+        );
+        assert!(
+            !captured_contains(&events, "Failed to decode JSON encoding layer"),
+            "payload was decoded before full-channel drop; events={events:#?}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn closed_message_channel_stops_before_decoding_payload() {
+        let (event_tx, event_rx) = mpsc::channel(1);
+        drop(event_rx);
+        let mut state = test_event_loop_state(event_tx);
+        let (_close_tx, mut close_rx) = oneshot::channel();
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let action = handle_message(
+            &mut state,
+            ProtocolMessage {
+                action: action::MESSAGE,
+                channel: Some("ch".to_string()),
+                messages: Some(vec![AblyMessage {
+                    data: Some(serde_json::json!("{not-json")),
+                    encoding: Some("json".to_string()),
+                    ..Default::default()
+                }]),
+                ..Default::default()
+            },
+            &mut close_rx,
+        )
+        .await;
+
+        assert_eq!(action, LoopAction::Stop);
+        assert_eq!(state.dropped_messages, 0);
+        let events = captured.entries();
+        assert!(
+            !captured_contains(&events, "Failed to decode JSON encoding layer"),
+            "payload was decoded before closed-channel stop; events={events:#?}"
+        );
     }
 
     #[tokio::test]

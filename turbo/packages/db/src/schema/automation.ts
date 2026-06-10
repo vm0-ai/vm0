@@ -161,8 +161,6 @@ export const automationTriggers = pgTable(
     ),
     // Tracks consecutive failures for loop triggers (auto-disable after 3).
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
-    // Tracks when retry cycle started for concurrency failures (null = not retrying).
-    retryStartedAt: timestamp("retry_started_at"),
 
     // Whether this trigger is active (mirrors zero_agent_schedules.enabled;
     // consumed by the dormant time poller's partial index below).

@@ -12,6 +12,7 @@ export const connectorsTypeCallbackContract = c.router({
     pathParams: z.object({ type: z.string() }),
     query: z.object({
       code: z.string().optional(),
+      auth_code: z.string().optional(),
       state: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),

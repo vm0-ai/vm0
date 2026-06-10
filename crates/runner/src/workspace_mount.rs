@@ -629,6 +629,7 @@ exit 0
         assert!(cmd.contains("WORKSPACE_HOLDER_DIAGNOSTIC_LIMIT=40"));
         assert!(cmd.contains("WORKSPACE_HOLDER_VALUE_LIMIT=240"));
         assert!(cmd.contains("WORKSPACE_HOLDER_KILL_GRACE_SECONDS=1"));
+        assert!(cmd.contains("wait_for_workspace_holders_to_clear()"));
         assert!(cmd.contains("workspace holder diagnostics truncated"));
         assert!(cmd.contains("pid=%s uid=%s comm=%s ref=%s path=%s"));
         assert!(cmd.contains("comm=\"$(sanitize_log_value \"$comm\")\""));
@@ -646,14 +647,21 @@ exit 0
         let term = cmd
             .find("term_workspace_holder_pids \"$holder_pids\"")
             .expect("TERM holders");
+        let term_wait = cmd
+            .find("wait_for_workspace_holders_to_clear \"$WORKSPACE_HOLDER_TERM_GRACE_SECONDS\"")
+            .expect("TERM holder wait");
         let rescan = cmd
             .find("remaining_holder_pids=\"$(workspace_holder_pids)\"")
             .expect("holder rescan");
         let kill = cmd
             .find("kill_workspace_holder_pids \"$remaining_holder_pids\"")
             .expect("KILL remaining holders");
-        let kill_sleep = find_after(&cmd, "sleep \"$WORKSPACE_HOLDER_KILL_GRACE_SECONDS\"", kill);
-        let retry_sync = find_after(&cmd, "sync -f -- \"$workspace_dir\"", kill_sleep);
+        let kill_wait = find_after(
+            &cmd,
+            "wait_for_workspace_holders_to_clear \"$WORKSPACE_HOLDER_KILL_GRACE_SECONDS\"",
+            kill,
+        );
+        let retry_sync = find_after(&cmd, "sync -f -- \"$workspace_dir\"", kill_wait);
         let retry_unmount = find_after(&cmd, "umount -- \"$workspace_dir\"", retry_sync);
 
         assert!(
@@ -661,15 +669,19 @@ exit 0
             "holder diagnosis must only happen after clean unmount fails"
         );
         assert!(diagnose < term, "holders must be diagnosed before TERM");
-        assert!(term < rescan, "holders must be rescanned after TERM");
+        assert!(term < term_wait, "TERM must wait for holder refs to clear");
+        assert!(
+            term_wait < rescan,
+            "holders must be rescanned after TERM wait"
+        );
         assert!(
             rescan < kill,
             "KILL must only target holders confirmed by the rescan"
         );
         assert!(kill < retry_sync, "cleanup must happen before retry sync");
         assert!(
-            kill < kill_sleep,
-            "KILL must have a short grace period before retry sync"
+            kill < kill_wait,
+            "KILL must wait for holder refs to clear before retry sync"
         );
         assert!(
             retry_sync < retry_unmount,

@@ -18,6 +18,7 @@ export const googleSearchConsole = {
     authMethods: {
       oauth: {
         featureFlag: FeatureSwitchKey.GoogleSearchConsoleConnector,
+        showExperimentalLabel: false,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Google Search Console access.",
         client: {

@@ -141,6 +141,42 @@ def test_later_allowed_firewall_wins_after_earlier_unknown_match(
     assert compiled.permission == "items-read"
 
 
+def test_specific_permission_api_wins_after_earlier_unknown_same_firewall():
+    fws = [
+        {
+            "name": "meta-ads",
+            "apis": [
+                {
+                    "base": "https://graph.facebook.com",
+                    "auth": {"headers": {"Authorization": "Bearer user-token"}},
+                    "permissions": [],
+                },
+                {
+                    "base": "https://graph.facebook.com",
+                    "auth": {},
+                    "permissions": [
+                        {
+                            "name": "page-token-ads-posts",
+                            "rules": ["GET /v{version}/{page_id}/ads_posts"],
+                        },
+                    ],
+                },
+            ],
+        },
+    ]
+    result = matching.match_compiled_firewall_request(
+        "https://graph.facebook.com/v22.0/1169814336217013/ads_posts?limit=1",
+        "GET",
+        compile_firewalls_or_fail(fws),
+        None,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.name == "meta-ads"
+    assert result.permission == "page-token-ads-posts"
+    assert result.api_entry["auth"] == {}
+
+
 def test_later_denied_firewall_wins_after_earlier_unknown_allow():
     fws = [
         {

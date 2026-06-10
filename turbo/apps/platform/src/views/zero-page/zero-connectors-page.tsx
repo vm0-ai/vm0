@@ -643,7 +643,7 @@ export function ZeroConnectorsPage() {
     const launchMode = getConnectorConnectLaunchMode({
       type,
       availableAuthMethods: ct.availableAuthMethods,
-      preferModalForGoogleSecurityWarning: true,
+      preferModalForConnectorNotice: true,
     });
     if (launchMode === "modal") {
       setSelected(type);

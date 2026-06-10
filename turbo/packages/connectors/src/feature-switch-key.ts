@@ -8,6 +8,7 @@ export enum FeatureSwitchKey {
   AhrefsConnector = "ahrefsConnector",
   BentomlConnector = "bentomlConnector",
   CanvaConnector = "canvaConnector",
+  CloudflareConnector = "cloudflareConnector",
   DeelConnector = "deelConnector",
   DocuSignConnector = "docusignConnector",
   DropboxConnector = "dropboxConnector",
@@ -22,6 +23,7 @@ export enum FeatureSwitchKey {
   OutlookMailConnector = "outlookMailConnector",
   OutlookCalendarConnector = "outlookCalendarConnector",
   MetaAdsConnector = "metaAdsConnector",
+  TikTokAdsConnector = "tiktokAdsConnector",
   StripeConnector = "stripeConnector",
   AwsConnector = "awsConnector",
   PosthogConnector = "posthogConnector",
@@ -57,6 +59,5 @@ export enum FeatureSwitchKey {
   ChatRecommendedFollowups = "chatRecommendedFollowups",
   PresentationHtmlPptxDownload = "presentationHtmlPptxDownload",
   ChatInlineFeedback = "chatInlineFeedback",
-  ConnectorPermissionReset = "connectorPermissionReset",
   ZeroAutomations = "zeroAutomations",
 }

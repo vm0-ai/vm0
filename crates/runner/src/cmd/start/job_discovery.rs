@@ -163,12 +163,14 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
 }
 
 async fn claim_with_local_admission(
-    candidate: JobCandidate,
+    mut candidate: JobCandidate,
     run_id: RunId,
     job_vcpu: u32,
     job_memory: u32,
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<AdmittedClaim> {
+    candidate.mark_local_admission_started();
+
     // Reserve resources before claiming so we don't waste a job that another
     // runner could handle.
     let job_lease = ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)?;

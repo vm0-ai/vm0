@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { createStore } from "ccstate";
 import { eq, inArray, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -35,6 +36,22 @@ const BACKFILL_SQL = readFileSync(
   .replaceAll('  "retry_started_at",\n', "")
   .replaceAll('  "schedule"."retry_started_at",\n', "");
 
+// The refresh migration: its DROP COLUMN DDL already ran via db:migrate, so
+// slice it off and keep only the data statements (mapped-mirror re-sync +
+// unmapped insert), which are fully re-runnable.
+const REFRESH_SQL = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../../../../../../packages/db/src/migrations/0448_moaning_rattler.sql",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+)
+  .split("--> statement-breakpoint")
+  .slice(1)
+  .join("--> statement-breakpoint");
+
 // 0444 adds automations.append_system_prompt and carries it into mirrors that
 // predate the column. The DDL already ran via db:migrate; only the data UPDATE
 // (everything after the first statement-breakpoint) is re-runnable here.
@@ -55,14 +72,45 @@ const track = createFixtureTracker<SchedulesFixture>((fixture) => {
   return store.set(deleteSchedulesScenario$, fixture, context.signal);
 });
 
-async function runBackfill(): Promise<void> {
+// The replayed migrations are global data migrations (prod runs them exactly
+// once); scope them to the fixture org here so parallel test files seeding
+// their own schedules/mirrors can never interfere with a replay.
+function scopeToOrg(rawSql: string, orgId: string): string {
+  return rawSql
+    .replaceAll(
+      `FROM "zero_agent_schedules" AS "schedule"
+  WHERE NOT EXISTS (`,
+      `FROM "zero_agent_schedules" AS "schedule"
+  WHERE "schedule"."org_id" = '${orgId}' AND NOT EXISTS (`,
+    )
+    .replaceAll(
+      `WHERE "automation"."source_schedule_id" = "schedule"."id";`,
+      `WHERE "automation"."source_schedule_id" = "schedule"."id" AND "schedule"."org_id" = '${orgId}';`,
+    )
+    .replaceAll(
+      `WHERE "trigger"."automation_id" = "automation"."id";`,
+      `WHERE "trigger"."automation_id" = "automation"."id" AND "schedule"."org_id" = '${orgId}';`,
+    );
+}
+
+async function runBackfill(orgId: string): Promise<void> {
   const db = store.set(writeDb$);
-  await db.execute(sql.raw(BACKFILL_SQL));
+  await db.execute(sql.raw(scopeToOrg(BACKFILL_SQL, orgId)));
 }
 
 async function runAppendPromptCarry(): Promise<void> {
   const db = store.set(writeDb$);
   await db.execute(sql.raw(APPEND_PROMPT_CARRY_SQL));
+}
+
+async function runRefresh(orgId: string): Promise<void> {
+  const db = store.set(writeDb$);
+  // Drizzle's statement-breakpoint marker is a migration-runner construct;
+  // execute the statements individually here.
+  const scoped = scopeToOrg(REFRESH_SQL, orgId);
+  for (const statement of scoped.split("--> statement-breakpoint")) {
+    await db.execute(sql.raw(statement));
+  }
 }
 
 async function mirrorsForSchedules(
@@ -120,7 +168,7 @@ describe("backfill schedules into events-first tables", () => {
       mirrorsForSchedules(fixture.scheduleIds),
     ).resolves.toHaveLength(0);
 
-    await runBackfill();
+    await runBackfill(fixture.orgId);
 
     const mirrors = await mirrorsForSchedules(fixture.scheduleIds);
     expect(mirrors).toHaveLength(2);
@@ -194,7 +242,7 @@ describe("backfill schedules into events-first tables", () => {
   it("carries append_system_prompt into mirrors that predate the column (0444)", async () => {
     // Simulate a pre-0444 mirror: backfill, then null the column as if the
     // mirror had been written before append_system_prompt existed.
-    await runBackfill();
+    await runBackfill(fixture.orgId);
     const db = store.set(writeDb$);
     await db.execute(
       sql`UPDATE "automations" SET "append_system_prompt" = NULL WHERE "source_schedule_id" IS NOT NULL`,
@@ -214,8 +262,82 @@ describe("backfill schedules into events-first tables", () => {
     expect(loopMirror?.appendSystemPrompt).toBeNull();
   });
 
+  it("re-syncs drifted mirrors and maps missed schedules (0446 refresh)", async () => {
+    // Map the cron schedule the 0442 way, then simulate runtime drift on the
+    // source: the live poller fired (next_run_at moved, lastRunAt stamped,
+    // failures counted) without the mirror following.
+    await runBackfill(fixture.orgId);
+    const db = store.set(writeDb$);
+    const [cronId, loopId] = fixture.scheduleIds;
+    expect(cronId).toBeDefined();
+    expect(loopId).toBeDefined();
+    if (!cronId || !loopId) {
+      return;
+    }
+
+    const driftedNextRun = new Date("2099-02-02T10:00:00.000Z");
+    await db
+      .update(zeroAgentSchedules)
+      .set({
+        nextRunAt: driftedNextRun,
+        consecutiveFailures: 2,
+        enabled: false,
+        prompt: "Edited cron prompt",
+      })
+      .where(eq(zeroAgentSchedules.id, cronId));
+
+    // Simulate a schedule the dual-write missed entirely: delete its mirror.
+    await db
+      .delete(automations)
+      .where(eq(automations.sourceScheduleId, loopId));
+
+    await runRefresh(fixture.orgId);
+
+    const mirrors = await mirrorsForSchedules(fixture.scheduleIds);
+    expect(mirrors).toHaveLength(2);
+    const cronMirror = mirrors.find((row) => {
+      return row.sourceScheduleId === cronId;
+    });
+    const loopMirror = mirrors.find((row) => {
+      return row.sourceScheduleId === loopId;
+    });
+
+    // Drifted mapped mirror converged back to the source.
+    expect(cronMirror?.instruction).toBe("Edited cron prompt");
+    expect(cronMirror?.enabled).toBeFalsy();
+    const [cronTrigger] = cronMirror
+      ? await db
+          .select()
+          .from(automationTriggers)
+          .where(eq(automationTriggers.automationId, cronMirror.id))
+      : [];
+    expect(cronTrigger?.nextRunAt?.toISOString()).toBe(
+      driftedNextRun.toISOString(),
+    );
+    expect(cronTrigger?.consecutiveFailures).toBe(2);
+    expect(cronTrigger?.enabled).toBeFalsy();
+
+    // Missed schedule got a fresh mirror + trigger.
+    expect(loopMirror).toBeDefined();
+    if (!loopMirror) {
+      return;
+    }
+    const [loopTrigger] = await db
+      .select()
+      .from(automationTriggers)
+      .where(eq(automationTriggers.automationId, loopMirror.id));
+    expect(loopTrigger?.kind).toBe("loop");
+    expect(loopTrigger?.intervalSeconds).toBe(1800);
+
+    // Idempotent: a second run changes nothing structurally.
+    await runRefresh(fixture.orgId);
+    await expect(
+      mirrorsForSchedules(fixture.scheduleIds),
+    ).resolves.toHaveLength(2);
+  });
+
   it("is a no-op on re-run (no duplicate mirrors)", async () => {
-    await runBackfill();
+    await runBackfill(fixture.orgId);
     const firstPass = await mirrorsForSchedules(fixture.scheduleIds);
     expect(firstPass).toHaveLength(2);
     const firstIds = new Set(
@@ -225,7 +347,7 @@ describe("backfill schedules into events-first tables", () => {
     );
 
     // Re-running must insert nothing — same automation rows, same trigger rows.
-    await runBackfill();
+    await runBackfill(fixture.orgId);
     const secondPass = await mirrorsForSchedules(fixture.scheduleIds);
     expect(secondPass).toHaveLength(2);
     expect(

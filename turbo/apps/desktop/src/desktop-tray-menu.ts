@@ -334,6 +334,10 @@ export function buildDesktopTrayMenuItems(
 ): readonly DesktopTrayMenuItem[] {
   return [
     { label: "Show Main Window", click: actions.showMainWindow },
+    {
+      label: authStatusLabel(state),
+      submenu: buildAuthSubmenu(state, actions),
+    },
     separator(),
     {
       label: `Computer Use: ${computerUseStatusLabel(state)}`,
@@ -346,10 +350,6 @@ export function buildDesktopTrayMenuItems(
       click: () => {
         actions.setKeepAwakeEnabled(!state.computerUse.keepAwake.enabled);
       },
-    },
-    {
-      label: authStatusLabel(state),
-      submenu: buildAuthSubmenu(state, actions),
     },
     separator(),
     ...buildRecentCommandSection(state, actions),

@@ -12,7 +12,6 @@ import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
-  readonly userId: string;
   readonly tier: SubscriptionCheckoutTier;
   readonly priceId: string;
   readonly trialDays?: 7;
@@ -133,7 +132,6 @@ export function activeCustomCreditPriceId(): string | undefined {
 
 function checkoutSessionMetadata(args: {
   readonly orgId: string;
-  readonly userId: string;
   readonly tier: SubscriptionCheckoutTier;
   readonly priceId: string;
   readonly adAttribution:
@@ -142,8 +140,6 @@ function checkoutSessionMetadata(args: {
 }): Record<string, string> {
   const metadata: Record<string, string> = {
     orgId: args.orgId,
-    org_id: args.orgId,
-    user_id: args.userId,
     tier: args.tier,
     priceId: args.priceId,
   };
@@ -219,21 +215,13 @@ export const createCheckoutSession$ = command(
   ): Promise<string> => {
     const metadata = checkoutSessionMetadata({
       orgId: args.orgId,
-      userId: args.userId,
       tier: args.tier,
       priceId: args.priceId,
       adAttribution: args.adAttribution,
     });
     const customerId = await set(
       getOrCreateStripeCustomer$,
-      {
-        orgId: args.orgId,
-        metadata: {
-          org_id: args.orgId,
-          user_id: args.userId,
-          ...args.adAttribution,
-        },
-      },
+      { orgId: args.orgId, metadata: args.adAttribution },
       signal,
     );
     signal.throwIfAborted();

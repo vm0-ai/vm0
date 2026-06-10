@@ -68,7 +68,7 @@ describe("DesktopKeepAwakeController", () => {
     }
   });
 
-  it("starts the system sleep blocker and persists the setting", async () => {
+  it("starts the display sleep blocker and persists the setting", async () => {
     const { directory, preferencesPath } = await createPreferencesPath();
     const { blocker, start } = createBlocker();
     const onChange = vi.fn();
@@ -84,7 +84,7 @@ describe("DesktopKeepAwakeController", () => {
         enabled: true,
         active: true,
       });
-      expect(start).toHaveBeenCalledWith("prevent-app-suspension");
+      expect(start).toHaveBeenCalledWith("prevent-display-sleep");
       expect(JSON.parse(await readFile(preferencesPath, "utf8"))).toMatchObject(
         {
           keepAwakeEnabled: true,

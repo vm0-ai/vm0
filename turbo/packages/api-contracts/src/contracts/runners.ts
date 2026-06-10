@@ -35,6 +35,11 @@ export function elapsedSinceApiStartMs(
   return Math.max(0, nowMs - apiStartTimeMs);
 }
 
+const runnerClaimTelemetrySchema = z.object({
+  jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
+  localAdmissionToClaimRequestMs: z.number().int().nonnegative().optional(),
+});
+
 /**
  * Default profile when none is specified.
  * Must stay in sync with Rust: crates/runner/src/profile.rs → DEFAULT_PROFILE
@@ -290,7 +295,9 @@ export const runnersJobClaimContract = c.router({
     pathParams: z.object({
       id: z.uuid(),
     }),
-    body: z.object({}),
+    body: z.object({
+      telemetry: runnerClaimTelemetrySchema.optional(),
+    }),
     responses: {
       200: executionContextSchema,
       400: apiErrorSchema,

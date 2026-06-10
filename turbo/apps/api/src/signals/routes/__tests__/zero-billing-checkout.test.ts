@@ -256,11 +256,7 @@ describe("POST /api/zero/billing/checkout", () => {
     });
 
     expect(context.mocks.stripe.customers.create).toHaveBeenCalledWith({
-      metadata: {
-        orgId: fixture.orgId,
-        org_id: fixture.orgId,
-        user_id: fixture.userId,
-      },
+      metadata: { orgId: fixture.orgId },
     });
     expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
       mode: "subscription",
@@ -271,16 +267,12 @@ describe("POST /api/zero/billing/checkout", () => {
       cancel_url: `${APP_ORIGIN}/billing?billing=canceled`,
       metadata: {
         orgId: fixture.orgId,
-        org_id: fixture.orgId,
-        user_id: fixture.userId,
         tier: "pro",
         priceId: TEST_PRICE_PRO,
       },
       subscription_data: {
         metadata: {
           orgId: fixture.orgId,
-          org_id: fixture.orgId,
-          user_id: fixture.userId,
           tier: "pro",
           priceId: TEST_PRICE_PRO,
         },
@@ -324,8 +316,6 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(context.mocks.stripe.customers.create).toHaveBeenCalledWith({
       metadata: {
         orgId: fixture.orgId,
-        org_id: fixture.orgId,
-        user_id: fixture.userId,
         ...expectedPreviewMetadata,
       },
     });
@@ -333,8 +323,6 @@ describe("POST /api/zero/billing/checkout", () => {
       expect.objectContaining({
         metadata: {
           orgId: fixture.orgId,
-          org_id: fixture.orgId,
-          user_id: fixture.userId,
           tier: "pro",
           priceId: TEST_PRICE_PRO,
           ...expectedPreviewMetadata,
@@ -342,8 +330,6 @@ describe("POST /api/zero/billing/checkout", () => {
         subscription_data: expect.objectContaining({
           metadata: {
             orgId: fixture.orgId,
-            org_id: fixture.orgId,
-            user_id: fixture.userId,
             tier: "pro",
             priceId: TEST_PRICE_PRO,
             ...expectedPreviewMetadata,
@@ -470,8 +456,6 @@ describe("POST /api/zero/billing/checkout", () => {
     };
     const expectedMetadata = {
       orgId: fixture.orgId,
-      org_id: fixture.orgId,
-      user_id: fixture.userId,
       tier: "pro",
       priceId: TEST_PRICE_PRO,
       ...expectedAttribution,
@@ -479,8 +463,6 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(context.mocks.stripe.customers.create).toHaveBeenCalledWith({
       metadata: {
         orgId: fixture.orgId,
-        org_id: fixture.orgId,
-        user_id: fixture.userId,
         ...expectedAttribution,
       },
     });
@@ -531,16 +513,12 @@ describe("POST /api/zero/billing/checkout", () => {
       cancel_url: `${APP_ORIGIN}/onboarding?billing=canceled`,
       metadata: {
         orgId: fixture.orgId,
-        org_id: fixture.orgId,
-        user_id: fixture.userId,
         tier: "pro",
         priceId: TEST_PRICE_PRO,
       },
       subscription_data: {
         metadata: {
           orgId: fixture.orgId,
-          org_id: fixture.orgId,
-          user_id: fixture.userId,
           tier: "pro",
           priceId: TEST_PRICE_PRO,
         },

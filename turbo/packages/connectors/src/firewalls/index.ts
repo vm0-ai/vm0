@@ -174,6 +174,7 @@ import { makeFirewall } from "./make.generated";
 import { mailsacFirewall } from "./mailsac.generated";
 import { manusFirewall } from "./manus.generated";
 import { mapboxFirewall } from "./mapbox.generated";
+import { massiveFirewall } from "./massive.generated";
 import { mathpixFirewall } from "./mathpix.generated";
 import { mem0Firewall } from "./mem0.generated";
 import { mercuryFirewall } from "./mercury.generated";
@@ -234,6 +235,7 @@ import { runwayFirewall } from "./runway.generated";
 import { salesforceFirewall } from "./salesforce.generated";
 import { scrapeninjaFirewall } from "./scrapeninja.generated";
 import { segmentFirewall } from "./segment.generated";
+import { semrushFirewall } from "./semrush.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
 import { shopifyFirewall } from "./shopify.generated";
@@ -261,6 +263,7 @@ import { supermemoryFirewall } from "./supermemory.generated";
 import { tavilyFirewall } from "./tavily.generated";
 import { testOauthFirewall } from "./test-oauth.generated";
 import { ticketmasterFirewall } from "./ticketmaster.generated";
+import { tiktokAdsFirewall } from "./tiktok-ads.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { togetherFirewall } from "./together.generated";
@@ -439,6 +442,7 @@ const CONNECTOR_FIREWALLS = {
   make: makeFirewall,
   mailsac: mailsacFirewall,
   manus: manusFirewall,
+  massive: massiveFirewall,
   mem0: mem0Firewall,
   mercury: mercuryFirewall,
   meshy: meshyFirewall,
@@ -494,6 +498,7 @@ const CONNECTOR_FIREWALLS = {
   salesforce: salesforceFirewall,
   scrapeninja: scrapeninjaFirewall,
   segment: segmentFirewall,
+  semrush: semrushFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
   shopify: shopifyFirewall,
@@ -517,6 +522,7 @@ const CONNECTOR_FIREWALLS = {
   tavily: tavilyFirewall,
   "test-oauth": testOauthFirewall,
   ticketmaster: ticketmasterFirewall,
+  "tiktok-ads": tiktokAdsFirewall,
   tldv: tldvFirewall,
   todoist: todoistFirewall,
   together: togetherFirewall,
