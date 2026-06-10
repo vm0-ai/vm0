@@ -9,7 +9,6 @@ const ENDPOINTS = [
   "https://cloudresourcemanager.googleapis.com",
   "https://serviceusage.googleapis.com",
   "https://iam.googleapis.com",
-  "https://iamcredentials.googleapis.com",
   "https://compute.googleapis.com",
   "https://appengine.googleapis.com",
   "https://sqladmin.googleapis.com",
