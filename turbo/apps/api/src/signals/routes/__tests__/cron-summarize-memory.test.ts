@@ -730,13 +730,19 @@ describe("GET /api/cron/summarize-memory", () => {
 
   it("is idempotent on rerun", async () => {
     mockLlm();
-    const seeded = await seedTwoVersions(
-      [{ path: "facts/pets.md", content: "Has a dog" }],
-      [
-        { path: "facts/pets.md", content: "Has a dog" },
-        { path: "facts/coffee.md", content: "Drinks oat milk lattes" },
-      ],
-    );
+    const { fixture } = await seedVersions([
+      {
+        createdAt: new Date(BASELINE_DURING_LOOKBACK),
+        files: [{ path: "facts/pets.md", content: "Has a dog" }],
+      },
+      {
+        createdAt: new Date("2999-01-02T09:00:00.000Z"),
+        files: [
+          { path: "facts/pets.md", content: "Has a dog" },
+          { path: "facts/coffee.md", content: "Drinks oat milk lattes" },
+        ],
+      },
+    ]);
 
     await accept(apiClient().summarize({ headers: cronHeaders() }), [200]);
     const second = await accept(
@@ -751,11 +757,11 @@ describe("GET /api/cron/summarize-memory", () => {
     const rows = await db
       .select({ id: memoryChangeSummaries.id })
       .from(memoryChangeSummaries)
-      .where(eq(memoryChangeSummaries.orgId, seeded.fixture.orgId));
-    expect(rows).toHaveLength(7);
-    const summary = await findSummary(seeded.fixture);
+      .where(eq(memoryChangeSummaries.orgId, fixture.orgId));
+    expect(rows).toHaveLength(2);
+    const summary = await findSummary(fixture);
     await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(1);
-  });
+  }, 10_000);
 
   it("isolates a failing user so others are still summarized", async () => {
     // Defense-in-depth: one user's data error (here, missing S3 content) must

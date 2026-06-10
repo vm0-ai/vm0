@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
-import { zeroPersonalModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { modelProviders } from "@vm0/db/schema/model-provider";
+import {
+  zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProvidersMainContract,
+} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { secrets } from "@vm0/db/schema/secret";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -22,6 +24,17 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+async function listPersonalModelProviders() {
+  const client = setupApp({ context })(zeroPersonalModelProvidersMainContract);
+  const response = await accept(
+    client.list({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  return response.body.modelProviders;
+}
 
 function uniqueOrgUser(prefix: string): UserModelProviderFixture {
   return {
@@ -65,7 +78,7 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     });
   });
 
-  it("deletes the user's personal provider and removes the row + secret", async () => {
+  it("deletes the user's personal provider and removes it from list", async () => {
     const fixture = uniqueOrgUser("zmmp-delete");
     await track(Promise.resolve(fixture));
     await store.set(
@@ -80,6 +93,13 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
+    const beforeDelete = await listPersonalModelProviders();
+    expect(beforeDelete).toHaveLength(1);
+    expect(beforeDelete[0]).toMatchObject({
+      type: "claude-code-oauth-token",
+      secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+    });
+
     const client = setupApp({ context })(
       zeroPersonalModelProvidersByTypeContract,
     );
@@ -89,20 +109,11 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     });
     expect(response.status).toBe(204);
 
-    // model_provider row removed
-    const writeDb = store.set(writeDb$);
-    const remaining = await writeDb
-      .select({ id: modelProviders.id })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, fixture.orgId),
-          eq(modelProviders.userId, fixture.userId),
-        ),
-      );
-    expect(remaining).toStrictEqual([]);
+    const afterDelete = await listPersonalModelProviders();
+    expect(afterDelete).toStrictEqual([]);
 
-    // secret row also removed (FK cascade for legacy single-secret providers)
+    // Internal storage assertion covers the hidden single-secret cascade.
+    const writeDb = store.set(writeDb$);
     const remainingSecrets = await writeDb
       .select({ id: secrets.id })
       .from(secrets)
@@ -174,29 +185,15 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
       error: { message: "Resource not found", code: "NOT_FOUND" },
     });
 
-    const writeDb = store.set(writeDb$);
-    const aliceProviders = await writeDb
-      .select({ id: modelProviders.id })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, orgId),
-          eq(modelProviders.userId, alice.userId),
-          eq(modelProviders.type, "claude-code-oauth-token"),
-        ),
-      );
-    expect(aliceProviders).toHaveLength(1);
+    const bobProviders = await listPersonalModelProviders();
+    expect(bobProviders).toStrictEqual([]);
 
-    const aliceSecrets = await writeDb
-      .select({ id: secrets.id })
-      .from(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, orgId),
-          eq(secrets.userId, alice.userId),
-          eq(secrets.name, "CLAUDE_CODE_OAUTH_TOKEN"),
-        ),
-      );
-    expect(aliceSecrets).toHaveLength(1);
+    mocks.clerk.session(alice.userId, orgId);
+    const aliceProviders = await listPersonalModelProviders();
+    expect(aliceProviders).toHaveLength(1);
+    expect(aliceProviders[0]).toMatchObject({
+      type: "claude-code-oauth-token",
+      secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+    });
   });
 });
