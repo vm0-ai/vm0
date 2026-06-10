@@ -4757,7 +4757,11 @@ function UserMessageGenerationTemplate({
       className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
       title={`${typeLabel} · ${label}`}
     >
-      <IconPresentation size={15} stroke={1.8} className="shrink-0" />
+      {generationTemplate?.type === "video" ? (
+        <IconVideo size={15} stroke={1.8} className="shrink-0" />
+      ) : (
+        <IconPresentation size={15} stroke={1.8} className="shrink-0" />
+      )}
       <span className="shrink-0">{typeLabel}</span>
       <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">{label}</span>

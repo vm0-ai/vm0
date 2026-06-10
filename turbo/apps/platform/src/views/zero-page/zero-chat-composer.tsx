@@ -20,8 +20,8 @@ import {
   IconArrowUp,
   IconChevronLeft,
   IconChevronRight,
-  IconChartBar,
   IconDeviceDesktop,
+  IconPresentation,
   IconEye,
   IconLoader2,
   IconMicrophone,
@@ -1042,7 +1042,7 @@ function TemplatePickerDialog({
                           : "border-transparent text-muted-foreground hover:text-foreground",
                       )}
                     >
-                      <IconChartBar
+                      <IconPresentation
                         className={cn(
                           "h-5 w-5",
                           selectedCategory === "slides"
