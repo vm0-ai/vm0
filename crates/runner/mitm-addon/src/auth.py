@@ -135,6 +135,27 @@ class _FirewallAuthState:
     last_force_refresh_at: float = 0.0
 
 
+@dataclass(frozen=True)
+class _FirewallAuthContext:
+    """Request-local firewall auth inputs for the hook orchestration path."""
+
+    allow: matching.FirewallAllow
+    firewall_base: str
+    api_id: str
+    run_id: str
+    proxy_log_path: str
+    sandbox_token: str
+    encrypted_secrets: str
+    auth_headers: dict
+    auth_base: str | None
+    auth_query: dict | None
+    auth_aws_sigv4: dict | None
+    secret_connector_map: dict | None
+    secret_connector_metadata_map: dict | None
+    vars_map: dict | None
+    firewall_billable: bool
+
+
 _auth_state: dict[tuple[str, str], _FirewallAuthState] = {}
 
 # Cooldown window for re-marking a force-refresh. Caps amplification at
@@ -180,6 +201,33 @@ def _prepare_firewall_metadata(
     flow.metadata[metadata_keys.FIREWALL_PARAMS] = allow.params
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = firewall_billable
     flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = vm_info.get("modelUsageProvider")
+
+
+def _build_firewall_auth_context(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    vm_info: dict,
+) -> _FirewallAuthContext:
+    """Capture request-local auth inputs after matched-firewall metadata exists."""
+    api_entry = allow.api_entry
+    auth_config = api_entry.get("auth", {})
+    return _FirewallAuthContext(
+        allow=allow,
+        firewall_base=flow.metadata[metadata_keys.FIREWALL_BASE],
+        api_id=flow.metadata[metadata_keys.FIREWALL_API_ID],
+        run_id=flow.metadata.get(metadata_keys.VM_RUN_ID, ""),
+        proxy_log_path=flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
+        sandbox_token=vm_info.get("sandboxToken", ""),
+        encrypted_secrets=vm_info.get("encryptedSecrets") or "",
+        auth_headers=auth_config.get("headers", {}),
+        auth_base=auth_config.get("base"),
+        auth_query=auth_config.get("query"),
+        auth_aws_sigv4=auth_config.get("awsSigv4"),
+        secret_connector_map=vm_info.get("secretConnectorMap"),
+        secret_connector_metadata_map=vm_info.get("secretConnectorMetadataMap"),
+        vars_map=vm_info.get("vars"),
+        firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
+    )
 
 
 def _set_matched_firewall_failure_response(
@@ -836,6 +884,149 @@ def _set_auth_base_request_too_large(
     )
 
 
+def _preflight_firewall_auth(
+    flow: http.HTTPFlow,
+    context: _FirewallAuthContext,
+) -> FirewallAuthHandlingResult | None:
+    """Handle local firewall auth failures that must happen before auth resolution."""
+    if context.auth_base and _request_body_exceeds_auth_base_limit(flow):
+        _set_auth_base_request_too_large(
+            flow,
+            allow=context.allow,
+            proxy_log_path=context.proxy_log_path,
+            firewall_base=context.firewall_base,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
+    if not context.encrypted_secrets:
+        log_proxy_entry(
+            context.proxy_log_path,
+            "error",
+            f"No encryptedSecrets for firewall rule {context.firewall_base}",
+            type="firewall",
+            firewall_base=context.firewall_base,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=502,
+            action="ALLOW",
+            error_code="auth_unavailable",
+            message="Auth secrets not configured",
+            permission=context.allow.name,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
+    return None
+
+
+def _set_firewall_auth_resolution_failure(
+    flow: http.HTTPFlow,
+    context: _FirewallAuthContext,
+    exc: Exception,
+) -> FirewallAuthHandlingResult:
+    """Map auth-resolution exceptions to local responses and metadata."""
+    if isinstance(exc, ConnectorNotConfiguredError):
+        log_proxy_entry(
+            context.proxy_log_path,
+            "info",
+            f"Connector not configured for {context.firewall_base}: {exc}",
+            type="firewall",
+            firewall_base=context.firewall_base,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=424,
+            action="BLOCK",
+            error_code="connector_not_configured",
+            message=str(exc),
+            permission=context.allow.name,
+            connectors=[context.allow.name] if context.allow.name else None,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
+    if isinstance(exc, InsufficientCreditsError):
+        log_proxy_entry(
+            context.proxy_log_path,
+            "warn",
+            f"Billable firewall auth denied for {context.firewall_base}: {exc}",
+            type="firewall",
+            firewall_base=context.firewall_base,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=402,
+            action="BLOCK",
+            error_code="insufficient_credits",
+            message=str(exc),
+            permission=context.allow.name,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
+    if isinstance(exc, InvalidBillableAuthExpiryError):
+        log_message = (
+            "Billable firewall auth response returned invalid expiresAt "
+            f"for {context.firewall_base}: {exc}"
+        )
+        log_proxy_entry(
+            context.proxy_log_path,
+            "error",
+            log_message,
+            type="firewall",
+            firewall_base=context.firewall_base,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=502,
+            action="ALLOW",
+            error_code="invalid_auth_expiry",
+            message=str(exc),
+            permission=context.allow.name,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
+    if isinstance(exc, FirewallAuthApiError):
+        log_proxy_entry(
+            context.proxy_log_path,
+            "error",
+            f"Firewall auth API failed for {context.firewall_base}: {exc.code}",
+            type="firewall",
+            firewall_base=context.firewall_base,
+            error_code=exc.code,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=exc.status,
+            action=(
+                "BLOCK"
+                if _HTTP_STATUS_CLIENT_ERROR_MIN <= exc.status < _HTTP_STATUS_SERVER_ERROR_MIN
+                else "ALLOW"
+            ),
+            error_code=exc.code,
+            message=str(exc),
+            permission=context.allow.name,
+            connectors=exc.connectors,
+            failure_reason=exc.failure_reason,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
+    log_proxy_entry(
+        context.proxy_log_path,
+        "error",
+        f"Firewall header fetch failed: {exc}",
+        type="firewall",
+        firewall_base=context.firewall_base,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=502,
+        action="ALLOW",
+        error_code="auth_failed",
+        message=f"Failed to resolve auth headers: {exc}",
+        permission=context.allow.name,
+    )
+    return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
+
 async def _apply_url_rewrite(
     flow: http.HTTPFlow,
     *,
@@ -973,186 +1164,66 @@ async def _apply_resolved_firewall_auth(
     return FirewallAuthHandlingResult.CONTINUE_UPSTREAM
 
 
-async def handle_firewall_request(
-    flow: http.HTTPFlow, allow: matching.FirewallAllow, vm_info: dict
-) -> FirewallAuthHandlingResult:
-    """Handle firewall auth and return who owns the next response lifecycle."""
-    _prepare_firewall_metadata(flow, allow, vm_info)
-    api_entry = allow.api_entry
-    firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
-    api_id = flow.metadata[metadata_keys.FIREWALL_API_ID]
-    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-    sandbox_token = vm_info.get("sandboxToken", "")
-    encrypted_secrets = vm_info.get("encryptedSecrets")
-    auth_headers = api_entry.get("auth", {}).get("headers", {})
-    auth_base = api_entry.get("auth", {}).get("base")
-    auth_query = api_entry.get("auth", {}).get("query")
-    auth_aws_sigv4 = api_entry.get("auth", {}).get("awsSigv4")
-    secret_connector_map = vm_info.get("secretConnectorMap")
-    secret_connector_metadata_map = vm_info.get("secretConnectorMetadataMap")
-    vars_map = vm_info.get("vars")
-
-    firewall_billable = bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE])
-
-    if auth_base and _request_body_exceeds_auth_base_limit(flow):
-        _set_auth_base_request_too_large(
-            flow,
-            allow=allow,
-            proxy_log_path=proxy_log_path,
-            firewall_base=firewall_base,
-        )
-        return FirewallAuthHandlingResult.LOCAL_RESPONSE
-
-    if not encrypted_secrets:
-        log_proxy_entry(
-            proxy_log_path,
-            "error",
-            f"No encryptedSecrets for firewall rule {firewall_base}",
-            type="firewall",
-            firewall_base=firewall_base,
-        )
-        _set_matched_firewall_failure_response(
-            flow,
-            status=502,
-            action="ALLOW",
-            error_code="auth_unavailable",
-            message="Auth secrets not configured",
-            permission=allow.name,
-        )
-        return FirewallAuthHandlingResult.LOCAL_RESPONSE
-
-    try:
-        token_meta = await get_firewall_headers(
-            run_id,
-            api_id,
-            encrypted_secrets,
-            auth_headers,
-            sandbox_token,
-            secret_connector_map=secret_connector_map,
-            secret_connector_metadata_map=secret_connector_metadata_map,
-            vars_map=vars_map,
-            auth_base=auth_base,
-            auth_query=auth_query,
-            auth_aws_sigv4=auth_aws_sigv4,
-            firewall_billable=firewall_billable,
-        )
-    except ConnectorNotConfiguredError as e:
-        log_proxy_entry(
-            proxy_log_path,
-            "info",
-            f"Connector not configured for {firewall_base}: {e}",
-            type="firewall",
-            firewall_base=firewall_base,
-        )
-        _set_matched_firewall_failure_response(
-            flow,
-            status=424,
-            action="BLOCK",
-            error_code="connector_not_configured",
-            message=str(e),
-            permission=allow.name,
-            connectors=[allow.name] if allow.name else None,
-        )
-        return FirewallAuthHandlingResult.LOCAL_RESPONSE
-    except InsufficientCreditsError as e:
-        log_proxy_entry(
-            proxy_log_path,
-            "warn",
-            f"Billable firewall auth denied for {firewall_base}: {e}",
-            type="firewall",
-            firewall_base=firewall_base,
-        )
-        _set_matched_firewall_failure_response(
-            flow,
-            status=402,
-            action="BLOCK",
-            error_code="insufficient_credits",
-            message=str(e),
-            permission=allow.name,
-        )
-        return FirewallAuthHandlingResult.LOCAL_RESPONSE
-    except InvalidBillableAuthExpiryError as e:
-        log_proxy_entry(
-            proxy_log_path,
-            "error",
-            f"Billable firewall auth response returned invalid expiresAt for {firewall_base}: {e}",
-            type="firewall",
-            firewall_base=firewall_base,
-        )
-        _set_matched_firewall_failure_response(
-            flow,
-            status=502,
-            action="ALLOW",
-            error_code="invalid_auth_expiry",
-            message=str(e),
-            permission=allow.name,
-        )
-        return FirewallAuthHandlingResult.LOCAL_RESPONSE
-    except FirewallAuthApiError as e:
-        log_proxy_entry(
-            proxy_log_path,
-            "error",
-            f"Firewall auth API failed for {firewall_base}: {e.code}",
-            type="firewall",
-            firewall_base=firewall_base,
-            error_code=e.code,
-        )
-        _set_matched_firewall_failure_response(
-            flow,
-            status=e.status,
-            action=(
-                "BLOCK"
-                if _HTTP_STATUS_CLIENT_ERROR_MIN <= e.status < _HTTP_STATUS_SERVER_ERROR_MIN
-                else "ALLOW"
-            ),
-            error_code=e.code,
-            message=str(e),
-            permission=allow.name,
-            connectors=e.connectors,
-            failure_reason=e.failure_reason,
-        )
-        return FirewallAuthHandlingResult.LOCAL_RESPONSE
-    except Exception as e:
-        log_proxy_entry(
-            proxy_log_path,
-            "error",
-            f"Firewall header fetch failed: {e}",
-            type="firewall",
-            firewall_base=firewall_base,
-        )
-        _set_matched_firewall_failure_response(
-            flow,
-            status=502,
-            action="ALLOW",
-            error_code="auth_failed",
-            message=f"Failed to resolve auth headers: {e}",
-            permission=allow.name,
-        )
-        return FirewallAuthHandlingResult.LOCAL_RESPONSE
-
-    auth_result = await _apply_resolved_firewall_auth(
-        flow,
-        allow=allow,
-        token_meta=token_meta,
-        firewall_base=firewall_base,
-        proxy_log_path=proxy_log_path,
-    )
-    if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
-        return auth_result
-
+def _finalize_firewall_auth_success(
+    flow: http.HTTPFlow,
+    context: _FirewallAuthContext,
+    token_meta: dict,
+) -> None:
+    """Record successful auth metadata and proxy log after auth application."""
     _record_firewall_auth_success_metadata(flow, token_meta)
 
     trusted_host = (
         flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST) or flow.request.pretty_host
     )
     log_proxy_entry(
-        proxy_log_path,
+        context.proxy_log_path,
         "info",
-        f"Firewall {firewall_base}: {trusted_host}",
+        f"Firewall {context.firewall_base}: {trusted_host}",
         type="firewall",
-        firewall_base=firewall_base,
+        firewall_base=context.firewall_base,
         host=trusted_host,
         request_host_header=flow.request.host_header,
     )
+
+
+async def handle_firewall_request(
+    flow: http.HTTPFlow, allow: matching.FirewallAllow, vm_info: dict
+) -> FirewallAuthHandlingResult:
+    """Handle firewall auth and return who owns the next response lifecycle."""
+    _prepare_firewall_metadata(flow, allow, vm_info)
+    context = _build_firewall_auth_context(flow, allow, vm_info)
+
+    preflight_result = _preflight_firewall_auth(flow, context)
+    if preflight_result is not None:
+        return preflight_result
+
+    try:
+        token_meta = await get_firewall_headers(
+            context.run_id,
+            context.api_id,
+            context.encrypted_secrets,
+            context.auth_headers,
+            context.sandbox_token,
+            secret_connector_map=context.secret_connector_map,
+            secret_connector_metadata_map=context.secret_connector_metadata_map,
+            vars_map=context.vars_map,
+            auth_base=context.auth_base,
+            auth_query=context.auth_query,
+            auth_aws_sigv4=context.auth_aws_sigv4,
+            firewall_billable=context.firewall_billable,
+        )
+    except Exception as exc:
+        return _set_firewall_auth_resolution_failure(flow, context, exc)
+
+    auth_result = await _apply_resolved_firewall_auth(
+        flow,
+        allow=context.allow,
+        token_meta=token_meta,
+        firewall_base=context.firewall_base,
+        proxy_log_path=context.proxy_log_path,
+    )
+    if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
+        return auth_result
+
+    _finalize_firewall_auth_success(flow, context, token_meta)
     return auth_result

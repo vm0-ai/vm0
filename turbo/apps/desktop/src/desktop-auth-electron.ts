@@ -13,6 +13,7 @@ interface DesktopAuthNativeApi {
   readonly getState: () => Promise<DesktopAuthState> | DesktopAuthState;
   readonly openSignIn: () => void;
   readonly openOrgSelection: () => Promise<void>;
+  readonly signOut: () => Promise<void>;
   readonly completeSignIn: (token: string) => Promise<void> | void;
 }
 
@@ -79,6 +80,10 @@ export function installDesktopAuthIpc(
   ipcMain.handle(DESKTOP_AUTH_CHANNELS.openOrgSelection, async (event) => {
     assertDesktopRenderer(event);
     await api.openOrgSelection();
+  });
+  ipcMain.handle(DESKTOP_AUTH_CHANNELS.signOut, async (event) => {
+    assertDesktopRenderer(event);
+    await api.signOut();
   });
   ipcMain.handle(
     DESKTOP_AUTH_CHANNELS.completeSignIn,

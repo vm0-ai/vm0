@@ -1,3 +1,5 @@
+import type { PresentationSpeakerNotesPatch } from "@vm0/api-contracts/contracts/zero-host";
+
 const EDITABLE_SELECTOR = '[data-vm0-editable="text"]';
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
 const SLIDE_SELECTORS = [
@@ -319,6 +321,37 @@ export function patchPresentationHtml(params: {
   }
   ensureMetadataScript(doc).textContent = JSON.stringify(metadata, null, 2);
   return serializeDoc(doc);
+}
+
+export function applyPresentationSpeakerNotesPatch(params: {
+  readonly patch: PresentationSpeakerNotesPatch;
+  readonly slides: readonly PresentationSlideDraft[];
+}): {
+  readonly appliedCount: number;
+  readonly slides: readonly PresentationSlideDraft[];
+} {
+  const notesBySlideId = new Map<string, string>();
+  for (const item of params.patch.slides) {
+    const notes = item.speakerNotes.trim();
+    if (notes) {
+      notesBySlideId.set(item.slideId, notes);
+    }
+  }
+
+  let appliedCount = 0;
+  const slides = params.slides.map((slide) => {
+    if (slide.notes.trim()) {
+      return slide;
+    }
+    const notes = notesBySlideId.get(slide.id);
+    if (!notes) {
+      return slide;
+    }
+    appliedCount += 1;
+    return { ...slide, notes };
+  });
+
+  return { appliedCount, slides };
 }
 
 export function previewPresentationHtml(params: {

@@ -11,10 +11,21 @@ interface ComputerUseIpcOptions {
 interface ComputerUseNativeApi {
   readonly getState: () => DesktopComputerUseState;
   readonly refreshPermissions: () => Promise<DesktopComputerUseState>;
-  readonly start: () => Promise<DesktopComputerUseState>;
+  readonly start: (options: {
+    readonly userInitiated: boolean;
+  }) => Promise<DesktopComputerUseState>;
+  readonly stop: () => Promise<DesktopComputerUseState>;
   readonly requestAccessibilityPermission: () => Promise<DesktopComputerUseState>;
   readonly requestScreenRecordingPermission: () => Promise<DesktopComputerUseState>;
   readonly setKeepAwakeEnabled: (enabled: boolean) => DesktopComputerUseState;
+}
+
+function isComputerUseStartOptions(
+  value: unknown,
+): value is { readonly userInitiated?: unknown } {
+  return (
+    typeof value === "object" && value !== null && "userInitiated" in value
+  );
 }
 
 export function notifyDesktopComputerUseChanged(): void {
@@ -39,6 +50,14 @@ export function installComputerUseIpc(
       throw new Error("Desktop Computer Use is unavailable on this page");
     }
   };
+  const startOptions = (
+    value: unknown,
+  ): { readonly userInitiated: boolean } => {
+    return {
+      userInitiated:
+        isComputerUseStartOptions(value) && value.userInitiated === true,
+    };
+  };
 
   ipcMain.handle(COMPUTER_USE_CHANNELS.getState, (event) => {
     assertComputerUsePage(event);
@@ -48,9 +67,13 @@ export function installComputerUseIpc(
     assertComputerUsePage(event);
     return api.refreshPermissions();
   });
-  ipcMain.handle(COMPUTER_USE_CHANNELS.start, async (event) => {
+  ipcMain.handle(COMPUTER_USE_CHANNELS.start, async (event, options) => {
     assertComputerUsePage(event);
-    return api.start();
+    return api.start(startOptions(options));
+  });
+  ipcMain.handle(COMPUTER_USE_CHANNELS.stop, async (event) => {
+    assertComputerUsePage(event);
+    return api.stop();
   });
   ipcMain.handle(
     COMPUTER_USE_CHANNELS.requestAccessibilityPermission,

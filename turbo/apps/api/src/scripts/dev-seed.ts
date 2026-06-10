@@ -93,6 +93,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.5), 1_000_000],
     ["tokens.cache_creation", usd(6.25), 1_000_000],
   ]),
+  ...usageGroup("model", "claude-fable-5", [
+    ["tokens.input", usd(10), 1_000_000],
+    ["tokens.output", usd(50), 1_000_000],
+    ["tokens.cache_read", usd(1), 1_000_000],
+    ["tokens.cache_creation", usd(12.5), 1_000_000],
+  ]),
   ...usageGroup("model", "kimi-k2.6", [
     ["tokens.input", usd(0.6), 1_000_000],
     ["tokens.output", usd(3), 1_000_000],

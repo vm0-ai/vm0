@@ -83,9 +83,11 @@ function trayActions(
   return {
     showMainWindow: vi.fn(),
     startComputerUse: vi.fn(),
+    stopComputerUse: vi.fn(),
     refreshStatus: vi.fn(),
     openSignIn: vi.fn(),
     switchWorkspace: vi.fn(),
+    signOut: vi.fn(),
     requestAccessibilityPermission: vi.fn(),
     requestScreenRecordingPermission: vi.fn(),
     openAccessibilitySettings: vi.fn(),
@@ -192,8 +194,29 @@ describe("desktop tray menu", () => {
     const startItem = findItem(computerUseMenu, "Start Computer Use");
 
     expect(startItem.enabled).toBe(true);
+    expect(findItem(computerUseMenu, "Stop Computer Use").enabled).toBe(false);
     click(startItem);
     expect(startComputerUse).toHaveBeenCalledOnce();
+  });
+
+  it("enables stopping Computer Use while online", () => {
+    const stopComputerUse = vi.fn();
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "online" }),
+        auth: signedInAuth,
+        authError: null,
+      },
+      trayActions({ stopComputerUse }),
+    );
+
+    const computerUseMenu = submenu(findItem(menu, "Computer Use: Online"));
+    const stopItem = findItem(computerUseMenu, "Stop Computer Use");
+
+    expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
+    expect(stopItem.enabled).toBe(true);
+    click(stopItem);
+    expect(stopComputerUse).toHaveBeenCalledOnce();
   });
 
   it("shows sign-in next to disabled start when Computer Use needs auth", () => {
@@ -330,13 +353,14 @@ describe("desktop tray menu", () => {
 
   it("shows signed-in account and workspace actions", () => {
     const switchWorkspace = vi.fn();
+    const signOut = vi.fn();
     const menu = buildDesktopTrayMenuItems(
       {
         computerUse: computerUseState(),
         auth: signedInAuth,
         authError: null,
       },
-      trayActions({ switchWorkspace }),
+      trayActions({ switchWorkspace, signOut }),
     );
 
     const authMenu = submenu(findItem(menu, "Workspace: Max & Zoe"));
@@ -346,7 +370,14 @@ describe("desktop tray menu", () => {
     );
     expect(findItem(authMenu, "Workspace: Max & Zoe").enabled).toBe(false);
     click(findItem(authMenu, "Switch Workspace"));
+    click(findItem(authMenu, "Sign out"));
     expect(switchWorkspace).toHaveBeenCalledOnce();
+    expect(signOut).toHaveBeenCalledOnce();
+    expect(
+      authMenu.some((item) => {
+        return item.label === "Sign in again";
+      }),
+    ).toBe(false);
   });
 
   it("shows sign-in action when signed out", () => {

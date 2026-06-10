@@ -14,6 +14,9 @@ const desktopAuthApi: DesktopAuthApi = {
   openOrgSelection(): Promise<void> {
     return ipcRenderer.invoke(DESKTOP_AUTH_CHANNELS.openOrgSelection);
   },
+  signOut(): Promise<void> {
+    return ipcRenderer.invoke(DESKTOP_AUTH_CHANNELS.signOut);
+  },
   completeSignIn(params): Promise<void> {
     return ipcRenderer.invoke(DESKTOP_AUTH_CHANNELS.completeSignIn, params);
   },
@@ -35,8 +38,11 @@ const desktopComputerUseApi: DesktopComputerUseApi = {
   refreshPermissions(): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.refreshPermissions);
   },
-  start(): Promise<DesktopComputerUseState> {
-    return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.start);
+  start(options): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.start, options);
+  },
+  stop(): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.stop);
   },
   requestAccessibilityPermission(): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(

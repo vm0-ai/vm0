@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.5.0...desktop-v0.6.0) (2026-06-10)
+
+
+### Features
+
+* add desktop computer use stop action ([#17005](https://github.com/vm0-ai/vm0/issues/17005)) ([4a22a39](https://github.com/vm0-ai/vm0/commit/4a22a3933761b4f67fb01f2c11ddb7a74b6ab8bc))
+* add desktop keep-awake setting ([#16987](https://github.com/vm0-ai/vm0/issues/16987)) ([ae58daf](https://github.com/vm0-ai/vm0/commit/ae58daf501030cc4f70b53c358b019a2ef2abb4a))
+* add desktop sign out ([#16989](https://github.com/vm0-ai/vm0/issues/16989)) ([023a0a4](https://github.com/vm0-ai/vm0/commit/023a0a441379708928b7b477f86deebb537172cb))
+* redesign desktop main window setup flow ([#17007](https://github.com/vm0-ai/vm0/issues/17007)) ([437fee1](https://github.com/vm0-ai/vm0/commit/437fee1d33640181eafac9746e28bdddb1a160ab))
+
+
+### Bug Fixes
+
+* show desktop tray auth loading status ([#16985](https://github.com/vm0-ai/vm0/issues/16985)) ([7f7b48d](https://github.com/vm0-ai/vm0/commit/7f7b48d8d04cd8a421504c941ee792b714dd0a41))
+
 ## [0.5.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.4.0...desktop-v0.5.0) (2026-06-09)
 
 

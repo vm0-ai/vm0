@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
+import { http, HttpResponse } from "msw";
 
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
@@ -10,6 +11,8 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
@@ -721,6 +724,114 @@ describe("POST /api/zero/host/presentation-html/redeploy", () => {
 
     expect(redeployed.body.error.message).toBe(
       "Hosted site is not a presentation HTML artifact",
+    );
+  });
+});
+
+describe("POST /api/zero/host/presentation-html/speaker-notes", () => {
+  it("returns structured speaker notes patches from the configured model", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockOptionalEnv("OPENROUTER_API_KEY", "speaker-notes-api-key");
+    let upstreamAuthorization: string | null = null;
+    let upstreamPrompt: string | null = null;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          upstreamAuthorization = request.headers.get("authorization");
+          const body = (await request.json()) as {
+            readonly messages?: readonly { readonly content?: string }[];
+          };
+          upstreamPrompt = body.messages?.at(-1)?.content ?? null;
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: {
+                  content: JSON.stringify({
+                    kind: "presentation-speaker-notes-patch",
+                    version: 1,
+                    slides: [
+                      {
+                        slideId: "slide-2",
+                        speakerNotes: "Talk through the key transition.",
+                      },
+                      {
+                        slideId: "slide-3",
+                        speakerNotes: "Connect the examples back to the theme.",
+                      },
+                    ],
+                  }),
+                },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const client = setupApp({ context })(zeroHostContract);
+    const response = await accept(
+      client.generatePresentationSpeakerNotes({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          html: '<!doctype html><html><body><section data-slide-id="slide-2">Roadmap</section></body></html>',
+          mode: "fill-empty",
+        },
+      }),
+      [200],
+    );
+
+    expect(upstreamAuthorization).toBe("Bearer speaker-notes-api-key");
+    expect(upstreamPrompt).toContain("slide-2");
+    expect(response.body).toStrictEqual({
+      kind: "presentation-speaker-notes-patch",
+      version: 1,
+      slides: [
+        {
+          slideId: "slide-2",
+          speakerNotes: "Talk through the key transition.",
+        },
+        {
+          slideId: "slide-3",
+          speakerNotes: "Connect the examples back to the theme.",
+        },
+      ],
+    });
+  });
+
+  it("rejects invalid model output", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockOptionalEnv("OPENROUTER_API_KEY", "speaker-notes-api-key");
+    server.use(
+      http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: "not json" },
+            },
+          ],
+        });
+      }),
+    );
+
+    const client = setupApp({ context })(zeroHostContract);
+    const response = await accept(
+      client.generatePresentationSpeakerNotes({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          html: "<!doctype html><html><body><section>Roadmap</section></body></html>",
+          mode: "fill-empty",
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Speaker notes generation returned invalid JSON",
     );
   });
 });
