@@ -5,7 +5,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-helpers";
-import { env } from "../../../lib/env";
+import { env, mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { createBddApi } from "./helpers/api-bdd";
@@ -29,6 +29,7 @@ const integrations = createBddIntegrationApi(context);
 const AGENTPHONE_WEBHOOK_SECRET = "agentphone-bdd-secret";
 const TELEGRAM_BOT_ID = 99_887_766;
 const TELEGRAM_BOT_TOKEN = `${TELEGRAM_BOT_ID}:bdd-token`;
+const TELEGRAM_OFFICIAL_WEBHOOK_SECRET = "telegram-official-bdd-secret";
 
 interface SlackEphemeralBody {
   readonly response_type: "ephemeral";
@@ -906,6 +907,90 @@ describe("INT-02: Telegram integration", () => {
     });
   });
 
+  it("keeps Telegram webhook missing, auth, and no-op update boundaries visible", async () => {
+    const missingCustomBot = await integrations.requestTelegramWebhook(
+      "999999999",
+      "{}",
+      { "x-telegram-bot-api-secret-token": "missing-custom-secret" },
+      [404],
+    );
+    expect(missingCustomBot.body).toBe("Not Found");
+
+    mockEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", undefined);
+    mockEnv("TELEGRAM_OFFICIAL_WEBHOOK_SECRET", undefined);
+    mockEnv("TELEGRAM_OFFICIAL_BOT_USERNAME", undefined);
+
+    const unconfigured = await integrations.requestTelegramWebhook(
+      OFFICIAL_TELEGRAM_BOT_ID,
+      "{}",
+      {},
+      [404],
+    );
+    expect(unconfigured.body).toBe("Not Found");
+
+    mockEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", "123456:bdd-token");
+    mockEnv(
+      "TELEGRAM_OFFICIAL_WEBHOOK_SECRET",
+      TELEGRAM_OFFICIAL_WEBHOOK_SECRET,
+    );
+    mockEnv("TELEGRAM_OFFICIAL_BOT_USERNAME", "bdd_official_bot");
+
+    const unauthorized = await integrations.requestTelegramWebhook(
+      OFFICIAL_TELEGRAM_BOT_ID,
+      "{}",
+      {},
+      [401],
+    );
+    expect(unauthorized.body).toBe("Unauthorized");
+
+    const invalidSecret = await integrations.requestTelegramWebhook(
+      OFFICIAL_TELEGRAM_BOT_ID,
+      "{}",
+      { "x-telegram-bot-api-secret-token": "bad-secret" },
+      [401],
+    );
+    expect(invalidSecret.body).toBe("Unauthorized");
+
+    const invalidJson = await integrations.requestTelegramWebhook(
+      OFFICIAL_TELEGRAM_BOT_ID,
+      "not-json",
+      { "x-telegram-bot-api-secret-token": TELEGRAM_OFFICIAL_WEBHOOK_SECRET },
+      [400],
+    );
+    expect(invalidJson.body).toBe("Bad Request");
+
+    const invalidUpdate = await integrations.requestTelegramWebhook(
+      OFFICIAL_TELEGRAM_BOT_ID,
+      "null",
+      { "x-telegram-bot-api-secret-token": TELEGRAM_OFFICIAL_WEBHOOK_SECRET },
+      [400],
+    );
+    expect(invalidUpdate.body).toBe("Bad Request");
+
+    const noMessage = await integrations.requestTelegramWebhook(
+      OFFICIAL_TELEGRAM_BOT_ID,
+      JSON.stringify({ update_id: 1001 }),
+      { "x-telegram-bot-api-secret-token": TELEGRAM_OFFICIAL_WEBHOOK_SECRET },
+      [200],
+    );
+    expect(noMessage.body).toBe("OK");
+
+    const noContentMessage = await integrations.requestTelegramWebhook(
+      OFFICIAL_TELEGRAM_BOT_ID,
+      JSON.stringify({
+        update_id: 1002,
+        message: {
+          message_id: 42,
+          chat: { id: 12_345, type: "private" },
+          from: { id: 54_321, first_name: "BDD" },
+        },
+      }),
+      { "x-telegram-bot-api-secret-token": TELEGRAM_OFFICIAL_WEBHOOK_SECRET },
+      [200],
+    );
+    expect(noContentMessage.body).toBe("OK");
+  });
+
   it("registers and manages a Telegram bot through API-visible state", async () => {
     server.use(telegramDomainProbe(), telegramSendMessage());
     bdd.acceptAgentStorageWrites();
@@ -1003,6 +1088,16 @@ describe("INT-02: Telegram integration", () => {
       username: "bdd_telegram_bot",
       can_read_all_group_messages: true,
     });
+    let registeredTelegramWebhookSecret: string | undefined;
+    context.mocks.telegram.setWebhook.mockImplementation(
+      (...args: readonly unknown[]) => {
+        const webhookSecret = args[2];
+        if (typeof webhookSecret === "string") {
+          registeredTelegramWebhookSecret = webhookSecret;
+        }
+        return Promise.resolve();
+      },
+    );
 
     const unauthenticatedRegister =
       await integrations.requestRegisterTelegramBot(
@@ -1049,6 +1144,45 @@ describe("INT-02: Telegram integration", () => {
       domainConfigured: true,
       agent: { id: agent.agentId },
     });
+    if (!registeredTelegramWebhookSecret) {
+      throw new Error("Expected Telegram registration to configure webhook");
+    }
+
+    const customWebhookUnauthorized = await integrations.requestTelegramWebhook(
+      botId,
+      "{}",
+      { "x-telegram-bot-api-secret-token": "bad-custom-secret" },
+      [401],
+    );
+    expect(customWebhookUnauthorized.body).toBe("Unauthorized");
+
+    const customWebhookNoMessage = await integrations.requestTelegramWebhook(
+      botId,
+      JSON.stringify({ update_id: 2001 }),
+      {
+        "x-telegram-bot-api-secret-token": registeredTelegramWebhookSecret,
+      },
+      [200],
+    );
+    expect(customWebhookNoMessage.body).toBe("OK");
+
+    const customWebhookNoContentMessage =
+      await integrations.requestTelegramWebhook(
+        botId,
+        JSON.stringify({
+          update_id: 2002,
+          message: {
+            message_id: 77,
+            chat: { id: 12_345, type: "private" },
+            from: { id: 54_321, first_name: "BDD" },
+          },
+        }),
+        {
+          "x-telegram-bot-api-secret-token": registeredTelegramWebhookSecret,
+        },
+        [200],
+      );
+    expect(customWebhookNoContentMessage.body).toBe("OK");
 
     const listed = await integrations.requestListTelegramIntegrations(
       actor,

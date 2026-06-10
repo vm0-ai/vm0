@@ -138,6 +138,7 @@ type SlackIngressPath =
 type SlackIngressStatus = 200 | 400 | 401 | 503;
 type SlackDownloadStatus = 200 | 400 | 401 | 404 | 413 | 502;
 type AgentPhoneWebhookStatus = 200 | 400 | 401 | 404;
+type TelegramWebhookStatus = 200 | 400 | 401 | 404;
 
 interface SlackIngressResponse {
   readonly status: SlackIngressStatus;
@@ -153,6 +154,12 @@ interface SlackDownloadResponse {
 
 interface AgentPhoneWebhookResponse {
   readonly status: AgentPhoneWebhookStatus;
+  readonly body: unknown;
+  readonly headers: Headers;
+}
+
+interface TelegramWebhookResponse {
+  readonly status: TelegramWebhookStatus;
   readonly body: unknown;
   readonly headers: Headers;
 }
@@ -325,6 +332,47 @@ async function requestRawAgentPhoneWebhook(
       throw new Error(
         `Unexpected AgentPhone webhook status ${response.status}`,
       );
+    }
+  }
+}
+
+async function requestRawTelegramWebhook(
+  context: TestContext,
+  telegramBotId: string,
+  body: string,
+  headers: { readonly "x-telegram-bot-api-secret-token"?: string },
+): Promise<TelegramWebhookResponse> {
+  const response = await createApp({ signal: context.signal }).request(
+    `/api/telegram/webhook/${telegramBotId}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...headers,
+      },
+      body,
+    },
+  );
+  const result = {
+    body: await parseRawResponseBody(response),
+    headers: response.headers,
+  };
+
+  switch (response.status) {
+    case 200: {
+      return { status: 200, ...result };
+    }
+    case 400: {
+      return { status: 400, ...result };
+    }
+    case 401: {
+      return { status: 401, ...result };
+    }
+    case 404: {
+      return { status: 404, ...result };
+    }
+    default: {
+      throw new Error(`Unexpected Telegram webhook status ${response.status}`);
     }
   }
 }
@@ -1070,6 +1118,18 @@ export function createBddIntegrationApi(context: TestContext) {
     ) {
       return await accept(
         requestRawAgentPhoneWebhook(context, body, headers),
+        statuses,
+      );
+    },
+
+    async requestTelegramWebhook(
+      telegramBotId: string,
+      body: string,
+      headers: { readonly "x-telegram-bot-api-secret-token"?: string },
+      statuses: readonly TelegramWebhookStatus[],
+    ) {
+      return await accept(
+        requestRawTelegramWebhook(context, telegramBotId, body, headers),
         statuses,
       );
     },
