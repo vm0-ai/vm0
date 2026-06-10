@@ -40,10 +40,9 @@ Output:
 
 How to read the downloaded file:
   - Images (png/jpg/gif/webp/svg): open the file path with your image viewing tool
-  - Videos (mp4/mov/webm): transcribe audio first with
-      zero video transcribe --url <download-url>
-    or extract frames with
+  - Videos (mp4/mov/webm): extract frames first with
       ffmpeg -i <path> -vf "fps=1" -q:v 2 /tmp/<file-id>_frame_%03d.jpg
+    then view the extracted frames
   - PDF/text/csv/json/markdown: read the file directly
 
 Notes:

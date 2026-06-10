@@ -23,6 +23,7 @@ interface DesktopTrayControllerOptions {
   readonly refreshStatus: () => Promise<void>;
   readonly openSignIn: () => void;
   readonly switchWorkspace: () => Promise<void>;
+  readonly signOut: () => Promise<void>;
   readonly requestAccessibilityPermission: () => Promise<void>;
   readonly requestScreenRecordingPermission: () => Promise<void>;
   readonly openAccessibilitySettings: () => void;
@@ -74,6 +75,7 @@ export class DesktopTrayController {
   private readonly options: DesktopTrayControllerOptions;
   private tray: Tray | null = null;
   private authState: DesktopAuthState | null = null;
+  private authLoading = true;
   private authError: string | null = null;
   private authRefreshVersion = 0;
   private menuSignature: string | null = null;
@@ -104,6 +106,7 @@ export class DesktopTrayController {
       {
         computerUse: this.options.getComputerUseState(),
         auth: this.authState,
+        authLoading: this.authLoading,
         authError: this.authError,
       },
       actions,
@@ -121,6 +124,8 @@ export class DesktopTrayController {
   refreshAuth(): void {
     const version = this.authRefreshVersion + 1;
     this.authRefreshVersion = version;
+    this.authLoading = true;
+    this.refresh();
     void this.options
       .getAuthState()
       .then((authState) => {
@@ -128,6 +133,7 @@ export class DesktopTrayController {
           return;
         }
         this.authState = authState;
+        this.authLoading = false;
         this.authError = null;
         this.refresh();
       })
@@ -137,6 +143,7 @@ export class DesktopTrayController {
         }
         this.authError = error instanceof Error ? error.message : String(error);
         this.authState = null;
+        this.authLoading = false;
         this.refresh();
       });
   }
@@ -167,6 +174,13 @@ export class DesktopTrayController {
         "switch workspace",
         () => {
           return this.options.switchWorkspace();
+        },
+        { refreshAuth: true },
+      ),
+      signOut: this.runAction(
+        "sign out",
+        () => {
+          return this.options.signOut();
         },
         { refreshAuth: true },
       ),

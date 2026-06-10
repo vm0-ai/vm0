@@ -33,6 +33,12 @@ const signedInAuth: DesktopAuthState = {
   },
 };
 
+const signingInAuth: DesktopAuthState = {
+  status: "signing_in",
+  user: null,
+  organization: null,
+};
+
 function computerUseState(
   host: Partial<ComputerUseHostRuntimeState> = {},
   permissions: DesktopComputerUseState["permissions"] = {
@@ -80,6 +86,7 @@ function trayActions(
     refreshStatus: vi.fn(),
     openSignIn: vi.fn(),
     switchWorkspace: vi.fn(),
+    signOut: vi.fn(),
     requestAccessibilityPermission: vi.fn(),
     requestScreenRecordingPermission: vi.fn(),
     openAccessibilitySettings: vi.fn(),
@@ -214,6 +221,47 @@ describe("desktop tray menu", () => {
     expect(openSignIn).toHaveBeenCalledOnce();
   });
 
+  it("shows signing in and disables start while auth is signing in", () => {
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "idle" }),
+        auth: signingInAuth,
+        authError: null,
+      },
+      trayActions(),
+    );
+
+    const computerUseMenu = submenu(
+      findItem(menu, "Computer Use: Signing in..."),
+    );
+    expect(findItem(computerUseMenu, "Status: Signing in...").enabled).toBe(
+      false,
+    );
+    expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
+    expect(findItem(computerUseMenu, "Signing in...").enabled).toBe(false);
+  });
+
+  it("keeps stale signed-in auth from showing ready while auth is loading", () => {
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({ status: "idle" }),
+        auth: signedInAuth,
+        authLoading: true,
+        authError: null,
+      },
+      trayActions(),
+    );
+
+    const computerUseMenu = submenu(
+      findItem(menu, "Computer Use: Signing in..."),
+    );
+    expect(findItem(computerUseMenu, "Status: Signing in...").enabled).toBe(
+      false,
+    );
+    expect(findItem(computerUseMenu, "Start Computer Use").enabled).toBe(false);
+    expect(findItem(menu, "Signing in to Zero...")).toBeDefined();
+  });
+
   it("shows permission actions when Computer Use is blocked locally", () => {
     const requestAccessibilityPermission = vi.fn();
     const requestScreenRecordingPermission = vi.fn();
@@ -283,13 +331,14 @@ describe("desktop tray menu", () => {
 
   it("shows signed-in account and workspace actions", () => {
     const switchWorkspace = vi.fn();
+    const signOut = vi.fn();
     const menu = buildDesktopTrayMenuItems(
       {
         computerUse: computerUseState(),
         auth: signedInAuth,
         authError: null,
       },
-      trayActions({ switchWorkspace }),
+      trayActions({ switchWorkspace, signOut }),
     );
 
     const authMenu = submenu(findItem(menu, "Workspace: Max & Zoe"));
@@ -299,7 +348,14 @@ describe("desktop tray menu", () => {
     );
     expect(findItem(authMenu, "Workspace: Max & Zoe").enabled).toBe(false);
     click(findItem(authMenu, "Switch Workspace"));
+    click(findItem(authMenu, "Sign out"));
     expect(switchWorkspace).toHaveBeenCalledOnce();
+    expect(signOut).toHaveBeenCalledOnce();
+    expect(
+      authMenu.some((item) => {
+        return item.label === "Sign in again";
+      }),
+    ).toBe(false);
   });
 
   it("shows sign-in action when signed out", () => {

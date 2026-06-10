@@ -76,6 +76,38 @@ describe("DesktopAuthSession", () => {
     expect(await session.getToken()).toBe("tok");
   });
 
+  it("clears cached auth and suppresses hidden refresh after sign out", async () => {
+    const { session, runAuthWindow, onChange } = createSession();
+    session.completeSignIn("cached");
+    session.signOut();
+    session.completeSignIn("late");
+    const fetch = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", fetch);
+
+    expect(session.getCachedToken()).toBeNull();
+    expect(await session.getToken({ forceRefresh: true })).toBeNull();
+    expect(await session.getAuthState()).toEqual({
+      status: "signed_out",
+      user: null,
+      organization: null,
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(runAuthWindow).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("accepts sign-in completions after a new consume flow starts", async () => {
+    const { session, runAuthWindow } = createSession();
+    session.signOut();
+    runAuthWindow.mockImplementation(async () => {
+      session.completeSignIn("fresh");
+    });
+
+    await session.consumeCode("code-123");
+
+    expect(session.getCachedToken()).toBe("fresh");
+  });
+
   it("returns the freshly delivered token on a forced refresh", async () => {
     const { session, runAuthWindow } = createSession();
     runAuthWindow.mockImplementation(async () => {

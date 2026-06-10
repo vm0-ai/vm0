@@ -13,22 +13,18 @@ import {
   internalError,
   isAllowedSttMimeType,
   isTranscriptionBody,
-  isVerboseTranscriptionSegment,
   MAX_STT_FILE_SIZE,
   MAX_STT_REQUEST_DURATION_SECONDS,
   OPENAI_AUDIO_TRANSCRIPTIONS_URL,
   recordSttUsage$,
   sttDailyPolicy$,
   VOICE_IO_STT_MODEL,
-  VOICE_IO_STT_VERBOSE_MODEL,
 } from "../services/zero-voice-io-post.service";
 import { env } from "../../lib/env";
 
 const L = logger("ZeroVoiceIoStt");
 
 const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const request = get(request$);
-  const verbose = request.query("verbose") === "true";
   const auth = get(organizationAuthContext$);
   const quota = await get(audioInputQuota(auth.orgId, auth.userId));
   signal.throwIfAborted();
@@ -46,6 +42,7 @@ const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     };
   }
 
+  const request = get(request$);
   const formData = await request.raw.formData();
   signal.throwIfAborted();
   const file = formData.get("file");
@@ -108,11 +105,8 @@ const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const openaiForm = new FormData();
   openaiForm.append("file", file, file.name || "audio.webm");
-  openaiForm.append(
-    "model",
-    verbose ? VOICE_IO_STT_VERBOSE_MODEL : VOICE_IO_STT_MODEL,
-  );
-  openaiForm.append("response_format", verbose ? "verbose_json" : "json");
+  openaiForm.append("model", VOICE_IO_STT_MODEL);
+  openaiForm.append("response_format", "json");
 
   const openaiResponse = await fetch(OPENAI_AUDIO_TRANSCRIPTIONS_URL, {
     method: "POST",
@@ -148,20 +142,7 @@ const postSttInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
 
-  const segments =
-    verbose && Array.isArray((result as Record<string, unknown>).segments)
-      ? ((result as Record<string, unknown>).segments as unknown[]).filter(
-          isVerboseTranscriptionSegment,
-        )
-      : undefined;
-
-  return {
-    status: 200 as const,
-    body: {
-      text: result.text,
-      ...(segments !== undefined && { segments }),
-    },
-  };
+  return { status: 200 as const, body: { text: result.text } };
 });
 
 export const zeroVoiceIoSttRoutes: readonly RouteEntry[] = [

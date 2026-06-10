@@ -162,3 +162,10 @@ export const openDesktopOrgSelection$ = command(async ({ set }) => {
   set(refreshDesktopAuth$);
   set(reloadComputerUse$);
 });
+
+export const signOutDesktop$ = command(async ({ set }) => {
+  await desktopAuthApi().signOut();
+  set(autoStartAttempted$, false);
+  set(refreshDesktopAuth$);
+  set(reloadComputerUse$);
+});
