@@ -111,37 +111,6 @@ describe("GET /api/zero/logs/search", () => {
     };
   }
 
-  it("returns 401 when no auth is provided", async () => {
-    const client = setupApp({ context })(zeroLogsSearchContract);
-    const response = await accept(
-      client.searchLogs({ query: { keyword: "test" }, headers: {} }),
-      [401],
-    );
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 403 for sandbox token without agent-run:read", async () => {
-    const seconds = currentSecond();
-    const sandboxToken = signSandboxJwtForTests({
-      scope: "sandbox",
-      userId: `user_${randomUUID()}`,
-      orgId: `org_${randomUUID()}`,
-      runId: `run_${randomUUID()}`,
-      iat: seconds,
-      exp: seconds + 600,
-    });
-
-    const client = setupApp({ context })(zeroLogsSearchContract);
-    const response = await accept(
-      client.searchLogs({
-        query: { keyword: "test" },
-        headers: { authorization: `Bearer ${sandboxToken}` },
-      }),
-      [403],
-    );
-    expect(response.body.error.message).toContain("agent-run:read");
-  });
-
   it("returns empty results when no matches", async () => {
     const f = await setupSearchFixture();
     context.mocks.axiom.query.mockResolvedValueOnce([]);

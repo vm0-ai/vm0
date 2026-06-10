@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
 import { createStore } from "ccstate";
 
@@ -98,33 +96,6 @@ describe("GET /api/logs/search", () => {
       runId,
     };
   }
-
-  it("returns 401 when no auth is provided", async () => {
-    const response = await accept(
-      logsClient().searchLogs({ query: { keyword: "test" }, headers: {} }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const response = await accept(
-      logsClient().searchLogs({
-        query: { keyword: "test" },
-        headers: authHeaders(),
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
 
   it("returns empty results when no matches", async () => {
     await setupSearchFixture();
@@ -262,22 +233,6 @@ describe("GET /api/logs/search", () => {
 
     const aplQuery = context.mocks.axiom.query.mock.calls[0]?.[0] as string;
     expect(aplQuery).toContain(`runId == "${fixture.runId}"`);
-  });
-
-  it("returns empty results for an agentId with no runs", async () => {
-    await setupSearchFixture();
-
-    const response = await accept(
-      logsClient().searchLogs({
-        query: { keyword: "test", agentId: randomUUID() },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-
-    expect(response.body.results).toStrictEqual([]);
-    expect(response.body.hasMore).toBeFalsy();
-    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 
   it("sets hasMore when matches exceed the requested limit", async () => {

@@ -1178,3 +1178,21 @@ First USAGE-family reduce.
   legacy.
 - Reduced `zero-logs-get-by-id.test.ts` (16 -> 11).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 52 — RUN-LOG SEARCH REJECTIONS (CHAIN-LOGS-SEARCH-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `logsSearch` (`/api/logs/search`, session)
+  and `zeroLogsSearch` (`/api/zero/logs/search`, zero-token) clients.
+- Added `zero-logs-search-rejections.bdd.test.ts`: the session search rejects
+  unauthenticated and org-less callers (401) and returns an empty result for an
+  `agentId` filter that matches no run (short-circuits before Axiom is queried —
+  asserted via `context.mocks.axiom.query` not being called); the zero search
+  rejects unauthenticated callers (401) and a zero token without `agent-run:read`
+  (403).
+- A keyword search that returns matches needs seeded runs plus an Axiom mock
+  (GAP-RUN-CREDITS); the zero-token empty-agent path 500s on a synthetic org, so
+  only the session empty path is converted. The matched/context/runId/limit/
+  cross-org variants stay in the kept legacy.
+- Reduced `logs-search.test.ts` (13 -> 10, dropped the now-orphaned
+  `randomUUID` import) and `zero-logs-search.test.ts` (14 -> 12).
+- Coverage verified (source-only): no regressions vs `main`.

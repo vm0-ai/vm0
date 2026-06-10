@@ -46,7 +46,9 @@ import {
   zeroRunsByIdContract,
   zeroRunsCancelContract,
   zeroRunsMainContract,
+  zeroLogsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
+import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import {
   zeroSchedulesByNameContract,
@@ -231,6 +233,13 @@ export function createBddApi(context: TestContext) {
      * detail needs a funded run (GAP-RUN-CREDITS); the auth, capability and
      * not-found rejections are reachable directly. */
     logsById: setupApp({ context })(logsByIdContract),
+    /** ts-rest client for `/api/logs/search` (Axiom keyword search). Matched
+     * results need seeded runs plus an Axiom mock; the auth and
+     * empty-agent-filter (no runs -> short-circuit, Axiom not queried) cases are
+     * reachable directly. */
+    logsSearch: setupApp({ context })(logsSearchContract),
+    /** ts-rest client for `/api/zero/logs/search` (zero-token Axiom search). */
+    zeroLogsSearch: setupApp({ context })(zeroLogsSearchContract),
     /** ts-rest client for `/api/zero/org/invite` (invite/revoke org members). */
     orgInvite: setupApp({ context })(zeroOrgInviteContract),
     /** ts-rest client for `/api/zero/org/membership-requests` (accept/reject). */
