@@ -259,6 +259,18 @@ def test_update_cli_reports_malformed_source_without_replacing_output(
     assert output.read_text(encoding="utf-8") == original
 
 
+def test_update_script_reports_malformed_source_without_traceback(tmp_path):
+    source = tmp_path / "tlds.txt"
+    source.write_text("COM\nORG\n", encoding="utf-8")
+
+    completed = _run_update_script("--source-file", str(source))
+
+    assert completed.returncode == 1
+    assert completed.stdout == ""
+    assert "IANA TLD source is missing the version header" in completed.stderr
+    assert "Traceback" not in completed.stderr
+
+
 def test_update_cli_reports_invalid_utf8_source_without_replacing_output(
     tmp_path, monkeypatch, capsys
 ):
