@@ -2866,6 +2866,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_versions_dry_run_skips_when_service_lock_is_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+        let version = "v1.0.0";
+        let unit = service::unit_name(version).unwrap();
+
+        std::fs::create_dir_all(bin_dir.join(version)).unwrap();
+        std::fs::create_dir_all(runners_dir.join(version)).unwrap();
+        age_version_past_gc_min_age(&home, version);
+        let lock_file = lock::open_lock_file(&home.service_lock(&unit)).unwrap();
+        let _held_lock = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+        let removed = gc_versions(&home, true, None, None).await.unwrap();
+
+        assert!(removed.is_empty());
+        assert!(
+            bin_dir.join(version).exists(),
+            "dry-run should skip locked version bin dir"
+        );
+        assert!(
+            runners_dir.join(version).exists(),
+            "dry-run should skip locked version config dir"
+        );
+    }
+
+    #[tokio::test]
     async fn gc_versions_keeps_recent_version() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
