@@ -1148,3 +1148,17 @@ First USAGE-family reduce.
   connector / diff stored-vs-current scopes (GAP-CONNECTOR-CONNECT).
 - Coverage verified (source-only): `zero-connector-data.service.ts` (389/136)
   unchanged vs `main`. No regressions.
+
+### Round 50 — RUN-LOG LIST REJECTIONS (CHAIN-LOGS-LIST-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `logsList` client (`/api/logs`).
+- Added `zero-logs-list-rejections.bdd.test.ts`: the list rejects
+  unauthenticated and org-less callers (401) and returns an empty page
+  (`data: []`, `hasMore` false, `nextCursor` null) for a fresh org with no runs.
+- The out-of-range-limit / non-UUID-agentId validations return a 400 that the
+  `logsListContract.list` response map does not declare, so the ts-rest client
+  throws on it; those validation cases need the raw-fetch helper and stay in the
+  kept legacy alongside the rows/cursor/agent-filter/cross-user variants, which
+  need funded runs that emit logs (GAP-RUN-CREDITS).
+- Reduced `zero-logs-list.test.ts` (43 -> 40), removing the auth + empty cases.
+- Coverage verified (source-only): no regressions vs `main`.

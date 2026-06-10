@@ -65,40 +65,6 @@ describe("GET /api/zero/logs", () => {
     return store.set(deleteUsageInsightFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(logsClient().list({ headers: {} }), [401]);
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const response = await accept(
-      logsClient().list({ headers: authHeaders() }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns empty list when user has no runs", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      logsClient().list({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body.data).toStrictEqual([]);
-    expect(response.body.pagination.hasMore).toBeFalsy();
-    expect(response.body.pagination.nextCursor).toBeNull();
-  });
-
   it("returns runs filtered by current user only (cross-user isolation)", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
