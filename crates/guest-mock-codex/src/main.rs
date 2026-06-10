@@ -1,8 +1,11 @@
 //! Mock Codex CLI for testing.
 //!
 //! Emits Codex `exec --json` protocol events on stdout and persists a JSONL
-//! session file at the same path layout the real Codex CLI uses
+//! session file under Codex's date-partitioned session tree
 //! (`$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`).
+//!
+//! Resume can also append to runner-restored rollout filenames, matching the
+//! real Codex CLI's filesystem resume candidates.
 //!
 //! Activated in guest VMs via `USE_MOCK_CODEX=true` (handled by guest-agent).
 //! This binary itself runs whenever it's invoked — the env-var dispatch lives
