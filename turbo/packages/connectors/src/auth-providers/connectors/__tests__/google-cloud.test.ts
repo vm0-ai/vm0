@@ -4,7 +4,7 @@ import {
   connectorAuthClientIdentity,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodAuthCodeGrantConfig,
-  getConnectorRefreshOutputSecretName,
+  getConnectorRefreshOutputTarget,
   resolveConnectorAuthClientForMethod,
   type StaticConfidentialConnectorAuthClient,
 } from "../../../connector-utils";
@@ -82,8 +82,11 @@ describe("connector/providers/google-cloud", () => {
       );
 
       expect(
-        getConnectorRefreshOutputSecretName(accessMetadata, "accessToken"),
-      ).toBe("GOOGLE_CLOUD_ACCESS_TOKEN");
+        getConnectorRefreshOutputTarget(accessMetadata, "accessToken"),
+      ).toStrictEqual({
+        kind: "connector-secret",
+        name: "GOOGLE_CLOUD_ACCESS_TOKEN",
+      });
     });
 
     it("declares GOOGLE_CLOUD_REFRESH_TOKEN as the refresh token input and output", () => {
@@ -100,8 +103,11 @@ describe("connector/providers/google-cloud", () => {
         },
       });
       expect(
-        getConnectorRefreshOutputSecretName(accessMetadata, "refreshToken"),
-      ).toBe("GOOGLE_CLOUD_REFRESH_TOKEN");
+        getConnectorRefreshOutputTarget(accessMetadata, "refreshToken"),
+      ).toStrictEqual({
+        kind: "connector-secret",
+        name: "GOOGLE_CLOUD_REFRESH_TOKEN",
+      });
     });
 
     it("exchangeCode maps Google token and user info response", async () => {

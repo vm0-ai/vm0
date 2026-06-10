@@ -2667,10 +2667,10 @@ describe("POST /api/zero/runs", () => {
         return api.base;
       }),
     ).toStrictEqual([
-      "https://cloudresourcemanager.googleapis.com/mcp",
-      "https://bigquery.googleapis.com/mcp",
-      "https://storage.googleapis.com/storage/mcp",
-      "https://run.googleapis.com/mcp",
+      "https://cloudresourcemanager.googleapis.com",
+      "https://bigquery.googleapis.com",
+      "https://storage.googleapis.com",
+      "https://run.googleapis.com",
     ]);
     for (const api of firewall?.apis ?? []) {
       expect(api.auth?.headers?.Authorization).toBe(

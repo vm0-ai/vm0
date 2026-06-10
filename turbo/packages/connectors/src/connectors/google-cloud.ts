@@ -9,13 +9,12 @@ export const googleCloud = {
       "google cloud",
       "gcp",
       "cloud",
-      "mcp",
       "bigquery",
       "cloud storage",
       "cloud run",
     ],
     helpText:
-      "Connect your Google account to access Google Cloud resources through Google-managed MCP endpoints. Google IAM, enabled APIs, and required MCP/product roles determine which projects, resources, and actions are available.",
+      "Connect your Google account to access Google Cloud resources through Google Cloud APIs. Google IAM and enabled APIs determine which projects, resources, and actions are available.",
     authMethods: {
       oauth: {
         featureFlag: FeatureSwitchKey.GoogleCloudConnector,

@@ -1,19 +1,20 @@
 import { writeOutput } from "./codegen";
 
-const DOCS_URL = "https://docs.cloud.google.com/mcp/supported-products";
+const DOCS_URL =
+  "https://docs.cloud.google.com/sdk/docs/downloads-versioned-archives";
 const PLACEHOLDER_VALUE =
   "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 const ENDPOINTS = [
-  "https://cloudresourcemanager.googleapis.com/mcp",
-  "https://bigquery.googleapis.com/mcp",
-  "https://storage.googleapis.com/storage/mcp",
-  "https://run.googleapis.com/mcp",
+  "https://cloudresourcemanager.googleapis.com",
+  "https://bigquery.googleapis.com",
+  "https://storage.googleapis.com",
+  "https://run.googleapis.com",
 ] as const;
 
 function generateTypeScript(): string {
   const lines: string[] = [
-    "// Auto-generated from Google Cloud MCP supported products.",
+    "// Auto-generated from Google Cloud CLI generated client base URLs.",
     `// Source: ${DOCS_URL}`,
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:google-cloud",
     "//",
@@ -23,7 +24,7 @@ function generateTypeScript(): string {
     "",
     "export const googleCloudFirewall = {",
     '  name: "google-cloud",',
-    '  description: "Google Cloud MCP",',
+    '  description: "Google Cloud APIs",',
     "  placeholders: {",
     `    GOOGLE_CLOUD_TOKEN: "${PLACEHOLDER_VALUE}",`,
     "  },",
