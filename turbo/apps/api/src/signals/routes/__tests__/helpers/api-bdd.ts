@@ -20,6 +20,7 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
+import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
@@ -199,6 +200,10 @@ export function createBddApi(context: TestContext) {
      * A connected installation needs the GitHub OAuth flow; only the
      * auth/capability/no-installation rejections are reachable. */
     githubIntegration: setupApp({ context })(integrationsGithubContract),
+    /** ts-rest client for `/api/zero/uploads` (prepare/complete an upload). The
+     * presigned-URL success path needs S3 + org context; the
+     * auth/capability/validation rejections are reachable directly. */
+    uploads: setupApp({ context })(zeroUploadsContract),
     /** ts-rest client for `/api/zero/org/invite` (invite/revoke org members). */
     orgInvite: setupApp({ context })(zeroOrgInviteContract),
     /** ts-rest client for `/api/zero/org/membership-requests` (accept/reject). */

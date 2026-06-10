@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
@@ -56,13 +56,12 @@ describe("POST /api/zero/uploads/prepare", () => {
     await store.set(deleteOrgMembership$, fixture, context.signal);
   });
 
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(zeroUploadsContract);
-    const response = await accept(
-      client.prepare({ body: validBody(), headers: {} }),
-      [401],
+  beforeEach(() => {
+    // The shared mock reset that seeds a presigned URL runs in afterEach, so the
+    // first test in the file needs the S3 mock primed up front.
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/upload?sig=test",
     );
-    expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
   });
 
   it("accepts ZERO_TOKEN with file:write capability and returns presigned URL", async () => {
@@ -96,62 +95,6 @@ describe("POST /api/zero/uploads/prepare", () => {
     expect(response.body.uploadUrl).toMatch(/^https?:\/\//);
     expect(response.body.url).toMatch(/^https?:\/\//);
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
-  });
-
-  it("rejects invalid body shape with 400", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroUploadsContract);
-    const response = await accept(
-      client.prepare({
-        body: { filename: "" } as never,
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-    expect(response.body.error.code).toBe("BAD_REQUEST");
-  });
-
-  it("rejects files larger than 1 GB with 400", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroUploadsContract);
-    const response = await accept(
-      client.prepare({
-        body: {
-          filename: "big.bin",
-          contentType: "application/pdf",
-          size: 1024 * 1024 * 1024 + 1,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-    expect(response.body.error.message).toContain("File too large");
-  });
-
-  it("rejects unsupported content types with 400", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroUploadsContract);
-    const response = await accept(
-      client.prepare({
-        body: {
-          filename: "bad.exe",
-          contentType: "application/x-msdownload",
-          size: 10,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-    expect(response.body.error.message).toContain("Unsupported file type");
   });
 
   it("returns presigned upload URL and final CDN URL with full body shape", async () => {
@@ -356,31 +299,5 @@ describe("POST /api/zero/uploads/prepare", () => {
       }
       expect(response.body).toMatchObject({ filename, contentType });
     }
-  });
-
-  it("returns 403 for sandbox token without file:write capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const runId = `run_${randomUUID()}`;
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "sandbox",
-      userId,
-      orgId,
-      runId,
-      iat: seconds,
-      exp: seconds + 60,
-    });
-
-    const client = setupApp({ context })(zeroUploadsContract);
-    const response = await accept(
-      client.prepare({
-        body: validBody(),
-        headers: { authorization: `Bearer ${token}` },
-      }),
-      [403],
-    );
-    expect(response.body.error.code).toBe("FORBIDDEN");
-    expect(response.body.error.message).toContain("file:write");
   });
 });

@@ -1077,3 +1077,20 @@ First INTEGRATION-family reduce.
   (GAP-GITHUB-INSTALL).
 - Coverage verified (source-only): `integrations-github.ts` (45/5) unchanged vs
   `main`. No regressions.
+
+### Round 45 — UPLOAD PREPARE REJECTIONS (CHAIN-UPLOADS-PREPARE-REJECTIONS, reduce-legacy)
+
+First STORAGE-family reduce.
+
+- Extended `createBddApi` with the `uploads` (prepare/complete) client.
+- Added `zero-uploads-prepare-rejections.bdd.test.ts`: unauthenticated 401, a
+  zero token without file:write 403, and body/size/content-type validation
+  (empty filename 400, >1 GB 400 "File too large", unsupported type 400).
+- Reduced `zero-uploads-prepare.test.ts` from 12 to 7 cases, removing the
+  reachable rejections. The kept cases sign a presigned URL (S3 + seeded org
+  tier, GAP-UPLOAD-PRESIGN). Because removing the leading 401 made a presigning
+  case the first test, the kept block now primes `s3.getSignedUrl` in a
+  `beforeEach` (the shared mock seed runs in afterEach) — a latent
+  test-ordering coupling the original masked.
+- Coverage verified (source-only): `zero-uploads-prepare.ts` (26/10) and
+  `zero-uploads-complete.ts` (31/19) unchanged vs `main`. No regressions.
