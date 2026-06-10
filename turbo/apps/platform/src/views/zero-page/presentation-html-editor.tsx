@@ -232,9 +232,10 @@ function PresentationEditorHeader({
         title="Generate PPT script"
         disabled={!onGenerateSpeakerNotes}
         onClick={onGenerateSpeakerNotes}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+        className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
       >
         <IconSparkles size={16} stroke={1.5} />
+        Script
       </button>
       <button
         type="button"

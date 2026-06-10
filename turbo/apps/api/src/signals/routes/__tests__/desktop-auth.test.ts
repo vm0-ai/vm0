@@ -52,6 +52,10 @@ function codeFromCallbackUrl(
   return url.searchParams.get("code") ?? "";
 }
 
+function handoffIdFromCallbackUrl(callbackUrl: string): string {
+  return new URL(callbackUrl).searchParams.get("handoffId") ?? "";
+}
+
 function handoffRowsForUser(userId: string) {
   const writeDb = store.set(writeDb$);
   return writeDb
@@ -94,6 +98,10 @@ describe("desktop auth routes", () => {
     expect(code).not.toBe("");
     expect(response.body.callbackUrl).not.toContain("ticket");
     expect(response.body.callbackUrl).not.toContain("token");
+    expect(response.body.handoffId).not.toBe("");
+    expect(handoffIdFromCallbackUrl(response.body.callbackUrl)).toBe(
+      response.body.handoffId,
+    );
 
     const rows = await handoffRowsForUser(userId);
     expect(rows).toHaveLength(1);
@@ -158,6 +166,106 @@ describe("desktop auth routes", () => {
     expect(
       context.mocks.clerk.signInTokens.createSignInToken,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports handoff status for the creating user only", async () => {
+    const userId = `user_desktop_${randomUUID()}`;
+    mockSession(userId);
+    const handoff = await accept(
+      handoffClient().create({
+        body: {},
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    const pending = await accept(
+      handoffClient().status({
+        params: { handoffId: handoff.body.handoffId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(pending.body.status).toBe("pending");
+
+    mockSession(`user_desktop_${randomUUID()}`);
+    const otherUser = await accept(
+      handoffClient().status({
+        params: { handoffId: handoff.body.handoffId },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(otherUser.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("marks a consumed handoff complete", async () => {
+    const userId = `user_desktop_${randomUUID()}`;
+    mockSession(userId);
+    const handoff = await accept(
+      handoffClient().create({
+        body: {},
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    const code = codeFromCallbackUrl(handoff.body.callbackUrl);
+
+    await accept(
+      consumeClient().consume({
+        body: { code },
+      }),
+      [200],
+    );
+    const consumed = await accept(
+      handoffClient().status({
+        params: { handoffId: handoff.body.handoffId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(consumed.body.status).toBe("consumed");
+
+    const completed = await accept(
+      handoffClient().complete({
+        params: { handoffId: handoff.body.handoffId },
+        body: {},
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(completed.body.status).toBe("completed");
+
+    const status = await accept(
+      handoffClient().status({
+        params: { handoffId: handoff.body.handoffId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(status.body.status).toBe("completed");
+  });
+
+  it("does not complete an unconsumed handoff", async () => {
+    const userId = `user_desktop_${randomUUID()}`;
+    mockSession(userId);
+    const handoff = await accept(
+      handoffClient().create({
+        body: {},
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    const completed = await accept(
+      handoffClient().complete({
+        params: { handoffId: handoff.body.handoffId },
+        body: {},
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(completed.body.error.code).toBe("NOT_FOUND");
   });
 
   it("rejects expired handoff codes", async () => {

@@ -82,7 +82,7 @@ export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
 const L = logger("ChatThread");
 
-const QUEUED_RUN_ASSISTANT_MESSAGE = "Waiting in queue...";
+const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
 
 function isRecallControlMessage(msg: PagedChatMessage): boolean {
   return (
@@ -95,7 +95,7 @@ function isRecallControlMessage(msg: PagedChatMessage): boolean {
 function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
   return (
     msg.role === "assistant" &&
-    msg.content === QUEUED_RUN_ASSISTANT_MESSAGE &&
+    msg.runEventId === QUEUED_RUN_MARKER_EVENT_ID &&
     msg.runId !== undefined
   );
 }
@@ -312,14 +312,13 @@ function deriveRunIndicatorState(
   return hasQueued ? "queued" : null;
 }
 
-function hasActiveQueueMarker(
+function hasUnresolvedQueueMarker(
   raw: readonly ChatMessageProjectionEntry[],
 ): boolean {
-  const queueMarkerIds = new Set(
-    raw.flatMap((entry) => {
-      return isQueueMarkerMessage(entry.message) ? [entry.message.id] : [];
-    }),
-  );
+  const queueMarkers = new Map<
+    string,
+    { readonly runId: string; readonly index: number }
+  >();
   const revokedIds = new Set(
     raw.flatMap((entry) => {
       return entry.message.revokesMessageId
@@ -327,8 +326,47 @@ function hasActiveQueueMarker(
         : [];
     }),
   );
-  for (const markerId of queueMarkerIds) {
-    if (!revokedIds.has(markerId)) {
+  const lastAssistantOutputIndexByRunId = new Map<string, number>();
+  const lastTerminalIndexByRunId = new Map<string, number>();
+  const lastInterruptIndexByRunId = new Map<string, number>();
+
+  for (const [index, entry] of raw.entries()) {
+    const { message } = entry;
+    if (isQueueMarkerMessage(message) && message.runId !== undefined) {
+      queueMarkers.set(message.id, { runId: message.runId, index });
+      continue;
+    }
+    if (message.interruptsRunId !== undefined) {
+      lastInterruptIndexByRunId.set(message.interruptsRunId, index);
+    }
+    if (message.role !== "assistant" || message.runId === undefined) {
+      continue;
+    }
+    if (message.runLifecycleEvent !== undefined) {
+      lastTerminalIndexByRunId.set(message.runId, index);
+      continue;
+    }
+    if (message.content !== null) {
+      lastAssistantOutputIndexByRunId.set(message.runId, index);
+    }
+  }
+
+  for (const [markerId, marker] of queueMarkers) {
+    if (revokedIds.has(markerId)) {
+      continue;
+    }
+    const laterAssistantOutputIndex =
+      lastAssistantOutputIndexByRunId.get(marker.runId) ?? -1;
+    const laterTerminalIndex = lastTerminalIndexByRunId.get(marker.runId) ?? -1;
+    const laterInterruptIndex =
+      lastInterruptIndexByRunId.get(marker.runId) ?? -1;
+    if (
+      Math.max(
+        laterAssistantOutputIndex,
+        laterTerminalIndex,
+        laterInterruptIndex,
+      ) <= marker.index
+    ) {
       return true;
     }
   }
@@ -1409,12 +1447,15 @@ function createLatestRunStatus(
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
 ) {
   return computed(async (get): Promise<string | null> => {
+    if (hasUnresolvedQueueMarker(await get(rawMessages$))) {
+      return "queued";
+    }
     const messages = await get(allMessages$);
     const stateFromMessages = deriveRunIndicatorState(messages);
     if (stateFromMessages !== null) {
       return stateFromMessages;
     }
-    return hasActiveQueueMarker(await get(rawMessages$)) ? "queued" : null;
+    return null;
   });
 }
 

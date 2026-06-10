@@ -9,6 +9,14 @@ const ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE =
   /^\/api\/zero\/me\/model-providers\/[^/]+$/;
 const AGENT_SESSION_ID_REWRITE_SOURCE = "/api/agent/sessions/:id";
 const AGENT_SESSION_ID_PATH_RE = /^\/api\/agent\/sessions\/[^/]+$/;
+const DESKTOP_AUTH_HANDOFF_BY_ID_REWRITE_SOURCE = `/api/desktop-auth/handoff/:handoffId(${UUID_PATH_SEGMENT_PATTERN})`;
+const DESKTOP_AUTH_HANDOFF_BY_ID_PATH_RE = new RegExp(
+  `^/api/desktop-auth/handoff/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
+const DESKTOP_AUTH_HANDOFF_COMPLETE_REWRITE_SOURCE = `/api/desktop-auth/handoff/:handoffId(${UUID_PATH_SEGMENT_PATTERN})/complete`;
+const DESKTOP_AUTH_HANDOFF_COMPLETE_PATH_RE = new RegExp(
+  `^/api/desktop-auth/handoff/${UUID_PATH_SEGMENT_PATTERN}/complete$`,
+);
 const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
 const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
 const ZERO_RUNS_REWRITE_SOURCE = "/api/zero/runs";
@@ -411,6 +419,16 @@ export const API_BACKEND_REWRITES = [
   [AGENT_COMPOSES_VERSIONS_REWRITE_SOURCE, "/api/agent/composes/versions"],
   ["/api/auth/me", "/api/auth/me"],
   ["/api/desktop-auth/handoff", "/api/desktop-auth/handoff"],
+  [
+    DESKTOP_AUTH_HANDOFF_COMPLETE_REWRITE_SOURCE,
+    "/api/desktop-auth/handoff/:handoffId/complete",
+    DESKTOP_AUTH_HANDOFF_COMPLETE_PATH_RE,
+  ],
+  [
+    DESKTOP_AUTH_HANDOFF_BY_ID_REWRITE_SOURCE,
+    "/api/desktop-auth/handoff/:handoffId",
+    DESKTOP_AUTH_HANDOFF_BY_ID_PATH_RE,
+  ],
   ["/api/desktop-auth/consume", "/api/desktop-auth/consume"],
   [
     "/api/desktop/updates/:channel/:platform/:arch/RELEASES.json",

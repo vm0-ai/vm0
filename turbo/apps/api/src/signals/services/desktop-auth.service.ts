@@ -2,9 +2,10 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   defaultDesktopAuthCallbackScheme,
   type DesktopAuthCallbackScheme,
+  type DesktopAuthHandoffStatus,
 } from "@vm0/api-contracts/contracts/desktop-auth";
 import { desktopAuthHandoffCodes } from "@vm0/db/schema/desktop-auth-handoff-code";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -17,6 +18,16 @@ const DESKTOP_AUTH_CODE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const DESKTOP_AUTH_HANDOFF_CODE_ERROR_NAME = "DesktopAuthHandoffCodeError";
 
 export const DESKTOP_AUTH_SIGN_IN_TICKET_TTL_SECONDS = 60;
+
+interface DesktopAuthHandoff {
+  readonly code: string;
+  readonly handoffId: string;
+}
+
+interface DesktopAuthHandoffStatusRow {
+  readonly consumedAt: Date | null;
+  readonly completedAt: Date | null;
+}
 
 export function isDesktopAuthHandoffCodeError(error: unknown): error is Error {
   return (
@@ -45,33 +56,42 @@ function assertValidDesktopAuthCode(code: string): void {
 
 export function buildDesktopAuthCallbackUrl(
   code: string,
+  handoffId: string,
   callbackScheme: DesktopAuthCallbackScheme = defaultDesktopAuthCallbackScheme,
 ): string {
   const callbackUrl = new URL(
     `${callbackScheme}://${DESKTOP_AUTH_CALLBACK_HOST}${DESKTOP_AUTH_CALLBACK_PATH}`,
   );
   callbackUrl.searchParams.set("code", code);
+  callbackUrl.searchParams.set("handoffId", handoffId);
   return callbackUrl.toString();
 }
 
 export async function createDesktopAuthHandoffCode(
   db: Db,
   args: { readonly userId: string },
-): Promise<string> {
+): Promise<DesktopAuthHandoff> {
   const code = randomBytes(DESKTOP_AUTH_HANDOFF_CODE_BYTES).toString(
     "base64url",
   );
   const now = nowDate();
   const expiresAt = new Date(now.getTime() + DESKTOP_AUTH_HANDOFF_CODE_TTL_MS);
 
-  await db.insert(desktopAuthHandoffCodes).values({
-    codeHash: hashDesktopAuthCode(code),
-    userId: args.userId,
-    createdAt: now,
-    expiresAt,
-  });
+  const [row] = await db
+    .insert(desktopAuthHandoffCodes)
+    .values({
+      codeHash: hashDesktopAuthCode(code),
+      userId: args.userId,
+      createdAt: now,
+      expiresAt,
+    })
+    .returning({ id: desktopAuthHandoffCodes.id });
 
-  return code;
+  if (!row) {
+    throw new Error("Desktop sign-in failed.");
+  }
+
+  return { code, handoffId: row.id };
 }
 
 export async function consumeDesktopAuthHandoffCode(
@@ -100,4 +120,55 @@ export async function consumeDesktopAuthHandoffCode(
   }
 
   return row.userId;
+}
+
+function desktopAuthHandoffStatus(
+  row: DesktopAuthHandoffStatusRow,
+): DesktopAuthHandoffStatus {
+  if (row.completedAt) {
+    return "completed";
+  }
+  if (row.consumedAt) {
+    return "consumed";
+  }
+  return "pending";
+}
+
+export async function getDesktopAuthHandoffStatus(
+  db: Db,
+  args: { readonly handoffId: string; readonly userId: string },
+): Promise<DesktopAuthHandoffStatus | null> {
+  const [row] = await db
+    .select({
+      consumedAt: desktopAuthHandoffCodes.consumedAt,
+      completedAt: desktopAuthHandoffCodes.completedAt,
+    })
+    .from(desktopAuthHandoffCodes)
+    .where(
+      and(
+        eq(desktopAuthHandoffCodes.id, args.handoffId),
+        eq(desktopAuthHandoffCodes.userId, args.userId),
+      ),
+    );
+
+  return row ? desktopAuthHandoffStatus(row) : null;
+}
+
+export async function completeDesktopAuthHandoff(
+  db: Db,
+  args: { readonly handoffId: string; readonly userId: string },
+): Promise<boolean> {
+  const [row] = await db
+    .update(desktopAuthHandoffCodes)
+    .set({ completedAt: nowDate() })
+    .where(
+      and(
+        eq(desktopAuthHandoffCodes.id, args.handoffId),
+        eq(desktopAuthHandoffCodes.userId, args.userId),
+        isNotNull(desktopAuthHandoffCodes.consumedAt),
+      ),
+    )
+    .returning({ id: desktopAuthHandoffCodes.id });
+
+  return Boolean(row);
 }

@@ -2,8 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useAuth, useOrganizationList } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
 
-import { completeDesktopAuth } from "../completeDesktopAuth";
+import {
+  completeDesktopAuth,
+  completeDesktopAuthHandoff,
+} from "../completeDesktopAuth";
 
 const DESKTOP_AUTH_START_PATH = "/desktop-auth/start";
 
@@ -15,11 +19,13 @@ export function DesktopAuthSelectOrgClient({
   forceSelection,
 }: DesktopAuthSelectOrgClientProps) {
   const { getToken, isLoaded: isAuthLoaded, isSignedIn, orgId } = useAuth();
+  const searchParams = useSearchParams();
   const organizationList = useOrganizationList({
     userMemberships: { pageSize: 100 },
   });
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const handoffId = searchParams.get("handoffId");
 
   useEffect(() => {
     if (!isAuthLoaded) {
@@ -31,6 +37,12 @@ export function DesktopAuthSelectOrgClient({
     }
     if (!forceSelection && orgId) {
       completeDesktopAuth(getToken)
+        .then((token) => {
+          if (!handoffId) {
+            return undefined;
+          }
+          return completeDesktopAuthHandoff(token, handoffId);
+        })
         .then(() => {
           window.location.replace("/");
         })
@@ -40,7 +52,7 @@ export function DesktopAuthSelectOrgClient({
           );
         });
     }
-  }, [forceSelection, getToken, isAuthLoaded, isSignedIn, orgId]);
+  }, [forceSelection, getToken, handoffId, isAuthLoaded, isSignedIn, orgId]);
 
   function selectOrganization(organization: string): void {
     if (!organizationList.isLoaded) {
@@ -52,6 +64,12 @@ export function DesktopAuthSelectOrgClient({
       .setActive({ organization })
       .then(() => {
         return completeDesktopAuth(getToken);
+      })
+      .then((token) => {
+        if (!handoffId) {
+          return undefined;
+        }
+        return completeDesktopAuthHandoff(token, handoffId);
       })
       .then(() => {
         window.location.replace("/");
