@@ -3,9 +3,12 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   RefCallback,
 } from "react";
+import { useState } from "react";
 import {
   IconArrowUp,
   IconCheck,
+  IconChevronDown,
+  IconChevronRight,
   IconCopy,
   IconMessageCircle,
   IconX,
@@ -238,10 +241,15 @@ export function ChatFeedbackTray({
   const removeComment = useSet(removeFeedbackComment$);
   const submit = useSet(submitFeedback$);
   const dismiss = useSet(dismissFeedback$);
+  const [expanded, setExpanded] = useState(false);
 
   if (!active) {
     return null;
   }
+
+  // Collapse committed comments into a one-line summary by default so the tray
+  // stays short and Zero's reply stays visible; expand (or edit) to see them.
+  const showList = expanded || editingId !== null;
 
   const handleSubmit = () => {
     const prompt = submit();
@@ -272,43 +280,58 @@ export function ChatFeedbackTray({
             <span className="text-xs font-semibold text-foreground">
               Feedback on this reply
             </span>
-            <div className="flex items-center gap-1.5">
-              {comments.length > 0 ? (
-                <span className="rounded-full bg-gray-50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            <button
+              type="button"
+              onClick={dismiss}
+              aria-label="Close"
+              title="Close"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <IconX size={18} stroke={1.8} />
+            </button>
+          </div>
+
+          {comments.length > 0 ? (
+            <div className="mb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  return setExpanded((value) => {
+                    return !value;
+                  });
+                }}
+                className="flex w-full items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
+              >
+                <span>
                   {comments.length === 1
                     ? "1 comment"
                     : `${comments.length} comments`}
                 </span>
-              ) : null}
-              <button
-                type="button"
-                onClick={dismiss}
-                aria-label="Close"
-                title="Close"
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <IconX size={18} stroke={1.8} />
+                {showList ? (
+                  <IconChevronDown size={15} stroke={2} />
+                ) : (
+                  <IconChevronRight size={15} stroke={2} />
+                )}
               </button>
-            </div>
-          </div>
-
-          {comments.length > 0 ? (
-            <div className="mb-2 flex max-h-44 flex-col gap-2 overflow-y-auto pr-0.5">
-              {comments.map((comment) => {
-                return (
-                  <FeedbackCommentCard
-                    key={comment.id}
-                    comment={comment}
-                    editing={editingId === comment.id}
-                    onEdit={() => {
-                      return editComment(comment.id);
-                    }}
-                    onRemove={() => {
-                      return removeComment(comment.id);
-                    }}
-                  />
-                );
-              })}
+              {showList ? (
+                <div className="mt-2 flex max-h-44 flex-col gap-2 overflow-y-auto pr-0.5">
+                  {comments.map((comment) => {
+                    return (
+                      <FeedbackCommentCard
+                        key={comment.id}
+                        comment={comment}
+                        editing={editingId === comment.id}
+                        onEdit={() => {
+                          return editComment(comment.id);
+                        }}
+                        onRemove={() => {
+                          return removeComment(comment.id);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
