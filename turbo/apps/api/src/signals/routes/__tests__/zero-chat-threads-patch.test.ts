@@ -1,16 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 
 import {
   chatThreadByIdContract,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
 import {
   deleteZeroChatThread$,
   seedZeroChatThread$,
@@ -20,6 +17,10 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  authHeaders,
+  getZeroChatThreadThroughApi,
+} from "./helpers/zero-chat-thread-routes";
 
 const context = testContext();
 const store = createStore();
@@ -29,18 +30,6 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
   const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
     return store.set(deleteZeroChatThread$, fixture, context.signal);
   });
-
-  async function getThreadDraft(threadId: string) {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        draftContent: chatThreads.draftContent,
-        draftAttachments: chatThreads.draftAttachments,
-      })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, threadId));
-    return row;
-  }
 
   it("returns 401 when the request is unauthenticated", async () => {
     const client = setupApp({ context })(chatThreadByIdContract);
@@ -69,7 +58,7 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       client.patch({
         params: { id: randomUUID() },
         body: { draftContent: "hello" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -79,7 +68,7 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
-  it("updates draft content and returns 204 (DB read-after-write)", async () => {
+  it("updates draft content and returns 204", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
@@ -90,18 +79,18 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       client.patch({
         params: { id: fixture.threadId },
         body: { draftContent: "hello world" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
     expect(response.body).toBeUndefined();
 
-    const row = await getThreadDraft(fixture.threadId);
-    expect(row?.draftContent).toBe("hello world");
-    expect(row?.draftAttachments).toBeNull();
+    const thread = await getZeroChatThreadThroughApi(context, fixture.threadId);
+    expect(thread.draftContent).toBe("hello world");
+    expect(thread.draftAttachments).toBeNull();
   });
 
-  it("updates draft with attachments and returns 204 (DB read-after-write)", async () => {
+  it("updates draft with attachments and returns 204", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
@@ -125,14 +114,14 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
           draftContent: "with attachment",
           draftAttachments: attachments,
         },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
 
-    const row = await getThreadDraft(fixture.threadId);
-    expect(row?.draftContent).toBe("with attachment");
-    expect(row?.draftAttachments).toStrictEqual(attachments);
+    const thread = await getZeroChatThreadThroughApi(context, fixture.threadId);
+    expect(thread.draftContent).toBe("with attachment");
+    expect(thread.draftAttachments).toStrictEqual(attachments);
   });
 
   it("clears draft when patching with null values", async () => {
@@ -150,16 +139,16 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       client.patch({
         params: { id: fixture.threadId },
         body: { draftContent: null },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
 
-    const row = await getThreadDraft(fixture.threadId);
-    expect(row?.draftContent).toBeNull();
+    const thread = await getZeroChatThreadThroughApi(context, fixture.threadId);
+    expect(thread.draftContent).toBeNull();
   });
 
-  it("returns 404 for a thread owned by another user (victim row preserved)", async () => {
+  it("returns 404 for a thread owned by another user without mutating it", async () => {
     const fixture = await track(
       store.set(
         seedZeroChatThread$,
@@ -175,7 +164,7 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       client.patch({
         params: { id: fixture.threadId },
         body: { draftContent: "unauthorized" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -183,9 +172,9 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       error: { message: "Chat thread not found", code: "NOT_FOUND" },
     });
 
-    // Victim row preserved.
-    const row = await getThreadDraft(fixture.threadId);
-    expect(row?.draftContent).toBe("owner content");
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const thread = await getZeroChatThreadThroughApi(context, fixture.threadId);
+    expect(thread.draftContent).toBe("owner content");
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
@@ -200,7 +189,7 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       client.patch({
         params: { id: fixture.threadId },
         body: { draftContent: "first keystroke" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
@@ -225,7 +214,7 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       client.patch({
         params: { id: fixture.threadId },
         body: { draftContent: "hi" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
@@ -236,7 +225,7 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       client.patch({
         params: { id: fixture.threadId },
         body: { draftContent: "hi there" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
@@ -259,7 +248,7 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       client.patch({
         params: { id: fixture.threadId },
         body: { draftContent: null },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
@@ -282,7 +271,7 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       client.patch({
         params: { id: fixture.threadId },
         body: { draftContent: null },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
@@ -311,7 +300,7 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       client.patch({
         params: { id: fixture.threadId },
         body: { draftContent: null, draftAttachments: attachments },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [204],
     );
@@ -323,7 +312,7 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
     );
   });
 
-  it("returns 400 for a malformed UUID without touching the DB", async () => {
+  it("returns 400 for a malformed UUID without mutating the thread", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
@@ -334,16 +323,16 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
       client.patch({
         params: { id: "not-a-uuid" },
         body: { draftContent: "hello" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [400],
     );
     expect(response.body.error.code).toBe("BAD_REQUEST");
     expect(response.body.error.message).toContain("id");
 
-    // Seeded thread untouched (path validation short-circuits before DB).
-    const row = await getThreadDraft(fixture.threadId);
-    expect(row?.draftContent).toBeNull();
+    // Seeded thread untouched (path validation short-circuits before lookup).
+    const thread = await getZeroChatThreadThroughApi(context, fixture.threadId);
+    expect(thread.draftContent).toBeNull();
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 });
