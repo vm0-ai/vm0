@@ -62,7 +62,6 @@ describe("model-first canonical catalog", () => {
     expect(SUPPORTED_RUN_MODELS).toEqual([
       "claude-fable-5",
       "claude-opus-4-8",
-      "claude-fable-5",
       "claude-opus-4-7",
       "claude-opus-4-6",
       "claude-sonnet-4-6",
@@ -108,9 +107,6 @@ describe("model-first canonical catalog", () => {
     );
     expect(getCanonicalModelDisplayName("claude-opus-4-8")).toBe(
       "Claude Opus 4.8",
-    );
-    expect(getCanonicalModelDisplayName("claude-fable-5")).toBe(
-      "Claude Fable 5",
     );
     expect(getCanonicalModelDisplayName("custom/model")).toBe("custom/model");
   });
@@ -162,10 +158,6 @@ describe("model-first canonical catalog", () => {
       "vm0",
       "minimax-api-key",
     ]);
-    expect(getProvidersForModel("claude-fable-5")).toEqual([
-      "vm0",
-      "anthropic-api-key",
-    ]);
     expect(getProvidersForModel("custom/model")).toEqual([]);
   });
 
@@ -183,12 +175,6 @@ describe("model-first canonical catalog", () => {
     expect(isModelSupportedByProvider("MiniMax-M3", "openrouter-api-key")).toBe(
       false,
     );
-    expect(
-      isModelSupportedByProvider("claude-fable-5", "anthropic-api-key"),
-    ).toBe(true);
-    expect(
-      isModelSupportedByProvider("claude-fable-5", "openrouter-api-key"),
-    ).toBe(false);
   });
 
   it("maps canonical models to provider runtime model ids", () => {
@@ -207,9 +193,6 @@ describe("model-first canonical catalog", () => {
     expect(
       getProviderRuntimeModel("anthropic-api-key", "claude-opus-4-8"),
     ).toBe("claude-opus-4-8");
-    expect(getProviderRuntimeModel("anthropic-api-key", "claude-fable-5")).toBe(
-      "claude-fable-5",
-    );
     expect(
       getProviderRuntimeModel("openrouter-api-key", "claude-fable-5"),
     ).toBe("anthropic/claude-fable-5");
@@ -395,7 +378,6 @@ describe("getVm0VisibleModels", () => {
     const models = getVm0VisibleModels();
     expect(models).toContain("claude-fable-5");
     expect(models).toContain("claude-opus-4-8");
-    expect(models).toContain("claude-fable-5");
     expect(models).toContain("kimi-k2.5");
     expect(models).toContain("MiniMax-M3");
     expect(models).toContain("glm-5.1");
@@ -431,7 +413,6 @@ describe("model image input support", () => {
     "anthropic/claude-fable-5",
     "claude-sonnet-4-6",
     "claude-opus-4-8",
-    "claude-fable-5",
     "claude-opus-4-7",
     "kimi-k2.6",
     "kimi-k2.5",

@@ -30,14 +30,6 @@ describe("VM0 managed model provider", () => {
       expect(getVm0Vendor("claude-opus-4-6")).toBe("anthropic");
     });
 
-    it("should resolve Claude Fable 5 to anthropic-api-key", () => {
-      expect(getVm0ConcreteProviderType("claude-fable-5")).toBe(
-        "anthropic-api-key",
-      );
-      expect(getVm0Vendor("claude-fable-5")).toBe("anthropic");
-      expect(getVm0ApiModel("claude-fable-5")).toBe("claude-fable-5");
-    });
-
     it("should resolve glm-5.1 to openrouter-api-key with z-ai/glm-5.1 upstream id", () => {
       expect(getVm0ConcreteProviderType("glm-5.1")).toBe("openrouter-api-key");
       expect(getVm0Vendor("glm-5.1")).toBe("openrouter");
@@ -84,7 +76,6 @@ describe("VM0 managed model provider", () => {
       expect(Object.keys(VM0_MODEL_TO_PROVIDER)).toStrictEqual([
         "claude-fable-5",
         "claude-opus-4-8",
-        "claude-fable-5",
         "claude-opus-4-7",
         "claude-opus-4-6",
         "claude-sonnet-4-6",

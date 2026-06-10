@@ -221,7 +221,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
     ).not.toBeInTheDocument();
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
-    expect(within(dialog).getByText("Claude Fable 5")).toBeInTheDocument();
+    expect(within(dialog).getByText("Claude Opus 4.7")).toBeInTheDocument();
     openLabeledSelect(dialog, "Model");
     const listbox = await screen.findByRole("listbox");
     expect(
@@ -312,7 +312,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
       ).not.toBeInTheDocument();
     });
     await expect(
-      screen.findByTestId("org-model-policy-row-claude-fable-5"),
+      screen.findByTestId("org-model-policy-row-claude-opus-4-7"),
     ).resolves.toBeInTheDocument();
   });
 

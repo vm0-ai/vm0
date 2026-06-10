@@ -52,7 +52,6 @@ export const VM0_ORG_SLUG = "vm0";
 export const SUPPORTED_RUN_MODELS = [
   "claude-fable-5",
   "claude-opus-4-8",
-  "claude-fable-5",
   "claude-opus-4-7",
   "claude-opus-4-6",
   "claude-sonnet-4-6",
@@ -80,7 +79,6 @@ export const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<
 >({
   "claude-fable-5": 3.3,
   "claude-opus-4-8": 1.7,
-  "claude-fable-5": 3.3,
   "claude-opus-4-7": 1.7,
   "claude-opus-4-6": 1.7,
   "claude-sonnet-4-6": 1,
@@ -124,7 +122,6 @@ export interface DefaultOrgModelPolicySeed {
 const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-4-8": "Claude Opus 4.8",
-  "claude-fable-5": "Claude Fable 5",
   "claude-opus-4-7": "Claude Opus 4.7",
   "claude-opus-4-6": "Claude Opus 4.6",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
@@ -199,10 +196,6 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
-  "claude-fable-5": {
-    concreteType: "anthropic-api-key",
-    vendor: "anthropic",
-  },
   "claude-opus-4-7": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
@@ -274,7 +267,6 @@ export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";
 const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
   "claude-fable-5",
   "claude-opus-4-8",
-  "claude-fable-5",
   "claude-opus-4-7",
   "claude-opus-4-6",
   "claude-sonnet-4-6",
@@ -390,7 +382,6 @@ export const MODEL_PROVIDER_TYPES = {
       "claude-fable-5",
       "claude-sonnet-4-6",
       "claude-opus-4-8",
-      "claude-fable-5",
       "claude-opus-4-7",
       "claude-opus-4-6",
     ] as string[],
@@ -799,7 +790,6 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
-  "claude-fable-5": ["vm0", "anthropic-api-key"],
   "claude-opus-4-7": [
     "vm0",
     "claude-code-oauth-token",
