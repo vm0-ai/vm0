@@ -21,9 +21,11 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import {
   zeroBillingCheckoutContract,
+  zeroBillingDowngradeContract,
   zeroBillingInvoicesContract,
   zeroBillingPortalContract,
   zeroBillingRedeemCodeContract,
+  zeroBillingRestoreContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
@@ -210,6 +212,10 @@ export function createBddApi(context: TestContext) {
      * tier-transition cases need seeded org/Stripe state; only the
      * auth/validation/config rejections before the price check are reachable. */
     billingCheckout: setupApp({ context })(zeroBillingCheckoutContract),
+    /** ts-rest client for `/api/zero/billing/downgrade`. */
+    billingDowngrade: setupApp({ context })(zeroBillingDowngradeContract),
+    /** ts-rest client for `/api/zero/billing/restore`. */
+    billingRestore: setupApp({ context })(zeroBillingRestoreContract),
     /** ts-rest client for `/api/zero/org/logo` (get/delete; POST is multipart
      * and is issued as a raw request by the test). */
     orgLogo: setupApp({ context })(zeroOrgLogoContract),

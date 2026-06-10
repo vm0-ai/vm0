@@ -6,7 +6,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 import {
@@ -36,100 +36,6 @@ describe("POST /api/zero/billing/downgrade", () => {
       "ZERO_PRICE",
       JSON.stringify({ pro: [TEST_PRICE_PRO], team: [TEST_PRICE_TEAM] }),
     );
-  });
-
-  it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
-    mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
-
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
-    const response = await accept(
-      client.create({
-        body: { targetTier: "pro-suspend" },
-        headers: {},
-      }),
-      [503],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Billing not configured",
-        code: "PROVIDER_UNAVAILABLE",
-      },
-    });
-  });
-
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
-    const response = await accept(
-      client.create({
-        body: { targetTier: "pro-suspend" },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.status).toBe(401);
-  });
-
-  it("returns 403 for non-admin org member", async () => {
-    const fixture = await track(
-      store.set(seedInvoicesOrg$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
-    const response = await accept(
-      client.create({
-        body: { targetTier: "pro-suspend" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Only org admins can manage billing",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
-  it("returns 400 for invalid targetTier", async () => {
-    const fixture = await track(
-      store.set(seedInvoicesOrg$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
-    const response = await client.create({
-      body: { targetTier: "team" as "pro" },
-      headers: { authorization: "Bearer clerk-session" },
-    });
-
-    expect(response.status).toBe(400);
-  });
-
-  it("returns 409 when org has no subscription", async () => {
-    const fixture = await track(
-      store.set(seedInvoicesOrg$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-
-    const client = setupApp({ context })(zeroBillingDowngradeContract);
-    const response = await accept(
-      client.create({
-        body: { targetTier: "pro-suspend" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [409],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Org has no active subscription",
-        code: "CONFLICT",
-      },
-    });
   });
 
   it("returns 400 when target tier is same or higher", async () => {

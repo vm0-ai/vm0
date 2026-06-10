@@ -994,3 +994,22 @@ But every rejection \_before* the credit check is reachable.
 - Coverage verified (source-only): `zero-billing-checkout.ts` (51/27),
   `billing.service.ts` (28/31), and `zero-billing-checkout.service.ts` (84/47)
   unchanged vs `main`. No regressions.
+
+### Round 41 — BILLING DOWNGRADE/RESTORE REJECTIONS (CHAIN-BILLING-TIER-CHANGE-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `billingDowngrade` and `billingRestore`
+  clients.
+- Added `zero-billing-tier-change-rejections.bdd.test.ts`: downgrade rejects
+  unauthenticated 401, non-admin 403, invalid targetTier 400, an org with no
+  subscription 409, and Stripe-not-configured 503; restore rejects
+  unauthenticated 401, non-admin 403, no-subscription 409, and 503. A fresh org
+  has no Stripe subscription, so the 409 is reachable without seeding.
+- Reduced `zero-billing-downgrade.test.ts` 15 -> 10 and
+  `zero-billing-restore.test.ts` 8 -> 4, removing the reachable rejections. The
+  kept cases downgrade/restore a real subscription (same-or-higher tier guard,
+  not-scheduled, restore success), which need a seeded Stripe subscription
+  (GAP-STRIPE-SUBSCRIPTION).
+- Coverage verified (source-only): `zero-billing-downgrade.ts` (25/15),
+  `zero-billing-restore.ts` (23/14), and their services (102/54, 26/14)
+  unchanged vs `main`. No regressions. This rounds out the BILLING family
+  (redeem-code, portal, invoices, checkout, downgrade, restore).
