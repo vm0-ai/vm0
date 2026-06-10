@@ -330,26 +330,26 @@ function hasUnresolvedQueueMarker(
   const lastTerminalIndexByRunId = new Map<string, number>();
   const lastInterruptIndexByRunId = new Map<string, number>();
 
-  raw.forEach((entry, index) => {
+  for (const [index, entry] of raw.entries()) {
     const { message } = entry;
     if (isQueueMarkerMessage(message) && message.runId !== undefined) {
       queueMarkers.set(message.id, { runId: message.runId, index });
-      return;
+      continue;
     }
     if (message.interruptsRunId !== undefined) {
       lastInterruptIndexByRunId.set(message.interruptsRunId, index);
     }
     if (message.role !== "assistant" || message.runId === undefined) {
-      return;
+      continue;
     }
     if (message.runLifecycleEvent !== undefined) {
       lastTerminalIndexByRunId.set(message.runId, index);
-      return;
+      continue;
     }
     if (message.content !== null) {
       lastAssistantOutputIndexByRunId.set(message.runId, index);
     }
-  });
+  }
 
   for (const [markerId, marker] of queueMarkers) {
     if (revokedIds.has(markerId)) {
