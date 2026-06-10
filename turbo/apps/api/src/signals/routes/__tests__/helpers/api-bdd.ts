@@ -28,6 +28,10 @@ import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo"
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import {
+  zeroSchedulesByNameContract,
+  zeroSchedulesEnableContract,
+} from "@vm0/api-contracts/contracts/zero-schedules";
+import {
   zeroOrgInviteContract,
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
@@ -200,6 +204,12 @@ export function createBddApi(context: TestContext) {
      * needs seeded credits with no API surface; only the pre-admission
      * rejections (auth/validation/credits/ownership) are reachable. */
     zeroRuns: setupApp({ context })(zeroRunsMainContract),
+    /** ts-rest client for `/api/zero/schedules/:name/{enable,disable}`. Mutating
+     * an actual schedule needs a deployed schedule (external scheduler); only
+     * the not-found/validation/auth rejections are reachable. */
+    scheduleEnable: setupApp({ context })(zeroSchedulesEnableContract),
+    /** ts-rest client for `/api/zero/schedules/:name` (delete). */
+    scheduleByName: setupApp({ context })(zeroSchedulesByNameContract),
     /** ts-rest client for `/api/zero/attribution/signup` (record first-touch
      * signup attribution into Clerk private metadata). */
     attribution: setupApp({ context })(zeroAttributionContract),

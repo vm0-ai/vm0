@@ -911,3 +911,19 @@ But every rejection \_before* the credit check is reachable.
   (GAP-STRIPE-CUSTOMER).
 - Coverage verified (source-only): `zero-billing-invoices.ts` (8/2) and
   `zero-billing-invoices.service.ts` (8/2) unchanged vs `main`. No regressions.
+
+### Round 36 — SCHEDULE MUTATIONS REJECTIONS (CHAIN-SCHEDULE-MUTATIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `scheduleEnable` (enable/disable) and
+  `scheduleByName` (delete) clients.
+- Added `zero-schedules-mutations.bdd.test.ts`: for enable, disable, and delete —
+  an unknown schedule on an API-created agent is 404, a missing agentId body/query
+  is 400, and unauthenticated is 401; delete additionally rejects a zero token
+  without `schedule:delete` (403, before any lookup).
+- Reduced three legacy files: `zero-schedules-enable.test.ts` 6 -> 3,
+  `zero-schedules-disable.test.ts` 5 -> 2, `zero-schedules-delete.test.ts` 6 -> 2,
+  removing the reachable rejection cases (and orphaned token helpers). The kept
+  cases enable/disable/delete an actual deployed schedule, which needs the
+  external scheduler (GAP-SCHEDULE-DEPLOY).
+- Coverage verified (source-only): `zero-schedules.ts` (68/26) and
+  `zero-schedules.service.ts` (257/165) unchanged vs `main`. No regressions.
