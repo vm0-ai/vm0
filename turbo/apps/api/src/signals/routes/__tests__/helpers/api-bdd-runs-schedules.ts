@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
 import type { z } from "zod";
@@ -14,6 +14,12 @@ import {
   type AutomationMutationResponse,
   type AutomationResponse,
 } from "@vm0/api-contracts/contracts/automations";
+import {
+  webhookAutomationsByIdContract,
+  webhookAutomationsMainContract,
+  type WebhookAutomationCreateResponse,
+  type WebhookAutomationListResponse,
+} from "@vm0/api-contracts/contracts/webhook-automations";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
@@ -52,6 +58,7 @@ import {
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
+import { createApp } from "../../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
 import {
@@ -70,6 +77,9 @@ type CreateAutomationRequest = z.infer<
 >;
 type UpdateAutomationRequest = z.infer<
   (typeof automationsByNameContract.update)["body"]
+>;
+type CreateWebhookAutomationRequest = z.infer<
+  (typeof webhookAutomationsMainContract.create)["body"]
 >;
 type DeployScheduleRequest = z.infer<
   (typeof zeroSchedulesMainContract.deploy)["body"]
@@ -699,6 +709,181 @@ export function createRunsSchedulesApi(context: TestContext) {
       );
     },
 
+    async requestUpdateAutomationUnchecked(
+      actor: ApiTestUser | null,
+      name: string,
+      body: unknown,
+      statuses: readonly (200 | 201 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(automationsByNameContract).update({
+          headers: authenticate(context, actor),
+          params: { name },
+          body: body as UpdateAutomationRequest,
+        }),
+        statuses,
+      );
+    },
+
+    async requestEnableAutomation(
+      actor: ApiTestUser | null,
+      automation: Pick<AutomationResponse, "agentId" | "name">,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(automationsEnableContract).enable({
+          headers: authenticate(context, actor),
+          params: { name: automation.name },
+          body: { agentId: automation.agentId },
+        }),
+        statuses,
+      );
+    },
+
+    async requestDisableAutomation(
+      actor: ApiTestUser | null,
+      automation: Pick<AutomationResponse, "agentId" | "name">,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(automationsEnableContract).disable({
+          headers: authenticate(context, actor),
+          params: { name: automation.name },
+          body: { agentId: automation.agentId },
+        }),
+        statuses,
+      );
+    },
+
+    // The automations list contract has no 404 response (the feature gate is
+    // meant to be indistinguishable from an unmounted route), so the ts-rest
+    // client with throwOnUnknownStatus cannot express the gated case — read
+    // the route through a raw app request instead.
+    async requestListAutomationsRaw(
+      actor: ApiTestUser,
+    ): Promise<{ readonly status: number; readonly body: unknown }> {
+      const { authorization } = authenticate(context, actor);
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/api/automations", {
+        method: "GET",
+        headers: authorization === undefined ? {} : { authorization },
+      });
+      const body: unknown = await response.json();
+      return { status: response.status, body };
+    },
+
+    async createWebhookAutomation(
+      actor: ApiTestUser,
+      body: CreateWebhookAutomationRequest,
+    ): Promise<WebhookAutomationCreateResponse> {
+      const response = await accept(
+        setupApp({ context })(webhookAutomationsMainContract).create({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        [201],
+      );
+      return response.body;
+    },
+
+    async requestCreateWebhookAutomationUnchecked(
+      actor: ApiTestUser | null,
+      body: unknown,
+      statuses: readonly (201 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookAutomationsMainContract).create({
+          headers: authenticate(context, actor),
+          body: body as CreateWebhookAutomationRequest,
+        }),
+        statuses,
+      );
+    },
+
+    async listWebhookAutomations(
+      actor: ApiTestUser,
+    ): Promise<WebhookAutomationListResponse> {
+      const response = await accept(
+        setupApp({ context })(webhookAutomationsMainContract).list({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestListWebhookAutomations(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookAutomationsMainContract).list({
+          headers: authenticate(context, actor),
+        }),
+        statuses,
+      );
+    },
+
+    async deleteWebhookAutomation(
+      actor: ApiTestUser,
+      id: string,
+    ): Promise<void> {
+      await accept(
+        setupApp({ context })(webhookAutomationsByIdContract).delete({
+          headers: authenticate(context, actor),
+          params: { id },
+        }),
+        [204],
+      );
+    },
+
+    async requestDeleteWebhookAutomation(
+      actor: ApiTestUser | null,
+      id: string,
+      statuses: readonly (204 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        setupApp({ context })(webhookAutomationsByIdContract).delete({
+          headers: authenticate(context, actor),
+          params: { id },
+        }),
+        statuses,
+      );
+    },
+
+    // Inbound signed webhook POST. The route verifies an HMAC over the exact
+    // bytes received, so this goes through a raw app request: the ts-rest
+    // client JSON-stringifies string bodies, which would double-encode the
+    // payload and break both the signature and the payload render into the
+    // run context (same pattern as the GitHub webhook helper in
+    // api-bdd-webhooks.ts).
+    async postAutomationWebhook(
+      token: string,
+      rawBody: string,
+      opts: {
+        readonly signature?: string;
+        readonly extraHeaders?: Record<string, string>;
+      } = {},
+    ): Promise<{ readonly status: number; readonly body: unknown }> {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request(`/api/automations/webhooks/${token}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(opts.signature === undefined
+            ? {}
+            : { "x-vm0-signature-256": opts.signature }),
+          ...opts.extraHeaders,
+        },
+        body: rawBody,
+      });
+      const contentType = response.headers.get("content-type") ?? "";
+      const body: unknown = contentType.includes("application/json")
+        ? await response.json()
+        : await response.text();
+      return { status: response.status, body };
+    },
+
     async deploySchedule(
       actor: ApiTestUser,
       body: DeployScheduleRequest,
@@ -934,4 +1119,12 @@ export function createRunsSchedulesApi(context: TestContext) {
 
 export function uniqueScheduleName(prefix: string): string {
   return `${prefix}-${randomUUID().slice(0, 8)}`;
+}
+
+/**
+ * HMAC-SHA256 signature (`sha256=<hex>`) over the raw inbound webhook body,
+ * matching the `x-vm0-signature-256` header the automation webhook verifies.
+ */
+export function signAutomationWebhook(secret: string, body: string): string {
+  return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 }
