@@ -759,3 +759,17 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Deleted `zero-org-invite.test.ts` whole.
 - Coverage verified (source-only): `zero-org-invite.ts` (28/10/2) unchanged vs
   `main`. No regressions.
+
+### Round 29 — ORG MEMBERSHIP REQUESTS (CHAIN-ORG-MEMBERSHIP-REQUESTS)
+
+- Extended `createBddApi` with the `membershipRequests` (accept/reject) client.
+- Added `zero-org-membership-requests.bdd.test.ts`: an admin accepts and rejects
+  a request (the Clerk REST endpoint is mocked with MSW and its hit count is
+  asserted), a Clerk 404 surfaces as a 400, and the admin-only / unauthenticated
+  / no-org / invalid-body matrix is enforced before Clerk is ever called. The
+  invalid-body cases use a typed-client cast (the contract requires
+  `requestId`).
+- Deleted `zero-org-membership-requests.test.ts` whole.
+- Coverage verified (source-only): `zero-org-membership-requests.ts` (31/12/2)
+  and `zero-org-membership-requests.service.ts` (16/8/2) unchanged vs `main`. No
+  regressions.
