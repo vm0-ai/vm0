@@ -367,19 +367,6 @@ describe("GET /api/integrations/github", () => {
     }
   });
 
-  it("returns 401 when no user is authenticated", async () => {
-    const client = setupApp({ context })(integrationsGithubContract);
-
-    const response = await accept(
-      client.getInstallation({ headers: {} }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
   it("returns 404 with installUrl when the authenticated user has no GitHub installation", async () => {
     const fixture = await seedDefaultAgentFixture();
     defaultAgentFixtures.push(fixture);
@@ -513,30 +500,6 @@ describe("GET /api/integrations/github", () => {
     expect(response.body.agent).toStrictEqual({
       id: fixture.composeId,
       name: "github-support-agent",
-    });
-  });
-
-  it("requires GitHub read capability for zero tokens", async () => {
-    const client = setupApp({ context })(integrationsGithubContract);
-
-    const response = await accept(
-      client.getInstallation({
-        headers: {
-          authorization: `Bearer ${zeroToken({
-            userId: `user_${randomUUID()}`,
-            orgId: `org_${randomUUID()}`,
-            capabilities: ["github:write"],
-          })}`,
-        },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Missing required capability: github:read",
-        code: "FORBIDDEN",
-      },
     });
   });
 

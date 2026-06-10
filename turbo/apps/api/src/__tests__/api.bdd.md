@@ -1048,3 +1048,19 @@ amount:null}`) and rejects unauthenticated/no-org reads 401; PUT rejects
 - Coverage verified (source-only): `zero-org-members.ts` (25/9) unchanged vs
   `main`. No regressions. This completes the ORG family (list, invite,
   membership-requests, logo, team, delete, get/update/leave, members).
+
+### Round 44 — GITHUB INSTALLATION READ REJECTIONS (CHAIN-GITHUB-GET-REJECTIONS, reduce-legacy)
+
+First INTEGRATION-family reduce.
+
+- Extended `createBddApi` with the `githubIntegration` client.
+- Added `integrations-github-get-rejections.bdd.test.ts`: unauthenticated 401, a
+  zero token without github:read 403, and a 404 "No GitHub installation found"
+  (with a null install URL when there is no seeded default-agent org context to
+  derive one from).
+- Reduced `integrations-github-get.test.ts` from 16 to 14 cases, removing the
+  unauthenticated and capability rejections. The kept cases need a connected
+  GitHub App installation / seeded org context for the install URL
+  (GAP-GITHUB-INSTALL).
+- Coverage verified (source-only): `integrations-github.ts` (45/5) unchanged vs
+  `main`. No regressions.

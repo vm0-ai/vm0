@@ -19,6 +19,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
+import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import {
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
@@ -194,6 +195,10 @@ export function createBddApi(context: TestContext) {
     ),
     /** ts-rest client for `/api/zero/org/list` (list the caller's orgs). */
     orgList: setupApp({ context })(zeroOrgListContract),
+    /** ts-rest client for `/api/integrations/github` (installation get/link/etc).
+     * A connected installation needs the GitHub OAuth flow; only the
+     * auth/capability/no-installation rejections are reachable. */
+    githubIntegration: setupApp({ context })(integrationsGithubContract),
     /** ts-rest client for `/api/zero/org/invite` (invite/revoke org members). */
     orgInvite: setupApp({ context })(zeroOrgInviteContract),
     /** ts-rest client for `/api/zero/org/membership-requests` (accept/reject). */
