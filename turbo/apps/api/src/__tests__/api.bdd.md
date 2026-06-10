@@ -33,14 +33,14 @@ Latest current run on 2026-06-10:
 
 | Metric     | Coverage |
 | ---------- | -------: |
-| Statements |   87.20% |
-| Branches   |   72.80% |
-| Functions  |   93.32% |
-| Lines      |   87.20% |
+| Statements |   87.17% |
+| Branches   |   72.77% |
+| Functions  |   93.29% |
+| Lines      |   87.17% |
 
 Current diff status: `pnpm -F api exec vitest run --coverage` passes, but the
-raw artifact diff still has statements, functions, and lines 0.01 percentage
-points below the captured JSON baseline; branches are at baseline. The
+raw artifact diff still has statements, branches, functions, and lines below
+the captured JSON baseline. The
 secrets/variables, custom connectors, agent custom connectors, zero composes
 read/list/metadata, zero agent list, chat thread
 create/model-selection/patch/pin/rename/unpin, desktop update, and desktop auth
@@ -110,13 +110,13 @@ the behavior with equivalent assertions:
 
 ## Unreachable Code Candidates
 
-None recorded currently.
+| ID                           | File                                              | Symbol                                                                                                        | Reason                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DESKTOP-UPDATES-TEST-HOOK-01 | `src/signals/services/desktop-updates.service.ts` | `desktopUpdateManifestOverride`, `clearDesktopUpdateManifestCacheForTest`, `mockDesktopUpdateManifestForTest` | Test-only manifest override hooks are not reachable through `/api/desktop/updates/...`; strict BDD now uses MSW to serve the external manifest URL. |
 
 ## Drop Decisions
 
-| ID                           | File                                              | Dropped symbols                                                                                               | Reason                                                                                                                                                                                                               |
-| ---------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| DESKTOP-UPDATES-TEST-HOOK-01 | `src/signals/services/desktop-updates.service.ts` | `desktopUpdateManifestOverride`, `clearDesktopUpdateManifestCacheForTest`, `mockDesktopUpdateManifestForTest` | Test-only manifest override hooks were not reachable through `/api/desktop/updates/...`; strict BDD now serves the external manifest URL through MSW, and `knip` confirmed the hooks had no remaining legal callers. |
+None recorded currently.
 
 ## Migration Audit Table
 

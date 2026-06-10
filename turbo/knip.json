@@ -180,5 +180,6 @@
   ],
   "ignoreBinaries": ["oxlint", "vite"],
   "ignoreWorkspaces": [],
+  "tags": ["-lintignore"],
   "ignoreUnresolved": ["\\.generated$"]
 }

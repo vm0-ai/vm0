@@ -40,7 +40,11 @@ const desktopUpdateManifestSchema = z.object({
   releases: z.record(z.string(), desktopUpdateReleaseSchema),
 });
 
-type DesktopUpdateManifest = z.infer<typeof desktopUpdateManifestSchema>;
+/**
+ * @lintignore Test-only manifest hook retained as an unreachable-code candidate
+ * while strict BDD coverage uses the external manifest URL through MSW.
+ */
+export type DesktopUpdateManifest = z.infer<typeof desktopUpdateManifestSchema>;
 
 interface DesktopUpdateFeedRequest {
   readonly channel: DesktopUpdateChannel;
@@ -57,6 +61,32 @@ const desktopUpdateManifestCache =
   testOverride<DesktopUpdateManifestCacheEntry | null>(() => {
     return null;
   });
+
+const desktopUpdateManifestOverride = testOverride<
+  DesktopUpdateManifest | undefined
+>(() => {
+  return undefined;
+});
+
+/**
+ * @lintignore Test-only manifest hook retained as an unreachable-code candidate
+ * while strict BDD coverage uses the external manifest URL through MSW.
+ */
+export function clearDesktopUpdateManifestCacheForTest(): void {
+  desktopUpdateManifestCache.clear();
+  desktopUpdateManifestOverride.clear();
+}
+
+/**
+ * @lintignore Test-only manifest hook retained as an unreachable-code candidate
+ * while strict BDD coverage uses the external manifest URL through MSW.
+ */
+export function mockDesktopUpdateManifestForTest(
+  manifest: DesktopUpdateManifest,
+): void {
+  desktopUpdateManifestCache.clear();
+  desktopUpdateManifestOverride.set(manifest);
+}
 
 function compareDesktopVersions(left: string, right: string): number {
   const leftParts = left.split(/[+-]/, 1)[0]?.split(".").map(Number) ?? [];
@@ -158,6 +188,11 @@ function buildDesktopUpdateFeed(
 async function fetchDesktopUpdateManifest(
   signal: AbortSignal,
 ): Promise<DesktopUpdateManifest> {
+  const override = desktopUpdateManifestOverride.get();
+  if (override) {
+    return override;
+  }
+
   const response = await fetch(DESKTOP_UPDATE_MANIFEST_URL, {
     headers: { accept: "application/json" },
     signal,
