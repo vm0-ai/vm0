@@ -3,10 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { zeroComposesByIdContract } from "@vm0/api-contracts/contracts/zero-composes";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 
@@ -40,7 +37,7 @@ describe("DELETE /api/zero/composes/:id", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("deletes the caller's own compose (DB read-after-delete)", async () => {
+  it("deletes the caller's own compose and returns 404 on route read-after-delete", async () => {
     const fixture = await track(
       store.set(seedTeamCompose$, { composes: [{}] }, context.signal),
     );
@@ -62,12 +59,16 @@ describe("DELETE /api/zero/composes/:id", () => {
     );
     expect(response.body).toBeUndefined();
 
-    const writeDb = store.set(writeDb$);
-    const composeRows = await writeDb
-      .select()
-      .from(agentComposes)
-      .where(eq(agentComposes.id, composeId));
-    expect(composeRows).toHaveLength(0);
+    const deleted = await accept(
+      client.getById({
+        params: { id: composeId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+    expect(deleted.body).toStrictEqual({
+      error: { message: "Agent compose not found", code: "NOT_FOUND" },
+    });
   });
 
   it("returns 404 for an unknown id", async () => {
@@ -110,14 +111,15 @@ describe("DELETE /api/zero/composes/:id", () => {
       error: { message: "Agent not found", code: "NOT_FOUND" },
     });
 
-    // No-leak: victim row physically still exists.
-    const writeDb = store.set(writeDb$);
-    const [survivor] = await writeDb
-      .select()
-      .from(agentComposes)
-      .where(eq(agentComposes.id, victimComposeId));
-    expect(survivor).toBeDefined();
-    expect(survivor?.userId).toBe(victimFixture.userId);
+    mocks.clerk.session(victimFixture.userId, victimFixture.orgId);
+    const survivor = await accept(
+      client.getById({
+        params: { id: victimComposeId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(survivor.body.id).toBe(victimComposeId);
   });
 
   it("returns 409 when a pending run references the compose", async () => {
@@ -173,11 +175,14 @@ describe("DELETE /api/zero/composes/:id", () => {
     });
 
     // No-leak: compose + run still present after 409.
-    const composeRows = await writeDb
-      .select()
-      .from(agentComposes)
-      .where(eq(agentComposes.id, composeId));
-    expect(composeRows).toHaveLength(1);
+    const compose = await accept(
+      client.getById({
+        params: { id: composeId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(compose.body.id).toBe(composeId);
     const runRows = await writeDb
       .select()
       .from(agentRuns)
