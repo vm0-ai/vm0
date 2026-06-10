@@ -27,6 +27,7 @@ export enum FeatureSwitchKey {
   PosthogConnector = "posthogConnector",
   MailchimpConnector = "mailchimpConnector",
   ResendConnector = "resendConnector",
+  GoogleSearchConsoleConnector = "googleSearchConsoleConnector",
   DataExport = "dataExport",
   SpotifyConnector = "spotifyConnector",
   GitHubIntegration = "githubIntegration",

@@ -135,6 +135,7 @@ import { googleMapsFirewall } from "./google-maps.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
 import { googleMeetFirewall } from "./google-meet.generated";
+import { googleSearchConsoleFirewall } from "./google-search-console.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
 import { granolaFirewall } from "./granola.generated";
 import { greenhouseFirewall } from "./greenhouse.generated";
@@ -400,6 +401,7 @@ const CONNECTOR_FIREWALLS = {
   "google-docs": googleDocsFirewall,
   "google-drive": googleDriveFirewall,
   "google-meet": googleMeetFirewall,
+  "google-search-console": googleSearchConsoleFirewall,
   "google-sheets": googleSheetsFirewall,
   granola: granolaFirewall,
   greenhouse: greenhouseFirewall,
