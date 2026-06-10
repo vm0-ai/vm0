@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -155,6 +156,17 @@ async function findTrigger(triggerId: string) {
   return trigger;
 }
 
+async function findRunCallbackUrls(runId: string): Promise<string[]> {
+  const db = store.set(writeDb$);
+  const rows = await db
+    .select({ url: agentRunCallbacks.url })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, runId));
+  return rows.map((row) => {
+    return row.url;
+  });
+}
+
 async function findAutomationRuns(automationId: string) {
   const db = store.set(writeDb$);
   return await db
@@ -254,7 +266,7 @@ describe("executeDueTriggers$ (dormant automation time poller)", () => {
     expect(runs).toHaveLength(0);
   });
 
-  it("executes a due cron trigger, advances next run, and tags provenance", async () => {
+  it("executes a due cron trigger, clears next run for the callback, and tags provenance", async () => {
     const fixture = await seedAutomationTrigger({
       kind: "cron",
       cronExpression: "0 9 * * *",
@@ -268,10 +280,9 @@ describe("executeDueTriggers$ (dormant automation time poller)", () => {
     const trigger = await findTrigger(fixture.triggerId);
     expect(trigger?.enabled).toBeTruthy();
     expect(trigger?.lastRunAt).not.toBeNull();
-    // Cron advances to the next occurrence (next day 09:00 UTC).
-    expect(trigger?.nextRunAt).toStrictEqual(
-      new Date("2000-01-02T09:00:00.000Z"),
-    );
+    // The claim clears next_run_at; the trigger completion callback advances it
+    // when the run finishes (live schedule parity).
+    expect(trigger?.nextRunAt).toBeNull();
     expect(trigger?.lastRunId).not.toBeNull();
 
     const runs = await findAutomationRuns(fixture.automationId);
@@ -284,6 +295,24 @@ describe("executeDueTriggers$ (dormant automation time poller)", () => {
       "# Current Integration\nYou are currently running inside: Schedule",
     );
     expect(runs[0]?.appendSystemPrompt).toContain("Trigger type: cron");
+
+    // The run carries the trigger-keyed reschedule callback + the chat callback.
+    const runId = runs[0]?.id;
+    expect(runId).toBeDefined();
+    if (!runId) {
+      return;
+    }
+    const callbackUrls = await findRunCallbackUrls(runId);
+    expect(
+      callbackUrls.some((url) => {
+        return url.endsWith("/api/internal/callbacks/trigger/cron");
+      }),
+    ).toBeTruthy();
+    expect(
+      callbackUrls.some((url) => {
+        return url.endsWith("/api/internal/callbacks/chat");
+      }),
+    ).toBeTruthy();
   });
 
   it("executes and disables a due one-time trigger", async () => {
@@ -305,7 +334,7 @@ describe("executeDueTriggers$ (dormant automation time poller)", () => {
     expect(runs).toHaveLength(1);
   });
 
-  it("executes a due loop trigger and advances by its interval", async () => {
+  it("executes a due loop trigger, clearing next run for the callback", async () => {
     const fixture = await seedAutomationTrigger({
       kind: "loop",
       intervalSeconds: 300,
@@ -319,9 +348,22 @@ describe("executeDueTriggers$ (dormant automation time poller)", () => {
     const trigger = await findTrigger(fixture.triggerId);
     expect(trigger?.enabled).toBeTruthy();
     expect(trigger?.lastRunAt).not.toBeNull();
-    expect(trigger?.nextRunAt).toStrictEqual(new Date(DUE_TIME + 300_000));
+    // The claim clears next_run_at; the loop completion callback advances it by
+    // the interval from completion time (live schedule parity).
+    expect(trigger?.nextRunAt).toBeNull();
     const runs = await findAutomationRuns(fixture.automationId);
     expect(runs).toHaveLength(1);
+    const runId = runs[0]?.id;
+    expect(runId).toBeDefined();
+    if (!runId) {
+      return;
+    }
+    const callbackUrls = await findRunCallbackUrls(runId);
+    expect(
+      callbackUrls.some((url) => {
+        return url.endsWith("/api/internal/callbacks/trigger/loop");
+      }),
+    ).toBeTruthy();
   });
 
   it("does not create duplicate runs for concurrent invocations", async () => {
