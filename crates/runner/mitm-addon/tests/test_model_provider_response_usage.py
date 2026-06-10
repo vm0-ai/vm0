@@ -116,6 +116,10 @@ def _truncated_zstd_prefix(payload: bytes) -> bytes:
     return zstandard.ZstdCompressor().compress(payload)[:5]
 
 
+def _zstd_frame_before_garbage(payload: bytes) -> bytes:
+    return zstandard.ZstdCompressor().compress(payload) + b"garbage"
+
+
 JSON_COMPRESSION_FAILURE_CASES = (
     JsonCompressionFailureCase(
         id="chained-gzip",
@@ -182,6 +186,12 @@ JSON_COMPRESSION_FAILURE_CASES = (
         make_body=_truncated_zstd_prefix,
         content_encoding="zstd",
         expected_error="incomplete compressed body",
+    ),
+    JsonCompressionFailureCase(
+        id="zstd-frame-before-garbage",
+        make_body=_zstd_frame_before_garbage,
+        content_encoding="zstd",
+        expected_error="invalid compressed body",
     ),
 )
 
