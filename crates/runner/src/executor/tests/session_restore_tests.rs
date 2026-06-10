@@ -281,8 +281,14 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
     );
     assert!(!exec_calls[0].sudo);
     assert!(exec_calls[0].stdin_bytes.is_none());
-    assert!(exec_calls[0].cmd.contains("/home/user/.codex/sessions"));
+    assert!(exec_calls[0].cmd.contains("codex_home=/home/user/.codex"));
+    assert!(exec_calls[0].cmd.contains("root=\"$codex_home/sessions\""));
     assert!(exec_calls[0].cmd.contains("check_restore_dir_component"));
+    assert!(
+        exec_calls[0]
+            .cmd
+            .contains("check_restore_dir_component \"$codex_home\"")
+    );
     assert!(
         exec_calls[0]
             .cmd

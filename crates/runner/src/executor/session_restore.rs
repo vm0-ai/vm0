@@ -162,7 +162,8 @@ async fn cleanup_existing_codex_session_files(
     session_id: &str,
     session_path: &str,
 ) -> RunnerResult<()> {
-    let cleanup_cmd = r#"root=/home/user/.codex/sessions
+    let cleanup_cmd = r#"codex_home=/home/user/.codex
+root="$codex_home/sessions"
 restore_path="$VM0_CODEX_RESTORE_SESSION_PATH"
 restore_dir="${restore_path%/*}"
 case "$restore_dir" in
@@ -183,6 +184,7 @@ check_restore_dir_component() {
     exit 1
   fi
 }
+check_restore_dir_component "$codex_home"
 check_restore_dir_component "$root"
 root_prefix="$root/"
 relative_dir="${restore_dir#$root_prefix}"
