@@ -5,7 +5,6 @@ import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../external/time";
-import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -21,65 +20,9 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-function currentSecond(): number {
-  return Math.floor(now() / 1000);
-}
-
 describe("GET /api/zero/chat/search", () => {
   const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
     return store.set(deleteZeroChatThread$, fixture, context.signal);
-  });
-
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(chatSearchContract);
-    const response = await accept(
-      client.search({ query: { keyword: "hello" }, headers: {} }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const client = setupApp({ context })(chatSearchContract);
-    const response = await accept(
-      client.search({
-        query: { keyword: "hello" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 403 when token lacks chat-message:read capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const runId = `run_${randomUUID()}`;
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "sandbox",
-      userId,
-      orgId,
-      runId,
-      iat: seconds,
-      exp: seconds + 60,
-    });
-
-    const client = setupApp({ context })(chatSearchContract);
-    const response = await accept(
-      client.search({
-        query: { keyword: "hello" },
-        headers: { authorization: `Bearer ${token}` },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.code).toBe("FORBIDDEN");
-    expect(response.body.error.message).toContain("chat-message:read");
   });
 
   it("returns only the caller's own messages within the same org (peer-user isolation)", async () => {
@@ -182,25 +125,6 @@ describe("GET /api/zero/chat/search", () => {
     expect(response.body.results[0]?.matchedMessage.content).toBe(
       "inside-org antelope sighting",
     );
-  });
-
-  it("returns empty results when caller has no matching messages", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(chatSearchContract);
-    const response = await accept(
-      client.search({
-        query: { keyword: "nonexistent" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body.results).toStrictEqual([]);
-    expect(response.body.hasMore).toBeFalsy();
   });
 
   it("excludes messages with null content", async () => {

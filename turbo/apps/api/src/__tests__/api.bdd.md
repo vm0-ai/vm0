@@ -1373,3 +1373,16 @@ First USAGE-family reduce.
 - Reduced `zero-integrations-telegram-message.test.ts` (8 -> 7) and
   `zero-integrations-telegram-upload-complete.test.ts` (4 -> 3).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 63 — CHAT MESSAGE SEARCH REJECTIONS (CHAIN-CHAT-SEARCH-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `chatSearch` client (`/api/zero/chat/search`).
+- Added `zero-chat-search-rejections.bdd.test.ts`: the search rejects
+  unauthenticated and org-less callers (401), a sandbox token without
+  `chat-message:read` (403), and returns an empty result for a fresh org.
+- Matching results (peer/cross-org isolation, null-content exclusion, since/agent
+  filters, context windows, hasMore, LIKE escaping) need seeded chat messages
+  from a funded run (GAP-CHAT-MESSAGE-SEED) and stay in the kept legacy.
+- Reduced `zero-chat-search.test.ts` (12 -> 8), dropping the now-orphaned
+  `currentSecond` helper and `signSandboxJwtForTests` import.
+- Coverage verified (source-only): no regressions vs `main`.
