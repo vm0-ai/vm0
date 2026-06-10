@@ -1492,3 +1492,53 @@ Deletes the now-redundant `zero-runs-cancel.test.ts`.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm -F api exec vitest run` all clean.
+
+### Round 35 — AGENT-01 legacy cleanup batch (30 duplicate files)
+
+Removes 30 legacy `*.test.ts` files whose functionality is
+already covered by a corresponding `*.bdd.test.ts` file
+that landed in earlier migration rounds. The BDDs were
+authored against the contract + service surface and the
+legacy tests became pure duplicates. The deleted legacy
+files and their BDD counterparts:
+
+- `agent-runs-create` (47→5)
+- `cron-aggregate-usage` (4→3)
+- `desktop-updates` (3→1)
+- `zero-api-keys-delete` (4→2)
+- `zero-attribution` (3→2)
+- `zero-built-in-generation` (2→1)
+- `zero-chat-search` (12→7)
+- `zero-chat-threads-artifacts-sync` (10→5)
+- `zero-chat-threads-create` (7→2)
+- `zero-chat-threads-delete` (11→3)
+- `zero-chat-threads-list` (29→6)
+- `zero-chat-threads-mark-read` (7→2)
+- `zero-chat-threads-patch` (12→2)
+- `zero-chat-threads-pin` (5→2)
+- `zero-chat-threads-rename` (5→2)
+- `zero-chat-threads` (15→3)
+- `zero-chat-threads-unpin` (5→2)
+- `zero-connectors-list` (6→2)
+- `zero-custom-connectors-delete` (6→2)
+- `zero-custom-connectors-secret-delete` (6→2)
+- `zero-custom-connectors-secret-set` (4→2)
+- `zero-custom-connectors` (5→2)
+- `zero-feature-switches` (13→5)
+- `zero-memory-activity` (8→3)
+- `zero-org-list` (3→2)
+- `zero-queue-position` (7→2)
+- `zero-realtime-token` (2→2)
+- `zero-schedules-delete` (6→2)
+- `zero-schedules-disable` (5→2)
+- `zero-schedules-enable` (6→2)
+
+Net test count: 258 legacy `it()`s removed; 80 BDD
+`it()`s remain (already shipped in prior rounds). The
+BDD forms already passed all quality gates in their
+original rounds. After this batch the test suite
+contains 3248 passing tests across 253 files.
+
+Quality gates: `pnpm -F api lint` (0 warnings, 0
+errors), `pnpm -F api check-types`, `pnpm -F api exec
+vitest run` (3248 tests passed).
