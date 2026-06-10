@@ -73,7 +73,7 @@ describe("POST /api/zero/custom-connectors", () => {
     });
   });
 
-  it("creates a connector as admin and persists it (read-after-write)", async () => {
+  it("creates a connector as admin and reads it back through list", async () => {
     const { userId, orgId } = uniqueOrg("zcc-create");
     mocks.clerk.session(userId, orgId, "org:admin");
 

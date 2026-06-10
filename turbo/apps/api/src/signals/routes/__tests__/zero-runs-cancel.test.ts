@@ -125,7 +125,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("cancels a running run (DB read-after-write + Ably runner cancel)", async () => {
+  it("cancels a running run and publishes runner cancel signals", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
