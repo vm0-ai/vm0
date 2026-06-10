@@ -274,11 +274,20 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
     assert_eq!(exec_calls.len(), 1);
     assert_eq!(
         exec_calls[0].env_keys,
-        ["VM0_CODEX_RESTORE_SESSION_ID".to_string()]
+        [
+            "VM0_CODEX_RESTORE_SESSION_ID".to_string(),
+            "VM0_CODEX_RESTORE_SESSION_PATH".to_string()
+        ]
     );
     assert!(!exec_calls[0].sudo);
     assert!(exec_calls[0].stdin_bytes.is_none());
     assert!(exec_calls[0].cmd.contains("/home/user/.codex/sessions"));
+    assert!(exec_calls[0].cmd.contains("check_restore_dir_component"));
+    assert!(
+        exec_calls[0]
+            .cmd
+            .contains("codex restore directory is a symlink")
+    );
     assert!(
         exec_calls[0]
             .cmd

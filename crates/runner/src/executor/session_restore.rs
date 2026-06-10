@@ -141,7 +141,7 @@ pub(super) async fn restore_codex_session(
     let session_path =
         codex_restore_rollout_path(&session_id, &session.session_history, chrono::Utc::now());
 
-    cleanup_existing_codex_session_files(sandbox, context, &session_id).await?;
+    cleanup_existing_codex_session_files(sandbox, context, &session_id, &session_path).await?;
 
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
@@ -160,8 +160,46 @@ async fn cleanup_existing_codex_session_files(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session_id: &str,
+    session_path: &str,
 ) -> RunnerResult<()> {
     let cleanup_cmd = r#"root=/home/user/.codex/sessions
+restore_path="$VM0_CODEX_RESTORE_SESSION_PATH"
+restore_dir="${restore_path%/*}"
+case "$restore_dir" in
+  "$root"/*/*/*) ;;
+  *)
+    echo "invalid codex restore directory: $restore_dir" >&2
+    exit 1
+    ;;
+esac
+check_restore_dir_component() {
+  path="$1"
+  if [ -L "$path" ]; then
+    echo "codex restore directory is a symlink: $path" >&2
+    exit 1
+  fi
+  if [ -e "$path" ] && [ ! -d "$path" ]; then
+    echo "codex restore path component is not a directory: $path" >&2
+    exit 1
+  fi
+}
+check_restore_dir_component "$root"
+root_prefix="$root/"
+relative_dir="${restore_dir#$root_prefix}"
+current="$root"
+old_ifs="$IFS"
+IFS=/
+for component in $relative_dir; do
+  case "$component" in
+    ""|"."|"..")
+      echo "invalid codex restore path component: $component" >&2
+      exit 1
+      ;;
+  esac
+  current="$current/$component"
+  check_restore_dir_component "$current"
+done
+IFS="$old_ifs"
 if [ -d "$root" ]; then
   id="$VM0_CODEX_RESTORE_SESSION_ID"
   id_no_dashes="$(printf '%s' "$id" | tr -d '-')"
@@ -172,7 +210,10 @@ if [ -d "$root" ]; then
     -iname "*${id_no_dashes}*.jsonl.zst" \
   \) -delete
 fi"#;
-    let env = [("VM0_CODEX_RESTORE_SESSION_ID", session_id)];
+    let env = [
+        ("VM0_CODEX_RESTORE_SESSION_ID", session_id),
+        ("VM0_CODEX_RESTORE_SESSION_PATH", session_path),
+    ];
     let result = sandbox
         .exec(&ExecRequest {
             cmd: cleanup_cmd,
