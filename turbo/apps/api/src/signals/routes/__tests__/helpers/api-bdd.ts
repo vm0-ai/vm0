@@ -20,6 +20,7 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
+import { authContract } from "@vm0/api-contracts/contracts/auth";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
@@ -159,6 +160,8 @@ export function createBddApi(context: TestContext) {
     /** ts-rest client for `/api/zero/attribution/signup` (record first-touch
      * signup attribution into Clerk private metadata). */
     attribution: setupApp({ context })(zeroAttributionContract),
+    /** ts-rest client for `/api/auth/me` (resolve the caller's id + email). */
+    authMe: setupApp({ context })(authContract),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,
@@ -235,6 +238,62 @@ export function createBddApi(context: TestContext) {
         exp: seconds + 60,
       });
       return { authorization: `Bearer ${token}` };
+    },
+
+    /** Build an `Authorization` header for a sandbox-scoped token bound to a
+     * known `userId` (so a Clerk profile mock for that user can be matched). */
+    sandboxAuth(userId: string): { readonly authorization: string } {
+      const seconds = Math.floor(now() / 1000);
+      const token = signSandboxJwtForTests({
+        scope: "sandbox",
+        userId,
+        orgId: newOrgId(),
+        runId: `run_${randomUUID()}`,
+        iat: seconds,
+        exp: seconds + 60,
+      });
+      return { authorization: `Bearer ${token}` };
+    },
+
+    /** Build an `Authorization` header for a zero-scoped token bound to a known
+     * `userId` and carrying the given capabilities. */
+    zeroAuthFor(
+      userId: string,
+      capabilities: readonly ZeroCapability[],
+    ): { readonly authorization: string } {
+      const seconds = Math.floor(now() / 1000);
+      const token = signSandboxJwtForTests({
+        scope: "zero",
+        userId,
+        orgId: newOrgId(),
+        runId: `run_${randomUUID()}`,
+        capabilities: [...capabilities],
+        iat: seconds,
+        exp: seconds + 60,
+      });
+      return { authorization: `Bearer ${token}` };
+    },
+
+    /** Mock the Clerk profile lookup so a route that resolves a user's email
+     * (e.g. `/api/auth/me`) sees a primary email for `userId`. Clerk owns the
+     * profile, so it is an external precondition to mock. */
+    mockClerkUserEmail(
+      userId: string,
+      email: string,
+      name: { readonly firstName?: string; readonly lastName?: string } = {},
+    ): void {
+      const emailId = `email_${userId}`;
+      context.mocks.clerk.users.getUserList.mockResolvedValue({
+        data: [
+          {
+            id: userId,
+            firstName: name.firstName ?? null,
+            lastName: name.lastName ?? null,
+            emailAddresses: [{ id: emailId, emailAddress: email }],
+            primaryEmailAddressId: emailId,
+          },
+        ],
+      });
     },
 
     /** Stub S3 so the instructions-storage upload during agent creation

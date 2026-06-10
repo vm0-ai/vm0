@@ -688,3 +688,19 @@ calc. Services tests outside this list migrate to route-level BDD.
   locally because v8 instrumentation slows the unrelated
   `cron-summarize-memory` idempotency test past the default 5s; CI runs tests
   without coverage at full speed.)
+
+### Round 24 — AUTH ME (CHAIN-AUTH-ME)
+
+- Extended `createBddApi` with the `authMe` client, `sandboxAuth(userId)` /
+  `zeroAuthFor(userId, capabilities)` token builders (bound to a known userId so
+  a Clerk profile mock can match), and `mockClerkUserEmail`.
+- Added `auth-me.bdd.test.ts`: resolve the email through a Clerk session and
+  re-resolve within the cache window (the second request is served from the
+  user cache with no second Clerk fetch); age the cache past its 15-minute TTL
+  with `mockNow` and confirm a refreshed Clerk email is returned and re-fetched;
+  accept sandbox and zero (file:write / no-capabilities) scoped tokens; and a
+  missing-session 401. The cache freshness is driven entirely by real requests
+  across `mockNow` rather than by seeding `user_cache`.
+- Deleted `auth-me.test.ts` whole.
+- Coverage verified (source-only): `auth-me.ts` (28/9/5) unchanged vs `main`.
+  No regressions.
