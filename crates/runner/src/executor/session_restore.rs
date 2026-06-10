@@ -165,7 +165,7 @@ async fn cleanup_existing_codex_session_files(
 if [ -d "$root" ]; then
   id="$VM0_CODEX_RESTORE_SESSION_ID"
   id_no_dashes="$(printf '%s' "$id" | tr -d '-')"
-  find "$root" -type f \( \
+  find "$root" \( -type f -o -type l \) \( \
     -iname "*${id}*.jsonl" -o \
     -iname "*${id}*.jsonl.zst" -o \
     -iname "*${id_no_dashes}*.jsonl" -o \
