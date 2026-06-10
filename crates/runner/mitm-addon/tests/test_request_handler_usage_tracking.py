@@ -74,7 +74,6 @@ async def _wait_for_forward_start(
             return
 
         if request_task not in done and not request_task.done():
-            request_pending_before_cancel = True
             request_task.cancel()
             await asyncio.wait((request_task,), timeout=timeout)
 
@@ -85,7 +84,7 @@ async def _wait_for_forward_start(
                 "forward_request did not start before timeout "
                 f"(timeout={timeout}, probe.calls={probe.calls}, "
                 "request_task_pending_before_cancel="
-                f"{request_pending_before_cancel}, "
+                "True, "
                 f"request_task_done={request_task.done()}, "
                 f"request_task_cancelled={request_task.cancelled()})"
             )
@@ -114,6 +113,19 @@ async def _release_forward_probe(
         await asyncio.wait((request_task,), timeout=timeout)
     if request_task.done():
         await asyncio.gather(request_task, return_exceptions=True)
+        return
+
+    request_task.cancel()
+    await asyncio.wait((request_task,), timeout=timeout)
+    if request_task.done():
+        await asyncio.gather(request_task, return_exceptions=True)
+
+    raise AssertionError(
+        "forward_request did not finish after release "
+        f"(timeout={timeout}, probe.calls={probe.calls}, "
+        f"request_task_done={request_task.done()}, "
+        f"request_task_cancelled={request_task.cancelled()})"
+    )
 
 
 async def _await_request_task(request_task: asyncio.Task[None]) -> None:
@@ -135,6 +147,23 @@ async def test_wait_for_forward_start_times_out_and_cancels_request_task():
         await _wait_for_forward_start(probe, request_task, timeout=0.01)
 
     assert probe.calls == 0
+    assert request_task.done()
+    assert request_task.cancelled()
+
+
+async def test_release_forward_probe_times_out_and_cancels_request_task():
+    probe = _ForwardProbe(response=(200, b"{}", {}))
+    never_finished = asyncio.Event()
+
+    async def wait_forever() -> None:
+        await never_finished.wait()
+
+    request_task = asyncio.create_task(wait_forever())
+
+    with pytest.raises(AssertionError, match="forward_request did not finish after release"):
+        await _release_forward_probe(probe, request_task, timeout=0.01)
+
+    assert probe.release.is_set()
     assert request_task.done()
     assert request_task.cancelled()
 
