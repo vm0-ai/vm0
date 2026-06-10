@@ -527,3 +527,16 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Coverage verified (source-only): `zero-composes.ts` (45/13) unchanged. This
   completes the COMPOSE family in BDD except the two documented gaps
   (409-pending-run delete, fresh-row INSERT).
+
+### Round 15 — CUSTOM CONNECTORS LIST (CHAIN-CUSTOM-CONNECTOR-LIST)
+
+- Extended `createBddApi` with the `customConnectorSecret`
+  (`zeroCustomConnectorSecretContract`) client (`customConnectors` already
+  wrapped list/create).
+- Added `zero-custom-connectors-list.bdd.test.ts`: empty list → create connector
+  → list (hasSecret false) → set a per-user secret via the API → list
+  (hasSecret true), plus unauthenticated / no-org 401.
+- Deleted `zero-custom-connectors.test.ts` whole; both hasSecret branches are now
+  reached through create + secret-set, no DB seeding.
+- Coverage verified (source-only): no connector source file changed vs baseline
+  (NONE regressions).
