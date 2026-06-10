@@ -1,21 +1,22 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  chatThreadByIdContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import {
   deployScheduleResponseSchema,
   scheduleListResponseSchema,
 } from "@vm0/api-contracts/contracts/zero-schedules";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { writeDb$ } from "../../external/db";
 import {
   type SchedulesFixture,
   type SchedulesScenarioValues,
@@ -76,6 +77,18 @@ async function deploySchedule(
   });
 }
 
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
+function chatThreadsClient() {
+  return setupApp({ context })(chatThreadsContract);
+}
+
+function chatThreadByIdClient() {
+  return setupApp({ context })(chatThreadByIdContract);
+}
+
 function expectErrorCode(response: TestApiResponse, code: string): void {
   const body = apiErrorSchema.parse(response.body);
   expect(body.error.code).toBe(code);
@@ -99,25 +112,40 @@ async function seedFixture(
   return fixture;
 }
 
-async function seedThread(
+async function createThreadThroughApi(
   fixture: SchedulesFixture,
   userId: string = fixture.userId,
 ): Promise<string> {
-  const db = store.set(writeDb$);
-  const threadId = randomUUID();
-  await db.insert(chatThreads).values({
-    id: threadId,
-    userId,
-    agentComposeId: fixture.composeId,
-    title: "linked thread",
-  });
-  return threadId;
+  mocks.clerk.session(userId, fixture.orgId);
+  const response = await accept(
+    chatThreadsClient().create({
+      headers: authHeaders(),
+      body: {
+        agentId: fixture.composeId,
+        title: "linked thread",
+      },
+    }),
+    [201],
+  );
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  return response.body.id;
+}
+
+async function getThread(threadId: string) {
+  const response = await accept(
+    chatThreadByIdClient().get({
+      headers: authHeaders(),
+      params: { id: threadId },
+    }),
+    [200],
+  );
+  return response.body;
 }
 
 describe("POST /api/zero/schedules — chat-mode linkage", () => {
   it("links a supplied chat thread to a new schedule", async () => {
     const fixture = await seedFixture();
-    const threadId = await seedThread(fixture);
+    const threadId = await createThreadThroughApi(fixture);
 
     const response = await deploySchedule({
       name: "chat-sched",
@@ -148,29 +176,18 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
     const body = deployScheduleResponseSchema.parse(response.body);
     expect(body.schedule.chatThreadId).not.toBeNull();
 
-    const db = store.set(writeDb$);
-    const [thread] = await db
-      .select({
-        id: chatThreads.id,
-        userId: chatThreads.userId,
-        agentComposeId: chatThreads.agentComposeId,
-        title: chatThreads.title,
-      })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, body.schedule.chatThreadId ?? ""))
-      .limit(1);
-    expect(thread).toStrictEqual({
+    const thread = await getThread(body.schedule.chatThreadId);
+    expect(thread).toMatchObject({
       id: body.schedule.chatThreadId,
-      userId: fixture.userId,
-      agentComposeId: fixture.composeId,
+      agentId: fixture.composeId,
       title: "d",
     });
   });
 
   it("ignores chatThreadId on update and keeps the original chat thread", async () => {
     const fixture = await seedFixture();
-    const threadId = await seedThread(fixture);
-    const otherThreadId = await seedThread(fixture);
+    const threadId = await createThreadThroughApi(fixture);
+    const otherThreadId = await createThreadThroughApi(fixture);
 
     const created = await deploySchedule({
       name: "immutable-sched",
@@ -198,7 +215,10 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
 
   it("rejects a chat thread owned by a different user", async () => {
     const fixture = await seedFixture();
-    const otherThreadId = await seedThread(fixture, `user_${randomUUID()}`);
+    const otherThreadId = await createThreadThroughApi(
+      fixture,
+      `user_${randomUUID()}`,
+    );
 
     const response = await deploySchedule({
       name: "cross-user-sched",
@@ -217,7 +237,7 @@ describe("POST /api/zero/schedules — chat-mode linkage", () => {
 describe("chat-mode schedule realtime signals", () => {
   it("publishes chatThreadSchedulesChanged when a chat-mode schedule is created", async () => {
     const fixture = await seedFixture();
-    const threadId = await seedThread(fixture);
+    const threadId = await createThreadThroughApi(fixture);
 
     const response = await deploySchedule({
       name: "chat-sched",
@@ -237,7 +257,7 @@ describe("chat-mode schedule realtime signals", () => {
 
   it("publishes chatThreadSchedulesChanged when a chat-mode schedule is deleted", async () => {
     const fixture = await seedFixture();
-    const threadId = await seedThread(fixture);
+    const threadId = await createThreadThroughApi(fixture);
 
     await deploySchedule({
       name: "chat-sched",
