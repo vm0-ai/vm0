@@ -172,6 +172,40 @@ async fn send_event_canonicalizes_codex_thread_id_before_writing_marker() {
 }
 
 #[tokio::test]
+async fn send_event_repairs_missing_codex_history_marker_for_existing_session() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    guest_agent::paths::write_private(guest_agent::paths::session_id_file(), thread_id)
+        .expect("seed existing session id");
+    assert!(
+        !Path::new(guest_agent::paths::session_history_path_file()).exists(),
+        "history marker should start missing"
+    );
+
+    let masker = SecretMasker::from_raw("");
+    let event = json!({
+        "type": "thread.started",
+        "thread_id": thread_id
+    });
+
+    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    assert!(result.is_ok());
+
+    let stored_id =
+        std::fs::read_to_string(guest_agent::paths::session_id_file()).expect("session id kept");
+    assert_eq!(stored_id, thread_id);
+    let marker = std::fs::read_to_string(guest_agent::paths::session_history_path_file())
+        .expect("history marker repaired");
+    assert!(
+        marker.ends_with(&format!(":{thread_id}")),
+        "repaired marker should point at the existing thread id, got: {marker}"
+    );
+}
+
+#[tokio::test]
 async fn send_event_codex_ignores_non_thread_started_event() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();

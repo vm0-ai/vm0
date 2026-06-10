@@ -334,9 +334,25 @@ pub(crate) fn capture_session_metadata(event: &Value) {
         return;
     };
 
-    // Idempotency: only the first id-bearing event of the run wins.
-    if std::path::Path::new(paths::session_id_file()).exists() {
-        return;
+    // Idempotency: only the first id-bearing event of the run wins, but allow
+    // a retry of the same session to repair a missing history marker after a
+    // partial metadata write.
+    match std::fs::read_to_string(paths::session_id_file()) {
+        Ok(existing_session_id) => {
+            if existing_session_id.trim() == session_id {
+                ensure_session_history_marker(&history_path_payload);
+            }
+            return;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            log_error!(
+                LOG_TAG,
+                "Failed to read existing session ID from {}: {e}",
+                paths::session_id_file()
+            );
+            return;
+        }
     }
 
     log_info!(LOG_TAG, "Captured session ID: {session_id}");
@@ -352,7 +368,18 @@ pub(crate) fn capture_session_metadata(event: &Value) {
             paths::session_id_file()
         ),
     }
-    match paths::write_private(paths::session_history_path_file(), &history_path_payload) {
+    write_session_history_marker(&history_path_payload);
+}
+
+fn ensure_session_history_marker(history_path_payload: &str) {
+    if std::path::Path::new(paths::session_history_path_file()).exists() {
+        return;
+    }
+    write_session_history_marker(history_path_payload);
+}
+
+fn write_session_history_marker(history_path_payload: &str) {
+    match paths::write_private(paths::session_history_path_file(), history_path_payload) {
         Ok(()) => log_info!(
             LOG_TAG,
             "Session history marker written to {}: {history_path_payload}",
