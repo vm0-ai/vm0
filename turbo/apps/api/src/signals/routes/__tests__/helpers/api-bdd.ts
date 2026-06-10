@@ -54,6 +54,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
 import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-slack-channels";
+import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
@@ -246,6 +247,11 @@ export function createBddApi(context: TestContext) {
      * channels). Listing real channels needs a seeded Slack installation plus an
      * Axiom/Slack API mock; the auth and no-installation cases are reachable. */
     slackChannels: setupApp({ context })(zeroSlackChannelsContract),
+    /** ts-rest client for `/api/zero/integrations/slack/connect` (get status +
+     * connect). A successful connect needs a seeded Slack installation
+     * (GAP-CONNECTOR-CONNECT); the auth, disconnected-status and
+     * unknown-workspace cases are reachable directly. */
+    slackConnect: setupApp({ context })(zeroSlackConnectContract),
     onboardingStatus: setupApp({ context })(onboardingStatusContract),
     /** ts-rest client for `/api/zero/onboarding/setup` (admin one-shot default
      * agent creation). Creating the default agent is free, so the happy path is

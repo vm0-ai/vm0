@@ -1302,3 +1302,20 @@ First USAGE-family reduce.
   legacy.
 - Reduced `zero-slack-channels.test.ts` (6 -> 3).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 59 — SLACK CONNECT STATUS + CONNECT REJECTIONS (CHAIN-SLACK-CONNECT-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `slackConnect` client
+  (`/api/zero/integrations/slack/connect`).
+- Added `zero-slack-connect-rejections.bdd.test.ts`: status rejects
+  unauthenticated and org-less callers (401) and reports
+  `{ isConnected: false, isAdmin: true }` for a fresh admin org; connect rejects
+  unauthenticated callers (401) and 404s a workspace with no installation
+  ("Workspace not found. Please install the Slack app first.").
+- A successful connect (and the connected-status, admin/member binding,
+  idempotency and welcome-message variants) needs a seeded Slack installation
+  (GAP-CONNECTOR-CONNECT) plus Slack API mocks; the missing-field / malformed-JSON
+  400s need a raw request the ts-rest client can't send. Those stay in the kept
+  legacy.
+- Reduced `zero-slack-connect.test.ts` (21 -> 16).
+- Coverage verified (source-only): no regressions vs `main`.
