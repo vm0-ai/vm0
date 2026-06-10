@@ -12,6 +12,17 @@ import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
+// BDD migration of the legacy `cron-drain-email-outbox.test.ts`.
+// The 5 legacy `it()`s collapse into 2 BDD `it()`s: (1) auth
+// chain (401 wrong secret → 401 no header), (2) success
+// chain (200 accepts the valid secret → 200 drains pending
+// outbox items through Resend + DB row written → 200 cleans
+// up expired failed items but preserves sent items).
+//
+// Service-Level Exception: `emailOutbox` rows are inserted
+// directly via `writeDb$` because no public route creates
+// them.
+
 const context = testContext();
 const store = createStore();
 const resendMocks = context.mocks.resend;
@@ -93,7 +104,7 @@ async function findOutboxItem(id: string): Promise<{
   return row ?? null;
 }
 
-describe("GET /api/cron/drain-email-outbox", () => {
+describe("BDD GET /api/cron/drain-email-outbox — auth chain", () => {
   const track = createFixtureTracker<string>(cleanupOutboxItem);
 
   beforeEach(() => {
@@ -114,45 +125,69 @@ describe("GET /api/cron/drain-email-outbox", () => {
     clearMockNow();
   });
 
-  it("rejects requests with an invalid cron secret", async () => {
-    const response = await accept(
+  it("gwt-wt-wt: 401 wrong secret → 401 no auth header", async () => {
+    // When + Then: 401 — invalid cron secret.
+    const wrongSecret = await accept(
       apiClient().drain({ headers: cronHeaders("wrong-secret") }),
       [401],
     );
+    expect(wrongSecret.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
 
-    expect(response.body).toStrictEqual({
+    // When + Then: 401 — no auth header.
+    const noHeader = await accept(
+      apiClient().drain({ headers: {} }),
+      [401],
+    );
+    expect(noHeader.body).toStrictEqual({
       error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
     });
   });
+});
 
-  it("rejects requests with no authorization header", async () => {
-    const response = await accept(apiClient().drain({ headers: {} }), [401]);
+describe("BDD GET /api/cron/drain-email-outbox — 200 success chain", () => {
+  const track = createFixtureTracker<string>(cleanupOutboxItem);
 
-    expect(response.body).toStrictEqual({
-      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+  beforeEach(() => {
+    mockEnv("CRON_SECRET", "test-cron-secret");
+    mockEnv("RESEND_API_KEY", "test-resend-key");
+    mockNow(FIXED_NOW_MS);
+    resendMocks.send.mockReset();
+    resendMocks.get.mockReset();
+    resendMocks.send.mockResolvedValue({
+      data: { id: `resend-${randomUUID()}` },
+    });
+    resendMocks.get.mockResolvedValue({
+      data: { message_id: "<sent@example.com>" },
     });
   });
 
-  it("accepts requests with the valid cron secret", async () => {
-    const response = await accept(
+  afterEach(() => {
+    clearMockNow();
+  });
+
+  it("gwt-wt-wt: 200 accepts valid secret → 200 drains pending items through Resend + DB row written → 200 cleans up expired failed items but preserves sent items", async () => {
+    // When + Then: 200 — accepts the valid secret and
+    // returns the drain + clean summary.
+    const accepted = await accept(
       apiClient().drain({ headers: cronHeaders() }),
       [200],
     );
+    expect(accepted.body.success).toBeTruthy();
+    expect(typeof accepted.body.drained).toBe("number");
+    expect(typeof accepted.body.cleaned).toBe("number");
 
-    expect(response.body.success).toBeTruthy();
-    expect(typeof response.body.drained).toBe("number");
-    expect(typeof response.body.cleaned).toBe("number");
-  });
-
-  it("drains pending outbox items through Resend", async () => {
+    // Given: a pending outbox item.
     const itemId = await track(insertOutboxItem());
 
-    const response = await accept(
+    // When + Then: 200 — drains pending items through
+    // Resend + the row is updated to `sent`.
+    const drained = await accept(
       apiClient().drain({ headers: cronHeaders() }),
       [200],
     );
-
-    expect(response.body.drained).toBeGreaterThanOrEqual(1);
+    expect(drained.body.drained).toBeGreaterThanOrEqual(1);
     expect(resendMocks.send).toHaveBeenCalledWith(
       expect.objectContaining({
         from: "Zero <vm0@mail.example.com>",
@@ -165,9 +200,8 @@ describe("GET /api/cron/drain-email-outbox", () => {
       attempts: 1,
       resendId: expect.stringMatching(/^resend-/),
     });
-  });
 
-  it("cleans up expired failed items but preserves sent items", async () => {
+    // Given: an expired failed item + an old sent item.
     const expiredId = await track(
       insertOutboxItem({
         status: "failed",
@@ -182,12 +216,13 @@ describe("GET /api/cron/drain-email-outbox", () => {
       }),
     );
 
-    const response = await accept(
+    // When + Then: 200 — the failed expired item is cleaned
+    // up; the sent item is preserved.
+    const cleaned = await accept(
       apiClient().drain({ headers: cronHeaders() }),
       [200],
     );
-
-    expect(response.body.cleaned).toBeGreaterThanOrEqual(1);
+    expect(cleaned.body.cleaned).toBeGreaterThanOrEqual(1);
     await expect(findOutboxItem(expiredId)).resolves.toBeNull();
     await expect(findOutboxItem(sentId)).resolves.toMatchObject({
       status: "sent",

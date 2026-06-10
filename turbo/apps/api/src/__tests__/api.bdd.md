@@ -2007,3 +2007,56 @@ covered route files.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api
 check-types`, `pnpm -F api exec vitest run` all clean.
+
+### Round 41 — Mixed small-batch BDD (5 legacy → 8 BDD)
+
+Migrates 5 small legacy route tests into 8 BDD `it()`s:
+
+- `health.test.ts` (2→1): 200/401 chain (200 lightweight
+  health check → 401 authed health check without auth
+  header).
+- `legacy-file.test.ts` (6→1): 302/204 happy-path chain
+  (302 redirects to public CDN for migrated object → 302
+  maps prefixless user IDs to Clerk IDs → 302 keeps
+  non-Clerk URL segments unchanged → 302 falls back to
+  presigned URL when artifact object is absent → 302 adds
+  CORS headers for allowed origins → 204 handles CORS
+  preflight for allowed origins). The `s3.send` and
+  `s3.getSignedUrl` mocks are `mockClear`-ed in
+  `beforeEach` so the chain tracks the call index
+  correctly.
+- `cron-telegram-cleanup.test.ts` (5→2): auth chain (401
+  wrong secret → 401 no auth header), 200 success chain
+  (200 preserves recent messages → 200 deletes messages
+  older than 30 days → 200 does not delete messages within
+  the retention window).
+- `cron-drain-email-outbox.test.ts` (5→2): auth chain
+  (401 wrong secret → 401 no auth header), 200 success
+  chain (200 accepts valid secret → 200 drains pending
+  items through Resend + DB row written → 200 cleans up
+  expired failed items but preserves sent items).
+- `internal-event-consumers-telegram-typing.test.ts`
+  (3→2): 401 auth chain (401 invalid signature), 200
+  success chain (200 refreshes typing for pending Telegram
+  callbacks with upstream MSW capture → 200 does nothing
+  when the run has no Telegram callbacks).
+
+Service-Level Exceptions noted:
+
+- `internal-event-consumers-telegram-typing.bdd.test.ts`
+  uses a `createHarness()` factory inside each describe so
+  the mutable `fixtures` array satisfies the
+  `api/no-package-variable` lint rule (mutable
+  package-scope arrays are forbidden; the factory closes
+  over the array inside the describe block).
+- This round deletes 5 legacy files (`health.test.ts`,
+  `legacy-file.test.ts`, `cron-telegram-cleanup.test.ts`,
+  `cron-drain-email-outbox.test.ts`,
+  `internal-event-consumers-telegram-typing.test.ts`).
+
+Net test count: 21 legacy `it()`s → 8 BDD `it()`s (62%
+reduction). No per-file coverage regression for the
+covered route files.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api
+check-types`, `pnpm -F api exec vitest run` all clean.

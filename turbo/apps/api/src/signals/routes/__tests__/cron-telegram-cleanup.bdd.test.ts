@@ -19,6 +19,17 @@ import {
 } from "./helpers/zero-telegram";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
+// BDD migration of the legacy `cron-telegram-cleanup.test.ts`.
+// The 5 legacy `it()`s collapse into 2 BDD `it()`s: (1) auth
+// chain (401 wrong secret → 401 no header), (2) success
+// chain (200 happy path with recent messages preserved → 200
+// deletes messages older than 30 days → 200 does not delete
+// messages within the retention window).
+//
+// Service-Level Exception: `telegramMessages` rows are
+// inserted directly via `writeDb$` because no public route
+// creates them.
+
 const context = testContext();
 const store = createStore();
 const FIXED_NOW_MS = Date.UTC(2026, 4, 14, 12, 0, 0);
@@ -90,7 +101,7 @@ async function countMessages(installationId: string): Promise<number> {
   return row?.value ?? 0;
 }
 
-describe("GET /api/cron/telegram-cleanup", () => {
+describe("BDD GET /api/cron/telegram-cleanup — auth chain", () => {
   const track = createFixtureTracker<TelegramFixture>(cleanupFixture);
 
   beforeEach(() => {
@@ -102,86 +113,102 @@ describe("GET /api/cron/telegram-cleanup", () => {
     clearMockNow();
   });
 
-  it("rejects requests with an invalid cron secret", async () => {
-    const response = await accept(
+  it("gwt-wt-wt: 401 wrong secret → 401 no auth header", async () => {
+    // When + Then: 401 — invalid cron secret.
+    const wrongSecret = await accept(
       apiClient().cleanup({ headers: cronHeaders("wrong-secret") }),
       [401],
     );
+    expect(wrongSecret.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
 
-    expect(response.body).toStrictEqual({
+    // When + Then: 401 — no auth header.
+    const noHeader = await accept(
+      apiClient().cleanup({ headers: {} }),
+      [401],
+    );
+    expect(noHeader.body).toStrictEqual({
       error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
     });
   });
+});
 
-  it("rejects requests without cron authorization", async () => {
-    const response = await accept(apiClient().cleanup({ headers: {} }), [401]);
+describe("BDD GET /api/cron/telegram-cleanup — 200 success chain", () => {
+  const track = createFixtureTracker<TelegramFixture>(cleanupFixture);
 
-    expect(response.body).toStrictEqual({
-      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-    });
+  beforeEach(() => {
+    mockEnv("CRON_SECRET", "test-cron-secret");
+    mockNow(FIXED_NOW_MS);
   });
 
-  it("preserves recent messages and returns a deleted count", async () => {
-    const fixture = await track(seedInstallation());
-    const installationId = fixture.telegramBotIds[0] ?? "";
+  afterEach(() => {
+    clearMockNow();
+  });
+
+  it("gwt-wt-wt: 200 preserves recent messages → 200 deletes messages older than 30 days → 200 does not delete messages within the retention window", async () => {
+    // Given: a fresh installation with 2 recent messages.
+    const recentFixture = await track(seedInstallation());
+    const recentId = recentFixture.telegramBotIds[0] ?? "";
     await insertMessages({
-      installationId,
+      installationId: recentId,
       messages: 2,
       createdAt: nowDate(),
     });
 
-    const response = await accept(
+    // When + Then: 200 — recent messages are preserved.
+    const recentResponse = await accept(
       apiClient().cleanup({ headers: cronHeaders() }),
       [200],
     );
+    expect(typeof recentResponse.body.deleted).toBe("number");
+    await expect(countMessages(recentId)).resolves.toBe(2);
 
-    expect(typeof response.body.deleted).toBe("number");
-    await expect(countMessages(installationId)).resolves.toBe(2);
-  });
-
-  it("deletes messages older than 30 days", async () => {
-    const fixture = await track(seedInstallation());
-    const installationId = fixture.telegramBotIds[0] ?? "";
+    // Given: an installation with 3 old (>30d) and 2 recent
+    // messages.
+    const oldFixture = await track(seedInstallation());
+    const oldId = oldFixture.telegramBotIds[0] ?? "";
     const oldDate = nowDate();
     oldDate.setDate(oldDate.getDate() - 31);
     const recentDate = nowDate();
 
-    await insertMessages({ installationId, messages: 3, createdAt: oldDate });
+    await insertMessages({ installationId: oldId, messages: 3, createdAt: oldDate });
     await insertMessages({
-      installationId,
+      installationId: oldId,
       messages: 2,
       createdAt: recentDate,
     });
 
-    await expect(countMessages(installationId)).resolves.toBe(5);
+    await expect(countMessages(oldId)).resolves.toBe(5);
 
-    const response = await accept(
+    // When + Then: 200 — old messages are deleted; recent
+    // ones remain.
+    const oldResponse = await accept(
       apiClient().cleanup({ headers: cronHeaders() }),
       [200],
     );
+    expect(oldResponse.body.deleted).toBeGreaterThanOrEqual(3);
+    await expect(countMessages(oldId)).resolves.toBe(2);
 
-    expect(response.body.deleted).toBeGreaterThanOrEqual(3);
-    await expect(countMessages(installationId)).resolves.toBe(2);
-  });
-
-  it("does not delete messages within the retention window", async () => {
-    const fixture = await track(seedInstallation());
-    const installationId = fixture.telegramBotIds[0] ?? "";
-    const recentDate = nowDate();
-    recentDate.setDate(recentDate.getDate() - 29);
-
+    // Given: an installation with 5 messages within the
+    // retention window (29 days old).
+    const windowFixture = await track(seedInstallation());
+    const windowId = windowFixture.telegramBotIds[0] ?? "";
+    const windowDate = nowDate();
+    windowDate.setDate(windowDate.getDate() - 29);
     await insertMessages({
-      installationId,
+      installationId: windowId,
       messages: 5,
-      createdAt: recentDate,
+      createdAt: windowDate,
     });
 
-    const response = await accept(
+    // When + Then: 200 — nothing within the retention window
+    // is deleted.
+    const windowResponse = await accept(
       apiClient().cleanup({ headers: cronHeaders() }),
       [200],
     );
-
-    expect(typeof response.body.deleted).toBe("number");
-    await expect(countMessages(installationId)).resolves.toBe(5);
+    expect(typeof windowResponse.body.deleted).toBe("number");
+    await expect(countMessages(windowId)).resolves.toBe(5);
   });
 });
