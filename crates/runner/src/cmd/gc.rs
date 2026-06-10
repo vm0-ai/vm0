@@ -1959,8 +1959,9 @@ async fn remove_storage_lock_after_eviction(
         return;
     };
 
-    match std::fs::metadata(lock_path) {
-        Ok(path_meta) if path_meta.ino() == lock_meta.ino() => {}
+    match std::fs::symlink_metadata(lock_path) {
+        Ok(path_meta)
+            if path_meta.dev() == lock_meta.dev() && path_meta.ino() == lock_meta.ino() => {}
         Ok(_) => return,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(_) => return,
@@ -4878,6 +4879,36 @@ mod tests {
         assert!(
             lock_path.exists(),
             "cleanup must not remove a lock path recreated after this lock was acquired"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_storage_cache_lock_cleanup_keeps_symlink_lock_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let lock_path = home.storage_lock("foo", "v1");
+        let alias = home.locks_dir().join("storage-alias.lock");
+        let held_lock = match probe_lock(&lock_path) {
+            LockProbe::Free(lock) => lock,
+            LockProbe::Held => panic!("new test lock must not be held"),
+            LockProbe::Error(e) => panic!("new test lock must be probeable: {e}"),
+        };
+
+        std::fs::hard_link(&lock_path, &alias).unwrap();
+        std::fs::remove_file(&lock_path).unwrap();
+        std::os::unix::fs::symlink(&alias, &lock_path).unwrap();
+
+        remove_storage_lock_after_eviction(&lock_path, &held_lock, "foo", "v1").await;
+
+        assert!(
+            std::fs::symlink_metadata(&lock_path)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "cleanup must not remove a lock path replaced by a symlink"
         );
     }
 
