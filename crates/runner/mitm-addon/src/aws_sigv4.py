@@ -37,6 +37,7 @@ _ACCESS_KEY_ID_RE = re.compile(r"^[A-Za-z0-9]+$")
 _SIGNED_HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
 _ASCII_CONTROL_MAX = 0x1F
 _ASCII_DELETE = 0x7F
+_DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
 class AwsSigV4SigningError(Exception):
@@ -613,6 +614,15 @@ def _upsert_header(
 
 def _host_header_value(url: str) -> str:
     parts = urllib.parse.urlsplit(url)
-    if not parts.netloc:
+    if not parts.netloc or not parts.hostname:
         raise AwsSigV4SigningError("AWS request URL must include a host")
-    return parts.netloc.rsplit("@", maxsplit=1)[-1]
+    host = parts.hostname
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    try:
+        port = parts.port
+    except ValueError as e:
+        raise AwsSigV4SigningError("AWS request URL has an invalid port") from e
+    if port is not None and port != _DEFAULT_PORTS.get(parts.scheme.lower()):
+        host = f"{host}:{port}"
+    return host

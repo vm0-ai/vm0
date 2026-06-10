@@ -171,7 +171,7 @@ class TestAuthBaseUrlRewriteForwarding:
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
-            resolved_base="https://sts.amazonaws.com/",
+            resolved_base="https://STS.AMAZONAWS.COM:443/",
             method="POST",
             request_body=b"Action=GetCallerIdentity&Version=2011-06-15",
             request_headers=headers(
@@ -206,10 +206,13 @@ class TestAuthBaseUrlRewriteForwarding:
         forwarded_url = mock_forward.call_args[0][0]
         req_headers = mock_forward.call_args[0][2]
         authorization = dict(req_headers)["authorization"]
-        assert forwarded_url == "https://sts.amazonaws.com/"
+        assert forwarded_url == "https://sts.amazonaws.com:443/"
         assert ("host", "sts.amazonaws.com") in req_headers
         assert "Credential=AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request" in authorization
-        assert "Signature=placeholder" not in authorization
+        assert (
+            "Signature=d58b7e131d8f54e75a6ee98fd426242a7bab02e04a9e7eaec5dfad94425ab4ae"
+            in authorization
+        )
         assert ("x-amz-security-token", "real-session-token") in req_headers
         assert flow.request.headers["Authorization"] == placeholder_authorization
 
