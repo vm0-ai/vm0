@@ -7,12 +7,14 @@ import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { parseBuffer } from "music-metadata";
 
 import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { putS3Object } from "../external/s3";
+import { settle } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 
@@ -39,7 +41,6 @@ const USAGE_CATEGORY = "output_audio_seconds";
 const AUDIO_INPUT_BEHAVIOR_KEY = "audio_input";
 const DAILY_RATE_KEY_PREFIX = "audio_input_daily";
 const DAILY_DURATION_KEY_PREFIX = "audio_input_dur";
-const MIN_SPEECH_BITRATE_BPS = 8000;
 const MAX_DURATION_READ_BYTES = 4096;
 const DEFAULT_TIMECODE_SCALE_NS = 1_000_000;
 const EBML_HEADER = [0x1a, 0x45, 0xdf, 0xa3] as const;
@@ -350,8 +351,26 @@ export function parseSpeechWavDurationSeconds(
   return Math.max(1, Math.ceil(audioBytes / bytesPerSecond));
 }
 
-function estimateDurationFromSize(fileSize: number): number {
-  return Math.ceil(fileSize / (MIN_SPEECH_BITRATE_BPS / 8));
+// mp3 / mp4 / m4a / mpga: read the real container duration. Estimating from
+// byte size assumes a bitrate and is wrong by the ratio of the real bitrate to
+// the assumed one (a 64 kbps clip read against an 8 kbps assumption over-counts
+// ~8x). Returns null when the duration cannot be determined.
+async function parseCompressedAudioDurationSeconds(
+  file: File,
+): Promise<number | null> {
+  const mimeType = file.type.split(";")[0] ?? file.type;
+  const parsed = await settle(
+    parseBuffer(
+      new Uint8Array(await file.arrayBuffer()),
+      { mimeType, size: file.size },
+      { duration: true },
+    ),
+  );
+  if (!parsed.ok) {
+    return null;
+  }
+  const { duration } = parsed.value.format;
+  return typeof duration === "number" ? Math.ceil(duration) : null;
 }
 
 function vintLen(firstByte: number): number | null {
@@ -566,7 +585,7 @@ export async function getAudioDuration(file: File): Promise<number | null> {
     );
     return parseWebmDuration(head);
   }
-  return estimateDurationFromSize(file.size);
+  return parseCompressedAudioDurationSeconds(file);
 }
 
 export const speechPricing$: Computed<Promise<SpeechPricing | null>> = computed(

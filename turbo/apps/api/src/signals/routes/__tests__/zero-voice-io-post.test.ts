@@ -838,6 +838,32 @@ describe("POST /api/zero/voice-io/*", () => {
     ).resolves.toBe(60);
   });
 
+  it("does not reject large compressed audio on a byte-size estimate", async () => {
+    // A 400 KB mp3 upload. The old size-based estimate (bytes / 8 kbps) computed
+    // ~400s and rejected it with AUDIO_DURATION_TOO_LONG; real duration parsing
+    // measures the actual length instead, so a short-but-dense clip is no longer
+    // falsely rejected on file size.
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        return HttpResponse.json({ text: "hello from voice" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(
+        sttFile(new Uint8Array(400_000), "audio/mpeg", "speech.mp3"),
+      ),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
   it("uses whisper-1 and verbose_json when ?verbose=true, returns segments", async () => {
     const fixture = await track(seedVoiceFixture({ audioInputEnabled: true }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
