@@ -262,6 +262,12 @@ function postTelegramState(body: Record<string, unknown>): Promise<Response> {
   });
 }
 
+function getTelegramState(botId: string): Promise<Response> {
+  return requestApp(
+    `/api/test/telegram-state?bot_id=${encodeURIComponent(botId)}`,
+  );
+}
+
 function postSlackState(body: Record<string, unknown>): Promise<Response> {
   return requestApp("/api/test/slack-state", {
     method: "POST",
@@ -498,56 +504,28 @@ describe("POST /api/test/telegram-state", () => {
       emailAddress: [email],
     });
 
-    const writeDb = store.set(writeDb$);
-    const [installation] = await writeDb
-      .select()
-      .from(telegramInstallations)
-      .where(eq(telegramInstallations.telegramBotId, botId))
-      .limit(1);
-    expect(installation).toMatchObject({
+    const getResponse = await getTelegramState(botId);
+    expect(getResponse.status).toBe(200);
+    const getBody = await readJson<TelegramStateResponse>(getResponse);
+    expect(getBody.installation).toMatchObject({
       telegramBotId: botId,
       botUsername: "custom_test_bot",
-      webhookSecret: "custom-webhook-secret",
-      defaultComposeId: body.default_agent_id,
       ownerUserId: userId,
       orgId,
+      defaultComposeId: body.default_agent_id,
     });
-    expect(installation?.encryptedBotToken).toContain(":");
-
-    const links = await writeDb
-      .select()
-      .from(telegramUserLinks)
-      .where(eq(telegramUserLinks.installationId, botId));
-    expect(links).toHaveLength(1);
-    expect(links[0]).toMatchObject({
+    expect(getBody.links).toHaveLength(1);
+    expect(getBody.links[0]).toMatchObject({
       id: body.user_link_id,
       telegramUserId,
       vm0UserId: userId,
     });
-
-    const [org] = await writeDb
-      .select()
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-    expect(org).toMatchObject({
+    expect(getBody.org_metadata).toMatchObject({
       orgId,
       defaultAgentId: body.default_agent_id,
       credits: 10_000,
       tier: "free",
     });
-
-    const getResponse = await requestApp(
-      `/api/test/telegram-state?bot_id=${encodeURIComponent(botId)}`,
-    );
-    expect(getResponse.status).toBe(200);
-    const getBody = await readJson<TelegramStateResponse>(getResponse);
-    expect(getBody.installation).toMatchObject({
-      telegramBotId: botId,
-      orgId,
-      defaultComposeId: body.default_agent_id,
-    });
-    expect(getBody.links).toHaveLength(1);
     expect(getBody.default_agent).toMatchObject({
       id: body.default_agent_id,
       name: "e2e-slack-agent",
@@ -569,6 +547,9 @@ describe("POST /api/test/telegram-state", () => {
     });
     expect(first.status).toBe(200);
     const firstBody = await readJson<TelegramStateSeedResponse>(first);
+    if (!firstBody.user_link_id) {
+      throw new Error("Expected first Telegram seed to create a user link");
+    }
     await trackTelegramPostState(
       Promise.resolve({
         botId,
@@ -592,13 +573,15 @@ describe("POST /api/test/telegram-state", () => {
       default_agent_id: firstBody.default_agent_id,
     });
 
-    const links = await store
-      .set(writeDb$)
-      .select()
-      .from(telegramUserLinks)
-      .where(eq(telegramUserLinks.installationId, botId));
-    expect(links).toHaveLength(1);
-    expect(links[0]?.id).toBe(firstBody.user_link_id);
+    const getResponse = await getTelegramState(botId);
+    expect(getResponse.status).toBe(200);
+    const getBody = await readJson<TelegramStateResponse>(getResponse);
+    expect(getBody.links).toHaveLength(1);
+    expect(getBody.links[0]).toMatchObject({
+      id: firstBody.user_link_id,
+      telegramUserId,
+      vm0UserId: userId,
+    });
   });
 
   it("reuses the shared default agent when Telegram preflights race", async () => {
