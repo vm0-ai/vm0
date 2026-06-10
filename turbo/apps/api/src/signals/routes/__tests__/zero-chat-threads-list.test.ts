@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadPinContract,
+  chatThreadUnpinContract,
+  chatThreadsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { createStore } from "ccstate";
@@ -8,11 +12,11 @@ import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
-import { nowDate } from "../../external/time";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { authHeaders } from "./helpers/zero-chat-thread-routes";
 import {
   deleteZeroChatThread$,
   seedZeroChatMessage$,
@@ -47,6 +51,30 @@ async function setLastReadMessageId(
     .update(chatThreads)
     .set({ lastReadMessageId: messageId })
     .where(eq(chatThreads.id, threadId));
+}
+
+async function pinThreadThroughApi(threadId: string): Promise<void> {
+  const client = setupApp({ context })(chatThreadPinContract);
+  await accept(
+    client.pin({
+      params: { id: threadId },
+      headers: authHeaders(),
+    }),
+    [204],
+  );
+  context.mocks.ably.publish.mockClear();
+}
+
+async function unpinThreadThroughApi(threadId: string): Promise<void> {
+  const client = setupApp({ context })(chatThreadUnpinContract);
+  await accept(
+    client.unpin({
+      params: { id: threadId },
+      headers: authHeaders(),
+    }),
+    [204],
+  );
+  context.mocks.ably.publish.mockClear();
 }
 
 describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () => {
@@ -411,11 +439,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
     ]);
 
     // Pin the middle one — it should jump to the top.
-    const writeDb = store.set(writeDb$);
-    await writeDb
-      .update(chatThreads)
-      .set({ pinnedAt: nowDate() })
-      .where(eq(chatThreads.id, secondFixture.threadId));
+    await pinThreadThroughApi(secondFixture.threadId);
 
     const afterPin = await accept(
       client.list({
@@ -439,10 +463,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
     expect(typeof pinnedRow?.pinnedAt).toBe("string");
 
     // Unpin returns the order to recency-based.
-    await writeDb
-      .update(chatThreads)
-      .set({ pinnedAt: null })
-      .where(eq(chatThreads.id, secondFixture.threadId));
+    await unpinThreadThroughApi(secondFixture.threadId);
 
     const afterUnpin = await accept(
       client.list({
@@ -830,7 +851,6 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
           userId,
           orgId,
           title: "Pinned Thread",
-          pinnedAt: new Date("2025-05-01T10:00:00.000Z"),
         },
         context.signal,
       ),
@@ -864,6 +884,7 @@ describe("GET /api/zero/chat-threads (list with optional agentId scoping)", () =
     );
 
     mocks.clerk.session(userId, orgId);
+    await pinThreadThroughApi(pinned.threadId);
 
     const client = setupApp({ context })(chatThreadsContract);
     const response = await accept(
@@ -998,12 +1019,8 @@ describe("GET /api/zero/chat-threads (unified list, agentId omitted)", () => {
         context.signal,
       ),
     );
-    const writeDb = store.set(writeDb$);
-    await writeDb
-      .update(chatThreads)
-      .set({ pinnedAt: nowDate() })
-      .where(eq(chatThreads.id, pinnedFixture.threadId));
     mocks.clerk.session(userId, orgId);
+    await pinThreadThroughApi(pinnedFixture.threadId);
 
     const client = setupApp({ context })(chatThreadsContract);
     const response = await accept(
@@ -1040,7 +1057,6 @@ describe("GET /api/zero/chat-threads (unified list, agentId omitted)", () => {
           userId,
           orgId,
           title: "Scoped pinned",
-          pinnedAt: new Date("2025-05-02T10:00:00.000Z"),
         },
         context.signal,
       ),
@@ -1052,7 +1068,6 @@ describe("GET /api/zero/chat-threads (unified list, agentId omitted)", () => {
           userId,
           orgId,
           title: "Pinned from another agent",
-          pinnedAt: new Date("2025-05-01T10:00:00.000Z"),
         },
         context.signal,
       ),
@@ -1065,6 +1080,8 @@ describe("GET /api/zero/chat-threads (unified list, agentId omitted)", () => {
       ),
     );
     mocks.clerk.session(userId, orgId);
+    await pinThreadThroughApi(scopedFixture.threadId);
+    await pinThreadThroughApi(otherPinnedFixture.threadId);
 
     const client = setupApp({ context })(chatThreadsContract);
     const response = await accept(
