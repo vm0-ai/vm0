@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { generateKeyPairSync } from "node:crypto";
 
 import type {
   ConnectorExternalCodeSessionCompleteResponse,
@@ -11,6 +12,11 @@ import type {
   ScopeDiffResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import { githubOauthContract } from "@vm0/api-contracts/contracts/github-oauth";
+import {
+  integrationsGithubContract,
+  type GithubInstallationResponse,
+} from "@vm0/api-contracts/contracts/integrations-github";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorByIdContract,
@@ -45,6 +51,7 @@ import {
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import { createApp } from "../../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
@@ -81,6 +88,12 @@ export const STRIPE_CLI_BROWSER_URL =
   "https://dashboard.stripe.com/stripecli/confirm_auth?code=STRIPE-CLI";
 export const STRIPE_CLI_TEST_SECRET = "rk_test_api123";
 const STRIPE_CLI_LIVE_SECRET = "rk_live_api456";
+const TEST_OAUTH_USERINFO_URL =
+  "http://localhost:3000/api/test/oauth-provider/userinfo";
+const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
+const SLACK_OAUTH_USER_INFO_URL = "https://slack.com/api/users.info";
+const GITHUB_APP_INSTALLATIONS_URL = "https://api.github.com/app/installations";
+const GITHUB_APP_SLUG = "bdd-github-app";
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor ? { authorization: "Bearer clerk-session" } : {};
@@ -120,6 +133,287 @@ export function mockGitHubConnectorOAuth(): void {
       });
     }),
   );
+}
+
+interface TestOAuthAuthCodeProviderOptions {
+  readonly accessToken?: string;
+  readonly refreshToken?: string | null;
+  readonly expiresIn?: number;
+  readonly omitExpiresIn?: boolean;
+  readonly scope?: string;
+  readonly tokenError?: boolean;
+  readonly userinfoError?: boolean;
+}
+
+interface TestOAuthAuthCodeProviderRecorder {
+  readonly tokenBodies: URLSearchParams[];
+}
+
+/**
+ * Provider boundary for the test-oauth auth-code connector. The connector's
+ * exchange/userinfo URLs resolve from process.env to http://localhost:3000,
+ * matching the device-auth fixtures above. refreshToken null/omitted leaves
+ * refresh_token out of the token response.
+ */
+export function mockTestOAuthAuthCodeProvider(
+  options: TestOAuthAuthCodeProviderOptions = {},
+): TestOAuthAuthCodeProviderRecorder {
+  const recorded: TestOAuthAuthCodeProviderRecorder = { tokenBodies: [] };
+
+  server.use(
+    http.post(TEST_OAUTH_TOKEN_URL, async ({ request }) => {
+      recorded.tokenBodies.push(new URLSearchParams(await request.text()));
+      if (options.tokenError) {
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            error_description: "Synthetic token exchange failure",
+          },
+          { status: 400 },
+        );
+      }
+      const refreshToken = options.refreshToken ?? null;
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "bdd-test-oauth-access-token",
+        ...(refreshToken === null ? {} : { refresh_token: refreshToken }),
+        ...(options.omitExpiresIn
+          ? {}
+          : { expires_in: options.expiresIn ?? 3600 }),
+        token_type: "Bearer",
+        scope: options.scope ?? "read",
+      });
+    }),
+    http.get(TEST_OAUTH_USERINFO_URL, () => {
+      if (options.userinfoError) {
+        return HttpResponse.json(
+          { error: "userinfo_lookup_failed" },
+          { status: 500 },
+        );
+      }
+      return HttpResponse.json({
+        id: "bdd-test-oauth-user",
+        username: "bdd-test-oauth",
+        email: "bdd-test-oauth@example.test",
+      });
+    }),
+  );
+
+  return recorded;
+}
+
+/**
+ * Slack user-OAuth provider boundary used for the null-token-expiry arm:
+ * the slack oauth method has static (non-refreshable) access, so a stored
+ * token has no expiry.
+ */
+export function mockSlackConnectorOAuth(): void {
+  mockOptionalEnv("SLACK_OAUTH_CLIENT_ID", "slack-client-id");
+  mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "slack-client-secret");
+
+  server.use(
+    http.post(SLACK_OAUTH_TOKEN_URL, () => {
+      return HttpResponse.json({
+        ok: true,
+        authed_user: {
+          id: "U012AB3CD",
+          access_token: "xoxp-bdd-user-token",
+          scope: "channels:read,chat:write",
+        },
+      });
+    }),
+    http.get(SLACK_OAUTH_USER_INFO_URL, () => {
+      return HttpResponse.json({
+        ok: true,
+        user: {
+          id: "U012AB3CD",
+          name: "bddslack",
+          real_name: "BDD Slack User",
+          profile: { email: "bdd-slack@example.test" },
+        },
+      });
+    }),
+  );
+}
+
+function newGithubAppPrivateKeyBase64(): string {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const pem = privateKey.export({ type: "pkcs8", format: "pem" });
+  return Buffer.from(pem).toString("base64");
+}
+
+interface GithubAppInstallProviderArgs {
+  readonly installationId: string;
+  readonly targetId: string;
+  readonly targetType?: string;
+  readonly targetLogin?: string;
+}
+
+/**
+ * GitHub App installation provider boundary: env credentials (real RSA key,
+ * the routes sign app JWTs with it) plus the remote installations list,
+ * installation-info, and installation access-token endpoints.
+ */
+export function mockGithubAppInstallProvider(
+  args: GithubAppInstallProviderArgs,
+): void {
+  mockOptionalEnv("GITHUB_APP_SLUG", GITHUB_APP_SLUG);
+  mockOptionalEnv("GITHUB_APP_ID", "123456");
+  mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", newGithubAppPrivateKeyBase64());
+  mockEnv("APP_URL", "https://app.vm0.test");
+
+  server.use(
+    http.get(GITHUB_APP_INSTALLATIONS_URL, () => {
+      return HttpResponse.json([]);
+    }),
+    http.get(
+      `${GITHUB_APP_INSTALLATIONS_URL}/:installationId`,
+      ({ params }) => {
+        if (String(params.installationId) !== args.installationId) {
+          return HttpResponse.json({ message: "Not Found" }, { status: 404 });
+        }
+        return HttpResponse.json({
+          id: Number(args.installationId),
+          account: {
+            id: Number(args.targetId),
+            login: args.targetLogin ?? "bdd-github-org",
+            type: args.targetType ?? "Organization",
+          },
+        });
+      },
+    ),
+    http.post(
+      `${GITHUB_APP_INSTALLATIONS_URL}/:installationId/access_tokens`,
+      () => {
+        return HttpResponse.json({
+          token: "ghs_bdd_installation_token",
+          expires_at: "2099-01-01T00:00:00Z",
+        });
+      },
+    ),
+  );
+}
+
+/**
+ * Drives the connector OAuth callback route with a raw absolute-URL request
+ * so origin-dependent behavior (canonical API-host redirects, trusted
+ * web-origin headers) stays visible to the test.
+ */
+export async function requestOauthCallbackRaw(
+  context: TestContext,
+  args: {
+    readonly origin: string;
+    readonly type: string;
+    readonly query: Readonly<Record<string, string>>;
+    readonly headers?: Readonly<Record<string, string>>;
+  },
+): Promise<Response> {
+  const url = new URL(`/api/connectors/${args.type}/callback`, args.origin);
+  for (const [name, value] of Object.entries(args.query)) {
+    url.searchParams.set(name, value);
+  }
+  const app = createApp({ signal: context.signal });
+  return await app.request(url.toString(), { headers: args.headers });
+}
+
+function formRequestInit(
+  form: Readonly<Record<string, string>>,
+  headers: Readonly<Record<string, string>> = {},
+): RequestInit {
+  return {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      ...headers,
+    },
+    body: new URLSearchParams(form).toString(),
+  };
+}
+
+/**
+ * Raw HTTP wrappers over the synthetic /api/test/oauth-provider/* routes.
+ * Callers parse JSON/text from the returned Response.
+ */
+export function createTestOAuthProviderApi(context: TestContext) {
+  const AUTHORIZE_PATH = "/api/test/oauth-provider/authorize";
+  const TOKEN_PATH = "/api/test/oauth-provider/token";
+  const DEVICE_CODE_PATH = "/api/test/oauth-provider/device/code";
+  const USERINFO_PATH = "/api/test/oauth-provider/userinfo";
+  const ECHO_PATH = "/api/test/oauth-provider/echo";
+
+  async function request(path: string, init?: RequestInit): Promise<Response> {
+    const app = createApp({ signal: context.signal });
+    return await app.request(path, init);
+  }
+
+  function bearerHeaders(
+    bearer: string | undefined,
+    headers: Readonly<Record<string, string>> = {},
+  ): Record<string, string> {
+    return {
+      ...(bearer === undefined ? {} : { authorization: `Bearer ${bearer}` }),
+      ...headers,
+    };
+  }
+
+  return {
+    async authorize(
+      query: Readonly<Record<string, string>>,
+      headers?: Readonly<Record<string, string>>,
+    ): Promise<Response> {
+      const search = new URLSearchParams(query);
+      return await request(`${AUTHORIZE_PATH}?${search.toString()}`, {
+        headers,
+      });
+    },
+
+    async token(
+      form: Readonly<Record<string, string>>,
+      headers?: Readonly<Record<string, string>>,
+    ): Promise<Response> {
+      return await request(TOKEN_PATH, formRequestInit(form, headers));
+    },
+
+    async tokenWithJsonBody(): Promise<Response> {
+      return await request(TOKEN_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+    },
+
+    async deviceCode(
+      form: Readonly<Record<string, string>>,
+      headers?: Readonly<Record<string, string>>,
+    ): Promise<Response> {
+      return await request(DEVICE_CODE_PATH, formRequestInit(form, headers));
+    },
+
+    async deviceCodeWithJsonBody(): Promise<Response> {
+      return await request(DEVICE_CODE_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+    },
+
+    async userinfo(
+      bearer?: string,
+      headers?: Readonly<Record<string, string>>,
+    ): Promise<Response> {
+      return await request(USERINFO_PATH, {
+        headers: bearerHeaders(bearer, headers),
+      });
+    },
+
+    async echo(
+      bearer?: string,
+      headers?: Readonly<Record<string, string>>,
+    ): Promise<Response> {
+      return await request(ECHO_PATH, {
+        headers: bearerHeaders(bearer, headers),
+      });
+    },
+  };
 }
 
 interface TestOAuthDeviceConnectorProviderOptions {
@@ -842,6 +1136,89 @@ export function createConnectorBddApi(context: TestContext) {
         client.callback({ params: { type }, query, headers: {} }),
         [307],
       );
+    },
+
+    /**
+     * Installs the GitHub App for the actor's org through the public install
+     * redirect and setup callback routes (no DB seeding): extracts the signed
+     * state from the install redirect and replays it to the setup callback.
+     */
+    async installGithubAppViaApi(
+      actor: ApiTestUser,
+      composeId: string,
+      installationId: string,
+    ): Promise<void> {
+      if (!actor.orgId) {
+        throw new Error("GitHub App install requires an actor with an org");
+      }
+      context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue(
+        {
+          data: [
+            {
+              organization: { id: actor.orgId },
+              role: actor.orgRole ?? "org:admin",
+              createdAt: 1,
+            },
+          ],
+        },
+      );
+
+      const client = setupApp({ context })(githubOauthContract);
+      const install = await accept(
+        client.install({
+          query: {
+            vm0UserId: actor.userId,
+            orgId: actor.orgId,
+            composeId,
+          },
+        }),
+        [307],
+      );
+      const installLocation = install.headers.get("location");
+      if (!installLocation) {
+        throw new Error("Expected a GitHub install redirect location");
+      }
+      const installUrl = new URL(installLocation);
+      if (!installUrl.pathname.endsWith("/installations/new")) {
+        throw new Error(
+          `Unexpected GitHub install redirect: ${installLocation}`,
+        );
+      }
+      const state = installUrl.searchParams.get("state");
+      if (!state) {
+        throw new Error("Expected the GitHub install redirect to carry state");
+      }
+
+      const callback = await accept(
+        client.setupCallback({
+          query: {
+            installation_id: installationId,
+            setup_action: "install",
+            state,
+          },
+        }),
+        [307],
+      );
+      const callbackLocation = callback.headers.get("location");
+      if (!callbackLocation) {
+        throw new Error("Expected a GitHub setup callback redirect location");
+      }
+      const callbackError = new URL(callbackLocation).searchParams.get("error");
+      if (callbackError) {
+        throw new Error(`GitHub setup callback failed: ${callbackError}`);
+      }
+    },
+
+    async readGithubIntegration(
+      actor: ApiTestUser,
+    ): Promise<GithubInstallationResponse> {
+      const client = setupApp({ context })(integrationsGithubContract);
+      const response = await accept(
+        client.getInstallation({ headers: authenticate(actor) }),
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
     },
 
     async requestDeviceAuthStart(
