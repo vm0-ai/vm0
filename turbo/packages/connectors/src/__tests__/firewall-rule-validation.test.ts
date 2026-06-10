@@ -25,6 +25,12 @@ function firewallWithPermissionName(name: string): FirewallConfig {
   };
 }
 
+function apiBases(firewall: FirewallConfig): string[] {
+  return firewall.apis.map((api) => {
+    return api.base;
+  });
+}
+
 /**
  * Validate that every builtin connector firewall passes the same full
  * validation pipeline as custom (user-supplied) firewalls: base URLs,
@@ -61,4 +67,30 @@ describe("reserved firewall permission names", () => {
       }).toThrow(`permission named "${name}"`);
     },
   );
+});
+
+describe("known endpoint-scoped firewall bases", () => {
+  it("keeps Google Search Console off the shared www.googleapis.com root", () => {
+    const bases = apiBases(getConnectorFirewall("google-search-console"));
+
+    expect(bases).toContain("https://searchconsole.googleapis.com");
+    expect(bases).not.toContain("https://www.googleapis.com");
+  });
+
+  it("narrows Xero tenant discovery to the Connections endpoint", () => {
+    const firewall = getConnectorFirewall("xero");
+    const bases = apiBases(firewall);
+    const connectionsApi = firewall.apis.find((api) => {
+      return api.base === "https://api.xero.com/Connections";
+    });
+
+    expect(bases).toContain("https://api.xero.com/Connections");
+    expect(bases).not.toContain("https://api.xero.com");
+    expect(connectionsApi?.permissions).toEqual([
+      {
+        name: "connections",
+        rules: ["GET /", "DELETE /{id}"],
+      },
+    ]);
+  });
 });
