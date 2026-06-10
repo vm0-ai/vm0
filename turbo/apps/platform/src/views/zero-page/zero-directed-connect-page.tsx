@@ -438,6 +438,25 @@ function useDirectedConnectConnectorType(): ConnectorType | null {
   return parsed.success ? parsed.data : null;
 }
 
+function ConnectorConnectNotices({
+  connectorType,
+  isConnected,
+}: {
+  readonly connectorType: ConnectorType;
+  readonly isConnected: boolean;
+}) {
+  if (isConnected) {
+    return null;
+  }
+  if (shouldShowGoogleSecurityWarningNotice(connectorType)) {
+    return <GoogleSecurityWarningNotice />;
+  }
+  if (shouldShowMetaAdsReviewNotice(connectorType)) {
+    return <MetaAdsReviewNotice />;
+  }
+  return null;
+}
+
 function DirectedConnectCard() {
   const connectorType = useDirectedConnectConnectorType();
   const agentId = useGet(directedConnectAgentId$);
@@ -537,14 +556,10 @@ function DirectedConnectCard() {
                   <p className="w-60 text-sm text-muted-foreground">
                     {config.helpText}
                   </p>
-                  {!isConnected &&
-                    shouldShowGoogleSecurityWarningNotice(connectorType) && (
-                      <GoogleSecurityWarningNotice />
-                    )}
-                  {!isConnected &&
-                    shouldShowMetaAdsReviewNotice(connectorType) && (
-                      <MetaAdsReviewNotice />
-                    )}
+                  <ConnectorConnectNotices
+                    connectorType={connectorType}
+                    isConnected={isConnected}
+                  />
                 </>
               )}
             </div>
