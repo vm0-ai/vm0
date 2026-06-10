@@ -13,10 +13,12 @@ export type VideoStyleCategory =
   | "urban_social";
 
 export type VideoStyleGroupTag =
-  | "brand-product"
-  | "story-emotion"
-  | "energy-sports"
-  | "fantasy-art"
+  | "cinematic"
+  | "documentary"
+  | "lifestyle"
+  | "brand-commercial"
+  | "energy-music"
+  | "art-creative"
   | "anime-2d";
 
 export interface VideoStyleGroup {
@@ -25,10 +27,12 @@ export interface VideoStyleGroup {
 }
 
 export const VIDEO_STYLE_GROUPS: readonly VideoStyleGroup[] = [
-  { tag: "brand-product", label: "Brand & Product" },
-  { tag: "story-emotion", label: "Story & Emotion" },
-  { tag: "energy-sports", label: "Energy & Sports" },
-  { tag: "fantasy-art", label: "Fantasy & Art" },
+  { tag: "cinematic", label: "Cinematic" },
+  { tag: "documentary", label: "Documentary" },
+  { tag: "lifestyle", label: "Lifestyle" },
+  { tag: "brand-commercial", label: "Brand & Commercial" },
+  { tag: "energy-music", label: "Energy & Music" },
+  { tag: "art-creative", label: "Art & Creative" },
   { tag: "anime-2d", label: "Anime" },
 ];
 
@@ -203,7 +207,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "grand-hotel-lobby",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6126d21a-1a19-4b2a-914a-0eec6335bf1f/video-6126d21a.mp4",
-    tags: ["story-emotion", "quirky", "pastel", "symmetry", "deadpan", "retro"],
+    tags: ["cinematic", "quirky", "pastel", "symmetry", "deadpan", "retro"],
   },
   {
     id: "imax-epic-cinematic",
@@ -222,7 +226,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "mountain-horizon",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/df99de74-8eea-420c-86d1-c104ba5ba6b6/video-df99de74.mp4",
-    tags: ["story-emotion", "epic", "imax", "dramatic", "cinematic", "grand"],
+    tags: ["cinematic", "epic", "imax", "dramatic", "cinematic", "grand"],
   },
   {
     id: "slowburn-moody-romance",
@@ -242,7 +246,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/feda268d-7b6c-4c5d-b3c8-89ab1dcc29cd/video-feda268d.mp4",
     tags: [
-      "story-emotion",
+      "cinematic",
       "moody",
       "romance",
       "handheld",
@@ -268,7 +272,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e4fbe51f-45c9-4689-8681-1e102af0a55e/video-e4fbe51f.mp4",
     tags: [
-      "story-emotion",
+      "cinematic",
       "indie",
       "arthouse",
       "naturalistic",
@@ -293,14 +297,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "rain-on-window",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/dc649267-41d8-4fbc-b253-29e407791ac6/video-dc649267.mp4",
-    tags: [
-      "story-emotion",
-      "noir",
-      "black-white",
-      "mystery",
-      "shadows",
-      "1950s",
-    ],
+    tags: ["cinematic", "noir", "black-white", "mystery", "shadows", "1950s"],
   },
   {
     id: "tech-minimalist-reveal",
@@ -319,7 +316,14 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "laptop-open",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6f1e98ef-7fc1-48b0-b1db-cd1ee58a0bd4/video-6f1e98ef.mp4",
-    tags: ["brand-product", "minimalist", "product", "tech", "clean", "white"],
+    tags: [
+      "brand-commercial",
+      "minimalist",
+      "product",
+      "tech",
+      "clean",
+      "white",
+    ],
   },
   {
     id: "luxury-watch-product",
@@ -339,7 +343,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/9e20abbb-a630-4523-857f-8350eba2ea4f/video-9e20abbb.mp4",
     tags: [
-      "brand-product",
+      "brand-commercial",
       "product",
       "watch",
       "luxury",
@@ -365,7 +369,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "extreme-sports",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/104ad36a-4d0c-472b-8416-d04cc2f06e75/video-104ad36a.mp4",
-    tags: ["energy-sports", "sports", "motivation", "fast", "energy", "ad"],
+    tags: ["energy-music", "sports", "motivation", "fast", "energy", "ad"],
   },
   {
     id: "nature-documentary",
@@ -385,7 +389,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/75e08761-7cdf-42ea-b8f3-eadb31586de6/video-75e08761.mp4",
     tags: [
-      "story-emotion",
+      "documentary",
       "nature",
       "documentary",
       "wildlife",
@@ -410,7 +414,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "summer-beach-crew",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/4bac1319-dba7-47a0-bc1b-4d1e932f71fd/video-4bac1319.mp4",
-    tags: ["energy-sports", "viral", "shortform", "trending", "fast", "social"],
+    tags: ["energy-music", "viral", "shortform", "trending", "fast", "social"],
   },
   {
     id: "hand-drawn-fantasy-anime",
@@ -430,7 +434,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/da7c7c2d-3383-4796-8e83-b0e112127387/video-da7c7c2d.mp4",
     tags: [
-      "fantasy-art",
+      "art-creative",
       "anime",
       "hand-drawn",
       "fantasy",
@@ -455,7 +459,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "mountain-horizon",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8314b0ae-6051-4daa-b789-51bec466ba66/video-8314b0ae.mp4",
-    tags: ["fantasy-art", "ink", "chinese", "zen", "minimalist", "eastern"],
+    tags: ["art-creative", "ink", "chinese", "zen", "minimalist", "eastern"],
   },
   {
     id: "pop-art",
@@ -474,7 +478,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "abstract-color-burst",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/92c22511-a22e-4c9c-9489-b452eabaa16b/video-92c22511.mp4",
-    tags: ["fantasy-art", "pop-art", "bold", "colorful", "graphic", "retro"],
+    tags: ["art-creative", "pop-art", "bold", "colorful", "graphic", "retro"],
   },
   {
     id: "japanese-wabi-sabi",
@@ -492,9 +496,9 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     },
     scene: "tokyo-alley-morning",
     sampleVideoUrl:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f06bf43d-4820-466f-bc1d-716dec01e3cc/video-f06bf43d.mp4",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/72b754cf-f76d-4fa9-9015-ab5082b49608/video-72b754cf.mp4",
     tags: [
-      "story-emotion",
+      "lifestyle",
       "japanese",
       "wabi-sabi",
       "calm",
@@ -520,7 +524,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8ea3c41f-8e80-4c70-aae6-a492b9eb264e/video-8ea3c41f.mp4",
     tags: [
-      "story-emotion",
+      "cinematic",
       "europe",
       "romance",
       "castle",
@@ -545,7 +549,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "food-plating",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3f0dd8d7-bfc3-4443-9b95-b58faf0d4f64/video-3f0dd8d7.mp4",
-    tags: ["brand-product", "food", "macro", "sensory", "chef", "documentary"],
+    tags: ["documentary", "food", "macro", "sensory", "chef", "documentary"],
   },
   {
     id: "fashion-editorial",
@@ -563,9 +567,9 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     },
     scene: "model-editorial",
     sampleVideoUrl:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6024a53b-fe0c-45dc-b5df-0ae14ad883ed/video-6024a53b.mp4",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/6d5822ff-d0ef-485e-b4e4-2eb0a46414d5/video-6d5822ff.mp4",
     tags: [
-      "brand-product",
+      "brand-commercial",
       "fashion",
       "luxury",
       "editorial",
@@ -590,7 +594,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "summer-beach-crew",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/3d44e690-d838-49c6-89f8-946bcffee10b/video-3d44e690.mp4",
-    tags: ["energy-sports", "summer", "beach", "youth", "vibrant", "friends"],
+    tags: ["lifestyle", "summer", "beach", "youth", "vibrant", "friends"],
   },
   {
     id: "super8-home-film",
@@ -610,7 +614,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/29ddb4de-8aef-42a7-aac4-ee013c9272a5/video-29ddb4de.mp4",
     tags: [
-      "story-emotion",
+      "cinematic",
       "retro",
       "70s",
       "super8",
@@ -637,7 +641,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c28fd30a-d735-4c67-97d4-0567fd375a8d/video-c28fd30a.mp4",
     tags: [
-      "story-emotion",
+      "lifestyle",
       "cottagecore",
       "garden",
       "handmade",
@@ -664,7 +668,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b629a3f5-c644-4d96-81f5-834fe1a31da1/video-b629a3f5.mp4",
     tags: [
-      "brand-product",
+      "lifestyle",
       "wellness",
       "yoga",
       "meditation",
@@ -691,7 +695,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/76c1cf86-cb76-4a9b-817f-15597bcc8481/video-76c1cf86.mp4",
     tags: [
-      "brand-product",
+      "lifestyle",
       "diy",
       "maker",
       "craft",
@@ -716,9 +720,9 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     },
     scene: "extreme-sports",
     sampleVideoUrl:
-      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/305b6781-280a-4f07-927a-1191bd8ece9b/video-305b6781.mp4",
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/637ca413-fd3e-4b6e-9b8c-42f2a6c63816/video-637ca413.mp4",
     tags: [
-      "energy-sports",
+      "energy-music",
       "extreme-sports",
       "action",
       "adrenaline",
@@ -744,7 +748,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/f7d288e2-9d81-43b7-ae1b-1702a11686a8/video-f7d288e2.mp4",
     tags: [
-      "energy-sports",
+      "energy-music",
       "music",
       "concert",
       "stage",
@@ -770,7 +774,14 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     scene: "impossible-room",
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/b7b0d289-9e05-4f93-9795-d5d19263435c/video-b7b0d289.mp4",
-    tags: ["fantasy-art", "surreal", "dream", "impossible", "dali", "ethereal"],
+    tags: [
+      "art-creative",
+      "surreal",
+      "dream",
+      "impossible",
+      "dali",
+      "ethereal",
+    ],
   },
   {
     id: "ai-digital-art",
@@ -790,7 +801,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/629cab0a-fead-4c9c-ac9b-d5ef6df0782f/video-629cab0a.mp4",
     tags: [
-      "fantasy-art",
+      "art-creative",
       "ai",
       "digital",
       "neural-network",
@@ -817,7 +828,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/273d9673-9ed2-426b-8516-0102fbdd8622/video-273d9673.mp4",
     tags: [
-      "story-emotion",
+      "documentary",
       "space",
       "cosmos",
       "nasa",
@@ -844,7 +855,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/54c271a6-d2da-4134-a812-679fd0fc8810/video-54c271a6.mp4",
     tags: [
-      "story-emotion",
+      "documentary",
       "street",
       "nyc",
       "urban",
@@ -871,7 +882,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/c227b1aa-7876-4fe3-8869-4d2b996d418f/video-c227b1aa.mp4",
     tags: [
-      "fantasy-art",
+      "art-creative",
       "synthwave",
       "80s",
       "retro",
@@ -898,7 +909,7 @@ export const VIDEO_STYLE_PRESETS: readonly VideoStylePreset[] = [
     sampleVideoUrl:
       "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/e93201b0-90d2-42f1-9db7-19441315c4bc/video-e93201b0.mp4",
     tags: [
-      "fantasy-art",
+      "art-creative",
       "comedy",
       "absurdist",
       "quirky",
