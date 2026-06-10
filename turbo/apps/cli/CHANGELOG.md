@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.186.1](https://github.com/vm0-ai/vm0/compare/cli-v9.186.0...cli-v9.186.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* remove compose github url support ([#17012](https://github.com/vm0-ai/vm0/issues/17012)) ([4ae5a09](https://github.com/vm0-ai/vm0/commit/4ae5a092dcef53f08499aa07cae0b1ff7ac72634))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.78.0
+    * @vm0/core bumped to 8.321.1
+
 ## [9.186.0](https://github.com/vm0-ai/vm0/compare/cli-v9.185.1...cli-v9.186.0) (2026-06-10)
 
 

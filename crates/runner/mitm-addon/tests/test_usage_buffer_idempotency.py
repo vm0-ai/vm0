@@ -21,7 +21,7 @@ def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
         )
         == 0
     )
-    assert usage_buffer._usage_event_buffer._buckets == {}
+    assert usage_buffer._usage_event_buffer._state._buckets == {}
 
     assert (
         usage.buffer_usage_events(
@@ -33,7 +33,7 @@ def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
         )
         == 1
     )
-    assert len(usage_buffer._usage_event_buffer._buckets) == 1
+    assert len(usage_buffer._usage_event_buffer._state._buckets) == 1
 
     assert (
         usage.buffer_usage_events(
@@ -45,7 +45,7 @@ def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
         )
         == 0
     )
-    assert len(usage_buffer._usage_event_buffer._buckets) == 1
+    assert len(usage_buffer._usage_event_buffer._state._buckets) == 1
 
     assert usage.flush_usage_events(trigger="test") == 1
 

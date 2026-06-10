@@ -126,33 +126,12 @@ class _PendingFlush:
     summaries: list[_FlushSummary]
 
 
-class UsageEventBuffer:
-    """Thread-safe process-local usage report buffer."""
+class _UsageBufferState:
+    """Mutable usage work state; callers must hold UsageEventBuffer._lock."""
 
-    def __init__(
-        self,
-        *,
-        flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
-        jitter_ratio: float = DEFAULT_FLUSH_JITTER_RATIO,
-        timer_enabled: bool = True,
-        timer_factory: _TimerFactory | None = None,
-        enqueue_webhook: _EnqueueWebhook | None = None,
-        flush_owner_lock: _FlushOwnerLock | None = None,
-    ) -> None:
-        self._lock = threading.Lock()
-        # Serializes snapshot/enqueue ownership. Ordinary flushes defer if busy;
-        # shutdown waits so daemon timer work cannot outlive process teardown.
-        self._flush_owner_lock: _FlushOwnerLock = (
-            flush_owner_lock if flush_owner_lock is not None else threading.Lock()
-        )
-        self._enqueue_webhook = enqueue_webhook
+    def __init__(self) -> None:
         self._buffer_id = str(uuid.uuid4())
         self._flush_sequence = 0
-        self._flush_interval_seconds = max(1.0, flush_interval_seconds)
-        self._jitter_ratio = max(0.0, jitter_ratio)
-        self._timer_enabled = timer_enabled
-        self._timer_factory = timer_factory if timer_factory is not None else self._make_timer
-        self._timer: _TimerHandle | None = None
         self._buckets: dict[_DestinationKey, dict[_AggregateKey, int]] = {}
         # Keep source keys across flushes so aggregate idempotency does not
         # turn response/error duplicates into distinct server-side rows.
@@ -162,203 +141,15 @@ class UsageEventBuffer:
         self._enqueuing_source_event_count = 0
         self._pending_flushes: list[_PendingFlush] = []
 
-    def configure(self, *, flush_interval_seconds: float) -> None:
-        """Update runtime buffer settings."""
-        with self._lock:
-            self._flush_interval_seconds = max(1.0, flush_interval_seconds)
+    def clear(self) -> None:
+        self._buckets = {}
+        self._seen_source_keys.clear()
+        self._destination_source_event_counts = {}
+        self._source_event_count = 0
+        self._enqueuing_source_event_count = 0
+        self._pending_flushes = []
 
-    def buffer_usage_events(
-        self,
-        url: str,
-        sandbox_token: str,
-        run_id: str,
-        events: Iterable[UsageEvent],
-        proxy_log_path: str,
-        *,
-        resource_field_name: ResourceFieldName = "provider",
-        include_kind: bool = True,
-        log_type: str = "usage_event",
-    ) -> int:
-        """Add source usage events and flush if the buffer exceeds a bound."""
-        flush_now = False
-        timer_to_start: _TimerHandle | None = None
-        with self._lock:
-            accepted_count = self._add_events_locked(
-                url,
-                sandbox_token,
-                run_id,
-                events,
-                proxy_log_path,
-                resource_field_name=resource_field_name,
-                include_kind=include_kind,
-                log_type=log_type,
-            )
-            if accepted_count == 0:
-                return 0
-            if self._should_flush_locked():
-                flush_now = True
-            else:
-                timer_to_start = self._schedule_timer_locked()
-            self._sync_buffered_counter_locked()
-
-        if timer_to_start is not None:
-            timer_to_start.start()
-        if flush_now:
-            self._flush_usage_events(trigger="threshold")
-        return accepted_count
-
-    def flush_usage_events(self, *, trigger: UsageFlushTrigger) -> int:
-        """Flush all buffered usage events now."""
-        return self._flush_usage_events(trigger=trigger)
-
-    def close(self) -> None:
-        """Cancel any pending timer for test cleanup or process shutdown."""
-        with self._lock:
-            timer = self._pop_timer_locked()
-            self._buckets = {}
-            self._seen_source_keys.clear()
-            self._destination_source_event_counts = {}
-            self._source_event_count = 0
-            self._enqueuing_source_event_count = 0
-            self._pending_flushes = []
-            self._sync_buffered_counter_locked()
-        if timer is not None:
-            timer.cancel()
-
-    def _flush_usage_events(self, *, trigger: UsageFlushTrigger) -> int:
-        if not self._acquire_flush_ownership(trigger):
-            self._defer_unowned_flush(trigger)
-            return 0
-
-        try:
-            return self._flush_usage_events_owned(trigger=trigger)
-        finally:
-            self._flush_owner_lock.release()
-
-    def _acquire_flush_ownership(self, trigger: UsageFlushTrigger) -> bool:
-        return self._flush_owner_lock.acquire(blocking=trigger == "shutdown")
-
-    def _defer_unowned_flush(self, trigger: UsageFlushTrigger) -> None:
-        timer_to_cancel: _TimerHandle | None = None
-        timer_to_start: _TimerHandle | None = None
-        with self._lock:
-            if trigger == "timer":
-                timer_to_cancel = self._pop_timer_locked()
-            if trigger != "shutdown":
-                timer_to_start = self._schedule_timer_if_buffered_locked()
-            self._sync_buffered_counter_locked()
-        if timer_to_cancel is not None:
-            timer_to_cancel.cancel()
-        if timer_to_start is not None:
-            timer_to_start.start()
-
-    def _flush_usage_events_owned(self, *, trigger: UsageFlushTrigger) -> int:
-        flushed_batch_count = 0
-        snapshot_live = True
-        if trigger in ("shutdown", "timer"):
-            with self._lock:
-                timer = self._pop_timer_locked()
-            if timer is not None:
-                timer.cancel()
-
-        while True:
-            timer_to_start: _TimerHandle | None = None
-            with self._lock:
-                pending_flush, live_snapshot_attempted = self._next_pending_flush_locked(
-                    snapshot_live=snapshot_live
-                )
-                if live_snapshot_attempted and trigger != "shutdown":
-                    snapshot_live = False
-                if (
-                    trigger != "shutdown"
-                    and self._enqueuing_source_event_count
-                    and pending_flush is None
-                ):
-                    timer_to_start = self._schedule_timer_if_buffered_locked()
-                if pending_flush is None:
-                    self._sync_buffered_counter_locked()
-                else:
-                    self._enqueuing_source_event_count += pending_flush.source_event_count
-                    self._sync_buffered_counter_locked()
-
-            if timer_to_start is not None:
-                timer_to_start.start()
-            if pending_flush is None:
-                return flushed_batch_count
-
-            try:
-                self._enqueue_pending_flush(pending_flush, trigger)
-            except Exception:
-                timer_to_start = None
-                with self._lock:
-                    self._pending_flushes.insert(0, pending_flush)
-                    self._enqueuing_source_event_count = max(
-                        0,
-                        self._enqueuing_source_event_count - pending_flush.source_event_count,
-                    )
-                    if trigger != "shutdown":
-                        timer_to_start = self._schedule_timer_if_buffered_locked()
-                    self._sync_buffered_counter_locked()
-                if timer_to_start is not None:
-                    timer_to_start.start()
-                raise
-
-            flushed_batch_count += len(pending_flush.batches)
-            with self._lock:
-                self._enqueuing_source_event_count = max(
-                    0,
-                    self._enqueuing_source_event_count - pending_flush.source_event_count,
-                )
-                self._sync_buffered_counter_locked()
-
-    def _enqueue_pending_flush(
-        self,
-        pending_flush: _PendingFlush,
-        trigger: UsageFlushTrigger,
-    ) -> None:
-        started_at = time.monotonic()
-        try:
-            _log_flush_summaries(
-                "started", trigger, pending_flush.flush_sequence, pending_flush.summaries
-            )
-            _apply_dropped_batch_counts(
-                pending_flush.summaries,
-                _enqueue_batches(
-                    pending_flush.batches,
-                    self._enqueue_webhook
-                    if self._enqueue_webhook is not None
-                    else _enqueue_webhook,
-                ),
-            )
-            _log_flush_summaries(
-                "completed",
-                trigger,
-                pending_flush.flush_sequence,
-                pending_flush.summaries,
-                duration_ms=_elapsed_ms(started_at),
-            )
-        except Exception as exc:
-            _log_flush_summaries(
-                "failed",
-                trigger,
-                pending_flush.flush_sequence,
-                pending_flush.summaries,
-                duration_ms=_elapsed_ms(started_at),
-                error_type=type(exc).__name__,
-            )
-            raise
-
-    def _sync_buffered_counter_locked(self) -> None:
-        set_buffered_usage_events(
-            self._source_event_count
-            + self._pending_source_event_count_locked()
-            + self._enqueuing_source_event_count
-        )
-
-    def _pending_source_event_count_locked(self) -> int:
-        return sum(pending_flush.source_event_count for pending_flush in self._pending_flushes)
-
-    def _add_events_locked(
+    def add_events(
         self,
         url: str,
         sandbox_token: str,
@@ -399,21 +190,21 @@ class UsageEventBuffer:
             )
             self._source_event_count += 1
             accepted_count += 1
-        self._evict_source_keys_locked()
+        self._evict_source_keys()
         return accepted_count
 
-    def _evict_source_keys_locked(self) -> None:
+    def _evict_source_keys(self) -> None:
         while len(self._seen_source_keys) > MAX_SOURCE_IDEMPOTENCY_KEYS:
             self._seen_source_keys.popitem(last=False)
 
-    def _should_flush_locked(self) -> bool:
+    def should_flush(self) -> bool:
         if self._source_event_count >= MAX_BUFFERED_SOURCE_EVENTS:
             return True
         if sum(len(buckets) for buckets in self._buckets.values()) >= MAX_AGGREGATE_BUCKETS:
             return True
-        return self._estimated_webhook_batch_count_locked() >= MAX_BUFFERED_WEBHOOK_BATCHES
+        return self._estimated_webhook_batch_count() >= MAX_BUFFERED_WEBHOOK_BATCHES
 
-    def _estimated_webhook_batch_count_locked(self) -> int:
+    def _estimated_webhook_batch_count(self) -> int:
         count = 0
         for buckets in self._buckets.values():
             events_by_run: dict[str, int] = {}
@@ -425,50 +216,19 @@ class UsageEventBuffer:
             )
         return count
 
-    def _schedule_timer_locked(self) -> _TimerHandle | None:
-        if not self._timer_enabled or self._timer is not None:
-            return None
-        delay = self._next_delay_seconds()
-        timer = self._timer_factory(delay, self._flush_from_timer)
-        timer.daemon = True
-        self._timer = timer
-        return timer
+    def has_schedulable_work(self) -> bool:
+        return bool(self._pending_flushes or self._source_event_count)
 
-    def _schedule_timer_if_buffered_locked(self) -> _TimerHandle | None:
-        if not self._pending_flushes and not self._source_event_count:
-            return None
-        return self._schedule_timer_locked()
+    def has_active_enqueue(self) -> bool:
+        return bool(self._enqueuing_source_event_count)
 
-    def _pop_timer_locked(self) -> _TimerHandle | None:
-        timer = self._timer
-        self._timer = None
-        return timer
+    def has_pending_flushes(self) -> bool:
+        return bool(self._pending_flushes)
 
-    def _flush_from_timer(self) -> None:
-        self.flush_usage_events(trigger="timer")
+    def pop_pending_flush(self) -> _PendingFlush:
+        return self._pending_flushes.pop(0)
 
-    def _next_delay_seconds(self) -> float:
-        jitter = self._flush_interval_seconds * self._jitter_ratio
-        return max(0.001, self._flush_interval_seconds + _jitter_rng.uniform(-jitter, jitter))
-
-    def _next_pending_flush_locked(
-        self, *, snapshot_live: bool
-    ) -> tuple[_PendingFlush | None, bool]:
-        if self._enqueuing_source_event_count:
-            return None, False
-        if self._pending_flushes:
-            timer = self._pop_timer_locked()
-            if timer is not None:
-                timer.cancel()
-            return self._pending_flushes.pop(0), False
-        if not snapshot_live:
-            return None, False
-        return self._snapshot_pending_flush_locked(), True
-
-    def _snapshot_pending_flush_locked(self) -> _PendingFlush | None:
-        timer = self._pop_timer_locked()
-        if timer is not None:
-            timer.cancel()
+    def snapshot_live_flush(self) -> _PendingFlush | None:
         source_event_count = self._source_event_count
         destination_source_event_counts = self._destination_source_event_counts
         self._destination_source_event_counts = {}
@@ -481,7 +241,7 @@ class UsageEventBuffer:
         buckets = self._buckets
         self._buckets = {}
         self._source_event_count = 0
-        batches = self._build_flush_batches_locked(buckets, flush_sequence)
+        batches = self._build_flush_batches(buckets, flush_sequence)
         return _PendingFlush(
             source_event_count=source_event_count,
             flush_sequence=flush_sequence,
@@ -489,7 +249,27 @@ class UsageEventBuffer:
             summaries=_build_flush_summaries(destination_source_event_counts, batches),
         )
 
-    def _build_flush_batches_locked(
+    def begin_enqueue(self, pending_flush: _PendingFlush) -> None:
+        self._enqueuing_source_event_count += pending_flush.source_event_count
+
+    def complete_enqueue(self, pending_flush: _PendingFlush) -> None:
+        self._enqueuing_source_event_count = max(
+            0,
+            self._enqueuing_source_event_count - pending_flush.source_event_count,
+        )
+
+    def fail_enqueue(self, pending_flush: _PendingFlush) -> None:
+        self._pending_flushes.insert(0, pending_flush)
+        self.complete_enqueue(pending_flush)
+
+    def buffered_source_event_count(self) -> int:
+        return (
+            self._source_event_count
+            + sum(pending_flush.source_event_count for pending_flush in self._pending_flushes)
+            + self._enqueuing_source_event_count
+        )
+
+    def _build_flush_batches(
         self,
         buckets: dict[_DestinationKey, dict[_AggregateKey, int]],
         flush_sequence: int,
@@ -568,6 +348,254 @@ class UsageEventBuffer:
                 aggregate_key.category,
             ),
         )
+
+
+class UsageEventBuffer:
+    """Thread-safe process-local usage report buffer."""
+
+    def __init__(
+        self,
+        *,
+        flush_interval_seconds: float = DEFAULT_FLUSH_INTERVAL_SECONDS,
+        jitter_ratio: float = DEFAULT_FLUSH_JITTER_RATIO,
+        timer_enabled: bool = True,
+        timer_factory: _TimerFactory | None = None,
+        enqueue_webhook: _EnqueueWebhook | None = None,
+        flush_owner_lock: _FlushOwnerLock | None = None,
+    ) -> None:
+        self._lock = threading.Lock()
+        # Serializes snapshot/enqueue ownership. Ordinary flushes defer if busy;
+        # shutdown waits so daemon timer work cannot outlive process teardown.
+        self._flush_owner_lock: _FlushOwnerLock = (
+            flush_owner_lock if flush_owner_lock is not None else threading.Lock()
+        )
+        self._enqueue_webhook = enqueue_webhook
+        self._state = _UsageBufferState()
+        self._flush_interval_seconds = max(1.0, flush_interval_seconds)
+        self._jitter_ratio = max(0.0, jitter_ratio)
+        self._timer_enabled = timer_enabled
+        self._timer_factory = timer_factory if timer_factory is not None else self._make_timer
+        self._timer: _TimerHandle | None = None
+
+    def configure(self, *, flush_interval_seconds: float) -> None:
+        """Update runtime buffer settings."""
+        with self._lock:
+            self._flush_interval_seconds = max(1.0, flush_interval_seconds)
+
+    def buffer_usage_events(
+        self,
+        url: str,
+        sandbox_token: str,
+        run_id: str,
+        events: Iterable[UsageEvent],
+        proxy_log_path: str,
+        *,
+        resource_field_name: ResourceFieldName = "provider",
+        include_kind: bool = True,
+        log_type: str = "usage_event",
+    ) -> int:
+        """Add source usage events and flush if the buffer exceeds a bound."""
+        flush_now = False
+        timer_to_start: _TimerHandle | None = None
+        with self._lock:
+            accepted_count = self._state.add_events(
+                url,
+                sandbox_token,
+                run_id,
+                events,
+                proxy_log_path,
+                resource_field_name=resource_field_name,
+                include_kind=include_kind,
+                log_type=log_type,
+            )
+            if accepted_count == 0:
+                return 0
+            if self._state.should_flush():
+                flush_now = True
+            else:
+                timer_to_start = self._schedule_timer_locked()
+            self._sync_buffered_counter_locked()
+
+        if timer_to_start is not None:
+            timer_to_start.start()
+        if flush_now:
+            self._flush_usage_events(trigger="threshold")
+        return accepted_count
+
+    def flush_usage_events(self, *, trigger: UsageFlushTrigger) -> int:
+        """Flush all buffered usage events now."""
+        return self._flush_usage_events(trigger=trigger)
+
+    def close(self) -> None:
+        """Cancel any pending timer for test cleanup or process shutdown."""
+        with self._lock:
+            timer = self._pop_timer_locked()
+            self._state.clear()
+            self._sync_buffered_counter_locked()
+        if timer is not None:
+            timer.cancel()
+
+    def _flush_usage_events(self, *, trigger: UsageFlushTrigger) -> int:
+        if not self._acquire_flush_ownership(trigger):
+            self._defer_unowned_flush(trigger)
+            return 0
+
+        try:
+            return self._flush_usage_events_owned(trigger=trigger)
+        finally:
+            self._flush_owner_lock.release()
+
+    def _acquire_flush_ownership(self, trigger: UsageFlushTrigger) -> bool:
+        return self._flush_owner_lock.acquire(blocking=trigger == "shutdown")
+
+    def _defer_unowned_flush(self, trigger: UsageFlushTrigger) -> None:
+        timer_to_cancel: _TimerHandle | None = None
+        timer_to_start: _TimerHandle | None = None
+        with self._lock:
+            if trigger == "timer":
+                timer_to_cancel = self._pop_timer_locked()
+            if trigger != "shutdown":
+                timer_to_start = self._schedule_timer_if_buffered_locked()
+            self._sync_buffered_counter_locked()
+        if timer_to_cancel is not None:
+            timer_to_cancel.cancel()
+        if timer_to_start is not None:
+            timer_to_start.start()
+
+    def _flush_usage_events_owned(self, *, trigger: UsageFlushTrigger) -> int:
+        flushed_batch_count = 0
+        snapshot_live = True
+        if trigger in ("shutdown", "timer"):
+            with self._lock:
+                timer = self._pop_timer_locked()
+            if timer is not None:
+                timer.cancel()
+
+        while True:
+            timer_to_start: _TimerHandle | None = None
+            with self._lock:
+                pending_flush, live_snapshot_attempted = self._next_pending_flush_locked(
+                    snapshot_live=snapshot_live
+                )
+                if live_snapshot_attempted and trigger != "shutdown":
+                    snapshot_live = False
+                if (
+                    trigger != "shutdown"
+                    and self._state.has_active_enqueue()
+                    and pending_flush is None
+                ):
+                    timer_to_start = self._schedule_timer_if_buffered_locked()
+                if pending_flush is None:
+                    self._sync_buffered_counter_locked()
+                else:
+                    self._state.begin_enqueue(pending_flush)
+                    self._sync_buffered_counter_locked()
+
+            if timer_to_start is not None:
+                timer_to_start.start()
+            if pending_flush is None:
+                return flushed_batch_count
+
+            try:
+                self._enqueue_pending_flush(pending_flush, trigger)
+            except Exception:
+                timer_to_start = None
+                with self._lock:
+                    self._state.fail_enqueue(pending_flush)
+                    if trigger != "shutdown":
+                        timer_to_start = self._schedule_timer_if_buffered_locked()
+                    self._sync_buffered_counter_locked()
+                if timer_to_start is not None:
+                    timer_to_start.start()
+                raise
+
+            flushed_batch_count += len(pending_flush.batches)
+            with self._lock:
+                self._state.complete_enqueue(pending_flush)
+                self._sync_buffered_counter_locked()
+
+    def _enqueue_pending_flush(
+        self,
+        pending_flush: _PendingFlush,
+        trigger: UsageFlushTrigger,
+    ) -> None:
+        started_at = time.monotonic()
+        try:
+            _log_flush_summaries(
+                "started", trigger, pending_flush.flush_sequence, pending_flush.summaries
+            )
+            _apply_dropped_batch_counts(
+                pending_flush.summaries,
+                _enqueue_batches(
+                    pending_flush.batches,
+                    self._enqueue_webhook
+                    if self._enqueue_webhook is not None
+                    else _enqueue_webhook,
+                ),
+            )
+            _log_flush_summaries(
+                "completed",
+                trigger,
+                pending_flush.flush_sequence,
+                pending_flush.summaries,
+                duration_ms=_elapsed_ms(started_at),
+            )
+        except Exception as exc:
+            _log_flush_summaries(
+                "failed",
+                trigger,
+                pending_flush.flush_sequence,
+                pending_flush.summaries,
+                duration_ms=_elapsed_ms(started_at),
+                error_type=type(exc).__name__,
+            )
+            raise
+
+    def _sync_buffered_counter_locked(self) -> None:
+        set_buffered_usage_events(self._state.buffered_source_event_count())
+
+    def _schedule_timer_locked(self) -> _TimerHandle | None:
+        if not self._timer_enabled or self._timer is not None:
+            return None
+        delay = self._next_delay_seconds()
+        timer = self._timer_factory(delay, self._flush_from_timer)
+        timer.daemon = True
+        self._timer = timer
+        return timer
+
+    def _schedule_timer_if_buffered_locked(self) -> _TimerHandle | None:
+        if not self._state.has_schedulable_work():
+            return None
+        return self._schedule_timer_locked()
+
+    def _pop_timer_locked(self) -> _TimerHandle | None:
+        timer = self._timer
+        self._timer = None
+        return timer
+
+    def _flush_from_timer(self) -> None:
+        self.flush_usage_events(trigger="timer")
+
+    def _next_delay_seconds(self) -> float:
+        jitter = self._flush_interval_seconds * self._jitter_ratio
+        return max(0.001, self._flush_interval_seconds + _jitter_rng.uniform(-jitter, jitter))
+
+    def _next_pending_flush_locked(
+        self, *, snapshot_live: bool
+    ) -> tuple[_PendingFlush | None, bool]:
+        if self._state.has_active_enqueue():
+            return None, False
+        if self._state.has_pending_flushes():
+            timer = self._pop_timer_locked()
+            if timer is not None:
+                timer.cancel()
+            return self._state.pop_pending_flush(), False
+        if not snapshot_live:
+            return None, False
+        timer = self._pop_timer_locked()
+        if timer is not None:
+            timer.cancel()
+        return self._state.snapshot_live_flush(), True
 
     @staticmethod
     def _make_timer(delay: float, callback: Callable[[], None]) -> threading.Timer:
