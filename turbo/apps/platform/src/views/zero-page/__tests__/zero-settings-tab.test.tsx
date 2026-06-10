@@ -75,16 +75,27 @@ function prepareAgentProfile(): void {
 }
 
 describe("zero settings tab", () => {
-  it("saves and discards visible agent profile edits", async () => {
+  it("saves, discards, and confirms visible agent profile edits", async () => {
     prepareAgentProfile();
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
     const nameInput = await screen.findByDisplayValue("Research Agent");
     await fill(nameInput, "Research Lead");
+    await fill(
+      screen.getByLabelText("Description"),
+      "Helps with release research",
+    );
+    click(screen.getByText("Friendly"));
+    click(screen.getByLabelText("Make public"));
 
     await waitFor(() => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+      expect(screen.getByText("Warm and approachable")).toBeInTheDocument();
+      expect(screen.getByLabelText("Make public")).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
     });
 
     click(screen.getByText("Save"));
@@ -94,6 +105,13 @@ describe("zero settings tab", () => {
         screen.queryByText("You have unsaved changes"),
       ).not.toBeInTheDocument();
       expect(screen.getByDisplayValue("Research Lead")).toBeInTheDocument();
+      expect(
+        screen.getByDisplayValue("Helps with release research"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Make public")).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
     });
 
     await fill(screen.getByDisplayValue("Research Lead"), "Temporary Name");
@@ -109,6 +127,23 @@ describe("zero settings tab", () => {
         screen.queryByText("You have unsaved changes"),
       ).not.toBeInTheDocument();
       expect(screen.getByDisplayValue("Research Lead")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Delete agent"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByText(/instructions, schedules, and all associated data/u),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Cancel"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/instructions, schedules, and all associated data/u),
+      ).not.toBeInTheDocument();
     });
   });
 });

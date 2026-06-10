@@ -516,6 +516,15 @@ describe("zero sidebar", () => {
       expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
     });
 
+    await fill(within(dialog).getByPlaceholderText("Search agents..."), "ops");
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("No agents found")).toBeInTheDocument();
+      expect(
+        within(dialog).queryByText("Support Agent"),
+      ).not.toBeInTheDocument();
+    });
+
     click(within(dialog).getByLabelText("Clear search"));
 
     await waitFor(() => {
