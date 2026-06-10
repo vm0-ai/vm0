@@ -51,6 +51,35 @@ export const setScheduleTabSaving$ = command(({ set }, value: boolean) => {
 // Convert ScheduleResponse to display time string
 // ---------------------------------------------------------------------------
 
+function atTimeInTimezone(
+  isoTime: string,
+  timezone: string,
+): { date: string; hour: number; minute: number } {
+  const d = new Date(isoTime);
+  const tz = timezone || "UTC";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: tz,
+  }).formatToParts(d);
+  const get = (type: string) => {
+    return (
+      parts.find((p) => {
+        return p.type === type;
+      })?.value ?? "00"
+    );
+  };
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    hour: Number(get("hour")),
+    minute: Number(get("minute")),
+  };
+}
+
 function scheduleToTimeString(s: ScheduleResponse): string {
   if (s.triggerType === "loop" && s.intervalSeconds !== null) {
     if (s.intervalSeconds % 60 === 0) {
@@ -61,10 +90,10 @@ function scheduleToTimeString(s: ScheduleResponse): string {
   }
 
   if (s.triggerType === "once" && s.atTime) {
-    const at = new Date(s.atTime);
-    const date = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
-    const hour = at.getHours();
-    const minute = at.getMinutes();
+    const { date, hour, minute } = atTimeInTimezone(
+      s.atTime,
+      s.timezone ?? "UTC",
+    );
     const ampm = hour >= 12 ? "PM" : "AM";
     const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `Once on ${date} at ${h12}:${String(minute).padStart(2, "0")} ${ampm}`;

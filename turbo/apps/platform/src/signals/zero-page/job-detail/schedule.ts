@@ -41,12 +41,44 @@ interface ScheduleItem {
 // Schedule time string conversion
 // ---------------------------------------------------------------------------
 
-function cronToTimeString(cron: string): string {
+function cronUtcToLocalTime(
+  utcHour: number,
+  utcMinute: number,
+  timezone: string,
+): { hour: number; minute: number } {
+  if (timezone === "UTC" || timezone === "Etc/UTC") {
+    return { hour: utcHour, minute: utcMinute };
+  }
+  const d = new Date();
+  d.setUTCHours(utcHour, utcMinute, 0, 0);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: timezone,
+  }).formatToParts(d);
+  return {
+    hour: Number(
+      parts.find((p) => {
+        return p.type === "hour";
+      })?.value ?? utcHour,
+    ),
+    minute: Number(
+      parts.find((p) => {
+        return p.type === "minute";
+      })?.value ?? utcMinute,
+    ),
+  };
+}
+
+function cronToTimeString(cron: string, timezone = "UTC"): string {
   const parts = cron.split(" ");
-  const minute = Number(parts[0]);
-  const hour = Number(parts[1]);
+  const rawMinute = Number(parts[0]);
+  const rawHour = Number(parts[1]);
   const dayOfMonth = parts[2] ?? "*";
   const dayOfWeek = parts[4] ?? "*";
+
+  const { hour, minute } = cronUtcToLocalTime(rawHour, rawMinute, timezone);
 
   const ampm = hour >= 12 ? "PM" : "AM";
   const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
@@ -82,6 +114,35 @@ function cronToTimeString(cron: string): string {
   return `Every day at ${timeStr}`;
 }
 
+function atTimeInTimezone(
+  isoTime: string,
+  timezone: string,
+): { date: string; hour: number; minute: number } {
+  const d = new Date(isoTime);
+  const tz = timezone || "UTC";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: tz,
+  }).formatToParts(d);
+  const get = (type: string) => {
+    return (
+      parts.find((p) => {
+        return p.type === type;
+      })?.value ?? "00"
+    );
+  };
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    hour: Number(get("hour")),
+    minute: Number(get("minute")),
+  };
+}
+
 function scheduleToTimeString(s: ScheduleItem): string {
   if (s.triggerType === "loop" && s.intervalSeconds !== null) {
     if (s.intervalSeconds % 60 === 0) {
@@ -90,16 +151,16 @@ function scheduleToTimeString(s: ScheduleItem): string {
     return `Every ${s.intervalSeconds} seconds`;
   }
   if (s.triggerType === "once" && s.atTime) {
-    const at = new Date(s.atTime);
-    const date = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
-    const hour = at.getHours();
-    const minute = at.getMinutes();
+    const { date, hour, minute } = atTimeInTimezone(
+      s.atTime,
+      s.timezone ?? "UTC",
+    );
     const ampm = hour >= 12 ? "PM" : "AM";
     const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `Once on ${date} at ${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
   }
   if (s.cronExpression) {
-    return cronToTimeString(s.cronExpression);
+    return cronToTimeString(s.cronExpression, s.timezone);
   }
   return "Scheduled";
 }
