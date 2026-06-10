@@ -6,7 +6,8 @@
 //!
 //! Guards against the regression "reap accidentally kills healthy CLIs"
 //! by keeping the configured reap deadline beyond the test timeout and
-//! asserting the mock exits cleanly before that deadline can fire.
+//! asserting the mock result is observed and exits cleanly before that
+//! deadline can fire.
 //!
 //! See: https://github.com/vm0-ai/vm0/issues/10879
 
@@ -44,6 +45,15 @@ async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std
 
     let result = result.expect("execute_cli returned Err");
     let exit_code = result.exit_code;
+
+    // Prove this test really exercised the post-result path. A clean
+    // exit without a parsed `type=result` event would not validate the
+    // reap arming/drain race this test exists to cover.
+    assert_eq!(
+        result.claude_result,
+        Some(guest_agent::cli::ClaudeResultSummary { num_turns: Some(1) }),
+        "expected the mock type=result event to be observed before clean exit"
+    );
 
     // Clean exit(0) — if this is SIGTERM_EXIT / SIGKILL_EXIT, the
     // reap fired against a healthy CLI, which is a correctness bug.
