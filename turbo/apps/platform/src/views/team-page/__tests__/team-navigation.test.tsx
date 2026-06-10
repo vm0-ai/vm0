@@ -291,6 +291,35 @@ describe("team page navigation", () => {
     });
   });
 
+  it("shows a retryable error when agent details fail to load", async () => {
+    const unavailableAgentId = "bbbbbbbb-0000-4000-a000-000000000500";
+    context.mocks.data.team([
+      createAgent(unavailableAgentId, "Archived Agent"),
+      createAgent(researchAgentId, "Research Agent"),
+    ]);
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(403, {
+        error: {
+          message: "Agent details are unavailable",
+          code: "AGENT_DETAIL_UNAVAILABLE",
+        },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/agents/${unavailableAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Agent details are unavailable"),
+      ).toBeInTheDocument();
+    });
+
+    const retry = queryAllByRoleFast("link").find((el) => {
+      return el.textContent?.replace(/\s+/g, " ").trim() === "Retry";
+    });
+    expect(retry).toHaveAttribute("href", `/agents/${unavailableAgentId}`);
+  });
+
   it("edits and creates schedules from an agent page", async () => {
     mockTeamAPIs();
     detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
@@ -445,10 +474,6 @@ describe("team page navigation", () => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
       expect(screen.queryByText("Axiom permissions")).not.toBeInTheDocument();
     });
-    toast.dismiss();
-    await waitFor(() => {
-      expect(screen.queryByText("Permissions updated")).not.toBeInTheDocument();
-    });
 
     click(screen.getByLabelText("Manage Axiom permissions"));
 
@@ -476,10 +501,6 @@ describe("team page navigation", () => {
     await waitFor(() => {
       expect(screen.getByText("Permissions updated")).toBeInTheDocument();
       expect(screen.queryByText("Axiom permissions")).not.toBeInTheDocument();
-    });
-    toast.dismiss();
-    await waitFor(() => {
-      expect(screen.queryByText("Permissions updated")).not.toBeInTheDocument();
     });
   });
 

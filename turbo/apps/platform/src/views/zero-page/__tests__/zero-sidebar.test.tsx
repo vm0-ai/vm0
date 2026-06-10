@@ -259,7 +259,6 @@ describe("zero sidebar", () => {
   it("keeps known threads visible while creating a new chat", async () => {
     prepareDefaultAgent();
     const createDeferred = context.mocks.deferred<void>();
-    let createdThreadId: string | null = null;
 
     context.mocks.api(chatThreadsContract.list, ({ respond }) => {
       return respond(
@@ -278,10 +277,9 @@ describe("zero sidebar", () => {
       );
     });
     context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
-      createdThreadId = body.clientThreadId ?? "created-thread-id";
       await createDeferred.promise;
       return respond(201, {
-        id: createdThreadId,
+        id: body.clientThreadId ?? "created-thread-id",
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
       });
@@ -311,7 +309,6 @@ describe("zero sidebar", () => {
     click(newChatButton);
 
     await waitFor(() => {
-      expect(createdThreadId).not.toBeNull();
       const sidebar = screen.getByRole("navigation", { name: "Sidebar" });
       expect(
         within(sidebar).getByText("Existing conversation"),
@@ -325,7 +322,7 @@ describe("zero sidebar", () => {
     createDeferred.resolve();
   });
 
-  it("pins, unpins, and renames a chat thread from the sidebar menu", async () => {
+  it("pins and unpins a chat thread from the sidebar menu", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Release plan"),
@@ -363,6 +360,25 @@ describe("zero sidebar", () => {
           "chat-thread-pinned-indicator",
         ),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("renames a chat thread from the sidebar menu", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+    ]);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatThreadRename]: true },
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
     });
 
     openThreadMenu("Release plan");

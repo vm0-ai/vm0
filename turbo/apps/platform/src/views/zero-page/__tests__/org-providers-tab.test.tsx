@@ -158,6 +158,20 @@ async function openProvidersTab(): Promise<void> {
   });
 }
 
+async function openAddApiKeyModelDialog(): Promise<void> {
+  mockAdminOrg();
+  context.mocks.data.orgModelProviders([]);
+  await openProvidersTab();
+
+  click(screen.getByText("Add model"));
+  click(screen.getByRole("radio", { name: /API key/u }));
+  await waitFor(() => {
+    expect(
+      screen.getByPlaceholderText("Enter your API key"),
+    ).toBeInTheDocument();
+  });
+}
+
 function buttonByText(text: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((element) => {
     return element.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -179,24 +193,25 @@ function menuItemByText(text: string): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
-  it("shows validation for a workspace API key model route", async () => {
-    mockAdminOrg();
-    context.mocks.data.orgModelProviders([]);
-    await openProvidersTab();
+  it("opens a workspace API key model route form", async () => {
+    await openAddApiKeyModelDialog();
 
-    click(screen.getByText("Add model"));
-    click(screen.getByRole("radio", { name: /API key/u }));
+    expect(screen.getByText("Anthropic API key")).toBeInTheDocument();
+    expect(
+      screen.getByText("Stored in workspace secrets."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows validation for a workspace API key model route", async () => {
+    await openAddApiKeyModelDialog();
+
     click(buttonByText("Add model"));
     expect(screen.getByText("API key is required")).toBeInTheDocument();
   });
 
   it("adds a workspace API key model route", async () => {
-    mockAdminOrg();
-    context.mocks.data.orgModelProviders([]);
-    await openProvidersTab();
+    await openAddApiKeyModelDialog();
 
-    click(screen.getByText("Add model"));
-    click(screen.getByRole("radio", { name: /API key/u }));
     await fill(
       screen.getByPlaceholderText("Enter your API key"),
       "sk-ant-test",

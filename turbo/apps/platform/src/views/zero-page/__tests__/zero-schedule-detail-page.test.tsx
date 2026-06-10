@@ -200,7 +200,7 @@ describe("zero schedule detail page", () => {
     });
   });
 
-  it("pauses, runs, and deletes a schedule", async () => {
+  it("pauses a schedule and cancels deletion", async () => {
     mockScheduleDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
@@ -230,6 +230,18 @@ describe("zero schedule detail page", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+    });
+  });
+
+  it("runs and deletes a schedule", async () => {
+    mockScheduleDetailStory();
+
+    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Morning brief" }),
+      ).toBeInTheDocument();
     });
 
     click(buttonByText("Run now"));

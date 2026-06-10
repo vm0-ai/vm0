@@ -200,6 +200,29 @@ function mockThread(options?: {
   });
 }
 
+function mockActiveTemplateThread(): void {
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    chatMessages: [
+      {
+        id: "msg-template-active-user",
+        role: "user",
+        content: "Start an active deck run",
+        runId: "run-template-active",
+        createdAt: "2026-06-09T10:00:00Z",
+      },
+      {
+        id: "msg-template-active-assistant",
+        role: "assistant",
+        content: null,
+        runId: "run-template-active",
+        status: "running",
+        createdAt: "2026-06-09T10:00:01Z",
+      },
+    ],
+  });
+}
+
 function mockConnectors(
   connectors: {
     type: ConnectorType;
@@ -283,6 +306,30 @@ async function openTemplatePicker(
   }
 
   await user.click(screen.getByLabelText(`Select template ${template.title}`));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Template")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+}
+
+async function selectTemplate(
+  user: ReturnType<typeof userEvent.setup>,
+  template: (typeof PRESENTATION_TEMPLATE_ITEMS)[number],
+): Promise<void> {
+  click(
+    await waitFor(() => {
+      return screen.getByLabelText("Template");
+    }),
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  await user.click(screen.getByLabelText(`Select template ${template.title}`));
+
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Template")).toHaveAttribute(
@@ -713,10 +760,9 @@ describe("chat composer models", () => {
 });
 
 describe("chat composer templates", () => {
-  it("queues a selected template during an active run and keeps newer selections visible", async () => {
+  it("selects a presentation template from the picker", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
-    const nextTemplate = PRESENTATION_TEMPLATE_ITEMS[1]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -725,17 +771,30 @@ describe("chat composer templates", () => {
       featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
     });
 
-    const firstTextarea = await screen.findByPlaceholderText(PLACEHOLDER);
-    await sendMessageInUI(
-      user,
-      firstTextarea as HTMLTextAreaElement,
-      "Start an active deck run",
-    );
+    await openTemplatePicker(user);
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(`Remove template ${templateLabel(template)}`),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("queues a selected template during an active run and clears the picker state", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    mockActiveTemplateThread();
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
+    });
+
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
-
-    await openTemplatePicker(user);
+    await selectTemplate(user, template);
     const queuedTextarea = await screen.findByPlaceholderText(
       /Type your next message/,
     );
@@ -753,12 +812,43 @@ describe("chat composer templates", () => {
         "aria-pressed",
         "false",
       );
+      expect(
+        screen.queryByLabelText(`Remove template ${templateLabel(template)}`),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps newer template selections visible after a queued template is sent", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const nextTemplate = PRESENTATION_TEMPLATE_ITEMS[1]!;
+    mockActiveTemplateThread();
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
     });
 
-    click(await screen.findByLabelText("Template"));
-    await user.click(
-      screen.getByLabelText(`Select template ${nextTemplate.title}`),
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    await selectTemplate(user, template);
+    await sendMessageInUI(
+      user,
+      (await screen.findByPlaceholderText(
+        /Type your next message/,
+      )) as HTMLTextAreaElement,
+      "Queue a matching deck",
     );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+        "Queue a matching deck",
+      );
+    });
+
+    await selectTemplate(user, nextTemplate);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Template")).toHaveAttribute(

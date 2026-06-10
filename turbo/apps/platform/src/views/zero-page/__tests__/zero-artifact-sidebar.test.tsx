@@ -673,7 +673,7 @@ describe("zero artifact sidebar", () => {
       expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Close presentation editor"));
+    click(screen.getByLabelText("Done editing presentation"));
 
     await waitFor(() => {
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();

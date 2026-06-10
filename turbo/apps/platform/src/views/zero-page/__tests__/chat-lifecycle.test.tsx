@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
@@ -95,6 +95,165 @@ function makeMessage(id: string, text: string): PagedChatMessage {
   };
 }
 
+function mockActiveRunThread(threadId: string): void {
+  mockChatLifecycle(context, {
+    threadId,
+    chatMessages: [
+      {
+        id: `${threadId}-active-user`,
+        role: "user",
+        content: "Start the active run",
+        runId: "run-active",
+        createdAt: "2026-06-09T10:00:00Z",
+      },
+      {
+        id: `${threadId}-active-assistant`,
+        role: "assistant",
+        content: null,
+        runId: "run-active",
+        status: "running",
+        createdAt: "2026-06-09T10:00:01Z",
+      },
+    ],
+  });
+}
+
+function mockScheduleThread(): void {
+  mockChatLifecycle(context, {
+    threadId: SCHEDULE_THREAD_ID,
+    threadTitle: "Scheduled launch review",
+    historyMessages: [
+      {
+        role: "user",
+        content: "Review launch risks",
+        createdAt: "2026-06-09T10:00:00Z",
+      },
+      {
+        role: "assistant",
+        content: "I'll review this on the schedule.",
+        createdAt: "2026-06-09T10:00:01Z",
+      },
+    ],
+  });
+  context.mocks.data.schedules([
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000701",
+      agentId: AGENT_ID,
+      chatThreadId: SCHEDULE_THREAD_ID,
+      name: "launch-review",
+      description: "Launch review",
+      prompt: "Review launch risks",
+      cronExpression: "30 15 * * 1-5",
+      triggerType: "cron",
+      nextRunAt: "2026-06-10T15:30:00.000Z",
+    }),
+  ]);
+}
+
+function mockGithubPrTrackingThread(): void {
+  mockChatLifecycle(context, {
+    threadId: GITHUB_PR_THREAD_ID,
+    threadTitle: "PR review",
+    chatMessages: [
+      {
+        id: "msg-pr-request",
+        role: "user",
+        content: "Review the failing pull request",
+        createdAt: "2026-06-09T10:00:00Z",
+      },
+    ],
+  });
+  context.mocks.data.connectors([
+    {
+      id: "99999999-9999-4999-8999-999999999999",
+      type: "github",
+      authMethod: "oauth",
+      externalId: "github-octocat",
+      externalUsername: "octocat",
+      externalEmail: null,
+      oauthScopes: ["repo"],
+      connectionStatus: "connected",
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+  ]);
+  context.mocks.data.githubIntegration(
+    context.mocks.data.defaultGithubIntegration({
+      labelListeners: [
+        {
+          id: "b0000000-0000-4000-a000-000000000701",
+          labelName: "needs-review",
+          triggerMode: "created_by_me",
+          prompt: "Review the labeled pull request.",
+          enabled: true,
+          canManage: true,
+          agent: {
+            id: AGENT_ID,
+            name: "zero",
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+          updatedAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    }),
+  );
+  context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    return respond(200, { enabledTypes: ["github"] });
+  });
+  context.mocks.api(chatThreadGithubPrsContract.list, ({ respond }) => {
+    return respond(200, {
+      prs: [
+        {
+          repo: "vm0-ai/vm0",
+          number: 123,
+          title: "Fix flaky platform tests",
+          url: "https://github.com/vm0-ai/vm0/pull/123",
+          state: "open",
+          headSha: "abc123",
+          mergeStatus: "conflicts",
+          rollup: "failure",
+          checks: [
+            {
+              name: "unit tests",
+              status: "completed",
+              conclusion: "failure",
+              url: "https://github.com/vm0-ai/vm0/actions/runs/1",
+              startedAt: "2026-06-09T10:00:00Z",
+              completedAt: "2026-06-09T10:05:00Z",
+            },
+            {
+              name: "deploy preview",
+              status: "queued",
+              conclusion: null,
+              url: null,
+              startedAt: null,
+              completedAt: null,
+            },
+          ],
+        },
+      ],
+    });
+  });
+}
+
+async function openGithubPrTracking(): Promise<void> {
+  click(await screen.findByLabelText("Open GitHub PR tracking"));
+
+  await waitFor(() => {
+    expect(screen.getByLabelText("GitHub PR tracking")).toBeInTheDocument();
+  });
+}
+
+function setupGithubPrTrackingPage(): void {
+  mockGithubPrTrackingThread();
+  detachedSetupPage({
+    context,
+    path: `/chats/${GITHUB_PR_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
+  });
+}
+
 function selectTextForInlineFeedback(element: HTMLElement): void {
   const range = document.createRange();
   range.selectNodeContents(element);
@@ -133,7 +292,24 @@ function queryButtonByText(text: string): HTMLElement | null {
 }
 
 describe("chat lifecycle", () => {
-  it("completes a run, renders markdown, and returns the composer to send mode", async () => {
+  it("shows a sent message and stop control while a new chat run is active", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context);
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Summarize the launch plan");
+
+    await waitFor(() => {
+      expect(screen.getByText("Summarize the launch plan")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
+
+  it("renders completed markdown and returns the composer to send mode", async () => {
     const user = userEvent.setup({ delay: null });
     const lifecycle = mockChatLifecycle(context);
 
@@ -157,7 +333,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("queues, recalls, and replays messages while an optimistic new thread settles", async () => {
+  it("recalls a queued follow-up while an optimistic new thread settles", async () => {
     const user = userEvent.setup({ delay: null });
     const sendGate = context.mocks.deferred<void>();
     mockChatLifecycle(context, { sendGate: sendGate.promise });
@@ -171,6 +347,34 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("First new-thread message")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    await sendQueuedMessage(user, "First queued follow-up");
+    await expectQueuedMessages(["First queued follow-up"]);
+
+    click(screen.getAllByLabelText("Remove queued message")[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Type your next message/)).toHaveValue(
+        "First queued follow-up",
+      );
+    });
+
+    sendGate.resolve();
+
+    await waitFor(() => {
+      expect(screen.getByText("First new-thread message")).toBeInTheDocument();
+    });
+  });
+
+  it("replays recalled queued content during an active run", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockActiveRunThread(THREAD_ID);
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
@@ -195,16 +399,10 @@ describe("chat lifecycle", () => {
     );
     await user.keyboard("{Enter}");
 
-    await act(async () => {
-      sendGate.resolve();
-      await Promise.resolve();
-    });
-
     await expectQueuedMessages([
       "Second queued follow-up",
       "Replayed follow-up",
     ]);
-    expect(screen.getByText("First new-thread message")).toBeInTheDocument();
   });
 
   it("recalls queued content and clears the thinking indicator when the active run is stopped", async () => {
@@ -371,36 +569,8 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("opens a linked schedule from the chat header", async () => {
-    mockChatLifecycle(context, {
-      threadId: SCHEDULE_THREAD_ID,
-      threadTitle: "Scheduled launch review",
-      historyMessages: [
-        {
-          role: "user",
-          content: "Review launch risks",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: "I'll review this on the schedule.",
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-      ],
-    });
-    context.mocks.data.schedules([
-      createMockScheduleResponse({
-        id: "f0000001-0000-4000-a000-000000000701",
-        agentId: AGENT_ID,
-        chatThreadId: SCHEDULE_THREAD_ID,
-        name: "launch-review",
-        description: "Launch review",
-        prompt: "Review launch risks",
-        cronExpression: "30 15 * * 1-5",
-        triggerType: "cron",
-        nextRunAt: "2026-06-10T15:30:00.000Z",
-      }),
-    ]);
+  it("shows linked schedules from the chat header", async () => {
+    mockScheduleThread();
 
     detachedSetupPage({ context, path: `/chats/${SCHEDULE_THREAD_ID}` });
 
@@ -415,6 +585,18 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Launch review")).toBeInTheDocument();
       expect(screen.getByText(/Next run/u)).toBeInTheDocument();
     });
+  });
+
+  it("opens a linked schedule detail from the chat header", async () => {
+    mockScheduleThread();
+
+    detachedSetupPage({ context, path: `/chats/${SCHEDULE_THREAD_ID}` });
+
+    click(await screen.findByLabelText("Schedules"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Launch review")).toBeInTheDocument();
+    });
 
     click(screen.getByText("Launch review"));
 
@@ -425,108 +607,30 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("opens GitHub PR tracking and queues a conflict fix command from the dock", async () => {
-    mockChatLifecycle(context, {
-      threadId: GITHUB_PR_THREAD_ID,
-      threadTitle: "PR review",
-      chatMessages: [
-        {
-          id: "msg-pr-request",
-          role: "user",
-          content: "Review the failing pull request",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-      ],
-    });
-    context.mocks.data.connectors([
-      {
-        id: "99999999-9999-4999-8999-999999999999",
-        type: "github",
-        authMethod: "oauth",
-        externalId: "github-octocat",
-        externalUsername: "octocat",
-        externalEmail: null,
-        oauthScopes: ["repo"],
-        connectionStatus: "connected",
-        tokenExpiresAt: null,
-        createdAt: "2026-01-01T00:00:00Z",
-        updatedAt: "2026-01-01T00:00:00Z",
-      },
-    ]);
-    context.mocks.data.githubIntegration(
-      context.mocks.data.defaultGithubIntegration({
-        labelListeners: [
-          {
-            id: "b0000000-0000-4000-a000-000000000701",
-            labelName: "needs-review",
-            triggerMode: "created_by_me",
-            prompt: "Review the labeled pull request.",
-            enabled: true,
-            canManage: true,
-            agent: {
-              id: AGENT_ID,
-              name: "zero",
-            },
-            createdAt: "2026-06-09T10:00:00Z",
-            updatedAt: "2026-06-09T10:00:00Z",
-          },
-        ],
-      }),
-    );
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: ["github"] });
-    });
-    context.mocks.api(chatThreadGithubPrsContract.list, ({ respond }) => {
-      return respond(200, {
-        prs: [
-          {
-            repo: "vm0-ai/vm0",
-            number: 123,
-            title: "Fix flaky platform tests",
-            url: "https://github.com/vm0-ai/vm0/pull/123",
-            state: "open",
-            headSha: "abc123",
-            mergeStatus: "conflicts",
-            rollup: "failure",
-            checks: [
-              {
-                name: "unit tests",
-                status: "completed",
-                conclusion: "failure",
-                url: "https://github.com/vm0-ai/vm0/actions/runs/1",
-                startedAt: "2026-06-09T10:00:00Z",
-                completedAt: "2026-06-09T10:05:00Z",
-              },
-              {
-                name: "deploy preview",
-                status: "queued",
-                conclusion: null,
-                url: null,
-                startedAt: null,
-                completedAt: null,
-              },
-            ],
-          },
-        ],
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${GITHUB_PR_THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
-    });
-
-    click(await screen.findByLabelText("Open GitHub PR tracking"));
+  it("opens GitHub PR tracking from the dock", async () => {
+    setupGithubPrTrackingPage();
+    await openGithubPrTracking();
 
     await waitFor(() => {
-      expect(screen.getByLabelText("GitHub PR tracking")).toBeInTheDocument();
       expect(screen.getByText("vm0-ai/vm0 #123")).toBeInTheDocument();
       expect(screen.getByText("Fix flaky platform tests")).toBeInTheDocument();
       expect(screen.getByText("Conflicts")).toBeInTheDocument();
       expect(screen.getByText("unit tests")).toBeInTheDocument();
       expect(screen.getByText("deploy preview")).toBeInTheDocument();
     });
+
+    click(screen.getByLabelText("Close GitHub PR tracking"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("GitHub PR tracking"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("queues a GitHub PR label command from the tracking dock", async () => {
+    setupGithubPrTrackingPage();
+    await openGithubPrTracking();
 
     click(await screen.findByLabelText("Add label to PR 123"));
     click(await screen.findByText("needs-review"));
@@ -536,6 +640,11 @@ describe("chat lifecycle", () => {
         screen.getByText('add label "needs-review" to pr 123'),
       ).toBeInTheDocument();
     });
+  });
+
+  it("queues a GitHub PR conflict fix command from the tracking dock", async () => {
+    setupGithubPrTrackingPage();
+    await openGithubPrTracking();
 
     click(await screen.findByText("Fix conflict"));
 
@@ -543,14 +652,6 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("fix pr 123 conflict & push"),
       ).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Close GitHub PR tracking"));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByLabelText("GitHub PR tracking"),
-      ).not.toBeInTheDocument();
     });
   });
 

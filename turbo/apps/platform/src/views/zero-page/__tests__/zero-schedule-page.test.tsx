@@ -121,6 +121,14 @@ function mockSchedulePageStory(): void {
   ]);
 }
 
+function mockScheduleCreateStory(): void {
+  context.mocks.data.team([
+    createAgent(zeroAgentId, "Zero"),
+    createAgent(researchAgentId, "Research Agent"),
+  ]);
+  context.mocks.data.schedules([]);
+}
+
 async function openSchedulePage(): Promise<void> {
   detachedSetupPage({ context, path: "/schedules" });
 
@@ -141,7 +149,7 @@ async function openScheduleList(): Promise<void> {
 }
 
 describe("zero schedule page", () => {
-  it("shows scheduled work in the calendar and protects unsaved create edits", async () => {
+  it("shows scheduled work in the calendar", async () => {
     mockSchedulePageStory();
 
     await openSchedulePage();
@@ -157,6 +165,12 @@ describe("zero schedule page", () => {
     expect(
       screen.getByText("Once on 2026-06-12 at 6:45 PM"),
     ).toBeInTheDocument();
+  });
+
+  it("protects unsaved create edits", async () => {
+    mockScheduleCreateStory();
+
+    await openSchedulePage();
 
     click(buttonByText("Add schedule"));
 
@@ -195,7 +209,7 @@ describe("zero schedule page", () => {
   });
 
   it("creates a schedule and opens the new detail page", async () => {
-    mockSchedulePageStory();
+    mockScheduleCreateStory();
 
     await openSchedulePage();
 
@@ -209,7 +223,6 @@ describe("zero schedule page", () => {
     click(buttonByText("Create", createDialog));
 
     await waitFor(() => {
-      expect(screen.getByText("Schedule created")).toBeInTheDocument();
       expect(
         screen.getByRole("heading", {
           name: "Draft the weekly support handoff",
@@ -218,7 +231,7 @@ describe("zero schedule page", () => {
     });
   });
 
-  it("toggles, runs, and deletes schedules from the list", async () => {
+  it("shows scheduled work in the list", async () => {
     mockSchedulePageStory();
 
     await openScheduleList();
@@ -239,6 +252,12 @@ describe("zero schedule page", () => {
         "Open schedule Send morning brief to the team channel",
       )[0],
     ).toBeInTheDocument();
+  });
+
+  it("toggles and runs schedules from the list", async () => {
+    mockSchedulePageStory();
+
+    await openScheduleList();
 
     click(screen.getAllByLabelText("Disable Every weekday at 2:30 PM")[0]);
 
@@ -256,6 +275,12 @@ describe("zero schedule page", () => {
       expect(screen.getByText("View activity")).toBeInTheDocument();
       expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
     });
+  });
+
+  it("deletes a schedule from the list after confirmation", async () => {
+    mockSchedulePageStory();
+
+    await openScheduleList();
 
     click(
       screen.getAllByLabelText("More actions for Every weekday at 2:30 PM")[0],

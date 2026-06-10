@@ -183,7 +183,7 @@ async function openMembersTab(): Promise<void> {
 }
 
 describe("organization members settings", () => {
-  it("filters members, sends an invitation, and accepts a join request", async () => {
+  it("filters members and sends an invitation", async () => {
     mockMembersStory();
     await openMembersTab();
 
@@ -210,6 +210,11 @@ describe("organization members settings", () => {
     await waitFor(() => {
       expect(screen.getByText("bob.invited@example.com")).toBeInTheDocument();
     });
+  });
+
+  it("accepts and rejects membership requests", async () => {
+    mockMembersStory();
+    await openMembersTab();
 
     await fill(screen.getByPlaceholderText("Search"), "carol");
     await waitFor(() => {
@@ -225,6 +230,33 @@ describe("organization members settings", () => {
       expect(screen.getAllByText("Request")).toHaveLength(1);
     });
     expect(screen.getByText("carol@example.com")).toBeInTheDocument();
+
+    await fill(screen.getByPlaceholderText("Search"), "dan");
+    await waitFor(() => {
+      expect(screen.getByText("Dan Reject")).toBeInTheDocument();
+      expect(screen.getByText("Request")).toBeInTheDocument();
+    });
+
+    click(screen.getByTitle("Reject request"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Membership request rejected"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Dan Reject")).not.toBeInTheDocument();
+      expect(screen.queryByText("dan@example.com")).not.toBeInTheDocument();
+    });
+    toast.dismiss();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Membership request rejected"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("cancels and confirms invitation revoke", async () => {
+    mockMembersStory();
+    await openMembersTab();
 
     await fill(screen.getByPlaceholderText("Search"), "pending");
     await waitFor(() => {
@@ -259,28 +291,6 @@ describe("organization members settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Invitation revoked")).toBeInTheDocument();
       expect(screen.queryByText("pending@example.com")).not.toBeInTheDocument();
-    });
-
-    await fill(screen.getByPlaceholderText("Search"), "dan");
-    await waitFor(() => {
-      expect(screen.getByText("Dan Reject")).toBeInTheDocument();
-      expect(screen.getByText("Request")).toBeInTheDocument();
-    });
-
-    click(screen.getByTitle("Reject request"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Membership request rejected"),
-      ).toBeInTheDocument();
-      expect(screen.queryByText("Dan Reject")).not.toBeInTheDocument();
-      expect(screen.queryByText("dan@example.com")).not.toBeInTheDocument();
-    });
-    toast.dismiss();
-    await waitFor(() => {
-      expect(
-        screen.queryByText("Membership request rejected"),
-      ).not.toBeInTheDocument();
     });
   });
 });

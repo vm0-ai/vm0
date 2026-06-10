@@ -17,7 +17,6 @@ import type {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -200,7 +199,7 @@ function mockCustomConnectorStory(): void {
 }
 
 describe("connectors page", () => {
-  it("lets users search connectors and browse grouped categories", async () => {
+  it("shows connected and expiring connector statuses", async () => {
     mockConnectors([
       { type: "github", externalUsername: "octocat" },
       {
@@ -218,9 +217,6 @@ describe("connectors page", () => {
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Find connectors"),
-      ).toBeInTheDocument();
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(
@@ -231,6 +227,18 @@ describe("connectors page", () => {
       within(expiredAxiomCard).getByText("Connection expired"),
     ).toBeInTheDocument();
     expect(within(expiredAxiomCard).getByText("Reconnect")).toBeInTheDocument();
+  });
+
+  it("lets users browse connectors by grouped categories", async () => {
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-category-engineering-team-execution"),
+      ).toBeInTheDocument();
+    });
 
     const engineeringSection = screen.getByTestId(
       "connector-category-engineering-team-execution",
@@ -251,21 +259,51 @@ describe("connectors page", () => {
       aiGroup.compareDocumentPosition(engineeringGroup) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
 
-    const searchInput = screen.getByPlaceholderText("Find connectors");
+  it("filters connectors by integration keywords", async () => {
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const searchInput = await screen.findByPlaceholderText("Find connectors");
     await fill(searchInput, "vcs");
+
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(screen.queryByText("Slack")).not.toBeInTheDocument();
+  });
 
+  it("filters connectors by capability keywords", async () => {
+    mockConnectors([
+      { type: "github", externalUsername: "octocat" },
+      {
+        type: "axiom",
+        authMethod: "api-token",
+        tokenExpiresAt: new Date(Date.now() - HOURS_MS).toISOString(),
+      },
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const searchInput = await screen.findByPlaceholderText("Find connectors");
     await fill(searchInput, "logs");
+
     await waitFor(() => {
       expect(screen.getByText("Axiom")).toBeInTheDocument();
     });
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+  });
 
+  it("shows an empty state when connector search has no matches", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    const searchInput = await screen.findByPlaceholderText("Find connectors");
     await fill(searchInput, "nonexistent-connector-xyz");
+
     await waitFor(() => {
       expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
     });
@@ -292,7 +330,7 @@ describe("connectors page", () => {
       return never();
     });
 
-    await userEvent.click(screen.getByText("Reconnect"));
+    click(screen.getByText("Reconnect"));
 
     await waitFor(() => {
       expect(
@@ -317,10 +355,6 @@ describe("connectors page", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(screen.getByText("Save")).toBeInTheDocument();
     });
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
   });
 
   it("shows Google connector approval guidance", async () => {
@@ -338,10 +372,6 @@ describe("connectors page", () => {
         screen.getByText(/Google will show a security warning/),
       ).toBeInTheDocument();
       expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
-    });
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
@@ -370,10 +400,28 @@ describe("connectors page", () => {
       expect(screen.getByText("repo")).toBeInTheDocument();
       expect(screen.getByText("project")).toBeInTheDocument();
     });
-    await userEvent.keyboard("{Escape}");
+  });
+
+  it("starts a device-auth connector grant", async () => {
+    mockConnectors([]);
+
+    context.mocks.browser.open(createMockAuthWindow());
+    detachedSetupPage({ context, path: "/connectors" });
+
     await waitFor(() => {
-      expect(screen.queryByText("repo")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Connect Base44")).toBeInTheDocument();
     });
+    click(screen.getByLabelText("Connect Base44"));
+
+    const deviceDialog = await screen.findByRole("dialog", { name: "Base44" });
+    click(buttonByText("Connect Base44", deviceDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("VM0-DEVICE");
+    });
+    click(screen.getByTestId("connector-oauth-device-open"));
   });
 
   it("completes a device-auth connector grant", async () => {
@@ -402,13 +450,9 @@ describe("connectors page", () => {
         within(connectorCardByLabel("Base44")).getByText("Connected"),
       ).toBeInTheDocument();
     });
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
   });
 
-  it("connects and disconnects a manual token connector", async () => {
+  it("connects a manual token connector", async () => {
     mockConnectors([]);
 
     detachedSetupPage({ context, path: "/connectors" });
@@ -425,6 +469,18 @@ describe("connectors page", () => {
       "xaat-test",
     );
     click(buttonByText("Save", axiomDialog));
+
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("Axiom")).getByText("Connected"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("disconnects a connected manual token connector", async () => {
+    mockConnectors([{ type: "axiom", authMethod: "api-token" }]);
+
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(

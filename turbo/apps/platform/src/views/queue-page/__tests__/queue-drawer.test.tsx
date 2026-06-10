@@ -66,6 +66,7 @@ function mockQueuedThread(): void {
           role: "assistant",
           content: "Waiting in queue...",
           runId: "run-queued",
+          runEventId: "queue:queued",
           createdAt: "2026-01-01T00:00:02Z",
         },
       ],

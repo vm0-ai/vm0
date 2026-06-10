@@ -111,7 +111,38 @@ async function navigateToThread(threadId: string): Promise<void> {
 }
 
 describe("chat drafts", () => {
-  it("preserves per-thread text and attachment drafts while navigating", async () => {
+  it("preserves per-thread text drafts while navigating", async () => {
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+
+    detachedSetupPage({ context, path: "/chats/thread-1" });
+
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+    await fill(textarea(), "draft for thread 1");
+
+    await navigateToThread("thread-2");
+    await waitFor(() => {
+      expect(textarea()).toHaveValue("");
+    });
+    await fill(textarea(), "draft for thread 2");
+
+    await navigateToThread("thread-1");
+    await waitFor(() => {
+      expect(textarea()).toHaveValue("draft for thread 1");
+    });
+
+    await navigateToThread("thread-2");
+    await waitFor(() => {
+      expect(textarea()).toHaveValue("draft for thread 2");
+    });
+  });
+
+  it("keeps upload drafts scoped to their thread while navigating", async () => {
     const user = userEvent.setup({ delay: null });
     const uploadStarted = context.mocks.deferred<void>();
     let uploadRequest: {
@@ -152,7 +183,6 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(textarea()).toBeInTheDocument();
     });
-    await fill(textarea(), "draft for thread 1");
 
     const fileInput =
       document.querySelector<HTMLInputElement>('input[type="file"]')!;
@@ -173,20 +203,12 @@ describe("chat drafts", () => {
       expect(textarea()).toHaveValue("");
       expect(screen.queryByLabelText(/photo\.png/)).not.toBeInTheDocument();
     });
-    await fill(textarea(), "draft for thread 2");
 
     uploadRequest!.resolve(new HttpResponse(null, { status: 200 }));
 
     await navigateToThread("thread-1");
     await waitFor(() => {
-      expect(textarea()).toHaveValue("draft for thread 1");
       expect(screen.getByLabelText("Remove photo.png")).toBeInTheDocument();
-    });
-
-    await navigateToThread("thread-2");
-    await waitFor(() => {
-      expect(textarea()).toHaveValue("draft for thread 2");
-      expect(screen.queryByLabelText(/photo\.png/)).not.toBeInTheDocument();
     });
   });
 

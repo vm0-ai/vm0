@@ -23,8 +23,36 @@ async function uploadFile(file: File): Promise<void> {
   await user.upload(fileInput, file);
 }
 
+async function setupComposer(): Promise<void> {
+  detachedSetupPage({ context, path: "/" });
+
+  await waitFor(() => {
+    expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+  });
+}
+
+async function setupUploadedImagePreview(): Promise<void> {
+  context.mocks.upload.success({
+    id: "upload-photo",
+    filename: "photo.png",
+    contentType: "image/png",
+    size: 2048,
+    url: "https://example.com/photo.png",
+  });
+
+  await setupComposer();
+  await uploadFile(new File(["img"], "photo.png", { type: "image/png" }));
+
+  await waitFor(() => {
+    expect(
+      screen.getByLabelText("Open image preview for photo.png"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Remove photo.png")).toBeInTheDocument();
+  });
+}
+
 describe("zero attachment chips", () => {
-  it("shows pending upload progress, completed image previews, and removable composer chips", async () => {
+  it("shows pending upload progress for composer attachments", async () => {
     context.mocks.upload.pending({
       id: "upload-pending",
       filename: "document.pdf",
@@ -33,12 +61,7 @@ describe("zero attachment chips", () => {
       url: "https://example.com/document.pdf",
     });
 
-    detachedSetupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
-    });
-
+    await setupComposer();
     await uploadFile(
       new File(["data"], "document.pdf", { type: "application/pdf" }),
     );
@@ -50,24 +73,10 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("opens, zooms, closes, and removes an uploaded image preview", async () => {
-    const user = userEvent.setup({ delay: null });
+  it("shows completed image previews and removable composer chips", async () => {
     const imageUrl = "https://example.com/photo.png";
-    context.mocks.upload.success({
-      id: "upload-photo",
-      filename: "photo.png",
-      contentType: "image/png",
-      size: 2048,
-      url: imageUrl,
-    });
 
-    detachedSetupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
-    });
-
-    await uploadFile(new File(["img"], "photo.png", { type: "image/png" }));
+    await setupUploadedImagePreview();
 
     await waitFor(() => {
       expect(
@@ -77,8 +86,12 @@ describe("zero attachment chips", () => {
         document.querySelector(`img[src="${imageUrl}"]`),
       ).toBeInTheDocument();
     });
+  });
 
-    await user.click(screen.getByLabelText("Open image preview for photo.png"));
+  it("opens, zooms, and closes an uploaded image preview", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
 
     await waitFor(() => {
       expect(
@@ -87,7 +100,7 @@ describe("zero attachment chips", () => {
       expect(screen.getByText("100%")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText("Zoom in"));
+    click(screen.getByLabelText("Zoom in"));
     await waitFor(() => {
       expect(screen.getByText("115%")).toBeInTheDocument();
     });
@@ -96,6 +109,10 @@ describe("zero attachment chips", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+  });
+
+  it("removes an uploaded image preview from the composer", async () => {
+    await setupUploadedImagePreview();
 
     click(screen.getByLabelText("Remove photo.png"));
     await waitFor(() => {
