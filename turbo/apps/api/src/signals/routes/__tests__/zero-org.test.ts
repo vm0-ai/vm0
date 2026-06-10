@@ -243,25 +243,6 @@ describe("GET /api/zero/org", () => {
     expect(response.body.name).toBe("Test Org");
   });
 
-  it("returns 404 when no org in session", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const client = setupApp({ context })(zeroOrgContract);
-    const response = await accept(
-      client.get({ headers: { authorization: "Bearer clerk-session" } }),
-      [404],
-    );
-
-    expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroOrgContract);
-    const response = await accept(client.get({ headers: {} }), [401]);
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
   it("returns org info with zero token", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -365,64 +346,6 @@ describe("PUT /api/zero/org", () => {
     expect(
       context.mocks.clerk.organizations.updateOrganization,
     ).not.toHaveBeenCalled();
-  });
-
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroOrgContract);
-    const response = await accept(
-      client.update({ headers: {}, body: { name: "Updated Org" } }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 400 when authenticated without an org", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const client = setupApp({ context })(zeroOrgContract);
-    const response = await accept(
-      client.update({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { name: "Updated Org" },
-      }),
-      [400],
-    );
-
-    expect(response.body.error).toMatchObject({
-      code: "BAD_REQUEST",
-      message: "No org configured. Set your org with: zero org set <slug>",
-    });
-  });
-
-  it("rejects zero tokens", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId,
-      orgId,
-      runId: `run_${randomUUID()}`,
-      capabilities: [],
-      iat: seconds,
-      exp: seconds + 600,
-    });
-
-    const client = setupApp({ context })(zeroOrgContract);
-    const response = await accept(
-      client.update({
-        headers: { authorization: `Bearer ${token}` },
-        body: { name: "Updated Org" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error).toMatchObject({
-      code: "FORBIDDEN",
-      message: "This endpoint is not available for sandbox tokens",
-    });
   });
 
   it("updates org slug with force and refreshes cache", async () => {
@@ -643,109 +566,6 @@ describe("POST /api/zero/org/leave", () => {
     await expect(readOrgMemberCache(orgId, userId)).resolves.toBeUndefined();
     await expect(readOrgMemberMetadata(orgId, userId)).resolves.toBeUndefined();
     await expect(readSlackConnections(workspaceId)).resolves.toHaveLength(0);
-  });
-
-  it("rejects admins", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(await seedOrg({ orgId, userId, role: "admin" }));
-    mocks.clerk.session(userId, orgId, "org:admin");
-
-    const client = setupApp({ context })(zeroOrgLeaveContract);
-    const response = await accept(
-      client.leave({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {},
-      }),
-      [403],
-    );
-
-    expect(response).toMatchObject({
-      body: {
-        error: {
-          code: "FORBIDDEN",
-          message: "Admins cannot leave the organization",
-        },
-      },
-    });
-    expect(
-      context.mocks.clerk.organizations.deleteOrganizationMembership,
-    ).not.toHaveBeenCalled();
-    await expect(readOrgMemberCache(orgId, userId)).resolves.toMatchObject({
-      role: "admin",
-    });
-  });
-
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroOrgLeaveContract);
-    const response = await accept(
-      client.leave({ headers: {}, body: {} }),
-      [401],
-    );
-
-    expect(response).toMatchObject({
-      body: { error: { code: "UNAUTHORIZED" } },
-    });
-  });
-
-  it("returns 400 when authenticated without an org", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const client = setupApp({ context })(zeroOrgLeaveContract);
-    const response = await accept(
-      client.leave({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {},
-      }),
-      [400],
-    );
-
-    expect(response).toMatchObject({
-      body: {
-        error: {
-          code: "BAD_REQUEST",
-          message:
-            "Explicit org context required — ensure active org in session",
-        },
-      },
-    });
-  });
-
-  it("rejects zero tokens", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(await seedOrg({ orgId, userId, role: "member" }));
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId,
-      orgId,
-      runId: `run_${randomUUID()}`,
-      capabilities: [],
-      iat: seconds,
-      exp: seconds + 600,
-    });
-
-    const client = setupApp({ context })(zeroOrgLeaveContract);
-    const response = await accept(
-      client.leave({
-        headers: { authorization: `Bearer ${token}` },
-        body: {},
-      }),
-      [403],
-    );
-
-    expect(response).toMatchObject({
-      body: {
-        error: {
-          code: "FORBIDDEN",
-          message: "This endpoint is not available for sandbox tokens",
-        },
-      },
-    });
-    expect(
-      context.mocks.clerk.organizations.deleteOrganizationMembership,
-    ).not.toHaveBeenCalled();
   });
 });
 

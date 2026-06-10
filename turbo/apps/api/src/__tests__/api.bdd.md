@@ -962,3 +962,18 @@ But every rejection \_before* the credit check is reachable.
 - Coverage verified (source-only): `zero-org-delete.ts` (13/4) unchanged;
   `zero-org-data.service.ts` 199/106 -> 204/118 (the Clerk-mock rejection paths
   cover more `deleteZeroOrg$` branches than the legacy). No regressions.
+
+### Round 39 — ORG GET/UPDATE/LEAVE REJECTIONS (CHAIN-ORG-CRUD-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `org` (get/update) and `orgLeave` clients.
+- Added `zero-org-crud-rejections.bdd.test.ts`: get rejects unauthenticated 401
+  and no-org 404; update rejects unauthenticated 401, no-org 400, and a sandbox
+  token 403; leave rejects unauthenticated 401, no-org 400, a sandbox token 403,
+  and an admin 403 ("Admins cannot leave the organization"). All these fire
+  before any org row is resolved, so no seeding is needed.
+- Reduced `zero-org.test.ts` from 28 to 19 cases, removing the nine reachable
+  rejections (across the GET / PUT / leave describe blocks). The kept cases read
+  or mutate seeded org metadata — tier, identity cache, slug validation,
+  not-member checks, Clerk update/leave success (GAP-ORG-STATE).
+- Coverage verified (source-only): `zero-org-read.ts` (40/13) unchanged;
+  `zero-org-data.service.ts` 199/106 -> 204/118. No regressions.

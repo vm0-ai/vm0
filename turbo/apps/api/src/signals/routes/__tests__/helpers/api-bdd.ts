@@ -26,7 +26,11 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
-import { zeroOrgDeleteContract } from "@vm0/api-contracts/contracts/zero-org";
+import {
+  zeroOrgContract,
+  zeroOrgDeleteContract,
+  zeroOrgLeaveContract,
+} from "@vm0/api-contracts/contracts/zero-org";
 import {
   zeroRunsByIdContract,
   zeroRunsCancelContract,
@@ -210,6 +214,10 @@ export function createBddApi(context: TestContext) {
      * needs seeded org data; only the auth/validation/identity rejections are
      * reachable (org identity + slug come from the Clerk mock). */
     orgDelete: setupApp({ context })(zeroOrgDeleteContract),
+    /** ts-rest client for `/api/zero/org` (get/update). */
+    org: setupApp({ context })(zeroOrgContract),
+    /** ts-rest client for `/api/zero/org/leave`. */
+    orgLeave: setupApp({ context })(zeroOrgLeaveContract),
     /** ts-rest client for `/api/zero/runs` (create a run). The funded happy path
      * needs seeded credits with no API surface; only the pre-admission
      * rejections (auth/validation/credits/ownership) are reachable. */
