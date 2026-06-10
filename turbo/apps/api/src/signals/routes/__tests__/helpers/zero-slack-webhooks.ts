@@ -17,7 +17,10 @@ import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
 import { userCache } from "@vm0/db/schema/user-cache";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import {
+  zeroAgents,
+  type ZeroAgentVisibility,
+} from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -50,6 +53,7 @@ async function seedRunnableAgent(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly namePrefix: string;
+  readonly visibility?: ZeroAgentVisibility;
 }): Promise<string> {
   const name = `${args.namePrefix}-${randomUUID().slice(0, 8)}`;
   const [compose] = await args.db
@@ -90,12 +94,30 @@ async function seedRunnableAgent(args: {
     owner: args.userId,
     name,
     displayName: name,
-    visibility: "public",
+    visibility: args.visibility ?? "public",
     customSkills: [],
   });
 
   return compose.id;
 }
+
+export const seedSlackWebhookAgent$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly namePrefix: string;
+      readonly visibility?: ZeroAgentVisibility;
+    },
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const db = set(writeDb$);
+    const composeId = await seedRunnableAgent({ db, ...args });
+    signal.throwIfAborted();
+    return composeId;
+  },
+);
 
 export const seedSlackWebhookFixture$ = command(
   async (

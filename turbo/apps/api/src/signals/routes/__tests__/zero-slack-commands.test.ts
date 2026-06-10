@@ -11,6 +11,7 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
 import {
   countSlackWebhookConnections$,
   deleteSlackWebhookFixture$,
+  seedSlackWebhookAgent$,
   seedSlackWebhookFixture$,
   setSlackWebhookUserSelectedModel$,
   type SlackWebhookFixture,
@@ -330,6 +331,37 @@ describe("POST /api/zero/slack/commands", () => {
     if (!fixture.defaultAgentId || !fixture.switchAgentId) {
       throw new Error("Expected Slack fixture to include switchable agents");
     }
+    const otherUserId = `user_${randomBytes(4).toString("hex")}`;
+    const ownPrivateAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        namePrefix: "own-private-agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    const otherPublicAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: otherUserId,
+        namePrefix: "other-public-agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const otherPrivateAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: otherUserId,
+        namePrefix: "other-private-agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
 
     const switchResponse = await postCommand(
       buildCommandBody({
@@ -358,7 +390,10 @@ describe("POST /api/zero/slack/commands", () => {
 
     expect(values).toContain("__org_default__");
     expect(values).toContain(fixture.switchAgentId);
+    expect(values).toContain(ownPrivateAgentId);
+    expect(values).toContain(otherPublicAgentId);
     expect(values).not.toContain(fixture.defaultAgentId);
+    expect(values).not.toContain(otherPrivateAgentId);
     expect(labels).toContainEqual(expect.stringContaining("Use org default"));
   });
 
