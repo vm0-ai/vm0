@@ -29,20 +29,21 @@ pub(crate) struct SessionState {
     /// connected reconnects reset this counter; reaching the configured max
     /// marks the lifecycle failed.
     token_renewal_failures: u32,
-    /// Next suspended-channel reattach attempt. This is only scheduled while
-    /// the channel is suspended and the connection can send events.
+    /// Next suspended-channel reattach attempt. It is scheduled from a
+    /// suspended channel while the connection can send events, then cleared by
+    /// retry, reconnect, suspend, or terminal cleanup.
     channel_retry_at: Option<Instant>,
     /// Backoff counter used when scheduling suspended-channel retries. It
-    /// resets after a successful channel attach or committed connected
-    /// transport state.
+    /// resets after a successful channel attach, and reconnect commits reset it
+    /// before scheduling any suspended retry on the new transport.
     channel_retry_count: u32,
     /// Deadline for the current in-flight channel attach operation. This is
     /// separate from `channel_retry_at`: operation deadlines time out active
     /// attaches, while retry deadlines start the next attach attempt.
     channel_operation_deadline: Option<Instant>,
     /// A reconnect can restore the transport while channel attach is still
-    /// suspended. In that case `Event::Connected` is deferred until a later
-    /// `ATTACHED` message confirms the channel is ready again.
+    /// suspended. In that case `Event::Connected` is held for a later `ATTACHED`
+    /// message unless failed or suspended cleanup clears the pending marker.
     connected_event_pending: bool,
 }
 
@@ -284,7 +285,8 @@ impl SessionState {
     // Reconnect commit outcomes separate transport recovery from subscription
     // readiness. If the channel reattaches during reconnect, the caller can
     // emit `Event::Connected` immediately. If the transport reconnects but the
-    // channel is suspended, delay that event until a later ATTACHED message.
+    // channel is suspended, hold that event for a later ATTACHED message unless
+    // cleanup clears the pending marker first.
     pub(super) fn commit_reconnect_attached(
         &mut self,
         connected_msg: &ProtocolMessage,
