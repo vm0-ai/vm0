@@ -1162,3 +1162,19 @@ First USAGE-family reduce.
   need funded runs that emit logs (GAP-RUN-CREDITS).
 - Reduced `zero-logs-list.test.ts` (43 -> 40), removing the auth + empty cases.
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 51 — RUN-LOG DETAIL REJECTIONS (CHAIN-LOGS-BY-ID-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `logsById` client (`/api/zero/logs/:id`).
+- Added `zero-logs-get-by-id-rejections.bdd.test.ts`: the detail endpoint
+  rejects unauthenticated and org-less callers (401), a zero token without
+  `agent-run:read` (403, "Missing required capability: agent-run:read", checked
+  before any run lookup), and 404s an unknown run id ("Log not found").
+- The 200 detail variants (owner / displayName / pending / failed /
+  schedule-linked / deleted-compose) need a funded run that emits logs
+  (GAP-RUN-CREDITS), the other-user 404 needs a seeded foreign run, and the
+  invalid-UUID 400 is a status `logsByIdContract` does not declare (the ts-rest
+  client throws on it, so it keeps the raw-fetch helper). Those stay in the kept
+  legacy.
+- Reduced `zero-logs-get-by-id.test.ts` (16 -> 11).
+- Coverage verified (source-only): no regressions vs `main`.

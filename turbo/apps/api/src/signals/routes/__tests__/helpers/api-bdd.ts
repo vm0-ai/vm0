@@ -69,7 +69,10 @@ import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-f
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { logsListContract } from "@vm0/api-contracts/contracts/logs";
+import {
+  logsListContract,
+  logsByIdContract,
+} from "@vm0/api-contracts/contracts/logs";
 import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
@@ -224,6 +227,10 @@ export function createBddApi(context: TestContext) {
      * funded run (GAP-RUN-CREDITS); the auth/validation/empty cases are
      * reachable directly. */
     logsList: setupApp({ context })(logsListContract),
+    /** ts-rest client for `/api/zero/logs/:id` (single run-log detail). The 200
+     * detail needs a funded run (GAP-RUN-CREDITS); the auth, capability and
+     * not-found rejections are reachable directly. */
+    logsById: setupApp({ context })(logsByIdContract),
     /** ts-rest client for `/api/zero/org/invite` (invite/revoke org members). */
     orgInvite: setupApp({ context })(zeroOrgInviteContract),
     /** ts-rest client for `/api/zero/org/membership-requests` (accept/reject). */

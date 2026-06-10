@@ -61,52 +61,10 @@ describe("GET /api/zero/logs/:id", () => {
     return store.set(deleteUsageInsightFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(
-      detailClient().getById({ headers: {}, params: { id: randomUUID() } }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const response = await accept(
-      detailClient().getById({
-        headers: authHeaders(),
-        params: { id: randomUUID() },
-      }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
   it("returns 400 for an invalid UUID", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const response = await rawGetLog("not-a-uuid");
     expect(response.status).toBe(400);
-  });
-
-  it("returns 404 for a non-existent run id", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      detailClient().getById({
-        headers: authHeaders(),
-        params: { id: randomUUID() },
-      }),
-      [404],
-    );
-    expect(response.body).toStrictEqual({
-      error: { message: "Log not found", code: "NOT_FOUND" },
-    });
   });
 
   it("returns 404 when accessing another user's run", async () => {
@@ -475,43 +433,6 @@ describe("GET /api/zero/logs/:id", () => {
         [200],
       );
       expect(response.body.id).toBe(runId);
-    });
-
-    it("returns 403 for a sandbox token without agent-run:read capability", async () => {
-      const seconds = currentSecond();
-      const token = signSandboxJwtForTests({
-        scope: "zero",
-        userId: `user_${randomUUID()}`,
-        orgId: `org_${randomUUID()}`,
-        runId: `run_${randomUUID()}`,
-        capabilities: ["file:read"],
-        iat: seconds,
-        exp: seconds + 60,
-      });
-
-      const response = await accept(
-        detailClient().getById({
-          headers: { authorization: `Bearer ${token}` },
-          params: { id: randomUUID() },
-        }),
-        [403],
-      );
-      expect(response.body).toStrictEqual({
-        error: {
-          message: "Missing required capability: agent-run:read",
-          code: "FORBIDDEN",
-        },
-      });
-    });
-
-    it("returns 401 when no auth is provided", async () => {
-      const response = await accept(
-        detailClient().getById({ headers: {}, params: { id: randomUUID() } }),
-        [401],
-      );
-      expect(response.body).toStrictEqual({
-        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-      });
     });
   });
 });
