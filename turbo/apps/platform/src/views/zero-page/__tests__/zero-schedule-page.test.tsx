@@ -94,6 +94,30 @@ function mockSchedulePageStory(): void {
       description: "Office AC",
       enabled: true,
     }),
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000303",
+      agentId: zeroAgentId,
+      displayName: "Zero",
+      name: "monthly-billing-audit",
+      cronExpression: "15 16 12 * *",
+      timezone: "UTC",
+      prompt: "Review monthly billing anomalies",
+      description: "Billing audit",
+      enabled: true,
+    }),
+    createMockScheduleResponse({
+      id: "f0000001-0000-4000-a000-000000000304",
+      agentId: researchAgentId,
+      displayName: "Research Agent",
+      name: "launch-readiness-check",
+      triggerType: "once",
+      cronExpression: null,
+      atTime: "2026-06-12T18:45:00Z",
+      timezone: "UTC",
+      prompt: "Run the launch readiness checklist",
+      description: "Release checklist",
+      enabled: true,
+    }),
   ]);
 }
 
@@ -110,6 +134,14 @@ describe("zero schedule page", () => {
     expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Research Agent")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Every 45 minutes")[0]).toBeInTheDocument();
+    expect(screen.getByText("Monthly")).toBeInTheDocument();
+    expect(screen.getByText("Once")).toBeInTheDocument();
+    expect(
+      screen.getByText("Every month on day 12 at 4:15 PM"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Once on 2026-06-12 at 6:45 PM"),
+    ).toBeInTheDocument();
 
     click(buttonByText("Add schedule"));
 
@@ -155,6 +187,14 @@ describe("zero schedule page", () => {
     expect(screen.getAllByText("Research Agent")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Every 45 minutes")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Billing audit")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Release checklist")[0]).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Every month on day 12 at 4:15 PM")[0],
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Once on 2026-06-12 at 6:45 PM")[0],
+    ).toBeInTheDocument();
     expect(
       screen.getAllByLabelText(
         "Open schedule Send morning brief to the team channel",
