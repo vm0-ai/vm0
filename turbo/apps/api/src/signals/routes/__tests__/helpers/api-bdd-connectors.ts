@@ -1,4 +1,8 @@
+import { Buffer } from "node:buffer";
+
 import type {
+  ConnectorExternalCodeSessionCompleteResponse,
+  ConnectorExternalCodeSessionStartResponse,
   ConnectorListResponse,
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorOauthDeviceAuthSessionStartResponse,
@@ -33,6 +37,8 @@ import type {
   ConnectorType,
 } from "@vm0/connectors/connectors";
 import { http, HttpResponse } from "msw";
+import { onTestFinished } from "vitest";
+import { z } from "zod";
 
 import {
   accept,
@@ -40,6 +46,7 @@ import {
   type TestContext,
 } from "../../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
+import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
@@ -62,6 +69,18 @@ const TEST_OAUTH_DEVICE_CODE_URL =
 const TEST_OAUTH_TOKEN_URL =
   "http://localhost:3000/api/test/oauth-provider/token";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
+const BASE44_DEVICE_CODE_URL = "https://app.base44.com/oauth/device/code";
+const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
+const BASE44_USERINFO_URL = "https://app.base44.com/oauth/userinfo";
+const SLOCK_DEVICE_CODE_URL = "https://api.slock.ai/api/auth/device/authorize";
+const SLOCK_TOKEN_URL = "https://api.slock.ai/api/auth/device/token";
+const SLOCK_USERINFO_URL = "https://api.slock.ai/api/auth/me";
+const SLOCK_SERVERS_URL = "https://api.slock.ai/api/servers";
+const STRIPE_CLI_AUTH_URL = "https://dashboard.stripe.com/stripecli/auth";
+export const STRIPE_CLI_BROWSER_URL =
+  "https://dashboard.stripe.com/stripecli/confirm_auth?code=STRIPE-CLI";
+export const STRIPE_CLI_TEST_SECRET = "rk_test_api123";
+const STRIPE_CLI_LIVE_SECRET = "rk_live_api456";
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor ? { authorization: "Bearer clerk-session" } : {};
@@ -103,15 +122,88 @@ export function mockGitHubConnectorOAuth(): void {
   );
 }
 
-export function mockTestOAuthDeviceConnectorProvider(): void {
+interface TestOAuthDeviceConnectorProviderOptions {
+  readonly deviceCode?: string;
+  readonly interval?: number;
+  readonly expiresIn?: number;
+  readonly tokenScope?: string;
+  readonly tokenBehavior?: "ok" | "emptyJson";
+}
+
+interface TestOAuthDeviceConnectorProviderRecorder {
+  readonly deviceCodeBodies: URLSearchParams[];
+  readonly tokenBodies: URLSearchParams[];
+}
+
+function testOAuthDeviceTokenErrorResponse(
+  deviceCode: string | null,
+): Response | null {
+  if (deviceCode === "pending") {
+    return HttpResponse.json(
+      { error: "authorization_pending" },
+      { status: 400 },
+    );
+  }
+  if (deviceCode === "slow-down") {
+    return HttpResponse.json({ error: "slow_down" }, { status: 400 });
+  }
+  if (deviceCode === "denied") {
+    return HttpResponse.json(
+      {
+        error: "access_denied",
+        error_description: "User denied the device authorization request",
+      },
+      { status: 400 },
+    );
+  }
+  if (deviceCode === "expired") {
+    return HttpResponse.json(
+      {
+        error: "expired_token",
+        error_description: "Device authorization expired",
+      },
+      { status: 400 },
+    );
+  }
+  if (deviceCode === "error") {
+    return HttpResponse.json(
+      {
+        error: "invalid_request",
+        error_description: "Synthetic device authorization error",
+      },
+      { status: 400 },
+    );
+  }
+  if (!deviceCode?.startsWith("test-device:")) {
+    return HttpResponse.json(
+      {
+        error: "invalid_grant",
+        error_description: "Unknown device authorization code",
+      },
+      { status: 400 },
+    );
+  }
+  return null;
+}
+
+export function mockTestOAuthDeviceConnectorProvider(
+  options: TestOAuthDeviceConnectorProviderOptions = {},
+): TestOAuthDeviceConnectorProviderRecorder {
+  const recorded: TestOAuthDeviceConnectorProviderRecorder = {
+    deviceCodeBodies: [],
+    tokenBodies: [],
+  };
+
   server.use(
     http.post(TEST_OAUTH_DEVICE_CODE_URL, async ({ request }) => {
       const body = new URLSearchParams(await request.text());
+      recorded.deviceCodeBodies.push(body);
       const clientId = body.get("client_id") ?? "missing-client";
       const scope = body.get("scope") ?? "";
       const mode = body.get("mode");
       const modeSuffix = mode ? `:${mode}` : "";
-      const deviceCode = `test-device:${clientId}:${scope}${modeSuffix}`;
+      const deviceCode =
+        options.deviceCode ?? `test-device:${clientId}:${scope}${modeSuffix}`;
 
       return HttpResponse.json({
         device_code: deviceCode,
@@ -119,35 +211,451 @@ export function mockTestOAuthDeviceConnectorProvider(): void {
         verification_uri: "https://oauth-device.test/device",
         verification_uri_complete:
           "https://oauth-device.test/device?user_code=TEST-DEVICE",
-        expires_in: 600,
-        interval: 0,
+        expires_in: options.expiresIn ?? 600,
+        interval: options.interval ?? 0,
       });
     }),
     http.post(TEST_OAUTH_TOKEN_URL, async ({ request }) => {
       const body = new URLSearchParams(await request.text());
-      const deviceCode = body.get("device_code");
+      recorded.tokenBodies.push(body);
 
+      if (options.tokenBehavior === "emptyJson") {
+        return HttpResponse.json({});
+      }
       if (body.get("grant_type") !== DEVICE_CODE_GRANT_TYPE) {
         return HttpResponse.json(
           { error: "unsupported_grant_type" },
           { status: 400 },
         );
       }
-      if (!deviceCode?.startsWith("test-device:")) {
-        return HttpResponse.json(
-          { error: "invalid_grant", error_description: "unknown device code" },
-          { status: 400 },
-        );
+
+      const deviceCode = body.get("device_code");
+      const errorResponse = testOAuthDeviceTokenErrorResponse(deviceCode);
+      if (errorResponse) {
+        return errorResponse;
       }
 
       return HttpResponse.json({
         access_token: `test-device-access:${deviceCode}`,
         token_type: "Bearer",
         expires_in: 3600,
+        scope: options.tokenScope ?? "read",
+      });
+    }),
+  );
+
+  return recorded;
+}
+
+interface DeferredTestOAuthTokenEndpoint {
+  readonly started: Promise<void>;
+  release(): void;
+  calls(): number;
+}
+
+/**
+ * Shadows the test-oauth device token endpoint with a handler whose first
+ * call blocks until {@link DeferredTestOAuthTokenEndpoint.release} is called
+ * and then completes; later calls return authorization_pending immediately.
+ * The gate auto-releases when the test finishes (even on assertion failure)
+ * so a hung handler can never leak past the test; callers must still release
+ * explicitly and await all in-flight polls before the test ends.
+ */
+export function mockDeferredTestOAuthTokenEndpoint(): DeferredTestOAuthTokenEndpoint {
+  let callCount = 0;
+  let releaseGate = (): void => {};
+  const gate = new Promise<void>((resolve) => {
+    releaseGate = resolve;
+  });
+  onTestFinished(() => {
+    releaseGate();
+  });
+  let markStarted = (): void => {};
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+
+  server.use(
+    http.post(TEST_OAUTH_TOKEN_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      callCount += 1;
+      if (callCount > 1) {
+        return HttpResponse.json(
+          { error: "authorization_pending" },
+          { status: 400 },
+        );
+      }
+      markStarted();
+      await gate;
+      return HttpResponse.json({
+        access_token: `test-device-access:${body.get("device_code") ?? ""}`,
+        token_type: "Bearer",
+        expires_in: 3600,
         scope: "read",
       });
     }),
   );
+
+  return {
+    started,
+    release() {
+      releaseGate();
+    },
+    calls() {
+      return callCount;
+    },
+  };
+}
+
+interface StripeCliDashboardProviderOptions {
+  readonly pollToken?: string;
+  readonly oversizePollUrl?: boolean;
+}
+
+interface StripeCliDashboardProviderRecorder {
+  readonly startBodies: URLSearchParams[];
+  readonly pollUrls: string[];
+}
+
+export function mockStripeCliDashboardProvider(
+  options: StripeCliDashboardProviderOptions = {},
+): StripeCliDashboardProviderRecorder {
+  const recorded: StripeCliDashboardProviderRecorder = {
+    startBodies: [],
+    pollUrls: [],
+  };
+
+  server.use(
+    http.post(STRIPE_CLI_AUTH_URL, async ({ request }) => {
+      recorded.startBodies.push(new URLSearchParams(await request.text()));
+      const pollToken = options.oversizePollUrl
+        ? "x".repeat(4200)
+        : (options.pollToken ?? "test-complete");
+      return HttpResponse.json({
+        browser_url: STRIPE_CLI_BROWSER_URL,
+        poll_url: `${STRIPE_CLI_AUTH_URL}?poll_token=${pollToken}`,
+        verification_code: "STRIPE-CLI",
+      });
+    }),
+    http.get(STRIPE_CLI_AUTH_URL, ({ request }) => {
+      recorded.pollUrls.push(request.url);
+      const pollToken = new URL(request.url).searchParams.get("poll_token");
+      if (pollToken === "pending") {
+        return HttpResponse.json({
+          redeemed: false,
+          account_id: null,
+          account_display_name: null,
+          testmode_key_secret: null,
+          testmode_key_publishable: null,
+          livemode_key_secret: null,
+          livemode_key_publishable: null,
+        });
+      }
+      if (pollToken === "malformed") {
+        return HttpResponse.text(
+          `not json ${STRIPE_CLI_AUTH_URL}?poll_token=secret-poll ${STRIPE_CLI_TEST_SECRET}`,
+        );
+      }
+      return HttpResponse.json({
+        redeemed: true,
+        account_id: "acct_test",
+        account_display_name: "Test Stripe Account",
+        testmode_key_secret: STRIPE_CLI_TEST_SECRET,
+        livemode_key_secret: STRIPE_CLI_LIVE_SECRET,
+      });
+    }),
+  );
+
+  return recorded;
+}
+
+interface Base44OAuthProviderRecorder {
+  readonly deviceCodeBodies: unknown[];
+  readonly tokenBodies: URLSearchParams[];
+  readonly userinfoAuthorizations: (string | null)[];
+}
+
+export function mockBase44OAuthProvider(): Base44OAuthProviderRecorder {
+  const recorded: Base44OAuthProviderRecorder = {
+    deviceCodeBodies: [],
+    tokenBodies: [],
+    userinfoAuthorizations: [],
+  };
+
+  server.use(
+    http.post(BASE44_DEVICE_CODE_URL, async ({ request }) => {
+      recorded.deviceCodeBodies.push(await request.json());
+      return HttpResponse.json({
+        device_code: "base44-device-code",
+        user_code: "BASE-44",
+        verification_uri: "https://app.base44.com/device",
+        verification_uri_complete:
+          "https://app.base44.com/device?user_code=BASE-44",
+        expires_in: 600,
+        interval: 0,
+      });
+    }),
+    http.post(BASE44_TOKEN_URL, async ({ request }) => {
+      recorded.tokenBodies.push(new URLSearchParams(await request.text()));
+      return HttpResponse.json({
+        access_token: "base44-access-token",
+        refresh_token: "base44-refresh-token",
+        token_type: "Bearer",
+        expires_in: 3600,
+        scope: "apps:read apps:write offline",
+      });
+    }),
+    http.get(BASE44_USERINFO_URL, ({ request }) => {
+      recorded.userinfoAuthorizations.push(
+        request.headers.get("authorization"),
+      );
+      return HttpResponse.json({
+        sub: "base44-user-id",
+        name: "Base44 User",
+        email: "base44@example.com",
+      });
+    }),
+  );
+
+  return recorded;
+}
+
+function slockJwtAccessToken(subject: string): string {
+  const issuedAt = Math.floor(now() / 1000);
+  const encode = (value: unknown): string => {
+    return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+  };
+  return [
+    encode({ alg: "none", typ: "JWT" }),
+    encode({
+      sub: subject,
+      type: "access",
+      iat: issuedAt,
+      exp: issuedAt + 900,
+    }),
+    "signature",
+  ].join(".");
+}
+
+interface SlockOAuthProviderMock {
+  readonly accessToken: string;
+}
+
+export function mockSlockOAuthProvider(
+  options: { readonly deviceCode?: string } = {},
+): SlockOAuthProviderMock {
+  const accessToken = slockJwtAccessToken("slock-user-id");
+
+  server.use(
+    http.post(SLOCK_DEVICE_CODE_URL, () => {
+      return HttpResponse.json({
+        deviceCode: options.deviceCode ?? "slock-device-code",
+        userCode: "SLOCK-1",
+        verificationUri: "https://api.slock.ai/device",
+        expiresIn: 600,
+        interval: 0,
+      });
+    }),
+    http.post(SLOCK_TOKEN_URL, async ({ request }) => {
+      const { deviceCode } = z
+        .object({ deviceCode: z.string() })
+        .parse(await request.json());
+      if (deviceCode === "userinfo-error") {
+        return HttpResponse.json({
+          accessToken: "slock-access-userinfo-error",
+          refreshToken: "slock-refresh-token",
+          userId: "slock-user-id",
+        });
+      }
+      if (deviceCode !== "slock-device-code") {
+        return HttpResponse.json({ code: "invalid_grant" }, { status: 400 });
+      }
+      return HttpResponse.json({
+        accessToken,
+        refreshToken: "slock-refresh-token",
+        userId: "slock-user-id",
+      });
+    }),
+    http.get(SLOCK_SERVERS_URL, () => {
+      return HttpResponse.json([{ id: "slock-server-id", name: "Primary" }]);
+    }),
+    http.get(SLOCK_USERINFO_URL, ({ request }) => {
+      if (
+        request.headers.get("authorization") ===
+        "Bearer slock-access-userinfo-error"
+      ) {
+        return HttpResponse.json(
+          { code: "userinfo_lookup_failed" },
+          { status: 500 },
+        );
+      }
+      return HttpResponse.json({
+        id: "slock-user-id",
+        name: "Slock User",
+        email: "slock@example.com",
+      });
+    }),
+  );
+
+  return { accessToken };
+}
+
+const AWS_SIGNIN_TOKEN_URL = "https://us-east-1.signin.aws.amazon.com/v1/token";
+const AWS_STS_URL = "https://sts.us-east-1.amazonaws.com/";
+
+const awsTokenRequestSchema = z.object({
+  clientId: z.literal("arn:aws:signin:::devtools/cross-device"),
+  grantType: z.enum(["authorization_code", "refresh_token"]),
+  code: z.string().optional(),
+  codeVerifier: z.string().optional(),
+  redirectUri: z.string().optional(),
+  refreshToken: z.string().optional(),
+});
+
+type AwsTokenRequest = z.infer<typeof awsTokenRequestSchema>;
+
+interface AwsExternalCodeProviderRecorder {
+  readonly tokenRequests: AwsTokenRequest[];
+}
+
+interface AwsDeferredTokenExchange {
+  readonly tokenRequestStarted: Promise<void>;
+  readonly tokenRequests: AwsTokenRequest[];
+  releaseTokenResponse(): void;
+}
+
+/**
+ * Builds the verification code a user would paste after authorizing in the
+ * AWS console: base64("state=<state from the authorization URL>&code=...").
+ */
+export function awsVerificationCode(
+  authorizationUrl: string,
+  code = "AWS-CODE",
+): string {
+  const state = new URL(authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected AWS authorization URL to include state");
+  }
+  return Buffer.from(new URLSearchParams({ state, code }).toString()).toString(
+    "base64",
+  );
+}
+
+function awsTokenEndpointResponseBody() {
+  return {
+    accessToken: {
+      accessKeyId: "aws-external-code-credential-id",
+      secretAccessKey: "aws-secret-access-key",
+      sessionToken: "aws-session-token",
+    },
+    expiresIn: 900,
+    refreshToken: "aws-login-refresh-token",
+    tokenType: "aws_sigv4",
+    idToken: "aws-id-token",
+  };
+}
+
+function awsStsCallerIdentityXml(): string {
+  return [
+    "<GetCallerIdentityResponse>",
+    "<GetCallerIdentityResult>",
+    "<UserId>AIDAEXTERNALUSER</UserId>",
+    "<Account>123456789012</Account>",
+    "<Arn>arn:aws:iam::123456789012:user/external-code</Arn>",
+    "</GetCallerIdentityResult>",
+    "</GetCallerIdentityResponse>",
+  ].join("");
+}
+
+/**
+ * AWS Sign-In external-code provider boundary. The token endpoint enforces
+ * the cross-device exchange contract (JSON body shape plus a DPoP proof
+ * header) and rejects the synthetic verification code "AWS-BAD" with
+ * invalid_grant; the STS endpoint answers GetCallerIdentity, or fails with
+ * HTTP 500 when stsFailure is set.
+ */
+export function mockAwsExternalCodeProvider(
+  options: { readonly stsFailure?: boolean } = {},
+): AwsExternalCodeProviderRecorder {
+  const recorded: AwsExternalCodeProviderRecorder = { tokenRequests: [] };
+
+  server.use(
+    http.post(AWS_SIGNIN_TOKEN_URL, async ({ request }) => {
+      const body = awsTokenRequestSchema.parse(await request.json());
+      if (!request.headers.get("dpop")) {
+        return HttpResponse.json(
+          {
+            error: "invalid_request",
+            error_description: "Missing DPoP proof",
+          },
+          { status: 400 },
+        );
+      }
+      recorded.tokenRequests.push(body);
+      if (body.code === "AWS-BAD") {
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            error_description: "Rejected authorization code",
+          },
+          { status: 400 },
+        );
+      }
+      return HttpResponse.json({ tokenOutput: awsTokenEndpointResponseBody() });
+    }),
+    http.get(AWS_STS_URL, () => {
+      if (options.stsFailure) {
+        return HttpResponse.text("AWS STS unavailable", { status: 500 });
+      }
+      return HttpResponse.xml(awsStsCallerIdentityXml());
+    }),
+  );
+
+  return recorded;
+}
+
+/**
+ * Shadows the AWS token endpoint with a handler that blocks every exchange
+ * until {@link AwsDeferredTokenExchange.releaseTokenResponse} is called; the
+ * STS identity endpoint stays live. The gate auto-releases when the test
+ * finishes (even on assertion failure) so a hung handler can never leak past
+ * the test; callers must still release explicitly and await all in-flight
+ * completions before the test ends.
+ */
+export function mockAwsDeferredTokenExchange(): AwsDeferredTokenExchange {
+  const tokenRequests: AwsTokenRequest[] = [];
+  let releaseGate = (): void => {};
+  const gate = new Promise<void>((resolve) => {
+    releaseGate = resolve;
+  });
+  onTestFinished(() => {
+    releaseGate();
+  });
+  let markStarted = (): void => {};
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+
+  server.use(
+    http.post(AWS_SIGNIN_TOKEN_URL, async ({ request }) => {
+      const body = awsTokenRequestSchema.parse(await request.json());
+      tokenRequests.push(body);
+      markStarted();
+      await gate;
+      return HttpResponse.json({ tokenOutput: awsTokenEndpointResponseBody() });
+    }),
+    http.get(AWS_STS_URL, () => {
+      return HttpResponse.xml(awsStsCallerIdentityXml());
+    }),
+  );
+
+  return {
+    tokenRequestStarted: started,
+    tokenRequests,
+    releaseTokenResponse() {
+      releaseGate();
+    },
+  };
 }
 
 export function createConnectorBddApi(context: TestContext) {
@@ -452,6 +960,40 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
+    async startExternalCode(
+      actor: ApiTestUser,
+      type: ConnectorType,
+      authMethod: ConnectorAuthMethodId,
+    ): Promise<ConnectorExternalCodeSessionStartResponse> {
+      const response = await api.requestExternalCodeStart(
+        actor,
+        type,
+        authMethod,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
+    },
+
+    async completeExternalCode(
+      actor: ApiTestUser,
+      type: ConnectorType,
+      args: {
+        readonly sessionId: string;
+        readonly sessionToken: string;
+        readonly code: string;
+      },
+    ): Promise<ConnectorExternalCodeSessionCompleteResponse> {
+      const response = await api.requestExternalCodeComplete(
+        actor,
+        type,
+        args,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
+    },
+
     async updateFeatureSwitches(
       actor: ApiTestUser,
       switches: Readonly<Record<string, boolean>>,
@@ -497,14 +1039,22 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestListCustomConnectors(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorsContract);
+      return await accept(
+        client.list({ headers: authenticate(actor) }),
+        statuses,
+      );
+    },
+
     async listCustomConnectors(
       actor: ApiTestUser,
     ): Promise<readonly CustomConnectorResponse[]> {
-      const client = setupApp({ context })(zeroCustomConnectorsContract);
-      const response = await accept(
-        client.list({ headers: authenticate(actor) }),
-        [200],
-      );
+      const response = await api.requestListCustomConnectors(actor, [200]);
+      expectStatus(response, 200);
       return response.body.connectors;
     },
 
@@ -540,16 +1090,41 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestDeleteCustomConnector(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      statuses: readonly (204 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+      return await accept(
+        client.delete({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+        }),
+        statuses,
+      );
+    },
+
     async deleteCustomConnector(
       actor: ApiTestUser,
       connectorId: string,
       statuses: readonly (204 | 401 | 403 | 404 | 500)[] = [204],
     ): Promise<void> {
-      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
-      await accept(
-        client.delete({
+      await api.requestDeleteCustomConnector(actor, connectorId, statuses);
+    },
+
+    async requestSetCustomConnectorSecret(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      value: string,
+      statuses: readonly (204 | 400 | 401 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorSecretContract);
+      return await accept(
+        client.set({
           params: { id: connectorId },
           headers: authenticate(actor),
+          body: { value },
         }),
         statuses,
       );
@@ -561,12 +1136,24 @@ export function createConnectorBddApi(context: TestContext) {
       value: string,
       statuses: readonly (204 | 400 | 401 | 404 | 500)[] = [204],
     ): Promise<void> {
+      await api.requestSetCustomConnectorSecret(
+        actor,
+        connectorId,
+        value,
+        statuses,
+      );
+    },
+
+    async requestDeleteCustomConnectorSecret(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      statuses: readonly (204 | 401 | 404 | 500)[],
+    ) {
       const client = setupApp({ context })(zeroCustomConnectorSecretContract);
-      await accept(
-        client.set({
+      return await accept(
+        client.delete({
           params: { id: connectorId },
           headers: authenticate(actor),
-          body: { value },
         }),
         statuses,
       );
@@ -577,12 +1164,9 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       statuses: readonly (204 | 401 | 404 | 500)[] = [204],
     ): Promise<void> {
-      const client = setupApp({ context })(zeroCustomConnectorSecretContract);
-      await accept(
-        client.delete({
-          params: { id: connectorId },
-          headers: authenticate(actor),
-        }),
+      await api.requestDeleteCustomConnectorSecret(
+        actor,
+        connectorId,
         statuses,
       );
     },

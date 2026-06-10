@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import {
   cliAuthApproveContract,
@@ -24,12 +26,16 @@ import {
   type CodexDeviceAuthScope,
   zeroCodexDeviceAuthContract,
 } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
+import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import { http, HttpResponse } from "msw";
 
 import {
   accept,
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import { now } from "../../../../lib/time";
+import { server } from "../../../../mocks/server";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -93,6 +99,120 @@ function setClerkReads(context: TestContext, actor: ApiTestUser): void {
 
 function codeFromCallbackUrl(callbackUrl: string): string {
   return new URL(callbackUrl).searchParams.get("code") ?? "";
+}
+
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function makeJwt(payload: Record<string, unknown>): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const body = base64UrlEncode(JSON.stringify(payload));
+  return `${header}.${body}.fake-signature`;
+}
+
+function makeCodexIdToken(opts: {
+  readonly accountId: string;
+  readonly planType: string;
+  readonly workspaceName: string;
+}): string {
+  return makeJwt({
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: opts.accountId,
+      chatgpt_plan_type: opts.planType,
+      organization: { title: opts.workspaceName },
+    },
+    exp: Math.floor(now() / 1000) + 3600,
+  });
+}
+
+function makeCodexTokenResponse(scope: "org" | "personal") {
+  return {
+    access_token: makeJwt({ exp: Math.floor(now() / 1000) + 7200 }),
+    refresh_token: `rt_${scope}_synthetic_high_entropy`,
+    id_token: makeCodexIdToken({
+      accountId: `ws_acct_from_id_token_${scope}`,
+      planType: "plus",
+      workspaceName: scope === "org" ? "Org Acme" : "Personal Acme",
+    }),
+  };
+}
+
+interface CodexDeviceAuthProviderRecorder {
+  readonly userCode: unknown[];
+  readonly deviceToken: unknown[];
+  readonly oauthToken: URLSearchParams[];
+}
+
+export function mockCodexDeviceAuthProvider(
+  options: { readonly tokenScope?: "org" | "personal" } = {},
+): CodexDeviceAuthProviderRecorder {
+  const recorded: CodexDeviceAuthProviderRecorder = {
+    userCode: [],
+    deviceToken: [],
+    oauthToken: [],
+  };
+
+  server.use(
+    http.post(
+      "https://auth.openai.com/api/accounts/deviceauth/usercode",
+      async ({ request }) => {
+        recorded.userCode.push(await request.json());
+        return HttpResponse.json({
+          device_auth_id: "device_auth_test",
+          user_code: "ABCD-EFGH",
+          interval: "5",
+        });
+      },
+    ),
+    http.post(
+      "https://auth.openai.com/api/accounts/deviceauth/token",
+      async ({ request }) => {
+        recorded.deviceToken.push(await request.json());
+        return HttpResponse.json({
+          authorization_code: "auth_code_test",
+          code_challenge: "code_challenge_test",
+          code_verifier: "code_verifier_test",
+        });
+      },
+    ),
+    http.post("https://auth.openai.com/oauth/token", async ({ request }) => {
+      recorded.oauthToken.push(new URLSearchParams(await request.text()));
+      return HttpResponse.json(
+        makeCodexTokenResponse(options.tokenScope ?? "org"),
+      );
+    }),
+  );
+
+  return recorded;
+}
+
+interface ClaudeCodeTokenEndpointRecorder {
+  readonly token: unknown[];
+}
+
+export function mockClaudeCodeTokenEndpoint(): ClaudeCodeTokenEndpointRecorder {
+  const recorded: ClaudeCodeTokenEndpointRecorder = { token: [] };
+
+  server.use(
+    http.post(
+      "https://platform.claude.com/v1/oauth/token",
+      async ({ request }) => {
+        recorded.token.push(await request.json());
+        return HttpResponse.json({
+          access_token: "claude-code-access-token",
+          expires_in: 31_536_000,
+          scope: "user:inference",
+        });
+      },
+    ),
+  );
+
+  return recorded;
 }
 
 export function createAuthDeviceApiActions(context: TestContext) {
@@ -312,6 +432,20 @@ export function createAuthDeviceApiActions(context: TestContext) {
           body: { sessionToken },
         }),
         statuses,
+      );
+    },
+
+    async deleteOrgModelProvider(
+      actor: ApiTestUser,
+      type: "claude-code-oauth-token" | "codex-oauth-token",
+    ): Promise<void> {
+      const client = setupApp({ context })(zeroModelProvidersByTypeContract);
+      await accept(
+        client.delete({
+          params: { type },
+          headers: authenticate(actor),
+        }),
+        [204],
       );
     },
   };

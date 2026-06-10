@@ -5,7 +5,12 @@ import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
-import { createAuthDeviceApiActions } from "./helpers/api-bdd-auth-device";
+import {
+  createAuthDeviceApiActions,
+  mockClaudeCodeTokenEndpoint,
+  mockCodexDeviceAuthProvider,
+} from "./helpers/api-bdd-auth-device";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -445,6 +450,247 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
     expectApiError(afterCancel.body);
     expect(afterCancel.body.error.message).toBe(
       "Claude Code device auth session is not ready",
+    );
+  });
+
+  it("completes org-scope Codex device auth and exposes the imported provider", async () => {
+    const calls = mockCodexDeviceAuthProvider({ tokenScope: "org" });
+    const miscApi = createMiscRoutesApi(context);
+    const admin = bdd.user();
+
+    const started = await authDevice.requestCodexStart(admin, "org", [200]);
+    if (started.status !== 200) {
+      throw new Error(
+        `Expected Codex device auth start, got ${started.status}`,
+      );
+    }
+    expect(started.body).toMatchObject({
+      type: "codex",
+      status: "pending",
+      scope: "org",
+      browserUrl: "https://auth.openai.com/codex/device",
+      verificationCode: "ABCD-EFGH",
+      interval: 5,
+    });
+    expect(calls.userCode).toStrictEqual([
+      { client_id: "app_EMoamEEZ73f0CkXaXp7hrann" },
+    ]);
+
+    const completed = await authDevice.requestCodexComplete(
+      admin,
+      started.body.sessionToken,
+      [200],
+    );
+    expect(completed.body).toMatchObject({
+      status: "complete",
+      created: true,
+      provider: {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        workspaceName: "Org Acme",
+        planType: "plus",
+      },
+    });
+    expect(calls.deviceToken).toStrictEqual([
+      { device_auth_id: "device_auth_test", user_code: "ABCD-EFGH" },
+    ]);
+    expect(calls.oauthToken).toHaveLength(1);
+    const oauthTokenBody = calls.oauthToken[0];
+    expect(oauthTokenBody?.get("grant_type")).toBe("authorization_code");
+    expect(oauthTokenBody?.get("code")).toBe("auth_code_test");
+    expect(oauthTokenBody?.get("redirect_uri")).toBe(
+      "https://auth.openai.com/deviceauth/callback",
+    );
+    expect(oauthTokenBody?.get("client_id")).toBe(
+      "app_EMoamEEZ73f0CkXaXp7hrann",
+    );
+    expect(oauthTokenBody?.get("code_verifier")).toBe("code_verifier_test");
+
+    const providers = await miscApi.listModelProviders(admin);
+    expect(
+      providers.body.modelProviders.find((provider) => {
+        return provider.type === "codex-oauth-token";
+      }),
+    ).toMatchObject({ workspaceName: "Org Acme", planType: "plus" });
+
+    const reComplete = await authDevice.requestCodexComplete(
+      admin,
+      started.body.sessionToken,
+      [200],
+    );
+    expect(reComplete.body).toStrictEqual({
+      status: "pending",
+      errorMessage: null,
+    });
+    expect(calls.deviceToken).toHaveLength(1);
+
+    await authDevice.deleteOrgModelProvider(admin, "codex-oauth-token");
+  });
+
+  it("completes personal-scope Codex device auth for an org member", async () => {
+    const calls = mockCodexDeviceAuthProvider({ tokenScope: "personal" });
+    const miscApi = createMiscRoutesApi(context);
+    const member = bdd.user({ orgRole: "org:member" });
+
+    const started = await authDevice.requestCodexStart(
+      member,
+      "personal",
+      [200],
+    );
+    if (started.status !== 200) {
+      throw new Error(
+        `Expected Codex device auth start, got ${started.status}`,
+      );
+    }
+
+    const completed = await authDevice.requestCodexComplete(
+      member,
+      started.body.sessionToken,
+      [200],
+    );
+    expect(completed.body).toMatchObject({
+      status: "complete",
+      provider: {
+        type: "codex-oauth-token",
+        workspaceName: "Personal Acme",
+      },
+    });
+    expect(calls.deviceToken).toHaveLength(1);
+
+    const personalProviders = await miscApi.listPersonalModelProviders(
+      member,
+      [200],
+    );
+    if (!("modelProviders" in personalProviders.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(
+      personalProviders.body.modelProviders.some((provider) => {
+        return provider.type === "codex-oauth-token";
+      }),
+    ).toBeTruthy();
+
+    await miscApi.deletePersonalModelProvider(
+      member,
+      "codex-oauth-token",
+      [204],
+    );
+  });
+
+  it("completes org-scope Claude Code device auth with a pasted code fragment", async () => {
+    const calls = mockClaudeCodeTokenEndpoint();
+    const miscApi = createMiscRoutesApi(context);
+    const admin = bdd.user();
+
+    const started = await authDevice.requestClaudeCodeStart(
+      admin,
+      "org",
+      [200],
+    );
+    if (started.status !== 200) {
+      throw new Error(
+        `Expected Claude Code device auth start, got ${started.status}`,
+      );
+    }
+    const state = new URL(started.body.browserUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Missing state in Claude Code browser URL");
+    }
+
+    const completed = await authDevice.requestClaudeCodeComplete(
+      admin,
+      started.body.sessionToken,
+      `auth_code_test#${state}`,
+      [200],
+    );
+    expect(completed.body).toMatchObject({
+      status: "complete",
+      created: true,
+      provider: {
+        type: "claude-code-oauth-token",
+        secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+      },
+    });
+    expect(calls.token).toHaveLength(1);
+    expect(calls.token[0]).toMatchObject({
+      grant_type: "authorization_code",
+      code: "auth_code_test",
+      redirect_uri: "https://platform.claude.com/oauth/code/callback",
+      client_id: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+      state,
+      expires_in: 31_536_000,
+      code_verifier: expect.any(String),
+    });
+
+    const providers = await miscApi.listModelProviders(admin);
+    expect(
+      providers.body.modelProviders.some((provider) => {
+        return provider.type === "claude-code-oauth-token";
+      }),
+    ).toBeTruthy();
+
+    const reComplete = await authDevice.requestClaudeCodeComplete(
+      admin,
+      started.body.sessionToken,
+      `auth_code_test#${state}`,
+      [400],
+    );
+    expectApiError(reComplete.body);
+    expect(reComplete.body.error.message).toBe(
+      "Claude Code device auth session is not ready",
+    );
+
+    await authDevice.deleteOrgModelProvider(admin, "claude-code-oauth-token");
+  });
+
+  it("completes personal-scope Claude Code device auth from a full callback URL", async () => {
+    mockClaudeCodeTokenEndpoint();
+    const miscApi = createMiscRoutesApi(context);
+    const member = bdd.user({ orgRole: "org:member" });
+
+    const started = await authDevice.requestClaudeCodeStart(
+      member,
+      "personal",
+      [200],
+    );
+    if (started.status !== 200) {
+      throw new Error(
+        `Expected Claude Code device auth start, got ${started.status}`,
+      );
+    }
+    const state = new URL(started.body.browserUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Missing state in Claude Code browser URL");
+    }
+
+    const completed = await authDevice.requestClaudeCodeComplete(
+      member,
+      started.body.sessionToken,
+      `https://platform.claude.com/oauth/code/callback?code=member_code&state=${state}`,
+      [200],
+    );
+    expect(completed.body).toMatchObject({
+      status: "complete",
+      provider: { type: "claude-code-oauth-token" },
+    });
+
+    const personalProviders = await miscApi.listPersonalModelProviders(
+      member,
+      [200],
+    );
+    if (!("modelProviders" in personalProviders.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(
+      personalProviders.body.modelProviders.some((provider) => {
+        return provider.type === "claude-code-oauth-token";
+      }),
+    ).toBeTruthy();
+
+    await miscApi.deletePersonalModelProvider(
+      member,
+      "claude-code-oauth-token",
+      [204],
     );
   });
 
