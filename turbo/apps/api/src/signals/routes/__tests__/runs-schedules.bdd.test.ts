@@ -2,13 +2,16 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { now } from "../../../lib/time";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
+import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createEmailApi } from "./helpers/api-bdd-email";
 import {
   createRunsSchedulesApi,
   uniqueScheduleName,
@@ -29,10 +32,11 @@ import {
  *   run-lifecycle.bdd.test.ts; missing-run GET boundaries stay here.
  * - SCHED-01 has no standalone read-by-name route; schedule list is used as
  *   the visible read surface for create, update, enable, disable, and delete.
- * - CHAIN-SCHEDULE cron execution returns counts and exposes schedule
- *   lastRunAt, but the cron route does not expose the generated run id. Manual
- *   run-now currently covers the no-credit admission boundary until a public
- *   entitlement helper exists.
+ * - CHAIN-SCHEDULE cron execution returns global counts only and does not
+ *   expose created run ids; run identity is read through the org run queue
+ *   (queued runs) and the schedule thread's user messages (executed runs),
+ *   which expose the runId. Cron count fields are never asserted strictly
+ *   because the cron processes due schedules across all organizations.
  * - SCHED-02 sync-skills valid-path coverage needs a focused external GitHub
  *   tarball/S3 helper; this file keeps cron auth and safe no-work cron routes
  *   route-based without adding that external fixture.
@@ -63,6 +67,100 @@ function findSchedule<
   return schedules.find((schedule) => {
     return schedule.id === scheduleId;
   });
+}
+
+function mustFindSchedule<
+  TSchedule extends { readonly id: string; readonly name: string },
+>(schedules: readonly TSchedule[], scheduleId: string): TSchedule {
+  const schedule = findSchedule(schedules, scheduleId);
+  if (!schedule) {
+    throw new Error(`Expected schedule ${scheduleId} to be visible in list`);
+  }
+  return schedule;
+}
+
+async function entitledScheduleActor(): Promise<{
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+  readonly runnerGroup: string;
+}> {
+  const bdd = createBddApi(context);
+  const api = createRunsSchedulesApi(context);
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  const runnerGroup = api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "BDD schedule agent",
+    description: "Exercises cron execution of due schedules.",
+    visibility: "private",
+  });
+  return { actor, agentId: agent.agentId, runnerGroup };
+}
+
+async function executeSchedulesCronOk(): Promise<void> {
+  const response =
+    await createRunsSchedulesApi(context).executeSchedulesCron(true);
+  if (response.status !== 200) {
+    throw new Error("Expected execute schedules cron to succeed");
+  }
+  expect(response.body.success).toBeTruthy();
+}
+
+interface ThreadMessageView {
+  readonly role: "user" | "assistant";
+  readonly content: string | null;
+  readonly runId?: string;
+}
+
+const QUEUE_MARKER_MESSAGE = "Waiting in queue...";
+
+function scheduleUserMessages(
+  messages: readonly ThreadMessageView[],
+  prompt: string,
+): readonly ThreadMessageView[] {
+  return messages.filter((message) => {
+    return message.role === "user" && message.content === prompt;
+  });
+}
+
+function scheduleRunIdFromThread(
+  messages: readonly ThreadMessageView[],
+  prompt: string,
+): string {
+  const runId = scheduleUserMessages(messages, prompt)[0]?.runId;
+  if (!runId) {
+    throw new Error("Expected a schedule user message carrying a runId");
+  }
+  return runId;
+}
+
+function hasQueueMarker(
+  messages: readonly ThreadMessageView[],
+  runId: string,
+): boolean {
+  return messages.some((message) => {
+    return (
+      message.role === "assistant" &&
+      message.runId === runId &&
+      message.content === QUEUE_MARKER_MESSAGE
+    );
+  });
+}
+
+function resendSendCallsTo(recipient: string): number {
+  return context.mocks.resend.send.mock.calls.filter((call) => {
+    const [payload] = call;
+    return (
+      typeof payload === "object" &&
+      payload !== null &&
+      "to" in payload &&
+      payload.to === recipient
+    );
+  }).length;
 }
 
 describe("RUN-01: run creation admission and validation", () => {
@@ -630,6 +728,400 @@ describe("SCHED-01 and CHAIN-SCHEDULE: schedule lifecycle", () => {
   });
 });
 
+describe("SCHED-02 and CHAIN-SCHEDULE: cron execution of due schedules", () => {
+  it("executes due cron and one-time schedules and exposes the runs through queue, chat, and runner reads", async () => {
+    const api = createRunsSchedulesApi(context);
+    const chat = createChatFilesBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledScheduleActor();
+    const cronPrompt = "Run the scheduled morning report.";
+    const oncePrompt = "Run the one-time report.";
+    // Mocked time only moves minutes ahead of real time: runs persist real
+    // creation timestamps, and active-run accounting ignores pending runs
+    // older than its TTL relative to the mockable clock.
+    const base = now();
+    mockNow(base);
+
+    const cronSchedule = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-exec-cron"),
+      agentId,
+      cronExpression: "*/5 * * * *",
+      prompt: cronPrompt,
+      description: "Due cron schedule",
+      appendSystemPrompt: "Always respond in formal tone",
+      timezone: "UTC",
+      enabled: true,
+    });
+    expect(cronSchedule.schedule.nextRunAt).not.toBeNull();
+
+    const onceSchedule = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-exec-once"),
+      agentId,
+      atTime: new Date(base + 5 * 60_000).toISOString(),
+      prompt: oncePrompt,
+      description: "Due one-time schedule",
+      timezone: "UTC",
+      enabled: true,
+    });
+    expect(onceSchedule.schedule.nextRunAt).not.toBeNull();
+
+    await executeSchedulesCronOk();
+    const preDue = await api.listSchedules(actor);
+    expect(
+      mustFindSchedule(preDue.schedules, cronSchedule.schedule.id).lastRunAt,
+    ).toBeNull();
+    expect(
+      mustFindSchedule(preDue.schedules, onceSchedule.schedule.id).lastRunAt,
+    ).toBeNull();
+
+    mockNow(base + 6 * 60_000);
+    const [firstCron, secondCron] = await Promise.all([
+      api.executeSchedulesCron(true),
+      api.executeSchedulesCron(true),
+    ]);
+    expect(firstCron.status).toBe(200);
+    expect(secondCron.status).toBe(200);
+    await clearAllDetached();
+
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.concurrency.active).toBe(2);
+    expect(queue.body.queue).toHaveLength(0);
+
+    const afterDue = await api.listSchedules(actor);
+    const cronAfterDue = mustFindSchedule(
+      afterDue.schedules,
+      cronSchedule.schedule.id,
+    );
+    expect(cronAfterDue).toMatchObject({
+      enabled: true,
+      nextRunAt: null,
+      retryStartedAt: null,
+      consecutiveFailures: 0,
+    });
+    expect(cronAfterDue.lastRunAt).not.toBeNull();
+    const onceAfterDue = mustFindSchedule(
+      afterDue.schedules,
+      onceSchedule.schedule.id,
+    );
+    expect(onceAfterDue).toMatchObject({ enabled: false, nextRunAt: null });
+    expect(onceAfterDue.lastRunAt).not.toBeNull();
+
+    const cronThread = await chat.listThreadMessages(
+      actor,
+      cronSchedule.schedule.chatThreadId,
+    );
+    const cronRunId = scheduleRunIdFromThread(cronThread.messages, cronPrompt);
+    expect(hasQueueMarker(cronThread.messages, cronRunId)).toBeFalsy();
+    const onceThread = await chat.listThreadMessages(
+      actor,
+      onceSchedule.schedule.chatThreadId,
+    );
+    const onceRunId = scheduleRunIdFromThread(onceThread.messages, oncePrompt);
+    expect(onceRunId).not.toBe(cronRunId);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(cronRunId);
+    expect(claim.prompt).toBe(cronPrompt);
+    expect(claim.appendSystemPrompt).toContain(
+      "# Current Integration\nYou are currently running inside: Schedule",
+    );
+    expect(claim.appendSystemPrompt).toContain("Trigger type: cron");
+    expect(claim.appendSystemPrompt).toContain("Always respond in formal tone");
+
+    const conflict = await api.runScheduleNow(
+      actor,
+      cronSchedule.schedule.id,
+      [409],
+    );
+    expectApiError(conflict.body);
+    expect(conflict.body.error.code).toBe("CONFLICT");
+
+    clearMockNow();
+    await api.requestCancelRun(actor, cronRunId, [200]);
+    await api.requestCancelRun(actor, onceRunId, [200]);
+    await clearAllDetached();
+    const emptied = await api.readRunQueue(actor);
+    expect(emptied.body.concurrency.active).toBe(0);
+    await api.deleteSchedule(actor, cronSchedule.schedule);
+    await api.deleteSchedule(actor, onceSchedule.schedule);
+  });
+
+  it("skips a due schedule while its previous run is active and executes it after the run terminates", async () => {
+    const api = createRunsSchedulesApi(context);
+    const chat = createChatFilesBddApi(context);
+    const { actor, agentId } = await entitledScheduleActor();
+    const prompt = "Run the skip-check report.";
+    const base = now();
+    mockNow(base);
+
+    const deployed = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-skip-active"),
+      agentId,
+      cronExpression: "0 9 * * *",
+      prompt,
+      description: "Skip while previous run is active",
+      timezone: "UTC",
+      enabled: true,
+    });
+    const deployedNextRunAt = deployed.schedule.nextRunAt;
+    expect(deployedNextRunAt).not.toBeNull();
+
+    const manualRun = await api.runScheduleNow(
+      actor,
+      deployed.schedule.id,
+      [201],
+    );
+    if (manualRun.status !== 201) {
+      throw new Error("Expected manual schedule run to be created");
+    }
+    const manualRunId = manualRun.body.runId;
+
+    const afterManual = await chat.listThreadMessages(
+      actor,
+      deployed.schedule.chatThreadId,
+    );
+    expect(scheduleUserMessages(afterManual.messages, prompt)).toHaveLength(1);
+
+    mockNow(base + 25 * 3_600_000);
+    await executeSchedulesCronOk();
+
+    const skipped = mustFindSchedule(
+      (await api.listSchedules(actor)).schedules,
+      deployed.schedule.id,
+    );
+    expect(skipped.lastRunAt).toBeNull();
+    expect(skipped.nextRunAt).toBe(deployedNextRunAt);
+    expect(skipped.consecutiveFailures).toBe(0);
+
+    await api.requestCancelRun(actor, manualRunId, [200]);
+    await clearAllDetached();
+    await executeSchedulesCronOk();
+    await clearAllDetached();
+
+    const executed = mustFindSchedule(
+      (await api.listSchedules(actor)).schedules,
+      deployed.schedule.id,
+    );
+    expect(executed.lastRunAt).not.toBeNull();
+    expect(executed.nextRunAt).toBeNull();
+
+    const afterCron = await chat.listThreadMessages(
+      actor,
+      deployed.schedule.chatThreadId,
+    );
+    const cronMessages = scheduleUserMessages(afterCron.messages, prompt);
+    expect(cronMessages).toHaveLength(2);
+    const cronRunId = cronMessages
+      .map((message) => {
+        return message.runId;
+      })
+      .find((runId): runId is string => {
+        return runId !== undefined && runId !== manualRunId;
+      });
+    if (!cronRunId) {
+      throw new Error("Expected the cron execution to post a second run");
+    }
+
+    clearMockNow();
+    await api.requestCancelRun(actor, cronRunId, [200]);
+    await clearAllDetached();
+    await api.deleteSchedule(actor, deployed.schedule);
+  });
+
+  it("queues scheduled runs at the org concurrency limit and disables a queued one-time schedule", async () => {
+    const api = createRunsSchedulesApi(context);
+    const chat = createChatFilesBddApi(context);
+    const { actor, agentId } = await entitledScheduleActor();
+    const cronPrompt = "Run the queued cron report.";
+    const oncePrompt = "Run the queued one-time report.";
+
+    const blockerOne = await api.createRun(actor, {
+      agentId,
+      prompt: "hold concurrency slot one",
+      modelProvider: "anthropic-api-key",
+    });
+    const blockerTwo = await api.createRun(actor, {
+      agentId,
+      prompt: "hold concurrency slot two",
+      modelProvider: "anthropic-api-key",
+    });
+
+    // The mocked due time stays within the pending-run accounting TTL so the
+    // real-time blocking runs still count against the concurrency limit.
+    const base = now();
+    mockNow(base);
+    const cronSchedule = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-queue-cron"),
+      agentId,
+      cronExpression: "*/5 * * * *",
+      prompt: cronPrompt,
+      description: "Queued cron schedule",
+      timezone: "UTC",
+      enabled: true,
+    });
+    const onceSchedule = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-queue-once"),
+      agentId,
+      atTime: new Date(base + 5 * 60_000).toISOString(),
+      prompt: oncePrompt,
+      description: "Queued one-time schedule",
+      timezone: "UTC",
+      enabled: true,
+    });
+
+    mockNow(base + 6 * 60_000);
+    await executeSchedulesCronOk();
+    await clearAllDetached();
+
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toHaveLength(2);
+    const queuedRunIds = queue.body.queue.map((entry) => {
+      return entry.runId;
+    });
+
+    const schedules = await api.listSchedules(actor);
+    expect(
+      mustFindSchedule(schedules.schedules, cronSchedule.schedule.id),
+    ).toMatchObject({ enabled: true, retryStartedAt: null, nextRunAt: null });
+    expect(
+      mustFindSchedule(schedules.schedules, onceSchedule.schedule.id),
+    ).toMatchObject({ enabled: false, nextRunAt: null });
+
+    const cronThread = await chat.listThreadMessages(
+      actor,
+      cronSchedule.schedule.chatThreadId,
+    );
+    const cronRunId = scheduleRunIdFromThread(cronThread.messages, cronPrompt);
+    expect(hasQueueMarker(cronThread.messages, cronRunId)).toBeTruthy();
+    const onceThread = await chat.listThreadMessages(
+      actor,
+      onceSchedule.schedule.chatThreadId,
+    );
+    const onceRunId = scheduleRunIdFromThread(onceThread.messages, oncePrompt);
+    expect(hasQueueMarker(onceThread.messages, onceRunId)).toBeTruthy();
+    expect([...queuedRunIds].sort()).toStrictEqual(
+      [cronRunId, onceRunId].sort(),
+    );
+
+    clearMockNow();
+    await api.requestCancelRun(actor, cronRunId, [200]);
+    await api.requestCancelRun(actor, onceRunId, [200]);
+    await api.requestCancelRun(actor, blockerOne.runId, [200]);
+    await api.requestCancelRun(actor, blockerTwo.runId, [200]);
+    await clearAllDetached();
+    const emptied = await api.readRunQueue(actor);
+    expect(emptied.body.concurrency.active).toBe(0);
+    await api.deleteSchedule(actor, cronSchedule.schedule);
+    await api.deleteSchedule(actor, onceSchedule.schedule);
+  });
+
+  it("advances loop and cron schedules after pre-run failures and auto-disables after three consecutive failures", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const actor = bdd.user();
+    const { agentId } = await createAgentWithModelProvider(actor);
+    const base = now();
+    mockNow(base);
+
+    const loopSchedule = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-fail-loop"),
+      agentId,
+      intervalSeconds: 300,
+      prompt: "Run the failing loop report.",
+      description: "Loop pre-run failure schedule",
+      timezone: "UTC",
+      enabled: true,
+    });
+    expect(loopSchedule.schedule.nextRunAt).not.toBeNull();
+
+    await executeSchedulesCronOk();
+    const afterFirst = mustFindSchedule(
+      (await api.listSchedules(actor)).schedules,
+      loopSchedule.schedule.id,
+    );
+    expect(afterFirst.consecutiveFailures).toBe(1);
+    expect(afterFirst.enabled).toBeTruthy();
+    expect(afterFirst.lastRunAt).not.toBeNull();
+    if (!afterFirst.nextRunAt) {
+      throw new Error("Expected the loop failure to reschedule the next run");
+    }
+    expect(Date.parse(afterFirst.nextRunAt)).toBeGreaterThan(base);
+
+    mockNow(base + 301_000);
+    await executeSchedulesCronOk();
+    const afterSecond = mustFindSchedule(
+      (await api.listSchedules(actor)).schedules,
+      loopSchedule.schedule.id,
+    );
+    expect(afterSecond.consecutiveFailures).toBe(2);
+    expect(afterSecond.enabled).toBeTruthy();
+
+    mockNow(base + 602_000);
+    await executeSchedulesCronOk();
+    const afterThird = mustFindSchedule(
+      (await api.listSchedules(actor)).schedules,
+      loopSchedule.schedule.id,
+    );
+    expect(afterThird).toMatchObject({
+      consecutiveFailures: 3,
+      enabled: false,
+      nextRunAt: null,
+    });
+
+    const cronSchedule = await api.deploySchedule(actor, {
+      name: uniqueScheduleName("bdd-fail-cron"),
+      agentId,
+      cronExpression: "0 9 * * *",
+      prompt: "Run the failing cron report.",
+      description: "Cron pre-run failure schedule",
+      timezone: "UTC",
+      enabled: true,
+    });
+    mockNow(base + 25 * 3_600_000);
+    await executeSchedulesCronOk();
+    const cronAfterFailure = mustFindSchedule(
+      (await api.listSchedules(actor)).schedules,
+      cronSchedule.schedule.id,
+    );
+    expect(cronAfterFailure.consecutiveFailures).toBe(1);
+    expect(cronAfterFailure.enabled).toBeTruthy();
+    if (!cronAfterFailure.nextRunAt) {
+      throw new Error("Expected the cron failure to reschedule the next run");
+    }
+    expect(Date.parse(cronAfterFailure.nextRunAt)).toBeGreaterThan(
+      base + 25 * 3_600_000,
+    );
+
+    const pinActor = bdd.user();
+    const pinAgent = await bdd.createAgent(pinActor, {
+      displayName: "BDD pin-error agent",
+      description: "Covers the schedule model-pin failure branch.",
+      visibility: "private",
+    });
+    const pinSchedule = await api.deploySchedule(pinActor, {
+      name: uniqueScheduleName("bdd-fail-pin"),
+      agentId: pinAgent.agentId,
+      intervalSeconds: 300,
+      prompt: "Run the pin-error report.",
+      description: "Model pin failure schedule",
+      timezone: "UTC",
+      enabled: true,
+    });
+    await executeSchedulesCronOk();
+    const pinAfterFailure = mustFindSchedule(
+      (await api.listSchedules(pinActor)).schedules,
+      pinSchedule.schedule.id,
+    );
+    expect(pinAfterFailure.consecutiveFailures).toBe(1);
+    expect(pinAfterFailure.enabled).toBeTruthy();
+    expect(pinAfterFailure.nextRunAt).not.toBeNull();
+
+    clearMockNow();
+    await api.deleteSchedule(actor, loopSchedule.schedule);
+    await api.deleteSchedule(actor, cronSchedule.schedule);
+    await api.deleteSchedule(pinActor, pinSchedule.schedule);
+  });
+});
+
 describe("AUTOMATIONS-01: automation lifecycle through the public API", () => {
   it("creates, lists, updates, toggles, runs, and deletes an automation through API requests", async () => {
     const bdd = createBddApi(context);
@@ -819,5 +1311,92 @@ describe("SCHED-02: cron routes", () => {
       throw new Error("Expected execute schedules cron to succeed");
     }
     expect(execute.body.success).toBeTruthy();
+  });
+});
+
+describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
+  it("drains a pending inbound-error email through Resend exactly once", async () => {
+    const email = createEmailApi(context);
+
+    const unauthorizedDrain = await email.drainEmailOutboxCron(false);
+    expect(unauthorizedDrain.status).toBe(401);
+
+    const { from, subject } = await email.triggerInboundErrorEmail();
+
+    context.mocks.resend.send.mockReset();
+    context.mocks.resend.send.mockResolvedValue({
+      data: { id: "resend-bdd-1" },
+    });
+    const drain = await email.drainEmailOutboxCron(true);
+    if (drain.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(drain.body.success).toBeTruthy();
+    expect(drain.body.drained).toBeGreaterThanOrEqual(1);
+    expect(context.mocks.resend.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: "Zero <vm0@mail.example.com>",
+        to: from,
+        subject: `Re: ${subject}`,
+        html: expect.stringContaining("not associated with a VM0 account"),
+      }),
+    );
+    expect(resendSendCallsTo(from)).toBe(1);
+
+    const second = await email.drainEmailOutboxCron(true);
+    if (second.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(resendSendCallsTo(from)).toBe(1);
+  });
+
+  it("retries failed sends with backoff and cleans up expired failed outbox rows", async () => {
+    const email = createEmailApi(context);
+    const { from } = await email.triggerInboundErrorEmail();
+
+    context.mocks.resend.send.mockReset();
+    context.mocks.resend.send.mockResolvedValue({
+      error: { message: "smtp down" },
+    });
+    const realNow = now();
+    mockNow(realNow - 60 * 60 * 1000);
+    const retried = await email.drainEmailOutboxCron(true);
+    if (retried.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(retried.body.drained).toBeGreaterThanOrEqual(3);
+    expect(resendSendCallsTo(from)).toBe(3);
+
+    clearMockNow();
+    context.mocks.resend.send.mockReset();
+    context.mocks.resend.send.mockResolvedValue({
+      data: { id: "resend-bdd-clean" },
+    });
+    mockNow(realNow + 15 * 60 * 1000 + 30_000);
+    const cleaned = await email.drainEmailOutboxCron(true);
+    if (cleaned.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(cleaned.body.cleaned).toBeGreaterThanOrEqual(1);
+    expect(resendSendCallsTo(from)).toBe(0);
+    clearMockNow();
+  });
+
+  it("does not deliver outbox emails to suppressed recipients", async () => {
+    const email = createEmailApi(context);
+    const { from } = await email.triggerInboundErrorEmail();
+
+    await email.suppressEmailAddress(from);
+
+    context.mocks.resend.send.mockReset();
+    context.mocks.resend.send.mockResolvedValue({
+      data: { id: "resend-bdd-unused" },
+    });
+    const drain = await email.drainEmailOutboxCron(true);
+    if (drain.status !== 200) {
+      throw new Error("Expected drain email outbox cron to succeed");
+    }
+    expect(drain.body.drained).toBeGreaterThanOrEqual(1);
+    expect(resendSendCallsTo(from)).toBe(0);
   });
 });
