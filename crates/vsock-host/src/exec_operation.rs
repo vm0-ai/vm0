@@ -802,23 +802,10 @@ struct ExecWaitCore {
 }
 
 #[derive(Clone, Copy)]
-struct ExecWaitMessages {
-    operation_closed: &'static str,
-    timeout_log: &'static str,
-    timeout_error: &'static str,
+enum ExecWaitLifecycle {
+    OneShot,
+    Supervised,
 }
-
-const EXEC_WAIT_MESSAGES: ExecWaitMessages = ExecWaitMessages {
-    operation_closed: "exec operation closed",
-    timeout_log: "exec operation wait timeout",
-    timeout_error: "exec operation timeout",
-};
-
-const SUPERVISED_EXEC_WAIT_MESSAGES: ExecWaitMessages = ExecWaitMessages {
-    operation_closed: "supervised exec operation closed",
-    timeout_log: "supervised exec operation wait timeout",
-    timeout_error: "supervised exec operation timeout",
-};
 
 struct ExecCancelWaitResult {
     result: ExecOperationResult,
@@ -826,6 +813,43 @@ struct ExecCancelWaitResult {
 }
 
 impl ExecWaitCore {
+    fn operation_closed_message(lifecycle: ExecWaitLifecycle) -> &'static str {
+        match lifecycle {
+            ExecWaitLifecycle::OneShot => "exec operation closed",
+            ExecWaitLifecycle::Supervised => "supervised exec operation closed",
+        }
+    }
+
+    fn timeout_error_message(lifecycle: ExecWaitLifecycle) -> &'static str {
+        match lifecycle {
+            ExecWaitLifecycle::OneShot => "exec operation timeout",
+            ExecWaitLifecycle::Supervised => "supervised exec operation timeout",
+        }
+    }
+
+    fn log_timeout(&self, seq: u32, poison_on_timeout: bool, lifecycle: ExecWaitLifecycle) {
+        match lifecycle {
+            ExecWaitLifecycle::OneShot => {
+                tracing::warn!(
+                    seq = seq,
+                    label = %self.diagnostic.label_log,
+                    elapsed_ms = self.diagnostic.elapsed_ms(),
+                    poison_connection = poison_on_timeout,
+                    "exec operation wait timeout"
+                );
+            }
+            ExecWaitLifecycle::Supervised => {
+                tracing::warn!(
+                    seq = seq,
+                    label = %self.diagnostic.label_log,
+                    elapsed_ms = self.diagnostic.elapsed_ms(),
+                    poison_connection = poison_on_timeout,
+                    "supervised exec operation wait timeout"
+                );
+            }
+        }
+    }
+
     fn new(
         shared: Arc<Shared>,
         seq: u32,
@@ -890,11 +914,14 @@ impl ExecWaitCore {
         &mut self,
         timeout: Duration,
         poison_on_timeout: bool,
-        messages: ExecWaitMessages,
+        lifecycle: ExecWaitLifecycle,
     ) -> io::Result<ExecOperationResult> {
-        let seq = self.active_seq_or_closed(messages.operation_closed)?;
+        let seq = self.active_seq_or_closed(Self::operation_closed_message(lifecycle))?;
         let rx = self.result_rx.as_mut().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::ConnectionReset, messages.operation_closed)
+            io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                Self::operation_closed_message(lifecycle),
+            )
         })?;
 
         tokio::select! {
@@ -911,18 +938,14 @@ impl ExecWaitCore {
                 self.shared.remove_operation(seq);
                 self.seq = None;
                 self.result_rx = None;
-                tracing::warn!(
-                    seq = seq,
-                    label = %self.diagnostic.label_log,
-                    elapsed_ms = self.diagnostic.elapsed_ms(),
-                    poison_connection = poison_on_timeout,
-                    "{}",
-                    messages.timeout_log
-                );
+                self.log_timeout(seq, poison_on_timeout, lifecycle);
                 if poison_on_timeout {
                     self.shared.poison_connection();
                 }
-                Err(io::Error::new(io::ErrorKind::TimedOut, messages.timeout_error))
+                Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    Self::timeout_error_message(lifecycle),
+                ))
             }
         }
     }
@@ -942,7 +965,7 @@ impl ExecOperationHandle {
     /// connection even though the connection itself may still be open.
     pub async fn wait(mut self, timeout: Duration) -> io::Result<ExecOperationResult> {
         self.wait_core
-            .wait_with_timeout(timeout, false, EXEC_WAIT_MESSAGES)
+            .wait_with_timeout(timeout, false, ExecWaitLifecycle::OneShot)
             .await
     }
 
@@ -998,7 +1021,9 @@ impl ExecOperationHandle {
 
         let seq = self
             .wait_core
-            .active_seq_or_closed(EXEC_WAIT_MESSAGES.operation_closed)?;
+            .active_seq_or_closed(ExecWaitCore::operation_closed_message(
+                ExecWaitLifecycle::OneShot,
+            ))?;
         let payload = vsock_proto::encode_exec_cancel();
         write_frame(
             self.wait_core.shared(),
@@ -1019,7 +1044,7 @@ impl ExecOperationHandle {
 
         let result = self
             .wait_core
-            .wait_with_timeout(timeout, true, EXEC_WAIT_MESSAGES)
+            .wait_with_timeout(timeout, true, ExecWaitLifecycle::OneShot)
             .await?;
         Ok(ExecCancelWaitResult {
             result,
@@ -1159,7 +1184,7 @@ impl SupervisedExecHandle {
     pub async fn wait(mut self, timeout: Duration) -> io::Result<ExecOperationResult> {
         self.clear_unclaimed_stream_sender();
         self.wait_core
-            .wait_with_timeout(timeout, false, SUPERVISED_EXEC_WAIT_MESSAGES)
+            .wait_with_timeout(timeout, false, ExecWaitLifecycle::Supervised)
             .await
     }
 
@@ -1206,7 +1231,9 @@ impl SupervisedExecHandle {
 
         let seq = self
             .wait_core
-            .active_seq_or_closed(SUPERVISED_EXEC_WAIT_MESSAGES.operation_closed)?;
+            .active_seq_or_closed(ExecWaitCore::operation_closed_message(
+                ExecWaitLifecycle::Supervised,
+            ))?;
         send_supervised_exec_cancel_frame(
             self.wait_core.shared(),
             seq,
@@ -1217,7 +1244,7 @@ impl SupervisedExecHandle {
         self.clear_unclaimed_stream_sender();
         let result = self
             .wait_core
-            .wait_with_timeout(timeout, true, SUPERVISED_EXEC_WAIT_MESSAGES)
+            .wait_with_timeout(timeout, true, ExecWaitLifecycle::Supervised)
             .await?;
         Ok(ExecCancelWaitResult {
             result,
