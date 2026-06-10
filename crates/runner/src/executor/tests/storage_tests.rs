@@ -147,6 +147,19 @@ fn command_output_redaction_preserves_whitespace_between_urls() {
     assert!(!msg.contains("hidden"));
 }
 
+#[test]
+fn command_output_redaction_handles_case_insensitive_url_schemes() {
+    let msg = format_command_output_excerpt(
+        "stderr",
+        b"archiveUrl=HTTPS://storage.example/archive.tar.gz?token=secret",
+        false,
+    )
+    .unwrap();
+
+    assert!(msg.contains("archiveUrl=HTTPS://storage.example/archive.tar.gz?<redacted>"));
+    assert!(!msg.contains("secret"));
+}
+
 #[tokio::test]
 async fn download_storages_fails_on_write_file_error() {
     let sandbox = MockSandbox::new("test");

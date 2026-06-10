@@ -274,9 +274,11 @@ fn redact_url_query_strings(input: &str) -> String {
 }
 
 fn url_scheme_at(input: &str, index: usize) -> Option<&'static str> {
-    ["https://", "http://"]
-        .into_iter()
-        .find(|scheme| input[index..].starts_with(scheme))
+    ["https://", "http://"].into_iter().find(|scheme| {
+        input[index..]
+            .get(..scheme.len())
+            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(scheme))
+    })
 }
 
 fn find_url_token_end(input: &str, start: usize) -> usize {
