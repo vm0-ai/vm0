@@ -56,6 +56,10 @@ interface BrowserOpenMock {
   openedWindow: Window | null;
 }
 
+interface LocationAssignMock {
+  calls: string[];
+}
+
 interface ClipboardWriteMock {
   writes: string[];
 }
@@ -250,6 +254,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       open: (openedWindow: Window | null = null): BrowserOpenMock => {
         return mockWindowOpen(getSignal(), openedWindow);
       },
+      locationAssign: (): LocationAssignMock => {
+        return mockLocationAssign(getSignal());
+      },
       authWindow: (): MockWindow => {
         return createMockWindow();
       },
@@ -278,6 +285,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       audioContext: (): void => {
         mockAudioContext(getSignal());
+      },
+      voiceInput: (): void => {
+        mockVoiceInput(getSignal());
       },
       imageDimensions: (
         results:
@@ -337,6 +347,17 @@ function mockWindowOpen(
     spy.mockRestore();
   });
   return { calls, openedWindow };
+}
+
+function mockLocationAssign(signal: AbortSignal): LocationAssignMock {
+  const calls: string[] = [];
+  const spy = vi.spyOn(window.location, "assign").mockImplementation((url) => {
+    calls.push(String(url));
+  });
+  restoreOnAbort(signal, () => {
+    spy.mockRestore();
+  });
+  return { calls };
 }
 
 function createMockWindow(): MockWindow {
@@ -499,6 +520,84 @@ function mockAudioContext(signal: AbortSignal): void {
 
   restoreOnAbort(signal, () => {
     restoreWindowProperty(window, "AudioContext", descriptor);
+  });
+}
+
+function mockVoiceInput(signal: AbortSignal): void {
+  const mediaRecorderGlobal = globalThis as typeof globalThis & {
+    MediaRecorder?: typeof MediaRecorder;
+  };
+  const stream = {
+    getTracks: () => {
+      return [
+        {
+          stop: () => {
+            return undefined;
+          },
+        },
+      ];
+    },
+  } as unknown as MediaStream;
+
+  type RecorderDataEvent = Event & { data: Blob };
+
+  class TestMediaRecorder extends EventTarget {
+    static isTypeSupported(type: string): boolean {
+      return type === "audio/webm";
+    }
+
+    mimeType: string;
+    ondataavailable: ((event: RecorderDataEvent) => void) | null = null;
+    state: RecordingState = "inactive";
+
+    constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+      super();
+      this.mimeType = options?.mimeType ?? "audio/webm";
+    }
+
+    start(): void {
+      this.state = "recording";
+    }
+
+    stop(): void {
+      if (this.state === "inactive") {
+        return;
+      }
+      this.state = "inactive";
+      const event = new Event("dataavailable") as RecorderDataEvent;
+      Object.defineProperty(event, "data", {
+        value: new Blob(["voice"], { type: this.mimeType }),
+      });
+      this.ondataavailable?.(event);
+      this.dispatchEvent(new Event("stop"));
+    }
+  }
+
+  const mediaDevicesDescriptor = defineWindowProperty(
+    navigator,
+    "mediaDevices",
+    {
+      enumerateDevices: () => {
+        return Promise.resolve([] as MediaDeviceInfo[]);
+      },
+      getUserMedia: () => {
+        return Promise.resolve(stream);
+      },
+    },
+  );
+  const mediaRecorderDescriptor = defineWindowProperty(
+    mediaRecorderGlobal,
+    "MediaRecorder",
+    TestMediaRecorder as unknown as typeof MediaRecorder,
+  );
+
+  restoreOnAbort(signal, () => {
+    restoreWindowProperty(navigator, "mediaDevices", mediaDevicesDescriptor);
+    restoreWindowProperty(
+      mediaRecorderGlobal,
+      "MediaRecorder",
+      mediaRecorderDescriptor,
+    );
   });
 }
 

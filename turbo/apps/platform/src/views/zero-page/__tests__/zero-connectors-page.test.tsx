@@ -559,6 +559,56 @@ describe("connectors page", () => {
     click(screen.getByTestId("connector-oauth-device-open"));
   });
 
+  it("shows a retryable error when a device-auth verification page is blocked", async () => {
+    mockConnectors([]);
+    context.mocks.browser.open(null);
+    context.mocks.api(
+      zeroConnectorOauthDeviceAuthSessionContract.create,
+      ({ params, respond }) => {
+        return respond(200, {
+          sessionId: "00000000-0000-4000-8000-000000000003",
+          sessionToken: `mock-${params.type}-blocked-device-token`,
+          type: params.type,
+          status: "pending",
+          userCode: "NO-COMPLETE",
+          verificationUri: `https://oauth.test/${params.type}/device`,
+          expiresIn: 300,
+          interval: 1,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Base44")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Connect Base44"));
+
+    const deviceDialog = await screen.findByRole("dialog", { name: "Base44" });
+    click(buttonByText("Connect Base44", deviceDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("connector-oauth-device-code"),
+      ).toHaveTextContent("NO-COMPLETE");
+    });
+    click(screen.getByTestId("connector-oauth-device-open"));
+
+    await waitFor(() => {
+      expect(
+        within(deviceDialog).getByText(
+          "Could not open the verification page. Try again.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(deviceDialog).getByText(
+          "Copy this code, then open the verification page to approve access.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("completes a device-auth connector grant", async () => {
     mockConnectors([]);
 

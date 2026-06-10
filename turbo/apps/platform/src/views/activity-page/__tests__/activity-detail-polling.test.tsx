@@ -220,6 +220,34 @@ function checkoutNetworkLogs(): NetworkLogEntry[] {
   ];
 }
 
+function mixedNetworkLogs(): NetworkLogEntry[] {
+  return [
+    {
+      timestamp: "2026-03-10T14:56:11.000Z",
+      type: "dns",
+      action: "ALLOW",
+      host: "api.service.test",
+      latency_ms: 12,
+      dns_event: "query",
+      dns_query_type: "AAAA",
+      dns_result: "2001:db8::1",
+      dns_serial: "dns-99",
+    },
+    {
+      timestamp: "2026-03-10T14:56:12.000Z",
+      type: "tcp",
+      action: "DENY",
+      host: "db.internal",
+      port: 5432,
+      latency_ms: 2300,
+      firewall_name: "database",
+      firewall_permission: "postgres",
+      firewall_error: "database blocked",
+      error: "connect ECONNREFUSED",
+    },
+  ];
+}
+
 function codexActivityEvents(): AgentEvent[] {
   return [
     {
@@ -509,6 +537,16 @@ function getButtonByText(text: string): HTMLElement {
   return button;
 }
 
+function getMenuItemCheckboxByText(text: string): HTMLElement {
+  const item = queryAllByRoleFast("menuitemcheckbox").find((element) => {
+    return element.textContent?.trim() === text;
+  });
+  if (!item) {
+    throw new Error(`Could not find menu item checkbox: ${text}`);
+  }
+  return item;
+}
+
 describe("activity detail polling", () => {
   it("shows recovery guidance for a failed activity", async () => {
     const runId = "a0000000-0000-4000-a000-000000000098";
@@ -744,6 +782,93 @@ describe("activity detail polling", () => {
       screen.getByText("[Binary data, 15B base64-encoded]"),
     ).toBeInTheDocument();
     expect(screen.getByText("truncated")).toBeInTheDocument();
+  });
+
+  it("filters network logs by type and expands non-HTTP details", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000299";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Network Policy Run",
+          status: "completed",
+          completedAt: "2026-03-10T14:56:13Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+    context.mocks.api(
+      zeroRunNetworkLogsContract.getNetworkLogs,
+      ({ respond }) => {
+        return respond(200, {
+          networkLogs: mixedNetworkLogs(),
+          hasMore: false,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Network Policy Run" }),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Network"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("No matching logs in loaded results"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Type filter"));
+    await waitFor(() => {
+      expect(getMenuItemCheckboxByText("All types")).toBeInTheDocument();
+    });
+    click(getMenuItemCheckboxByText("All types"));
+
+    await waitFor(() => {
+      expect(screen.getByText("api.service.test:0")).toBeInTheDocument();
+      expect(screen.getByText("db.internal:5432")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("DNS").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("TCP").length).toBeGreaterThan(0);
+
+    click(screen.getByText("api.service.test:0"));
+
+    await waitFor(() => {
+      expect(screen.getByText("DNS Event")).toBeInTheDocument();
+      expect(screen.getByText("AAAA")).toBeInTheDocument();
+      expect(screen.getByText("dns-99")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("db.internal:5432"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Permission Error")).toBeInTheDocument();
+      expect(screen.getByText("database blocked")).toBeInTheDocument();
+      expect(screen.getByText("connect ECONNREFUSED")).toBeInTheDocument();
+    });
+    expect(screen.getByText("5432")).toBeInTheDocument();
+    expect(screen.getAllByText("2.3s").length).toBeGreaterThan(0);
   });
 
   it("downloads a completed activity with debug context and network logs", async () => {

@@ -9,8 +9,13 @@ import {
   chatThreadMessagesContract,
   chatThreadsContract,
   type PagedChatMessage,
+  type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import {
+  zeroBillingCheckoutContract,
+  zeroBillingCreditCheckoutContract,
+  zeroBillingStatusContract,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -33,6 +38,7 @@ import {
   mockSubagentThread,
   PLACEHOLDER,
   sendMessageInUI,
+  splitChatThreadListResponse,
 } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -46,6 +52,13 @@ const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
+
+interface QueuedMessageCapture {
+  content?: string;
+  hasTextContent?: boolean;
+  attachments?: PersistedAttachment[];
+  clientMessageId: string;
+}
 
 function activeRunTextarea(): Promise<HTMLTextAreaElement> {
   return waitFor(() => {
@@ -96,6 +109,92 @@ function makeMessage(id: string, text: string): PagedChatMessage {
     content: text,
     createdAt: "2026-05-01T00:00:00Z",
   };
+}
+
+function mockKeyboardNavigationThreads(): void {
+  const threadFixtures = [
+    {
+      id: "keyboard-prev-thread",
+      title: "Previous keyboard thread",
+      message: "Previous thread launch note",
+    },
+    {
+      id: "keyboard-current-thread",
+      title: "Current keyboard thread",
+      message: "Current thread launch note",
+    },
+    {
+      id: "keyboard-next-thread",
+      title: "Next keyboard thread",
+      message: "Next thread launch note",
+    },
+  ];
+  const byId = new Map(
+    threadFixtures.map((thread) => {
+      return [thread.id, thread];
+    }),
+  );
+
+  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+    return respond(
+      200,
+      splitChatThreadListResponse(
+        threadFixtures.map((thread, index) => {
+          return {
+            id: thread.id,
+            title: thread.title,
+            agent: { id: AGENT_ID, avatarUrl: null },
+            createdAt: "2026-06-01T00:00:00Z",
+            updatedAt: `2026-06-01T00:0${index}:00Z`,
+            isRead: true,
+            running: false,
+            pinnedAt: null,
+          };
+        }),
+      ),
+    );
+  });
+  context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+    const thread = byId.get(params.id);
+    if (!thread) {
+      return respond(404, {
+        error: { message: "Thread not found", code: "NOT_FOUND" },
+      });
+    }
+    return respond(200, {
+      id: thread.id,
+      title: thread.title,
+      agentId: AGENT_ID,
+      latestSessionId: null,
+      activeRunIds: [],
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-01T00:00:00Z",
+      draftContent: null,
+      draftAttachments: null,
+    });
+  });
+  context.mocks.api(
+    chatThreadMessagesContract.list,
+    ({ params, query, respond }) => {
+      if (query.sinceId) {
+        return respond(200, { messages: [] });
+      }
+      const thread = byId.get(params.threadId);
+      return respond(200, {
+        messages: thread
+          ? [
+              {
+                id: `${thread.id}-message`,
+                role: "user",
+                content: thread.message,
+                createdAt: "2026-06-01T00:00:00Z",
+              },
+            ]
+          : [],
+        hasHistoryBefore: false,
+      });
+    },
+  );
 }
 
 function mockActiveRunThread(threadId: string): void {
@@ -414,89 +513,6 @@ function mockFailedAssistantThread({
   });
 }
 
-function installVoiceInputMocks(): void {
-  const originalMediaDevices = navigator.mediaDevices;
-  const mediaRecorderGlobal = globalThis as typeof globalThis & {
-    MediaRecorder?: typeof MediaRecorder;
-  };
-  const originalMediaRecorder = mediaRecorderGlobal.MediaRecorder;
-  const stream = {
-    getTracks: () => {
-      return [
-        {
-          stop: () => {
-            return undefined;
-          },
-        },
-      ];
-    },
-  } as unknown as MediaStream;
-
-  type RecorderDataEvent = Event & { data: Blob };
-
-  class TestMediaRecorder extends EventTarget {
-    static isTypeSupported(type: string): boolean {
-      return type === "audio/webm";
-    }
-
-    mimeType: string;
-    ondataavailable: ((event: RecorderDataEvent) => void) | null = null;
-    state: RecordingState = "inactive";
-
-    constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
-      super();
-      this.mimeType = options?.mimeType ?? "audio/webm";
-    }
-
-    start(): void {
-      this.state = "recording";
-    }
-
-    stop(): void {
-      if (this.state === "inactive") {
-        return;
-      }
-      this.state = "inactive";
-      const event = new Event("dataavailable") as RecorderDataEvent;
-      Object.defineProperty(event, "data", {
-        value: new Blob(["voice"], { type: this.mimeType }),
-      });
-      this.ondataavailable?.(event);
-      this.dispatchEvent(new Event("stop"));
-    }
-  }
-
-  Object.defineProperty(navigator, "mediaDevices", {
-    configurable: true,
-    value: {
-      enumerateDevices: () => {
-        return Promise.resolve([] as MediaDeviceInfo[]);
-      },
-      getUserMedia: () => {
-        return Promise.resolve(stream);
-      },
-    },
-  });
-  Object.defineProperty(mediaRecorderGlobal, "MediaRecorder", {
-    configurable: true,
-    value: TestMediaRecorder,
-  });
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      Object.defineProperty(navigator, "mediaDevices", {
-        configurable: true,
-        value: originalMediaDevices,
-      });
-      Object.defineProperty(mediaRecorderGlobal, "MediaRecorder", {
-        configurable: true,
-        value: originalMediaRecorder,
-      });
-    },
-    { once: true },
-  );
-}
-
 describe("chat lifecycle", () => {
   it("shows a sent message and stop control while a new chat run is active", async () => {
     const user = userEvent.setup({ delay: null });
@@ -609,6 +625,85 @@ describe("chat lifecycle", () => {
       "Second queued follow-up",
       "Replayed follow-up",
     ]);
+  });
+
+  it("queues an attachment-only follow-up during an active run", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-attachment-only-active";
+    let queuedBody: QueuedMessageCapture | null = null;
+
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-active-attachment-user",
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-active-attachment-assistant",
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          status: "running",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+      ],
+      onQueuedMessageAppend: (body) => {
+        queuedBody = body;
+      },
+    });
+    context.mocks.upload.success({
+      id: "upload-notes",
+      filename: "notes.txt",
+      contentType: "text/plain",
+      size: 12,
+      url: "https://cdn.vm7.io/artifacts/test/upload-notes/notes.txt",
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["release note"], "notes.txt", { type: "text/plain" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove notes.txt")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(screen.getByText("1 message waiting to send")).toBeInTheDocument();
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+        "(see attached files)",
+      );
+      expect(queuedBody).toMatchObject({
+        content: "(see attached files)",
+        hasTextContent: false,
+        attachments: [
+          {
+            id: "upload-notes",
+            filename: "notes.txt",
+            contentType: "text/plain",
+            size: 12,
+            url: "https://cdn.vm7.io/artifacts/test/upload-notes/notes.txt",
+          },
+        ],
+      });
+    });
   });
 
   it("recalls queued content and clears the thinking indicator when the active run is stopped", async () => {
@@ -800,6 +895,61 @@ describe("chat lifecycle", () => {
     });
     fireEvent.keyDown(threadRegion, { key: "ArrowDown", ctrlKey: true });
     expect(scrollContainer.scrollTop).toBe(1500);
+  });
+
+  it("moves between chat threads with keyboard shortcuts", async () => {
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
+      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, {
+      key: "ArrowUp",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Previous thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    const previousThreadRegion = screen.getByLabelText("Chat thread");
+    previousThreadRegion.focus();
+    fireEvent.keyDown(previousThreadRegion, {
+      key: "ArrowDown",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    const currentThreadRegion = screen.getByLabelText("Chat thread");
+    currentThreadRegion.focus();
+    fireEvent.keyDown(currentThreadRegion, { key: "?", shiftKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByText("Keyboard Shortcuts")).toBeInTheDocument();
+      expect(screen.getByText("Previous thread")).toBeInTheDocument();
+      expect(screen.getByText("Next thread")).toBeInTheDocument();
+    });
   });
 
   it("opens run logs from assistant message actions", async () => {
@@ -1221,6 +1371,108 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("edits and sends multiple inline feedback comments", async () => {
+    const user = userEvent.setup();
+    const assistantReply = "The launch summary needs clearer risk ownership.";
+    const sentPrompts: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-edit-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-edit",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-edit-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-edit",
+          status: "completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        if (body.prompt !== undefined) {
+          sentPrompts.push(body.prompt);
+        }
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatInlineFeedback]: true },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Provide feedback"));
+
+    await fill(
+      await screen.findByPlaceholderText("What should change about this?"),
+      "Assign each risk to an owner.",
+    );
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Provide feedback"));
+
+    await fill(
+      await screen.findByPlaceholderText("What should change about this?"),
+      "Mention launch dates before the risk summary.",
+    );
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Provide feedback"));
+
+    click(buttonByText("2 comments"));
+    const firstCommentCard = screen
+      .getByText("Assign each risk to an owner.")
+      .closest("button");
+    if (!firstCommentCard) {
+      throw new Error("Feedback comment card not found");
+    }
+    click(firstCommentCard);
+
+    const editingComment = await screen.findByPlaceholderText(
+      "What should change about this?",
+    );
+    expect(editingComment).toHaveValue("Assign each risk to an owner.");
+    await fill(editingComment, "Assign named owners to each launch risk.");
+
+    await user.click(buttonByText("Send 2 comments"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    expect(sentPrompts).toHaveLength(1);
+    expect(sentPrompts[0]).toContain("Feedback on 2 parts of your reply:");
+    expect(sentPrompts[0]).toContain(
+      "> The launch summary needs clearer risk ownership.",
+    );
+    expect(sentPrompts[0]).toContain(
+      "Assign named owners to each launch risk.",
+    );
+    expect(sentPrompts[0]).toContain(
+      "Mention launch dates before the risk summary.",
+    );
+  });
+
   it("sends a recommended follow-up from the latest assistant reply", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
@@ -1347,6 +1599,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Studio Mac")).toBeInTheDocument();
       expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
       expect(screen.getByText("Connect my computer")).toBeInTheDocument();
+      expect(screen.getByLabelText("Enable Studio Mac")).toBeInTheDocument();
     });
   });
 
@@ -1380,7 +1633,7 @@ describe("chat lifecycle", () => {
   it("transcribes voice input into the composer", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "voice-input-thread";
-    installVoiceInputMocks();
+    context.mocks.browser.voiceInput();
     mockChatLifecycle(context, { threadId });
     context.mocks.http.post("*/api/zero/voice-io/stt", () => {
       return new Response(JSON.stringify({ text: "Summarize the standup" }), {
@@ -1481,6 +1734,14 @@ describe("chat lifecycle", () => {
   it("shows billing recovery guidance when credits are depleted", async () => {
     const threadId = "failed-guidance-credits";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+    context.mocks.api(
+      zeroBillingCheckoutContract.create,
+      ({ body, respond }) => {
+        return respond(200, {
+          url: `https://checkout.stripe.com/recover?tier=${body.tier}`,
+        });
+      },
+    );
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
@@ -1489,6 +1750,14 @@ describe("chat lifecycle", () => {
         screen.getByText("Upgrade to Pro to run Zero"),
       ).toBeInTheDocument();
       expect(buttonByText("Upgrade to Pro")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Upgrade to Pro"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/recover?tier=pro",
+      );
     });
   });
 
@@ -1587,6 +1856,14 @@ describe("chat lifecycle", () => {
         creditGrants: [],
       });
     });
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.create,
+      ({ body, respond }) => {
+        return respond(200, {
+          url: `https://checkout.stripe.com/credits?credits=${body.credits}`,
+        });
+      },
+    );
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await waitFor(() => {
@@ -1607,6 +1884,15 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Enter between $1 and $10,000"),
       ).toBeInTheDocument();
+    });
+
+    await fill(screen.getByLabelText("Custom dollar amount"), "25");
+    click(buttonByText("Buy"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/credits?credits=25000",
+      );
     });
   });
 

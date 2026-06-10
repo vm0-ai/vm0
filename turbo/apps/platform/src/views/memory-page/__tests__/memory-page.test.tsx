@@ -331,4 +331,54 @@ describe("memory page", () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it("shows a load-more failure and retries older memory updates", async () => {
+    let olderPageAttempts = 0;
+
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      if (query.cursor === "older-memory") {
+        olderPageAttempts += 1;
+        if (olderPageAttempts === 1) {
+          return respond(500, {
+            error: {
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Failed to load older memory updates",
+            },
+          });
+        }
+      }
+
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getButtonContaining("Load more"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to load older memory updates"),
+      ).toBeInTheDocument();
+    });
+
+    click(getButtonContaining("Load more"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("1 memory file changed (+1)."),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("Failed to load older memory updates"),
+    ).not.toBeInTheDocument();
+  });
 });

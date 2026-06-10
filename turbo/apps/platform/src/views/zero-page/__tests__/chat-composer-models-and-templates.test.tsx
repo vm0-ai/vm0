@@ -947,6 +947,32 @@ describe("chat composer models", () => {
       ).toBeInTheDocument();
       expect(within(dialog).queryByLabelText("Connect Gmail")).toBeNull();
     });
+
+    await user.click(within(dialog).getByLabelText("Connect Notion"));
+
+    const notionDialog = await screen.findByRole("dialog", {
+      name: "Notion",
+    });
+    expect(notionDialog).toBeInTheDocument();
+
+    await user.click(within(notionDialog).getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Notion" }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(dialog).getByText(/Available connectors to connect/u),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(within(dialog).getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/Available connectors to connect/u),
+      ).not.toBeInTheDocument();
+    });
   });
 });
 

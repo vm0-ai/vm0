@@ -51,6 +51,16 @@ async function setupUploadedImagePreview(): Promise<void> {
   });
 }
 
+function clipboardFileItem(file: File): DataTransferItem {
+  return {
+    kind: "file",
+    type: file.type,
+    getAsFile: () => {
+      return file;
+    },
+  } as DataTransferItem;
+}
+
 describe("zero attachment chips", () => {
   it("shows pending upload progress for composer attachments", async () => {
     context.mocks.upload.pending({
@@ -69,6 +79,83 @@ describe("zero attachment chips", () => {
     await waitFor(() => {
       expect(
         screen.getByLabelText("Cancel upload document.pdf"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("uploads a pasted file and keeps pasted text in the composer", async () => {
+    context.mocks.upload.success({
+      id: "upload-pasted-notes",
+      filename: "pasted-notes.txt",
+      contentType: "text/plain",
+      size: 18,
+      url: "https://example.com/pasted-notes.txt",
+    });
+
+    await setupComposer();
+
+    const composer = screen.getByPlaceholderText(PLACEHOLDER);
+    const file = new File(["pasted file body"], "pasted-notes.txt", {
+      type: "text/plain",
+    });
+
+    fireEvent.paste(composer, {
+      clipboardData: {
+        items: [clipboardFileItem(file)],
+        getData: (type: string) => {
+          return type === "text/plain" ? "Pasted context" : "";
+        },
+      },
+    });
+
+    await waitFor(() => {
+      expect(composer).toHaveValue("Pasted context");
+      expect(
+        screen.getByLabelText("Remove pasted-notes.txt"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("uploads a file dropped onto the composer", async () => {
+    context.mocks.upload.success({
+      id: "upload-dropped-report",
+      filename: "dropped-report.pdf",
+      contentType: "application/pdf",
+      size: 128,
+      url: "https://example.com/dropped-report.pdf",
+    });
+
+    await setupComposer();
+
+    const composerCard = screen
+      .getByPlaceholderText(PLACEHOLDER)
+      .closest(".zero-composer");
+    if (!(composerCard instanceof HTMLElement)) {
+      throw new Error("Composer card not found");
+    }
+
+    fireEvent.dragOver(composerCard, {
+      dataTransfer: {
+        files: [
+          new File(["dropped report"], "dropped-report.pdf", {
+            type: "application/pdf",
+          }),
+        ],
+      },
+    });
+    fireEvent.drop(composerCard, {
+      dataTransfer: {
+        files: [
+          new File(["dropped report"], "dropped-report.pdf", {
+            type: "application/pdf",
+          }),
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Remove dropped-report.pdf"),
       ).toBeInTheDocument();
     });
   });

@@ -1,7 +1,9 @@
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
+import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type {
   ModelProviderResponse,
   OrgModelPolicy,
+  UpsertModelProviderRequest,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -210,11 +212,23 @@ describe("organization model providers settings", () => {
   });
 
   it("adds a workspace API key model route", async () => {
+    let capturedProviderRequest: UpsertModelProviderRequest | null = null;
+    context.mocks.api(
+      zeroModelProvidersMainContract.upsert,
+      ({ body, respond }) => {
+        capturedProviderRequest = body;
+        return respond(201, {
+          provider: anthropicApiKeyProvider(),
+          created: true,
+        });
+      },
+    );
+
     await openAddApiKeyModelDialog();
 
     await fill(
       screen.getByPlaceholderText("Enter your API key"),
-      "sk-ant-test",
+      "  sk-ant-test  ",
     );
     click(buttonByText("Add model"));
 
@@ -223,9 +237,25 @@ describe("organization model providers settings", () => {
     );
     expect(within(row).getByText("Claude Opus 4.7")).toBeInTheDocument();
     expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+    expect(capturedProviderRequest).toStrictEqual({
+      type: "anthropic-api-key",
+      secret: "sk-ant-test",
+    });
   });
 
   it("rotates an existing workspace API key model route", async () => {
+    let capturedProviderRequest: UpsertModelProviderRequest | null = null;
+    context.mocks.api(
+      zeroModelProvidersMainContract.upsert,
+      ({ body, respond }) => {
+        capturedProviderRequest = body;
+        return respond(200, {
+          provider: anthropicApiKeyProvider(),
+          created: false,
+        });
+      },
+    );
+
     mockApiKeyModelRouteStory();
     await openProvidersTab();
 
@@ -248,12 +278,16 @@ describe("organization model providers settings", () => {
     expect(screen.getByText("API key is required")).toBeInTheDocument();
     await fill(
       screen.getByPlaceholderText("Enter your API key"),
-      "sk-ant-rotated",
+      "  sk-ant-rotated  ",
     );
     click(buttonByText("Save changes"));
 
     await waitFor(() => {
       expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+    });
+    expect(capturedProviderRequest).toStrictEqual({
+      type: "anthropic-api-key",
+      secret: "sk-ant-rotated",
     });
   });
 

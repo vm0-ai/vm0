@@ -525,7 +525,26 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Launch cadence")).toBeInTheDocument();
     expect(within(dialog).getByText("Release risk review")).toBeInTheDocument();
 
-    click(buttonByText("Delete chat and schedules", dialog));
+    click(buttonByText("Cancel", dialog));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", {
+          name: "Delete chat and schedules?",
+        }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(sidebar()).getByText("Scheduled launch"),
+      ).toBeInTheDocument();
+    });
+
+    openThreadMenu("Scheduled launch");
+    click(menuItemByText("Delete chat"));
+
+    const confirmDialog = await screen.findByRole("dialog", {
+      name: "Delete chat and schedules?",
+    });
+    click(buttonByText("Delete chat and schedules", confirmDialog));
 
     await waitFor(() => {
       expect(
@@ -649,6 +668,26 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+    });
+
+    click(within(dialog).getAllByLabelText("Pin to sidebar")[0]!);
+
+    await waitFor(() => {
+      expect(
+        within(dialog).getByLabelText("Unpin Research Agent"),
+      ).toBeInTheDocument();
+      expect(within(sidebar).getByText("Research Agent")).toBeInTheDocument();
+    });
+
+    click(within(dialog).getByLabelText("Unpin Research Agent"));
+
+    await waitFor(() => {
+      expect(
+        within(dialog).queryByLabelText("Unpin Research Agent"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(sidebar).queryByText("Research Agent"),
+      ).not.toBeInTheDocument();
     });
 
     click(within(dialog).getAllByLabelText("Pin to sidebar")[0]!);

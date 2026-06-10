@@ -14,6 +14,10 @@ import {
   zeroAgentsMainContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import {
+  type ScheduleResponse,
+  zeroSchedulesMainContract,
+} from "@vm0/api-contracts/contracts/zero-schedules";
+import {
   type TeamComposeItem,
   zeroTeamContract,
 } from "@vm0/api-contracts/contracts/zero-team";
@@ -105,6 +109,15 @@ function tabByText(text: string): HTMLElement {
     throw new Error(`${text} tab not found`);
   }
   return tab;
+}
+
+function selectOptionByLabel(
+  label: string,
+  option: string | RegExp,
+  container: HTMLElement,
+): void {
+  click(within(container).getByLabelText(label));
+  click(screen.getByRole("option", { name: option }));
 }
 
 async function openCreateDialog(
@@ -327,6 +340,128 @@ describe("zero jobs page", () => {
 
     await waitFor(() => {
       expect(document.title).toContain("Marketing Bot");
+    });
+  });
+
+  it("edits an agent weekly schedule while preserving custom minute and timezone fields", async () => {
+    const agentId = "a0000000-0000-4000-a000-000000000331";
+    mockAgentsPage([
+      createDefaultAgent(),
+      {
+        id: agentId,
+        ownerId: "test-user-123",
+        displayName: "Research Agent",
+        description: "Finds launch risks",
+        sound: null,
+        avatarUrl: null,
+        customSkills: [],
+        visibility: "public",
+        headVersionId: "version_5",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    let schedules: ScheduleResponse[] = [
+      createMockScheduleResponse({
+        id: "f0000001-0000-4000-a000-000000000331",
+        agentId,
+        name: "monday-risk-review",
+        cronExpression: "17 9 * * 1",
+        timezone: "UTC",
+        description: "Monday risks",
+        prompt: "Summarize launch risks",
+      }),
+    ];
+    let capturedDeployBody: unknown = null;
+    context.mocks.data.schedules(schedules);
+    context.mocks.api(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
+      capturedDeployBody = body;
+      const currentSchedule = schedules[0];
+      if (!currentSchedule) {
+        throw new Error("schedule fixture not found");
+      }
+      const updated = createMockScheduleResponse({
+        ...currentSchedule,
+        name: body.name,
+        agentId: body.agentId,
+        triggerType: "cron",
+        cronExpression: body.cronExpression ?? null,
+        atTime: null,
+        intervalSeconds: null,
+        timezone: body.timezone ?? "UTC",
+        prompt: body.prompt,
+        description: body.description ?? null,
+        appendSystemPrompt: body.appendSystemPrompt ?? null,
+        enabled: body.enabled ?? true,
+        updatedAt: "2026-03-10T00:05:00Z",
+      });
+      schedules = [updated];
+      context.mocks.data.schedules(schedules);
+      return respond(200, { schedule: updated, created: false });
+    });
+
+    detachedSetupPage({ context, path: `/agents/${agentId}?tab=schedule` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Research Agent's scheduled tasks"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Every week on Monday at 9:17 AM")[0],
+      ).toBeInTheDocument();
+    });
+
+    click(
+      screen.getAllByLabelText(
+        "More actions for Every week on Monday at 9:17 AM",
+      )[0],
+    );
+    click(menuItemByText("Edit"));
+    const editScheduleDialog = await screen.findByRole("dialog", {
+      name: "Edit schedule",
+    });
+
+    expect(
+      within(editScheduleDialog).getByText("Day of week"),
+    ).toBeInTheDocument();
+    expect(buttonByText("Mon", editScheduleDialog)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    click(buttonByText("Wed", editScheduleDialog));
+    click(buttonByText("Mon", editScheduleDialog));
+    expect(buttonByText("Wed", editScheduleDialog)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(buttonByText("Mon", editScheduleDialog)).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    selectOptionByLabel("Hour", "16", editScheduleDialog);
+    selectOptionByLabel("Minute", "45", editScheduleDialog);
+    selectOptionByLabel(
+      "Timezone",
+      /^\(GMT[+-]\d{2}:\d{2}\) Eastern Time \(ET\)$/u,
+      editScheduleDialog,
+    );
+    await fill(
+      within(editScheduleDialog).getByLabelText(/Description/u),
+      "Updated Wednesday risks",
+    );
+    click(buttonByText("Save", editScheduleDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Every week on Wednesday at 4:45 PM")[0],
+      ).toBeInTheDocument();
+      expect(capturedDeployBody).toMatchObject({
+        name: "monday-risk-review",
+        agentId,
+        cronExpression: "45 16 * * 3",
+        timezone: "America/New_York",
+        prompt: "Summarize launch risks",
+      });
     });
   });
 

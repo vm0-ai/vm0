@@ -3,6 +3,7 @@ import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -123,6 +124,37 @@ describe("preferences page", () => {
           expect.objectContaining({ timezone: "America/New_York" }),
         ]),
       );
+    });
+  });
+
+  it("changes debug network body capture on the preferences page", async () => {
+    context.mocks.data.userPreferences(
+      createMockPreferences({ captureNetworkBodiesRemaining: 0 }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/settings?tab=debug",
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Capture network bodies")).toBeInTheDocument();
+      expect(screen.getByText("Disabled")).toBeInTheDocument();
+    });
+
+    click(screen.getByRole("switch"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Enabled for the next 3 runs"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByRole("switch"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Disabled")).toBeInTheDocument();
     });
   });
 });

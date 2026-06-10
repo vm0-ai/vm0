@@ -329,6 +329,7 @@ export function mockChatLifecycle(
     threadTitle?: string | null;
     onQueuedMessageAppend?: (body: {
       content?: string;
+      hasTextContent?: boolean;
       attachments?: PersistedAttachment[];
       clientMessageId: string;
       generationTemplate?: GenerationTemplateRequest;
@@ -351,7 +352,7 @@ export function mockChatLifecycle(
      * keep the new-thread optimistic view mounted while interacting with it.
      */
     sendGate?: Promise<void>;
-    onRunCreate?: () => void;
+    onRunCreate?: (body: { prompt?: string; clientMessageId?: string }) => void;
   },
 ): MockLifecycleControl {
   let threadId = options?.threadId ?? "thread-test-1";
@@ -456,6 +457,7 @@ export function mockChatLifecycle(
       size: number;
     }[];
     clientMessageId?: string;
+    hasTextContent?: boolean;
     generationTemplate?: GenerationTemplateRequest;
   }) => {
     const clientMessageId = body.clientMessageId ?? crypto.randomUUID();
@@ -467,6 +469,7 @@ export function mockChatLifecycle(
     });
     options?.onQueuedMessageAppend?.({
       content: body.prompt,
+      hasTextContent: body.hasTextContent,
       attachments: attachFiles,
       clientMessageId,
       generationTemplate: body.generationTemplate,
@@ -497,7 +500,7 @@ export function mockChatLifecycle(
       runPrompt = body.prompt;
     }
     rememberRunUserMessageId(body.clientMessageId);
-    options?.onRunCreate?.();
+    options?.onRunCreate?.(body);
     runAssociated = true;
     createChatRun(threadId);
     createChatMessage(threadId);

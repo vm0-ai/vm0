@@ -1,7 +1,9 @@
 import {
   zeroBillingAutoRechargeContract,
+  zeroBillingCheckoutContract,
   zeroBillingCreditCheckoutContract,
   zeroBillingDowngradeContract,
+  zeroBillingPortalContract,
   zeroBillingRestoreContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
@@ -86,6 +88,26 @@ function activeTeamBillingStatus(): BillingStatusResponse {
   };
 }
 
+function noActiveBillingStatus(): BillingStatusResponse {
+  return {
+    tier: "pro-suspend",
+    credits: 0,
+    onboardingPaymentPending: false,
+    subscriptionStatus: null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    scheduledChange: null,
+    hasSubscription: false,
+    autoRecharge: { enabled: false, threshold: null, amount: null },
+    creditExpiry: {
+      expiringNextCycle: 0,
+      nextExpiryDate: null,
+    },
+    creditBreakdown: [],
+    creditGrants: [],
+  };
+}
+
 function mockBillingStory(): void {
   let billingStatus = activeProBillingStatus();
 
@@ -153,6 +175,186 @@ async function openBillingTab(): Promise<void> {
 }
 
 describe("organization billing settings", () => {
+  it("recovers from a billing load failure and starts an upgrade checkout", async () => {
+    let statusCalls = 0;
+
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "suspended-org",
+      name: "Suspended Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      statusCalls++;
+      if (statusCalls === 1) {
+        return respond(500, {
+          error: {
+            message: "Failed to load billing status",
+            code: "INTERNAL_SERVER_ERROR",
+          },
+        });
+      }
+      return respond(200, noActiveBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingCheckoutContract.create,
+      ({ body, respond }) => {
+        return respond(200, {
+          url: `https://checkout.stripe.com/test-upgrade?tier=${body.tier}`,
+        });
+      },
+    );
+
+    await openBillingTab();
+
+    await expect(
+      screen.findByText("Could not load billing status."),
+    ).resolves.toBeInTheDocument();
+
+    click(screen.getByText("Retry"));
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+      expect(screen.getByText("No active subscription")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Upgrade"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Upgrade to Team"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/test-upgrade?tier=team",
+      );
+    });
+  });
+
+  it("opens the Stripe customer portal from an active paid plan", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "paid-org",
+      name: "Paid Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(zeroBillingPortalContract.create, ({ respond }) => {
+      return respond(200, {
+        url: "https://billing.stripe.com/customer-portal/test-org",
+      });
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Manage billing")).toBeInTheDocument();
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Manage"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://billing.stripe.com/customer-portal/test-org",
+      );
+    });
+  });
+
+  it("redirects to checkout when cancelling a plan requires payment confirmation", async () => {
+    const locationAssign = context.mocks.browser.locationAssign();
+
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "payment-confirm-org",
+      name: "Payment Confirm Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(zeroBillingDowngradeContract.create, ({ respond }) => {
+      return respond(200, {
+        status: "payment_method_required",
+        checkoutUrl: "https://checkout.stripe.com/confirm-cancel-subscription",
+      });
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+      expect(screen.getByText("Downgrade")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Downgrade"));
+    const downgradeDialog = await screen.findByRole("dialog", {
+      name: "Downgrade plan",
+    });
+    click(buttonByText("Cancel subscription", downgradeDialog));
+
+    await waitFor(() => {
+      expect(locationAssign.calls).toStrictEqual([
+        "https://checkout.stripe.com/confirm-cancel-subscription",
+      ]);
+    });
+    expect(screen.queryByText("Downgrade plan")).not.toBeInTheDocument();
+  });
+
+  it("redirects to checkout when restoring a cancelled plan requires payment confirmation", async () => {
+    const locationAssign = context.mocks.browser.locationAssign();
+
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "restore-confirm-org",
+      name: "Restore Confirm Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...activeProBillingStatus(),
+        cancelAtPeriodEnd: true,
+        scheduledChange: {
+          type: "cancel",
+          targetTier: "pro-suspend",
+          effectiveDate: "2026-04-01T00:00:00Z",
+        },
+      });
+    });
+    context.mocks.api(zeroBillingRestoreContract.create, ({ respond }) => {
+      return respond(200, {
+        status: "payment_method_required",
+        checkoutUrl: "https://checkout.stripe.com/confirm-restore-plan",
+      });
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Restore plan")).toBeInTheDocument();
+      expect(
+        screen.getByText(/has been cancelled and will end on Apr 1, 2026/),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Restore plan"));
+    const restoreDialog = await screen.findByRole("dialog", {
+      name: "Restore Pro plan?",
+    });
+    click(buttonByText("Restore plan", restoreDialog));
+
+    await waitFor(() => {
+      expect(locationAssign.calls).toStrictEqual([
+        "https://checkout.stripe.com/confirm-restore-plan",
+      ]);
+    });
+    expect(screen.queryByText("Restore Pro plan?")).not.toBeInTheDocument();
+  });
+
   it("manages plan changes, credit purchases, and auto-recharge settings", async () => {
     mockBillingStory();
     await openBillingTab();
