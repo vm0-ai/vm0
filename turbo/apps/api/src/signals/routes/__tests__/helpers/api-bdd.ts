@@ -22,6 +22,8 @@ import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list"
 import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
+import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
+import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usage-insight";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsByTypeContract,
@@ -219,6 +221,14 @@ export function createBddApi(context: TestContext) {
      * has no processed usage, so the empty result is reachable; populated rows
      * need seeded runs/usage events (GAP-USAGE-EVENTS). */
     usageRuns: setupApp({ context })(zeroUsageRunsContract),
+    /** ts-rest client for `/api/zero/usage/members` (per-member billing-period
+     * usage). Aggregated member totals need seeded usage rows; the auth and
+     * free-tier empty (`{ period: null, members: [] }`) cases are reachable. */
+    usageMembers: setupApp({ context })(zeroUsageMembersContract),
+    /** ts-rest client for `/api/zero/usage/insight` (activity insight). Seeded
+     * activity is needed for non-empty buckets; the auth, timezone/range
+     * validation and empty-buckets cases are reachable directly. */
+    usageInsight: setupApp({ context })(zeroUsageInsightContract),
     /** ts-rest client for `/api/zero/connectors/:type` (get/delete by type). A
      * connected connector needs the OAuth/manual connect flow; the
      * auth/not-found rejections are reachable directly. */

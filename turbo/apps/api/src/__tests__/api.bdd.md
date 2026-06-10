@@ -1196,3 +1196,20 @@ First USAGE-family reduce.
 - Reduced `logs-search.test.ts` (13 -> 10, dropped the now-orphaned
   `randomUUID` import) and `zero-logs-search.test.ts` (14 -> 12).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 53 — USAGE MEMBERS + INSIGHT REJECTIONS (CHAIN-USAGE-MEMBERS-INSIGHT-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `usageMembers` (`/api/zero/usage/members`)
+  and `usageInsight` (`/api/zero/usage/insight`) clients.
+- Added `zero-usage-members-insight-rejections.bdd.test.ts`: members rejects
+  unauthenticated callers (401) and returns the free-tier empty result
+  (`{ period: null, members: [] }`) for a fresh org; insight rejects
+  unauthenticated and org-less callers (401), rejects an invalid timezone and a
+  `range=day` query with no date (400 BAD_REQUEST), and returns empty buckets
+  for a valid timezone alias on a fresh org.
+- Aggregated member totals and non-empty insight buckets need seeded usage rows /
+  usage_event records (GAP-RUN-CREDITS / GAP-USAGE-EVENTS) and stay in the kept
+  legacy.
+- Reduced `zero-usage-members.test.ts` (8 -> 6) and `zero-usage-insight.test.ts`
+  (21 -> 16).
+- Coverage verified (source-only): no regressions vs `main`.

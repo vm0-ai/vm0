@@ -77,28 +77,6 @@ describe("GET /api/zero/usage/members", () => {
     return store.set(deleteUsageFixture$, fixture, context.signal);
   });
 
-  it("returns 401 when not authenticated", async () => {
-    const response = await accept(apiClient().get({ headers: {} }), [401]);
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns empty result for free tier org with no billing period", async () => {
-    const fixture = await track(
-      store.set(seedUsageFixture$, { currentPeriodEnd: null }, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      apiClient().get({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({ period: null, members: [] });
-  });
-
   it("returns aggregated usage for a single user with processed records", async () => {
     mockClerkUserLookup();
     const fixture = await track(
