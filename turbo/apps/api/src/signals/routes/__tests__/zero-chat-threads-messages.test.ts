@@ -27,34 +27,6 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     return store.set(deleteZeroChatThread$, fixture, context.signal);
   });
 
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(chatThreadMessagesContract);
-    const response = await accept(
-      client.list({
-        params: { threadId: randomUUID() },
-        query: {},
-        headers: {},
-      }),
-      [401],
-    );
-    expect(response.body.error.message).toContain("Not authenticated");
-  });
-
-  it("returns 404 for a non-existent thread", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(chatThreadMessagesContract);
-    const response = await accept(
-      client.list({
-        params: { threadId: "00000000-0000-0000-0000-000000000000" },
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-    expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
   it("returns 404 for a thread owned by another user", async () => {
     const fixture = await trackThread(
       store.set(seedZeroChatThread$, {}, context.signal),
@@ -71,25 +43,6 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
       [404],
     );
     expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
-  it("returns empty messages list for a thread with no messages", async () => {
-    const fixture = await trackThread(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    context.mocks.s3.send.mockClear();
-
-    const client = setupApp({ context })(chatThreadMessagesContract);
-    const response = await accept(
-      client.list({
-        params: { threadId: fixture.threadId },
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-    expect(response.body.messages).toStrictEqual([]);
   });
 
   it("returns messages in ascending createdAt order", async () => {

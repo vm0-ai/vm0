@@ -1261,3 +1261,19 @@ First USAGE-family reduce.
   OAuth/manual connect flow (GAP-CONNECTOR-CONNECT) and stay in the kept legacy.
 - Reduced `zero-connectors-list.test.ts` (6 -> 3).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 57 — CHAT-THREAD MESSAGE LIST REJECTIONS (CHAIN-CHAT-MESSAGES-REJECTIONS, reduce-legacy + GWT chain)
+
+- Extended `createBddApi` with the `chatThreadMessages` client
+  (`/api/zero/chat-threads/:id/messages`).
+- Added `zero-chat-threads-messages-rejections.bdd.test.ts`: the message list
+  rejects unauthenticated callers (401) and 404s an unknown thread; plus a full
+  Given-When-Then — an admin onboards a default agent, opens a new chat thread on
+  it (`chatThreads.create` -> 201), and the thread starts with an empty message
+  list.
+- Populated message lists (ascending order, pagination cursors, generation
+  templates, attachment CDN resolution) need a funded run that emits messages
+  (GAP-CHAT-MESSAGE-SEED), and the other-user 404 needs a seeded foreign thread;
+  those stay in the kept legacy.
+- Reduced `zero-chat-threads-messages.test.ts` (13 -> 10).
+- Coverage verified (source-only): no regressions vs `main`.

@@ -6,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/api-keys";
 import {
   chatThreadByIdContract,
+  chatThreadMessagesContract,
   chatThreadModelSelectionContract,
   chatThreadPinContract,
   chatThreadRenameContract,
@@ -202,6 +203,10 @@ export function createBddApi(context: TestContext) {
     chatThreads: setupApp({ context })(chatThreadsContract),
     /** ts-rest client for `/api/zero/chat-threads/:id` (get/patch/delete). */
     chatThreadById: setupApp({ context })(chatThreadByIdContract),
+    /** ts-rest client for `/api/zero/chat-threads/:id/messages` (list). Messages
+     * with content need a funded run that emits them (GAP-CHAT-MESSAGE-SEED); the
+     * auth, not-found and empty-thread cases are reachable directly. */
+    chatThreadMessages: setupApp({ context })(chatThreadMessagesContract),
     /** ts-rest client for `/api/zero/chat-threads/:id/pin`. */
     chatThreadPin: setupApp({ context })(chatThreadPinContract),
     /** ts-rest client for `/api/zero/chat-threads/:id/unpin`. */
