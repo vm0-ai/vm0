@@ -21,6 +21,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
@@ -113,6 +114,9 @@ export function createBddApi(context: TestContext) {
     secretByName: setupApp({ context })(zeroSecretsByNameContract),
     /** ts-rest client for `/api/zero/user-preferences` (get/update). */
     userPreferences: setupApp({ context })(zeroUserPreferencesContract),
+    /** ts-rest client for `/api/zero/user-model-preference` (get/update the
+     * caller's model-first pin). */
+    userModelPreference: setupApp({ context })(zeroUserModelPreferenceContract),
     /** ts-rest client for `/api/zero/feature-switches` (get/update/delete). */
     featureSwitches: setupApp({ context })(zeroFeatureSwitchesContract),
     /** ts-rest client for `/api/zero/api-keys` (list/create personal tokens). */

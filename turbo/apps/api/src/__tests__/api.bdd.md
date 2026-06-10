@@ -652,3 +652,21 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Deleted `zero-org-list.test.ts` whole.
 - Coverage verified (source-only): `zero-org-read.ts` (40/13/5) and
   `zero-org-data.service.ts` (199/106/30) unchanged vs `main`. No regressions.
+
+### Round 22 — USER MODEL PREFERENCE (CHAIN-USER-MODEL-PREFERENCE)
+
+- Extended `createBddApi` with the `userModelPreference` (get/update) client.
+- Added `zero-user-model-preference.bdd.test.ts`: read null defaults, pin a
+  default-configured model (`claude-sonnet-4-6`, provisioned by
+  `ensureOrgModelPolicies` for any fresh org — no seeding), read it back, clear
+  it; reject a supported-but-unconfigured model (`gpt-5.4` → handler 400
+  "Invalid request") and a removed model outside the contract enum
+  (`claude-haiku-4-5` → request-validation 400), asserting neither persisted;
+  plus unauthenticated and no-org 401s on both verbs.
+- The removed-model body is `as unknown as` cast because the ts-rest client is
+  typed to the enum and there is no other way to exercise the server-side
+  rejection of an out-of-enum model (lints clean).
+- Deleted `zero-user-model-preference.test.ts` whole.
+- Coverage verified (source-only): `zero-user-model-preference.ts` (20/6/3),
+  `zero-model-policy.service.ts` (118/67/30), and `zero-user-data.service.ts`
+  (73/49/21) unchanged vs `main`. No regressions.
