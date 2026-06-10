@@ -18,19 +18,19 @@ import {
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { now, nowDate } from "../../lib/time";
+import { nowDate } from "../../lib/time";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
-import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
+import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
   SANDBOX_OP_LOG_DATASET,
   sandboxOperationAxiomEvent,
 } from "../external/sandbox-op-log";
 import type { RouteEntry } from "../route";
 import { dispatchProgressCallbacks$ } from "../services/agent-run-callbacks.service";
-import { settle, tapError } from "../utils";
+import { settle } from "../utils";
 import {
   getSandboxAuthForRun,
   unauthorizedRunMismatch,
@@ -67,7 +67,7 @@ interface TelemetryPayloadSummary {
 type TelemetryBody = z.infer<typeof webhookTelemetryContract.send.body>;
 
 interface TelemetryIngestResult {
-  readonly telemetryBuffered: boolean;
+  readonly telemetryAccepted: boolean;
   readonly axiomDatasetFamilies: readonly TelemetryDatasetFamily[];
 }
 
@@ -149,7 +149,7 @@ function summarizeTelemetryPayload(body: {
     sandboxOperationCount,
     sandboxOperationErrorCount:
       body.sandboxOperations?.filter((operation) => {
-        return operation.error !== undefined;
+        return Boolean(operation.error);
       }).length ?? 0,
     approxPayloadBytes,
     approxPayloadSizeBucket: payloadSizeBucket(approxPayloadBytes),
@@ -250,7 +250,7 @@ function ingestTelemetryPayload(args: {
   readonly summary: TelemetryPayloadSummary;
 }): TelemetryIngestResult {
   const axiomDatasetFamilies: TelemetryDatasetFamily[] = [];
-  let telemetryBuffered = false;
+  let telemetryAccepted = false;
   const recordIngest = (
     family: TelemetryDatasetFamily,
     dataset: string,
@@ -262,7 +262,7 @@ function ingestTelemetryPayload(args: {
       events,
       summary: args.summary,
     });
-    telemetryBuffered = buffered || telemetryBuffered;
+    telemetryAccepted = buffered || telemetryAccepted;
     if (buffered) {
       axiomDatasetFamilies.push(family);
     }
@@ -297,7 +297,7 @@ function ingestTelemetryPayload(args: {
     );
   }
 
-  return { telemetryBuffered, axiomDatasetFamilies };
+  return { telemetryAccepted, axiomDatasetFamilies };
 }
 
 const heartbeatBody$ = bodyResultOf(webhookHeartbeatContract.send);
@@ -520,35 +520,16 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const telemetrySummary = summarizeTelemetryPayload(body);
-  const { telemetryBuffered, axiomDatasetFamilies } = ingestTelemetryPayload({
+  const { telemetryAccepted, axiomDatasetFamilies } = ingestTelemetryPayload({
     body,
     userId: auth.userId,
     summary: telemetrySummary,
   });
 
-  if (telemetryBuffered) {
-    const axiomStartedAt = now();
-    waitUntil(
-      tapError(
-        flushAxiom({ client: "telemetry", throwOnError: true }),
-        (error) => {
-          L.warn("Agent telemetry Axiom flush failed", {
-            ...telemetrySummary,
-            axiomDatasetFamilies,
-            axiomFailureCategory: "flush",
-            axiomLatencyMs: now() - axiomStartedAt,
-            error,
-          });
-        },
-      ),
-    );
-  }
-
   L.debug("Agent telemetry ingested", {
     ...telemetrySummary,
     axiomDatasetFamilies,
-    axiomFlushQueued: telemetryBuffered,
-    telemetryBuffered,
+    telemetryAccepted,
   });
 
   return {

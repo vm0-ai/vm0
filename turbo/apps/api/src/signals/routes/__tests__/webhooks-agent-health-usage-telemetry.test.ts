@@ -24,7 +24,6 @@ import { verifyHmacSignature } from "../../../lib/event-consumer/hmac";
 import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { clearAllDetached } from "../../utils";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
   deleteUsageInsightFixture$,
@@ -1405,7 +1404,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     expect(context.mocks.axiom.sdkIngest).not.toHaveBeenCalled();
   });
 
-  it("ingests sandbox telemetry and flushes uploaded telemetry", async () => {
+  it("ingests sandbox telemetry through the telemetry Axiom client", async () => {
     const fixture = await track(seedFixture());
     const client = setupApp({ context })(webhookTelemetryContract);
     context.mocks.axiom.sdkIngest.mockReset();
@@ -1502,14 +1501,11 @@ describe("POST /api/webhooks/agent/telemetry", () => {
         error: "exit 1",
       }),
     ]);
-    expect(context.mocks.axiom.flush).toHaveBeenCalledWith({
-      client: "telemetry",
-      throwOnError: true,
-    });
+    expect(context.mocks.axiom.flush).not.toHaveBeenCalled();
     expect(context.mocks.axiom.sdkIngest).not.toHaveBeenCalled();
   });
 
-  it("bulk ingests multiple sandbox operations with one telemetry flush", async () => {
+  it("bulk queues multiple sandbox operations in one Axiom ingest call", async () => {
     const fixture = await track(seedFixture());
     const client = setupApp({ context })(webhookTelemetryContract);
 
@@ -1564,61 +1560,8 @@ describe("POST /api/webhooks/agent/telemetry", () => {
         error: "checkpoint failed",
       },
     ]);
-    expect(context.mocks.axiom.flush).toHaveBeenCalledTimes(1);
-    expect(context.mocks.axiom.flush).toHaveBeenCalledWith({
-      client: "telemetry",
-      throwOnError: true,
-    });
+    expect(context.mocks.axiom.flush).not.toHaveBeenCalled();
     expect(context.mocks.axiom.sdkIngest).not.toHaveBeenCalled();
-  });
-
-  it("accepts sandbox operation telemetry when Axiom flush fails", async () => {
-    const fixture = await track(seedFixture());
-    const client = setupApp({ context })(webhookTelemetryContract);
-    const error = new Error("flush failed");
-    context.mocks.axiom.flush.mockRejectedValueOnce(error);
-
-    const response = await accept(
-      client.send({
-        body: {
-          runId: fixture.runId,
-          sandboxOperations: [
-            {
-              ts: "2026-05-14T01:00:02.000Z",
-              action_type: "codex_exec",
-              duration_ms: 123,
-              success: true,
-            },
-          ],
-        },
-        headers: authHeaders(fixture),
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      success: true,
-      id: fixture.runId,
-    });
-    expect(context.mocks.axiom.ingest).toHaveBeenCalledWith(
-      "sandbox-op-log",
-      expect.any(Array),
-    );
-    expect(context.mocks.axiom.flush).toHaveBeenCalledWith({
-      client: "telemetry",
-      throwOnError: true,
-    });
-    await clearAllDetached();
-    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-      "Agent telemetry Axiom flush failed",
-      expect.objectContaining({
-        runId: fixture.runId,
-        sandboxOperationCount: 1,
-        axiomDatasetFamilies: ["sandbox_operations"],
-        axiomFailureCategory: "flush",
-        error,
-      }),
-    );
   });
 
   it("emits safe telemetry observability metadata", async () => {
@@ -1687,8 +1630,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
           "network",
           "sandbox_operations",
         ],
-        axiomFlushQueued: true,
-        telemetryBuffered: true,
+        telemetryAccepted: true,
       }),
     );
     const successLog = context.mocks.axiomLogging.debug.mock.calls.find(
@@ -1753,14 +1695,6 @@ describe("POST /api/webhooks/agent/telemetry", () => {
         }),
       ],
     );
-    expect(context.mocks.axiom.flush).toHaveBeenCalledTimes(2);
-    expect(context.mocks.axiom.flush).toHaveBeenNthCalledWith(1, {
-      client: "telemetry",
-      throwOnError: true,
-    });
-    expect(context.mocks.axiom.flush).toHaveBeenNthCalledWith(2, {
-      client: "telemetry",
-      throwOnError: true,
-    });
+    expect(context.mocks.axiom.flush).not.toHaveBeenCalled();
   });
 });
