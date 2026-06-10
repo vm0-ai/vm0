@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { DesktopKeepAwakeState } from "./computer-use-types";
 
-const KEEP_AWAKE_BLOCKER_TYPE = "prevent-app-suspension";
+const KEEP_AWAKE_BLOCKER_TYPE = "prevent-display-sleep";
 
 export interface DesktopKeepAwakeBlocker {
   readonly start: (type: typeof KEEP_AWAKE_BLOCKER_TYPE) => number;
