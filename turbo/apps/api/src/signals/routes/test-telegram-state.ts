@@ -217,6 +217,7 @@ function loadMockCalls(db: ReadonlyDb) {
       method: e2eTelegramMockCallLog.method,
       botToken: e2eTelegramMockCallLog.botToken,
       chatId: e2eTelegramMockCallLog.chatId,
+      body: e2eTelegramMockCallLog.body,
       bodyJson: e2eTelegramMockCallLog.bodyJson,
       createdAt: e2eTelegramMockCallLog.createdAt,
     })
@@ -529,7 +530,12 @@ const getTestTelegramState$ = computed(async (get) => {
           }
         : null,
       resolved_telegram_api_url: resolveTelegramApiUrlForDiagnostics(),
-      mock_calls: mockCalls,
+      mock_calls: mockCalls.map((call) => {
+        return {
+          ...call,
+          createdAt: call.createdAt.toISOString(),
+        };
+      }),
     },
   };
 });

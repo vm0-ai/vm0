@@ -28,6 +28,15 @@ export const testTelegramStateComposeVersionSchema = z.object({
   content_keys: z.array(z.string()),
 });
 
+export const testTelegramStateMockCallSchema = z.object({
+  method: z.string(),
+  botToken: z.string().nullable(),
+  chatId: z.string().nullable(),
+  body: z.string(),
+  bodyJson: z.unknown(),
+  createdAt: z.string(),
+});
+
 export const testTelegramStateResponseSchema = z.object({
   installation: z.unknown().nullable(),
   links: z.array(z.unknown()),
@@ -38,7 +47,7 @@ export const testTelegramStateResponseSchema = z.object({
   default_compose: z.unknown().nullable(),
   default_compose_version: testTelegramStateComposeVersionSchema.nullable(),
   resolved_telegram_api_url: z.string().nullable(),
-  mock_calls: z.array(z.unknown()),
+  mock_calls: z.array(testTelegramStateMockCallSchema),
 });
 
 export const testTelegramStateDeleteResponseSchema = z.object({
