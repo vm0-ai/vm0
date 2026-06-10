@@ -34,6 +34,12 @@ interface TestComposeContent {
   readonly agents: Record<string, { readonly framework: "claude-code" }>;
 }
 
+interface ComposeMetadataUpdate {
+  readonly displayName?: string | null;
+  readonly description?: string | null;
+  readonly sound?: string | null;
+}
+
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
@@ -129,6 +135,41 @@ async function deleteCompose(fixture: ComposeFixture): Promise<void> {
 
 const trackCompose = createFixtureTracker<ComposeFixture>(deleteCompose);
 
+async function updateMetadata(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly composeId: string;
+  readonly body: ComposeMetadataUpdate;
+}): Promise<void> {
+  mocks.clerk.session(args.userId, args.orgId);
+  const response = await accept(
+    metadataClient().update({
+      params: { id: args.composeId },
+      body: args.body,
+      headers: authHeaders(),
+    }),
+    [200],
+  );
+
+  expect(response.body).toStrictEqual({ ok: true });
+}
+
+async function listedCompose(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly composeId: string;
+}) {
+  mocks.clerk.session(args.userId, args.orgId);
+  const response = await accept(
+    listClient().list({ query: {}, headers: authHeaders() }),
+    [200],
+  );
+
+  return response.body.composes.find((compose) => {
+    return compose.id === args.composeId;
+  });
+}
+
 async function malformedByIdRequest(): Promise<Response> {
   const app = createApp({ signal: context.signal });
   return await app.request(
@@ -161,10 +202,19 @@ describe("/api/zero/composes BDD", () => {
       list.list({ query: {}, headers: {} }),
       [401],
     );
+    const unauthenticatedMetadata = await accept(
+      metadataClient().update({
+        params: { id: randomUUID() },
+        body: { displayName: "x" },
+        headers: {},
+      }),
+      [401],
+    );
 
     expect(unauthenticatedByName.body.error.code).toBe("UNAUTHORIZED");
     expect(unauthenticatedById.body.error.code).toBe("UNAUTHORIZED");
     expect(unauthenticatedList.body.error.code).toBe("UNAUTHORIZED");
+    expect(unauthenticatedMetadata.body.error.code).toBe("UNAUTHORIZED");
 
     mocks.clerk.session(`user_${randomUUID()}`, null);
     const noOrgByName = await accept(
@@ -185,11 +235,25 @@ describe("/api/zero/composes BDD", () => {
       list.list({ query: {}, headers: authHeaders() }),
       [400],
     );
+    const noOrgMetadata = await accept(
+      metadataClient().update({
+        params: { id: randomUUID() },
+        body: { displayName: "Test" },
+        headers: authHeaders(),
+      }),
+      [401],
+    );
 
     expect(noOrgByName.body.error.code).toBe("UNAUTHORIZED");
     expect(noOrgById.body.error.code).toBe("UNAUTHORIZED");
     expect(noOrgList.body).toStrictEqual({
       error: { message: "Invalid request", code: "BAD_REQUEST" },
+    });
+    expect(noOrgMetadata.body).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
     });
 
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
@@ -361,5 +425,130 @@ describe("/api/zero/composes BDD", () => {
     expect(otherOrgById.body).toStrictEqual({
       error: { message: "Agent compose not found", code: "NOT_FOUND" },
     });
+  });
+
+  it("updates compose metadata through the API and preserves route-visible isolation", async () => {
+    const owner = {
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+    };
+    const outsider = {
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+    };
+    const fresh = await createCompose({
+      ...owner,
+      name: agentName("fresh-metadata-agent"),
+    });
+    const sameOrg = await createCompose({
+      ...owner,
+      name: agentName("same-org-metadata-agent"),
+    });
+    const partial = await createCompose({
+      ...owner,
+      name: agentName("partial-metadata-agent"),
+    });
+
+    await updateMetadata({
+      ...fresh,
+      body: {
+        displayName: "Test Display Name",
+        description: "Test description",
+      },
+    });
+
+    const freshListed = await listedCompose(fresh);
+    expect(freshListed).toMatchObject({
+      id: fresh.composeId,
+      displayName: "Test Display Name",
+      description: "Test description",
+      sound: null,
+    });
+
+    const missing = await accept(
+      metadataClient().update({
+        params: { id: randomUUID() },
+        body: { displayName: "Test" },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(missing.body).toStrictEqual({
+      error: { message: "Agent compose not found", code: "NOT_FOUND" },
+    });
+
+    await updateMetadata({
+      ...sameOrg,
+      body: {
+        displayName: "owner display",
+        description: "owner desc",
+        sound: "owner sound",
+      },
+    });
+    await updateMetadata({
+      userId: `user_${randomUUID()}`,
+      orgId: owner.orgId,
+      composeId: sameOrg.composeId,
+      body: { displayName: "Org-mate Display" },
+    });
+
+    const sameOrgListed = await listedCompose(sameOrg);
+    expect(sameOrgListed).toMatchObject({
+      id: sameOrg.composeId,
+      displayName: "Org-mate Display",
+      description: "owner desc",
+      sound: "owner sound",
+    });
+
+    mocks.clerk.session(outsider.userId, outsider.orgId);
+    const crossOrg = await accept(
+      metadataClient().update({
+        params: { id: sameOrg.composeId },
+        body: { displayName: "hacked" },
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+    expect(crossOrg.body.error.code).toBe("NOT_FOUND");
+
+    const afterCrossOrg = await listedCompose(sameOrg);
+    expect(afterCrossOrg).toMatchObject({
+      id: sameOrg.composeId,
+      displayName: "Org-mate Display",
+      description: "owner desc",
+      sound: "owner sound",
+    });
+
+    await updateMetadata({
+      ...partial,
+      body: {
+        displayName: "Initial Display",
+        description: "Initial description",
+        sound: "initial-sound",
+      },
+    });
+    await updateMetadata({
+      ...partial,
+      body: { displayName: "Updated Display" },
+    });
+
+    const partialListed = await listedCompose(partial);
+    expect(partialListed).toMatchObject({
+      id: partial.composeId,
+      displayName: "Updated Display",
+      description: "Initial description",
+      sound: "initial-sound",
+    });
+
+    mocks.clerk.session(outsider.userId, outsider.orgId);
+    const outsiderList = await accept(
+      listClient().list({ query: {}, headers: authHeaders() }),
+      [200],
+    );
+    expect(
+      outsiderList.body.composes.map((compose) => {
+        return compose.id;
+      }),
+    ).not.toContain(sameOrg.composeId);
   });
 });
