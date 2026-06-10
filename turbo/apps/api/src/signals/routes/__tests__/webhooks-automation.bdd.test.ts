@@ -30,6 +30,21 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
+// BDD migration of the legacy `webhooks-automation.test.ts`.
+// The 5 legacy `it()`s collapse into 2 BDD `it()`s: (1)
+// happy-path 200 chain (200 fires a signed webhook into a
+// webhook-sourced run + chat message with full DB read-after-
+// write verification), (2) failure chain (401 bad signature →
+// 401 missing signature header → 404 unknown token → 404
+// disabled automation).
+//
+// Service-Level Exception: the route is invoked via the raw
+// public app (not ts-rest) because webhook contracts use
+// `c.type<string>()` bodies. Post-fire verification reads
+// `agentRuns`, `chatMessages`, and `zeroRuns` directly via
+// `writeDb$` because there is no follow-up GET endpoint for
+// webhook-fired runs.
+
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
@@ -159,16 +174,19 @@ async function postWebhook(
   return { status: response.status, text: await response.text() };
 }
 
-describe("POST /api/automations/webhooks/:token", () => {
-  it("fires a signed webhook into a webhook-sourced run + chat message", async () => {
+describe("BDD POST /api/automations/webhooks/:token — 200 happy path", () => {
+  it("gwt-wt-wt: 200 fires a signed webhook into a webhook-sourced run + chat message", async () => {
+    // Given: a seeded automation.
     const fixture = await seedAutomation();
     const body = JSON.stringify({ event: "ping", value: 42 });
 
+    // When: a signed POST arrives.
     const response = await postWebhook(fixture.token, body, {
       [SIGNATURE_HEADER]: sign(body),
       "x-custom-header": "header-value",
     });
 
+    // Then: 200 + a run is created with full provenance.
     expect(response.status).toBe(200);
 
     const db = store.set(writeDb$);
@@ -181,8 +199,6 @@ describe("POST /api/automations/webhooks/:token", () => {
       })
       .from(zeroRuns)
       .where(eq(zeroRuns.chatThreadId, fixture.threadId));
-    // Run provenance: the run is attributed to the automation + trigger that
-    // fired it, and is queryable by both.
     expect(zeroRun).toStrictEqual({
       triggerSource: "webhook",
       chatThreadId: fixture.threadId,
@@ -210,14 +226,12 @@ describe("POST /api/automations/webhooks/:token", () => {
       .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .where(eq(zeroRuns.chatThreadId, fixture.threadId));
     expect(run?.prompt).toBe("Summarize the incoming webhook event.");
-    // The webhook payload (headers + body) is rendered into the run context.
     expect(run?.appendSystemPrompt).toContain(
       "You are currently running inside: Webhook automation",
     );
     expect(run?.appendSystemPrompt).toContain('"event": "ping"');
     expect(run?.appendSystemPrompt).toContain('"x-custom-header"');
 
-    // The instruction was posted as a user message bound to the run.
     const messages = await db
       .select({
         content: chatMessages.content,
@@ -234,55 +248,48 @@ describe("POST /api/automations/webhooks/:token", () => {
       }),
     ).toBeTruthy();
   });
+});
 
-  it("rejects a payload with a bad signature", async () => {
+describe("BDD POST /api/automations/webhooks/:token — 401/404 failure chain", () => {
+  it("gwt-wt-wt: 401 bad signature → 401 missing signature header → 404 unknown token → 404 disabled automation", async () => {
+    // Given: a seeded automation.
     const fixture = await seedAutomation();
     const body = JSON.stringify({ event: "ping" });
 
-    const response = await postWebhook(fixture.token, body, {
+    // When + Then: 401 on bad signature; no run is created.
+    const badSig = await postWebhook(fixture.token, body, {
       [SIGNATURE_HEADER]: sign(body, "wrong-secret"),
     });
+    expect(badSig.status).toBe(401);
+    {
+      const db = store.set(writeDb$);
+      const runs = await db
+        .select({ id: zeroRuns.id })
+        .from(zeroRuns)
+        .where(eq(zeroRuns.chatThreadId, fixture.threadId));
+      expect(runs).toHaveLength(0);
+    }
 
-    expect(response.status).toBe(401);
+    // When + Then: 401 on missing signature header.
+    const noHeader = await postWebhook(fixture.token, body, {});
+    expect(noHeader.status).toBe(401);
 
-    const db = store.set(writeDb$);
-    const runs = await db
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.chatThreadId, fixture.threadId));
-    expect(runs).toHaveLength(0);
-  });
-
-  it("rejects a payload with no signature header", async () => {
-    const fixture = await seedAutomation();
-    const body = JSON.stringify({ event: "ping" });
-
-    const response = await postWebhook(fixture.token, body, {});
-
-    expect(response.status).toBe(401);
-  });
-
-  it("returns 404 for an unknown token", async () => {
-    await seedAutomation();
-    const body = JSON.stringify({ event: "ping" });
-
-    const response = await postWebhook(
+    // When + Then: 404 on unknown token (any signed request
+    // returns 404).
+    const unknown = await postWebhook(
       `whk_${randomUUID().replace(/-/g, "")}`,
       body,
       { [SIGNATURE_HEADER]: sign(body) },
     );
+    expect(unknown.status).toBe(404);
 
-    expect(response.status).toBe(404);
-  });
+    // Given: a disabled automation.
+    const disabled = await seedAutomation({ enabled: false });
 
-  it("returns 404 for a disabled automation", async () => {
-    const fixture = await seedAutomation({ enabled: false });
-    const body = JSON.stringify({ event: "ping" });
-
-    const response = await postWebhook(fixture.token, body, {
+    // When + Then: 404 on disabled automation.
+    const disabledResp = await postWebhook(disabled.token, body, {
       [SIGNATURE_HEADER]: sign(body),
     });
-
-    expect(response.status).toBe(404);
+    expect(disabledResp.status).toBe(404);
   });
 });

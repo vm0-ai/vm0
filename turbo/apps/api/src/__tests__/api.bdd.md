@@ -1824,3 +1824,127 @@ covered route files.
 Quality gates: `pnpm -F api lint`, `pnpm -F api
 check-types`, `pnpm -F api exec vitest run` (252 files /
 3230+ tests) all clean.
+
+### Round 39 — Mixed small-batch BDD (8 legacy → 21 BDD)
+
+Migrates 8 small legacy route tests into 21 BDD `it()`s:
+
+- `zero-memory.test.ts` (7→3): auth + 200 empty chain
+  (401 unauth → 401 no-org → 200 no memory → 200 empty
+  artifact), 200 populated chain (200 populated artifact
+  with file listing + contents → 200 normalizes
+  `"./"`-prefixed manifest paths), isolation + CLI auth
+  chain (200 scopes memory to the requesting user →
+  200 accepts CLI token auth when reading memory).
+- `zero-org-membership-requests.test.ts` (12→2): POST
+  accept chain (200 admin accepts a request + Clerk API
+  called once → 400 Clerk API rejects → 403 non-admin →
+  400 invalid body via raw app → 401 unauth → 401 no-org),
+  DELETE reject chain (200 admin rejects + Clerk API
+  called once → 400 Clerk API rejects → 403 non-admin →
+  400 invalid body via raw app → 401 unauth → 401 no-org).
+  The MSW Clerk membership-action handler is reset between
+  steps via `server.resetHandlers()` and the
+  `{callCount: () => number}` tracker is asserted with
+  `toBe(n)` so the contract on the upstream Clerk API is
+  preserved.
+- `zero-integrations-slack-upload-init.test.ts` (8→2):
+  auth + capability chain (401 unauth → 403 sandbox
+  missing `slack:write` → 404 no Slack installation),
+  200/400 success chain (400 invalid body → 200 happy
+  path + Slack called once with expected args → 400
+  SLACK_ERROR on Slack non-ok → 400 SLACK_ERROR on
+  malformed Slack response → 400 SLACK_ERROR on Slack
+  platform error). The default Slack upload-URL response
+  is set explicitly at the start of the success chain
+  (mirroring the legacy `beforeEach` default), and the
+  `getUploadURLExternal` mock is asserted with
+  `toHaveBeenCalledTimes(n)` to track exact invocations.
+- `webhooks-automation.test.ts` (5→2): 200 happy-path
+  chain (200 fires a signed webhook into a webhook-sourced
+  run + chat message with full DB read-after-write
+  verification), 401/404 failure chain (401 bad signature
+  with no run created → 401 missing signature header →
+  404 unknown token → 404 disabled automation).
+- `zero-user-model-preference.test.ts` (12→3): GET chain
+  (401 unauth → 401 no-org → 200 null defaults → 200
+  persisted selected model), PUT auth + 400 chain (401
+  unauth → 401 no-org → 400 empty body via raw app → 400
+  removed-model body via raw app), PUT 200/400 success
+  chain (400 unsupported model + no row written → 200
+  creates preference + GET echoes → 200 clears existing
+  preference).
+- `zero-claude-code-device-auth.test.ts` (4→2): start +
+  cancel chain (200 start returns setup-token OAuth
+  details + DB row created → 200 cancel marks the
+  session cancelled), complete chain (200 org-scope
+  complete imports the OAuth token via the upstream MSW
+  mock + provider row + secret row → 200 personal-scope
+  complete for non-admin member writes a user-scoped
+  secret).
+- `zero-variables.test.ts` (10→3): GET chain (401
+  unauth → 401 no-org → 200 sorted list → 200 empty
+  list → 200 connector-owned variables are hidden), POST
+  auth + 400 chain (401 unauth → 400 invalid name), POST
+  200 success chain (200 creates → 200 updates an
+  existing variable without duplicating → 200 only the
+  user-owned variable is updated when a connector-owned
+  one shares the name).
+- `zero-billing-redeem-code.test.ts` (13→3): auth chain
+  (401 unauth → 403 non-admin + Atom not called + M2M
+  token not called), provider error chain (503 no
+  ATOM_URL → 503 no M2M secret → 503 M2M auth fails +
+  Atom not called → 503 Atom unreachable → 400 Atom
+  rejects the code), error matrix + happy-path chain
+  (it.each 4 cases: already used 409, expired 410, not
+  eligible 403, unknown 400 → 400 malformed JSON
+  fallback → 200 happy path with body trimming + Atom
+  called once with the trimmed code + the M2M token +
+  Clerk M2M called with the expected args). The
+  `resetMocksAndEnv()` helper is called between steps
+  to reset MSW handlers + env + the M2M mock so previous
+  steps don't leak state. The M2M mock is asserted with
+  `toHaveBeenCalledTimes(n)` to track exact invocations
+  across the chain.
+
+Service-Level Exceptions noted:
+
+- `zero-memory.bdd.test.ts` uses direct DB writes against
+  the memory storage table because no public route creates
+  a memory storage row.
+- `zero-org-membership-requests.bdd.test.ts` uses
+  `createApp` + `app.request` for the 400 invalid-body
+  cases because the ts-rest client validates the body
+  client-side and never reaches the route. The MSW
+  handler for the upstream Clerk membership-action API
+  is reset between steps with `server.resetHandlers()`
+  so the most-recently-added handler is the one that
+  responds.
+- `zero-claude-code-device-auth.bdd.test.ts` uses a
+  `createClaudeCodeAuthHarness()` factory inside each
+  `describe` so the mutable `fixtures` array satisfies
+  the `api/no-package-variable` lint rule (mutable
+  package-scope arrays are forbidden; the factory
+  closes over the array inside the describe block).
+- `zero-billing-redeem-code.bdd.test.ts` uses
+  `resetMocksAndEnv()` between chain steps to reset
+  MSW handlers, env vars, and the M2M mock so previous
+  steps don't leak state. The M2M mock is asserted with
+  `toHaveBeenCalledTimes(n)` because it accumulates
+  across the chain.
+- This round deletes 8 legacy files
+  (`zero-memory.test.ts`,
+  `zero-org-membership-requests.test.ts`,
+  `zero-integrations-slack-upload-init.test.ts`,
+  `webhooks-automation.test.ts`,
+  `zero-user-model-preference.test.ts`,
+  `zero-claude-code-device-auth.test.ts`,
+  `zero-variables.test.ts`,
+  `zero-billing-redeem-code.test.ts`).
+
+Net test count: 71 legacy `it()`s → 21 BDD `it()`s (70%
+reduction). No per-file coverage regression for the
+covered route files.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api
+check-types`, `pnpm -F api exec vitest run` all clean.

@@ -7,7 +7,7 @@ import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockedEnv, mockEnv } from "../../../lib/env";
@@ -21,6 +21,21 @@ import {
 import { isKmsSecretForTests } from "./helpers/encrypt-secret";
 import { fakeKmsClient } from "./helpers/fake-kms-client";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+
+// BDD migration of the legacy
+// `zero-claude-code-device-auth.test.ts`. The 4 legacy
+// `it()`s collapse into 2 BDD `it()`s: (1) start + cancel
+// chain (200 start returns setup-token OAuth details + DB row
+// created → 200 cancel marks the session cancelled), (2)
+// complete chain (200 org-scope complete imports the OAuth
+// token via the upstream MSW mock + provider row + secret
+// row → 200 personal-scope complete for non-admin member
+// writes a user-scoped secret).
+//
+// Service-Level Exception: the upstream Claude token
+// endpoint is mocked via MSW handlers; `modelProviderAuthSessions`
+// and `secrets` rows are read directly via `writeDb$` because
+// no public route exposes them.
 
 const context = testContext();
 const store = createStore();
@@ -129,9 +144,17 @@ function stateFromBrowserUrl(browserUrl: string): string {
   return state;
 }
 
-describe("Claude Code device auth routes", () => {
-  const fixtures: { readonly userId: string; readonly orgId: string }[] = [];
+interface ClaudeCodeAuthFixture {
+  readonly userId: string;
+  readonly orgId: string;
+}
 
+function createClaudeCodeAuthHarness(): {
+  readonly setupUser: (
+    role?: "org:admin" | "org:member",
+  ) => ClaudeCodeAuthFixture;
+} {
+  const fixtures: ClaudeCodeAuthFixture[] = [];
   afterEach(async () => {
     clearMockedEnv();
     resetSecretKmsClientForTests();
@@ -143,21 +166,31 @@ describe("Claude Code device auth routes", () => {
     }
   });
 
-  function setupUser(role: "org:admin" | "org:member" = "org:admin") {
+  const setupUser = (
+    role: "org:admin" | "org:member" = "org:admin",
+  ): ClaudeCodeAuthFixture => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     fixtures.push({ userId, orgId });
     mocks.clerk.session(userId, orgId, role);
     return { userId, orgId };
-  }
+  };
 
-  it("starts Claude Code device auth and returns setup-token OAuth details", async () => {
+  return { setupUser };
+}
+
+describe("BDD Claude Code device auth — start + cancel chain", () => {
+  const { setupUser } = createClaudeCodeAuthHarness();
+
+  it("gwt-wt-wt: 200 start returns setup-token OAuth details + DB row created → 200 cancel marks the session cancelled", async () => {
+    // Given: a fresh admin user + KMS wired.
     const { userId, orgId } = setupUser();
     const kms = fakeKmsClient();
     setSecretKmsClientForTests(kms.client);
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
-    const response = await accept(
+    // When: start a Claude Code device auth.
+    const started = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
         body: { scope: "org" },
@@ -165,10 +198,12 @@ describe("Claude Code device auth routes", () => {
       [200],
     );
 
-    expect(response.status).toBe(200);
-    expect(response.body.type).toBe("claude-code");
-    expect(response.body.scope).toBe("org");
-    const browserUrl = new URL(response.body.browserUrl);
+    // Then: 200 + browserUrl is the Claude authorize URL +
+    // session row exists + provider state is KMS-encrypted.
+    expect(started.status).toBe(200);
+    expect(started.body.type).toBe("claude-code");
+    expect(started.body.scope).toBe("org");
+    const browserUrl = new URL(started.body.browserUrl);
     expect(browserUrl.origin + browserUrl.pathname).toBe(
       "https://claude.com/cai/oauth/authorize",
     );
@@ -186,19 +221,9 @@ describe("Claude Code device auth routes", () => {
     const [session] = await claudeCodeDeviceAuthSessions(userId, orgId);
     expect(isKmsSecretForTests(session!.encryptedProviderState!)).toBeTruthy();
     expect(kms.calls).toHaveLength(1);
-  });
 
-  it("cancels pending Claude Code device auth", async () => {
-    const { userId, orgId } = setupUser();
-    const started = await accept(
-      client().start({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { scope: "org" },
-      }),
-      [200],
-    );
-
-    const response = await accept(
+    // When: cancel the session.
+    const cancelled = await accept(
       client().cancel({
         headers: { authorization: "Bearer clerk-session" },
         body: { sessionToken: started.body.sessionToken },
@@ -206,15 +231,22 @@ describe("Claude Code device auth routes", () => {
       [200],
     );
 
-    expect(response.status).toBe(200);
-    const [session] = await claudeCodeDeviceAuthSessions(userId, orgId);
-    expect(session?.status).toBe("cancelled");
-    expect(session?.errorMessage).toBe(
+    // Then: 200 + the session is now cancelled.
+    expect(cancelled.status).toBe(200);
+    const [afterCancel] = await claudeCodeDeviceAuthSessions(userId, orgId);
+    expect(afterCancel?.status).toBe("cancelled");
+    expect(afterCancel?.errorMessage).toBe(
       "Claude Code device auth session was cancelled",
     );
   });
+});
 
-  it("completes org-scope Claude Code device auth and imports the OAuth token", async () => {
+describe("BDD Claude Code device auth — complete chain", () => {
+  const { setupUser } = createClaudeCodeAuthHarness();
+
+  it("gwt-wt-wt: 200 org-scope complete imports the OAuth token via MSW → 200 personal-scope complete for non-admin member writes a user-scoped secret", async () => {
+    // Given: a fresh admin user + the upstream Claude token
+    // endpoint mocked.
     const { orgId } = setupUser();
     const calls = mockClaudeCodeDeviceAuthHttp();
     const started = await accept(
@@ -226,7 +258,8 @@ describe("Claude Code device auth routes", () => {
     );
     const state = stateFromBrowserUrl(started.body.browserUrl);
 
-    const response = await accept(
+    // When: complete with an authorization code.
+    const completed = await accept(
       client().complete({
         headers: { authorization: "Bearer clerk-session" },
         body: {
@@ -237,10 +270,12 @@ describe("Claude Code device auth routes", () => {
       [200],
     );
 
-    expect(response.status).toBe(200);
-    expect(response.body.status).toBe("complete");
-    expect(response.body.provider.type).toBe("claude-code-oauth-token");
-    expect(response.body.provider.secretName).toBe("CLAUDE_CODE_OAUTH_TOKEN");
+    // Then: 200 + provider row + secret row at the org scope +
+    // upstream token exchange called once.
+    expect(completed.status).toBe(200);
+    expect(completed.body.status).toBe("complete");
+    expect(completed.body.provider.type).toBe("claude-code-oauth-token");
+    expect(completed.body.provider.secretName).toBe("CLAUDE_CODE_OAUTH_TOKEN");
     await expect(
       claudeCodeSecret({ orgId, userId: ORG_SENTINEL_USER_ID }),
     ).resolves.toBe("claude-code-access-token");
@@ -254,35 +289,39 @@ describe("Claude Code device auth routes", () => {
         expires_in: 31_536_000,
       },
     ]);
-  });
 
-  it("completes personal-scope Claude Code device auth for non-admin members", async () => {
-    const { userId, orgId } = setupUser("org:member");
+    // Given: a non-admin member + a fresh personal-scope
+    // session.
+    const { userId: memberId, orgId: memberOrgId } = setupUser("org:member");
     mockClaudeCodeDeviceAuthHttp();
-    const started = await accept(
+    const personalStarted = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
         body: { scope: "personal" },
       }),
       [200],
     );
-    const state = stateFromBrowserUrl(started.body.browserUrl);
+    const personalState = stateFromBrowserUrl(personalStarted.body.browserUrl);
 
-    const response = await accept(
+    // When: complete with a callback URL.
+    const personalCompleted = await accept(
       client().complete({
         headers: { authorization: "Bearer clerk-session" },
         body: {
-          sessionToken: started.body.sessionToken,
-          authorizationCode: `https://platform.claude.com/oauth/code/callback?code=member_code&state=${state}`,
+          sessionToken: personalStarted.body.sessionToken,
+          authorizationCode: `https://platform.claude.com/oauth/code/callback?code=member_code&state=${personalState}`,
         },
       }),
       [200],
     );
 
-    expect(response.status).toBe(200);
-    expect(response.body.provider.type).toBe("claude-code-oauth-token");
-    await expect(claudeCodeSecret({ orgId, userId })).resolves.toBe(
-      "claude-code-access-token",
+    // Then: 200 + a user-scoped secret was written.
+    expect(personalCompleted.status).toBe(200);
+    expect(personalCompleted.body.provider.type).toBe(
+      "claude-code-oauth-token",
     );
+    await expect(
+      claudeCodeSecret({ orgId: memberOrgId, userId: memberId }),
+    ).resolves.toBe("claude-code-access-token");
   });
 });

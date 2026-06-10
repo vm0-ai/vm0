@@ -22,6 +22,20 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
+// BDD migration of the legacy `zero-memory.test.ts`. The 7
+// legacy `it()`s collapse into 3 BDD `it()`s: (1) auth + 200
+// empty chain (401 unauth → 401 no-org → 200 no memory → 200
+// empty artifact), (2) 200 populated chain (200 populated
+// artifact with file listing + contents → 200 normalizes
+// ./-prefixed manifest paths), (3) isolation + CLI auth
+// chain (200 scopes memory to the requesting user, the
+// other-user's storage is not visible → 200 accepts CLI token
+// auth when reading memory).
+//
+// Service-Level Exception: memory storage rows are seeded
+// directly via `writeDb$` because no public route creates a
+// memory storage row.
+
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
@@ -66,41 +80,38 @@ function memoryClient() {
   return setupApp({ context })(zeroMemoryContract);
 }
 
-describe("GET /api/zero/memory", () => {
-  const track = createFixtureTracker<MemoryFixture>((fixture) => {
-    return store.set(deleteMemoryForFixture$, fixture, context.signal);
-  });
+const track = createFixtureTracker<MemoryFixture>((fixture) => {
+  return store.set(deleteMemoryForFixture$, fixture, context.signal);
+});
 
-  it("returns 401 when the request is unauthenticated", async () => {
-    const response = await accept(memoryClient().get({ headers: {} }), [401]);
-    expect(response.body).toStrictEqual({
+describe("BDD GET /api/zero/memory — auth + 200 empty chain", () => {
+  it("gwt-wt-wt: 401 unauth → 401 no-org → 200 no memory → 200 empty artifact", async () => {
+    const c = memoryClient();
+
+    // When + Then: 401 with no auth header.
+    const noAuth = await accept(c.get({ headers: {} }), [401]);
+    expect(noAuth.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("returns 401 when the authenticated session has no organization", async () => {
+    // Given: a session with a user but no org.
     mocks.clerk.session(`user_${randomUUID()}`, null);
-    const response = await accept(
-      memoryClient().get({ headers: authHeaders() }),
-      [401],
-    );
-    expect(response.body).toStrictEqual({
+
+    // When + Then: still 401.
+    const noOrg = await accept(c.get({ headers: authHeaders() }), [401]);
+    expect(noOrg.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("returns exists:false when the user has no memory artifact", async () => {
-    const fixture = await track(
+    // Given: a fresh user with no memory artifact.
+    const emptyFx = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(emptyFx.userId, emptyFx.orgId);
 
-    const response = await accept(
-      memoryClient().get({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
+    // When + Then: 200 with exists: false.
+    const empty = await accept(c.get({ headers: authHeaders() }), [200]);
+    expect(empty.body).toStrictEqual({
       exists: false,
       name: MEMORY_ARTIFACT_NAME,
       size: 0,
@@ -109,19 +120,18 @@ describe("GET /api/zero/memory", () => {
       files: [],
       fileContents: [],
     });
-  });
 
-  it("returns an empty file list when the artifact exists but is empty", async () => {
-    const fixture = await track(
+    // Given: a fresh user with an empty memory artifact.
+    const emptyArtifactFx = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
     const updatedAt = new Date("2025-03-04T05:06:07.000Z");
     await store.set(
       seedMemoryStorage$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        s3Key: `orgs/${fixture.orgId}/users/${fixture.userId}/memory/v1`,
+        orgId: emptyArtifactFx.orgId,
+        userId: emptyArtifactFx.userId,
+        s3Key: `orgs/${emptyArtifactFx.orgId}/users/${emptyArtifactFx.userId}/memory/v1`,
         headVersionId: null,
         size: 0,
         fileCount: 0,
@@ -129,14 +139,14 @@ describe("GET /api/zero/memory", () => {
       },
       context.signal,
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(emptyArtifactFx.userId, emptyArtifactFx.orgId);
 
-    const response = await accept(
-      memoryClient().get({ headers: authHeaders() }),
+    // When + Then: 200 with exists: true + empty file list.
+    const emptyArtifact = await accept(
+      c.get({ headers: authHeaders() }),
       [200],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(emptyArtifact.body).toStrictEqual({
       exists: true,
       name: MEMORY_ARTIFACT_NAME,
       size: 0,
@@ -146,18 +156,23 @@ describe("GET /api/zero/memory", () => {
       fileContents: [],
     });
   });
+});
 
-  it("returns file listing and contents for a populated memory artifact", async () => {
-    const fixture = await track(
+describe("BDD GET /api/zero/memory — 200 populated chain", () => {
+  it("gwt-wt-wt: 200 populated artifact with file listing + contents → 200 normalizes ./-prefixed manifest paths", async () => {
+    const c = memoryClient();
+
+    // Given: a user with a populated memory artifact.
+    const populatedFx = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
-    const s3Key = `orgs/${fixture.orgId}/users/${fixture.userId}/memory/v1`;
+    const s3Key = `orgs/${populatedFx.orgId}/users/${populatedFx.userId}/memory/v1`;
     const updatedAt = new Date("2025-04-05T06:07:08.000Z");
     await store.set(
       seedMemoryStorage$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
+        orgId: populatedFx.orgId,
+        userId: populatedFx.userId,
         s3Key,
         size: 31,
         fileCount: 2,
@@ -172,14 +187,11 @@ describe("GET /api/zero/memory", () => {
         { path: "notes/todo.md", content: "Do the thing" },
       ],
     });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(populatedFx.userId, populatedFx.orgId);
 
-    const response = await accept(
-      memoryClient().get({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
+    // When + Then: 200 with the file listing + contents.
+    const populated = await accept(c.get({ headers: authHeaders() }), [200]);
+    expect(populated.body).toStrictEqual({
       exists: true,
       name: MEMORY_ARTIFACT_NAME,
       size: 31,
@@ -194,51 +206,54 @@ describe("GET /api/zero/memory", () => {
         { path: "notes/todo.md", content: "Do the thing" },
       ],
     });
-  });
 
-  it("normalizes ./-prefixed manifest paths", async () => {
-    const fixture = await track(
+    // Given: a user with a populated artifact whose manifest
+    // uses a ./-prefixed path.
+    const dotFx = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
-    const s3Key = `orgs/${fixture.orgId}/users/${fixture.userId}/memory/v1`;
+    const dotS3Key = `orgs/${dotFx.orgId}/users/${dotFx.userId}/memory/v1`;
     await store.set(
       seedMemoryStorage$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        s3Key,
+        orgId: dotFx.orgId,
+        userId: dotFx.userId,
+        s3Key: dotS3Key,
         size: 7,
         fileCount: 1,
       },
       context.signal,
     );
     mockMemoryContent(context, {
-      s3Key,
+      s3Key: dotS3Key,
       files: [{ path: "./MEMORY.md", content: "# Memory" }],
     });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(dotFx.userId, dotFx.orgId);
 
-    const response = await accept(
-      memoryClient().get({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body.files).toStrictEqual([{ path: "MEMORY.md", size: 8 }]);
-    expect(response.body.fileContents).toStrictEqual([
+    // When + Then: 200 with the normalized path.
+    const dot = await accept(c.get({ headers: authHeaders() }), [200]);
+    expect(dot.body.files).toStrictEqual([{ path: "MEMORY.md", size: 8 }]);
+    expect(dot.body.fileContents).toStrictEqual([
       { path: "MEMORY.md", content: "# Memory" },
     ]);
   });
+});
 
-  it("scopes memory to the requesting user", async () => {
-    const fixture = await track(
+describe("BDD GET /api/zero/memory — isolation + CLI auth chain", () => {
+  it("gwt-wt-wt: 200 scopes memory to the requesting user (other-user's storage is not visible) → 200 accepts CLI token auth when reading memory", async () => {
+    const c = memoryClient();
+
+    // Given: a user with no memory artifact; another user in
+    // the same org has a memory artifact.
+    const isolationFx = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
     const otherUserId = `user_${randomUUID()}`;
-    const otherS3Key = `orgs/${fixture.orgId}/users/${otherUserId}/memory/v1`;
+    const otherS3Key = `orgs/${isolationFx.orgId}/users/${otherUserId}/memory/v1`;
     await store.set(
       seedMemoryStorage$,
       {
-        orgId: fixture.orgId,
+        orgId: isolationFx.orgId,
         userId: otherUserId,
         s3Key: otherS3Key,
         size: 12,
@@ -246,44 +261,42 @@ describe("GET /api/zero/memory", () => {
       },
       context.signal,
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(isolationFx.userId, isolationFx.orgId);
 
-    const response = await accept(
-      memoryClient().get({ headers: authHeaders() }),
-      [200],
-    );
+    // When + Then: 200 with exists: false (the other user's
+    // storage is not visible).
+    const isolated = await accept(c.get({ headers: authHeaders() }), [200]);
+    expect(isolated.body.exists).toBeFalsy();
 
-    expect(response.body.exists).toBeFalsy();
-  });
-
-  it("accepts CLI token auth when reading memory", async () => {
-    const fixture = await track(
+    // Given: a user with a populated memory artifact.
+    const cliFx = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
-    const s3Key = `orgs/${fixture.orgId}/users/${fixture.userId}/memory/v1`;
+    const cliS3Key = `orgs/${cliFx.orgId}/users/${cliFx.userId}/memory/v1`;
     await store.set(
       seedMemoryStorage$,
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        s3Key,
+        orgId: cliFx.orgId,
+        userId: cliFx.userId,
+        s3Key: cliS3Key,
         size: 14,
         fileCount: 1,
       },
       context.signal,
     );
     mockMemoryContent(context, {
-      s3Key,
+      s3Key: cliS3Key,
       files: [{ path: "MEMORY.md", content: "# CLI Memory" }],
     });
 
-    const response = await accept(
-      memoryClient().get({ headers: await cliAuthHeaders(fixture) }),
+    // When + Then: 200 with the populated content via CLI
+    // auth.
+    const cli = await accept(
+      c.get({ headers: await cliAuthHeaders(cliFx) }),
       [200],
     );
-
-    expect(response.body.exists).toBeTruthy();
-    expect(response.body.fileContents).toStrictEqual([
+    expect(cli.body.exists).toBeTruthy();
+    expect(cli.body.fileContents).toStrictEqual([
       { path: "MEMORY.md", content: "# CLI Memory" },
     ]);
   });
