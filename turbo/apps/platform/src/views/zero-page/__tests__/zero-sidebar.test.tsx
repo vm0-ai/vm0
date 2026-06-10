@@ -893,6 +893,31 @@ describe("zero sidebar", () => {
       expect(
         screen.getByRole("heading", { name: "Preference" }),
       ).toBeInTheDocument();
+      expect(screen.getByText("Account & Security")).toBeInTheDocument();
+      expect(screen.getByText("Alex Rivera")).toBeInTheDocument();
+      expect(screen.getByText("alex.rivera@example.test")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Manage"));
+
+    await waitFor(() => {
+      expect(mockedClerk.openUserProfile).toHaveBeenCalledWith({
+        apiKeysProps: { hide: true },
+      });
+    });
+
+    const clerkProfileModal = document.createElement("div");
+    clerkProfileModal.dataset.clerkUserProfile = "";
+    document.body.append(clerkProfileModal);
+    await waitFor(() => {
+      expect(clerkProfileModal).toBeInTheDocument();
+    });
+    clerkProfileModal.remove();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Settings" }),
+      ).toBeInTheDocument();
     });
 
     click(buttonByText("Debug"));

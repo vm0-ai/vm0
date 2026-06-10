@@ -531,6 +531,51 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("starts a new chat with a visual attachment", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockChatLifecycle(context);
+    context.mocks.upload.success({
+      id: "upload-visual-brief",
+      filename: "brief.png",
+      contentType: "image/png",
+      size: 128,
+      url: "https://cdn.vm7.io/artifacts/test/upload-visual-brief/brief.png",
+    });
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+
+    await user.upload(
+      fileInput,
+      new File(["image-bytes"], "brief.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove brief.png")).toBeInTheDocument();
+    });
+
+    await sendMessageInUI(user, textarea, "Summarize this visual brief");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize this visual brief"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
+
   it("renders completed markdown and returns the composer to send mode", async () => {
     const user = userEvent.setup({ delay: null });
     const lifecycle = mockChatLifecycle(context);
@@ -1652,6 +1697,56 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Studio Mac")).toBeInTheDocument();
       expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
       expect(screen.getByText("Connect my computer")).toBeInTheDocument();
+      expect(screen.getByLabelText("Enable Studio Mac")).toBeInTheDocument();
+    });
+  });
+
+  it("shows and clears a saved Computer Use host selection", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-saved-selection";
+    const hostId = "11111111-1111-4111-8111-111111111111";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Computer Use",
+      computerUseHostId: hostId,
+    });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, {
+        hosts: [
+          {
+            id: hostId,
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: { accessibility: true, screenRecording: true },
+            status: "online",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Computer Use"));
+
+    const disableSwitch = await screen.findByLabelText("Disable Studio Mac");
+    expect(disableSwitch).toBeInTheDocument();
+    await user.click(disableSwitch);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("Disable Studio Mac"),
+      ).not.toBeInTheDocument();
+    });
+    await user.click(await screen.findByLabelText("Computer Use"));
+    await waitFor(() => {
       expect(screen.getByLabelText("Enable Studio Mac")).toBeInTheDocument();
     });
   });

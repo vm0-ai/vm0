@@ -9,6 +9,7 @@ import {
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroComposesMainContract } from "@vm0/api-contracts/contracts/zero-composes";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
@@ -317,6 +318,123 @@ describe("team page navigation", () => {
       return el.textContent?.replace(/\s+/g, " ").trim() === "Retry";
     });
     expect(retry).toHaveAttribute("href", `/agents/${unavailableAgentId}`);
+  });
+
+  it("shows empty connector guidance from an agent page", async () => {
+    mockTeamAPIs();
+    context.mocks.data.connectors([]);
+
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/No connected services yet/u),
+      ).toBeInTheDocument();
+    });
+    const connectorsLink = queryAllByRoleFast("link").find((link) => {
+      return link.getAttribute("href") === "/connectors";
+    });
+    expect(connectorsLink).toBeInTheDocument();
+  });
+
+  it("shows a permission grants error from an agent page", async () => {
+    mockTeamAPIs();
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(400, {
+        error: {
+          message: "Permission grants unavailable",
+          code: "PERMISSION_GRANTS_UNAVAILABLE",
+        },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Failed to load permission grants"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("opens a chat from an agent page", async () => {
+    mockTeamAPIs();
+
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Chat with Research Agent"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText(
+          "Ask me to automate workflows, manage tasks...",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("opens avatar customization from an agent page", async () => {
+    mockTeamAPIs();
+
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Customize avatar"));
+
+    const avatarDialog = await screen.findByRole("dialog", {
+      name: "Give your agent a face",
+    });
+    expect(within(avatarDialog).getByText("Angle")).toBeInTheDocument();
+  });
+
+  it("deletes an agent from the profile tab", async () => {
+    mockTeamAPIs();
+    context.mocks.api(zeroAgentsByIdContract.delete, ({ respond }) => {
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}?tab=profile`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Research Agent")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Delete agent"));
+    const deleteDialog = await screen.findByRole("dialog");
+    expect(
+      within(deleteDialog).getByText(
+        /instructions, schedules, and all associated data/u,
+      ),
+    ).toBeInTheDocument();
+
+    click(buttonByText("Delete agent", deleteDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent deleted")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { level: 1, name: /agents/i }),
+      ).toBeInTheDocument();
+    });
   });
 
   it("edits and creates schedules from an agent page", async () => {

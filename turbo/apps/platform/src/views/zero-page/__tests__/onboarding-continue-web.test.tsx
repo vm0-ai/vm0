@@ -55,6 +55,19 @@ function mockCompletedUseCaseOnboarding(): void {
   });
 }
 
+function mockUseCaseWithoutDefaultAgent(): void {
+  context.mocks.api(onboardingStatusContract.getStatus, ({ respond }) => {
+    return respond(200, {
+      needsOnboarding: false,
+      isAdmin: false,
+      hasOrg: true,
+      hasDefaultAgent: false,
+      defaultAgentId: null,
+      defaultAgentMetadata: null,
+    });
+  });
+}
+
 function connectorResponse(type: ConnectorType): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
@@ -258,6 +271,33 @@ describe("onboarding web continuation", () => {
     await waitFor(() => {
       expect(screen.getByText("Build a launch recap")).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps a use-case flow on the page when no default agent resolves", async () => {
+    mockUseCaseWithoutDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=Build%20a%20launch%20recap",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Try this prompt")).toBeInTheDocument();
+      expect(screen.getByTestId("onboarding-prompt-input")).toHaveValue(
+        "Build a launch recap",
+      );
+    });
+
+    click(screen.getByTestId("onboarding-next-button"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /Onboarding could not resolve a default agent\. Please retry\./u,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Try this prompt")).toBeInTheDocument();
     });
   });
 

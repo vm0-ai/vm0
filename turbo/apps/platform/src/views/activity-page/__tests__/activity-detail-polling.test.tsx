@@ -1374,4 +1374,110 @@ describe("activity detail polling", () => {
     expect(screen.getByText("403")).toBeInTheDocument();
     expect(screen.getByText("1.0s")).toBeInTheDocument();
   });
+
+  it("shows a not-found state for an inaccessible activity", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000404";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Log not found")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(
+        "This log doesn't exist or you don't have permission to view it in the current workspace.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Back to activity")).toBeInTheDocument();
+  });
+
+  it("shows empty network logs and unknown runner reuse for an older activity", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000405";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Legacy Activity",
+          status: "completed",
+          prompt: "Review an older run",
+          startedAt: "2026-03-10T17:00:01Z",
+          completedAt: "2026-03-10T17:00:04Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+    context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
+      return respond(200, { sandboxReuseResult: null });
+    });
+    context.mocks.api(
+      zeroRunNetworkLogsContract.getNetworkLogs,
+      ({ respond }) => {
+        return respond(200, { networkLogs: [], hasMore: false });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Legacy Activity" }),
+      ).toBeInTheDocument();
+    });
+
+    click(getTabByText("Runner"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Unknown (older run, recorded before sandbox reuse tracking was added).",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    click(getTabByText("Network"));
+
+    await waitFor(() => {
+      expect(screen.getByText("No network logs")).toBeInTheDocument();
+      expect(
+        screen.getByText("No network traffic was recorded for this run."),
+      ).toBeInTheDocument();
+    });
+  });
 });

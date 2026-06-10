@@ -54,7 +54,6 @@ import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
-import { BillingDialog } from "./billing-dialog.tsx";
 import { ManagePinnedAgentsDialog } from "./zero-sidebar-dialogs.tsx";
 
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
@@ -639,7 +638,6 @@ export function ZeroSidebar() {
       <CollapsedSidebar />
       <ExpandedSidebar />
       <ManagePinnedAgentsDialogContainer />
-      <BillingDialog />
     </>
   );
 }

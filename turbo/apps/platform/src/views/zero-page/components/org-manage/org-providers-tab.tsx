@@ -21,7 +21,6 @@ import {
   CodexDeviceAuthDialog,
   PersonalCodexDeviceAuthDialog,
 } from "../settings/codex-device-auth-dialog.tsx";
-import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx";
 import { OrgModelPoliciesSection } from "./org-model-policies-section.tsx";
 
 export function OrgProvidersTab() {
@@ -47,7 +46,6 @@ export function OrgProvidersTab() {
       <CodexDeviceAuthDialog />
       {isAdmin && (
         <>
-          <PersonalProviderDialog />
           <PersonalClaudeCodeDeviceAuthDialog />
           <PersonalCodexDeviceAuthDialog />
         </>

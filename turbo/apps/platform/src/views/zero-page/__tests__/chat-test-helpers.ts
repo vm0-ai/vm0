@@ -327,6 +327,7 @@ export function mockChatLifecycle(
     historyMessages?: MockPagedMessage[];
     chatMessages?: MockPagedMessage[];
     threadTitle?: string | null;
+    computerUseHostId?: string | null;
     onQueuedMessageAppend?: (body: {
       content?: string;
       hasTextContent?: boolean;
@@ -650,6 +651,7 @@ export function mockChatLifecycle(
       updatedAt: "2026-03-10T00:00:00Z",
       draftContent: null,
       draftAttachments: null,
+      computerUseHostId: options?.computerUseHostId ?? null,
     });
   });
   context.mocks.api(chatThreadsContract.list, ({ respond }) => {

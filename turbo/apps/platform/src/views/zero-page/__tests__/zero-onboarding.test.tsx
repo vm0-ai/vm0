@@ -114,6 +114,31 @@ describe("zero onboarding", () => {
     });
   });
 
+  it("shows an empty connector search result while choosing tools", async () => {
+    mockOnboardingNeeded();
+
+    detachedSetupPage({ context, path: "/" });
+
+    await completeWorkspaceStep();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
+    });
+
+    await fill(screen.getByPlaceholderText("Find connectors..."), "not-a-tool");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("No connectors match your search."),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("connector-card-github"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("preselects valid URL connectors and ignores invalid ones", async () => {
     mockOnboardingNeeded();
 

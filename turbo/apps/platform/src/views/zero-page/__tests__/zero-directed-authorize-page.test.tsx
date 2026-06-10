@@ -2,12 +2,13 @@ import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-s
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -162,6 +163,33 @@ describe("directed connector authorize page", () => {
       ).toBeInTheDocument();
       expect(screen.getByText("OAuth (Recommended)")).toBeInTheDocument();
       expect(screen.getAllByText("API Key").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("connects a manual-token connector before authorizing the agent", async () => {
+    detachedSetupPage({
+      context,
+      path: `/connectors/axiom/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Axiom to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    click(getButtonByText("Authorize Zero"));
+
+    const axiomDialog = await screen.findByRole("dialog", { name: "Axiom" });
+    await fill(
+      within(axiomDialog).getByPlaceholderText("xaat-..."),
+      "xaat-directed-authorize",
+    );
+    click(getButtonByText("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Axiom authorized")).toBeInTheDocument();
+      expect(screen.getByText("Authorized")).toBeInTheDocument();
     });
   });
 });

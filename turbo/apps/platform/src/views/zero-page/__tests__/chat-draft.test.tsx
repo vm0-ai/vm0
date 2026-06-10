@@ -142,6 +142,42 @@ describe("chat drafts", () => {
     });
   });
 
+  it("restores a saved server draft with attachments on first thread open", async () => {
+    context.mocks.data.userModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    mockThreadDetails();
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
+        id: params.id,
+        title: "Saved draft",
+        agentId: "c0000000-0000-4000-a000-000000000001",
+        latestSessionId: null,
+        activeRunIds: [],
+        draftContent: "Review the saved launch brief",
+        draftAttachments: [
+          {
+            id: "draft-brief",
+            filename: "brief.md",
+            contentType: "text/markdown",
+            size: 64,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/brief.md",
+          },
+        ],
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-server-draft" });
+
+    await waitFor(() => {
+      expect(textarea()).toHaveValue("Review the saved launch brief");
+      expect(screen.getByLabelText("Remove brief.md")).toBeInTheDocument();
+    });
+  });
+
   it("keeps upload drafts scoped to their thread while navigating", async () => {
     const user = userEvent.setup({ delay: null });
     const uploadStarted = context.mocks.deferred<void>();

@@ -27,6 +27,62 @@ function tabByText(text: string): HTMLElement {
 }
 
 describe("/usage page", () => {
+  it("shows a usage load error", async () => {
+    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
+      return respond(500, {
+        error: {
+          message: "Usage aggregation unavailable",
+          code: "SERVICE_UNAVAILABLE",
+        },
+      });
+    });
+
+    detachedSetupPage({ context, path: "/usage" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Usage" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Failed to load usage insights. Please try again later.",
+      );
+    });
+  });
+
+  it("shows empty usage states", async () => {
+    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
+      return respond(200, {
+        buckets: [],
+        schedules: [],
+        scheduleOtherCount: 0,
+        scheduleOtherCredits: 0,
+        chats: [],
+        chatOtherCount: 0,
+        chatOtherCredits: 0,
+        emailCredits: 0,
+        emailTokens: 0,
+        slackCredits: 0,
+        slackTokens: 0,
+        grandTotalCredits: 0,
+        grandTotalTokens: 0,
+      });
+    });
+
+    detachedSetupPage({ context, path: "/usage" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("No schedules used in this period"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("No chats in this period")).toBeInTheDocument();
+    });
+    expect(
+      within(screen.getByRole("region", { name: "Credits totals" })).getByText(
+        "0",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("shows linked usage details and updates totals by date range and group", async () => {
     context.mocks.api(zeroUsageInsightContract.get, ({ query, respond }) => {
       if (query.range === "7d" && query.groupBy === "agent") {

@@ -322,6 +322,30 @@ function usageInsightResponse(): UsageInsightResponse {
 }
 
 describe("network insights page", () => {
+  it("shows an empty daily insights state", async () => {
+    context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
+      return respond(200, {
+        days: [],
+        totalCredits: 0,
+        totalRuns: 0,
+        lastUpdated: null,
+      });
+    });
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Insights & Usage" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Run an agent to see insights here."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Daily breakdown")).not.toBeInTheDocument();
+    expect(screen.queryByText("Time range")).not.toBeInTheDocument();
+  });
+
   it("shows daily network insights and switches to the time range usage view", async () => {
     context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
       return respond(200, insightsResponse());

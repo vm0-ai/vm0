@@ -464,4 +464,31 @@ describe("organization model providers settings", () => {
       );
     });
   });
+
+  it("shows a retry state when workspace Codex reconnect import fails", async () => {
+    mockStaleProviderStory();
+    context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
+      return respond(400, {
+        error: {
+          message: "Codex token format is invalid",
+          code: "CODEX_AUTH_JSON_SHAPE_INVALID",
+        },
+      });
+    });
+    await openProvidersTab();
+
+    const alert = await screen.findByRole("alert");
+    click(within(alert).getByText("Reconnect"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Codex produced a login token format vm0 does not recognize. Update Codex and try again.",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("codex-device-auth-start")).toHaveTextContent(
+        "Reconnect ChatGPT",
+      );
+    });
+  });
 });

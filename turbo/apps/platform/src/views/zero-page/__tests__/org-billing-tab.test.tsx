@@ -592,4 +592,92 @@ describe("organization billing settings", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  it("replaces a scheduled team cancellation with a downgrade to Pro", async () => {
+    let capturedTargetTier: string | null = null;
+    let billingStatus: BillingStatusResponse = {
+      ...activeTeamBillingStatus(),
+      cancelAtPeriodEnd: true,
+      scheduledChange: {
+        type: "cancel",
+        targetTier: "pro-suspend",
+        effectiveDate: "2026-05-01T00:00:00Z",
+      },
+    };
+
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "team-cancel-org",
+      name: "Team Cancel Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus);
+    });
+    context.mocks.api(
+      zeroBillingDowngradeContract.create,
+      ({ body, respond }) => {
+        capturedTargetTier = body.targetTier;
+        billingStatus = {
+          ...billingStatus,
+          cancelAtPeriodEnd: false,
+          scheduledChange: {
+            type: "downgrade",
+            targetTier: "pro",
+            effectiveDate: "2026-05-01T00:00:00Z",
+          },
+        };
+        return respond(200, {
+          success: true,
+          effectiveDate: "2026-05-01T00:00:00Z",
+        });
+      },
+    );
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Restore plan")).toBeInTheDocument();
+      expect(
+        screen.getByText(/has been cancelled and will end on May 1, 2026/),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Compare all plans"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+      expect(screen.getAllByText("Ends on May 1, 2026").length).toBeGreaterThan(
+        0,
+      );
+    });
+
+    click(buttonByText("Downgrade to Pro"));
+
+    const downgradeDialog = await screen.findByRole("dialog", {
+      name: "Downgrade plan",
+    });
+    expect(
+      within(downgradeDialog).getByText("Downgrade to Pro?"),
+    ).toBeInTheDocument();
+    expect(
+      within(downgradeDialog).getByText(
+        /After that, this workspace moves to Pro/u,
+      ),
+    ).toBeInTheDocument();
+
+    click(buttonByText("Downgrade to Pro", downgradeDialog));
+
+    await waitFor(() => {
+      expect(capturedTargetTier).toBe("pro");
+      expect(
+        screen.getByText(
+          "Downgrade scheduled. Your current plan stays active until May 1, 2026.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Downgrades to Pro on May 1, 2026").length,
+      ).toBeGreaterThan(0);
+    });
+  });
 });

@@ -9,22 +9,9 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@vm0/ui/components/ui/dialog";
 import { Input, Switch } from "@vm0/ui";
-import { IconCheck } from "@tabler/icons-react";
 import {
   type BillingTier,
-  apiTierToBillingTier,
-  billingDialogOpen$,
-  billingStatusAsync$,
-  setBillingDialogOpen$,
-  openDowngradeDialog$,
   saveAutoRecharge$,
   autoRechargeConfig$,
   autoRechargeDirty$,
@@ -36,110 +23,8 @@ import {
   setFormThreshold$,
   setFormAmount$,
 } from "../../signals/zero-page/billing.ts";
-import {
-  selectedPlanTier$,
-  setSelectedPlanTier$,
-} from "../../signals/zero-page/billing-dialog-state.ts";
 import { SaveAutoRechargeButton } from "./save-auto-recharge-button.tsx";
-import { CheckoutButton } from "./checkout-button.tsx";
 import { UnsavedBar } from "./components/org-manage/unsaved-bar.tsx";
-
-const PLANS = [
-  {
-    tier: "free" as const,
-    name: "Free",
-    price: "$0",
-    period: "/month",
-    features: ["Existing free credits only", "Community support"],
-  },
-  {
-    tier: "pro" as const,
-    name: "Pro",
-    price: "$20",
-    period: "/month",
-    features: ["20,000 credits/month", "Priority support"],
-  },
-  {
-    tier: "team" as const,
-    name: "Team",
-    price: "$200",
-    period: "/month",
-    features: ["120,000 credits/month", "Priority support"],
-  },
-] as const;
-
-const TIER_ORDER = {
-  free: 0,
-  "pro-suspend": 0,
-  pro: 1,
-  team: 2,
-} as const satisfies Record<BillingTier, number>;
-
-function formatTierLabel(tier: BillingTier): string {
-  if (tier === "pro-suspend") {
-    return "No plan";
-  }
-  return tier.charAt(0).toUpperCase() + tier.slice(1);
-}
-
-function PlanCard({
-  plan,
-  isCurrent,
-  isSelected,
-  onSelect,
-}: {
-  plan: (typeof PLANS)[number];
-  isCurrent: boolean;
-  isSelected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={isSelected}
-      aria-label={plan.name}
-      className={`flex flex-col rounded-lg border p-4 text-left transition-colors ${
-        isSelected
-          ? "border-primary ring-2 ring-primary/20"
-          : "border-border hover:border-muted-foreground/30"
-      }`}
-    >
-      <div className="flex items-center justify-between w-full mb-2">
-        <span className="text-sm font-semibold text-foreground">
-          {plan.name}
-        </span>
-        {isCurrent && (
-          <span
-            aria-current="true"
-            className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full"
-          >
-            Current
-          </span>
-        )}
-      </div>
-      <div className="mb-3">
-        <span className="text-2xl font-light text-foreground">
-          {plan.price}
-        </span>
-        <span className="text-sm text-muted-foreground">{plan.period}</span>
-      </div>
-      <ul className="flex flex-col gap-1.5">
-        {plan.features.map((feature) => {
-          return (
-            <li
-              key={feature}
-              className="flex items-center gap-1.5 text-sm text-muted-foreground"
-            >
-              <IconCheck size={14} className="shrink-0 text-primary" />
-              {feature}
-            </li>
-          );
-        })}
-      </ul>
-    </button>
-  );
-}
 
 const CREDITS_PER_DOLLAR = 1000;
 
@@ -429,72 +314,5 @@ export function AutoRechargeSection({
         />
       </div>
     </div>
-  );
-}
-
-export function BillingDialog() {
-  const pageSignal = useGet(pageSignal$);
-  const open = useGet(billingDialogOpen$);
-  const statusLoadable = useLastLoadable(billingStatusAsync$);
-  const status =
-    statusLoadable.state === "hasData" ? statusLoadable.data : null;
-  const close = useSet(setBillingDialogOpen$);
-  const openDowngrade = useSet(openDowngradeDialog$);
-  const selectedTier = useGet(selectedPlanTier$);
-  const setSelectedTier = useSet(setSelectedPlanTier$);
-
-  const currentTier: BillingTier = apiTierToBillingTier(status?.tier);
-
-  const selectedOrder = TIER_ORDER[selectedTier];
-  const currentOrder = TIER_ORDER[currentTier];
-  const isUpgrade = selectedOrder > currentOrder;
-  const isDowngrade = selectedOrder < currentOrder;
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        return !v && close(false);
-      }}
-    >
-      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[600px] max-h-[calc(100dvh-2rem)] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Choose your plan</DialogTitle>
-          <DialogDescription>
-            {status
-              ? currentTier === "pro-suspend"
-                ? `You do not have an active plan and have ${status.credits.toLocaleString()} credits.`
-                : `You are on the ${formatTierLabel(currentTier)} plan with ${status.credits.toLocaleString()} credits.`
-              : "Select a plan to get started."}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid grid-cols-3 gap-3 mt-2">
-          {PLANS.map((plan) => {
-            return (
-              <PlanCard
-                key={plan.tier}
-                plan={plan}
-                isCurrent={plan.tier === currentTier}
-                isSelected={plan.tier === selectedTier}
-                onSelect={() => {
-                  return setSelectedTier(plan.tier);
-                }}
-              />
-            );
-          })}
-        </div>
-
-        <CheckoutButton
-          selectedTier={selectedTier}
-          isUpgrade={isUpgrade}
-          isDowngrade={isDowngrade}
-          pageSignal={pageSignal}
-          openDowngrade={openDowngrade}
-        />
-
-        {status && <AutoRechargeSection currentTier={currentTier} />}
-      </DialogContent>
-    </Dialog>
   );
 }

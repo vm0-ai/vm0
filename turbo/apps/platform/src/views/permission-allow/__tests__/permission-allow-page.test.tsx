@@ -150,4 +150,73 @@ describe("permission allow page", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/Expires in/u)).not.toBeInTheDocument();
   });
+
+  it("shows the completed state when the requested grant already applies", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000003";
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Audit Bot",
+        sound: null,
+        avatarUrl: null,
+        customSkills: [],
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId,
+          connectorRef: "slack",
+          permission: "admin.analytics:read",
+          action: "allow",
+          expiresAt: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:01:00Z",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=always`,
+      user: {
+        id: "test-user-123",
+        fullName: "Taylor Reviewer",
+        firstName: "Taylor",
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+      expect(
+        screen.queryByText("Hey Taylor, you're updating your permissions"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Expires in/u)).not.toBeInTheDocument();
+  });
+
+  it("shows a clear error for an unknown connector permission URL", async () => {
+    detachedSetupPage({
+      context,
+      path: `/agents/c0000000-0000-4000-a000-000000000404/permissions?ref=not-a-connector&permission=admin.analytics%3Aread&action=allow`,
+      user: {
+        id: "test-user-123",
+        fullName: "Casey Operator",
+        firstName: "Casey",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Unknown connector: not-a-connector"),
+      ).toBeInTheDocument();
+    });
+  });
 });
