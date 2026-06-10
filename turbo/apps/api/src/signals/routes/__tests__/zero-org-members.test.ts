@@ -11,7 +11,6 @@ import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { http, HttpResponse } from "msw";
 
-import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -314,53 +313,6 @@ function mockClerkMembershipRequestsStatus(
 }
 
 describe("GET /api/zero/org/members", () => {
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroOrgMembersContract);
-
-    const response = await accept(client.members({ headers: {} }), [401]);
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-
-    const client = setupApp({ context })(zeroOrgMembersContract);
-
-    const response = await accept(
-      client.members({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("rejects zero tokens without billing read capability", async () => {
-    const token = zeroToken({
-      userId: uniqueId("user"),
-      orgId: uniqueId("org"),
-    });
-    const client = setupApp({ context })(zeroOrgMembersContract);
-
-    const response = await accept(
-      client.members({ headers: { authorization: `Bearer ${token}` } }),
-      [403],
-    );
-
-    expect(response.body.error).toStrictEqual({
-      message: "Missing required capability: billing:read",
-      code: "FORBIDDEN",
-    });
-    expect(
-      context.mocks.clerk.organizations.getOrganization,
-    ).not.toHaveBeenCalled();
-    expect(
-      context.mocks.clerk.organizations.getOrganizationMembershipList,
-    ).not.toHaveBeenCalled();
-  });
-
   it("accepts zero tokens with billing read capability", async () => {
     const orgId = `org_${randomUUID()}`;
     const adminUserId = `user_${randomUUID()}`;
@@ -601,83 +553,6 @@ describe("GET /api/zero/org/members", () => {
 });
 
 describe("PATCH /api/zero/org/members", () => {
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(zeroOrgMembersContract);
-
-    const response = await accept(
-      client.updateRole({
-        headers: {},
-        body: { email: "member@example.com", role: "admin" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(uniqueId("user"), null);
-    const client = setupApp({ context })(zeroOrgMembersContract);
-
-    const response = await accept(
-      client.updateRole({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { email: "member@example.com", role: "admin" },
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("rejects zero tokens", async () => {
-    const token = zeroToken({
-      userId: uniqueId("user"),
-      orgId: uniqueId("org"),
-    });
-    const client = setupApp({ context })(zeroOrgMembersContract);
-
-    const response = await accept(
-      client.updateRole({
-        headers: { authorization: `Bearer ${token}` },
-        body: { email: "member@example.com", role: "admin" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error).toStrictEqual({
-      message: "This endpoint is not available for sandbox tokens",
-      code: "FORBIDDEN",
-    });
-    expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
-    expect(
-      context.mocks.clerk.organizations.updateOrganizationMembership,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 for an invalid body without updating Clerk", async () => {
-    const orgId = uniqueId("org");
-    const userId = uniqueId("user");
-    mocks.clerk.session(userId, orgId, "org:admin");
-    const app = createApp({ signal: context.signal });
-
-    const response = await app.request("/api/zero/org/members", {
-      method: "PATCH",
-      headers: {
-        authorization: "Bearer clerk-session",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ email: "not-an-email", role: "admin" }),
-    });
-    const body = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(body).toMatchObject({ error: { code: "BAD_REQUEST" } });
-    expect(
-      context.mocks.clerk.organizations.updateOrganizationMembership,
-    ).not.toHaveBeenCalled();
-  });
-
   it("updates another member role for an admin caller", async () => {
     const orgId = uniqueId("org");
     const adminUserId = uniqueId("user-admin");
@@ -707,29 +582,6 @@ describe("PATCH /api/zero/org/members", () => {
     });
     expect(
       context.mocks.clerk.organizations.getOrganizationMembershipList,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("returns 403 for non-admin callers without updating Clerk", async () => {
-    const orgId = uniqueId("org");
-    const userId = uniqueId("user");
-    mocks.clerk.session(userId, orgId, "org:member");
-    const client = setupApp({ context })(zeroOrgMembersContract);
-
-    const response = await accept(
-      client.updateRole({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { email: "member@example.com", role: "admin" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Access denied", code: "FORBIDDEN" },
-    });
-    expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
-    expect(
-      context.mocks.clerk.organizations.updateOrganizationMembership,
     ).not.toHaveBeenCalled();
   });
 
@@ -830,110 +682,6 @@ describe("PATCH /api/zero/org/members", () => {
 });
 
 describe("DELETE /api/zero/org/members", () => {
-  it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroOrgMembersContract);
-
-    const response = await accept(
-      client.removeMember({
-        headers: {},
-        body: { email: "member@example.com" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(uniqueId("user"), null);
-    const client = setupApp({ context })(zeroOrgMembersContract);
-
-    const response = await accept(
-      client.removeMember({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { email: "member@example.com" },
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("rejects zero tokens", async () => {
-    const token = zeroToken({
-      userId: uniqueId("user"),
-      orgId: uniqueId("org"),
-    });
-    const client = setupApp({ context })(zeroOrgMembersContract);
-
-    const response = await accept(
-      client.removeMember({
-        headers: { authorization: `Bearer ${token}` },
-        body: { email: "member@example.com" },
-      }),
-      [403],
-    );
-
-    expect(response.body.error).toStrictEqual({
-      message: "This endpoint is not available for sandbox tokens",
-      code: "FORBIDDEN",
-    });
-    expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
-    expect(
-      context.mocks.clerk.organizations.deleteOrganizationMembership,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 for an invalid body", async () => {
-    const userId = uniqueId("user");
-    const orgId = uniqueId("org");
-    mocks.clerk.session(userId, orgId, "org:admin");
-    const app = createApp({ signal: context.signal });
-
-    const response = await app.request("/api/zero/org/members", {
-      method: "DELETE",
-      headers: {
-        authorization: "Bearer clerk-session",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ email: "invalid-email" }),
-    });
-    const body = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(body).toMatchObject({ error: { code: "BAD_REQUEST" } });
-    expect(
-      context.mocks.clerk.organizations.deleteOrganizationMembership,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("returns 403 for non-admin members", async () => {
-    const userId = uniqueId("user");
-    const orgId = uniqueId("org");
-    mocks.clerk.session(userId, orgId, "org:member");
-    const client = setupApp({ context })(zeroOrgMembersContract);
-
-    const response = await accept(
-      client.removeMember({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { email: "member@example.com" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Access denied", code: "FORBIDDEN" },
-    });
-    expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
-    expect(
-      context.mocks.clerk.organizations.deleteOrganizationMembership,
-    ).not.toHaveBeenCalled();
-  });
-
   it("returns 404 when the target email does not resolve to a Clerk user", async () => {
     const userId = uniqueId("user");
     const orgId = uniqueId("org");

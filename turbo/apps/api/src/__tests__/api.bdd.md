@@ -1030,3 +1030,21 @@ amount:null}`) and rejects unauthenticated/no-org reads 401; PUT rejects
   `billing.service.ts` statement (caught and corrected via the coverage gate).
 - Coverage verified (source-only): `zero-billing-auto-recharge.ts` (22/8) and
   `billing.service.ts` (28/31) unchanged vs `main`. No regressions.
+
+### Round 43 — ORG MEMBERS REJECTIONS (CHAIN-ORG-MEMBERS-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `orgMembers` (members/updateRole/removeMember)
+  client.
+- Added `zero-org-members-rejections.bdd.test.ts`: list rejects unauthenticated
+  401, no-org 401, and a zero token without billing:read 403; updateRole and
+  removeMember each reject unauthenticated 401, no-org 401, a sandbox token 403,
+  an invalid email 400, and a non-admin 403 ("Access denied"). All fire before
+  any Clerk membership work.
+- Reduced `zero-org-members.test.ts` from 26 to 13 cases, removing the 13
+  reachable rejections across the GET / PATCH / DELETE blocks (and the orphaned
+  raw-request helper). The kept cases list real members and update/remove a
+  resolved member, reading Clerk membership + user profiles
+  (GAP-CLERK-MEMBERSHIP).
+- Coverage verified (source-only): `zero-org-members.ts` (25/9) unchanged vs
+  `main`. No regressions. This completes the ORG family (list, invite,
+  membership-requests, logo, team, delete, get/update/leave, members).

@@ -47,6 +47,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-schedules";
 import {
   zeroOrgInviteContract,
+  zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
@@ -199,6 +200,10 @@ export function createBddApi(context: TestContext) {
     membershipRequests: setupApp({ context })(
       zeroOrgMembershipRequestsContract,
     ),
+    /** ts-rest client for `/api/zero/org/members` (list/update/remove). The
+     * Clerk-membership-driven cases need Clerk mocks; the auth/role/validation
+     * rejections are reachable directly. */
+    orgMembers: setupApp({ context })(zeroOrgMembersContract),
     /** ts-rest client for `/api/zero/billing/redeem-code` (consume a code). */
     billingRedeemCode: setupApp({ context })(zeroBillingRedeemCodeContract),
     /** ts-rest client for `/api/zero/billing/portal` (open the Stripe portal).
