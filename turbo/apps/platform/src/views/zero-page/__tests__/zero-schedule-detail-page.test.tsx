@@ -124,7 +124,7 @@ function mockScheduleDetailStory(): void {
 }
 
 describe("zero schedule detail page", () => {
-  it("updates schedule settings and filters run history", async () => {
+  it("updates schedule settings", async () => {
     mockScheduleDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
@@ -151,6 +151,18 @@ describe("zero schedule detail page", () => {
       expect(screen.getByText("Schedule updated")).toBeInTheDocument();
     });
     expect(screen.getByDisplayValue(/Team morning brief/u)).toBeInTheDocument();
+  });
+
+  it("filters schedule run history", async () => {
+    mockScheduleDetailStory();
+
+    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Morning brief" }),
+      ).toBeInTheDocument();
+    });
 
     click(tabByText("Run History"));
 

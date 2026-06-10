@@ -89,6 +89,22 @@ function claudeOpusApiKeyPolicy(): OrgModelPolicy {
   };
 }
 
+function missingMoonshotPolicy(): OrgModelPolicy {
+  return {
+    id: "00000000-0000-4000-a000-000000000213",
+    model: "kimi-k2.6",
+    modelLabel: "Kimi K2.6",
+    isDefault: false,
+    defaultProviderType: "moonshot-api-key",
+    credentialScope: "org",
+    modelProviderId: "00000000-0000-4000-a000-000000009999",
+    routeStatus: "missing_provider",
+    routeStatusReason: "Workspace Moonshot API key was removed",
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-01T00:00:00Z",
+  };
+}
+
 function mockStaleProviderStory(): void {
   mockAdminOrg();
   context.mocks.data.orgModelProviders([staleCodexProvider()]);
@@ -163,7 +179,7 @@ function menuItemByText(text: string): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
-  it("adds a workspace API key model route with validation", async () => {
+  it("shows validation for a workspace API key model route", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     await openProvidersTab();
@@ -172,6 +188,15 @@ describe("organization model providers settings", () => {
     click(screen.getByRole("radio", { name: /API key/u }));
     click(buttonByText("Add model"));
     expect(screen.getByText("API key is required")).toBeInTheDocument();
+  });
+
+  it("adds a workspace API key model route", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    await openProvidersTab();
+
+    click(screen.getByText("Add model"));
+    click(screen.getByRole("radio", { name: /API key/u }));
     await fill(
       screen.getByPlaceholderText("Enter your API key"),
       "sk-ant-test",
@@ -266,6 +291,46 @@ describe("organization model providers settings", () => {
     expect(
       within(oauthRow).getByText("Claude Code (OAuth token)"),
     ).toBeInTheDocument();
+  });
+
+  it("changes the workspace default model and surfaces missing provider routes", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([anthropicApiKeyProvider()]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000211",
+        "deepseek-v4-pro",
+        "DeepSeek V4 Pro",
+        true,
+      ),
+      claudeOpusApiKeyPolicy(),
+      missingMoonshotPolicy(),
+    ]);
+    await openProvidersTab();
+
+    const missingRow = await screen.findByTestId(
+      "org-model-policy-row-kimi-k2.6",
+    );
+    expect(
+      within(missingRow).getByText("Missing provider"),
+    ).toBeInTheDocument();
+    expect(
+      within(missingRow).getByText("Workspace Moonshot API key was removed"),
+    ).toBeInTheDocument();
+
+    const defaultRow = screen.getByTestId("default-model-row");
+    expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
+      "DeepSeek V4 Pro",
+    );
+
+    click(within(defaultRow).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: "Claude Opus 4.7" }));
+
+    await waitFor(() => {
+      expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
+        "Claude Opus 4.7",
+      );
+    });
   });
 
   it("opens device login from a stale workspace provider banner", async () => {

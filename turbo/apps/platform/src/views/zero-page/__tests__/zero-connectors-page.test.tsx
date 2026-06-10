@@ -303,7 +303,49 @@ describe("connectors page", () => {
     });
   });
 
-  it("opens connector consent surfaces", async () => {
+  it("opens manual token connector setup", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Axiom")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Connect Axiom"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByText("Save")).toBeInTheDocument();
+    });
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows Google connector approval guidance", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Gmail")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Connect Gmail"));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Google will show a security warning/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
+    });
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("opens OAuth scope review changes", async () => {
     mockConnectors([{ type: "github", oauthScopes: [] }]);
     context.mocks.api(
       zeroConnectorScopeDiffContract.getScopeDiff,
@@ -320,25 +362,8 @@ describe("connectors page", () => {
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Connect Axiom")).toBeInTheDocument();
-      expect(screen.getByLabelText("Connect Gmail")).toBeInTheDocument();
+      expect(screen.getByText("Review")).toBeInTheDocument();
     });
-
-    click(screen.getByLabelText("Connect Axiom"));
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-      expect(screen.getByText("Save")).toBeInTheDocument();
-    });
-    await userEvent.keyboard("{Escape}");
-
-    click(screen.getByLabelText("Connect Gmail"));
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Google will show a security warning/),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
-    });
-    await userEvent.keyboard("{Escape}");
 
     click(screen.getByText("Review"));
     await waitFor(() => {
@@ -346,9 +371,12 @@ describe("connectors page", () => {
       expect(screen.getByText("project")).toBeInTheDocument();
     });
     await userEvent.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByText("repo")).not.toBeInTheDocument();
+    });
   });
 
-  it("completes device-auth and manual token connector grants", async () => {
+  it("completes a device-auth connector grant", async () => {
     mockConnectors([]);
 
     context.mocks.browser.open(createMockAuthWindow());
@@ -375,6 +403,19 @@ describe("connectors page", () => {
       ).toBeInTheDocument();
     });
     await userEvent.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("connects and disconnects a manual token connector", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect Axiom")).toBeInTheDocument();
+    });
 
     click(screen.getByLabelText("Connect Axiom"));
 
