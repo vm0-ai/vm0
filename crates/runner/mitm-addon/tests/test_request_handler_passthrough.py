@@ -284,6 +284,59 @@ async def test_valid_tls_admission_blocks_when_request_client_ip_is_missing(
     _assert_stale_tls_admission_block(flow, reason="client_ip_missing")
 
 
+async def test_valid_tls_admission_blocks_when_request_client_ip_changes(
+    tmp_path,
+    real_flow,
+    make_tls_data,
+    mitm_ctx,
+):
+    tls_client_ip = "10.200.0.5"
+    request_client_ip = "10.200.0.6"
+    api_entry = {
+        "base": "https://api.github.com",
+        "auth": {"headers": {}},
+        "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+    }
+    network_policy = {
+        "allow": ["full-access"],
+        "deny": [],
+        "ask": [],
+        "unknownPolicy": "allow",
+    }
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip=tls_client_ip,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry=api_entry,
+            network_policy=network_policy,
+        ),
+    )
+    flow, tls_data = _bind_tls_admission_flow(
+        real_flow,
+        make_tls_data,
+        client_ip=tls_client_ip,
+    )
+    flow.client_conn.peername = (request_client_ip, 12345)
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.tls_clienthello(tls_data)
+        _write_registry(
+            tmp_path,
+            client_ip=request_client_ip,
+            vm_info=_single_firewall_vm(
+                tmp_path,
+                api_entry=api_entry,
+                network_policy=network_policy,
+            ),
+        )
+
+        await mitm_addon.request(flow)
+
+    assert tls_data.ignore_connection is False
+    _assert_stale_tls_admission_block(flow, reason="client_ip_mismatch")
+
+
 async def test_invalid_tls_admission_blocks_when_registry_entry_disappears(
     tmp_path,
     real_flow,
