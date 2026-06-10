@@ -1124,3 +1124,40 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 26 — AGENT-01 composes (POST) BDD
+
+Migrates `agent-composes-create.test.ts` (11 legacy `it()`s,
+471 lines). The 11 cases split into 4 BDD test groups: (a)
+auth + create + update chain (401 → 201 → 200 update with
+new versionId), (b) content normalization + version reuse
+chain (mixed-case normalized + stripped fields + existing
+version reused), (c) org isolation + body validation chain
+(same name in different orgs → 400 empty agents → 400
+multiple agents → 400 invalid name → 400 array agents via
+raw HTTP → 400 unsupported framework via raw HTTP), (d)
+framework acceptance + sandbox token chain (claude-code +
+codex + sandbox token).
+
+The legacy "stored content" assertions read the persisted
+content via direct DB SELECTs. The BDD version reads back
+through the public `composesMainContract.getByName` GET,
+which returns the head version's content with the same
+shape (the schema strips unknown fields on the response
+too, so the BDD read-back is faithful).
+
+Notable: the 400 cases for `agents: [...]` (array shape) and
+the unsupported `framework` enum use the raw public app
+because the ts-rest client validates these client-side and
+never reaches the route. The strip-fields `as` cast on the
+read-back payload is a BDD-API mapping: the response schema
+drops the stripped fields at the type level, so the BDD
+assertion is cast to `Record<string, unknown>` to access
+the legacy fields (`skills`, `image`, `working_dir`, `apps`)
+that are verified to be `undefined`.
+
+Net test count: 11 legacy `it()`s → 4 BDD `it()`s (64%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
