@@ -66,11 +66,6 @@ interface TelemetryPayloadSummary {
 
 type TelemetryBody = z.infer<typeof webhookTelemetryContract.send.body>;
 
-interface TelemetryIngestResult {
-  readonly telemetryAccepted: boolean;
-  readonly axiomDatasetFamilies: readonly TelemetryDatasetFamily[];
-}
-
 function isForeignKeyViolation(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -160,17 +155,16 @@ function ingestTelemetryRows(args: {
   readonly dataset: string;
   readonly family: TelemetryDatasetFamily;
   readonly events: readonly Record<string, unknown>[];
-  readonly summary: TelemetryPayloadSummary;
-}): boolean {
+  readonly getSummary: () => TelemetryPayloadSummary;
+}): void {
   const buffered = ingestToAxiom(args.dataset, args.events);
   if (!buffered) {
     L.warn("Agent telemetry Axiom ingest skipped", {
-      ...args.summary,
+      ...args.getSummary(),
       axiomDatasetFamily: args.family,
       axiomFailureCategory: "ingest_skipped",
     });
   }
-  return buffered;
 }
 
 function systemTelemetryEvents(
@@ -247,25 +241,19 @@ function sandboxOperationTelemetryEvents(
 function ingestTelemetryPayload(args: {
   readonly body: TelemetryBody;
   readonly userId: string;
-  readonly summary: TelemetryPayloadSummary;
-}): TelemetryIngestResult {
-  const axiomDatasetFamilies: TelemetryDatasetFamily[] = [];
-  let telemetryAccepted = false;
+  readonly getSummary: () => TelemetryPayloadSummary;
+}): void {
   const recordIngest = (
     family: TelemetryDatasetFamily,
     dataset: string,
     events: readonly Record<string, unknown>[],
   ): void => {
-    const buffered = ingestTelemetryRows({
+    ingestTelemetryRows({
       dataset,
       family,
       events,
-      summary: args.summary,
+      getSummary: args.getSummary,
     });
-    telemetryAccepted = buffered || telemetryAccepted;
-    if (buffered) {
-      axiomDatasetFamilies.push(family);
-    }
   };
 
   if (args.body.systemLog) {
@@ -296,8 +284,6 @@ function ingestTelemetryPayload(args: {
       sandboxOperationTelemetryEvents(args.body),
     );
   }
-
-  return { telemetryAccepted, axiomDatasetFamilies };
 }
 
 const heartbeatBody$ = bodyResultOf(webhookHeartbeatContract.send);
@@ -519,17 +505,16 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     return notFound("Agent run not found");
   }
 
-  const telemetrySummary = summarizeTelemetryPayload(body);
-  const { telemetryAccepted, axiomDatasetFamilies } = ingestTelemetryPayload({
+  let telemetrySummary: TelemetryPayloadSummary | undefined;
+  ingestTelemetryPayload({
     body,
     userId: auth.userId,
-    summary: telemetrySummary,
-  });
-
-  L.debug("Agent telemetry ingested", {
-    ...telemetrySummary,
-    axiomDatasetFamilies,
-    telemetryAccepted,
+    getSummary: () => {
+      if (!telemetrySummary) {
+        telemetrySummary = summarizeTelemetryPayload(body);
+      }
+      return telemetrySummary;
+    },
   });
 
   return {

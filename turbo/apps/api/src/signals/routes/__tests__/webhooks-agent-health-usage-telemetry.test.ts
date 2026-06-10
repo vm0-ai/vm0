@@ -1562,16 +1562,24 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     ]);
     expect(context.mocks.axiom.flush).not.toHaveBeenCalled();
     expect(context.mocks.axiom.sdkIngest).not.toHaveBeenCalled();
+    expect(
+      context.mocks.axiomLogging.debug.mock.calls.some((call) => {
+        return call[0] === "Agent telemetry ingested";
+      }),
+    ).toBeFalsy();
   });
 
-  it("emits safe telemetry observability metadata", async () => {
+  it("emits safe telemetry observability metadata when Axiom ingest is skipped", async () => {
     const fixture = await track(seedFixture());
     const client = setupApp({ context })(webhookTelemetryContract);
     const rawSystemLog = "secret system log";
     const rawNetworkUrl = "https://api.example.com/secret-token";
     const rawSandboxError = "secret sandbox failure";
+    context.mocks.axiom.ingest.mockImplementation((dataset) => {
+      return dataset !== "sandbox-op-log";
+    });
 
-    await accept(
+    const response = await accept(
       client.send({
         body: {
           runId: fixture.runId,
@@ -1609,8 +1617,13 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       [200],
     );
 
-    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
-      "Agent telemetry ingested",
+    expect(response.body).toStrictEqual({
+      success: true,
+      id: fixture.runId,
+    });
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledTimes(1);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Agent telemetry Axiom ingest skipped",
       expect.objectContaining({
         context: "webhooks:agent",
         runId: fixture.runId,
@@ -1624,24 +1637,50 @@ describe("POST /api/webhooks/agent/telemetry", () => {
         sandboxOperationErrorCount: 1,
         approxPayloadBytes: expect.any(Number),
         approxPayloadSizeBucket: expect.any(String),
-        axiomDatasetFamilies: [
-          "system",
-          "metrics",
-          "network",
-          "sandbox_operations",
-        ],
-        telemetryAccepted: true,
+        axiomDatasetFamily: "sandbox_operations",
+        axiomFailureCategory: "ingest_skipped",
       }),
     );
-    const successLog = context.mocks.axiomLogging.debug.mock.calls.find(
-      (call) => {
+    expect(
+      context.mocks.axiomLogging.debug.mock.calls.some((call) => {
         return call[0] === "Agent telemetry ingested";
+      }),
+    ).toBeFalsy();
+    const skippedLog = context.mocks.axiomLogging.warn.mock.calls.find(
+      (call) => {
+        return call[0] === "Agent telemetry Axiom ingest skipped";
       },
     );
-    const serializedLogFields = JSON.stringify(successLog?.[1]);
+    const serializedLogFields = JSON.stringify(skippedLog?.[1]);
     expect(serializedLogFields).not.toContain(rawSystemLog);
     expect(serializedLogFields).not.toContain(rawNetworkUrl);
     expect(serializedLogFields).not.toContain(rawSandboxError);
+  });
+
+  it("does not emit per-request success logs for successful ingestion", async () => {
+    const fixture = await track(seedFixture());
+    const client = setupApp({ context })(webhookTelemetryContract);
+
+    await accept(
+      client.send({
+        body: { runId: fixture.runId, systemLog: "First batch" },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(context.mocks.axiom.ingest).toHaveBeenCalledWith(
+      "sandbox-telemetry-system",
+      [
+        expect.objectContaining({
+          runId: fixture.runId,
+          userId: fixture.userId,
+          log: "First batch",
+        }),
+      ],
+    );
+    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
   });
 
   it("accepts multiple telemetry uploads for the same run", async () => {
