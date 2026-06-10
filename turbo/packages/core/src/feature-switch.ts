@@ -122,7 +122,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Meta Ads Manager connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.StripeConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -153,7 +153,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GoogleSearchConsoleConnector]: {
     maintainer: "linghan@vm0.ai",
     description: "Enable the Google Search Console connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -284,6 +284,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Show the Template picker in the Zero chat composer for per-message generation template selection.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.VideoTemplatePicker]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Show the Video style picker tab in the Zero chat composer for AI video generation with curated style presets.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

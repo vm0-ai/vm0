@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.22](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.21...guest-download-v0.20.22) (2026-06-10)
+
+
+### Refactoring
+
+* type guest-download entry policies ([#17063](https://github.com/vm0-ai/vm0/issues/17063)) ([50c4fac](https://github.com/vm0-ai/vm0/commit/50c4fac66651afab9ae63b92cc814cc3a64419dc))
+
 ## [0.20.21](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.20...guest-download-v0.20.21) (2026-06-09)
 
 

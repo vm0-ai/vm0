@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.324.0](https://github.com/vm0-ai/vm0/compare/core-v8.323.0...core-v8.324.0) (2026-06-10)
+
+
+### Features
+
+* add video style template picker to chat composer ([#17027](https://github.com/vm0-ai/vm0/issues/17027)) ([c8a51ba](https://github.com/vm0-ai/vm0/commit/c8a51baa53b4505b6f33dee2db78b1cad9e9e413))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.80.0
+    * @vm0/connectors bumped to 1.62.0
+
 ## [8.323.0](https://github.com/vm0-ai/vm0/compare/core-v8.322.0...core-v8.323.0) (2026-06-10)
 
 

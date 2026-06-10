@@ -351,6 +351,7 @@ interface CreateAgentRunArgs {
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
   readonly includeZeroTokenSecret?: boolean;
+  readonly zeroTokenComputerUseHostId?: string;
   readonly extraEnvironment?: Record<string, string>;
   // When set, system + custom skill volumes are built and prepended in
   // prepareRunContext using the run's resolved (model-provider) framework.
@@ -3248,6 +3249,7 @@ function buildRunnerJobPayload(
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
+    readonly zeroTokenComputerUseHostId: string | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
@@ -3277,6 +3279,9 @@ function buildRunnerJobPayload(
               args.run.id,
               args.orgId,
               featureSwitchOverrides,
+              args.zeroTokenComputerUseHostId
+                ? { computerUseHostId: args.zeroTokenComputerUseHostId }
+                : undefined,
             ),
           )
         : args.body;
@@ -3356,6 +3361,7 @@ function dispatchRun(
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
+    readonly zeroTokenComputerUseHostId: string | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
@@ -3428,6 +3434,7 @@ function enqueueRunForConcurrency(
     readonly apiStartTime: number;
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
+    readonly zeroTokenComputerUseHostId: string | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
@@ -3929,6 +3936,7 @@ function completeQueuedRun(input: {
             apiStartTime: input.args.apiStartTime,
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
+            zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
             extraEnvironment: input.args.extraEnvironment,
             userTimezone: input.context.userTimezone,
             featureSwitchContext: input.context.featureSwitchContext,
@@ -3974,6 +3982,7 @@ function completePendingRun(input: {
             apiStartTime: input.args.apiStartTime,
             additionalVolumes: input.context.additionalVolumes,
             includeZeroTokenSecret: input.args.includeZeroTokenSecret,
+            zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
             extraEnvironment: input.args.extraEnvironment,
             userTimezone: input.context.userTimezone,
             featureSwitchContext: input.context.featureSwitchContext,

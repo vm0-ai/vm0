@@ -3130,6 +3130,13 @@
       "when": 1781078248175,
       "tag": "0446_stiff_pixie",
       "breakpoints": true
+    },
+    {
+      "idx": 447,
+      "version": "7",
+      "when": 1781082969101,
+      "tag": "0447_smart_thunderbolt_ross",
+      "breakpoints": true
     }
   ]
 }

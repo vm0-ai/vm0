@@ -394,6 +394,7 @@ const onboardingContinueWeb$ = command(
               prompt,
               modelSelection,
               generationTemplate: undefined,
+              computerUseHostId: null,
             },
             rootSignal,
           );

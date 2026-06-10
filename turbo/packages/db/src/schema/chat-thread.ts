@@ -10,6 +10,7 @@ import {
 import { sql } from "drizzle-orm";
 import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "./agent-compose";
+import { computerUseHosts } from "./computer-use-host";
 
 /**
  * Chat Threads table
@@ -73,6 +74,12 @@ export const chatThreads = pgTable(
     }),
     /** Per-thread selected model pin. Provider routing is resolved per run. */
     selectedModel: varchar("selected_model", { length: 255 }),
+    computerUseHostId: uuid("computer_use_host_id").references(
+      () => {
+        return computerUseHosts.id;
+      },
+      { onDelete: "set null" },
+    ),
     /**
      * Timestamp at which the user pinned this thread to the top of the sidebar.
      * NULL means unpinned. Pinned threads sort above unpinned, both groups

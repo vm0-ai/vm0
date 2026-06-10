@@ -538,6 +538,8 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly apiToClaimRequestMs: number | undefined;
   readonly apiToClaimMs: number | undefined;
   readonly claimRequestToRunningMs: number;
+  readonly jobDiscoveredToClaimRequestMs: number | undefined;
+  readonly localAdmissionToClaimRequestMs: number | undefined;
 }): void {
   waitUntil(
     publishRunChangedForUserSafely(args.userId, args.runId, {
@@ -560,6 +562,8 @@ async function recordClaimTimingMetrics(args: {
   readonly apiToClaimRequestMs: number | undefined;
   readonly apiToClaimMs: number | undefined;
   readonly claimRequestToRunningMs: number;
+  readonly jobDiscoveredToClaimRequestMs: number | undefined;
+  readonly localAdmissionToClaimRequestMs: number | undefined;
 }): Promise<void> {
   await Promise.resolve();
   const dimensions = {
@@ -567,32 +571,53 @@ async function recordClaimTimingMetrics(args: {
     profile: args.profile,
     auth_type: args.authType,
   };
-  if (args.apiToClaimRequestMs !== undefined) {
-    recordSandboxOperation({
-      sandboxType: "runner",
-      actionType: "api_to_claim_request",
-      durationMs: args.apiToClaimRequestMs,
-      success: true,
-      runId: args.runId,
-      dimensions,
-    });
-  }
-  if (args.apiToClaimMs !== undefined) {
-    recordSandboxOperation({
-      sandboxType: "runner",
-      actionType: "api_to_claim",
-      durationMs: args.apiToClaimMs,
-      success: true,
-      runId: args.runId,
-      dimensions,
-    });
+  recordClaimTimingOperation(
+    args.runId,
+    "api_to_claim_request",
+    args.apiToClaimRequestMs,
+    dimensions,
+  );
+  recordClaimTimingOperation(
+    args.runId,
+    "api_to_claim",
+    args.apiToClaimMs,
+    dimensions,
+  );
+  recordClaimTimingOperation(
+    args.runId,
+    "claim_request_to_running",
+    args.claimRequestToRunningMs,
+    dimensions,
+  );
+  recordClaimTimingOperation(
+    args.runId,
+    "job_discovered_to_claim_request",
+    args.jobDiscoveredToClaimRequestMs,
+    dimensions,
+  );
+  recordClaimTimingOperation(
+    args.runId,
+    "local_admission_to_claim_request",
+    args.localAdmissionToClaimRequestMs,
+    dimensions,
+  );
+}
+
+function recordClaimTimingOperation(
+  runId: string,
+  actionType: string,
+  durationMs: number | undefined,
+  dimensions: Record<string, string>,
+): void {
+  if (durationMs === undefined) {
+    return;
   }
   recordSandboxOperation({
     sandboxType: "runner",
-    actionType: "claim_request_to_running",
-    durationMs: args.claimRequestToRunningMs,
+    actionType,
+    durationMs,
     success: true,
-    runId: args.runId,
+    runId,
     dimensions,
   });
 }
@@ -749,6 +774,10 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       0,
       claimResult.claimedAt.getTime() - claimRequestStartedAtMs,
     ),
+    jobDiscoveredToClaimRequestMs:
+      body.data.telemetry?.jobDiscoveredToClaimRequestMs,
+    localAdmissionToClaimRequestMs:
+      body.data.telemetry?.localAdmissionToClaimRequestMs,
   });
 
   return {

@@ -444,6 +444,8 @@ export interface ChatThreadSignals {
     Promise<void>,
     [ModelProviderSelection | null, AbortSignal]
   >;
+  computerUseHostId$: Computed<Promise<string | null>>;
+  setComputerUseHostId$: Command<void, [string | null]>;
   sendMessage$: Command<
     Promise<void>,
     [
@@ -455,7 +457,7 @@ export interface ChatThreadSignals {
   >;
   queueMessage$: Command<
     Promise<void>,
-    [string, GenerationTemplateRequest | undefined, AbortSignal]
+    [string, GenerationTemplateRequest | undefined, string | null, AbortSignal]
   >;
   recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
@@ -595,6 +597,38 @@ function createModelSelection(
   return {
     modelSelection$,
     setModelSelection$,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: composer Computer Use host selection
+// ---------------------------------------------------------------------------
+
+function createComputerUseHostSelection(
+  threadData$: Computed<Promise<ChatThread | null>>,
+) {
+  const internalUserOverride$ = state<
+    { kind: "unset" } | { kind: "set"; value: string | null }
+  >({ kind: "unset" });
+
+  const computerUseHostId$ = computed(async (get): Promise<string | null> => {
+    const user = get(internalUserOverride$);
+    if (user.kind === "set") {
+      return user.value;
+    }
+    const thread = await get(threadData$);
+    return thread?.computerUseHostId ?? null;
+  });
+
+  const setComputerUseHostId$ = command(
+    ({ set }, computerUseHostId: string | null) => {
+      set(internalUserOverride$, { kind: "set", value: computerUseHostId });
+    },
+  );
+
+  return {
+    computerUseHostId$,
+    setComputerUseHostId$,
   };
 }
 
@@ -1663,6 +1697,7 @@ interface SendMessageOptions {
   readonly revokesMessageId?: string;
   readonly includeDraftAttachments?: boolean;
   readonly generationTemplate?: GenerationTemplateRequest;
+  readonly computerUseHostId?: string | null;
 }
 
 interface PreparedSendMessageResult {
@@ -1832,6 +1867,9 @@ function createSendMessage(deps: SendMessageDeps) {
               clientMessageId,
               modelSelection,
               generationTemplate: options?.generationTemplate,
+              ...(options && "computerUseHostId" in options
+                ? { computerUseHostId: options.computerUseHostId ?? null }
+                : {}),
               attachFiles: result.attachFiles,
               ...sendMessageRevocationPatch(options),
             },
@@ -1891,6 +1929,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       { get, set },
       prompt: string,
       generationTemplate: GenerationTemplateRequest | undefined,
+      computerUseHostId: string | null,
       signal: AbortSignal,
     ) => {
       L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
@@ -1957,6 +1996,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
             hasTextContent: result.hasTextContent,
             modelSelection,
             generationTemplate,
+            computerUseHostId,
           },
           signal,
         ),
@@ -2206,6 +2246,8 @@ export function createChatThreadSignals(
     threadData$,
     dataSource,
   );
+  const { computerUseHostId$, setComputerUseHostId$ } =
+    createComputerUseHostSelection(threadData$);
   const { recordScrollHeightForPrepend$, ...scrollSignals } =
     createScrollSignals(threadId);
   const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
@@ -2281,6 +2323,8 @@ export function createChatThreadSignals(
     threadData$,
     modelSelection$,
     setModelSelection$,
+    computerUseHostId$,
+    setComputerUseHostId$,
     ...messageCommands,
     cancelRun$,
     ...scrollSignals,

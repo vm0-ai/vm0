@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.421.0](https://github.com/vm0-ai/vm0/compare/web-v12.420.2...web-v12.421.0) (2026-06-10)
+
+
+### Features
+
+* add hosted site content access ([#17021](https://github.com/vm0-ai/vm0/issues/17021)) ([05d6cc1](https://github.com/vm0-ai/vm0/commit/05d6cc19428d593167196ff6cef767fe2aca72d2))
+* show desktop auth success after completion ([#17092](https://github.com/vm0-ai/vm0/issues/17092)) ([dae5585](https://github.com/vm0-ai/vm0/commit/dae5585e94d6fa49535529b1c38c79d0914fb207))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.80.0
+    * @vm0/core bumped to 8.324.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.62.0
+
 ## [12.420.2](https://github.com/vm0-ai/vm0/compare/web-v12.420.1...web-v12.420.2) (2026-06-10)
 
 

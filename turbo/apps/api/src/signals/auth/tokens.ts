@@ -60,6 +60,7 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: z.array(zeroCapabilitySchema).readonly(),
+  computerUseHostId: z.string().uuid().optional(),
 });
 
 const cliTokenPayloadSchema = jwtBaseSchema.extend({
@@ -190,6 +191,9 @@ export function verifyZeroToken(token: string): ZeroAuth | null {
     runId: parsed.data.runId,
     orgId: parsed.data.orgId,
     capabilities: parsed.data.capabilities,
+    ...(parsed.data.computerUseHostId
+      ? { computerUseHostId: parsed.data.computerUseHostId }
+      : {}),
   };
 }
 
@@ -247,10 +251,14 @@ export function generateZeroToken(
   runId: string,
   orgId: string,
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
+  options?: { readonly computerUseHostId?: string },
 ): string {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: ZeroCapability[] = [];
   for (const capability of ZERO_CAPABILITIES) {
+    if (capability === "computer-use:write" && !options?.computerUseHostId) {
+      continue;
+    }
     if (
       AGENT_EXCLUDED_CAPABILITIES.some((excludedCapability) => {
         return excludedCapability === capability;
@@ -276,6 +284,10 @@ export function generateZeroToken(
     runId,
     orgId,
     capabilities,
+    ...(capabilities.includes("computer-use:write") &&
+    options?.computerUseHostId
+      ? { computerUseHostId: options.computerUseHostId }
+      : {}),
     iat: nowSeconds,
     exp: nowSeconds + 2 * 60 * 60,
   };

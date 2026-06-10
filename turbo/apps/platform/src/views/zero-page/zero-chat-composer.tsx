@@ -21,6 +21,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconChartBar,
+  IconDeviceDesktop,
   IconEye,
   IconLoader2,
   IconMicrophone,
@@ -30,6 +31,7 @@ import {
   IconPlus,
   IconSearch,
   IconTemplate,
+  IconVideo,
   IconX,
 } from "@tabler/icons-react";
 import {
@@ -92,6 +94,9 @@ import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   PRESENTATION_TEMPLATE_ITEMS,
   type PresentationTemplateItem,
+  VIDEO_STYLE_GROUPS,
+  VIDEO_STYLE_PRESETS,
+  type VideoStylePreset,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -146,12 +151,15 @@ import {
   setTemplatePickerCategory$,
   templatePickerSearch$,
   setTemplatePickerSearch$,
+  templatePickerVideoGroup$,
+  setTemplatePickerVideoGroup$,
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
   templatePickerPreviewSlideIndex$,
   setTemplatePickerPreviewSlideIndex$,
   templateCardHover$,
   setTemplateCardHover$,
+  type TemplatePickerVideoGroup,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 import {
   audioInputAvailable$,
@@ -247,6 +255,13 @@ interface ZeroChatComposerProps {
     value: GenerationTemplateRequest | undefined;
     onChange: (value: GenerationTemplateRequest | undefined) => void;
   };
+  computerUse?: {
+    hosts: readonly ComposerComputerUseHost[];
+    loading: boolean;
+    selectedHostId: string | null;
+    onChange: (hostId: string | null) => void;
+    downloadUrl: string;
+  };
   /** When true, render a skeleton in the model picker slot. */
   modelPickerLoading?: boolean;
   submitBlocker?: {
@@ -269,10 +284,16 @@ export interface QueuedComposerItem {
   text: string;
 }
 
+interface ComposerComputerUseHost {
+  id: string;
+  displayName: string;
+}
+
 type ComposerModelPicker = NonNullable<ZeroChatComposerProps["modelPicker"]>;
 type ComposerTemplatePicker = NonNullable<
   ZeroChatComposerProps["templatePicker"]
 >;
+type ComposerComputerUse = NonNullable<ZeroChatComposerProps["computerUse"]>;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -468,6 +489,9 @@ function toPresentationGenerationTemplate(
 function selectedTemplateTitle(
   value: GenerationTemplateRequest | undefined,
 ): string | undefined {
+  if (value?.type === "video") {
+    return selectedVideoTemplateItem(value)?.nameEn;
+  }
   return selectedPresentationTemplateItem(value)?.title;
 }
 
@@ -505,6 +529,128 @@ function presentationTemplateMatchesSearch(
     formatPresentationTemplateKind(item.templateId),
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function isSelectedVideoTemplate(
+  item: VideoStylePreset,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return value?.type === "video" && value.selection.stylePresetId === item.id;
+}
+
+function toVideoGenerationTemplate(
+  item: VideoStylePreset,
+): GenerationTemplateRequest {
+  return {
+    type: "video",
+    selection: { stylePresetId: item.id },
+  };
+}
+
+function selectedVideoTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): VideoStylePreset | undefined {
+  if (value?.type !== "video") {
+    return undefined;
+  }
+  return VIDEO_STYLE_PRESETS.find((item) => {
+    return item.id === value.selection.stylePresetId;
+  });
+}
+
+function videoTemplateMatchesSearch(
+  item: VideoStylePreset,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  const searchable = [
+    item.nameEn,
+    item.nameZh,
+    item.category,
+    item.scene,
+    item.dimensions.styleReference,
+  ].join(" ");
+  return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function videoTemplateMatchesGroup(
+  item: VideoStylePreset,
+  group: TemplatePickerVideoGroup,
+): boolean {
+  return group === "all" || item.category === group;
+}
+
+function VideoTemplateCard({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: VideoStylePreset;
+  selected: boolean;
+  onSelect: (item: VideoStylePreset) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "group overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:bg-muted/20",
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <div className="relative aspect-[16/9] overflow-hidden bg-muted">
+        {item.sampleVideoUrl ? (
+          <video
+            src={item.sampleVideoUrl}
+            className="h-full w-full object-cover"
+            preload="metadata"
+            playsInline
+            muted
+            loop
+            onMouseEnter={(e) => {
+              const video = e.currentTarget as HTMLVideoElement;
+              detach(video.play(), Reason.DomCallback);
+            }}
+            onMouseLeave={(e) => {
+              const v = e.currentTarget as HTMLVideoElement;
+              v.pause();
+              v.currentTime = 0;
+            }}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-muted-foreground">
+            <IconTemplate size={28} stroke={1.5} />
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {item.nameEn}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center">
+          <button
+            type="button"
+            aria-label={`Select video style ${item.nameEn}`}
+            aria-pressed={selected}
+            onClick={() => {
+              onSelect(item);
+            }}
+            className={cn(
+              "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-background text-foreground hover:bg-muted",
+            )}
+          >
+            Use
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function TemplateSectionHeader({
@@ -787,15 +933,21 @@ function TemplatePickerDialog({
   value,
   onChange,
   onClose,
+  hasPptTab,
+  hasVideoTab,
 }: {
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
   onClose: () => void;
+  hasPptTab: boolean;
+  hasVideoTab: boolean;
 }) {
   const category = useGet(templatePickerCategory$);
   const setCategory = useSet(setTemplatePickerCategory$);
   const search = useGet(templatePickerSearch$);
   const setSearch = useSet(setTemplatePickerSearch$);
+  const videoGroup = useGet(templatePickerVideoGroup$);
+  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
   const previewSlug = useGet(templatePickerPreviewSlug$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const selectedSlideIndex = useGet(templatePickerPreviewSlideIndex$);
@@ -804,12 +956,27 @@ function TemplatePickerDialog({
     PRESENTATION_TEMPLATE_ITEMS.find((item) => {
       return item.slug === previewSlug;
     }) ?? null;
-  const filteredItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
+  const filteredPptItems = PRESENTATION_TEMPLATE_ITEMS.filter((item) => {
     return presentationTemplateMatchesSearch(item, search);
   });
+  const filteredVideoItems = VIDEO_STYLE_PRESETS.filter((item) => {
+    return (
+      videoTemplateMatchesGroup(item, videoGroup) &&
+      videoTemplateMatchesSearch(item, search)
+    );
+  });
+  const videoGroupFilters: readonly {
+    readonly tag: TemplatePickerVideoGroup;
+    readonly label: string;
+  }[] = [{ tag: "all", label: "All" }, ...VIDEO_STYLE_GROUPS];
 
-  const handleSelect = (item: PresentationTemplateItem) => {
+  const handleSelectPresentation = (item: PresentationTemplateItem) => {
     onChange(toPresentationGenerationTemplate(item));
+    onClose();
+  };
+
+  const handleSelectVideo = (item: VideoStylePreset) => {
+    onChange(toVideoGenerationTemplate(item));
     onClose();
   };
 
@@ -817,6 +984,11 @@ function TemplatePickerDialog({
     setSelectedSlideIndex(0);
     setPreviewSlug(item.slug);
   };
+
+  const defaultCategory = hasPptTab ? "slides" : "video";
+  const effectiveCategory =
+    category === "slides" && !hasPptTab ? "video" : category;
+  const selectedCategory = effectiveCategory || defaultCategory;
 
   return (
     <Dialog
@@ -846,53 +1018,93 @@ function TemplatePickerDialog({
             onBack={() => {
               setPreviewSlug(null);
             }}
-            onSelect={handleSelect}
+            onSelect={handleSelectPresentation}
           />
         ) : (
           <>
             <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
               <DialogTitle>Templates</DialogTitle>
             </DialogHeader>
-            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <Tabs value={category} onValueChange={setCategory}>
-                <TabsList className="h-auto rounded-none bg-transparent p-0">
-                  <TabsTrigger
-                    value="slides"
-                    className="h-11 gap-2 rounded-none border-b-2 border-foreground bg-transparent px-1 pb-3 pt-2 text-base font-semibold text-foreground shadow-none data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                  >
-                    <IconChartBar
-                      className="h-5 w-5 text-blue-500"
-                      stroke={1.8}
-                    />
-                    PPT
-                  </TabsTrigger>
+            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 pt-3 sm:flex-row sm:items-start sm:justify-between">
+              <Tabs
+                value={selectedCategory}
+                onValueChange={setCategory}
+                className="-mb-px"
+              >
+                <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">
+                  {hasPptTab && (
+                    <TabsTrigger
+                      value="slides"
+                      className={cn(
+                        "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+                        selectedCategory === "slides"
+                          ? "border-foreground text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <IconChartBar
+                        className={cn(
+                          "h-5 w-5",
+                          selectedCategory === "slides"
+                            ? "text-blue-500"
+                            : "text-muted-foreground",
+                        )}
+                        stroke={1.8}
+                      />
+                      PPT
+                    </TabsTrigger>
+                  )}
+                  {hasVideoTab && (
+                    <TabsTrigger
+                      value="video"
+                      className={cn(
+                        "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none",
+                        selectedCategory === "video"
+                          ? "border-foreground text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <IconVideo
+                        className={cn(
+                          "h-5 w-5",
+                          selectedCategory === "video"
+                            ? "text-purple-500"
+                            : "text-muted-foreground",
+                        )}
+                        stroke={1.8}
+                      />
+                      Video
+                    </TabsTrigger>
+                  )}
                 </TabsList>
               </Tabs>
-              <div className="relative w-full sm:w-64">
-                <IconSearch
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                  stroke={1.8}
-                />
-                <Input
-                  aria-label="Search templates"
-                  className="h-8 pl-9 text-sm"
-                  value={search}
-                  onChange={(event) => {
-                    setSearch(event.target.value);
-                  }}
-                  placeholder="Search templates"
-                />
+              <div className="w-full pb-3 sm:w-64">
+                <div className="relative">
+                  <IconSearch
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                    stroke={1.8}
+                  />
+                  <Input
+                    aria-label="Search templates"
+                    className="h-8 pl-9 text-sm"
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                    }}
+                    placeholder="Search templates"
+                  />
+                </div>
               </div>
             </div>
-            {category === "slides" && (
+            {selectedCategory === "slides" && hasPptTab && (
               <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
                 <TemplateSectionHeader
                   label="VM0 templates"
-                  count={filteredItems.length}
+                  count={filteredPptItems.length}
                 />
-                {filteredItems.length > 0 ? (
+                {filteredPptItems.length > 0 ? (
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {filteredItems.map((item) => {
+                    {filteredPptItems.map((item) => {
                       const selected = isSelectedPresentationTemplate(
                         item,
                         value,
@@ -928,7 +1140,7 @@ function TemplatePickerDialog({
                                 aria-label={`Select template ${item.title}`}
                                 aria-pressed={selected}
                                 onClick={() => {
-                                  handleSelect(item);
+                                  handleSelectPresentation(item);
                                 }}
                                 className={cn(
                                   "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -942,6 +1154,56 @@ function TemplatePickerDialog({
                             </div>
                           </div>
                         </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <TemplateEmptyPanel
+                    title="No matches"
+                    description="Try a different search."
+                  />
+                )}
+              </div>
+            )}
+            {selectedCategory === "video" && hasVideoTab && (
+              <div className="max-h-[66vh] overflow-y-auto px-5 py-4">
+                <TemplateSectionHeader
+                  label="VM0 video styles"
+                  count={filteredVideoItems.length}
+                />
+                <div className="mb-4 flex flex-wrap gap-2">
+                  {videoGroupFilters.map((group) => {
+                    const selected = videoGroup === group.tag;
+                    return (
+                      <button
+                        key={group.tag}
+                        type="button"
+                        aria-pressed={selected}
+                        className={cn(
+                          "h-7 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          selected
+                            ? "border-foreground bg-foreground text-background"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                        onClick={() => {
+                          setVideoGroup(group.tag);
+                        }}
+                      >
+                        {group.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {filteredVideoItems.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {filteredVideoItems.map((item) => {
+                      return (
+                        <VideoTemplateCard
+                          key={item.id}
+                          item={item}
+                          selected={isSelectedVideoTemplate(item, value)}
+                          onSelect={handleSelectVideo}
+                        />
                       );
                     })}
                   </div>
@@ -981,13 +1243,53 @@ function SelectedTemplateChip({
             />
           </span>
           <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-            Template
+            Presentation
           </span>
           <span className="h-3.5 w-px shrink-0 bg-border/70" />
           <span className="min-w-0 truncate text-xs font-medium">{label}</span>
           <button
             type="button"
             aria-label={`Remove template ${label}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
+function SelectedVideoTemplateChip({
+  item,
+  onRemove,
+}: {
+  item: VideoStylePreset;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+            <IconVideo
+              size={12}
+              stroke={1.5}
+              className="text-muted-foreground"
+            />
+          </span>
+          <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+            Video
+          </span>
+          <span className="h-3.5 w-px shrink-0 bg-border/70" />
+          <span className="min-w-0 truncate text-xs font-medium">
+            {item.nameEn}
+          </span>
+          <button
+            type="button"
+            aria-label={`Remove video style ${item.nameEn}`}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onRemove}
           >
@@ -1007,25 +1309,49 @@ function SelectedTemplateChipSlot({
   picker: ComposerTemplatePicker | undefined;
   onDraftChange: (() => void) | undefined;
 }) {
-  const selectedItem = selectedPresentationTemplateItem(picker?.value);
-  if (!selectedItem || !picker) {
+  const presentationItem = selectedPresentationTemplateItem(picker?.value);
+  const videoItem = selectedVideoTemplateItem(picker?.value);
+  if (!picker) {
     return null;
   }
-  return (
-    <SelectedTemplateChip
-      item={selectedItem}
-      onRemove={() => {
-        picker.onChange(undefined);
-        onDraftChange?.();
-      }}
-    />
-  );
+  if (presentationItem) {
+    return (
+      <SelectedTemplateChip
+        item={presentationItem}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
+  if (videoItem) {
+    return (
+      <SelectedVideoTemplateChip
+        item={videoItem}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
+  return null;
 }
 
-function TemplatePickerButton({ picker }: { picker: ComposerTemplatePicker }) {
+function TemplatePickerButton({
+  picker,
+  hasPptTab,
+  hasVideoTab,
+}: {
+  picker: ComposerTemplatePicker;
+  hasPptTab: boolean;
+  hasVideoTab: boolean;
+}) {
   const open = useGet(templatePickerOpen$);
   const setOpen = useSet(setTemplatePickerOpen$);
   const setSearch = useSet(setTemplatePickerSearch$);
+  const setVideoGroup = useSet(setTemplatePickerVideoGroup$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const setSelectedSlideIndex = useSet(setTemplatePickerPreviewSlideIndex$);
   const selectedTitle = selectedTemplateTitle(picker.value);
@@ -1045,6 +1371,7 @@ function TemplatePickerButton({ picker }: { picker: ComposerTemplatePicker }) {
               aria-pressed={picker.value !== undefined}
               onClick={() => {
                 setSearch("");
+                setVideoGroup("all");
                 setPreviewSlug(null);
                 setSelectedSlideIndex(0);
                 setOpen(true);
@@ -1065,6 +1392,8 @@ function TemplatePickerButton({ picker }: { picker: ComposerTemplatePicker }) {
           onClose={() => {
             setOpen(false);
           }}
+          hasPptTab={hasPptTab}
+          hasVideoTab={hasVideoTab}
         />
       )}
     </>
@@ -1077,10 +1406,18 @@ function ComposerTemplatePickerSlot({
   picker: ComposerTemplatePicker | undefined;
 }) {
   const features = useLastResolved(featureSwitch$);
-  if (!picker || !features?.[FeatureSwitchKey.ChatTemplatePicker]) {
+  const hasPptTab = Boolean(features?.[FeatureSwitchKey.ChatTemplatePicker]);
+  const hasVideoTab = Boolean(features?.[FeatureSwitchKey.VideoTemplatePicker]);
+  if (!picker || (!hasPptTab && !hasVideoTab)) {
     return null;
   }
-  return <TemplatePickerButton picker={picker} />;
+  return (
+    <TemplatePickerButton
+      picker={picker}
+      hasPptTab={hasPptTab}
+      hasVideoTab={hasVideoTab}
+    />
+  );
 }
 
 function ConnectorTriggerIcons({
@@ -1371,6 +1708,104 @@ function ConnectorsPopoverButton({
             />
             Add connectors
           </button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ComputerUsePopoverButton({
+  computerUse,
+}: {
+  computerUse: ComposerComputerUse;
+}) {
+  const active = computerUse.selectedHostId !== null;
+
+  return (
+    <Popover>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <PopoverTrigger asChild>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
+                  active && "text-primary",
+                )}
+                aria-label="Computer Use"
+              >
+                <IconDeviceDesktop size={18} stroke={1.5} />
+              </button>
+            </TooltipTrigger>
+          </PopoverTrigger>
+          <TooltipContent side="top" className="text-xs">
+            Computer
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <PopoverContent side="top" align="start" className="w-72 p-0 rounded-lg">
+        <div className="py-1">
+          {computerUse.loading ? (
+            <div className="flex flex-col animate-pulse">
+              {Array.from({ length: 2 }, (_, i) => {
+                return (
+                  <div key={i} className="flex items-center gap-2 px-3 py-2">
+                    <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                    <span className="h-3.5 w-24 rounded bg-muted/50 flex-1" />
+                    <span className="h-3 w-6 rounded-full bg-muted/50" />
+                  </div>
+                );
+              })}
+            </div>
+          ) : computerUse.hosts.length > 0 ? (
+            <div className="flex max-h-72 flex-col overflow-y-auto">
+              {computerUse.hosts.map((host) => {
+                const checked = computerUse.selectedHostId === host.id;
+                return (
+                  <div
+                    key={host.id}
+                    className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                  >
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+                      <IconDeviceDesktop size={16} stroke={1.5} />
+                    </span>
+                    <span className="text-sm flex-1 truncate text-foreground">
+                      {host.displayName}
+                    </span>
+                    <LoadingSwitch
+                      checked={checked}
+                      onCheckedChange={(nextChecked) => {
+                        computerUse.onChange(nextChecked ? host.id : null);
+                      }}
+                      loading={false}
+                      ariaLabel={`${checked ? "Disable" : "Enable"} ${host.displayName}`}
+                      size="sm"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="px-3 py-2 text-sm text-muted-foreground">
+              No online computers
+            </div>
+          )}
+        </div>
+        <div className="border-t border-border/50 p-1">
+          <a
+            href={computerUse.downloadUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+          >
+            <IconPlug
+              size={18}
+              stroke={1.5}
+              className="shrink-0 text-muted-foreground"
+            />
+            Connect my computer
+          </a>
         </div>
       </PopoverContent>
     </Popover>
@@ -1697,6 +2132,7 @@ export function ZeroChatComposer({
   actionsLoading = false,
   modelPicker,
   templatePicker,
+  computerUse,
   modelPickerLoading = false,
   submitBlocker,
   queuedItems,
@@ -2140,6 +2576,9 @@ export function ZeroChatComposer({
                     }}
                     onToggle={handleToggle}
                   />
+                  {computerUse && (
+                    <ComputerUsePopoverButton computerUse={computerUse} />
+                  )}
                   <ComposerTemplatePickerSlot picker={templatePicker} />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">

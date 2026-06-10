@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.434.0](https://github.com/vm0-ai/vm0/compare/app-v0.433.0...app-v0.434.0) (2026-06-10)
+
+
+### Features
+
+* add Transcript label to speaker notes button in presentation editor ([#17102](https://github.com/vm0-ai/vm0/issues/17102)) ([bc8a5c2](https://github.com/vm0-ai/vm0/commit/bc8a5c26495423ba4fc3e4debfb1ddd8207bbee0))
+* add video style template picker to chat composer ([#17027](https://github.com/vm0-ai/vm0/issues/17027)) ([c8a51ba](https://github.com/vm0-ai/vm0/commit/c8a51baa53b4505b6f33dee2db78b1cad9e9e413))
+
+
+### Bug Fixes
+
+* preserve Hume connector icon colors ([#17090](https://github.com/vm0-ai/vm0/issues/17090)) ([b053075](https://github.com/vm0-ai/vm0/commit/b05307526ac9e0d83784167230b37d5fc3bcc176))
+* restore web chat queue indicator ([#17011](https://github.com/vm0-ai/vm0/issues/17011)) ([2a83cb7](https://github.com/vm0-ai/vm0/commit/2a83cb74933f19ad3e42889b4ec8085b5a8a11f3))
+* update greenhouse connector color ([#17074](https://github.com/vm0-ai/vm0/issues/17074)) ([54c2116](https://github.com/vm0-ai/vm0/commit/54c21167e84882d22b5c80eac56bcc6ca307de5b))
+* update heygen connector icon ([#17076](https://github.com/vm0-ai/vm0/issues/17076)) ([6a26452](https://github.com/vm0-ai/vm0/commit/6a2645233aa18d36cb128c09588e1b5f86511c9a))
+* update jira connector icon color ([#17095](https://github.com/vm0-ai/vm0/issues/17095)) ([bad497c](https://github.com/vm0-ai/vm0/commit/bad497ceaa05b10b61ee3bdc6e28ea7a0d68ca2d))
+* upload billing conversions to google ads ([#17044](https://github.com/vm0-ai/vm0/issues/17044)) ([d7f9108](https://github.com/vm0-ai/vm0/commit/d7f91083e4de8340511b2c4473a2ccbe358fa3d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.80.0
+    * @vm0/connectors bumped to 1.62.0
+    * @vm0/core bumped to 8.324.0
+
 ## [0.433.0](https://github.com/vm0-ai/vm0/compare/app-v0.432.0...app-v0.433.0) (2026-06-10)
 
 

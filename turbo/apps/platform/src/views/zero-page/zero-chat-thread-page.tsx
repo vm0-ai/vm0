@@ -61,7 +61,7 @@ import type {
   GenerationTemplateRequest,
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
 import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
@@ -181,6 +181,11 @@ import {
   setThreadGenerationTemplate$,
   threadGenerationTemplate$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
+import {
+  onlineComputerUseHosts$,
+  selectedOnlineComputerUseHostId,
+  ZERO_DESKTOP_DOWNLOAD_URL,
+} from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { modelFirstPersonalOauthState$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import {
@@ -2780,10 +2785,12 @@ function useChatComposerModel(
 function useChatThreadComposerSendState({
   thread,
   modelSelection,
+  computerUseHostId,
   setInput,
 }: {
   thread: ChatThreadSignals;
   modelSelection: ModelProviderSelection | null;
+  computerUseHostId: string | null;
   setInput: (text: string) => void;
 }) {
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
@@ -2810,9 +2817,12 @@ function useChatThreadComposerSendState({
         await send(
           text,
           modelSelection,
-          selectedGenerationTemplate
-            ? { generationTemplate: selectedGenerationTemplate }
-            : undefined,
+          {
+            ...(selectedGenerationTemplate
+              ? { generationTemplate: selectedGenerationTemplate }
+              : {}),
+            computerUseHostId,
+          },
           rootSignal,
         );
       })(),
@@ -2828,7 +2838,12 @@ function useChatThreadComposerSendState({
     clearGenerationTemplate();
     detach(
       (async () => {
-        await queueMessage(text, selectedGenerationTemplate, rootSignal);
+        await queueMessage(
+          text,
+          selectedGenerationTemplate,
+          computerUseHostId,
+          rootSignal,
+        );
       })(),
       Reason.DomCallback,
     );
@@ -2843,6 +2858,34 @@ function useChatThreadComposerSendState({
       onChange: (value: GenerationTemplateRequest | undefined) => {
         setGenerationTemplate(thread.threadId, value);
       },
+    },
+  };
+}
+
+function useChatThreadComputerUse(thread: ChatThreadSignals) {
+  const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
+  const computerUseHosts =
+    computerUseHostsLoadable.state === "hasData"
+      ? computerUseHostsLoadable.data
+      : [];
+  const storedComputerUseHostId = useLastResolved(thread.computerUseHostId$);
+  const selectedComputerUseHostId =
+    computerUseHostsLoadable.state === "hasData"
+      ? selectedOnlineComputerUseHostId(
+          computerUseHosts,
+          storedComputerUseHostId,
+        )
+      : (storedComputerUseHostId ?? null);
+  const setComputerUseHostId = useSet(thread.setComputerUseHostId$);
+
+  return {
+    selectedComputerUseHostId,
+    computerUse: {
+      hosts: computerUseHosts,
+      loading: computerUseHostsLoadable.state === "loading",
+      selectedHostId: selectedComputerUseHostId,
+      onChange: setComputerUseHostId,
+      downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
     },
   };
 }
@@ -2872,6 +2915,8 @@ function ChatThreadComposer({
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
   const pageSignal = useGet(pageSignal$);
+  const { selectedComputerUseHostId, computerUse } =
+    useChatThreadComputerUse(thread);
 
   const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
     thread,
@@ -2887,6 +2932,7 @@ function ChatThreadComposer({
     useChatThreadComposerSendState({
       thread,
       modelSelection,
+      computerUseHostId: selectedComputerUseHostId,
       setInput,
     });
   const sending = (allFinishedResolved && !allFinished) || sendLoading;
@@ -2950,6 +2996,7 @@ function ChatThreadComposer({
             actionsLoading={skeletonVisible}
             modelPicker={modelPicker}
             templatePicker={templatePicker}
+            computerUse={computerUse}
             modelPickerLoading={modelPickerLoading || !messagesResolved}
             submitBlocker={submitBlockerProps}
             queuedItems={queuedItems}
@@ -4659,6 +4706,12 @@ function generationTemplateLabel(
   if (!value) {
     return null;
   }
+  if (value.type === "video") {
+    const item = VIDEO_STYLE_PRESETS.find((candidate) => {
+      return candidate.id === value.selection.stylePresetId;
+    });
+    return item?.nameEn ?? formatTemplateIdLabel(value.selection.stylePresetId);
+  }
   const item = PRESENTATION_TEMPLATE_ITEMS.find((candidate) => {
     return (
       candidate.designSystemId === value.selection.designSystemId &&
@@ -4674,6 +4727,9 @@ function generationTemplateTypeLabel(
   if (!value) {
     return null;
   }
+  if (value.type === "video") {
+    return "Video";
+  }
   return "Slides";
 }
 
@@ -4684,7 +4740,9 @@ function UserMessageGenerationTemplate({
 }) {
   const features = useLastResolved(featureSwitch$);
   const templateLabelEnabled =
-    features?.[FeatureSwitchKey.ChatTemplatePicker] ?? false;
+    generationTemplate?.type === "video"
+      ? (features?.[FeatureSwitchKey.VideoTemplatePicker] ?? false)
+      : (features?.[FeatureSwitchKey.ChatTemplatePicker] ?? false);
   if (!templateLabelEnabled) {
     return null;
   }

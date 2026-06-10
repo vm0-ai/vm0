@@ -120,6 +120,7 @@ export interface ChatThread {
    */
   modelProviderId: string | null;
   selectedModel: string | null;
+  computerUseHostId: string | null;
 }
 
 /**

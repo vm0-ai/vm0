@@ -4,6 +4,7 @@ export function createPendingChatThread(
   threadId: string,
   agentId: string,
   pendingRunId?: string,
+  computerUseHostId: string | null = null,
 ): ChatThread {
   const activeRunIds: string[] = pendingRunId ? [pendingRunId] : [];
   const activeRuns: { id: string; status: string }[] = pendingRunId
@@ -23,5 +24,6 @@ export function createPendingChatThread(
     draftAttachments: null,
     modelProviderId: null,
     selectedModel: null,
+    computerUseHostId,
   };
 }

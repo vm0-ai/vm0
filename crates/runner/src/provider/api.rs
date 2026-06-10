@@ -9,7 +9,7 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::routes;
 use reqwest::{RequestBuilder, Response, StatusCode};
-use serde::de::DeserializeOwned;
+use serde::{Serialize, de::DeserializeOwned};
 
 use super::api_ably_supervisor::{AblySupervisor, PollOutcome, PollWakeups};
 use super::{ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobProvider};
@@ -22,6 +22,20 @@ use crate::types::{
     MAX_HELD_SESSION_STATES, PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClaimRequestBody {
+    telemetry: ClaimRequestTelemetry,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClaimRequestTelemetry {
+    job_discovered_to_claim_request_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    local_admission_to_claim_request_ms: Option<u64>,
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -171,7 +185,7 @@ impl JobProvider for ApiProvider {
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
-        match self.api.claim(run_id).await {
+        match self.api.claim(&candidate).await {
             Ok(ctx) => {
                 let claimed = match ClaimedJob::api(run_id, ctx) {
                     Ok(claimed) => claimed,
@@ -328,7 +342,9 @@ impl ApiClient {
     /// row already dequeued by the winner) so callers can continue gracefully.
     /// Both outcomes are normal contention signals when multiple runners race
     /// for the same job.
-    async fn claim(&self, run_id: RunId) -> RunnerResult<ExecutionContext> {
+    async fn claim(&self, candidate: &JobCandidate) -> RunnerResult<ExecutionContext> {
+        let run_id = candidate.run_id();
+        let body = claim_request_body(candidate);
         let run_id = run_id.to_string();
         let resp = send_api(
             self.http
@@ -340,7 +356,7 @@ impl ApiClient {
                     ),
                     &self.token,
                 )
-                .json(&serde_json::json!({})),
+                .json(&body),
             "claim",
         )
         .await?;
@@ -406,6 +422,21 @@ impl ApiClient {
         let resp = check_api_status(resp, "realtime token").await?;
         decode_api_json(resp, "realtime token").await
     }
+}
+
+fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
+    ClaimRequestBody {
+        telemetry: ClaimRequestTelemetry {
+            job_discovered_to_claim_request_ms: duration_ms(candidate.job_discovered_elapsed()),
+            local_admission_to_claim_request_ms: candidate
+                .local_admission_elapsed()
+                .map(duration_ms),
+        },
+    }
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 async fn send_api(req: RequestBuilder, label: &str) -> RunnerResult<Response> {
@@ -589,6 +620,54 @@ mod tests {
                 .lines()
                 .any(|line| line.eq_ignore_ascii_case(&expected)),
             "completion request should use sandbox auth; request was:\n{request}",
+        );
+    }
+
+    #[test]
+    fn claim_request_body_serializes_runner_timing() {
+        let now = std::time::Instant::now();
+        let candidate = JobCandidate::new_with_timing_for_test(
+            RunId::nil(),
+            crate::profile::DEFAULT_PROFILE.to_string(),
+            now.checked_sub(Duration::from_millis(25)).unwrap(),
+            Some(now.checked_sub(Duration::from_millis(7)).unwrap()),
+        );
+
+        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+
+        assert!(
+            body["telemetry"]["jobDiscoveredToClaimRequestMs"]
+                .as_u64()
+                .is_some_and(|value| value >= 25)
+        );
+        assert!(
+            body["telemetry"]["localAdmissionToClaimRequestMs"]
+                .as_u64()
+                .is_some_and(|value| value >= 7)
+        );
+    }
+
+    #[test]
+    fn claim_request_body_omits_missing_local_admission_timing() {
+        let now = std::time::Instant::now();
+        let candidate = JobCandidate::new_with_timing_for_test(
+            RunId::nil(),
+            crate::profile::DEFAULT_PROFILE.to_string(),
+            now.checked_sub(Duration::from_millis(25)).unwrap(),
+            None,
+        );
+
+        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+
+        assert!(
+            body["telemetry"]["jobDiscoveredToClaimRequestMs"]
+                .as_u64()
+                .is_some_and(|value| value >= 25)
+        );
+        assert!(
+            body["telemetry"]
+                .get("localAdmissionToClaimRequestMs")
+                .is_none()
         );
     }
 
@@ -839,7 +918,8 @@ mod tests {
                 .await;
             let api = api_client_for_server(&server);
 
-            let err = api.claim(run_id).await.unwrap_err();
+            let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
+            let err = api.claim(&candidate).await.unwrap_err();
 
             assert!(matches!(err, RunnerError::AlreadyClaimed));
             mock.assert_async().await;

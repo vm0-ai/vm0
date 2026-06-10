@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.110.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.110.3...runner-rs-v0.110.4) (2026-06-10)
+
+
+### Bug Fixes
+
+* bound runner dirname length ([#17080](https://github.com/vm0-ai/vm0/issues/17080)) ([e9026ee](https://github.com/vm0-ai/vm0/commit/e9026ee122d63ab76f70c6bb24eac84dce95d09c))
+* clean orphaned version service locks ([#17067](https://github.com/vm0-ai/vm0/issues/17067)) ([8229e47](https://github.com/vm0-ai/vm0/commit/8229e47d4851cc98d24082708a947a114de583c3))
+* **runner:** redact command output before excerpting ([#17079](https://github.com/vm0-ai/vm0/issues/17079)) ([7ac5423](https://github.com/vm0-ai/vm0/commit/7ac5423d7334b3d9cf055d6e41358bfa6d257eec))
+
+
+### Performance Improvements
+
+* avoid ably job notification string clones ([#17050](https://github.com/vm0-ai/vm0/issues/17050)) ([72b30ee](https://github.com/vm0-ai/vm0/commit/72b30ee335de848423a58fdf0ae7d0bb3310e952))
+
 ## [0.110.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.110.2...runner-rs-v0.110.3) (2026-06-10)
 
 
