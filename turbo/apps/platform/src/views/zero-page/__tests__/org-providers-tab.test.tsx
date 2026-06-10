@@ -173,6 +173,8 @@ describe("organization model providers settings", () => {
 
   it("opens device login from a stale workspace provider banner", async () => {
     mockStaleProviderStory();
+    context.mocks.browser.open(null);
+    context.mocks.browser.clipboardWriteText();
     await openProvidersTab();
 
     const alert = await screen.findByRole("alert");
@@ -191,6 +193,14 @@ describe("organization model providers settings", () => {
       expect(screen.getByText("Re-connect Codex")).toBeInTheDocument();
       expect(screen.getByTestId("codex-device-auth-code")).toHaveTextContent(
         "WXYZ-1234",
+      );
+    });
+
+    click(screen.getByTestId("codex-device-auth-open"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Device code copied, but the approval page could not be opened. Try again.",
       );
     });
   });
