@@ -315,6 +315,77 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("opens media and file previews parsed from chat message links", async () => {
+    const audioUrl =
+      "https://cdn.vm7.io/artifacts/test/body-audio/briefing.mp3";
+    const videoUrl = "https://cdn.vm7.io/artifacts/test/body-video/demo.mp4";
+    const archiveUrl =
+      "https://cdn.vm7.io/artifacts/test/body-file/archive.bin";
+    context.mocks.http.get(archiveUrl, () => {
+      return new Response(null, { status: 500 });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-body-preview-links",
+          role: "assistant",
+          content: `Generated preview links:\n\n${audioUrl}\n${videoUrl}\n${archiveUrl}`,
+          runId: "run-body-previews",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Generated preview links:")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open audio preview for briefing.mp3"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Preview demo.mp4")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open audio preview for briefing.mp3"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-dialog-audio")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Preview demo.mp4"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Video preview for demo.mp4"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download archive.bin"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Download failed")).toBeInTheDocument();
+    });
+  });
+
   it("opens markdown and text previews, shares a document link, and reports download failures", async () => {
     const releaseNotesUrl =
       "https://cdn.vm7.io/artifacts/test/attachment-markdown/release-notes.md";
