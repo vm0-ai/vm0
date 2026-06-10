@@ -40,7 +40,7 @@ const desktopUpdateManifestSchema = z.object({
   releases: z.record(z.string(), desktopUpdateReleaseSchema),
 });
 
-export type DesktopUpdateManifest = z.infer<typeof desktopUpdateManifestSchema>;
+type DesktopUpdateManifest = z.infer<typeof desktopUpdateManifestSchema>;
 
 interface DesktopUpdateFeedRequest {
   readonly channel: DesktopUpdateChannel;
@@ -57,24 +57,6 @@ const desktopUpdateManifestCache =
   testOverride<DesktopUpdateManifestCacheEntry | null>(() => {
     return null;
   });
-
-const desktopUpdateManifestOverride = testOverride<
-  DesktopUpdateManifest | undefined
->(() => {
-  return undefined;
-});
-
-export function clearDesktopUpdateManifestCacheForTest(): void {
-  desktopUpdateManifestCache.clear();
-  desktopUpdateManifestOverride.clear();
-}
-
-export function mockDesktopUpdateManifestForTest(
-  manifest: DesktopUpdateManifest,
-): void {
-  desktopUpdateManifestCache.clear();
-  desktopUpdateManifestOverride.set(manifest);
-}
 
 function compareDesktopVersions(left: string, right: string): number {
   const leftParts = left.split(/[+-]/, 1)[0]?.split(".").map(Number) ?? [];
@@ -176,11 +158,6 @@ function buildDesktopUpdateFeed(
 async function fetchDesktopUpdateManifest(
   signal: AbortSignal,
 ): Promise<DesktopUpdateManifest> {
-  const override = desktopUpdateManifestOverride.get();
-  if (override) {
-    return override;
-  }
-
   const response = await fetch(DESKTOP_UPDATE_MANIFEST_URL, {
     headers: { accept: "application/json" },
     signal,
