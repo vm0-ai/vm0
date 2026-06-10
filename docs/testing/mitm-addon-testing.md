@@ -37,7 +37,9 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_response_handler.py` | Response hook logging, cleanup, and cache invalidation |
 | `test_error_handler.py` | Error hook logging and usage cleanup |
 | `test_connection_hooks.py` | Done, TLS, TCP, and TCP logging hooks |
-| `test_registry.py` | Registry loading, caching, file watching |
+| `test_registry_loading.py` | Registry loading, parsing, unavailable-state, and cache behavior |
+| `test_registry_auth_cache_eviction.py` | Registry-driven auth-cache ownership and eviction behavior |
+| `test_registry_context.py` | VM lookup and compiled registry context behavior |
 | `test_matching_path.py` | Low-level firewall path matching |
 | `test_matching_host.py` | Low-level firewall host matching |
 | `test_matching_path_prefix.py` | Low-level firewall path-prefix matching |
