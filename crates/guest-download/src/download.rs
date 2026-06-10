@@ -16,14 +16,19 @@ const RETRY_DELAY: Duration = Duration::from_secs(1);
 const MAX_CONCURRENT: usize = 4;
 type TaskRunner = fn(DownloadTask) -> bool;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum NotFoundPolicy {
+    Fail,
+    Ignore404,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DownloadTask {
     label: String,
     op_name: &'static str,
     url: String,
     mount_path: String,
-    /// When true, HTTP 404 is treated as success (artifact/memory may not exist on first run).
-    allow_404: bool,
+    not_found_policy: NotFoundPolicy,
 }
 
 impl DownloadTask {
@@ -32,14 +37,14 @@ impl DownloadTask {
         op_name: &'static str,
         url: String,
         mount_path: String,
-        allow_404: bool,
+        not_found_policy: NotFoundPolicy,
     ) -> Self {
         Self {
             label,
             op_name,
             url,
             mount_path,
-            allow_404,
+            not_found_policy,
         }
     }
 
@@ -236,7 +241,9 @@ fn run_download_task(task: DownloadTask) -> bool {
             );
             true
         }
-        Err(e) if e.status_code == Some(404) && task.allow_404 => {
+        Err(e)
+            if e.status_code == Some(404) && task.not_found_policy == NotFoundPolicy::Ignore404 =>
+        {
             record_sandbox_op(task.op_name, start.elapsed(), true, None);
             log_info!(LOG_TAG, "{} not found, skipping (first run)", task.label);
             true
@@ -345,14 +352,14 @@ mod tests {
                         "storage_download",
                         "panic".to_owned(),
                         "/tmp/panic".to_owned(),
-                        false,
+                        NotFoundPolicy::Fail,
                     ),
                     DownloadTask::new(
                         "success".to_owned(),
                         "storage_download",
                         "success".to_owned(),
                         "/tmp/success".to_owned(),
-                        false,
+                        NotFoundPolicy::Fail,
                     ),
                 ],
                 runner,
@@ -370,7 +377,7 @@ mod tests {
             "storage_download",
             "file:///tmp/archive.tar.gz".into(),
             "/workspace".into(),
-            false,
+            NotFoundPolicy::Fail,
         );
         let error = DownloadError::fatal("Failed to read archive entries: invalid gzip header");
 

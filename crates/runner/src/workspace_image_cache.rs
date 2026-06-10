@@ -17,13 +17,13 @@ use tracing::debug;
 use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::idle_pool::StorageFingerprints;
 use crate::ids::RunId;
 #[cfg(test)]
 use crate::paths::session_workspace_cache_key;
 use crate::paths::{
     HomePaths, RunnerPaths, scoped_session_workspace_cache_key, workspace_image_cache_lock_path,
 };
+use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{HeldSessionState, MAX_HELD_SESSION_STATES};
 
 const CACHE_FORMAT_VERSION: u32 = 1;

@@ -150,6 +150,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Resend email service connector",
     enabled: false,
   },
+  [FeatureSwitchKey.GoogleSearchConsoleConnector]: {
+    maintainer: "linghan@vm0.ai",
+    description: "Enable the Google Search Console connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Spotify connector integration",
@@ -282,6 +287,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.VideoTemplatePicker]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Show the Video style picker tab in the Zero chat composer for AI video generation with curated style presets.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.MemoryViewer]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -313,13 +325,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ming@vm0.ai",
     description:
       "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ExpiringPermissionGrants]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Show duration controls for explicit current-user permission grants.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

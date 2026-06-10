@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.323.0](https://github.com/vm0-ai/vm0/compare/core-v8.322.0...core-v8.323.0) (2026-06-10)
+
+
+### Features
+
+* add google search console connector ([#17020](https://github.com/vm0-ai/vm0/issues/17020)) ([9cb2db5](https://github.com/vm0-ai/vm0/commit/9cb2db5f763ad3a2aed9cf25963472c38b05875e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.79.0
+    * @vm0/connectors bumped to 1.61.0
+
+## [8.322.0](https://github.com/vm0-ai/vm0/compare/core-v8.321.1...core-v8.322.0) (2026-06-10)
+
+
+### Features
+
+* enable expiring permission grants by default ([#17030](https://github.com/vm0-ai/vm0/issues/17030)) ([17746e8](https://github.com/vm0-ai/vm0/commit/17746e81c006590b7e6f8270ccd7b7a5459f09ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.78.1
+    * @vm0/connectors bumped to 1.60.0
+
 ## [8.321.1](https://github.com/vm0-ai/vm0/compare/core-v8.321.0...core-v8.321.1) (2026-06-10)
 
 

@@ -91,6 +91,7 @@ describe("latestRunStatus$", () => {
               role: "assistant",
               content: "Waiting in queue...",
               runId,
+              runEventId: "queue:queued",
               createdAt: "2026-04-13T00:00:01Z",
             },
           ],
@@ -127,7 +128,139 @@ describe("latestRunStatus$", () => {
     });
   });
 
-  it("treats assistant output as running even when thread data still says queued", async () => {
+  it("does not infer queued from assistant text without the queue event id", async () => {
+    const threadId = "thread-queue-copy-only-1";
+    const runId = "run-queue-copy-only-1";
+
+    server.use(
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
+      }),
+      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-assistant-copy",
+              role: "assistant",
+              content: "Waiting in queue...",
+              runId,
+              createdAt: "2026-04-13T00:00:01Z",
+            },
+            {
+              id: "msg-assistant-completed",
+              role: "assistant",
+              content: null,
+              runId,
+              runLifecycleEvent: "completed",
+              createdAt: "2026-04-13T00:00:02Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
+          title: null,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          latestSessionId: null,
+          activeRunIds: [],
+          activeRuns: [],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-04-13T00:00:00Z",
+          updatedAt: "2026-04-13T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      withoutRender: true,
+    });
+
+    const thread = createThreadSignals(threadId);
+
+    await vi.waitFor(async () => {
+      await expect(
+        context.store.get(thread.latestRunStatus$),
+      ).resolves.toBeNull();
+    });
+  });
+
+  it("keeps queued when the run user message precedes an active queue marker", async () => {
+    const threadId = "thread-user-before-queue-marker-1";
+    const runId = "run-user-before-queue-marker-1";
+
+    server.use(
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
+      }),
+      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-queued-user",
+              role: "user",
+              content: "wait behind active run",
+              runId,
+              createdAt: "2026-04-13T00:00:01Z",
+            },
+            {
+              id: "msg-queue-marker-active",
+              role: "assistant",
+              content: "Waiting in queue...",
+              runId,
+              runEventId: "queue:queued",
+              createdAt: "2026-04-13T00:00:02Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
+          title: null,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          latestSessionId: null,
+          activeRunIds: [runId],
+          activeRuns: [{ id: runId, status: "queued" }],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-04-13T00:00:00Z",
+          updatedAt: "2026-04-13T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      withoutRender: true,
+    });
+
+    const thread = createThreadSignals(threadId);
+
+    await vi.waitFor(async () => {
+      await expect(context.store.get(thread.latestRunStatus$)).resolves.toBe(
+        "queued",
+      );
+    });
+  });
+
+  it("treats assistant output after a queue marker as running even when thread data still says queued", async () => {
     const threadId = "thread-assistant-running-1";
     const runId = "run-assistant-running-1";
 
@@ -145,11 +278,19 @@ describe("latestRunStatus$", () => {
         return respond(200, {
           messages: [
             {
+              id: "msg-queue-marker-active",
+              role: "assistant",
+              content: "Waiting in queue...",
+              runId,
+              runEventId: "queue:queued",
+              createdAt: "2026-04-13T00:00:01Z",
+            },
+            {
               id: "msg-assistant-started",
               role: "assistant",
               content: "The local-agent job is running...",
               runId,
-              createdAt: "2026-04-13T00:00:01Z",
+              createdAt: "2026-04-13T00:00:02Z",
             },
           ],
         });
@@ -208,6 +349,7 @@ describe("latestRunStatus$", () => {
               role: "assistant",
               content: "Waiting in queue...",
               runId,
+              runEventId: "queue:queued",
               createdAt: "2026-04-13T00:00:01Z",
             },
             {

@@ -11,6 +11,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -59,6 +60,8 @@ export const deleteSkillsForFixture$ = command(
     await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
     signal.throwIfAborted();
     await db.delete(zeroSkills).where(eq(zeroSkills.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await db.delete(agentRuns).where(eq(agentRuns.orgId, fixture.orgId));
     signal.throwIfAborted();
     await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
     signal.throwIfAborted();

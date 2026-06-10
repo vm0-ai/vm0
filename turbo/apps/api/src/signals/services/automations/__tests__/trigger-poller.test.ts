@@ -5,10 +5,11 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { testContext } from "../../../../__tests__/test-helpers";
@@ -43,6 +44,7 @@ interface TriggerSeed {
 interface AutomationFixture {
   readonly schedules: SchedulesFixture;
   readonly automationId: string;
+  readonly automationName: string;
   readonly triggerId: string;
   readonly threadId: string;
 }
@@ -102,13 +104,15 @@ async function seedAutomationTrigger(
     );
   }
 
+  const automationName = `time-automation-${randomUUID().slice(0, 8)}`;
   const [automation] = await db
     .insert(automations)
     .values({
       orgId: schedules.orgId,
       userId: schedules.userId,
-      name: `time-automation-${randomUUID().slice(0, 8)}`,
+      name: automationName,
       instruction: "Summarize the latest project status.",
+      appendSystemPrompt: "Always answer in haiku.",
       agentId: schedules.composeId,
       chatThreadId: thread.id,
       interpreterKind: "time",
@@ -141,6 +145,7 @@ async function seedAutomationTrigger(
     Promise.resolve({
       schedules,
       automationId: automation.id,
+      automationName,
       triggerId: trigger.id,
       threadId: thread.id,
     }),
@@ -154,6 +159,19 @@ async function findTrigger(triggerId: string) {
     .from(automationTriggers)
     .where(eq(automationTriggers.id, triggerId));
   return trigger;
+}
+
+async function findUserMessage(runId: string) {
+  const db = store.set(writeDb$);
+  const [message] = await db
+    .select({
+      scheduleId: chatMessages.scheduleId,
+      scheduleTitle: chatMessages.scheduleTitle,
+      scheduleSnapshot: chatMessages.scheduleSnapshot,
+    })
+    .from(chatMessages)
+    .where(and(eq(chatMessages.runId, runId), eq(chatMessages.role, "user")));
+  return message;
 }
 
 async function findRunCallbackUrls(runId: string): Promise<string[]> {
@@ -295,6 +313,8 @@ describe("executeDueTriggers$ (dormant automation time poller)", () => {
       "# Current Integration\nYou are currently running inside: Schedule",
     );
     expect(runs[0]?.appendSystemPrompt).toContain("Trigger type: cron");
+    // The automation's own append prompt is carried into the run (A3).
+    expect(runs[0]?.appendSystemPrompt).toContain("Always answer in haiku.");
 
     // The run carries the trigger-keyed reschedule callback + the chat callback.
     const runId = runs[0]?.id;
@@ -313,6 +333,17 @@ describe("executeDueTriggers$ (dormant automation time poller)", () => {
         return url.endsWith("/api/internal/callbacks/chat");
       }),
     ).toBeTruthy();
+
+    // The chat bubble carries the schedule chip (A4): snapshot labels the
+    // message; no scheduleId since this automation has no source schedule.
+    const message = await findUserMessage(runId);
+    expect(message?.scheduleTitle).toBe(fixture.automationName);
+    expect(message?.scheduleSnapshot).toStrictEqual({
+      id: fixture.automationId,
+      title: fixture.automationName,
+      description: null,
+    });
+    expect(message?.scheduleId).toBeNull();
   });
 
   it("executes and disables a due one-time trigger", async () => {

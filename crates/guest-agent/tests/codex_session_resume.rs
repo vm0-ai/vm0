@@ -10,10 +10,9 @@
 //! process. Splitting codex coverage into a separate test binary gives
 //! it a fresh `LazyLock` state with `CLI_AGENT_TYPE=codex`.
 //!
-//! Each `#[tokio::test]` in this binary still serialises behind a
-//! `std::sync::Mutex` because they share that single set of LazyLocks
-//! and because they touch the same on-disk session-id / history-path
-//! files (run-id-scoped under `/tmp`).
+//! Each test still serialises behind a `std::sync::Mutex` because they share
+//! that single set of LazyLocks and because they touch the same on-disk
+//! session-id / history-path files (run-id-scoped under `/tmp`).
 //!
 //! # Coverage
 //!
@@ -26,8 +25,6 @@
 //!   history-path file.
 //! - Negative path: a codex marker pointing at an empty sessions dir
 //!   surfaces the "file not found" error rather than a silent fallback.
-
-#![allow(clippy::await_holding_lock)]
 
 use serde_json::json;
 use std::path::Path;
@@ -71,6 +68,18 @@ macro_rules! http_client {
     };
 }
 
+fn send_event_for_test(
+    event: serde_json::Value,
+    seq: u32,
+    masker: &SecretMasker,
+) -> Result<(), guest_agent::error::AgentError> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let http = http_client!();
+    runtime.block_on(guest_agent::events::send_event(&http, event, seq, masker))
+}
+
 /// Wipe the per-run session-id / history-path files so each test starts
 /// from a clean slate. `capture_session_metadata` is idempotent (first id wins),
 /// so leaving stale files would mask real failures.
@@ -100,8 +109,8 @@ fn write_session_file(
     Ok(())
 }
 
-#[tokio::test]
-async fn send_event_extracts_codex_thread_id_and_writes_marker() {
+#[test]
+fn send_event_extracts_codex_thread_id_and_writes_marker() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     reset_session_files();
@@ -114,7 +123,7 @@ async fn send_event_extracts_codex_thread_id_and_writes_marker() {
 
     // No API token → send_event skips the HTTP POST but still captures
     // session metadata, which is the part we want to assert.
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    let result = send_event_for_test(event, 1, &masker);
     assert!(
         result.is_ok(),
         "send_event should succeed when no API token"
@@ -140,15 +149,84 @@ async fn send_event_extracts_codex_thread_id_and_writes_marker() {
     );
 }
 
-#[tokio::test]
-async fn send_event_codex_ignores_non_thread_started_event() {
+#[test]
+fn send_event_canonicalizes_codex_thread_id_before_writing_marker() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let masker = SecretMasker::from_raw("");
+    let event = json!({
+        "type": "thread.started",
+        "thread_id": "0193ABCDEF01723489ABCDEF01234567"
+    });
+    let expected = "0193abcd-ef01-7234-89ab-cdef01234567";
+
+    let result = send_event_for_test(event, 1, &masker);
+    assert!(
+        result.is_ok(),
+        "send_event should succeed when no API token"
+    );
+
+    let stored_id =
+        std::fs::read_to_string(guest_agent::paths::session_id_file()).expect("session id written");
+    assert_eq!(stored_id, expected);
+
+    let marker = std::fs::read_to_string(guest_agent::paths::session_history_path_file())
+        .expect("history-path file written");
+    assert!(
+        marker.ends_with(&format!(":{expected}")),
+        "marker should use canonical thread id, got: {marker}"
+    );
+}
+
+#[test]
+fn send_event_repairs_missing_codex_history_marker_after_later_event() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    for seed_empty_marker in [false, true] {
+        reset_session_files();
+        guest_agent::paths::write_private(guest_agent::paths::session_id_file(), thread_id)
+            .expect("seed existing session id");
+        if seed_empty_marker {
+            guest_agent::paths::write_private(guest_agent::paths::session_history_path_file(), "")
+                .expect("seed empty history marker");
+        } else {
+            assert!(
+                !Path::new(guest_agent::paths::session_history_path_file()).exists(),
+                "history marker should start missing"
+            );
+        }
+
+        let masker = SecretMasker::from_raw("");
+        let event = json!({"type": "turn.completed"});
+
+        let result = send_event_for_test(event, 1, &masker);
+        assert!(result.is_ok());
+
+        let stored_id = std::fs::read_to_string(guest_agent::paths::session_id_file())
+            .expect("session id kept");
+        assert_eq!(stored_id, thread_id);
+        let marker = std::fs::read_to_string(guest_agent::paths::session_history_path_file())
+            .expect("history marker repaired");
+        assert!(
+            marker.ends_with(&format!(":{thread_id}")),
+            "repaired marker should point at the existing thread id, got: {marker}"
+        );
+    }
+}
+
+#[test]
+fn send_event_codex_ignores_non_thread_started_event() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     reset_session_files();
 
     let masker = SecretMasker::from_raw("");
     let event = json!({"type": "turn.completed"});
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    let result = send_event_for_test(event, 1, &masker);
     assert!(result.is_ok());
 
     assert!(
@@ -157,15 +235,15 @@ async fn send_event_codex_ignores_non_thread_started_event() {
     );
 }
 
-#[tokio::test]
-async fn send_event_codex_ignores_empty_thread_id() {
+#[test]
+fn send_event_codex_ignores_empty_thread_id() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     reset_session_files();
 
     let masker = SecretMasker::from_raw("");
     let event = json!({"type": "thread.started", "thread_id": ""});
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    let result = send_event_for_test(event, 1, &masker);
     assert!(result.is_ok());
 
     assert!(
@@ -174,25 +252,28 @@ async fn send_event_codex_ignores_empty_thread_id() {
     );
 }
 
-#[tokio::test]
-async fn send_event_codex_ignores_malformed_thread_id() {
+#[test]
+fn send_event_codex_ignores_malformed_thread_id() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
-    reset_session_files();
 
-    let masker = SecretMasker::from_raw("");
-    let event = json!({"type": "thread.started", "thread_id": "abc"});
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
-    assert!(result.is_ok());
+    for thread_id in ["abc", "0193-abcd-ef01-7234-89abcdef01234567"] {
+        reset_session_files();
 
-    assert!(
-        !Path::new(guest_agent::paths::session_id_file()).exists(),
-        "malformed thread_id must not be persisted"
-    );
+        let masker = SecretMasker::from_raw("");
+        let event = json!({"type": "thread.started", "thread_id": thread_id});
+        let result = send_event_for_test(event, 1, &masker);
+        assert!(result.is_ok());
+
+        assert!(
+            !Path::new(guest_agent::paths::session_id_file()).exists(),
+            "malformed thread_id must not be persisted: {thread_id}"
+        );
+    }
 }
 
-#[tokio::test]
-async fn read_session_history_resolves_codex_marker_end_to_end() {
+#[test]
+fn read_session_history_resolves_codex_marker_end_to_end() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     reset_session_files();
@@ -225,8 +306,8 @@ async fn read_session_history_resolves_codex_marker_end_to_end() {
     assert_eq!(bytes, history);
 }
 
-#[tokio::test]
-async fn read_session_history_decodes_legacy_zstd_session() {
+#[test]
+fn read_session_history_decodes_legacy_zstd_session() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     reset_session_files();
@@ -256,8 +337,129 @@ async fn read_session_history_decodes_legacy_zstd_session() {
     assert_eq!(bytes, history);
 }
 
-#[tokio::test]
-async fn read_session_history_resolves_dash_stripped_filename() {
+#[test]
+fn read_session_history_rejects_duplicate_codex_matches() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "28"],
+        &format!("{thread_id}.jsonl"),
+        b"first\n",
+    )
+    .unwrap();
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "29"],
+        &format!("rollout-2026-04-29T11-22-37-{thread_id}.jsonl"),
+        b"second\n",
+    )
+    .unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("duplicate codex sessions must fail clearly");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Multiple Codex session files found"),
+        "expected duplicate-session error, got: {msg}"
+    );
+}
+
+#[test]
+fn read_session_history_rejects_duplicate_jsonl_and_zstd_matches() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "28"],
+        &format!("{thread_id}.jsonl"),
+        b"jsonl\n",
+    )
+    .unwrap();
+    let compressed = zstd::encode_all(b"zstd\n".as_slice(), 0).unwrap();
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "29"],
+        &format!("{thread_id}.jsonl.zst"),
+        &compressed,
+    )
+    .unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("duplicate codex sessions must include zstd matches");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Multiple Codex session files found"),
+        "expected duplicate-session error, got: {msg}"
+    );
+}
+
+#[test]
+fn read_session_history_rejects_duplicate_before_reading_corrupt_zstd() {
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "28"],
+        &format!("{thread_id}.jsonl.zst"),
+        b"not zstd",
+    )
+    .unwrap();
+    write_session_file(
+        &sessions_dir,
+        &["2026", "04", "29"],
+        &format!("rollout-2026-04-29T11-22-37-{thread_id}.jsonl.zst"),
+        b"also not zstd",
+    )
+    .unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("duplicate codex sessions must fail before decoding any candidate");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Multiple Codex session files found"),
+        "expected duplicate-session error, got: {msg}"
+    );
+}
+
+#[test]
+fn read_session_history_resolves_dash_stripped_filename() {
     // Real codex CLI prefixes filenames with `rollout-{ts}-` and the
     // concatenation strips the UUID dashes — the substring matcher must
     // handle that. Bug-prone enough to deserve its own integration case.
@@ -290,8 +492,8 @@ async fn read_session_history_resolves_dash_stripped_filename() {
     assert_eq!(bytes, history);
 }
 
-#[tokio::test]
-async fn read_session_history_codex_marker_with_no_match_fails_fast() {
+#[test]
+fn read_session_history_codex_marker_with_no_match_fails_fast() {
     // Verifies the post-fix behaviour (#11430 review feedback): when no
     // filename matches the dash-stripped UUID, return a "not found"
     // error instead of silently picking some unrelated recent file.
@@ -328,8 +530,8 @@ async fn read_session_history_codex_marker_with_no_match_fails_fast() {
     );
 }
 
-#[tokio::test]
-async fn read_session_history_codex_marker_rejects_dash_only_thread_id() {
+#[test]
+fn read_session_history_codex_marker_rejects_dash_only_thread_id() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     reset_session_files();
@@ -357,8 +559,8 @@ async fn read_session_history_codex_marker_rejects_dash_only_thread_id() {
     );
 }
 
-#[tokio::test]
-async fn read_session_history_codex_marker_rejects_short_thread_id() {
+#[test]
+fn read_session_history_codex_marker_rejects_short_thread_id() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     reset_session_files();
@@ -387,8 +589,8 @@ async fn read_session_history_codex_marker_rejects_short_thread_id() {
 }
 
 #[cfg(unix)]
-#[tokio::test]
-async fn read_session_history_codex_marker_skips_symlinks() {
+#[test]
+fn read_session_history_codex_marker_skips_symlinks() {
     use std::os::unix::fs::symlink;
 
     setup_env_once();
@@ -434,8 +636,8 @@ async fn read_session_history_codex_marker_skips_symlinks() {
 }
 
 #[cfg(unix)]
-#[tokio::test]
-async fn read_session_history_codex_marker_rejects_symlinked_sessions_root() {
+#[test]
+fn read_session_history_codex_marker_rejects_symlinked_sessions_root() {
     use std::os::unix::fs::symlink;
 
     setup_env_once();
@@ -472,8 +674,47 @@ async fn read_session_history_codex_marker_rejects_symlinked_sessions_root() {
 }
 
 #[cfg(unix)]
-#[tokio::test]
-async fn read_session_history_codex_marker_skips_special_files() {
+#[test]
+fn read_session_history_codex_marker_rejects_symlinked_codex_home_parent() {
+    use std::os::unix::fs::symlink;
+
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let real_codex_home = tmp.path().join("real-codex-home");
+    let codex_home_link = tmp.path().join(".codex");
+    let real_sessions_dir = real_codex_home.join("sessions");
+    std::fs::create_dir_all(&real_sessions_dir).unwrap();
+
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    std::fs::write(
+        real_sessions_dir.join(format!("{thread_id}.jsonl")),
+        b"outside-parent-history\n",
+    )
+    .unwrap();
+    symlink(&real_codex_home, &codex_home_link).unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        codex_home_link.join("sessions").to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("codex lookup must not follow a symlinked codex home parent");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Codex session file not found"),
+        "expected symlinked codex home parent to be ignored, got: {msg}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn read_session_history_codex_marker_skips_special_files() {
     use std::os::unix::net::UnixListener;
 
     setup_env_once();
@@ -503,8 +744,51 @@ async fn read_session_history_codex_marker_skips_special_files() {
     );
 }
 
-#[tokio::test]
-async fn read_session_history_resolves_claude_literal_path() {
+#[cfg(unix)]
+#[test]
+fn read_session_history_codex_marker_reports_unreadable_directory() {
+    use std::os::unix::fs::PermissionsExt;
+
+    // SAFETY: `geteuid` only reads the current process credential.
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let blocked_dir = sessions_dir.join("blocked");
+    std::fs::create_dir_all(&blocked_dir).unwrap();
+    std::fs::set_permissions(&blocked_dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let result = guest_agent::session_history::read_session_history(path_file.to_str().unwrap());
+    std::fs::set_permissions(&blocked_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    let err = result.expect_err("unreadable codex directories must surface as read errors");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Failed to read session history"),
+        "expected directory read error, got: {msg}"
+    );
+    assert!(
+        msg.contains("Permission denied"),
+        "expected permission failure to be preserved, got: {msg}"
+    );
+}
+
+#[test]
+fn read_session_history_resolves_claude_literal_path() {
     // Claude path goes through the same public entry but uses a literal
     // jsonl path rather than a marker. Covered here because the Claude-
     // side integration test in `tests/integration/mod.rs` only asserts the

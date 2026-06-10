@@ -151,6 +151,42 @@ function wavBytesWithOversizedDataChunk(
   return bytes;
 }
 
+// Canonical header with a correctly-sized data chunk, followed by a trailing
+// LIST chunk. Duration must come from the declared data size, not the whole
+// remaining buffer (which would count the trailing chunk as audio).
+function wavBytesWithTrailingChunk(
+  durationSeconds: number,
+): Uint8Array<ArrayBuffer> {
+  const sampleRate = 24_000;
+  const channels = 1;
+  const bitsPerSample = 16;
+  const bytesPerSample = channels * (bitsPerSample / 8);
+  const byteRate = sampleRate * bytesPerSample;
+  const dataSize = byteRate * durationSeconds;
+  const trailingSize = byteRate * 3; // 3s of bytes; over-count would add ~3s
+  const buffer = new ArrayBuffer(44 + dataSize + 8 + trailingSize);
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+
+  writeAscii(bytes, 0, "RIFF");
+  view.setUint32(4, bytes.byteLength - 8, true);
+  writeAscii(bytes, 8, "WAVE");
+  writeAscii(bytes, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeAscii(bytes, 36, "data");
+  view.setUint32(40, dataSize, true);
+  writeAscii(bytes, 44 + dataSize, "LIST");
+  view.setUint32(44 + dataSize + 4, trailingSize, true);
+
+  return bytes;
+}
+
 function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -748,6 +784,58 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(counts.get(AUDIO_INPUT_BEHAVIOR_KEY)).toBe(1);
     expect(counts.get(sttDailyRateKey())).toBe(1);
     expect(counts.get(sttDailyDurationKey())).toBe(2);
+  });
+
+  it("meters /stt WAV duration from the data chunk, not a fixed 44-byte offset", async () => {
+    // ffmpeg-produced WAV can carry chunks (LIST/INFO/JUNK) before the data
+    // chunk, so the data chunk is not at byte 44. A fixed-offset reader would
+    // mis-measure this clip; the RIFF chunk-walk must report its true length.
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        return HttpResponse.json({ text: "hello from voice" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytesWithOversizedDataChunk(120))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(
+      readBehaviorCount(fixture, sttDailyDurationKey()),
+    ).resolves.toBe(120);
+  });
+
+  it("meters /stt WAV duration from the declared data size, ignoring trailing chunks", async () => {
+    // A well-formed WAV with a LIST chunk after data must be measured from the
+    // declared data size, not the whole remaining buffer (which would count the
+    // 3s-worth trailing chunk as audio and over-meter to 63s).
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        return HttpResponse.json({ text: "hello from voice" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytesWithTrailingChunk(60))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(
+      readBehaviorCount(fixture, sttDailyDurationKey()),
+    ).resolves.toBe(60);
   });
 
   it("uses whisper-1 and verbose_json when ?verbose=true, returns segments", async () => {

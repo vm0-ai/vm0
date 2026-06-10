@@ -110,6 +110,7 @@ describe("schedule dual-write to events-first tables", () => {
           cronExpression: "0 9 * * *",
           timezone: "UTC",
           prompt: "Summarize yesterday",
+          appendSystemPrompt: "Reply in pirate speak.",
           enabled: true,
         },
       },
@@ -135,6 +136,7 @@ describe("schedule dual-write to events-first tables", () => {
     expect(mirror.automation.agentId).toBe(fixture.composeId);
     expect(mirror.automation.chatThreadId).toBe(schedule.chatThreadId);
     expect(mirror.automation.instruction).toBe("Summarize yesterday");
+    expect(mirror.automation.appendSystemPrompt).toBe("Reply in pirate speak.");
     expect(mirror.automation.enabled).toBeTruthy();
 
     expect(mirror.trigger.kind).toBe("cron");

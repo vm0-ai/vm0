@@ -17,6 +17,7 @@ import {
 import { buildLocaleAlternates } from "../../../lib/seo/alternates";
 import { locales, type Locale } from "../../../../i18n";
 import { Link } from "../../../../navigation";
+import { serializeJsonLd } from "../../../../src/lib/json-ld";
 
 interface DocsPageProps {
   params: Promise<{ locale: string; slug: string[] }>;
@@ -166,12 +167,12 @@ export default async function DocsPage({
       <script
         type="application/ld+json"
         suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }}
       />
       <script
         type="application/ld+json"
         suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(articleJsonLd) }}
       />
       <Particles />
       <DocsShell

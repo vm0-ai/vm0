@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn write_frame_fails_when_peer_is_closed() {
         let (guest, peer) = UnixStream::pair().unwrap();
-        drop(peer);
+        peer.shutdown(Shutdown::Read).unwrap();
         let writer = GuestWriter::new(guest);
 
         let err = writer

@@ -91,6 +91,7 @@ interface SendNewThreadMessageRequest {
   prompt: string;
   modelSelection: ModelSelectionRequest | null;
   generationTemplate: GenerationTemplateRequest | undefined;
+  computerUseHostId: string | null;
 }
 
 interface SendNewThreadMessageResult {
@@ -126,6 +127,7 @@ async function appendQueuedMessage(
         clientMessageId: append.clientMessageId,
         modelSelection: append.modelSelection,
         generationTemplate: append.generationTemplate,
+        computerUseHostId: append.computerUseHostId,
         attachFiles: append.attachments ?? undefined,
       },
       fetchOptions: { signal },
@@ -144,11 +146,13 @@ function queuedReplayAppendArgs({
   threadId,
   agentId,
   modelSelection,
+  computerUseHostId,
   entry,
 }: {
   threadId: string;
   agentId: string;
   modelSelection: ModelSelectionRequest | null;
+  computerUseHostId: string | null;
   entry: OptimisticChatMessageEntry;
 }): AppendQueuedMessageArgs {
   return {
@@ -160,6 +164,7 @@ function queuedReplayAppendArgs({
     hasTextContent: hasTextContentForQueuedReplay(entry.message),
     modelSelection,
     generationTemplate: entry.message.generationTemplate,
+    computerUseHostId,
   };
 }
 
@@ -168,6 +173,7 @@ async function replayQueuedOptimisticMessages({
   threadId,
   agentId,
   modelSelection,
+  computerUseHostId,
   entries,
   signal,
 }: {
@@ -175,6 +181,7 @@ async function replayQueuedOptimisticMessages({
   threadId: string;
   agentId: string;
   modelSelection: ModelSelectionRequest | null;
+  computerUseHostId: string | null;
   entries: OptimisticChatMessageEntry[];
   signal: AbortSignal;
 }): Promise<void> {
@@ -187,6 +194,7 @@ async function replayQueuedOptimisticMessages({
         threadId,
         agentId,
         modelSelection,
+        computerUseHostId,
         entry,
       }),
       signal,
@@ -275,6 +283,7 @@ const mintOptimisticPendingThread$ = command(
       threadId: string;
       agentId: string;
       pendingRunId?: string;
+      computerUseHostId?: string | null;
     },
     signal: AbortSignal,
   ): Promise<{
@@ -292,6 +301,7 @@ const mintOptimisticPendingThread$ = command(
         args.threadId,
         args.agentId,
         args.pendingRunId,
+        args.computerUseHostId ?? null,
       ),
       messages: [],
     });
@@ -469,6 +479,7 @@ const sendNewThreadMessage$ = command(
       prompt,
       modelSelection,
       generationTemplate,
+      computerUseHostId,
     }: SendNewThreadMessageRequest,
     signal: AbortSignal,
   ): Promise<SendNewThreadMessagePending | null> => {
@@ -525,6 +536,7 @@ const sendNewThreadMessage$ = command(
         threadId,
         agentId,
         pendingRunId: `pending-${threadId}`,
+        computerUseHostId,
       },
       signal,
     );
@@ -549,6 +561,7 @@ const sendNewThreadMessage$ = command(
             clientMessageId,
             modelSelection,
             generationTemplate,
+            computerUseHostId,
             attachFiles: prepared.attachFiles,
           },
           fetchOptions: { signal },
@@ -563,12 +576,16 @@ const sendNewThreadMessage$ = command(
       const queuedMessages = await get(queuedOptimisticMessages$);
       signal.throwIfAborted();
       const replayModelSelection = await get(pendingThread.modelSelection$);
+      const replayComputerUseHostId = await get(
+        pendingThread.computerUseHostId$,
+      );
       signal.throwIfAborted();
       await replayQueuedOptimisticMessages({
         createClient,
         threadId: result.body.threadId,
         agentId,
         modelSelection: replayModelSelection,
+        computerUseHostId: replayComputerUseHostId,
         entries: queuedMessages,
         signal,
       });

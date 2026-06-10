@@ -45,7 +45,12 @@ const clearFeatureSwitchCacheForTest$ = command(({ set }) => {
 });
 
 function ensureTestLocalStorage(): void {
-  if (typeof localStorage !== "undefined") {
+  const currentLocalStorage = globalThis.localStorage;
+  if (
+    typeof currentLocalStorage !== "undefined" &&
+    typeof currentLocalStorage.getItem === "function" &&
+    typeof currentLocalStorage.setItem === "function"
+  ) {
     return;
   }
   const values = new Map<string, string>();

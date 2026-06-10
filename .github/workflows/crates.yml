@@ -144,12 +144,41 @@ jobs:
           # TypeScript contract files, but the checked artifact lives under
           # crates/api-contracts. Keep this output separate from any-changed so
           # a TS-only contract edit runs the drift check without forcing every
-          # Rust crate job to run.
-          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^crates/api-contracts/|^turbo/packages/api-contracts/(package\.json|tsconfig\.json|src/contracts/|src/rust-bindings/)|^turbo/pnpm-lock\.yaml$"; then
-            echo "api-contracts-rust-bindings-changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "api-contracts-rust-bindings-changed=false" >> "$GITHUB_OUTPUT"
-          fi
+          # Rust crate job to run. Connector firewall sources are included
+          # because the bindings may materialize shared TS connector data into
+          # Rust-generated artifacts.
+          api_contracts_rust_bindings_changed=false
+          changed_files="$(mktemp)"
+          git diff --name-only "$BASE_REF" HEAD > "$changed_files"
+          while IFS= read -r changed_file; do
+            case "$changed_file" in
+              crates/api-contracts/* | \
+              turbo/packages/api-contracts/package.json | \
+              turbo/packages/api-contracts/tsconfig.json | \
+              turbo/packages/api-contracts/src/contracts/* | \
+              turbo/packages/api-contracts/src/rust-bindings/* | \
+              turbo/packages/connectors/package.json | \
+              turbo/packages/connectors/src/connector-utils.ts | \
+              turbo/packages/connectors/src/connectors.ts | \
+              turbo/packages/connectors/src/connectors/* | \
+              turbo/packages/connectors/src/feature-switch-key.ts | \
+              turbo/packages/connectors/src/firewall-expander.ts | \
+              turbo/packages/connectors/src/firewall-loader.ts | \
+              turbo/packages/connectors/src/firewall-rule-matcher.ts | \
+              turbo/packages/connectors/src/firewall-types.ts | \
+              turbo/packages/connectors/src/firewall-url-utils.ts | \
+              turbo/packages/connectors/src/firewalls/* | \
+              turbo/packages/connectors/src/github-url.ts | \
+              turbo/packages/connectors/src/segment-parser.ts | \
+              turbo/packages/firewalls-generator/* | \
+              turbo/pnpm-lock.yaml)
+                api_contracts_rust_bindings_changed=true
+                break
+                ;;
+            esac
+          done < "$changed_files"
+          rm -f "$changed_files"
+          echo "api-contracts-rust-bindings-changed=$api_contracts_rust_bindings_changed" >> "$GITHUB_OUTPUT"
 
           # mitm-addon tests include cross-language consistency checks that
           # read turbo/ files (e.g. dev-seed.ts, generated firewall specs) as
@@ -1561,6 +1590,7 @@ jobs:
       - detect-release
       - detect
       - check
+      - api-contracts-rust-bindings
       - mitm-addon-test
       - runner-build
       - runner-benchmark
@@ -1609,6 +1639,7 @@ jobs:
 
           # May-skip: only run when relevant crates change
           check_result "check" "${{ needs.check.result }}" "true"
+          check_result "api-contracts-rust-bindings" "${{ needs.api-contracts-rust-bindings.result }}" "true"
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"

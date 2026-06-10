@@ -163,6 +163,7 @@ export function webhookRowToAutomation(row: {
   readonly userId: string;
   readonly chatThreadId: string;
   readonly instruction: string;
+  readonly appendSystemPrompt: string | null;
 }): Automation {
   return {
     interpreterKind: "webhook",
@@ -172,7 +173,7 @@ export function webhookRowToAutomation(row: {
     userId: row.userId,
     chatThreadId: row.chatThreadId,
     prompt: row.instruction,
-    appendSystemPrompt: null,
+    appendSystemPrompt: row.appendSystemPrompt,
     triggerType: "webhook",
     cronExpression: null,
     timezone: "UTC",
@@ -193,6 +194,7 @@ export function automationRowToTimeAutomation(row: {
   readonly userId: string;
   readonly chatThreadId: string;
   readonly instruction: string;
+  readonly appendSystemPrompt: string | null;
   readonly triggerType: "cron" | "once" | "loop";
   readonly cronExpression: string | null;
   readonly timezone: string;
@@ -205,7 +207,7 @@ export function automationRowToTimeAutomation(row: {
     userId: row.userId,
     chatThreadId: row.chatThreadId,
     prompt: row.instruction,
-    appendSystemPrompt: null,
+    appendSystemPrompt: row.appendSystemPrompt,
     triggerType: row.triggerType,
     cronExpression: row.cronExpression,
     timezone: row.timezone,

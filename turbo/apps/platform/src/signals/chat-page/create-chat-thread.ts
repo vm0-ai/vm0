@@ -82,7 +82,7 @@ export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
 const L = logger("ChatThread");
 
-const QUEUED_RUN_ASSISTANT_MESSAGE = "Waiting in queue...";
+const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
 
 function isRecallControlMessage(msg: PagedChatMessage): boolean {
   return (
@@ -95,7 +95,7 @@ function isRecallControlMessage(msg: PagedChatMessage): boolean {
 function isQueueMarkerMessage(msg: PagedChatMessage): boolean {
   return (
     msg.role === "assistant" &&
-    msg.content === QUEUED_RUN_ASSISTANT_MESSAGE &&
+    msg.runEventId === QUEUED_RUN_MARKER_EVENT_ID &&
     msg.runId !== undefined
   );
 }
@@ -312,14 +312,13 @@ function deriveRunIndicatorState(
   return hasQueued ? "queued" : null;
 }
 
-function hasActiveQueueMarker(
+function hasUnresolvedQueueMarker(
   raw: readonly ChatMessageProjectionEntry[],
 ): boolean {
-  const queueMarkerIds = new Set(
-    raw.flatMap((entry) => {
-      return isQueueMarkerMessage(entry.message) ? [entry.message.id] : [];
-    }),
-  );
+  const queueMarkers = new Map<
+    string,
+    { readonly runId: string; readonly index: number }
+  >();
   const revokedIds = new Set(
     raw.flatMap((entry) => {
       return entry.message.revokesMessageId
@@ -327,8 +326,47 @@ function hasActiveQueueMarker(
         : [];
     }),
   );
-  for (const markerId of queueMarkerIds) {
-    if (!revokedIds.has(markerId)) {
+  const lastAssistantOutputIndexByRunId = new Map<string, number>();
+  const lastTerminalIndexByRunId = new Map<string, number>();
+  const lastInterruptIndexByRunId = new Map<string, number>();
+
+  for (const [index, entry] of raw.entries()) {
+    const { message } = entry;
+    if (isQueueMarkerMessage(message) && message.runId !== undefined) {
+      queueMarkers.set(message.id, { runId: message.runId, index });
+      continue;
+    }
+    if (message.interruptsRunId !== undefined) {
+      lastInterruptIndexByRunId.set(message.interruptsRunId, index);
+    }
+    if (message.role !== "assistant" || message.runId === undefined) {
+      continue;
+    }
+    if (message.runLifecycleEvent !== undefined) {
+      lastTerminalIndexByRunId.set(message.runId, index);
+      continue;
+    }
+    if (message.content !== null) {
+      lastAssistantOutputIndexByRunId.set(message.runId, index);
+    }
+  }
+
+  for (const [markerId, marker] of queueMarkers) {
+    if (revokedIds.has(markerId)) {
+      continue;
+    }
+    const laterAssistantOutputIndex =
+      lastAssistantOutputIndexByRunId.get(marker.runId) ?? -1;
+    const laterTerminalIndex = lastTerminalIndexByRunId.get(marker.runId) ?? -1;
+    const laterInterruptIndex =
+      lastInterruptIndexByRunId.get(marker.runId) ?? -1;
+    if (
+      Math.max(
+        laterAssistantOutputIndex,
+        laterTerminalIndex,
+        laterInterruptIndex,
+      ) <= marker.index
+    ) {
       return true;
     }
   }
@@ -406,6 +444,8 @@ export interface ChatThreadSignals {
     Promise<void>,
     [ModelProviderSelection | null, AbortSignal]
   >;
+  computerUseHostId$: Computed<Promise<string | null>>;
+  setComputerUseHostId$: Command<void, [string | null]>;
   sendMessage$: Command<
     Promise<void>,
     [
@@ -417,7 +457,7 @@ export interface ChatThreadSignals {
   >;
   queueMessage$: Command<
     Promise<void>,
-    [string, GenerationTemplateRequest | undefined, AbortSignal]
+    [string, GenerationTemplateRequest | undefined, string | null, AbortSignal]
   >;
   recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
@@ -557,6 +597,38 @@ function createModelSelection(
   return {
     modelSelection$,
     setModelSelection$,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: composer Computer Use host selection
+// ---------------------------------------------------------------------------
+
+function createComputerUseHostSelection(
+  threadData$: Computed<Promise<ChatThread | null>>,
+) {
+  const internalUserOverride$ = state<
+    { kind: "unset" } | { kind: "set"; value: string | null }
+  >({ kind: "unset" });
+
+  const computerUseHostId$ = computed(async (get): Promise<string | null> => {
+    const user = get(internalUserOverride$);
+    if (user.kind === "set") {
+      return user.value;
+    }
+    const thread = await get(threadData$);
+    return thread?.computerUseHostId ?? null;
+  });
+
+  const setComputerUseHostId$ = command(
+    ({ set }, computerUseHostId: string | null) => {
+      set(internalUserOverride$, { kind: "set", value: computerUseHostId });
+    },
+  );
+
+  return {
+    computerUseHostId$,
+    setComputerUseHostId$,
   };
 }
 
@@ -1409,12 +1481,15 @@ function createLatestRunStatus(
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
 ) {
   return computed(async (get): Promise<string | null> => {
+    if (hasUnresolvedQueueMarker(await get(rawMessages$))) {
+      return "queued";
+    }
     const messages = await get(allMessages$);
     const stateFromMessages = deriveRunIndicatorState(messages);
     if (stateFromMessages !== null) {
       return stateFromMessages;
     }
-    return hasActiveQueueMarker(await get(rawMessages$)) ? "queued" : null;
+    return null;
   });
 }
 
@@ -1622,6 +1697,7 @@ interface SendMessageOptions {
   readonly revokesMessageId?: string;
   readonly includeDraftAttachments?: boolean;
   readonly generationTemplate?: GenerationTemplateRequest;
+  readonly computerUseHostId?: string | null;
 }
 
 interface PreparedSendMessageResult {
@@ -1791,6 +1867,9 @@ function createSendMessage(deps: SendMessageDeps) {
               clientMessageId,
               modelSelection,
               generationTemplate: options?.generationTemplate,
+              ...(options && "computerUseHostId" in options
+                ? { computerUseHostId: options.computerUseHostId ?? null }
+                : {}),
               attachFiles: result.attachFiles,
               ...sendMessageRevocationPatch(options),
             },
@@ -1850,6 +1929,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       { get, set },
       prompt: string,
       generationTemplate: GenerationTemplateRequest | undefined,
+      computerUseHostId: string | null,
       signal: AbortSignal,
     ) => {
       L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
@@ -1916,6 +1996,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
             hasTextContent: result.hasTextContent,
             modelSelection,
             generationTemplate,
+            computerUseHostId,
           },
           signal,
         ),
@@ -2165,6 +2246,8 @@ export function createChatThreadSignals(
     threadData$,
     dataSource,
   );
+  const { computerUseHostId$, setComputerUseHostId$ } =
+    createComputerUseHostSelection(threadData$);
   const { recordScrollHeightForPrepend$, ...scrollSignals } =
     createScrollSignals(threadId);
   const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
@@ -2240,6 +2323,8 @@ export function createChatThreadSignals(
     threadData$,
     modelSelection$,
     setModelSelection$,
+    computerUseHostId$,
+    setComputerUseHostId$,
     ...messageCommands,
     cancelRun$,
     ...scrollSignals,

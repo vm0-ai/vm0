@@ -46,7 +46,11 @@ interface DueTrigger {
     readonly orgId: string;
     readonly userId: string;
     readonly chatThreadId: string;
+    readonly name: string;
+    readonly description: string | null;
     readonly instruction: string;
+    readonly appendSystemPrompt: string | null;
+    readonly sourceScheduleId: string | null;
   };
 }
 
@@ -272,6 +276,7 @@ const runTriggerNow$ = command(
         userId: automation.userId,
         chatThreadId: automation.chatThreadId,
         instruction: automation.instruction,
+        appendSystemPrompt: automation.appendSystemPrompt,
         triggerType: trigger.kind as "cron" | "once" | "loop",
         cronExpression: trigger.cronExpression,
         timezone: trigger.timezone,
@@ -315,6 +320,9 @@ const runTriggerNow$ = command(
       return { kind: "run_error", response: result };
     }
 
+    // The schedule chip: snapshot keeps the label rendering after edits or
+    // deletes; scheduleId links a mirrored automation's source schedule for
+    // navigation (null for natively-created automations).
     await postAutomationUserMessage({
       db,
       threadId: automation.chatThreadId,
@@ -322,6 +330,13 @@ const runTriggerNow$ = command(
       runId: result.body.runId,
       prompt: runInput.prompt,
       appendQueueMarker: result.body.status === "queued",
+      scheduleId: automation.sourceScheduleId ?? undefined,
+      scheduleTitle: automation.name,
+      scheduleSnapshot: {
+        id: automation.sourceScheduleId ?? automation.id,
+        title: automation.name,
+        description: automation.description,
+      },
     });
     signal.throwIfAborted();
 
@@ -374,7 +389,11 @@ export const executeDueTriggers$ = command(
         orgId: automations.orgId,
         userId: automations.userId,
         chatThreadId: automations.chatThreadId,
+        name: automations.name,
+        description: automations.description,
         instruction: automations.instruction,
+        appendSystemPrompt: automations.appendSystemPrompt,
+        sourceScheduleId: automations.sourceScheduleId,
         automationEnabled: automations.enabled,
       })
       .from(automationTriggers)
@@ -416,7 +435,11 @@ export const executeDueTriggers$ = command(
           orgId: row.orgId,
           userId: row.userId,
           chatThreadId: row.chatThreadId,
+          name: row.name,
+          description: row.description,
           instruction: row.instruction,
+          appendSystemPrompt: row.appendSystemPrompt,
+          sourceScheduleId: row.sourceScheduleId,
         },
       };
 

@@ -1,8 +1,11 @@
 //! Reusable mock Codex contract used by the `guest-mock-codex` binary and tests.
 //!
 //! The mock emits Codex `exec --json` protocol events on stdout and persists a
-//! JSONL session file using the same layout as the real Codex CLI:
+//! JSONL session file under Codex's date-partitioned session tree:
 //! `$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`.
+//!
+//! Resume can also append to runner-restored rollout filenames, matching the
+//! real Codex CLI's filesystem resume candidates.
 
 use chrono::Utc;
 use std::io;
@@ -32,25 +35,19 @@ pub fn run_resume(thread_id: &str, prompt: &str) -> io::Result<()> {
     run_turn(thread_id, prompt, true)
 }
 
-/// Emit the three-event synthetic turn on stdout, then persist or append it
+/// Persist the three-event synthetic turn, then emit it on stdout
 /// under `$CODEX_HOME`.
 fn run_turn(thread_id: &str, prompt: &str, is_resume: bool) -> io::Result<()> {
     let home = codex_home();
     let today = Utc::now().date_naive();
-    let path = if is_resume {
-        session::build_resume_session_path(&home, today, thread_id)?
-    } else {
-        build_session_path(&home, today, thread_id)?
-    };
-    session::ensure_runtime_session_path_usable(&home, &path)?;
     let events = build_events(thread_id, prompt);
 
-    let mut stdout = io::stdout().lock();
-    emit_events(&mut stdout, &events)?;
-
     if is_resume {
-        append_session_file(&path, &events)
+        session::persist_resume_session(&home, today, thread_id, &events)?;
     } else {
-        write_session_file(&path, &events)
+        session::persist_new_session(&home, today, thread_id, &events)?;
     }
+
+    let mut stdout = io::stdout().lock();
+    emit_events(&mut stdout, &events)
 }

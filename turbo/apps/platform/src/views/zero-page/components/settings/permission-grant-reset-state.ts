@@ -61,13 +61,9 @@ function grantExpirationFingerprint(
 
 function selectedExpirationFingerprint(
   action: UserPermissionGrantResponse["action"],
-  expirationEnabled: boolean,
   selected: UserPermissionGrantExpiresIn | undefined,
 ): string {
-  return action === "allow" &&
-    expirationEnabled &&
-    selected !== undefined &&
-    selected !== "always"
+  return action === "allow" && selected !== undefined && selected !== "always"
     ? `duration:${selected}`
     : "always";
 }
@@ -106,13 +102,11 @@ function currentPermissionGrantFingerprint({
   currentPolicy,
   defaultPolicy,
   selected,
-  expirationEnabled,
 }: {
   permission: string;
   currentPolicy: FirewallPolicyValue;
   defaultPolicy: FirewallPolicyValue;
   selected: UserPermissionGrantExpiresIn | undefined;
-  expirationEnabled: boolean;
 }): PermissionGrantFingerprint | null {
   const currentAction = grantAction(currentPolicy);
   const defaultAction = grantAction(defaultPolicy);
@@ -122,7 +116,6 @@ function currentPermissionGrantFingerprint({
   const hasExpiringDefaultAllowGrant =
     currentAction === "allow" &&
     currentAction === defaultAction &&
-    expirationEnabled &&
     selected !== undefined &&
     selected !== "always";
   if (currentAction === defaultAction && !hasExpiringDefaultAllowGrant) {
@@ -131,11 +124,7 @@ function currentPermissionGrantFingerprint({
   return {
     permission,
     action: currentAction,
-    expiration: selectedExpirationFingerprint(
-      currentAction,
-      expirationEnabled,
-      selected,
-    ),
+    expiration: selectedExpirationFingerprint(currentAction, selected),
   };
 }
 
@@ -145,7 +134,6 @@ function currentConnectorGrantFingerprints({
   unknownPolicy,
   defaultPolicies,
   defaultUnknownPolicy,
-  expirationEnabled,
   selections,
 }: {
   permissionNames: readonly string[];
@@ -153,7 +141,6 @@ function currentConnectorGrantFingerprints({
   unknownPolicy: FirewallPolicyValue;
   defaultPolicies: Record<string, PermissionPolicy>;
   defaultUnknownPolicy: FirewallPolicyValue;
-  expirationEnabled: boolean;
   selections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
 }): readonly PermissionGrantFingerprint[] {
   const fingerprints: PermissionGrantFingerprint[] = [];
@@ -163,7 +150,6 @@ function currentConnectorGrantFingerprints({
       currentPolicy: policies[name] ?? defaultPolicies[name] ?? "allow",
       defaultPolicy: defaultPolicies[name] ?? "allow",
       selected: selections[name],
-      expirationEnabled,
     });
     if (fingerprint) {
       fingerprints.push(fingerprint);
@@ -174,7 +160,6 @@ function currentConnectorGrantFingerprints({
     currentPolicy: unknownPolicy,
     defaultPolicy: defaultUnknownPolicy,
     selected: selections[UNKNOWN_PERMISSION_GRANT],
-    expirationEnabled,
   });
   if (unknownFingerprint) {
     fingerprints.push(unknownFingerprint);
@@ -221,7 +206,6 @@ export function hasConnectorResetPersistedEffect({
   unknownPolicy,
   defaultPolicies,
   defaultUnknownPolicy,
-  expirationEnabled,
   selections,
 }: {
   resetPending: boolean;
@@ -231,7 +215,6 @@ export function hasConnectorResetPersistedEffect({
   unknownPolicy: FirewallPolicyValue;
   defaultPolicies: Record<string, PermissionPolicy>;
   defaultUnknownPolicy: FirewallPolicyValue;
-  expirationEnabled: boolean;
   selections: Readonly<Record<string, UserPermissionGrantExpiresIn>>;
 }): boolean {
   if (!resetPending) {
@@ -244,7 +227,6 @@ export function hasConnectorResetPersistedEffect({
     unknownPolicy,
     defaultPolicies,
     defaultUnknownPolicy,
-    expirationEnabled,
     selections,
   });
   return !permissionGrantFingerprintsEqual(

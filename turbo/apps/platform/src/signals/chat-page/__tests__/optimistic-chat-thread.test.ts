@@ -297,6 +297,7 @@ describe("optimistic chat thread (local mode)", () => {
         prompt: "blocked by credits",
         modelSelection: null,
         generationTemplate,
+        computerUseHostId: null,
       },
       context.signal,
     );

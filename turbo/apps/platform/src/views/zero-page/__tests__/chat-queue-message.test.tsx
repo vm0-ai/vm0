@@ -6,6 +6,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { optimisticChatThread$ } from "../../../signals/chat-page/optimistic-chat-thread-state.ts";
@@ -247,6 +248,42 @@ describe("chat queued user messages", () => {
     ]);
     expect(appendedContents).toStrictEqual(["first queued", "second queued"]);
     expect(new Set(appendedClientIds).size).toBe(2);
+  });
+
+  it("shows the queue indicator when a queued run has a user message and queue marker", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          id: "msg-queued-user",
+          role: "user",
+          content: "wait behind active run",
+          runId: "run-queued",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+        {
+          id: "msg-queue-marker",
+          role: "assistant",
+          content: "Waiting in queue...",
+          runId: "run-queued",
+          runEventId: "queue:queued",
+          status: "queued",
+          createdAt: "2026-03-10T00:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+    });
+
+    await waitFor(() => {
+      const queueButton = queryAllByRoleFast("button").find((button) => {
+        return button.textContent?.trim() === "queue...";
+      });
+      expect(queueButton).toBeDefined();
+      expect(queueButton).toBeVisible();
+    });
   });
 
   it("recalls a queued message back into the composer", async () => {

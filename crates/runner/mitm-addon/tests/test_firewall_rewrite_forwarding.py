@@ -154,6 +154,36 @@ class TestAuthBaseUrlRewriteForwarding:
         assert ("X-Injected", "trusted") in req_headers
         assert ("X-Keep", "client") in req_headers
 
+    async def test_forward_request_rejects_malformed_injected_header(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        """Malformed resolved auth headers fail before auth.base forwarding."""
+        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            resolved_base="https://discord.com/api/webhooks/123/abc",
+        )
+        token_meta["headers"] = {
+            "Authorization": "Bearer real-token",
+            "X-Test": "bad\r\nX-Injected: value",
+        }
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        mock_forward.assert_not_called()
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "invalid_resolved_auth_header"
+        body = json.loads(flow.response.content)
+        assert body["error"] == "invalid_resolved_auth_header"
+
     async def test_forward_request_signs_rewritten_aws_sigv4_request(
         self,
         headers,

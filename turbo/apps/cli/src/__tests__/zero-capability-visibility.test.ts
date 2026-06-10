@@ -361,6 +361,19 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
+  it("should show host when host:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["host:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("host");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
   it("should show generate when file capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -526,6 +539,20 @@ describe("registerZeroCommands", () => {
     );
   });
 
+  it("should show the hosted site clone help example when host:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["host:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Clone hosted site?",
+    );
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Host a static site?",
+    );
+  });
+
   it("should show the website help example", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -557,6 +584,9 @@ describe("registerZeroCommands", () => {
 
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Host a static site?",
+    );
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Clone hosted site?",
     );
   });
 

@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import type { VideoStyleCategory } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -71,6 +72,18 @@ export const setPopoverSortOrder$ = command(
   },
 );
 
+// -- New-thread Computer Use host selection ---------------------------------
+
+const internalNewThreadComputerUseHostId$ = state<string | null>(null);
+export const newThreadComputerUseHostId$ = computed((get) => {
+  return get(internalNewThreadComputerUseHostId$);
+});
+export const setNewThreadComputerUseHostId$ = command(
+  ({ set }, hostId: string | null) => {
+    set(internalNewThreadComputerUseHostId$, hostId);
+  },
+);
+
 // -- Model picker open state ------------------------------------------------
 
 const internalModelPickerOpen$ = state(false);
@@ -108,6 +121,19 @@ export const templatePickerSearch$ = computed((get) => {
 export const setTemplatePickerSearch$ = command(({ set }, value: string) => {
   set(internalTemplatePickerSearch$, value);
 });
+
+export type TemplatePickerVideoGroup = VideoStyleCategory | "all";
+
+const internalTemplatePickerVideoGroup$ =
+  state<TemplatePickerVideoGroup>("all");
+export const templatePickerVideoGroup$ = computed((get) => {
+  return get(internalTemplatePickerVideoGroup$);
+});
+export const setTemplatePickerVideoGroup$ = command(
+  ({ set }, value: TemplatePickerVideoGroup) => {
+    set(internalTemplatePickerVideoGroup$, value);
+  },
+);
 
 const internalTemplatePickerPreviewSlug$ = state<string | null>(null);
 export const templatePickerPreviewSlug$ = computed((get) => {

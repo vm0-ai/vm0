@@ -436,13 +436,22 @@ describe("desktop auth", () => {
         `ai.vm0.zero.desktop://auth/callback?code=${code}`,
         "ai.vm0.zero.desktop",
       ),
-    ).toStrictEqual({ code });
+    ).toStrictEqual({ code, handoffId: null });
     expect(
       parseDesktopAuthCallback(
         `ai.vm0.zero.desktop.dev://auth/callback?code=${code}`,
         "ai.vm0.zero.desktop.dev",
       ),
-    ).toStrictEqual({ code });
+    ).toStrictEqual({ code, handoffId: null });
+    expect(
+      parseDesktopAuthCallback(
+        `ai.vm0.zero.desktop://auth/callback?code=${code}&handoffId=550e8400-e29b-41d4-a716-446655440000`,
+        "ai.vm0.zero.desktop",
+      ),
+    ).toStrictEqual({
+      code,
+      handoffId: "550e8400-e29b-41d4-a716-446655440000",
+    });
   });
 
   it("parses desktop callbacks from launch arguments", () => {
@@ -454,7 +463,7 @@ describe("desktop auth", () => {
         ],
         "ai.vm0.zero.desktop",
       ),
-    ).toStrictEqual({ code });
+    ).toStrictEqual({ code, handoffId: null });
     expect(
       parseDesktopAuthCallbackArgv(
         ["/Applications/Zero.app/Contents/MacOS/Zero", "--some-flag"],
@@ -488,6 +497,12 @@ describe("desktop auth", () => {
         "ai.vm0.zero.desktop",
       ),
     ).toBe(null);
+    expect(
+      parseDesktopAuthCallback(
+        `ai.vm0.zero.desktop://auth/callback?code=${code}&handoffId=not-a-uuid`,
+        "ai.vm0.zero.desktop",
+      ),
+    ).toBe(null);
   });
 
   it("does not treat legacy callbacks as valid", () => {
@@ -508,6 +523,15 @@ describe("desktop auth", () => {
   it("builds the Electron web-session consume URL", () => {
     expect(buildDesktopAuthConsumeUrl(webUrl, code)).toBe(
       `https://www.vm0.ai/desktop-auth/consume?code=${code}`,
+    );
+    expect(
+      buildDesktopAuthConsumeUrl(
+        webUrl,
+        code,
+        "550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(
+      `https://www.vm0.ai/desktop-auth/consume?code=${code}&handoffId=550e8400-e29b-41d4-a716-446655440000`,
     );
   });
 

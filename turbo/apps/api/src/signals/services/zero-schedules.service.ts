@@ -945,7 +945,7 @@ async function recordSchedulePreRunFailure(
     shouldDisable,
   });
 
-  await db
+  const [failed] = await db
     .update(zeroAgentSchedules)
     .set({
       consecutiveFailures: newFailureCount,
@@ -953,8 +953,15 @@ async function recordSchedulePreRunFailure(
       nextRunAt,
       updatedAt: failureTime,
     })
-    .where(eq(zeroAgentSchedules.id, schedule.id));
+    .where(eq(zeroAgentSchedules.id, schedule.id))
+    .returning();
   signal.throwIfAborted();
+  if (failed) {
+    // Mirror the failure bookkeeping (counter, possible auto-disable, next
+    // run) onto the events-first tables.
+    await syncScheduleToAutomationSafely(db, failed);
+    signal.throwIfAborted();
+  }
 
   if (shouldDisable) {
     log.warn("Schedule auto-disabled after consecutive pre-run failures", {
@@ -1013,6 +1020,14 @@ export const executeDueSchedules$ = command(
 
       const claimed = await timeTrigger.evaluate({ db, schedule, currentTime });
       signal.throwIfAborted();
+
+      if (claimed) {
+        // Mirror the claimed runtime state (next_run_at cleared, lastRunAt
+        // stamped, once disabled) so the events-first tables track every fire,
+        // not just CRUD-time snapshots.
+        await syncScheduleToAutomationSafely(db, claimed);
+        signal.throwIfAborted();
+      }
 
       if (!claimed) {
         log.debug("Skipping schedule: already claimed", {
@@ -1244,11 +1259,18 @@ export const runScheduleNow$ = command(
       .where(eq(zeroRuns.id, result.body.runId));
     signal.throwIfAborted();
 
-    await db
+    const [stamped] = await db
       .update(zeroAgentSchedules)
       .set({ lastRunId: result.body.runId })
-      .where(eq(zeroAgentSchedules.id, schedule.id));
+      .where(eq(zeroAgentSchedules.id, schedule.id))
+      .returning();
     signal.throwIfAborted();
+    if (stamped) {
+      // Mirror lastRunId so the events-first trigger's skip-if-active check
+      // sees the same in-flight run the live poller does.
+      await syncScheduleToAutomationSafely(db, stamped);
+      signal.throwIfAborted();
+    }
 
     return { kind: "ok", runId: result.body.runId };
   },

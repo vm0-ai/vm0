@@ -10,6 +10,7 @@ export function shouldShowGoogleSecurityWarningNotice(
     case "google-docs":
     case "google-drive":
     case "google-meet":
+    case "google-search-console":
     case "google-sheets": {
       return true;
     }

@@ -55,6 +55,7 @@ const recordSignupInner$ = command(async ({ get }, signal: AbortSignal) => {
       ...privateMetadata,
       [SIGNUP_ATTRIBUTION_KEY]: {
         ...bodyResult.data.attribution,
+        user_id: auth.userId,
         recorded_at: nowDate().toISOString(),
       },
     },

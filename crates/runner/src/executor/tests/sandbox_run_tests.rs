@@ -102,7 +102,7 @@ async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_ag
     let source_ip = sandbox.source_ip().to_string();
     let ctx = minimal_context();
     let mut telemetry = test_telemetry(&config, &ctx);
-    let prev_storage = crate::idle_pool::StorageFingerprints::default();
+    let prev_storage = crate::storage_fingerprints::StorageFingerprints::default();
 
     let outcome = execute_reused_sandbox(
         sandbox,
@@ -1665,8 +1665,9 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
 ) {
     use crate::idle_pool::{
         IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, IdleUnparkResult,
-        ParkResult, StorageFingerprints,
+        ParkResult,
     };
+    use crate::storage_fingerprints::StorageFingerprints;
 
     let current_image =
         seed_workspace_image_cache(cache, runner_paths, session_id, params.workspace_disk_mb).await;
@@ -1763,8 +1764,9 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
 ) {
     use crate::idle_pool::{
         IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, IdleUnparkResult,
-        ParkResult, StorageFingerprints,
+        ParkResult,
     };
+    use crate::storage_fingerprints::StorageFingerprints;
 
     let run_id = RunId::new_v4();
     let sandbox_id = SandboxId::new_v4();
@@ -2034,7 +2036,7 @@ async fn idle_pool_park_and_reuse_cycle() {
         device_rate_limits: None,
         budget_lease: test_budget_lease(),
         source_ip: outcome.source_ip,
-        storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
     });
 
     let result = pool.park(entry);
@@ -2092,7 +2094,7 @@ async fn idle_pool_profile_mismatch_returns_none() {
         device_rate_limits: None,
         budget_lease: test_budget_lease(),
         source_ip: "10.0.0.1".into(),
-        storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
     });
     let _ = pool.park(entry);
 

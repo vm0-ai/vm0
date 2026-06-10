@@ -4,10 +4,11 @@ use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootP
 use sandbox::ExecResult;
 use sandbox_mock::MockSandbox;
 
+use super::super::GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES;
 use super::super::guest_runtime_dir;
 use super::super::storage::{
-    download_storages, filter_unchanged_storages, format_guest_download_failure,
-    guest_download_command, guest_download_env,
+    download_storages, filter_unchanged_storages, format_command_output_excerpt,
+    format_guest_download_failure, guest_download_command, guest_download_env,
 };
 use super::support::{minimal_context, sandbox_write_file_error};
 use crate::types::{GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry};
@@ -101,6 +102,64 @@ fn guest_download_failure_output_redacts_url_queries() {
     assert!(!msg.contains("secret"));
 }
 
+#[test]
+fn guest_download_failure_redacts_url_query_before_excerpting() {
+    let prefix = "HTTP transport error for archiveUrl=https://storage.example/archive.tar.gz?";
+    let query_key = "X-Amz-Signature=";
+    let secret_value = "secret-value-that-must-not-leak";
+    let suffix = " download failed";
+    let boundary_offset = "X-Amz-".len();
+    let padding_len = GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES + boundary_offset
+        - query_key.len()
+        - secret_value.len()
+        - suffix.len();
+    let query = format!("{query_key}{secret_value}{}", "a".repeat(padding_len));
+    let result = ExecResult {
+        exit_code: 1,
+        stdout: Vec::new(),
+        stderr: format!("{prefix}{query}{suffix}").into_bytes(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    };
+
+    let msg = format_guest_download_failure(&result);
+
+    assert!(msg.contains("storage download failed (exit code 1)"));
+    assert!(msg.contains("stderr ("));
+    assert!(msg.contains("archive.tar.gz?<redacted>"));
+    assert!(!msg.contains("X-Amz-Signature"));
+    assert!(!msg.contains(secret_value));
+}
+
+#[test]
+fn command_output_redaction_preserves_whitespace_between_urls() {
+    let msg = format_command_output_excerpt(
+        "stderr",
+        b"first=https://a.example/archive.tar.gz?token=secret\n\tsecond=http://b.example/logs?key=hidden plain=https://c.example/no-query",
+        false,
+    )
+    .unwrap();
+
+    assert!(msg.contains(
+        "first=https://a.example/archive.tar.gz?<redacted>\n\tsecond=http://b.example/logs?<redacted> plain=https://c.example/no-query"
+    ));
+    assert!(!msg.contains("secret"));
+    assert!(!msg.contains("hidden"));
+}
+
+#[test]
+fn command_output_redaction_handles_case_insensitive_url_schemes() {
+    let msg = format_command_output_excerpt(
+        "stderr",
+        b"archiveUrl=HTTPS://storage.example/archive.tar.gz?token=secret",
+        false,
+    )
+    .unwrap();
+
+    assert!(msg.contains("archiveUrl=HTTPS://storage.example/archive.tar.gz?<redacted>"));
+    assert!(!msg.contains("secret"));
+}
+
 #[tokio::test]
 async fn download_storages_fails_on_write_file_error() {
     let sandbox = MockSandbox::new("test");
@@ -171,7 +230,7 @@ fn filter_same_artifact_version_keeps_url_for_mount_repair() {
         artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -191,7 +250,7 @@ fn filter_different_artifact_version_keeps_url() {
         artifacts: vec![guest_art("my-art", "v2", Some("https://s3/v2"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -209,7 +268,7 @@ fn filter_different_artifact_name_keeps_url() {
         artifacts: vec![guest_art("other-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -224,7 +283,7 @@ fn filter_new_artifact_not_in_prev_keeps_url() {
         artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::idle_pool::StorageFingerprints::default();
+    let prev = crate::storage_fingerprints::StorageFingerprints::default();
     let result = filter_unchanged_storages(&manifest, &prev);
     assert!(result.artifacts[0].archive_url.is_some());
 }
@@ -241,7 +300,7 @@ fn filter_empty_prev_downloads_everything() {
         artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::idle_pool::StorageFingerprints::default();
+    let prev = crate::storage_fingerprints::StorageFingerprints::default();
     let result = filter_unchanged_storages(&manifest, &prev);
     assert!(result.storages[0].archive_url.is_some());
     assert!(result.artifacts[0].archive_url.is_some());
@@ -261,7 +320,7 @@ fn filter_all_unchanged_nulls_storage_urls_and_keeps_artifact_urls() {
     };
     let mut storages = HashMap::new();
     storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages,
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -304,7 +363,7 @@ fn filter_two_artifacts_at_different_mount_paths() {
     let mut artifacts = HashMap::new();
     artifacts.insert("/workspace".into(), ("art-a".into(), "v1".into()));
     artifacts.insert("/data".into(), ("art-b".into(), "v1".into()));
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages: HashMap::new(),
         artifacts,
     };
@@ -333,7 +392,7 @@ fn filter_detects_removed_artifacts() {
     let mut artifacts = HashMap::new();
     artifacts.insert("/workspace".into(), ("kept".into(), "v1".into()));
     artifacts.insert("/old".into(), ("removed".into(), "v1".into()));
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages: HashMap::new(),
         artifacts,
     };
@@ -371,7 +430,7 @@ fn filter_computes_cleanup_for_changed_storages() {
         "/home/user/.claude/skills/foo".into(),
         ("skill-foo".into(), "v1".into()),
     );
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages,
         artifacts: HashMap::new(),
     };
@@ -406,7 +465,7 @@ fn filter_detects_removed_storages() {
         "/home/user/.claude/skills/old-skill".into(),
         ("old-skill".into(), "v1".into()),
     );
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages,
         artifacts: HashMap::new(),
     };
@@ -427,7 +486,7 @@ fn filter_changed_artifact_adds_cleanup_path() {
         artifacts: vec![guest_art("my-art", "v2", Some("https://s3/v2"))],
         cleanup_paths: vec![],
     };
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -447,7 +506,7 @@ fn filter_changed_artifact_with_null_url_adds_cleanup_path() {
         artifacts: vec![guest_art("my-art", "v2", None)],
         cleanup_paths: vec![],
     };
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "my-art", "v1"),
     };
@@ -469,7 +528,7 @@ fn filter_unchanged_artifact_policy_does_not_force_redownload() {
         )],
         cleanup_paths: vec![],
     };
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages: HashMap::new(),
         artifacts: art_fp("/workspace", "memory", "v1"),
     };
@@ -493,7 +552,7 @@ fn filter_changed_storage_with_null_url_adds_cleanup_path() {
     };
     let mut storages = HashMap::new();
     storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages,
         artifacts: HashMap::new(),
     };
@@ -517,7 +576,7 @@ fn filter_unchanged_storage_sets_cached_true() {
     };
     let mut storages = HashMap::new();
     storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages,
         artifacts: HashMap::new(),
     };
@@ -546,7 +605,7 @@ fn filter_tainted_paths_force_download_even_when_versions_match() {
         }],
         cleanup_paths: vec![],
     };
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages: HashMap::from([("/workspace/repo".into(), ("repo".into(), "v1".into()))]),
         artifacts: HashMap::from([(
             "/workspace/artifact".into(),
@@ -586,7 +645,7 @@ fn filter_tainted_removed_paths_are_cleaned() {
         artifacts: vec![],
         cleanup_paths: vec![],
     };
-    let prev = crate::idle_pool::StorageFingerprints {
+    let prev = crate::storage_fingerprints::StorageFingerprints {
         storages: HashMap::from([(
             "/workspace/removed-storage".into(),
             ("repo".into(), "v1".into()),

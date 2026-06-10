@@ -104,6 +104,10 @@
             "release-type": "rust",
             "skip-changelog": true
         },
+        "crates/tracing-test-support": {
+            "release-type": "rust",
+            "skip-changelog": true
+        },
         "crates/vsock-guest": {
             "release-type": "rust"
         },
