@@ -112,11 +112,14 @@ export async function deleteZeroChatThreadThroughApi(
   );
 }
 
-export async function listZeroChatThreadsThroughApi(context: TestContext) {
+export async function listZeroChatThreadsThroughApi(
+  context: TestContext,
+  query: { readonly agentId?: string } = {},
+) {
   const client = setupApp({ context })(chatThreadsContract);
   const response = await accept(
     client.list({
-      query: {},
+      query,
       headers: authHeaders(),
     }),
     [200],

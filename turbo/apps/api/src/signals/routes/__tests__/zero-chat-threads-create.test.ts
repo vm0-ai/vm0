@@ -1,13 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
 import {
   deleteTeamCompose$,
   seedTeamCompose$,
@@ -17,6 +14,11 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  authHeaders,
+  getZeroChatThreadThroughApi,
+  listZeroChatThreadsThroughApi,
+} from "./helpers/zero-chat-thread-routes";
 
 const context = testContext();
 const store = createStore();
@@ -27,27 +29,11 @@ describe("POST /api/zero/chat-threads (create)", () => {
     return store.set(deleteTeamCompose$, fixture, context.signal);
   });
 
-  async function getThreadRow(threadId: string) {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        id: chatThreads.id,
-        userId: chatThreads.userId,
-        agentComposeId: chatThreads.agentComposeId,
-        title: chatThreads.title,
-      })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, threadId));
-    return row;
-  }
-
-  async function countThreadsForCompose(composeId: string): Promise<number> {
-    const writeDb = store.set(writeDb$);
-    const rows = await writeDb
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(eq(chatThreads.agentComposeId, composeId));
-    return rows.length;
+  async function listThreadsForCompose(composeId: string) {
+    const body = await listZeroChatThreadsThroughApi(context, {
+      agentId: composeId,
+    });
+    return [...body.pinned, ...body.threads];
   }
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -67,7 +53,7 @@ describe("POST /api/zero/chat-threads (create)", () => {
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
-  it("creates a chat thread as an org-scoped user (DB read-after-write)", async () => {
+  it("creates a chat thread as an org-scoped user", async () => {
     const fixture = await track(
       store.set(
         seedTeamCompose$,
@@ -81,7 +67,7 @@ describe("POST /api/zero/chat-threads (create)", () => {
     const client = setupApp({ context })(chatThreadsContract);
     const response = await accept(
       client.create({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { agentId: composeId, title: "My thread" },
       }),
       [201],
@@ -91,10 +77,11 @@ describe("POST /api/zero/chat-threads (create)", () => {
     expect(response.body.title).toBe("My thread");
     expect(response.body.createdAt).toBeDefined();
 
-    await expect(getThreadRow(response.body.id)).resolves.toMatchObject({
+    await expect(
+      getZeroChatThreadThroughApi(context, response.body.id),
+    ).resolves.toMatchObject({
       id: response.body.id,
-      userId: fixture.userId,
-      agentComposeId: composeId,
+      agentId: composeId,
       title: "My thread",
     });
 
@@ -105,7 +92,7 @@ describe("POST /api/zero/chat-threads (create)", () => {
     );
   });
 
-  it("forwards the provided clientThreadId into the DB row", async () => {
+  it("uses the provided clientThreadId as the visible thread id", async () => {
     const fixture = await track(
       store.set(
         seedTeamCompose$,
@@ -120,7 +107,7 @@ describe("POST /api/zero/chat-threads (create)", () => {
     const client = setupApp({ context })(chatThreadsContract);
     const response = await accept(
       client.create({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { agentId: composeId, clientThreadId },
       }),
       [201],
@@ -129,9 +116,11 @@ describe("POST /api/zero/chat-threads (create)", () => {
     expect(response.body.id).toBe(clientThreadId);
     expect(response.body.title).toBeNull();
 
-    await expect(getThreadRow(clientThreadId)).resolves.toMatchObject({
+    await expect(
+      getZeroChatThreadThroughApi(context, clientThreadId),
+    ).resolves.toMatchObject({
       id: clientThreadId,
-      agentComposeId: composeId,
+      agentId: composeId,
       title: null,
     });
 
@@ -160,7 +149,7 @@ describe("POST /api/zero/chat-threads (create)", () => {
     const client = setupApp({ context })(chatThreadsContract);
     const response = await accept(
       client.create({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { agentId: otherComposeId, title: "Hijacked" },
       }),
       [404],
@@ -169,7 +158,10 @@ describe("POST /api/zero/chat-threads (create)", () => {
     expect(response.body).toMatchObject({
       error: { message: "Agent not found", code: "NOT_FOUND" },
     });
-    await expect(countThreadsForCompose(otherComposeId)).resolves.toBe(0);
+    mocks.clerk.session(otherFixture.userId, otherFixture.orgId);
+    await expect(listThreadsForCompose(otherComposeId)).resolves.toHaveLength(
+      0,
+    );
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
@@ -182,7 +174,7 @@ describe("POST /api/zero/chat-threads (create)", () => {
     const client = setupApp({ context })(chatThreadsContract);
     const response = await accept(
       client.create({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { agentId: randomUUID(), title: "x" },
       }),
       [404],
@@ -210,7 +202,7 @@ describe("POST /api/zero/chat-threads (create)", () => {
     const client = setupApp({ context })(chatThreadsContract);
     const response = await accept(
       client.create({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { agentId: composeId, title: "x" },
       }),
       [404],
@@ -219,7 +211,8 @@ describe("POST /api/zero/chat-threads (create)", () => {
     expect(response.body).toMatchObject({
       error: { message: "Agent not found", code: "NOT_FOUND" },
     });
-    await expect(countThreadsForCompose(composeId)).resolves.toBe(0);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await expect(listThreadsForCompose(composeId)).resolves.toHaveLength(0);
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
@@ -237,7 +230,7 @@ describe("POST /api/zero/chat-threads (create)", () => {
     const client = setupApp({ context })(chatThreadsContract);
     await accept(
       client.create({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { agentId: composeId },
       }),
       [201],
