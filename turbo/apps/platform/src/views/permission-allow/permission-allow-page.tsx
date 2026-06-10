@@ -9,7 +9,6 @@ import {
 } from "@tabler/icons-react";
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFirewallConnectorType } from "@vm0/connectors/firewalls";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -32,7 +31,6 @@ import {
   requestedUserPermissionGrantExpirationAlreadyApplies,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
@@ -219,7 +217,6 @@ function ConfirmGrantCard({
   connectorRef,
   permission,
   action,
-  expirationEnabled,
   initialExpiresIn,
   agentDisplayName,
   agentAvatarUrl,
@@ -229,7 +226,6 @@ function ConfirmGrantCard({
   connectorRef: string;
   permission: Permission;
   action: "allow" | "deny";
-  expirationEnabled: boolean;
   initialExpiresIn: UserPermissionGrantExpiresIn | null;
   agentDisplayName: string;
   agentAvatarUrl: string | null;
@@ -243,7 +239,7 @@ function ConfirmGrantCard({
     expiresInByScope[durationScope] ??
     initialExpiresIn ??
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
-  const expirationAvailable = expirationEnabled && action === "allow";
+  const expirationAvailable = action === "allow";
   const [grantLoadable, upsertGrant] = useLoadableSet(
     upsertUserPermissionGrant$,
   );
@@ -346,9 +342,6 @@ function PermissionAllowDoctorPage({
   const agentLoadable = useLastLoadable(permissionAllowAgent$);
   const userLoadable = useLastLoadable(user$);
   const grantsLoadable = useLastLoadable(permissionAllowUserPermissionGrants$);
-  const features = useGet(featureSwitch$);
-  const expirationEnabled =
-    features[FeatureSwitchKey.ExpiringPermissionGrants] ?? false;
 
   if (
     agentLoadable.state === "loading" ||
@@ -389,7 +382,6 @@ function PermissionAllowDoctorPage({
     );
   });
   const requestedExpirationAlreadyApplies =
-    !expirationEnabled ||
     action !== "allow" ||
     requestedUserPermissionGrantExpirationAlreadyApplies({
       expiresIn: initialExpiresIn,
@@ -400,7 +392,7 @@ function PermissionAllowDoctorPage({
       <ResultCard
         action={action}
         expiresAt={explicitGrant?.expiresAt}
-        showExpiry={expirationEnabled && action === "allow"}
+        showExpiry={action === "allow"}
       />
     );
   }
@@ -414,7 +406,6 @@ function PermissionAllowDoctorPage({
       connectorRef={ref}
       permission={focusedPermission}
       action={action}
-      expirationEnabled={expirationEnabled}
       initialExpiresIn={initialExpiresIn}
       agentDisplayName={agent.displayName ?? agentId}
       agentAvatarUrl={agent.avatarUrl}

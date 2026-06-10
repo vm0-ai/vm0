@@ -408,7 +408,6 @@ describe("team page navigation", () => {
       context,
       path: `/agents/${researchAgentId}`,
       featureSwitches: {
-        [FeatureSwitchKey.ExpiringPermissionGrants]: true,
         [FeatureSwitchKey.ConnectorPermissionReset]: true,
       },
     });
@@ -490,7 +489,6 @@ describe("team page navigation", () => {
       context,
       path: `/agents/${researchAgentId}`,
       featureSwitches: {
-        [FeatureSwitchKey.ExpiringPermissionGrants]: true,
         [FeatureSwitchKey.ConnectorPermissionReset]: true,
       },
     });

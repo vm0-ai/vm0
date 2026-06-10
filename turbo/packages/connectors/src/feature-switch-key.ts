@@ -55,7 +55,6 @@ export enum FeatureSwitchKey {
   ChatRecommendedFollowups = "chatRecommendedFollowups",
   PresentationHtmlPptxDownload = "presentationHtmlPptxDownload",
   ChatInlineFeedback = "chatInlineFeedback",
-  ExpiringPermissionGrants = "expiringPermissionGrants",
   ConnectorPermissionReset = "connectorPermissionReset",
   ZeroAutomations = "zeroAutomations",
 }

@@ -5,7 +5,6 @@ import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -40,9 +39,6 @@ describe("permission allow page", () => {
         id: "test-user-123",
         fullName: "Dana Analyst",
         firstName: "Dana",
-      },
-      featureSwitches: {
-        [FeatureSwitchKey.ExpiringPermissionGrants]: true,
       },
     });
 
@@ -128,9 +124,6 @@ describe("permission allow page", () => {
         id: "test-user-123",
         fullName: "Morgan Operator",
         firstName: "Morgan",
-      },
-      featureSwitches: {
-        [FeatureSwitchKey.ExpiringPermissionGrants]: true,
       },
     });
 
