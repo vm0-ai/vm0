@@ -45,6 +45,19 @@ globalThis.IDBRequest = IDBRequest;
 globalThis.IDBTransaction = IDBTransaction;
 globalThis.IDBVersionChangeEvent = IDBVersionChangeEvent;
 
+type HappyDomAttributeCallback = (
+  this: HTMLIFrameElement,
+  attribute: Attr,
+  replacedAttribute: Attr | null,
+) => void;
+
+type HappyDomLifecycleCallback = (this: HTMLIFrameElement) => void;
+
+type PatchedHTMLIFrameElementPrototype = HTMLIFrameElement &
+  Record<symbol, unknown> & {
+    vm0HappyDomIframeLoadPatched?: true;
+  };
+
 type StderrWriteArgs = [
   chunk: string | Uint8Array,
   encodingOrCallback?: string | ((error?: Error | null) => void),
@@ -64,6 +77,112 @@ const nodeProcess = (
     process: { stderr: PatchedStderr };
   }
 ).process;
+
+function findPrototypeSymbol(
+  prototype: object,
+  description: string,
+): symbol | undefined {
+  return Object.getOwnPropertySymbols(prototype).find((symbol) => {
+    return symbol.description === description;
+  });
+}
+
+function installHappyDomIframeLoadPatch(): void {
+  const iframePrototype =
+    HTMLIFrameElement.prototype as PatchedHTMLIFrameElementPrototype;
+  if (iframePrototype.vm0HappyDomIframeLoadPatched) {
+    return;
+  }
+
+  const htmlElementPrototype = Object.getPrototypeOf(iframePrototype) as Record<
+    symbol,
+    unknown
+  >;
+  const onSetAttributeSymbol = findPrototypeSymbol(
+    iframePrototype,
+    "onSetAttribute",
+  );
+  const onRemoveAttributeSymbol = findPrototypeSymbol(
+    iframePrototype,
+    "onRemoveAttribute",
+  );
+  const connectedToDocumentSymbol = findPrototypeSymbol(
+    iframePrototype,
+    "connectedToDocument",
+  );
+
+  if (
+    !onSetAttributeSymbol ||
+    !onRemoveAttributeSymbol ||
+    !connectedToDocumentSymbol
+  ) {
+    iframePrototype.vm0HappyDomIframeLoadPatched = true;
+    return;
+  }
+
+  const originalOnSetAttribute = iframePrototype[
+    onSetAttributeSymbol
+  ] as HappyDomAttributeCallback;
+  const originalOnRemoveAttribute = iframePrototype[
+    onRemoveAttributeSymbol
+  ] as (this: HTMLIFrameElement, removedAttribute: Attr) => void;
+  const originalConnectedToDocument = iframePrototype[
+    connectedToDocumentSymbol
+  ] as HappyDomLifecycleCallback;
+  const htmlElementOnSetAttribute = htmlElementPrototype[
+    onSetAttributeSymbol
+  ] as HappyDomAttributeCallback;
+  const htmlElementOnRemoveAttribute = htmlElementPrototype[
+    onRemoveAttributeSymbol
+  ] as (this: HTMLIFrameElement, removedAttribute: Attr) => void;
+  const htmlElementConnectedToDocument = htmlElementPrototype[
+    connectedToDocumentSymbol
+  ] as HappyDomLifecycleCallback;
+
+  iframePrototype[onSetAttributeSymbol] = function onSetAttributeWithoutLoad(
+    this: HTMLIFrameElement,
+    attribute: Attr,
+    replacedAttribute: Attr | null,
+  ): void {
+    if (attribute.name === "src" && !this.hasAttribute("srcdoc")) {
+      htmlElementOnSetAttribute.call(this, attribute, replacedAttribute);
+      return;
+    }
+    originalOnSetAttribute.call(this, attribute, replacedAttribute);
+  };
+
+  iframePrototype[onRemoveAttributeSymbol] =
+    function onRemoveAttributeWithoutLoad(
+      this: HTMLIFrameElement,
+      removedAttribute: Attr,
+    ): void {
+      if (
+        (removedAttribute.name === "src" ||
+          removedAttribute.name === "srcdoc") &&
+        !this.hasAttribute("srcdoc")
+      ) {
+        htmlElementOnRemoveAttribute.call(this, removedAttribute);
+        return;
+      }
+      originalOnRemoveAttribute.call(this, removedAttribute);
+    };
+
+  iframePrototype[connectedToDocumentSymbol] =
+    function connectedToDocumentWithoutExternalLoad(
+      this: HTMLIFrameElement,
+    ): void {
+      if (!this.hasAttribute("srcdoc")) {
+        htmlElementConnectedToDocument.call(this);
+        return;
+      }
+      originalConnectedToDocument.call(this);
+    };
+
+  iframePrototype.vm0HappyDomIframeLoadPatched = true;
+}
+
+installHappyDomIframeLoadPatch();
+
 const originalStderrWrite =
   nodeProcess.stderr.vm0OriginalWrite ??
   nodeProcess.stderr.write.bind(nodeProcess.stderr);
