@@ -30,7 +30,7 @@ import {
 } from "../external/sandbox-op-log";
 import type { RouteEntry } from "../route";
 import { dispatchProgressCallbacks$ } from "../services/agent-run-callbacks.service";
-import { settle } from "../utils";
+import { settle, tapError } from "../utils";
 import {
   getSandboxAuthForRun,
   unauthorizedRunMismatch,
@@ -520,36 +520,34 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const telemetrySummary = summarizeTelemetryPayload(body);
-  const axiomStartedAt = now();
   const { telemetryBuffered, axiomDatasetFamilies } = ingestTelemetryPayload({
     body,
     userId: auth.userId,
     summary: telemetrySummary,
   });
 
-  let axiomLatencyMs = 0;
   if (telemetryBuffered) {
-    const flushResult = await settle(
-      flushAxiom({ client: "telemetry", throwOnError: true }),
+    const axiomStartedAt = now();
+    waitUntil(
+      tapError(
+        flushAxiom({ client: "telemetry", throwOnError: true }),
+        (error) => {
+          L.warn("Agent telemetry Axiom flush failed", {
+            ...telemetrySummary,
+            axiomDatasetFamilies,
+            axiomFailureCategory: "flush",
+            axiomLatencyMs: now() - axiomStartedAt,
+            error,
+          });
+        },
+      ),
     );
-    signal.throwIfAborted();
-    axiomLatencyMs = now() - axiomStartedAt;
-    if (!flushResult.ok) {
-      L.warn("Agent telemetry Axiom flush failed", {
-        ...telemetrySummary,
-        axiomDatasetFamilies,
-        axiomFailureCategory: "flush",
-        axiomLatencyMs,
-        error: flushResult.error,
-      });
-      throw flushResult.error;
-    }
   }
 
   L.debug("Agent telemetry ingested", {
     ...telemetrySummary,
     axiomDatasetFamilies,
-    axiomLatencyMs,
+    axiomFlushQueued: telemetryBuffered,
     telemetryBuffered,
   });
 

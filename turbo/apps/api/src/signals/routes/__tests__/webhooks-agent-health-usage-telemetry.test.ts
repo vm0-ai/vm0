@@ -24,6 +24,7 @@ import { verifyHmacSignature } from "../../../lib/event-consumer/hmac";
 import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { clearAllDetached } from "../../utils";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
   deleteUsageInsightFixture$,
@@ -1571,7 +1572,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     expect(context.mocks.axiom.sdkIngest).not.toHaveBeenCalled();
   });
 
-  it("rejects sandbox operation telemetry when Axiom flush fails", async () => {
+  it("accepts sandbox operation telemetry when Axiom flush fails", async () => {
     const fixture = await track(seedFixture());
     const client = setupApp({ context })(webhookTelemetryContract);
     const error = new Error("flush failed");
@@ -1592,10 +1593,13 @@ describe("POST /api/webhooks/agent/telemetry", () => {
         },
         headers: authHeaders(fixture),
       }),
-      [500],
+      [200],
     );
 
-    expect(response.body).toStrictEqual({ error: "Internal server error" });
+    expect(response.body).toStrictEqual({
+      success: true,
+      id: fixture.runId,
+    });
     expect(context.mocks.axiom.ingest).toHaveBeenCalledWith(
       "sandbox-op-log",
       expect.any(Array),
@@ -1604,6 +1608,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       client: "telemetry",
       throwOnError: true,
     });
+    await clearAllDetached();
     expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
       "Agent telemetry Axiom flush failed",
       expect.objectContaining({
@@ -1682,7 +1687,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
           "network",
           "sandbox_operations",
         ],
-        axiomLatencyMs: expect.any(Number),
+        axiomFlushQueued: true,
         telemetryBuffered: true,
       }),
     );
