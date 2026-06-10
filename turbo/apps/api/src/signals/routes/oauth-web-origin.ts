@@ -44,11 +44,21 @@ function canonicalSiblingOriginForHost(
   fromRole: Vm0HostRole,
   toRole: Vm0HostRole,
 ): string | null {
-  const hostname = url.hostname.replace(
-    new RegExp(`(^|-)${fromRole}\\.`, "u"),
-    `$1${toRole}.`,
-  );
-  if (hostname === url.hostname) {
+  const leadingRole = `${fromRole}.`;
+  const delimitedRole = `-${fromRole}.`;
+  let hostname: string | null = null;
+  if (url.hostname.startsWith(leadingRole)) {
+    hostname = `${toRole}.${url.hostname.slice(leadingRole.length)}`;
+  } else {
+    const roleIndex = url.hostname.indexOf(delimitedRole);
+    if (roleIndex !== -1) {
+      const prefix = url.hostname.slice(0, roleIndex);
+      const suffix = url.hostname.slice(roleIndex + delimitedRole.length);
+      hostname = `${prefix}-${toRole}.${suffix}`;
+    }
+  }
+
+  if (!hostname) {
     return null;
   }
 
