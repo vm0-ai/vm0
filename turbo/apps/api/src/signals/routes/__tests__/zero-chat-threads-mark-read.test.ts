@@ -17,6 +17,10 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  authHeaders,
+  getZeroChatThreadThroughApi,
+} from "./helpers/zero-chat-thread-routes";
 
 const context = testContext();
 const store = createStore();
@@ -55,7 +59,7 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
     const response = await accept(
       client.markRead({
         params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -82,7 +86,7 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
     const response = await accept(
       client.markRead({
         params: { id: otherFixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -124,7 +128,7 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
     const response = await accept(
       client.markRead({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -134,13 +138,8 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
       changed: true,
     });
 
-    // DB read-after-write
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ lastReadMessageId: chatThreads.lastReadMessageId })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, fixture.threadId));
-    expect(row?.lastReadMessageId).toBe(latestId);
+    const thread = await getZeroChatThreadThroughApi(context, fixture.threadId);
+    expect(thread.lastReadMessageId).toBe(latestId);
 
     // Both Ably signals published with web-equivalent payloads.
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(2);
@@ -177,7 +176,7 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
     const response = await accept(
       client.markRead({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -200,7 +199,7 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
     const response = await accept(
       client.markRead({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -229,7 +228,7 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
     const first = await accept(
       client.markRead({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -244,7 +243,7 @@ describe("POST /api/zero/chat-threads/:id/mark-read", () => {
     const second = await accept(
       client.markRead({
         params: { id: fixture.threadId },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
