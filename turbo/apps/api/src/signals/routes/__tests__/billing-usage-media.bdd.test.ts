@@ -14,9 +14,11 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
+import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { clearAllDetached } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -24,6 +26,7 @@ import {
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createRunsSchedulesApi } from "./helpers/api-bdd-runs-schedules";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
@@ -1426,5 +1429,225 @@ describe("BILL-02: maps and banking visible boundaries", () => {
     expect(bankingWithSession.body.error.message).toBe(
       "This endpoint does not accept the provided credential type",
     );
+  });
+});
+
+function decodeAscii(
+  bytes: Uint8Array,
+  offset: number,
+  length: number,
+): string {
+  return String.fromCharCode(...bytes.slice(offset, offset + length));
+}
+
+function requireObservedWav(value: Uint8Array | null): Uint8Array {
+  if (value === null) {
+    throw new Error("Expected an upstream WAV payload");
+  }
+  return value;
+}
+
+function octetStreamBlob(bytes: Uint8Array<ArrayBuffer>): Blob {
+  return new Blob([bytes], { type: "application/octet-stream" });
+}
+
+// The ts-rest client JSON-stringifies non-FormData bodies, so PCM-bearing
+// requests go through a raw app request to keep the exact bytes.
+async function requestAudioTranscriptionRaw(
+  token: string,
+  pcm: Uint8Array<ArrayBuffer>,
+): Promise<{ readonly status: number; readonly body: unknown }> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request("/api/v1/audio/transcriptions", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/octet-stream",
+    },
+    body: pcm,
+  });
+  return { status: response.status, body: await response.json() };
+}
+
+describe("FILE-02: audio transcription v1 and Gemini generate-image provider contracts", () => {
+  it("transcribes raw PCM through OpenAI behind the feature switch with the WAV byte contract", async () => {
+    const { api, admin } = testActors();
+    const runsApi = createRunsSchedulesApi(context);
+    await runsApi.grantProEntitlement(admin);
+    const authApi = createAuthOrgAgentsBddApi(context);
+    const apiKey = await authApi.createApiKey(admin, {
+      name: "BDD audio media v1",
+      expiresInDays: 1,
+    });
+
+    let observedAuthorization: string | null = null;
+    let observedFileName: string | undefined;
+    let observedFileType: string | undefined;
+    let observedModel: FormDataEntryValue | null = null;
+    let observedResponseFormat: FormDataEntryValue | null = null;
+    let observedWav: Uint8Array | null = null;
+    server.use(
+      http.post(
+        "https://api.openai.com/v1/audio/transcriptions",
+        async ({ request }) => {
+          observedAuthorization = request.headers.get("authorization");
+          const form = await request.formData();
+          const file = form.get("file");
+          if (!(file instanceof File)) {
+            return HttpResponse.json(
+              { error: { message: "missing file", code: "BAD_REQUEST" } },
+              { status: 400 },
+            );
+          }
+          observedFileName = file.name;
+          observedFileType = file.type;
+          observedModel = form.get("model");
+          observedResponseFormat = form.get("response_format");
+          observedWav = new Uint8Array(await file.arrayBuffer());
+          return HttpResponse.json({ text: "hello from bdd" });
+        },
+      ),
+    );
+
+    const pcm = Uint8Array.from([0x00, 0x00, 0xff, 0x7f]);
+
+    const invalidBearer = await api.requestAudioTranscriptionV1WithBearer(
+      "vm0_pat_not_a_real_token",
+      octetStreamBlob(pcm),
+      [401],
+    );
+    expectApiError(invalidBearer.body);
+
+    await api.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.AudioInput]: false,
+    });
+    const gated = await api.requestAudioTranscriptionV1WithBearer(
+      apiKey.token,
+      octetStreamBlob(pcm),
+      [403],
+    );
+    expectApiError(gated.body);
+    expect(gated.body.error.message).toBe("Audio input is not enabled");
+    await api.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.AudioInput]: true,
+    });
+
+    const transcribed = await requestAudioTranscriptionRaw(apiKey.token, pcm);
+    expect(transcribed.status).toBe(200);
+    expect(transcribed.body).toStrictEqual({ text: "hello from bdd" });
+    expect(observedAuthorization).toBe("Bearer test-openai-key");
+    expect(observedFileName).toBe("audio.wav");
+    expect(observedFileType).toBe("audio/wav");
+    expect(observedModel).toBe("gpt-4o-mini-transcribe");
+    expect(observedResponseFormat).toBe("json");
+    const wav = requireObservedWav(observedWav);
+    expect(decodeAscii(wav, 0, 4)).toBe("RIFF");
+    expect(decodeAscii(wav, 8, 4)).toBe("WAVE");
+    expect(decodeAscii(wav, 36, 4)).toBe("data");
+    expect(new DataView(wav.buffer).getUint32(24, true)).toBe(16_000);
+    expect(new DataView(wav.buffer).getUint16(22, true)).toBe(1);
+    expect(new DataView(wav.buffer).getUint16(34, true)).toBe(16);
+    expect(wav.slice(44)).toStrictEqual(pcm);
+
+    const emptyBody = await requestAudioTranscriptionRaw(
+      apiKey.token,
+      new Uint8Array(),
+    );
+    expect(emptyBody.status).toBe(400);
+    expect(emptyBody.body).toStrictEqual({
+      error: { message: "Audio body is required", code: "BAD_REQUEST" },
+    });
+
+    const repeated = await requestAudioTranscriptionRaw(apiKey.token, pcm);
+    expect(repeated.status).toBe(200);
+    expect(repeated.body).toStrictEqual({ text: "hello from bdd" });
+  });
+
+  it("generates Gemini images behind configuration and no-image gates", async () => {
+    const { api, admin } = testActors();
+    const runsApi = createRunsSchedulesApi(context);
+    await runsApi.grantProEntitlement(admin);
+
+    context.mocks.googleGenAi.constructorArgs.mockClear();
+    context.mocks.googleGenAi.generateContent.mockReset();
+    context.mocks.vercelOidc.getToken.mockResolvedValue("test-oidc-token");
+
+    // Production ignores the dev GEMINI_API_KEY and requires the GCP vars.
+    mockEnv("ENV", "production");
+    mockEnv("GEMINI_API_KEY", "stray-prod-key");
+    mockEnv("GCP_PROJECT_ID", undefined);
+    mockEnv("GCP_PROJECT_NUMBER", undefined);
+    mockEnv("GCP_SERVICE_ACCOUNT_EMAIL", undefined);
+    mockEnv("GCP_WORKLOAD_IDENTITY_POOL_ID", undefined);
+    mockEnv("GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID", undefined);
+    const prodMisconfigured = await api.requestGenerateImage(
+      admin,
+      { prompt: "hello" },
+      [503],
+    );
+    expectApiError(prodMisconfigured.body);
+    expect(prodMisconfigured.body.error.code).toBe("NOT_CONFIGURED");
+
+    // Development without any Gemini credentials is equally unconfigured.
+    mockEnv("ENV", "development");
+    mockEnv("GEMINI_API_KEY", undefined);
+    const devMisconfigured = await api.requestGenerateImage(
+      admin,
+      { prompt: "hello" },
+      [503],
+    );
+    expectApiError(devMisconfigured.body);
+    expect(devMisconfigured.body.error.code).toBe("NOT_CONFIGURED");
+
+    const unauthenticated = await api.requestGenerateImage(
+      null,
+      { prompt: "hello" },
+      [401],
+    );
+    expectApiError(unauthenticated.body);
+
+    api.configureGemini();
+    context.mocks.googleGenAi.generateContent.mockResolvedValueOnce({
+      candidates: [
+        {
+          content: {
+            parts: [
+              { inlineData: { mimeType: "image/png", data: "base64data==" } },
+            ],
+          },
+        },
+      ],
+    });
+    const generated = await api.requestGenerateImage(
+      admin,
+      { prompt: "a cat" },
+      [200],
+    );
+    expect(generated.body).toStrictEqual({
+      images: [{ mimeType: "image/png", base64: "base64data==" }],
+    });
+    expect(context.mocks.googleGenAi.generateContent).toHaveBeenCalledWith({
+      model: "gemini-2.5-flash-image",
+      contents: [{ role: "user", parts: [{ text: "a cat" }] }],
+    });
+    // Flush the detached usage-event processing kicked off by the success.
+    await clearAllDetached();
+
+    context.mocks.googleGenAi.generateContent.mockResolvedValueOnce({
+      candidates: [
+        {
+          content: {
+            parts: [{ text: "sorry no image" }, { inlineData: null }],
+          },
+        },
+      ],
+    });
+    const noImage = await api.requestGenerateImage(
+      admin,
+      { prompt: "a cat" },
+      [502],
+    );
+    expectApiError(noImage.body);
+    expect(noImage.body.error.code).toBe("NO_IMAGE_RETURNED");
   });
 });
