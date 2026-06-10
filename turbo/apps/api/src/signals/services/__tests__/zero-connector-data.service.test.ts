@@ -204,6 +204,59 @@ describe("zeroConnectorList", () => {
     );
   });
 
+  it("reports Meta Ads OAuth runtime token binding", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+
+    await writeDb.insert(connectors).values({
+      orgId,
+      userId,
+      type: "meta-ads",
+      authMethod: "oauth",
+    });
+    await writeDb.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches: {
+        [FeatureSwitchKey.MetaAdsConnector]: true,
+      },
+    });
+    await writeDb.insert(secrets).values([
+      {
+        orgId,
+        userId,
+        name: "META_ADS_ACCESS_TOKEN",
+        encryptedValue: "encrypted_meta_ads_access_token",
+        type: "connector",
+      },
+      {
+        orgId,
+        userId,
+        name: "META_ADS_REFRESH_TOKEN",
+        encryptedValue: "encrypted_meta_ads_refresh_token",
+        type: "connector",
+      },
+    ]);
+
+    const list = await store.get(zeroConnectorList({ orgId, userId }));
+
+    expect(list.connectorProvidedBindings).toStrictEqual(
+      expect.arrayContaining([
+        {
+          connectorType: "meta-ads",
+          authMethod: "oauth",
+          namespace: "secrets",
+          name: "META_ADS_TOKEN",
+          optional: false,
+          source: {
+            kind: "connector-secret",
+            name: "META_ADS_ACCESS_TOKEN",
+          },
+        },
+      ]),
+    );
+  });
+
   it("reports variable-backed connector env names as structured provided bindings", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;

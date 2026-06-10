@@ -504,7 +504,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   todoist: { oauth: authCodeProviderEntry(todoistProvider) },
   vercel: { oauth: authCodeProviderEntry(vercelProvider) },
   webflow: { oauth: authCodeProviderEntry(webflowProvider) },
-  "meta-ads": { oauth: authCodeProviderEntry(metaAdsProvider) },
+  "meta-ads": { oauth: authCodeRefreshProviderEntry(metaAdsProvider) },
   x: { oauth: authCodeRefreshProviderEntry(xProvider) },
   xero: { oauth: authCodeRefreshProviderEntry(xeroProvider) },
   zoom: { oauth: authCodeRefreshProviderEntry(zoomProvider) },
