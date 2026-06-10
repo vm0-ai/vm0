@@ -16,6 +16,7 @@ const baseHostState: ComputerUseHostRuntimeState = {
   lastHeartbeatAt: null,
   lastCommandAt: null,
   lastError: null,
+  errorLog: [],
   recentAuditEvents: [],
   localCommandLog: [],
 };

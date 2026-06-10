@@ -402,6 +402,15 @@ describe("ComputerUseHostRuntime", () => {
       hostId: null,
       lastError:
         "Computer Use is already active in another Zero Desktop session.",
+      errorLog: [
+        {
+          source: "heartbeat",
+          hostId: null,
+          message:
+            "Computer Use is already active in another Zero Desktop session.",
+          status: "error",
+        },
+      ],
     });
   });
 
@@ -468,6 +477,15 @@ describe("ComputerUseHostRuntime", () => {
       hostId: null,
       lastError:
         "Computer Use is already active in another Zero Desktop session.",
+      errorLog: [
+        {
+          source: "start",
+          hostId: null,
+          message:
+            "Computer Use is already active in another Zero Desktop session.",
+          status: "error",
+        },
+      ],
     });
   });
 });
