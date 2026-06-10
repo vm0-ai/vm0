@@ -2060,3 +2060,62 @@ covered route files.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api
 check-types`, `pnpm -F api exec vitest run` all clean.
+
+### Round 42 — Mixed small-batch BDD (3 legacy → 7 BDD)
+
+Migrates 3 small legacy route tests into 7 BDD `it()`s:
+
+- `integrations-github-delete.test.ts` (8→3): auth + 404
+  chain (401 unauth → 404 no installation), 200 success
+  chain (200 deletes linked admin installation + Ably
+  publishes `github:changed` → 200 deletes installation
+  before GitHub is connected), 403 forbidden chain (403
+  org member with adminGithubUserId null → 403 non-admin
+  org member → 403 non-admin org member when admin is not
+  in the org → 200 local deletion authoritative when
+  remote uninstall fails with the GitHub App creds env
+  set).
+- `test-telegram-mock.test.ts` (9→2): 200 happy-path
+  chain (404 prod env → 200 getMe fixture data + DB log
+  → 200 sendMessage + DB log stores raw + parsed JSON →
+  200 editMessageText with numeric chat id → 200 it.each
+  5 cases (sendChatAction, deleteMessage, deleteWebhook,
+  setWebhook, setMyCommands) → 200 getFile with requested
+  file id), 404 error + 200 edge chain (404 Telegram-style
+  for unsupported method + DB log → 200 accepts invalid
+  JSON + DB log stores null body JSON → 200 logs parsed
+  non-object JSON values + DB log).
+- `model-stats.test.ts` (4→2): cron aggregate chain (401
+  wrong secret → 200 aggregates hourly model usage
+  observations by canonical model with full DB
+  read-after-write verification, including idempotent
+  re-aggregation + expiry of old observations + verifying
+  no row is created for unknown models), public rankings
+  chain (200 returns canonicalized public rankings without
+  auth with cache-control header → 200 defaults
+  unsupported periods to week).
+
+Service-Level Exceptions noted:
+
+- `integrations-github-delete.bdd.test.ts` uses a
+  `createHarness()` factory inside each describe so the
+  mutable `fixtures` array satisfies the
+  `api/no-package-variable` lint rule (mutable
+  package-scope arrays are forbidden; the factory closes
+  over the array inside the describe block).
+- `model-stats.bdd.test.ts` adds an `afterEach` cleanup
+  that wipes `modelStat` and `modelUsageObservation` rows
+  to avoid stale data from prior runs. The legacy test
+  had no cleanup and the test was always potentially
+  flaky when rerun.
+- This round deletes 3 legacy files
+  (`integrations-github-delete.test.ts`,
+  `test-telegram-mock.test.ts`,
+  `model-stats.test.ts`).
+
+Net test count: 21 legacy `it()`s → 7 BDD `it()`s (67%
+reduction). No per-file coverage regression for the
+covered route files.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api
+check-types`, `pnpm -F api exec vitest run` all clean.

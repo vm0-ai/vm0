@@ -4,12 +4,30 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
+import { afterEach } from "vitest";
 
 import { mockEnv } from "../../../lib/env";
 import { mockNow } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import { modelStatsContract } from "../model-stats";
+
+// BDD migration of the legacy `model-stats.test.ts`. The 4
+// legacy `it()`s collapse into 2 BDD `it()`s: (1) cron
+// aggregate chain (401 wrong secret → 200 aggregates hourly
+// model usage observations by canonical model with full DB
+// read-after-write verification, including idempotent
+// re-aggregation + expiry of old observations), (2)
+// public rankings chain (200 returns canonicalized public
+// rankings without auth with cache-control header → 200
+// defaults unsupported periods to week).
+//
+// Service-Level Exception: `modelUsageObservation` and
+// `modelStat` rows are inserted and read directly via
+// `writeDb$` because no public route creates them. The
+// legacy test does not clean up these tables; the BDD
+// migration adds an `afterEach` that wipes all rows to
+// avoid stale data from prior runs.
 
 const store = createStore();
 const context = testContext();
@@ -19,26 +37,35 @@ function client() {
   return setupApp({ context })(modelStatsContract);
 }
 
-describe("GET /api/internal/cron/aggregate-model-stats", () => {
+afterEach(async () => {
+  const db = store.set(writeDb$);
+  await db.delete(modelStat);
+  await db.delete(modelUsageObservation);
+});
+
+describe("BDD GET /api/internal/cron/aggregate-model-stats — auth + 200 success chain", () => {
   beforeEach(() => {
     mockEnv("CRON_SECRET", "test-cron-secret");
     mockNow(new Date("2099-01-01T15:30:00.000Z"));
   });
 
-  it("requires the cron secret", async () => {
-    const response = await accept(
+  it("gwt-wt-wt: 401 wrong secret → 200 aggregates hourly model usage observations by canonical model with full DB read-after-write verification", async () => {
+    // When + Then: 401 — invalid cron secret.
+    const wrongSecret = await accept(
       client().aggregate({
         headers: { authorization: "Bearer wrong" },
       }),
       [401],
     );
-
-    expect(response.body).toStrictEqual({
+    expect(wrongSecret.body).toStrictEqual({
       error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
     });
-  });
 
-  it("aggregates hourly model usage observations by canonical model", async () => {
+    // Given: a 24-hour window of model usage observations
+    // including a non-canonical model alias, an unknown
+    // model, a zero-quantity row, an expired observation
+    // (>33 days old), and a retained observation (within the
+    // 31-day retention window).
     const db = store.set(writeDb$);
     const model = "claude-sonnet-4-6";
     const modelAlias = "anthropic/claude-sonnet-4.6";
@@ -149,6 +176,7 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
       },
     ]);
 
+    // When: aggregate.
     const response = await accept(
       client().aggregate({
         headers: { authorization: "Bearer test-cron-secret" },
@@ -156,21 +184,30 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
       [200],
     );
 
+    // Then: 200 + the window matches the expected 24-hour
+    // window + the expired observation is purged + the
+    // retained one is kept.
     expect(response.body.windowStart).toBe(expectedWindowStart.toISOString());
     expect(response.body.windowEnd).toBe(expectedWindowEnd.toISOString());
     await expect(
       db
         .select({ idempotencyKey: modelUsageObservation.idempotencyKey })
         .from(modelUsageObservation)
-        .where(eq(modelUsageObservation.idempotencyKey, expiredObservationId)),
+        .where(
+          eq(modelUsageObservation.idempotencyKey, expiredObservationId),
+        ),
     ).resolves.toStrictEqual([]);
     await expect(
       db
         .select({ idempotencyKey: modelUsageObservation.idempotencyKey })
         .from(modelUsageObservation)
-        .where(eq(modelUsageObservation.idempotencyKey, retainedObservationId)),
+        .where(
+          eq(modelUsageObservation.idempotencyKey, retainedObservationId),
+        ),
     ).resolves.toStrictEqual([{ idempotencyKey: retainedObservationId }]);
 
+    // Then: the canonical-model row aggregates the input +
+    // output tokens across all observations in the hour.
     const [row] = await db
       .select()
       .from(modelStat)
@@ -181,7 +218,6 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
         ),
       )
       .limit(1);
-
     expect(row).toMatchObject({
       hourStart: expectedHourStart,
       modelProvider: "",
@@ -196,6 +232,7 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
       userCount: 1,
     });
 
+    // Given: the output observation is updated.
     await db
       .update(modelUsageObservation)
       .set({ quantity: 250 })
@@ -206,6 +243,7 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
         ),
       );
 
+    // When: re-aggregate.
     await accept(
       client().aggregate({
         headers: { authorization: "Bearer test-cron-secret" },
@@ -213,6 +251,8 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
       [200],
     );
 
+    // Then: the canonical-model row reflects the updated
+    // output quantity (idempotent re-aggregation).
     const [updatedRow] = await db
       .select()
       .from(modelStat)
@@ -223,10 +263,11 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
         ),
       )
       .limit(1);
-
     expect(updatedRow?.outputTokens).toBe(250);
     expect(updatedRow?.totalTokens).toBe(575);
 
+    // Then: no row is created for the connector provider or
+    // the unknown model.
     const [connectorRow] = await db
       .select()
       .from(modelStat)
@@ -237,9 +278,7 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
         ),
       )
       .limit(1);
-
     expect(connectorRow).toBeUndefined();
-
     const [unknownModelRow] = await db
       .select()
       .from(modelStat)
@@ -250,13 +289,14 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
         ),
       )
       .limit(1);
-
     expect(unknownModelRow).toBeUndefined();
   });
 });
 
-describe("GET /api/public/model-rankings", () => {
-  it("returns canonicalized public rankings without auth", async () => {
+describe("BDD GET /api/public/model-rankings — 200 chain", () => {
+  it("gwt-wt-wt: 200 returns canonicalized public rankings without auth with cache-control header → 200 defaults unsupported periods to week", async () => {
+    // Given: a model + a model alias + an unsupported model
+    // with hourStart rows in the current + previous hour.
     const db = store.set(writeDb$);
     const model = "claude-sonnet-4-6";
     const modelAlias = "anthropic/claude-sonnet-4.6";
@@ -291,11 +331,12 @@ describe("GET /api/public/model-rankings", () => {
       },
     ]);
 
+    // When + Then: 200 — public rankings return the
+    // canonicalized model with the cache-control header.
     const response = await accept(
       client().rankings({ query: { period: "today" } }),
       [200],
     );
-
     expect(response.headers.get("cache-control")).toBe(
       "public, s-maxage=300, stale-while-revalidate=600",
     );
@@ -314,16 +355,16 @@ describe("GET /api/public/model-rankings", () => {
         },
       ],
     });
-  });
 
-  it("defaults unsupported periods to week", async () => {
+    // Given: a future mock-now.
     mockNow(new Date("2300-01-08T15:30:00.000Z"));
 
-    const response = await accept(
+    // When + Then: 200 — unsupported periods default to
+    // `week`.
+    const unsupportedPeriod = await accept(
       client().rankings({ query: { period: "unsupported" } }),
       [200],
     );
-
-    expect(response.body.period).toBe("week");
+    expect(unsupportedPeriod.body.period).toBe("week");
   });
 });
