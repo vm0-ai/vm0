@@ -596,3 +596,21 @@ calc. Services tests outside this list migrate to route-level BDD.
   for the message-bearing branches (GAP-CHAT-MESSAGE-SEED).
 - Coverage verified (source-only): pin/unpin/model-selection unchanged vs the
   `main` baseline; rename gained a branch (empty-title 400) — no regressions.
+
+### Round 19 — CHAT THREAD CREATE + DRAFT PATCH (CHAIN-CHAT-THREAD-CREATE-PATCH)
+
+- Added `zero-chat-threads-create-patch.bdd.test.ts`: create a thread with a
+  title, create a second with a `clientThreadId` (returned verbatim as the row
+  id) and no title (→ null), list both, then save a draft (content +
+  attachment) → detail reflects it → replace it while still non-empty (no
+  presence transition, exercises the no-publish branch of
+  `updateChatThreadDraft$`) → clear (null/null). Plus missing-agent 404,
+  cross-org-agent 404 (no leak), per-user draft isolation 404 (owner draft
+  preserved), unauthenticated 401s, and a no-org create 404.
+- Deleted `zero-chat-threads-create.test.ts` and `zero-chat-threads-patch.test.ts`
+  whole. Kept `zero-chat-threads-delete.test.ts` (schedule-cascade and in-flight
+  run-cancel branches need seeded runs/schedules — GAP-PENDING-RUN /
+  GAP-CHAT-SCHEDULE-CASCADE).
+- Coverage verified (source-only): `zero-chat-thread.service.ts` (283/206)
+  unchanged vs the `main` baseline; create/patch routes unchanged. No
+  regressions.
