@@ -557,3 +557,16 @@ calc. Services tests outside this list migrate to route-level BDD.
   validation — GAP-CONNECTOR-FIREWALL-PREFIX).
 - Coverage verified (source-only): `zero-custom-connector.service.ts` (97/49)
   unchanged vs the `main` baseline.
+
+### Round 17 — CUSTOM CONNECTOR SECRETS (CHAIN-CUSTOM-CONNECTOR-SECRET)
+
+- Added `zero-custom-connectors-secret.bdd.test.ts`: create connector → a
+  non-admin member sets their own secret → list shows hasSecret → member clears
+  it → hasSecret false → clear again (idempotent 204), plus unknown-404,
+  unauthenticated, and no-org boundaries.
+- Deleted `zero-custom-connectors-secret-set.test.ts`,
+  `zero-custom-connectors-secret-delete.test.ts`, and the now fully-orphaned
+  `helpers/zero-custom-connectors.ts` DB seeder.
+- Coverage verified (source-only): no connector/crypto source file changed vs
+  the `main` baseline. This completes the CUSTOM-CONNECTOR family in BDD except
+  the create firewall-validation gap (GAP-CONNECTOR-FIREWALL-PREFIX).
