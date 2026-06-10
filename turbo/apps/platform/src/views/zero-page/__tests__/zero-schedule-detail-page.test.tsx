@@ -124,7 +124,7 @@ function mockScheduleDetailStory(): void {
 }
 
 describe("zero schedule detail page", () => {
-  it("shows the schedule settings, run history, status changes, and delete confirmation", async () => {
+  it("updates schedule settings and filters run history", async () => {
     mockScheduleDetailStory();
 
     detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
@@ -182,6 +182,24 @@ describe("zero schedule detail page", () => {
     });
 
     click(tabByText("Settings"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Danger zone")).toBeInTheDocument();
+    });
+  });
+
+  it("pauses, runs, and deletes a schedule", async () => {
+    mockScheduleDetailStory();
+
+    detachedSetupPage({ context, path: `/schedules/${scheduleId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Morning brief" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Active")).toBeInTheDocument();
+
     click(screen.getByLabelText("Disable this schedule"));
 
     await waitFor(() => {

@@ -1,5 +1,8 @@
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import type {
+  ModelProviderResponse,
+  OrgModelPolicy,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -32,6 +35,60 @@ function staleCodexProvider(): ModelProviderResponse {
   };
 }
 
+function anthropicApiKeyProvider(): ModelProviderResponse {
+  return {
+    id: "00000000-0000-4000-a000-000000000202",
+    type: "anthropic-api-key",
+    framework: "claude-code",
+    secretName: "ANTHROPIC_API_KEY",
+    authMethod: null,
+    secretNames: null,
+    isDefault: false,
+    selectedModel: null,
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-20T00:00:00Z",
+  };
+}
+
+function builtInPolicy(
+  id: string,
+  model: OrgModelPolicy["model"],
+  modelLabel: string,
+  isDefault: boolean,
+): OrgModelPolicy {
+  return {
+    id,
+    model,
+    modelLabel,
+    isDefault,
+    defaultProviderType: "vm0",
+    credentialScope: "org",
+    modelProviderId: null,
+    routeStatus: "valid",
+    routeStatusReason: null,
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-01T00:00:00Z",
+  };
+}
+
+function claudeOpusApiKeyPolicy(): OrgModelPolicy {
+  return {
+    id: "00000000-0000-4000-a000-000000000212",
+    model: "claude-opus-4-7",
+    modelLabel: "Claude Opus 4.7",
+    isDefault: false,
+    defaultProviderType: "anthropic-api-key",
+    credentialScope: "org",
+    modelProviderId: anthropicApiKeyProvider().id,
+    routeStatus: "valid",
+    routeStatusReason: null,
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-01T00:00:00Z",
+  };
+}
+
 function mockStaleProviderStory(): void {
   mockAdminOrg();
   context.mocks.data.orgModelProviders([staleCodexProvider()]);
@@ -50,6 +107,20 @@ function mockStaleProviderStory(): void {
   context.mocks.api(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
     return respond(200, { status: "pending", errorMessage: null });
   });
+}
+
+function mockApiKeyModelRouteStory(): void {
+  mockAdminOrg();
+  context.mocks.data.orgModelProviders([anthropicApiKeyProvider()]);
+  context.mocks.data.orgModelPolicies([
+    builtInPolicy(
+      "00000000-0000-4000-a000-000000000211",
+      "deepseek-v4-pro",
+      "DeepSeek V4 Pro",
+      true,
+    ),
+    claudeOpusApiKeyPolicy(),
+  ]);
 }
 
 function mockAdminOrg(): void {
@@ -92,7 +163,7 @@ function menuItemByText(text: string): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
-  it("adds, edits, and deletes a workspace API key model route", async () => {
+  it("adds a workspace API key model route with validation", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     await openProvidersTab();
@@ -106,6 +177,17 @@ describe("organization model providers settings", () => {
       "sk-ant-test",
     );
     click(buttonByText("Add model"));
+
+    const row = await screen.findByTestId(
+      "org-model-policy-row-claude-opus-4-7",
+    );
+    expect(within(row).getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+  });
+
+  it("rotates an existing workspace API key model route", async () => {
+    mockApiKeyModelRouteStory();
+    await openProvidersTab();
 
     const row = await screen.findByTestId(
       "org-model-policy-row-claude-opus-4-7",
@@ -133,7 +215,16 @@ describe("organization model providers settings", () => {
     await waitFor(() => {
       expect(within(row).getByText("Anthropic")).toBeInTheDocument();
     });
+  });
 
+  it("switches an existing model route to built-in and deletes it", async () => {
+    mockApiKeyModelRouteStory();
+    await openProvidersTab();
+
+    const row = await screen.findByTestId(
+      "org-model-policy-row-claude-opus-4-7",
+    );
+    expect(within(row).getByText("Anthropic")).toBeInTheDocument();
     click(within(row).getByLabelText("Actions for Claude Opus 4.7"));
     click(menuItemByText("Edit model"));
 

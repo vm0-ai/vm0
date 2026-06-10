@@ -231,7 +231,7 @@ function mockTeamAPIs(): void {
 }
 
 describe("team page navigation", () => {
-  it("navigates into an agent and manages authorization and schedule tabs", async () => {
+  it("navigates into an agent and manages connector authorization", async () => {
     mockTeamAPIs();
     detachedSetupPage({ context, path: "/agents" });
 
@@ -289,7 +289,17 @@ describe("team page navigation", () => {
         screen.queryByText("Custom connectors saved"),
       ).not.toBeInTheDocument();
     });
+  });
 
+  it("edits and creates schedules from an agent page", async () => {
+    mockTeamAPIs();
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+    });
     click(tabByText("Scheduled"));
 
     await waitFor(() => {
@@ -336,6 +346,25 @@ describe("team page navigation", () => {
         screen.getAllByText("Collect weekly research links")[0],
       ).toBeInTheDocument();
     });
+  });
+
+  it("runs an agent schedule and opens its detail page", async () => {
+    mockTeamAPIs();
+    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+    });
+    click(tabByText("Scheduled"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Research Agent's scheduled tasks"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
 
     click(screen.getAllByLabelText("More actions for Every 30 minutes")[0]);
     click(menuItemByText("Run now"));
@@ -351,9 +380,7 @@ describe("team page navigation", () => {
     );
 
     await waitFor(() => {
-      expect(
-        screen.getAllByText("Research digest summary")[0],
-      ).toBeInTheDocument();
+      expect(screen.getAllByText("Research digest")[0]).toBeInTheDocument();
     });
 
     const breadcrumbLink = screen

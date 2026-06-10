@@ -121,16 +121,31 @@ function mockSchedulePageStory(): void {
   ]);
 }
 
+async function openSchedulePage(): Promise<void> {
+  detachedSetupPage({ context, path: "/schedules" });
+
+  await waitFor(() => {
+    expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
+    expect(screen.getByText("Week view")).toBeInTheDocument();
+  });
+}
+
+async function openScheduleList(): Promise<void> {
+  await openSchedulePage();
+  click(tabByText("List"));
+
+  await waitFor(() => {
+    expect(screen.getByText("Instruction")).toBeInTheDocument();
+    expect(screen.getByText("Schedule at")).toBeInTheDocument();
+  });
+}
+
 describe("zero schedule page", () => {
-  it("shows scheduled work across calendar, list, create dialog, and row actions", async () => {
+  it("shows scheduled work in the calendar and protects unsaved create edits", async () => {
     mockSchedulePageStory();
 
-    detachedSetupPage({ context, path: "/schedules" });
+    await openSchedulePage();
 
-    await waitFor(() => {
-      expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
-      expect(screen.getByText("Week view")).toBeInTheDocument();
-    });
     expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Research Agent")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Every 45 minutes")[0]).toBeInTheDocument();
@@ -177,13 +192,37 @@ describe("zero schedule page", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+  });
 
-    click(tabByText("List"));
+  it("creates a schedule and opens the new detail page", async () => {
+    mockSchedulePageStory();
+
+    await openSchedulePage();
+
+    click(buttonByText("Add schedule"));
+
+    const createDialog = await screen.findByRole("dialog");
+    await fill(
+      within(createDialog).getByLabelText("Prompt"),
+      "Draft the weekly support handoff",
+    );
+    click(buttonByText("Create", createDialog));
 
     await waitFor(() => {
-      expect(screen.getByText("Instruction")).toBeInTheDocument();
-      expect(screen.getByText("Schedule at")).toBeInTheDocument();
+      expect(screen.getByText("Schedule created")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", {
+          name: "Draft the weekly support handoff",
+        }),
+      ).toBeInTheDocument();
     });
+  });
+
+  it("toggles, runs, and deletes schedules from the list", async () => {
+    mockSchedulePageStory();
+
+    await openScheduleList();
+
     expect(screen.getAllByText("Research Agent")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Every 45 minutes")[0]).toBeInTheDocument();
@@ -213,6 +252,8 @@ describe("zero schedule page", () => {
     click(menuItemByText("Run now"));
 
     await waitFor(() => {
+      expect(screen.getByText(/Run started/u)).toBeInTheDocument();
+      expect(screen.getByText("View activity")).toBeInTheDocument();
       expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
     });
 
@@ -247,6 +288,12 @@ describe("zero schedule page", () => {
       expect(screen.queryByText("Morning brief")).not.toBeInTheDocument();
     });
     expect(screen.getAllByText("Office AC")[0]).toBeInTheDocument();
+  });
+
+  it("opens a schedule detail from the list", async () => {
+    mockSchedulePageStory();
+
+    await openScheduleList();
 
     click(screen.getAllByLabelText("More actions for Every 45 minutes")[0]);
     click(menuItemByText("Edit"));
