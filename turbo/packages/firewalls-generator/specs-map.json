@@ -66,6 +66,10 @@
   "gmail": {
     "https://gmail.googleapis.com/$discovery/rest?version=v1": "c6560faec3edfa75cbdb63922b5870e804320afb84348838cb9504c92ef260f1"
   },
+  "google-analytics": {
+    "https://analyticsadmin.googleapis.com/$discovery/rest?version=v1beta": "01083717ae844a3e4ef1e002718d9f64766e958481573b3622d757fa5341f18c",
+    "https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta": "bda7ec8f3c4fb3a4910ea1a1109732eaea852547b464a49393bf603ad98a0540"
+  },
   "google-calendar": {
     "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest": "82c6b1d76456fe79c561f4c3f2f21a8306591347a9d8974fba3f5f27e4b6567d"
   },

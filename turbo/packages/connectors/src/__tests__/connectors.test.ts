@@ -202,6 +202,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   github: "https://github.com/login/oauth/authorize",
   gmail: "https://accounts.google.com/o/oauth2/v2/auth",
   "google-ads": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-analytics": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-calendar": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-cloud": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-docs": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -2524,6 +2525,28 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth", "api-token"]);
   });
 
+  it("exposes Google Maps API-token auth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("google-maps", {})).toStrictEqual(
+      [],
+    );
+    expect(
+      getAvailableConnectorAuthMethodIds("google-maps", {
+        [FeatureSwitchKey.GoogleMapsConnector]: true,
+      }),
+    ).toStrictEqual(["api-token"]);
+  });
+
+  it("exposes Google Analytics OAuth only when its switch is enabled", () => {
+    expect(
+      getAvailableConnectorAuthMethodIds("google-analytics", {}),
+    ).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("google-analytics", {
+        [FeatureSwitchKey.GoogleAnalyticsConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
   it("exposes Ashby API-token auth without a feature switch", () => {
     expect(getAvailableConnectorAuthMethodIds("ashby", {})).toStrictEqual([
       "api-token",
@@ -3946,6 +3969,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).toEqual(
       expect.arrayContaining([
         "gmail",
+        "google-analytics",
         "google-calendar",
         "google-docs",
         "google-drive",
@@ -4020,6 +4044,26 @@ describe("getConnectorAuthMethodGrantScopes - google-cloud scopes", () => {
       "https://www.googleapis.com/auth/sqlservice.login",
       "https://www.googleapis.com/auth/compute",
     ]);
+  });
+});
+
+describe("getConnectorAuthMethodGrantScopes - google-analytics scopes", () => {
+  it("uses Analytics Data readonly and Analytics Admin edit scopes", () => {
+    const grant = getConnectorAuthMethodAuthCodeGrantConfig(
+      "google-analytics",
+      "oauth",
+    );
+    const scopes = getConnectorAuthMethodGrantScopes(
+      "google-analytics",
+      "oauth",
+    );
+
+    expect(scopes).toStrictEqual(grant?.scopes);
+    expect(scopes).toContain(
+      "https://www.googleapis.com/auth/analytics.readonly",
+    );
+    expect(scopes).toContain("https://www.googleapis.com/auth/analytics.edit");
+    expect(scopes).toContain("https://www.googleapis.com/auth/userinfo.email");
   });
 });
 

@@ -17,6 +17,7 @@ import { vercel } from "./connectors/vercel";
 import { strava } from "./connectors/strava";
 import { googleMeet } from "./connectors/google-meet";
 import { googleSearchConsole } from "./connectors/google-search-console";
+import { googleAnalytics } from "./connectors/google-analytics";
 import { hubspot } from "./connectors/hubspot";
 import { sentry } from "./connectors/sentry";
 import { todoist } from "./connectors/todoist";
@@ -1002,6 +1003,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...strava,
   ...googleMeet,
   ...googleSearchConsole,
+  ...googleAnalytics,
   ...hubspot,
   ...sentry,
   ...todoist,
