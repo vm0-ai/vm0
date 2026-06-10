@@ -540,3 +540,20 @@ calc. Services tests outside this list migrate to route-level BDD.
   reached through create + secret-set, no DB seeding.
 - Coverage verified (source-only): no connector source file changed vs baseline
   (NONE regressions).
+
+### Round 16 — CUSTOM CONNECTORS CRUD (CHAIN-CUSTOM-CONNECTOR)
+
+- Extended `createBddApi` with the `customConnectorById`
+  (`zeroCustomConnectorByIdContract`) patch/delete client.
+- Added `zero-custom-connectors-crud.bdd.test.ts`: create → list → rename →
+  set-secret → delete (cascades the secret) chain, prefix normalisation
+  (no-op + add-slash + host wildcard), missing-`{{secret}}` / non-https 400s,
+  and an admin-only / unauthenticated / unknown / cross-org matrix for
+  create/patch/delete.
+- Deleted `zero-custom-connectors-patch.test.ts` and
+  `zero-custom-connectors-delete.test.ts` whole. Kept
+  `zero-custom-connectors-create.test.ts` for the firewall-validation 400
+  branch of `normalizePrefix` (a prefix that is https + parses but fails firewall
+  validation — GAP-CONNECTOR-FIREWALL-PREFIX).
+- Coverage verified (source-only): `zero-custom-connector.service.ts` (97/49)
+  unchanged vs the `main` baseline.

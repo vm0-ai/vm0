@@ -25,6 +25,7 @@ import {
   zeroComposesMetadataContract,
 } from "@vm0/api-contracts/contracts/zero-composes";
 import {
+  zeroCustomConnectorByIdContract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -83,6 +84,8 @@ export function createBddApi(context: TestContext) {
     customConnectorSecret: setupApp({ context })(
       zeroCustomConnectorSecretContract,
     ),
+    /** ts-rest client for `/api/zero/custom-connectors/:id` (patch/delete). */
+    customConnectorById: setupApp({ context })(zeroCustomConnectorByIdContract),
     /** ts-rest client for `/api/zero/agents/:id/custom-connectors`
      * (get/update the connectors enabled on an agent). */
     agentCustomConnectors: setupApp({ context })(
