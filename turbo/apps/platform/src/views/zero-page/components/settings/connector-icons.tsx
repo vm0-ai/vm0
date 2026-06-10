@@ -72,7 +72,6 @@ const CONNECTOR_ICON_COLORFUL = {
   "altium-365": true,
   alchemy: true,
   amadeus: true,
-  amplitude: true,
   "anthropic-managed-agents": true,
   apify: true,
   asana: true,
