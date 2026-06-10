@@ -14,6 +14,7 @@ import {
   findUserSelectedModel$,
   seedSlackWebhookAgent$,
   seedSlackWebhookFixture$,
+  setSlackWebhookDefaultAgent$,
   setSlackWebhookUserAgentPreference$,
   setSlackWebhookUserSelectedModel$,
   type SlackWebhookFixture,
@@ -462,6 +463,50 @@ describe("POST /api/zero/slack/interactive", () => {
     );
   });
 
+  it("rejects org default submissions when the default agent is inaccessible", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        {
+          withConnection: true,
+          withDefaultAgent: false,
+        },
+        context.signal,
+      ),
+    );
+    const hiddenDefaultAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomBytes(4).toString("hex")}`,
+        namePrefix: "hidden-default-agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    await store.set(
+      setSlackWebhookDefaultAgent$,
+      { orgId: fixture.orgId, composeId: hiddenDefaultAgentId },
+      context.signal,
+    );
+
+    const response = await postInteractive(
+      agentPickerSubmission({
+        workspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+        selectedValue: "__org_default__",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      response_action: "errors",
+      errors: {
+        agent_select_block: "You don't have access to that agent.",
+      },
+    });
+  });
+
   it("returns an inline error when no agent is selected", async () => {
     const response = await postInteractive(
       agentPickerSubmission({
@@ -605,6 +650,66 @@ describe("POST /api/zero/slack/interactive", () => {
     expect(values).toContain(otherPublicAgentId);
     expect(values).not.toContain(fixture.defaultAgentId);
     expect(values).not.toContain(otherPrivateAgentId);
+  });
+
+  it("omits an inaccessible private org default from the App Home switch picker", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        {
+          withConnection: true,
+          withDefaultAgent: false,
+        },
+        context.signal,
+      ),
+    );
+    const hiddenDefaultAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomBytes(4).toString("hex")}`,
+        namePrefix: "home-hidden-default-agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    await store.set(
+      setSlackWebhookDefaultAgent$,
+      { orgId: fixture.orgId, composeId: hiddenDefaultAgentId },
+      context.signal,
+    );
+    const visibleAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomBytes(4).toString("hex")}`,
+        namePrefix: "home-visible-agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+
+    const response = await postInteractive({
+      type: "block_actions",
+      user: {
+        id: fixture.slackUserId,
+        username: "testuser",
+        team_id: fixture.slackWorkspaceId,
+      },
+      team: { id: fixture.slackWorkspaceId, domain: "test" },
+      trigger_id: "trigger-123",
+      actions: [{ action_id: "home_switch_agent", block_id: "home" }],
+    });
+
+    expect(response.status).toBe(200);
+    const select = getStaticSelectElement(latestSlackViewOpenCall().view ?? {});
+    const values =
+      select.options?.map((option) => {
+        return option.value;
+      }) ?? [];
+    expect(values).not.toContain("__org_default__");
+    expect(values).toContain(visibleAgentId);
+    expect(values).not.toContain(hiddenDefaultAgentId);
   });
 
   it("replaces an existing model preference with the workspace default", async () => {

@@ -820,6 +820,12 @@ const refreshOrgAppHome$ = command(
             connection.vm0UserId,
           )
         : undefined;
+      const visibleOptions = await getVisibleAgentPickerOptions({
+        db,
+        orgId,
+        userId: connection.vm0UserId,
+        defaultComposeId,
+      });
       if (effectiveCompose.status === "resolved") {
         agentName =
           effectiveCompose.agent.displayName ?? effectiveCompose.agent.name;
@@ -827,7 +833,7 @@ const refreshOrgAppHome$ = command(
       isOverrideActive = Boolean(
         visibleOverrideAgent && overrideComposeId !== defaultComposeId,
       );
-      canSwitch = Boolean(visibleDefaultAgent);
+      canSwitch = Boolean(visibleDefaultAgent || visibleOptions.length > 0);
     }
 
     const [metadata] = await db
@@ -883,10 +889,21 @@ const commandSwitchResponse$ = command(
       userId: connection.vm0UserId,
       defaultComposeId,
     });
-    const orgDefaultName = defaultComposeId
-      ? ((await getWorkspaceAgent(db, defaultComposeId))?.displayName ??
-        (await getWorkspaceAgent(db, defaultComposeId))?.name ??
-        null)
+    const visibleDefaultAgent = defaultComposeId
+      ? await getVisibleWorkspaceAgent(
+          db,
+          defaultComposeId,
+          installation.orgId,
+          connection.vm0UserId,
+        )
+      : undefined;
+    if (!visibleDefaultAgent && options.length === 0) {
+      return ephemeral(
+        buildErrorMessage("No agents are available to your Slack account."),
+      );
+    }
+    const orgDefaultName = visibleDefaultAgent
+      ? (visibleDefaultAgent.displayName ?? visibleDefaultAgent.name)
       : null;
     const currentOverride = await getUserAgentPreference(
       db,
@@ -908,6 +925,7 @@ const commandSwitchResponse$ = command(
         buildAgentPickerModal({
           options,
           currentSelectedId: currentOverride,
+          includeOrgDefault: Boolean(visibleDefaultAgent),
           orgDefaultName,
           privateMetadata: JSON.stringify({ channelId: payload.channel_id }),
         }),
@@ -1881,15 +1899,6 @@ async function postEphemeralMessage(args: {
   }
 }
 
-async function resolveOrgDefaultName(db: Db, orgId: string): Promise<string> {
-  const defaultComposeId = await resolveDefaultComposeId(db, orgId);
-  if (!defaultComposeId) {
-    return "the org default agent";
-  }
-  const agent = await getWorkspaceAgent(db, defaultComposeId);
-  return agent?.displayName ?? agent?.name ?? "the org default agent";
-}
-
 const handleAgentPickerSubmit$ = command(
   async (
     { get, set },
@@ -1922,7 +1931,25 @@ const handleAgentPickerSubmit$ = command(
     );
     const channelId = parseViewChannelId(payload.view?.private_metadata);
     if (selected === AGENT_PICKER_ORG_DEFAULT_VALUE) {
-      const defaultName = await resolveOrgDefaultName(db, ctx.orgId);
+      const defaultComposeId = await resolveDefaultComposeId(db, ctx.orgId);
+      const visibleDefaultAgent = defaultComposeId
+        ? await getVisibleWorkspaceAgent(
+            db,
+            defaultComposeId,
+            ctx.orgId,
+            ctx.connection.vm0UserId,
+          )
+        : undefined;
+      if (!visibleDefaultAgent) {
+        return jsonResponse({
+          response_action: "errors",
+          errors: {
+            [AGENT_PICKER_BLOCK_ID]: "You don't have access to that agent.",
+          },
+        });
+      }
+      const defaultName =
+        visibleDefaultAgent.displayName ?? visibleDefaultAgent.name;
       await setUserAgentPreference({
         db,
         vm0UserId: ctx.connection.vm0UserId,
@@ -2065,10 +2092,19 @@ const handleHomeSwitchAgent$ = command(
       userId: ctx.connection.vm0UserId,
       defaultComposeId,
     });
-    const orgDefaultName = defaultComposeId
-      ? ((await getWorkspaceAgent(db, defaultComposeId))?.displayName ??
-        (await getWorkspaceAgent(db, defaultComposeId))?.name ??
-        null)
+    const visibleDefaultAgent = defaultComposeId
+      ? await getVisibleWorkspaceAgent(
+          db,
+          defaultComposeId,
+          ctx.orgId,
+          ctx.connection.vm0UserId,
+        )
+      : undefined;
+    if (!visibleDefaultAgent && options.length === 0) {
+      return;
+    }
+    const orgDefaultName = visibleDefaultAgent
+      ? (visibleDefaultAgent.displayName ?? visibleDefaultAgent.name)
       : null;
     const currentOverride = await getUserAgentPreference(
       db,
@@ -2089,6 +2125,7 @@ const handleHomeSwitchAgent$ = command(
         buildAgentPickerModal({
           options,
           currentSelectedId: currentOverride,
+          includeOrgDefault: Boolean(visibleDefaultAgent),
           orgDefaultName,
         }),
       ),

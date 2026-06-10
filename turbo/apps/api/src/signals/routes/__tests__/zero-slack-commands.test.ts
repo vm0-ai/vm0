@@ -13,6 +13,7 @@ import {
   deleteSlackWebhookFixture$,
   seedSlackWebhookAgent$,
   seedSlackWebhookFixture$,
+  setSlackWebhookDefaultAgent$,
   setSlackWebhookUserSelectedModel$,
   type SlackWebhookFixture,
 } from "./helpers/zero-slack-webhooks";
@@ -395,6 +396,70 @@ describe("POST /api/zero/slack/commands", () => {
     expect(values).not.toContain(fixture.defaultAgentId);
     expect(values).not.toContain(otherPrivateAgentId);
     expect(labels).toContainEqual(expect.stringContaining("Use org default"));
+  });
+
+  it("omits an inaccessible private org default from the switch picker", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        {
+          withConnection: true,
+          withDefaultAgent: false,
+        },
+        context.signal,
+      ),
+    );
+    const hiddenDefaultAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomBytes(4).toString("hex")}`,
+        namePrefix: "hidden-default-agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    await store.set(
+      setSlackWebhookDefaultAgent$,
+      { orgId: fixture.orgId, composeId: hiddenDefaultAgentId },
+      context.signal,
+    );
+    const visibleAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomBytes(4).toString("hex")}`,
+        namePrefix: "visible-agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+
+    const switchResponse = await postCommand(
+      buildCommandBody({
+        teamId: fixture.slackWorkspaceId,
+        userId: fixture.slackUserId,
+        text: "switch",
+      }),
+    );
+
+    expect(switchResponse.status).toBe(200);
+    const select = getStaticSelectElement(latestSlackViewOpenCall().view ?? {});
+    const values =
+      select.options?.map((option) => {
+        return option.value;
+      }) ?? [];
+    const labels =
+      select.options?.map((option) => {
+        return option.text?.text;
+      }) ?? [];
+
+    expect(values).not.toContain("__org_default__");
+    expect(values).toContain(visibleAgentId);
+    expect(values).not.toContain(hiddenDefaultAgentId);
+    expect(labels).not.toContainEqual(
+      expect.stringContaining("Use org default"),
+    );
   });
 
   it("returns a login prompt for switch when the Slack user is not connected", async () => {

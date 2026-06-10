@@ -218,6 +218,14 @@ function latestPostEphemeralCall(): {
   };
 }
 
+function latestViewPublishCall(): { readonly view?: unknown } {
+  const call = context.mocks.slack.views.publish.mock.calls.at(-1);
+  if (!call) {
+    throw new Error("Expected Slack views.publish to be called");
+  }
+  return call[0] as { readonly view?: unknown };
+}
+
 describe("POST /api/zero/slack/events", () => {
   const track = createFixtureTracker<SlackWebhookFixture>((fixture) => {
     return store.set(deleteSlackWebhookFixture$, fixture, context.signal);
@@ -655,6 +663,57 @@ describe("POST /api/zero/slack/events", () => {
         context.signal,
       ),
     ).resolves.toBe(0);
+  });
+
+  it("shows the App Home switch action when a visible agent exists without a visible default", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: false },
+        context.signal,
+      ),
+    );
+    const hiddenDefaultAgentId = await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomBytes(4).toString("hex")}`,
+        namePrefix: "home-hidden-default",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    await store.set(
+      setSlackWebhookDefaultAgent$,
+      { orgId: fixture.orgId, composeId: hiddenDefaultAgentId },
+      context.signal,
+    );
+    await store.set(
+      seedSlackWebhookAgent$,
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomBytes(4).toString("hex")}`,
+        namePrefix: "home-visible-agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+
+    await postEvent({
+      type: "event_callback",
+      team_id: fixture.slackWorkspaceId,
+      event: {
+        type: "app_home_opened",
+        user: fixture.slackUserId,
+        tab: "home",
+        channel: "D-home",
+      },
+    });
+    await clearAllDetached();
+
+    expect(JSON.stringify(latestViewPublishCall().view ?? "")).toContain(
+      "home_switch_agent",
+    );
   });
 
   it("handles App Home and Messages tab edge cases", async () => {
