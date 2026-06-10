@@ -704,3 +704,19 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Deleted `auth-me.test.ts` whole.
 - Coverage verified (source-only): `auth-me.ts` (28/9/5) unchanged vs `main`.
   No regressions.
+
+### Round 25 — REALTIME TOKEN (CHAIN-REALTIME-TOKEN)
+
+- Extended `createBddApi` with the `realtimeToken` client.
+- Added `zero-realtime-token.bdd.test.ts`: mint a token for an authenticated
+  caller and assert (via the Ably mock, the only observable surface) that the
+  request is a subscribe-only capability scoped to the caller's own
+  `user:<id>` channel with the hour TTL; an unauthenticated request is 401 and
+  mints nothing. Ably owns token minting, so stubbing `createTokenRequest` is the
+  external dependency; the granted capability has no read-back API, so it is
+  verified through the mock state per the test principles.
+- Deleted `zero-realtime-token.test.ts` whole.
+- Coverage verified (source-only): `zero-realtime-token.ts` (11/2/1) and
+  `realtime.ts` (38/9/16) unchanged vs `main`. No regressions.
+  (`webhooks-stripe.service.ts` oscillates run-to-run and recovered on re-run —
+  added to the noise set.)

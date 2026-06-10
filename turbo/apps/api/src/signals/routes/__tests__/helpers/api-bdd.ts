@@ -21,6 +21,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 import { authContract } from "@vm0/api-contracts/contracts/auth";
+import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
@@ -162,6 +163,8 @@ export function createBddApi(context: TestContext) {
     attribution: setupApp({ context })(zeroAttributionContract),
     /** ts-rest client for `/api/auth/me` (resolve the caller's id + email). */
     authMe: setupApp({ context })(authContract),
+    /** ts-rest client for `/api/zero/realtime/token` (mint an Ably token). */
+    realtimeToken: setupApp({ context })(platformRealtimeTokenContract),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,
