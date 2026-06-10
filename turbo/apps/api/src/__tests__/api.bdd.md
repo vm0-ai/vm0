@@ -928,3 +928,23 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 20 — AGENT-01 checkpoints (id) BDD
+
+Migrates `agent-checkpoints-id.test.ts` (7 legacy `it()`s,
+339 lines). The 7 cases split into 3 BDD test groups: (a)
+auth boundary chain (401 unauth → 401 no-org), (b) 404 chain
+(missing → other user → other org), (c) 200 success chain
+(owning user/org with volumeVersionsSnapshot → array-shaped
+artifact snapshots projected to a record).
+
+The `seedCheckpoint$` helper is inlined into the BDD file
+because it depends on `agentRuns` + `conversations` +
+`checkpoints` direct DB writes that are not user-reachable
+through any public API (Open Helper Gap).
+
+Net test count: 7 legacy `it()`s → 3 BDD `it()`s (57%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
