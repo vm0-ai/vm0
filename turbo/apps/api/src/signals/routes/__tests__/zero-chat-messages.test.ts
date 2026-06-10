@@ -705,7 +705,9 @@ describe("POST /api/zero/chat/messages", () => {
       .where(eq(agentRuns.id, response.body.runId!))
       .limit(1);
 
-    expect(run?.appendSystemPrompt).toContain(`## Video Style: ${preset.nameEn}`);
+    expect(run?.appendSystemPrompt).toContain(
+      `## Video Style: ${preset.nameEn}`,
+    );
     expect(run?.appendSystemPrompt).toContain("- Visual Tone:");
     expect(run?.appendSystemPrompt).toContain("- Style Reference:");
     expect(run?.appendSystemPrompt).toContain(
