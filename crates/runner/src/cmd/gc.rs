@@ -1243,14 +1243,15 @@ async fn gc_versions(
         let service_lock = if dry_run {
             match service_lock_path.try_exists() {
                 Ok(false) => None,
-                Ok(true) => match lock::try_acquire_or_busy(service_lock_path.clone()).await {
-                    Ok(lock::TryLock::Acquired(lock)) => Some(lock),
-                    Ok(lock::TryLock::Busy) => {
+                Ok(true) => match probe_existing_lock(&service_lock_path) {
+                    ExistingLockProbe::Free(lock) => Some(lock),
+                    ExistingLockProbe::Missing => None,
+                    ExistingLockProbe::Held => {
                         info!("version {name}: service lock held, skipping");
                         continue;
                     }
-                    Err(e) => {
-                        warn!("version {name}: cannot acquire service lock ({e}), skipping");
+                    ExistingLockProbe::Error(e) => {
+                        warn!("version {name}: cannot probe service lock ({e}), skipping");
                         continue;
                     }
                 },
