@@ -1241,7 +1241,8 @@ async fn gc_versions(
             .unwrap_or("service lock")
             .to_string();
         let service_lock = if dry_run {
-            match std::fs::symlink_metadata(&service_lock_path) {
+            let service_lock_parent = host_file::file_parent(&service_lock_path);
+            match std::fs::symlink_metadata(service_lock_parent) {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
                 Ok(_) => match probe_existing_lock(&service_lock_path) {
                     ExistingLockProbe::Free(lock) => Some(lock),
@@ -1257,8 +1258,8 @@ async fn gc_versions(
                 },
                 Err(e) => {
                     warn!(
-                        "version {name}: cannot inspect service lock {} before dry-run ({e}), skipping",
-                        service_lock_path.display()
+                        "version {name}: cannot inspect service lock parent {} before dry-run ({e}), skipping",
+                        service_lock_parent.display()
                     );
                     continue;
                 }
@@ -2950,6 +2951,33 @@ mod tests {
                 .is_symlink(),
             "dry-run should not touch the suspicious lock path"
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_versions_dry_run_skips_symlink_service_lock_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+        let version = "v1.0.0";
+
+        std::fs::create_dir_all(bin_dir.join(version)).unwrap();
+        std::fs::create_dir_all(runners_dir.join(version)).unwrap();
+        age_version_past_gc_min_age(&home, version);
+
+        let unsafe_lock_target = dir.path().join("unsafe-lock-target");
+        std::fs::create_dir_all(&unsafe_lock_target).unwrap();
+        std::os::unix::fs::symlink(&unsafe_lock_target, home.locks_dir()).unwrap();
+
+        let removed = gc_versions(&home, true, None, None).await.unwrap();
+
+        assert!(
+            removed.is_empty(),
+            "dry-run should skip when real mode cannot trust the service lock parent"
+        );
+        assert!(bin_dir.join(version).exists());
+        assert!(runners_dir.join(version).exists());
     }
 
     #[tokio::test]
