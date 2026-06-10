@@ -568,10 +568,10 @@ fn lock_metadata_inode_is_current(
     lock_meta: std::fs::Metadata,
     path: &Path,
 ) -> Result<bool, String> {
-    let path_meta = match std::fs::metadata(path) {
+    let path_meta = match std::fs::symlink_metadata(path) {
         Ok(meta) => meta,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(e) => return Err(format!("stat lock {}: {e}", path.display())),
+        Err(e) => return Err(format!("lstat lock {}: {e}", path.display())),
     };
     Ok(lock_meta.dev() == path_meta.dev() && lock_meta.ino() == path_meta.ino())
 }
@@ -2187,6 +2187,29 @@ mod tests {
         assert!(
             !lock_probe_inode_is_current(&held_lock, &path).unwrap(),
             "inode check must reject a lock fd whose path was recreated"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lock_probe_inode_check_rejects_symlink_to_same_inode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let alias = dir.path().join("alias.lock");
+
+        let held_lock = match probe_lock(&path) {
+            LockProbe::Free(lock) => lock,
+            LockProbe::Held => panic!("new test lock must not be held"),
+            LockProbe::Error(e) => panic!("new test lock must be probeable: {e}"),
+        };
+
+        std::fs::hard_link(&path, &alias).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink(&alias, &path).unwrap();
+
+        assert!(
+            !lock_probe_inode_is_current(&held_lock, &path).unwrap(),
+            "inode check must reject a lock path replaced by a symlink"
         );
     }
 
