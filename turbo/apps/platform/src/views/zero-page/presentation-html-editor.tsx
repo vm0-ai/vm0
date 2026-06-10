@@ -235,7 +235,7 @@ function PresentationEditorHeader({
         className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
       >
         <IconSparkles size={16} stroke={1.5} />
-        Transcript
+        Script
       </button>
       <button
         type="button"
