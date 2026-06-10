@@ -122,6 +122,8 @@ below. This file is filled in family-by-family as work proceeds.
   2nd → list newest-first → delete → list excludes → delete again 404.
 - **CHAIN-PERSONAL-MODEL-PROVIDER** ✅ (delete) — upsert provider → list →
   delete → list excludes → delete again 404.
+- **CHAIN-COMPOSE-READ** ✅ — create agent → read its compose by id → 404 for
+  unknown / malformed / cross-org.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -465,3 +467,15 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Also cleaned 60 leftover sentinel `model_stat` rows that an earlier
   interrupted coverage run had left in the shared test DB (caused an unrelated
   `model-stats.test.ts` duplicate-key failure; not a code issue).
+
+### Round 11 — COMPOSE READ (CHAIN-COMPOSE-READ)
+
+- Extended `createBddApi` with the `composesById` (`zeroComposesByIdContract`)
+  client.
+- Added `zero-composes-by-id.bdd.test.ts`: builds the compose precondition by
+  creating an agent through the API (an agent create writes a compose whose id
+  is the agent id), then reads it by id and exercises the 404 (unknown),
+  400 (malformed id), 401 (unauth / no-org), and cross-org 404 branches.
+- Deleted `zero-composes-by-id.test.ts` whole.
+- Coverage verified (source-only): `agent-composes-read.ts` (32/15) and the
+  other compose route/service files unchanged vs the `main` baseline.

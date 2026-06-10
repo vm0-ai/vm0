@@ -18,6 +18,7 @@ import {
   zeroAgentsMainContract,
   zeroSkillsCollectionContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroComposesByIdContract } from "@vm0/api-contracts/contracts/zero-composes";
 import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroSecretsByNameContract,
@@ -101,6 +102,8 @@ export function createBddApi(context: TestContext) {
     personalModelProviderByType: setupApp({ context })(
       zeroPersonalModelProvidersByTypeContract,
     ),
+    /** ts-rest client for `/api/zero/composes/:id` (read a compose by id). */
+    composesById: setupApp({ context })(zeroComposesByIdContract),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,
