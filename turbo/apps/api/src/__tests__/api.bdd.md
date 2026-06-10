@@ -114,6 +114,8 @@ below. This file is filled in family-by-family as work proceeds.
   delete → list excludes → delete again 404.
 - **CHAIN-SECRET** ✅ — set secret → list metadata → update → list sorted →
   delete → list excludes → delete again 404.
+- **CHAIN-USER-PREFERENCES** ✅ — GET defaults → set all fields → GET → partial
+  updates (timezone / pins / sendMode / capture) each preserve the rest.
 - CHAIN-BILLING-MEDIA — checkout → status → usage record → invoices.
 - CHAIN-FILE — prepare upload → complete → read → download.
 - CHAIN-SCHEDULE — deploy → enable → run → disable → delete.
@@ -395,3 +397,17 @@ calc. Services tests outside this list migrate to route-level BDD.
   (11/2/1) and `crypto.utils.ts` (80/26/20) unchanged vs the `main` baseline.
   The only per-file deltas are the established noise files (`utils.ts` 62↔59,
   `internal-callbacks-chat.ts` 316↔315).
+
+### Round 7 — USER PREFERENCES (CHAIN-USER-PREFERENCES)
+
+- Extended `createBddApi` with the `userPreferences`
+  (`zeroUserPreferencesContract`) client.
+- Added `zero-user-preferences.bdd.test.ts`: CHAIN-USER-PREFERENCES (GET defaults
+  → set all → GET → field-by-field partial updates that each preserve the rest)
+  plus invalid-timezone / empty-update / unauthenticated / no-org boundaries.
+- Deleted `zero-user-preferences.test.ts` and the now fully-orphaned
+  `helpers/zero-user-data.ts` (its last consumer); the family is fully
+  API-reachable, so nothing was retained.
+- Coverage verified on **source files only** (the raw `total` also counts test
+  code, which the migration legitimately removes): source-wide covered
+  statements 25039 → 25044, `zero-user-preferences.ts` 16/4/2 unchanged.
