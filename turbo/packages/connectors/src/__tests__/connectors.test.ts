@@ -3966,7 +3966,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
         refreshToken: "$secrets.CLOUDFLARE_REFRESH_TOKEN",
       },
     });
-    expect(grant.scopes).toHaveLength(357);
+    expect(grant.scopes).toHaveLength(352);
     expect(new Set(grant.scopes).size).toBe(grant.scopes.length);
     expect(grant.scopes).toEqual(
       expect.arrayContaining([
@@ -3981,6 +3981,15 @@ describe("connector OAuth lifecycle grant helpers", () => {
         "ai.write",
         "queues.write",
         "workers-r2.write",
+      ]),
+    );
+    expect(grant.scopes).not.toEqual(
+      expect.arrayContaining([
+        "d1.metadata_read",
+        "images.metadata_read",
+        "queues.metadata_read",
+        "workers-kv-storage.metadata_read",
+        "workers-r2.metadata_read",
       ]),
     );
     expect(getConnectorAuthMethod("cloudflare", "oauth")).toMatchObject({
