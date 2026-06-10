@@ -769,6 +769,8 @@ export function createBillingMediaApi(context: TestContext) {
         readonly location?: string;
         readonly radius?: number;
         readonly limit?: number;
+        readonly region?: string;
+        readonly fields?: "pro" | "enterprise";
       },
       statuses: readonly MapsStatus[],
     ) {
@@ -783,7 +785,7 @@ export function createBillingMediaApi(context: TestContext) {
       actor: ApiTestUser | null,
       body: {
         readonly placeId: string;
-        readonly fields?: "essentials" | "pro";
+        readonly fields?: "essentials" | "pro" | "enterprise";
       },
       statuses: readonly MapsStatus[],
     ) {
