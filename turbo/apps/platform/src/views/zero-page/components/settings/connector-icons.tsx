@@ -47,18 +47,6 @@ export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
     })(),
   );
 
-/** Official Slack Mark ships with a 270×270 viewBox whose artwork only fills the central ~45%.
- *  Callers render it inside an `overflow-hidden` box at layout size, and we scale the `<img>` up
- *  so the visible mark matches the box. */
-const CONNECTOR_ICON_LOOSE_VIEWBOX = {
-  slack: true,
-  "slack-webhook": true,
-} as const;
-
-function connectorIconHasLooseViewBox(type: ConnectorType): boolean {
-  return type in CONNECTOR_ICON_LOOSE_VIEWBOX;
-}
-
 /**
  * Multi-color, gradient, and distinctive single-color brand marks: skip `zero-icon-mono`
  * so `filter: invert(1)` does not distort their official colors.
@@ -277,13 +265,9 @@ export function ConnectorIcon({
   size?: number;
 }) {
   const icon = CONNECTOR_ICONS[type];
-  const looseViewBox = connectorIconHasLooseViewBox(type);
   return (
     <span
-      className={cn(
-        "inline-flex shrink-0 items-center justify-center",
-        looseViewBox && "overflow-hidden",
-      )}
+      className="inline-flex shrink-0 items-center justify-center"
       style={{ width: size, height: size }}
     >
       <img
@@ -293,7 +277,6 @@ export function ConnectorIcon({
         className={cn(
           "block h-full w-full max-h-full max-w-full object-contain",
           !connectorIconSkipsDarkInvert(type) && "zero-icon-mono",
-          looseViewBox && "scale-[2.2]",
         )}
       />
     </span>
