@@ -122,7 +122,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Meta Ads Manager connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.StripeConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -153,7 +153,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.GoogleSearchConsoleConnector]: {
     maintainer: "linghan@vm0.ai",
     description: "Enable the Google Search Console connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",

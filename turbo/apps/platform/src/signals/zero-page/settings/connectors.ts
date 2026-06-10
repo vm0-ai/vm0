@@ -20,7 +20,7 @@ import {
   hasConnectorDeviceAuthGrant,
   hasConnectorExternalCodeGrant,
 } from "@vm0/connectors/connector-utils";
-import { shouldShowGoogleSecurityWarningNotice } from "../../../lib/google-security-warning.ts";
+import { shouldShowConnectorConnectNotice } from "../../../lib/google-security-warning.ts";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorExternalCodeSessionContract,
@@ -135,11 +135,11 @@ function getAvailableConnectorConnectAuthMethods(
 export function getConnectorConnectLaunchMode({
   type,
   availableAuthMethods,
-  preferModalForGoogleSecurityWarning = false,
+  preferModalForConnectorNotice = false,
 }: {
   readonly type: ConnectorType;
   readonly availableAuthMethods: readonly ConnectorAuthMethodId[];
-  readonly preferModalForGoogleSecurityWarning?: boolean;
+  readonly preferModalForConnectorNotice?: boolean;
 }): ConnectorConnectLaunchMode {
   const [authMethod] = availableAuthMethods;
   if (availableAuthMethods.length !== 1 || !authMethod) {
@@ -148,10 +148,7 @@ export function getConnectorConnectLaunchMode({
   if (getConnectorAuthMethod(type, authMethod)?.grant.kind !== "auth-code") {
     return "modal";
   }
-  if (
-    preferModalForGoogleSecurityWarning &&
-    shouldShowGoogleSecurityWarningNotice(type)
-  ) {
+  if (preferModalForConnectorNotice && shouldShowConnectorConnectNotice(type)) {
     return "modal";
   }
   return "oauth-auth-code";

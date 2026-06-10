@@ -6,7 +6,7 @@ import { allConnectorTypes$ } from "../connectors.ts";
 
 const context = testContext();
 
-describe("google ads connector", () => {
+describe("marketing connectors", () => {
   it("shows Google Ads by default", async () => {
     await setupPage({
       context,
@@ -23,10 +23,27 @@ describe("google ads connector", () => {
     expect(googleAds?.availableAuthMethods).toStrictEqual(["oauth"]);
   });
 
-  it("hides Meta Ads by default", async () => {
+  it("shows Meta Ads by default", async () => {
     await setupPage({
       context,
       path: "/",
+      withoutRender: true,
+    });
+
+    const connectors = await context.store.get(allConnectorTypes$);
+    const metaAds = connectors.find((connector) => {
+      return connector.type === "meta-ads";
+    });
+
+    expect(metaAds?.label).toBe("Meta Ads");
+    expect(metaAds?.availableAuthMethods).toStrictEqual(["oauth"]);
+  });
+
+  it("hides Meta Ads when its feature switch is disabled", async () => {
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: false },
       withoutRender: true,
     });
 
@@ -38,20 +55,37 @@ describe("google ads connector", () => {
     expect(metaAds).toBeUndefined();
   });
 
-  it("shows Meta Ads when its feature switch is enabled", async () => {
+  it("shows Google Search Console by default without an experimental label", async () => {
     await setupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
       withoutRender: true,
     });
 
     const connectors = await context.store.get(allConnectorTypes$);
-    const metaAds = connectors.find((connector) => {
-      return connector.type === "meta-ads";
+    const googleSearchConsole = connectors.find((connector) => {
+      return connector.type === "google-search-console";
     });
 
-    expect(metaAds?.label).toBe("Meta Ads");
-    expect(metaAds?.availableAuthMethods).toStrictEqual(["oauth"]);
+    expect(googleSearchConsole?.label).toBe("Google Search Console");
+    expect(googleSearchConsole?.availableAuthMethods).toStrictEqual(["oauth"]);
+  });
+
+  it("hides Google Search Console when its feature switch is disabled", async () => {
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: {
+        [FeatureSwitchKey.GoogleSearchConsoleConnector]: false,
+      },
+      withoutRender: true,
+    });
+
+    const connectors = await context.store.get(allConnectorTypes$);
+    const googleSearchConsole = connectors.find((connector) => {
+      return connector.type === "google-search-console";
+    });
+
+    expect(googleSearchConsole).toBeUndefined();
   });
 });

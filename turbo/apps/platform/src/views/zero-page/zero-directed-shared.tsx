@@ -114,3 +114,27 @@ export function GoogleSecurityWarningNotice() {
     </div>
   );
 }
+
+export function MetaAdsReviewNotice() {
+  return (
+    <div className="w-full mt-2 flex flex-col gap-3 rounded-lg bg-muted/50 px-4 py-4 text-left">
+      <AvatarSvgPreview
+        config={getAvatarPresets()[0]}
+        size={36}
+        className="h-9 w-9 rounded-full"
+        alt="Zero"
+      />
+      <div className="text-xs leading-relaxed text-muted-foreground space-y-1.5">
+        <p>
+          Meta Ads is currently in Meta&apos;s app review period. You can
+          connect now, but the connector may encounter rate limiting issues
+          until the review is complete.
+        </p>
+        <p>
+          We only request the permissions needed for ads workflows, and your
+          connection tokens are encrypted at rest.
+        </p>
+      </div>
+    </div>
+  );
+}
