@@ -670,3 +670,21 @@ calc. Services tests outside this list migrate to route-level BDD.
 - Coverage verified (source-only): `zero-user-model-preference.ts` (20/6/3),
   `zero-model-policy.service.ts` (118/67/30), and `zero-user-data.service.ts`
   (73/49/21) unchanged vs `main`. No regressions.
+
+### Round 23 — SIGNUP ATTRIBUTION (CHAIN-ATTRIBUTION)
+
+- Extended `createBddApi` with the `attribution` client and a
+  `mockClerkUserPrivateMetadata` helper (Clerk owns the user profile metadata,
+  so the existing metadata is an external precondition to mock).
+- Added `zero-attribution.bdd.test.ts`: record first-touch attribution (with
+  `mockNow` for a deterministic `recorded_at`) and assert the merge preserves
+  prior keys via the Clerk update mock; a second touch with an existing
+  `signup_attribution` reports `recorded: false` and writes nothing; plus a
+  missing-session 401. `mockNow` is used (not `vi.useFakeTimers`) per the test
+  principles, and `recorded` is read from the real response.
+- Deleted `zero-attribution.test.ts` whole.
+- Coverage verified (source-only): `zero-attribution.ts` (21/8/3) unchanged vs
+  `main`. No regressions. (The full coverage run needs `--test-timeout=30000`
+  locally because v8 instrumentation slows the unrelated
+  `cron-summarize-memory` idempotency test past the default 5s; CI runs tests
+  without coverage at full speed.)

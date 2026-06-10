@@ -19,6 +19,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroOrgListContract } from "@vm0/api-contracts/contracts/zero-org-list";
+import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
@@ -155,6 +156,9 @@ export function createBddApi(context: TestContext) {
     ),
     /** ts-rest client for `/api/zero/org/list` (list the caller's orgs). */
     orgList: setupApp({ context })(zeroOrgListContract),
+    /** ts-rest client for `/api/zero/attribution/signup` (record first-touch
+     * signup attribution into Clerk private metadata). */
+    attribution: setupApp({ context })(zeroAttributionContract),
 
     /** Authorization header for the active Clerk session actor. */
     auth: SESSION_AUTH,
@@ -200,6 +204,19 @@ export function createBddApi(context: TestContext) {
           }),
         },
       );
+    },
+
+    /** Mock the Clerk user lookup so a route that reads/writes Clerk private
+     * metadata sees `privateMetadata` for `userId`, and allow the write. Clerk
+     * owns this profile data, so it is an external precondition to mock. */
+    mockClerkUserPrivateMetadata(
+      userId: string,
+      privateMetadata: Record<string, unknown>,
+    ): void {
+      context.mocks.clerk.users.getUserList.mockResolvedValue({
+        data: [{ id: userId, privateMetadata }],
+      });
+      context.mocks.clerk.users.updateUser.mockResolvedValue({});
     },
 
     /** Build an `Authorization` header for a sandbox "zero" token carrying the
