@@ -905,3 +905,26 @@ reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 19 — CHAT-01 search BDD
+
+Migrates `zero-chat-search.test.ts` (12 legacy `it()`s, 469
+lines). The 12 cases split into 7 BDD test groups: (a) auth
+boundary chain (401 unauth → 401 no-org → 403 missing
+`chat-message:read` capability), (b) isolation chain
+(peer-user same-org → cross-org), (c) empty + null-content
+chain, (d) since + agentId filter chain, (e) context
+before/after chronological, (f) hasMore, (g) LIKE wildcard
+escape.
+
+The sandbox JWT (used to exercise the 403 case) is the only
+precondition not reachable from the public API; the
+`signSandboxJwtForTests` helper is the tolerated direct
+helper for that case (Open Helper Gap, same as the legacy
+test).
+
+Net test count: 12 legacy `it()`s → 7 BDD `it()`s (42%
+reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
