@@ -967,8 +967,8 @@ fn version_from_service_lock_name(name: &str) -> Option<&str> {
     Some(version)
 }
 
-fn version_bin_is_gc_enumerable_dir(path: &Path) -> Result<bool, String> {
-    match std::fs::symlink_metadata(path) {
+async fn version_bin_is_gc_enumerable_dir(path: &Path) -> Result<bool, String> {
+    match tokio::fs::symlink_metadata(path).await {
         Ok(meta) => Ok(meta.file_type().is_dir()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(format!("stat version bin {}: {e}", path.display())),
@@ -998,7 +998,7 @@ async fn gc_orphaned_version_service_locks(home: &HomePaths, dry_run: bool) -> R
         };
 
         let version_bin = bin_dir.join(version);
-        match version_bin_is_gc_enumerable_dir(&version_bin) {
+        match version_bin_is_gc_enumerable_dir(&version_bin).await {
             Ok(true) => continue,
             Ok(false) => {}
             Err(e) => {
