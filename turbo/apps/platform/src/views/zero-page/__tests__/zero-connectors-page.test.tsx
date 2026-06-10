@@ -208,6 +208,11 @@ describe("connectors page", () => {
         authMethod: "api-token",
         tokenExpiresAt: new Date(Date.now() + 26 * HOURS_MS).toISOString(),
       },
+      {
+        type: "axiom",
+        authMethod: "api-token",
+        tokenExpiresAt: new Date(Date.now() - HOURS_MS).toISOString(),
+      },
     ]);
 
     detachedSetupPage({ context, path: "/connectors" });
@@ -221,6 +226,11 @@ describe("connectors page", () => {
     expect(
       within(connectorCardByLabel("OpenAI")).getByText("Expires in 2 days"),
     ).toBeInTheDocument();
+    const expiredAxiomCard = connectorCardByLabel("Axiom");
+    expect(
+      within(expiredAxiomCard).getByText("Connection expired"),
+    ).toBeInTheDocument();
+    expect(within(expiredAxiomCard).getByText("Reconnect")).toBeInTheDocument();
 
     const engineeringSection = screen.getByTestId(
       "connector-category-engineering-team-execution",
