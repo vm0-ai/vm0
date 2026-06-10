@@ -8,6 +8,7 @@ import {
   chatThreadUnpinContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 
@@ -175,6 +176,60 @@ function openThreadMenu(title: string): void {
   );
 }
 
+async function openAccountMenu(): Promise<HTMLElement> {
+  const accountName = await screen.findByText("Alex Rivera");
+  const accountButton = accountName.closest("button");
+  if (!accountButton) {
+    throw new Error("Account menu trigger not found");
+  }
+  click(accountButton);
+  return screen.findByRole("menu");
+}
+
+function mockAdminAccountSidebar(): void {
+  prepareDefaultAgent();
+  context.mocks.data.org({
+    id: "org_1",
+    slug: "test-org",
+    name: "Test Org",
+    role: "admin",
+  });
+  context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+    return respond(200, splitChatThreadListResponse([]));
+  });
+  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    return respond(200, {
+      tier: "pro",
+      credits: 12_500,
+      onboardingPaymentPending: false,
+      subscriptionStatus: "active",
+      currentPeriodEnd: "2026-04-01T00:00:00Z",
+      cancelAtPeriodEnd: false,
+      scheduledChange: null,
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+      creditExpiry: {
+        expiringNextCycle: 0,
+        nextExpiryDate: null,
+      },
+      creditBreakdown: [
+        {
+          category: "plan",
+          tier: "pro",
+          label: "Pro credits",
+          credits: 10_000,
+        },
+        {
+          category: "promotional",
+          label: "Launch bonus",
+          credits: 2500,
+        },
+      ],
+      creditGrants: [],
+    });
+  });
+}
+
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
@@ -326,18 +381,34 @@ describe("zero sidebar", () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes", { isRead: false }),
+      createThread(SCHEDULED_THREAD_ID, "Running analysis", { running: true }),
+      createThread(ARCHIVED_THREAD_ID, "Draft brief", { hasDraft: true }),
     ]);
 
     detachedSetupPage({
       context,
       featureSwitches: { [FeatureSwitchKey.ChatThreadRename]: true },
-      path: `/chats/${EXISTING_THREAD_ID}`,
+      path: `/chats/${EXISTING_THREAD_ID}?sidebar=detached-thread`,
     });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
       expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+      expect(
+        within(threadRowByTitle("Release plan")).getByTestId(
+          "chat-thread-list-pane-icon-main",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(threadRowByTitle("Incident notes")).getByLabelText("Unread"),
+      ).toBeInTheDocument();
+      expect(
+        within(threadRowByTitle("Running analysis")).getByLabelText("Running"),
+      ).toBeInTheDocument();
+      expect(
+        within(threadRowByTitle("Draft brief")).getByLabelText("Draft"),
+      ).toBeInTheDocument();
     });
 
     openThreadMenu("Release plan");
@@ -561,6 +632,131 @@ describe("zero sidebar", () => {
     });
 
     createDeferred.resolve();
+  });
+
+  it("collapses and reopens the sidebar", async () => {
+    prepareDefaultAgent();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Collapse sidebar");
+      }),
+    );
+
+    const expandButton = await screen.findByLabelText("Expand sidebar");
+    click(expandButton);
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Expand sidebar")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
+    });
+  });
+
+  it("collapses and reopens the manage navigation section", async () => {
+    prepareDefaultAgent();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const nav = await waitFor(() => {
+      const current = sidebar();
+      expect(within(current).getByText("Agents")).toBeInTheDocument();
+      expect(within(current).getByText("Connectors")).toBeInTheDocument();
+      return current;
+    });
+
+    click(within(nav).getByText("Manage"));
+
+    await waitFor(() => {
+      expect(within(nav).queryByText("Agents")).not.toBeInTheDocument();
+      expect(within(nav).queryByText("Connectors")).not.toBeInTheDocument();
+    });
+
+    click(within(nav).getByText("Manage"));
+
+    await waitFor(() => {
+      expect(within(nav).getByText("Agents")).toBeInTheDocument();
+      expect(within(nav).getByText("Connectors")).toBeInTheDocument();
+    });
+  });
+
+  it("opens credit balance and export data from the account menu", async () => {
+    mockAdminAccountSidebar();
+    const openMock = context.mocks.browser.open(null);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.DataExport]: true },
+    });
+
+    let menu = await openAccountMenu();
+
+    await waitFor(() => {
+      expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
+      expect(within(menu).getByText("Export data")).toBeInTheDocument();
+    });
+
+    click(within(menu).getByText("Export data"));
+
+    await waitFor(() => {
+      expect(
+        openMock.calls.some((call) => {
+          return call.url?.endsWith("/export") ?? false;
+        }),
+      ).toBeTruthy();
+    });
+
+    menu = await openAccountMenu();
+    click(within(menu).getByText("12,500 credits"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Settings" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Credit balance" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Pro credits")).toBeInTheDocument();
+      expect(screen.getByText("Launch bonus")).toBeInTheDocument();
+    });
+  });
+
+  it("opens memory from the account menu", async () => {
+    mockAdminAccountSidebar();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    const menu = await openAccountMenu();
+    click(within(menu).getByText("Memory"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Memory" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("No updates yet")).toBeInTheDocument();
+    });
   });
 
   it("opens settings from the account menu and changes debug capture", async () => {

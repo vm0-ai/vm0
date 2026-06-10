@@ -105,6 +105,7 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         and uses_openai_responses_usage_protocol(flow)
     ):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {}
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
         return None
     if is_observable_model_provider:
@@ -260,8 +261,10 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
 
     Called from ``websocket_message()`` only for server-originated frames. Reads
     ``_MODEL_WEBSOCKET_USAGE_ENABLED`` via ``is_model_websocket_usage_enabled()``
-    and writes or updates ``metadata_keys.MODEL_PROVIDER_USAGE``. This helper is
-    not idempotent for the same frame; callers must feed each server frame once.
+    and writes per-response sources to
+    ``metadata_keys.MODEL_PROVIDER_USAGE_SOURCES``. Frames without a response id
+    fall back to ``metadata_keys.MODEL_PROVIDER_USAGE``. This helper is not
+    idempotent for the same frame; callers must feed each server frame once.
     """
     if not is_model_websocket_usage_enabled(flow):
         return
@@ -269,6 +272,19 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
     usage_result = usage.extract_openai_responses_usage_from_event_json(body)
     if not usage_result:
         return
+    message_id = usage_result.get("message_id")
+    if isinstance(message_id, str) and message_id:
+        usage_sources = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE_SOURCES)
+        if not isinstance(usage_sources, dict):
+            usage_sources = {}
+            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = usage_sources
+        usage_target = usage_sources.get(message_id)
+        if not isinstance(usage_target, dict):
+            usage_target = {}
+            usage_sources[message_id] = usage_target
+        usage.merge_openai_responses_usage_result(usage_target, usage_result)
+        return
+
     usage_target = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
     if not isinstance(usage_target, dict):
         usage_target = {}

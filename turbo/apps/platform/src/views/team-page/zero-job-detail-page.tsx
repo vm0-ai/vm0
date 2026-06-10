@@ -22,7 +22,6 @@ import {
   IconWand,
 } from "@tabler/icons-react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Button,
   Tabs,
@@ -95,7 +94,6 @@ import {
   upsertUserPermissionGrant$,
   userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   allConnectorTypes$,
   matchesConnectorSearch,
@@ -1037,9 +1035,6 @@ function JobPermissionsTab({
       ? permissionGrantsToFirewallPolicies(userGrants)
       : null;
   const drawerInitialPolicies = userGrantPolicies ?? {};
-  const features = useLastResolved(featureSwitch$);
-  const resetEnabled =
-    features?.[FeatureSwitchKey.ConnectorPermissionReset] ?? false;
   const [, upsertGrant] = useLoadableSet(upsertUserPermissionGrant$);
   const [, resetGrantPolicies] = useLoadableSet(resetUserPermissionGrants$);
   const connectorType = useGet(permConnectorType$);
@@ -1120,7 +1115,7 @@ function JobPermissionsTab({
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
             initialGrants={userGrants}
-            resetEnabled={resetEnabled}
+            resetEnabled
             readOnly={!canManagePermissions}
             onApply={async (
               policies,

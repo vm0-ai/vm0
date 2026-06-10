@@ -24,6 +24,7 @@ function computerUseState(
       lastHeartbeatAt: null,
       lastCommandAt: null,
       lastError: null,
+      errorLog: [],
       recentAuditEvents: [],
       localCommandLog: [],
     },

@@ -54,6 +54,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Canva design connector",
     enabled: false,
   },
+  [FeatureSwitchKey.CloudflareConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Cloudflare OAuth connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.DeelConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Deel HR connector",
@@ -123,6 +128,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Meta Ads Manager connector",
     enabled: true,
+  },
+  [FeatureSwitchKey.TikTokAdsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the TikTok Ads Manager connector",
+    enabled: false,
   },
   [FeatureSwitchKey.StripeConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -325,13 +335,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ming@vm0.ai",
     description:
       "Show the inline feedback toolbar (Copy / Provide feedback) when selecting text inside an agent message in the Zero chat thread.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ConnectorPermissionReset]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Show staged connector-level reset controls for current-user permission grants.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

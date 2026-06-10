@@ -59,6 +59,8 @@ function memoryDetailResponse(): MemoryDetailResponse {
     files: [
       { path: "projects.md", size: 512 },
       { path: "MEMORY.md", size: 2048 },
+      { path: "BROKEN.md", size: 220 },
+      { path: "empty.md", size: 0 },
       { path: "notes/settings.json", size: 100 },
     ],
     fileContents: [
@@ -80,6 +82,16 @@ Use [Projects](projects.md) for launch plans.
       {
         path: "projects.md",
         content: "# Launch checklist\n\n- Run pricing review\n",
+      },
+      {
+        path: "BROKEN.md",
+        content: `---
+title: [broken
+---
+# Broken Memory
+
+This file keeps rendering when frontmatter is invalid.
+`,
       },
       {
         path: "notes/settings.json",
@@ -258,5 +270,65 @@ describe("memory page", () => {
     await waitFor(() => {
       expect(screen.getByText('{ "tone": "brief" }')).toBeInTheDocument();
     });
+
+    click(getButtonContaining("BROKEN.md"));
+    await waitFor(() => {
+      expect(screen.getByText("Broken Memory")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(
+        "This file keeps rendering when frontmatter is invalid.",
+      ),
+    ).toBeInTheDocument();
+
+    click(getButtonContaining("empty.md"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("No content available for this file."),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows empty memory activity and raw memory states", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ respond }) => {
+      return respond(200, { entries: [], nextCursor: null });
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, {
+        exists: false,
+        name: "memory",
+        size: 0,
+        fileCount: 0,
+        updatedAt: null,
+        files: [],
+        fileContents: [],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No updates yet")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(
+        "Memory-change tracking starts from when this feature launched. As your agents run and Zero learns, daily updates will appear here.",
+      ),
+    ).toBeInTheDocument();
+
+    click(getTabByText("Memory files"));
+
+    await waitFor(() => {
+      expect(screen.getByText("No memory yet")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(
+        "Zero hasn't recorded any memory yet. It builds up as your agents run and will appear here.",
+      ),
+    ).toBeInTheDocument();
   });
 });

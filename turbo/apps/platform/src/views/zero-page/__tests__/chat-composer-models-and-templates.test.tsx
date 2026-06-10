@@ -6,7 +6,7 @@ import type {
   ConnectorAuthMethodId,
   ConnectorType,
 } from "@vm0/connectors/connectors";
-import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { PRESENTATION_TEMPLATE_ITEMS, VIDEO_STYLE_PRESETS } from "@vm0/core";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
@@ -29,6 +29,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -44,6 +45,26 @@ const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 const ZAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
 const NOW = "2026-05-08T00:00:00.000Z";
+
+function tabByText(text: string): HTMLElement {
+  const tab = queryAllByRoleFast("tab").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!tab) {
+    throw new Error(`${text} tab not found`);
+  }
+  return tab;
+}
+
+function buttonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
 
 function buildProvider(
   overrides: Partial<ModelProviderResponse> & {
@@ -907,6 +928,75 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
       expect(
         screen.queryByLabelText(`Remove template ${templateLabel(template)}`),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("selects and removes a video style from the picker", async () => {
+    const videoStyle = VIDEO_STYLE_PRESETS.find((item) => {
+      return item.nameEn === "Phone Product Showcase";
+    })!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatTemplatePicker]: true,
+        [FeatureSwitchKey.VideoTemplatePicker]: true,
+      },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Video")).toBeInTheDocument();
+    });
+    click(tabByText("Video"));
+
+    await waitFor(() => {
+      expect(screen.getByText("VM0 video styles")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Brand & Commercial"));
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(`Select video style ${videoStyle.nameEn}`),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Symmetrical Pastel Quirky")).toBeNull();
+    });
+
+    await fill(screen.getByLabelText("Search templates"), "no matching style");
+    await waitFor(() => {
+      expect(screen.getByText("No matches")).toBeInTheDocument();
+    });
+
+    await fill(screen.getByLabelText("Search templates"), "phone");
+    click(screen.getByLabelText(`Select video style ${videoStyle.nameEn}`));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(
+        screen.getByLabelText(`Remove video style ${videoStyle.nameEn}`),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText(`Remove video style ${videoStyle.nameEn}`));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(
+        screen.queryByLabelText(`Remove video style ${videoStyle.nameEn}`),
       ).not.toBeInTheDocument();
     });
   });

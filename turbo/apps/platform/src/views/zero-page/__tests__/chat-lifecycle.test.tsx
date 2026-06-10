@@ -9,6 +9,8 @@ import {
   chatThreadsContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
@@ -393,6 +395,89 @@ function mockFailedAssistantThread({
   });
 }
 
+function installVoiceInputMocks(): void {
+  const originalMediaDevices = navigator.mediaDevices;
+  const mediaRecorderGlobal = globalThis as typeof globalThis & {
+    MediaRecorder?: typeof MediaRecorder;
+  };
+  const originalMediaRecorder = mediaRecorderGlobal.MediaRecorder;
+  const stream = {
+    getTracks: () => {
+      return [
+        {
+          stop: () => {
+            return undefined;
+          },
+        },
+      ];
+    },
+  } as unknown as MediaStream;
+
+  type RecorderDataEvent = Event & { data: Blob };
+
+  class TestMediaRecorder extends EventTarget {
+    static isTypeSupported(type: string): boolean {
+      return type === "audio/webm";
+    }
+
+    mimeType: string;
+    ondataavailable: ((event: RecorderDataEvent) => void) | null = null;
+    state: RecordingState = "inactive";
+
+    constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+      super();
+      this.mimeType = options?.mimeType ?? "audio/webm";
+    }
+
+    start(): void {
+      this.state = "recording";
+    }
+
+    stop(): void {
+      if (this.state === "inactive") {
+        return;
+      }
+      this.state = "inactive";
+      const event = new Event("dataavailable") as RecorderDataEvent;
+      Object.defineProperty(event, "data", {
+        value: new Blob(["voice"], { type: this.mimeType }),
+      });
+      this.ondataavailable?.(event);
+      this.dispatchEvent(new Event("stop"));
+    }
+  }
+
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      enumerateDevices: () => {
+        return Promise.resolve([] as MediaDeviceInfo[]);
+      },
+      getUserMedia: () => {
+        return Promise.resolve(stream);
+      },
+    },
+  });
+  Object.defineProperty(mediaRecorderGlobal, "MediaRecorder", {
+    configurable: true,
+    value: TestMediaRecorder,
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: originalMediaDevices,
+      });
+      Object.defineProperty(mediaRecorderGlobal, "MediaRecorder", {
+        configurable: true,
+        value: originalMediaRecorder,
+      });
+    },
+    { once: true },
+  );
+}
+
 describe("chat lifecycle", () => {
   it("shows a sent message and stop control while a new chat run is active", async () => {
     const user = userEvent.setup({ delay: null });
@@ -772,6 +857,7 @@ describe("chat lifecycle", () => {
   });
 
   it("turns selected assistant text into an inline feedback follow-up", async () => {
+    const user = userEvent.setup();
     const assistantReply = "The rollout dates are unclear in this summary.";
     context.mocks.browser.clipboardWriteText();
 
@@ -803,38 +889,112 @@ describe("chat lifecycle", () => {
       featureSwitches: { [FeatureSwitchKey.ChatInlineFeedback]: true },
     });
 
-    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
 
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Copy"));
+    await user.click(buttonByText("Copy"));
 
     await waitFor(() => {
       expect(screen.getByText("Copied")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Provide feedback"));
+    selectTextForInlineFeedback(assistantReplyElement);
+    await user.click(buttonByText("Provide feedback"));
 
     const feedbackComment = await screen.findByPlaceholderText(
       "What should change about this?",
     );
     await fill(feedbackComment, "Mention the dates before the risk summary.");
-    click(screen.getByText("Send feedback"));
+    expect(feedbackComment).toHaveValue(
+      "Mention the dates before the risk summary.",
+    );
+
+    await user.click(buttonByText("Send 1 comment"));
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Feedback on this part of your reply:"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Mention the dates before the risk summary."),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
     expect(
       screen.queryByPlaceholderText("What should change about this?"),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps committed inline feedback while drafting another selected comment", async () => {
+    const user = userEvent.setup();
+    const assistantReply = "The launch summary needs clearer risk ownership.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-summary-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-summary",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-summary-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-summary",
+          status: "completed",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatInlineFeedback]: true },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Provide feedback"));
+
+    const firstComment = await screen.findByPlaceholderText(
+      "What should change about this?",
+    );
+    await fill(firstComment, "Assign each risk to an owner.");
+
+    selectTextForInlineFeedback(assistantReplyElement);
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+    await user.click(buttonByText("Provide feedback"));
+
+    await user.click(buttonByText("1 comment"));
+
+    expect(
+      screen.getByText("Assign each risk to an owner."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Select more text and click Provide feedback to add another comment",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("What should change about this?"),
+    ).toHaveValue("");
+
+    await user.click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Feedback on this reply"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("sends a recommended follow-up from the latest assistant reply", async () => {
@@ -918,6 +1078,84 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("shows online computers in the chat composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "computer-use-selection";
+    mockChatLifecycle(context, { threadId });
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, {
+        hosts: [
+          {
+            id: "host-online",
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: { accessibility: true, screenRecording: true },
+            status: "online",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+          {
+            id: "host-offline",
+            displayName: "Offline Desktop",
+            appVersion: "1.0.0",
+            osVersion: "Windows 11",
+            supportedCapabilities: ["app.open"],
+            permissions: { accessibility: true, screenRecording: true },
+            status: "offline",
+            lastSeenAt: "2026-06-09T12:00:00Z",
+            createdAt: "2026-06-09T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Computer Use"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Studio Mac")).toBeInTheDocument();
+      expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
+      expect(screen.getByText("Connect my computer")).toBeInTheDocument();
+    });
+  });
+
+  it("transcribes voice input into the composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "voice-input-thread";
+    installVoiceInputMocks();
+    mockChatLifecycle(context, { threadId });
+    context.mocks.http.post("*/api/zero/voice-io/stt", () => {
+      return new Response(JSON.stringify({ text: "Summarize the standup" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await user.click(await screen.findByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Stop recording"));
+
+    await waitFor(() => {
+      expect(textarea).toHaveValue("Summarize the standup");
+    });
+  });
+
   it("shows billing recovery guidance when credits are depleted", async () => {
     const threadId = "failed-guidance-credits";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
@@ -929,6 +1167,57 @@ describe("chat lifecycle", () => {
         screen.getByText("Upgrade to Pro to run Zero"),
       ).toBeInTheDocument();
       expect(buttonByText("Upgrade to Pro")).toBeInTheDocument();
+    });
+  });
+
+  it("shows paid credit top-ups when a paid workspace runs out of credits", async () => {
+    const threadId = "failed-guidance-paid-credits";
+    mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        credits: 0,
+        onboardingPaymentPending: false,
+        subscriptionStatus: "active",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: true,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: {
+          expiringNextCycle: 0,
+          nextExpiryDate: null,
+        },
+        creditBreakdown: [],
+        creditGrants: [],
+      });
+    });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("You're out of credits")).toBeInTheDocument();
+      expect(
+        screen.getByText("Add credits to keep chatting with Zero."),
+      ).toBeInTheDocument();
+      expect(buttonByText("$100")).toBeInTheDocument();
+      expect(buttonByText("$200")).toBeInTheDocument();
+      expect(buttonByText("$300")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Custom"));
+    await fill(screen.getByLabelText("Custom dollar amount"), "0");
+    click(buttonByText("Buy"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Enter between $1 and $10,000"),
+      ).toBeInTheDocument();
     });
   });
 

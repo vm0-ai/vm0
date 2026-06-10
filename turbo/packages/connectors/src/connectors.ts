@@ -149,12 +149,14 @@ import { mailsac } from "./connectors/mailsac";
 import { make } from "./connectors/make";
 import { manus } from "./connectors/manus";
 import { mapbox } from "./connectors/mapbox";
+import { massive } from "./connectors/massive";
 import { mathpix } from "./connectors/mathpix";
 import { mem0 } from "./connectors/mem0";
 import { mercury } from "./connectors/mercury";
 import { meshy } from "./connectors/meshy";
 import { metaAds } from "./connectors/meta-ads";
 import { metabase } from "./connectors/metabase";
+import { tiktokAds } from "./connectors/tiktok-ads";
 import { minimax } from "./connectors/minimax";
 import { minio } from "./connectors/minio";
 import { miro } from "./connectors/miro";
@@ -211,6 +213,7 @@ import { runway } from "./connectors/runway";
 import { salesforce } from "./connectors/salesforce";
 import { scrapeninja } from "./connectors/scrapeninja";
 import { segment } from "./connectors/segment";
+import { semrush } from "./connectors/semrush";
 import { sendgrid } from "./connectors/sendgrid";
 import { serpapi } from "./connectors/serpapi";
 import { servicenow } from "./connectors/servicenow";
@@ -336,9 +339,12 @@ export interface ConnectorManualGrantConfig {
   readonly fields: Record<string, ConnectorManualGrantFieldConfig>;
 }
 
+export type ConnectorAuthCodeCallbackOrigin = "web" | "api";
+
 export interface ConnectorAuthCodeGrantConfig {
   readonly kind: "auth-code";
   readonly scopes: string[];
+  readonly callbackOrigin?: ConnectorAuthCodeCallbackOrigin;
   readonly outputs: ConnectorGrantOutputBindings;
 }
 
@@ -1128,12 +1134,14 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...make,
   ...manus,
   ...mapbox,
+  ...massive,
   ...mathpix,
   ...mem0,
   ...mercury,
   ...meshy,
   ...metaAds,
   ...metabase,
+  ...tiktokAds,
   ...minimax,
   ...minio,
   ...miro,
@@ -1190,6 +1198,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...salesforce,
   ...scrapeninja,
   ...segment,
+  ...semrush,
   ...sendgrid,
   ...serpapi,
   ...servicenow,

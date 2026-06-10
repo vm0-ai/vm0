@@ -176,7 +176,10 @@ import {
   ZeroChatComposer,
   type QueuedComposerItem,
 } from "./zero-chat-composer.tsx";
-import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
+import {
+  ChatFeedbackSelection,
+  ChatFeedbackTray,
+} from "./zero-chat-feedback-selection.tsx";
 import {
   setThreadGenerationTemplate$,
   threadGenerationTemplate$,
@@ -2401,15 +2404,16 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
             />
           </div>
 
+          {inlineFeedbackEnabled && (
+            <ChatFeedbackTray onSubmit={onSubmitFeedback} />
+          )}
           <ChatThreadComposer thread={thread} />
         </div>
 
         {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
       </div>
 
-      {inlineFeedbackEnabled && (
-        <ChatFeedbackSelection onSubmit={onSubmitFeedback} />
-      )}
+      {inlineFeedbackEnabled && <ChatFeedbackSelection />}
     </>
   );
 }
@@ -2863,6 +2867,8 @@ function useChatThreadComposerSendState({
 }
 
 function useChatThreadComputerUse(thread: ChatThreadSignals) {
+  const features = useLastResolved(featureSwitch$);
+  const computerUseEnabled = features?.[FeatureSwitchKey.ComputerUse] ?? false;
   const computerUseHostsLoadable = useLastLoadable(onlineComputerUseHosts$);
   const computerUseHosts =
     computerUseHostsLoadable.state === "hasData"
@@ -2879,14 +2885,18 @@ function useChatThreadComputerUse(thread: ChatThreadSignals) {
   const setComputerUseHostId = useSet(thread.setComputerUseHostId$);
 
   return {
-    selectedComputerUseHostId,
-    computerUse: {
-      hosts: computerUseHosts,
-      loading: computerUseHostsLoadable.state === "loading",
-      selectedHostId: selectedComputerUseHostId,
-      onChange: setComputerUseHostId,
-      downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
-    },
+    selectedComputerUseHostId: computerUseEnabled
+      ? selectedComputerUseHostId
+      : null,
+    computerUse: computerUseEnabled
+      ? {
+          hosts: computerUseHosts,
+          loading: computerUseHostsLoadable.state === "loading",
+          selectedHostId: selectedComputerUseHostId,
+          onChange: setComputerUseHostId,
+          downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+        }
+      : undefined,
   };
 }
 

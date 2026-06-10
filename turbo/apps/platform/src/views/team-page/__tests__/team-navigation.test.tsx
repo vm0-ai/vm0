@@ -1,6 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -436,9 +435,6 @@ describe("team page navigation", () => {
     detachedSetupPage({
       context,
       path: `/agents/${researchAgentId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorPermissionReset]: true,
-      },
     });
 
     await waitFor(() => {
@@ -509,9 +505,6 @@ describe("team page navigation", () => {
     detachedSetupPage({
       context,
       path: `/agents/${researchAgentId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorPermissionReset]: true,
-      },
     });
 
     await waitFor(() => {

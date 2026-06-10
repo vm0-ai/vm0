@@ -444,6 +444,7 @@ const EXTERNAL_ADOPTED_ONBOARDING_TYPES: readonly string[] = [
   "firecrawl",
   "google-ads",
   "meta-ads",
+  "tiktok-ads",
   "google-meet",
   "heygen",
   "hubspot",

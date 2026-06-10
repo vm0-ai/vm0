@@ -205,6 +205,12 @@ def _feed_websocket_server_message(flow: http.HTTPFlow, content: bytes) -> None:
     mitm_addon.websocket_message(flow)
 
 
+def _model_websocket_usage_sources(flow: http.HTTPFlow) -> dict:
+    sources = flow.metadata["model_provider_usage_sources"]
+    assert isinstance(sources, dict)
+    return sources
+
+
 def _model_sse_parse_warnings(flow: http.HTTPFlow) -> list[dict]:
     proxy_log = Path(flow.metadata["vm_proxy_log_path"])
     if not proxy_log.exists():
@@ -555,11 +561,147 @@ class TestModelProviderStreamUsage:
 
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert flow.metadata["model_provider_usage"]["message_id"] == "resp_ws_1"
+        assert flow.metadata["model_provider_usage"] == {}
+        assert _model_websocket_usage_sources(flow)["resp_ws_1"] == {
+            "message_id": "resp_ws_1",
+            "model": "gpt-5.5",
+            "tokens.input": 40,
+            "tokens.output": 20,
+            "tokens.cache_read": 10,
+        }
         assert by_category == {
             "tokens.input": 40,
             "tokens.output": 20,
             "tokens.cache_read": 10,
+        }
+
+    def test_full_pipeline_model_websocket_reports_multiple_response_ids(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+
+        _feed_websocket_server_message(
+            flow,
+            _openai_websocket_usage_frame(
+                "resp_ws_1",
+                input_tokens=10,
+                output_tokens=4,
+            ),
+        )
+        _feed_websocket_server_message(
+            flow,
+            _openai_websocket_usage_frame(
+                "resp_ws_2",
+                input_tokens=3,
+                output_tokens=2,
+            ),
+        )
+
+        webhook = self._run_websocket_end(flow)
+
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input": 13,
+            "tokens.output": 6,
+        }
+        assert {
+            event["category"]: event["quantity"]
+            for event in webhook.model_usage_observation_events()
+        } == {
+            "tokens.input": 13,
+            "tokens.output": 6,
+        }
+
+    def test_full_pipeline_model_websocket_separates_response_id_models(self, tmp_path, real_flow):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+
+        _feed_websocket_server_message(
+            flow,
+            _openai_websocket_usage_frame(
+                "resp_ws_1",
+                input_tokens=10,
+                output_tokens=4,
+                model="gpt-5.5",
+            ),
+        )
+        _feed_websocket_server_message(
+            flow,
+            _openai_websocket_usage_frame(
+                "resp_ws_2",
+                input_tokens=3,
+                output_tokens=2,
+                model="gpt-5.4",
+            ),
+        )
+
+        webhook = self._run_websocket_end(flow)
+
+        assert {
+            (event["provider"], event["category"]): event["quantity"]
+            for event in webhook.usage_events()
+        } == {
+            ("gpt-5.5", "tokens.input"): 10,
+            ("gpt-5.5", "tokens.output"): 4,
+            ("gpt-5.4", "tokens.input"): 3,
+            ("gpt-5.4", "tokens.output"): 2,
+        }
+        assert {
+            (event["model"], event["category"]): event["quantity"]
+            for event in webhook.model_usage_observation_events()
+        } == {
+            ("gpt-5.5", "tokens.input"): 10,
+            ("gpt-5.5", "tokens.output"): 4,
+            ("gpt-5.4", "tokens.input"): 3,
+            ("gpt-5.4", "tokens.output"): 2,
+        }
+
+    def test_full_pipeline_model_websocket_reports_id_and_missing_id_usage(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+
+        _feed_websocket_server_message(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "model": "gpt-5.5",
+                        "usage": {"input_tokens": 7, "output_tokens": 1},
+                    },
+                }
+            ).encode(),
+        )
+        _feed_websocket_server_message(
+            flow,
+            _openai_websocket_usage_frame(
+                "resp_ws_1",
+                input_tokens=10,
+                output_tokens=4,
+                model="gpt-5.5",
+            ),
+        )
+
+        webhook = self._run_websocket_end(flow)
+
+        assert flow.metadata["model_provider_usage"] == {
+            "model": "gpt-5.5",
+            "tokens.input": 7,
+            "tokens.output": 1,
+        }
+        assert _model_websocket_usage_sources(flow)["resp_ws_1"] == {
+            "message_id": "resp_ws_1",
+            "model": "gpt-5.5",
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input": 17,
+            "tokens.output": 5,
+        }
+        assert {
+            event["category"]: event["quantity"]
+            for event in webhook.model_usage_observation_events()
+        } == {
+            "tokens.input": 17,
+            "tokens.output": 5,
         }
 
     async def test_model_websocket_response_keeps_usage_flow_tracked_until_end(
@@ -796,6 +938,7 @@ class TestModelProviderStreamUsage:
 
         assert webhook.request_count == 0
         assert flow.metadata["model_provider_usage"] == {}
+        assert _model_websocket_usage_sources(flow) == {}
 
     def test_model_websocket_deferred_trim_keeps_latest_server_message(
         self,
@@ -817,12 +960,15 @@ class TestModelProviderStreamUsage:
         mitm_addon.websocket_message(flow)
 
         assert messages == [old_client, old_server, latest_server]
-        assert flow.metadata["model_provider_usage"] == {
-            "message_id": "resp_ws_latest",
-            "model": "gpt-5.5",
-            "tokens.input": 10,
-            "tokens.output": 4,
+        assert _model_websocket_usage_sources(flow) == {
+            "resp_ws_latest": {
+                "message_id": "resp_ws_latest",
+                "model": "gpt-5.5",
+                "tokens.input": 10,
+                "tokens.output": 4,
+            }
         }
+        assert flow.metadata["model_provider_usage"] == {}
         assert len(deferred_websocket_trim_scheduler) == 1
 
         _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
@@ -847,6 +993,7 @@ class TestModelProviderStreamUsage:
         mitm_addon.websocket_message(flow)
 
         assert flow.metadata["model_provider_usage"] == {}
+        assert _model_websocket_usage_sources(flow) == {}
         assert len(deferred_websocket_trim_scheduler) == 1
 
         _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
@@ -888,12 +1035,21 @@ class TestModelProviderStreamUsage:
         _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
 
         assert flow.websocket.messages == [latest_server]
-        assert flow.metadata["model_provider_usage"] == {
-            "message_id": "resp_ws_latest",
-            "model": "gpt-5.5",
-            "tokens.input": 10,
-            "tokens.output": 4,
+        assert _model_websocket_usage_sources(flow) == {
+            "resp_ws_first": {
+                "message_id": "resp_ws_first",
+                "model": "gpt-5.5",
+                "tokens.input": 1,
+                "tokens.output": 1,
+            },
+            "resp_ws_latest": {
+                "message_id": "resp_ws_latest",
+                "model": "gpt-5.5",
+                "tokens.input": 10,
+                "tokens.output": 4,
+            },
         }
+        assert flow.metadata["model_provider_usage"] == {}
 
     def test_non_model_websocket_message_retention_is_unchanged(
         self,
@@ -1008,7 +1164,7 @@ class TestModelProviderWebSocketUsageMetadata:
             ).encode(),
         )
 
-        assert flow.metadata["model_provider_usage"] == {
+        assert _model_websocket_usage_sources(flow)["resp_ws_1"] == {
             "message_id": "resp_ws_1",
             "model": "gpt-5.5",
             "tokens.input": 75,
@@ -1046,7 +1202,7 @@ class TestModelProviderWebSocketUsageMetadata:
             ).encode(),
         )
 
-        assert flow.metadata["model_provider_usage"] == {
+        assert _model_websocket_usage_sources(flow)["resp_ws_1"] == {
             "message_id": "resp_ws_1",
             "model": "gpt-5.5",
             "tokens.input": 10,
@@ -1087,7 +1243,7 @@ class TestModelProviderWebSocketUsageMetadata:
             ).encode(),
         )
 
-        assert flow.metadata["model_provider_usage"] == {
+        assert _model_websocket_usage_sources(flow)["resp_ws_1"] == {
             "message_id": "resp_ws_1",
             "model": "gpt-5.5",
             "tokens.input": 75,
@@ -1112,7 +1268,7 @@ class TestModelProviderWebSocketUsageMetadata:
             ),
         )
 
-        assert flow.metadata["model_provider_usage"] == {
+        assert _model_websocket_usage_sources(flow)["resp_ws_text"] == {
             "message_id": "resp_ws_text",
             "model": "gpt-5.4",
             "tokens.input": 3,
@@ -1137,11 +1293,11 @@ class TestModelProviderWebSocketUsageMetadata:
             "tokens.output": 4,
         }
 
-    def test_model_websocket_valid_usage_replaces_non_dict_usage_metadata(
+    def test_model_websocket_valid_id_usage_replaces_non_dict_usage_sources_metadata(
         self, tmp_path, real_flow
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
-        flow.metadata["model_provider_usage"] = "invalid"
+        flow.metadata["model_provider_usage_sources"] = "invalid"
 
         _feed_websocket_server_message(
             flow,
@@ -1157,18 +1313,22 @@ class TestModelProviderWebSocketUsageMetadata:
             ).encode(),
         )
 
-        assert flow.metadata["model_provider_usage"] == {
-            "message_id": "resp_ws_1",
-            "model": "gpt-5.5",
-            "tokens.input": 10,
-            "tokens.output": 4,
+        assert _model_websocket_usage_sources(flow) == {
+            "resp_ws_1": {
+                "message_id": "resp_ws_1",
+                "model": "gpt-5.5",
+                "tokens.input": 10,
+                "tokens.output": 4,
+            }
         }
+        assert flow.metadata["model_provider_usage"] == {}
 
     def test_model_websocket_ignores_invalid_frames_with_non_dict_usage_metadata(
         self, tmp_path, real_flow
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
         flow.metadata["model_provider_usage"] = "invalid"
+        flow.metadata["model_provider_usage_sources"] = "invalid"
 
         _feed_websocket_server_message(
             flow,
@@ -1180,6 +1340,8 @@ class TestModelProviderWebSocketUsageMetadata:
             ).encode(),
         )
         assert flow.metadata["model_provider_usage"] == "invalid"
+        assert flow.metadata["model_provider_usage_sources"] == "invalid"
 
         _feed_websocket_server_message(flow, b'{"type":"response.completed"')
         assert flow.metadata["model_provider_usage"] == "invalid"
+        assert flow.metadata["model_provider_usage_sources"] == "invalid"

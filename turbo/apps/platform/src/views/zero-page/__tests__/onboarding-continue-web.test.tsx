@@ -15,6 +15,7 @@ import {
   fill,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -33,6 +34,21 @@ function mockAdminOnboarding(): void {
   });
   context.mocks.api(onboardingSetupContract.setup, ({ respond }) => {
     return respond(200, { agentId: MOCK_AGENT_ID });
+  });
+}
+
+function mockCompletedUseCaseOnboarding(): void {
+  context.mocks.api(onboardingStatusContract.getStatus, ({ respond }) => {
+    return respond(200, {
+      needsOnboarding: false,
+      isAdmin: false,
+      hasOrg: true,
+      hasDefaultAgent: true,
+      defaultAgentId: MOCK_AGENT_ID,
+      defaultAgentMetadata: {
+        displayName: "Zero",
+      },
+    });
   });
 }
 
@@ -110,6 +126,32 @@ describe("onboarding web continuation", () => {
       expect(screen.getByTestId("onboarding-prompt-input")).toHaveValue(
         "hello world",
       );
+    });
+  });
+
+  it("continues prompt onboarding into a seeded chat", async () => {
+    mockCompletedUseCaseOnboarding();
+    mockChatLifecycle(context, {
+      threadId: "thread-onboarding-use-case",
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=Build%20a%20launch%20recap",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Try this prompt")).toBeInTheDocument();
+      expect(screen.getByTestId("onboarding-prompt-input")).toHaveValue(
+        "Build a launch recap",
+      );
+    });
+
+    click(screen.getByTestId("onboarding-next-button"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Build a launch recap")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
   });
 

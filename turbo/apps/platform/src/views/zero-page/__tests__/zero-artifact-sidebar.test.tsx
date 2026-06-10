@@ -310,6 +310,20 @@ function getArtifactTab(container: HTMLElement, label: string): HTMLElement {
   return tab;
 }
 
+async function openArtifactFromInbox(filename: string): Promise<void> {
+  click(await screen.findByLabelText(`Open artifact ${filename}`));
+  await waitFor(() => {
+    expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+  });
+}
+
+async function backToArtifactInbox(): Promise<void> {
+  click(screen.getByLabelText("Back to all artifacts"));
+  await waitFor(() => {
+    expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
+  });
+}
+
 function menuItemByText(text: string): HTMLElement {
   const menuItems = queryAllByRoleFast("menuitem");
   const item = menuItems.find((element) => {
@@ -399,6 +413,16 @@ describe("zero artifact sidebar", () => {
     await user.click(screen.getByTestId("artifact-sidebar-image-reset-zoom"));
     await waitFor(() => {
       expect(zoomLevel).toHaveTextContent("100%");
+    });
+
+    await user.click(screen.getByLabelText("Enter fullscreen"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Exit fullscreen"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
     });
   });
 
@@ -914,12 +938,8 @@ describe("zero artifact sidebar", () => {
       ).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Back to all artifacts"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-inbox")).toBeInTheDocument();
-      expect(screen.getByText("release-notes.md")).toBeInTheDocument();
-    });
+    await backToArtifactInbox();
+    expect(screen.getByText("release-notes.md")).toBeInTheDocument();
 
     click(screen.getByLabelText("Close artifacts"));
 
@@ -927,5 +947,247 @@ describe("zero artifact sidebar", () => {
       expect(screen.queryByTestId("artifact-inbox")).not.toBeInTheDocument();
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
+  });
+
+  it("opens data and document artifact previews from the inbox", async () => {
+    const csvUrl = "https://cdn.vm7.io/artifacts/test/run-1/metrics.csv";
+    const jsonUrl = "https://cdn.vm7.io/artifacts/test/run-1/status.json";
+    const logUrl = "https://cdn.vm7.io/artifacts/test/run-1/debug.log";
+    const pdfUrl = "https://cdn.vm7.io/artifacts/test/run-1/rollout-plan.pdf";
+    const archiveUrl = "https://cdn.vm7.io/artifacts/test/run-1/archive.bin";
+    context.mocks.http.get(csvUrl, () => {
+      return new Response("name,value\nlaunch,42\n", {
+        headers: { "Content-Type": "text/csv" },
+      });
+    });
+    context.mocks.http.get(jsonUrl, () => {
+      return new Response('{"status":"ready","count":2}', {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.http.get(logUrl, () => {
+      return new Response("build complete", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(csvUrl, {
+          id: "artifact-data-csv",
+          filename: "metrics.csv",
+          contentType: "text/csv",
+        }),
+        artifactFile(jsonUrl, {
+          id: "artifact-data-json",
+          filename: "status.json",
+          contentType: "application/json",
+        }),
+        artifactFile(logUrl, {
+          id: "artifact-data-log",
+          filename: "debug.log",
+          contentType: "application/octet-stream",
+        }),
+        artifactFile(pdfUrl, {
+          id: "artifact-document-pdf",
+          filename: "rollout-plan.pdf",
+          contentType: "application/pdf",
+        }),
+        artifactFile(archiveUrl, {
+          id: "artifact-document-archive",
+          filename: "archive.bin",
+          contentType: "application/octet-stream",
+        }),
+      ],
+      content: "Document artifacts are ready.",
+    });
+
+    click(await screen.findByLabelText("Open artifacts"));
+    const inbox = await screen.findByTestId("artifact-inbox");
+    click(getArtifactTab(inbox, "Docs"));
+
+    await openArtifactFromInbox("metrics.csv");
+    await waitFor(() => {
+      expect(screen.getByText("launch")).toBeInTheDocument();
+      expect(screen.getByText("42")).toBeInTheDocument();
+    });
+    await backToArtifactInbox();
+
+    await openArtifactFromInbox("status.json");
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-json"),
+      ).toHaveTextContent('"status": "ready"');
+    });
+    await backToArtifactInbox();
+
+    await openArtifactFromInbox("debug.log");
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-text"),
+      ).toHaveTextContent("build complete");
+    });
+    await backToArtifactInbox();
+
+    await openArtifactFromInbox("rollout-plan.pdf");
+    expect(screen.getByTestId("artifact-sidebar-body-pdf")).toHaveAttribute(
+      "title",
+      "rollout-plan.pdf preview",
+    );
+    await backToArtifactInbox();
+
+    click(getArtifactTab(screen.getByTestId("artifact-inbox"), "All"));
+    await openArtifactFromInbox("archive.bin");
+    expect(
+      screen.getByText("No inline preview available for this file."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("archive.bin").length).toBeGreaterThan(1);
+  });
+
+  it("shows empty and unavailable data previews from the inbox", async () => {
+    const emptyCsvUrl = "https://cdn.vm7.io/artifacts/test/run-1/empty.csv";
+    const failedCsvUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/failed-metrics.csv";
+    const failedJsonUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/failed-status.json";
+    const failedMarkdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/failed-notes.md";
+    const failedTextUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/failed-notes.txt";
+    context.mocks.http.get(emptyCsvUrl, () => {
+      return new Response("", {
+        headers: { "Content-Type": "text/csv" },
+      });
+    });
+    context.mocks.http.get(failedCsvUrl, () => {
+      return new Response(null, { status: 503 });
+    });
+    context.mocks.http.get(failedTextUrl, () => {
+      return new Response(null, { status: 503 });
+    });
+    context.mocks.http.get(failedJsonUrl, () => {
+      return new Response(null, { status: 503 });
+    });
+    context.mocks.http.get(failedMarkdownUrl, () => {
+      return new Response(null, { status: 503 });
+    });
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(emptyCsvUrl, {
+          id: "artifact-empty-csv",
+          filename: "empty.csv",
+          contentType: "text/csv",
+        }),
+        artifactFile(failedCsvUrl, {
+          id: "artifact-failed-csv",
+          filename: "failed-metrics.csv",
+          contentType: "text/csv",
+        }),
+        artifactFile(failedJsonUrl, {
+          id: "artifact-failed-json",
+          filename: "failed-status.json",
+          contentType: "application/json",
+        }),
+        artifactFile(failedMarkdownUrl, {
+          id: "artifact-failed-markdown",
+          filename: "failed-notes.md",
+          contentType: "text/markdown",
+        }),
+        artifactFile(failedTextUrl, {
+          id: "artifact-failed-text",
+          filename: "failed-notes.txt",
+          contentType: "text/plain",
+        }),
+      ],
+      content: "Data artifacts are ready.",
+    });
+
+    click(await screen.findByLabelText("Open artifacts"));
+    const inbox = await screen.findByTestId("artifact-inbox");
+    click(getArtifactTab(inbox, "Docs"));
+
+    await openArtifactFromInbox("empty.csv");
+    await waitFor(() => {
+      expect(screen.getByText("Empty CSV.")).toBeInTheDocument();
+    });
+    await backToArtifactInbox();
+
+    await openArtifactFromInbox("failed-metrics.csv");
+    await waitFor(() => {
+      expect(screen.getByText("CSV preview unavailable.")).toBeInTheDocument();
+    });
+    await backToArtifactInbox();
+
+    await openArtifactFromInbox("failed-status.json");
+    await waitFor(() => {
+      expect(screen.getByText("JSON preview unavailable.")).toBeInTheDocument();
+    });
+    await backToArtifactInbox();
+
+    await openArtifactFromInbox("failed-notes.md");
+    await waitFor(() => {
+      expect(
+        screen.getByText("Markdown preview unavailable."),
+      ).toBeInTheDocument();
+    });
+    await backToArtifactInbox();
+
+    await openArtifactFromInbox("failed-notes.txt");
+    await waitFor(() => {
+      expect(screen.getByText("Text preview unavailable.")).toBeInTheDocument();
+    });
+  });
+
+  it("opens media and hosted site artifact previews from the inbox", async () => {
+    const videoUrl = "https://cdn.vm7.io/artifacts/test/run-1/launch-demo.mp4";
+    const audioUrl = "https://cdn.vm7.io/artifacts/test/run-1/voice-note.mp3";
+    const htmlUrl = "https://cdn.vm7.io/artifacts/test/run-1/launch-site.html";
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(videoUrl, {
+          id: "artifact-media-video",
+          filename: "launch-demo.mp4",
+          contentType: "video/mp4",
+        }),
+        artifactFile(audioUrl, {
+          id: "artifact-media-audio",
+          filename: "voice-note.mp3",
+          contentType: "audio/mpeg",
+        }),
+        artifactFile(htmlUrl, {
+          id: "artifact-site-html",
+          filename: "launch-site.html",
+          contentType: "text/html",
+        }),
+      ],
+      content: "Media artifacts are ready.",
+    });
+
+    click(await screen.findByLabelText("Open artifacts"));
+    const inbox = await screen.findByTestId("artifact-inbox");
+    click(getArtifactTab(inbox, "Media"));
+
+    await openArtifactFromInbox("launch-demo.mp4");
+    expect(screen.getByTestId("artifact-sidebar-body-video")).toHaveAttribute(
+      "aria-label",
+      "Video preview for launch-demo.mp4",
+    );
+    await backToArtifactInbox();
+
+    await openArtifactFromInbox("voice-note.mp3");
+    expect(screen.getByTestId("artifact-sidebar-body-audio")).toHaveAttribute(
+      "aria-label",
+      "Audio preview for voice-note.mp3",
+    );
+    await backToArtifactInbox();
+
+    click(getArtifactTab(screen.getByTestId("artifact-inbox"), "Sites"));
+    await openArtifactFromInbox("launch-site.html");
+    expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+      "title",
+      "launch-site.html preview",
+    );
+    expect(
+      screen.getByTestId("artifact-sidebar-open-external"),
+    ).toBeInTheDocument();
   });
 });
