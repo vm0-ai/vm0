@@ -203,6 +203,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   "google-docs": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-drive": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-meet": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-search-console": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-sheets": "https://accounts.google.com/o/oauth2/v2/auth",
   gumroad: "https://gumroad.com/oauth/authorize",
   hubspot: "https://app.hubspot.com/oauth/authorize",
@@ -2485,6 +2486,17 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
+  it("exposes Google Search Console OAuth only when its switch is enabled", () => {
+    expect(
+      getAvailableConnectorAuthMethodIds("google-search-console", {}),
+    ).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("google-search-console", {
+        [FeatureSwitchKey.GoogleSearchConsoleConnector]: true,
+      }),
+    ).toStrictEqual(["oauth"]);
+  });
+
   it("exposes Ashby API-token auth without a feature switch", () => {
     expect(getAvailableConnectorAuthMethodIds("ashby", {})).toStrictEqual([
       "api-token",
@@ -3818,6 +3830,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
         "google-docs",
         "google-drive",
         "google-meet",
+        "google-search-console",
         "google-sheets",
       ]),
     );
