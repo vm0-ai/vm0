@@ -3,10 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
-import {
-  zeroSecretsByNameContract,
-  zeroSecretsContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
+import { zeroSecretsByNameContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { secrets } from "@vm0/db/schema/secret";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -15,6 +12,13 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  authHeaders,
+  createZeroSecretThroughApi,
+  deleteZeroSecretThroughApi,
+  listZeroSecretsThroughApi,
+  type ZeroSecretRouteFixture,
+} from "./helpers/zero-secret-routes";
 import {
   deleteUserData$,
   seedSecrets$,
@@ -25,57 +29,10 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-interface UserSecretRouteFixture {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly name: string;
-}
-
-function authHeaders() {
-  return { authorization: "Bearer clerk-session" };
-}
-
-async function createSecretThroughApi(
-  fixture: UserSecretRouteFixture,
-): Promise<void> {
-  mocks.clerk.session(fixture.userId, fixture.orgId);
-  const client = setupApp({ context })(zeroSecretsContract);
-  await accept(
-    client.set({
-      headers: authHeaders(),
-      body: {
-        name: fixture.name,
-        value: `value-${fixture.name}`,
-      },
-    }),
-    [200, 201],
-  );
-}
-
-async function deleteSecretThroughApi(
-  fixture: UserSecretRouteFixture,
-): Promise<void> {
-  mocks.clerk.session(fixture.userId, fixture.orgId);
-  const client = setupApp({ context })(zeroSecretsByNameContract);
-  await accept(
-    client.delete({
-      params: { name: fixture.name },
-      headers: authHeaders(),
-    }),
-    [204, 404],
-  );
-}
-
-async function listSecretsThroughApi() {
-  const client = setupApp({ context })(zeroSecretsContract);
-  const response = await accept(client.list({ headers: authHeaders() }), [200]);
-  return response.body.secrets;
-}
-
 describe("DELETE /api/zero/secrets/:name", () => {
-  const trackSecret = createFixtureTracker<UserSecretRouteFixture>(
+  const trackSecret = createFixtureTracker<ZeroSecretRouteFixture>(
     (fixture) => {
-      return deleteSecretThroughApi(fixture);
+      return deleteZeroSecretThroughApi(context, mocks.clerk.session, fixture);
     },
   );
   const trackLegacy = createFixtureTracker<UserDataFixture>((fixture) => {
@@ -117,7 +74,7 @@ describe("DELETE /api/zero/secrets/:name", () => {
         name: "DELETE_ME",
       }),
     );
-    await createSecretThroughApi(fixture);
+    await createZeroSecretThroughApi(context, mocks.clerk.session, fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroSecretsByNameContract);
@@ -127,7 +84,7 @@ describe("DELETE /api/zero/secrets/:name", () => {
     });
     expect(response.status).toBe(204);
 
-    await expect(listSecretsThroughApi()).resolves.toStrictEqual([]);
+    await expect(listZeroSecretsThroughApi(context)).resolves.toStrictEqual([]);
   });
 
   it("returns 404 for a nonexistent secret", async () => {
@@ -158,7 +115,7 @@ describe("DELETE /api/zero/secrets/:name", () => {
         name: "OTHER_USER_SECRET",
       }),
     );
-    await createSecretThroughApi(owner);
+    await createZeroSecretThroughApi(context, mocks.clerk.session, owner);
     mocks.clerk.session(`user_${randomUUID()}`, orgId);
 
     const client = setupApp({ context })(zeroSecretsByNameContract);
@@ -174,7 +131,7 @@ describe("DELETE /api/zero/secrets/:name", () => {
     });
 
     mocks.clerk.session(owner.userId, owner.orgId);
-    await expect(listSecretsThroughApi()).resolves.toMatchObject([
+    await expect(listZeroSecretsThroughApi(context)).resolves.toMatchObject([
       { name: "OTHER_USER_SECRET", type: "user" },
     ]);
   });
@@ -187,7 +144,7 @@ describe("DELETE /api/zero/secrets/:name", () => {
         name: "ORG_A_SECRET",
       }),
     );
-    await createSecretThroughApi(orgAFixture);
+    await createZeroSecretThroughApi(context, mocks.clerk.session, orgAFixture);
 
     // Authenticate as a different user in a different org.
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
@@ -205,7 +162,7 @@ describe("DELETE /api/zero/secrets/:name", () => {
     });
 
     mocks.clerk.session(orgAFixture.userId, orgAFixture.orgId);
-    await expect(listSecretsThroughApi()).resolves.toMatchObject([
+    await expect(listZeroSecretsThroughApi(context)).resolves.toMatchObject([
       { name: "ORG_A_SECRET", type: "user" },
     ]);
   });

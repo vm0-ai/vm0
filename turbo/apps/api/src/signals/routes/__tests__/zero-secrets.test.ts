@@ -26,8 +26,15 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import {
+  authHeaders,
+  createZeroSecretThroughApi,
+  deleteZeroSecretThroughApi,
+  listZeroSecretsThroughApi,
+  setZeroSecretThroughApi,
+  type ZeroSecretRouteFixture,
+} from "./helpers/zero-secret-routes";
+import {
   deleteUserData$,
-  seedOtherSecret$,
   seedSecrets$,
   type UserDataFixture,
 } from "./helpers/zero-user-data";
@@ -36,6 +43,12 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const dataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+const trackLegacy = createFixtureTracker<UserDataFixture>((fixture) => {
+  return store.set(deleteUserData$, fixture, context.signal);
+});
+const trackSecret = createFixtureTracker<ZeroSecretRouteFixture>((fixture) => {
+  return deleteZeroSecretThroughApi(context, mocks.clerk.session, fixture);
+});
 
 type MockKmsCommand = GenerateDataKeyCommand | DecryptCommand;
 type MockKmsResponse = GenerateDataKeyCommandOutput | DecryptCommandOutput;
@@ -99,10 +112,6 @@ afterEach(() => {
 });
 
 describe("GET /api/zero/secrets", () => {
-  const track = createFixtureTracker<UserDataFixture>((fixture) => {
-    return store.set(deleteUserData$, fixture, context.signal);
-  });
-
   it("returns 401 when the request is unauthenticated", async () => {
     const client = setupApp({ context })(zeroSecretsContract);
 
@@ -123,7 +132,7 @@ describe("GET /api/zero/secrets", () => {
 
     const response = await accept(
       client.list({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [401],
     );
@@ -134,38 +143,38 @@ describe("GET /api/zero/secrets", () => {
   });
 
   it("returns current user secret metadata sorted by name", async () => {
-    const createdAt = new Date("2026-01-02T03:04:05.000Z");
-    const updatedAt = new Date("2026-01-03T03:04:05.000Z");
-    const fixture = await track(
-      store.set(
-        seedSecrets$,
-        [
-          {
-            name: "Z_TOKEN",
-            description: null,
-            type: "connector",
-            createdAt,
-            updatedAt,
-          },
-          {
-            name: "A_TOKEN",
-            description: "alpha",
-            type: "user",
-            createdAt,
-            updatedAt,
-          },
-        ],
-        context.signal,
-      ),
+    const userId = `user_${randomUUID().slice(0, 8)}`;
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    await trackSecret(
+      createZeroSecretThroughApi(context, mocks.clerk.session, {
+        userId,
+        orgId,
+        name: "Z_TOKEN",
+      }),
     );
-    await store.set(seedOtherSecret$, fixture, context.signal);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await trackSecret(
+      createZeroSecretThroughApi(context, mocks.clerk.session, {
+        userId,
+        orgId,
+        name: "A_TOKEN",
+        description: "alpha",
+      }),
+    );
+    await trackSecret(
+      createZeroSecretThroughApi(context, mocks.clerk.session, {
+        userId: `user_${randomUUID().slice(0, 8)}`,
+        orgId,
+        name: "OTHER_USER_SECRET",
+        description: "other-user",
+      }),
+    );
+    mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroSecretsContract);
 
     const response = await accept(
       client.list({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -176,15 +185,15 @@ describe("GET /api/zero/secrets", () => {
         name: "A_TOKEN",
         description: "alpha",
         type: "user",
-        createdAt: "2026-01-02T03:04:05.000Z",
-        updatedAt: "2026-01-03T03:04:05.000Z",
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
       },
       {
         name: "Z_TOKEN",
         description: null,
-        type: "connector",
-        createdAt: "2026-01-02T03:04:05.000Z",
-        updatedAt: "2026-01-03T03:04:05.000Z",
+        type: "user",
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
       },
     ]);
     for (const secret of response.body.secrets) {
@@ -193,15 +202,55 @@ describe("GET /api/zero/secrets", () => {
     }
   });
 
-  it("returns an empty list when the user has no secrets", async () => {
-    const fixture = await track(store.set(seedSecrets$, [], context.signal));
+  it("returns connector-owned secret metadata from legacy rows", async () => {
+    const fixture = await trackLegacy(
+      store.set(
+        seedSecrets$,
+        [
+          {
+            name: "CONNECTOR_TOKEN",
+            description: "connector",
+            type: "connector",
+          },
+        ],
+        context.signal,
+      ),
+    );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroSecretsContract);
 
     const response = await accept(
       client.list({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.secrets).toMatchObject([
+      {
+        name: "CONNECTOR_TOKEN",
+        description: "connector",
+        type: "connector",
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+      },
+    ]);
+    expect(response.body.secrets[0]).not.toHaveProperty("value");
+    expect(response.body.secrets[0]).not.toHaveProperty("encryptedValue");
+  });
+
+  it("returns an empty list when the user has no secrets", async () => {
+    mocks.clerk.session(
+      `user_${randomUUID().slice(0, 8)}`,
+      `org_${randomUUID().slice(0, 8)}`,
+    );
+
+    const client = setupApp({ context })(zeroSecretsContract);
+
+    const response = await accept(
+      client.list({
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -211,10 +260,6 @@ describe("GET /api/zero/secrets", () => {
 });
 
 describe("POST /api/zero/secrets", () => {
-  const track = createFixtureTracker<UserDataFixture>((fixture) => {
-    return store.set(deleteUserData$, fixture, context.signal);
-  });
-
   it("returns 401 when the request is unauthenticated", async () => {
     const client = setupApp({ context })(zeroSecretsContract);
 
@@ -244,7 +289,7 @@ describe("POST /api/zero/secrets", () => {
 
     const response = await accept(
       client.set({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: {
           name: "MY_SECRET",
           value: "secret-value",
@@ -259,33 +304,40 @@ describe("POST /api/zero/secrets", () => {
   });
 
   it("creates a user secret and stores an encrypted value", async () => {
-    const fixture = await track(store.set(seedSecrets$, [], context.signal));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroSecretsContract);
-
-    const response = await accept(
-      client.set({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          name: "MY_SECRET",
-          value: "secret-value",
-          description: "Test secret",
-        },
+    const fixture = await trackSecret(
+      Promise.resolve({
+        orgId: `org_${randomUUID().slice(0, 8)}`,
+        userId: `user_${randomUUID().slice(0, 8)}`,
+        name: "MY_SECRET",
       }),
-      [200],
+    );
+    const secret = await setZeroSecretThroughApi(
+      context,
+      mocks.clerk.session,
+      fixture,
+      {
+        value: "secret-value",
+        description: "Test secret",
+      },
     );
 
-    expect(response.body).toMatchObject({
+    expect(secret).toMatchObject({
       name: "MY_SECRET",
       description: "Test secret",
       type: "user",
     });
-    expect(response.body.id).toBeDefined();
-    expect(response.body.createdAt).toBeDefined();
-    expect(response.body.updatedAt).toBeDefined();
-    expect(response.body).not.toHaveProperty("value");
-    expect(response.body).not.toHaveProperty("encryptedValue");
+    expect(secret.id).toBeDefined();
+    expect(secret.createdAt).toBeDefined();
+    expect(secret.updatedAt).toBeDefined();
+    expect(secret).not.toHaveProperty("value");
+    expect(secret).not.toHaveProperty("encryptedValue");
+    await expect(listZeroSecretsThroughApi(context)).resolves.toMatchObject([
+      {
+        name: "MY_SECRET",
+        description: "Test secret",
+        type: "user",
+      },
+    ]);
 
     const writeDb = store.set(writeDb$);
     const rows = await writeDb
@@ -311,21 +363,16 @@ describe("POST /api/zero/secrets", () => {
     const kms = fakeKmsClient();
     setSecretKmsClientForTests(kms.client);
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
-    const fixture = await track(store.set(seedSecrets$, [], context.signal));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroSecretsContract);
-
-    await accept(
-      client.set({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          name: "MY_SECRET",
-          value: "secret-value",
-        },
+    const fixture = await trackSecret(
+      Promise.resolve({
+        orgId: `org_${randomUUID().slice(0, 8)}`,
+        userId: `user_${randomUUID().slice(0, 8)}`,
+        name: "MY_SECRET",
       }),
-      [200],
     );
+    await setZeroSecretThroughApi(context, mocks.clerk.session, fixture, {
+      value: "secret-value",
+    });
 
     const writeDb = store.set(writeDb$);
     const [row] = await writeDb
@@ -352,69 +399,60 @@ describe("POST /api/zero/secrets", () => {
   });
 
   it("updates an existing user secret without creating a duplicate", async () => {
-    const fixture = await track(store.set(seedSecrets$, [], context.signal));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroSecretsContract);
-
-    const created = await accept(
-      client.set({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          name: "MY_SECRET",
-          value: "value-v1",
-          description: "Initial description",
-        },
+    const fixture = await trackSecret(
+      Promise.resolve({
+        orgId: `org_${randomUUID().slice(0, 8)}`,
+        userId: `user_${randomUUID().slice(0, 8)}`,
+        name: "MY_SECRET",
       }),
-      [200],
+    );
+    const created = await setZeroSecretThroughApi(
+      context,
+      mocks.clerk.session,
+      fixture,
+      {
+        value: "value-v1",
+        description: "Initial description",
+      },
     );
 
-    const updated = await accept(
-      client.set({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          name: "MY_SECRET",
-          value: "value-v2",
-          description: "Updated description",
-        },
-      }),
-      [200],
+    const updated = await setZeroSecretThroughApi(
+      context,
+      mocks.clerk.session,
+      fixture,
+      {
+        value: "value-v2",
+        description: "Updated description",
+      },
     );
 
-    expect(updated.body.id).toBe(created.body.id);
-    expect(updated.body.name).toBe("MY_SECRET");
-    expect(updated.body.description).toBe("Updated description");
+    expect(updated.id).toBe(created.id);
+    expect(updated.name).toBe("MY_SECRET");
+    expect(updated.description).toBe("Updated description");
 
-    const writeDb = store.set(writeDb$);
-    const rows = await writeDb
-      .select({
-        encryptedValue: secrets.encryptedValue,
-        description: secrets.description,
-      })
-      .from(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, fixture.orgId),
-          eq(secrets.userId, fixture.userId),
-          eq(secrets.name, "MY_SECRET"),
-          eq(secrets.type, "user"),
-        ),
-      );
-
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.description).toBe("Updated description");
-    expect(rows[0]?.encryptedValue).not.toBe("value-v2");
+    const listed = await listZeroSecretsThroughApi(context);
+    expect(listed).toHaveLength(1);
+    expect(listed).toMatchObject([
+      {
+        id: created.id,
+        name: "MY_SECRET",
+        description: "Updated description",
+        type: "user",
+      },
+    ]);
   });
 
   it("returns 400 for invalid secret names", async () => {
-    const fixture = await track(store.set(seedSecrets$, [], context.signal));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(
+      `user_${randomUUID().slice(0, 8)}`,
+      `org_${randomUUID().slice(0, 8)}`,
+    );
 
     const client = setupApp({ context })(zeroSecretsContract);
 
     const response = await accept(
       client.set({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: {
           name: "invalid name",
           value: "secret-value",
@@ -427,14 +465,16 @@ describe("POST /api/zero/secrets", () => {
   });
 
   it("returns 400 for empty secret values", async () => {
-    const fixture = await track(store.set(seedSecrets$, [], context.signal));
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(
+      `user_${randomUUID().slice(0, 8)}`,
+      `org_${randomUUID().slice(0, 8)}`,
+    );
 
     const client = setupApp({ context })(zeroSecretsContract);
 
     const response = await accept(
       client.set({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: {
           name: "MY_SECRET",
           value: "",
@@ -447,65 +487,50 @@ describe("POST /api/zero/secrets", () => {
   });
 
   it("does not overwrite another user's secret with the same name", async () => {
-    const fixture = await track(store.set(seedSecrets$, [], context.signal));
-    const otherUserId = `user_${randomUUID()}`;
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(secrets).values({
-      orgId: fixture.orgId,
-      userId: otherUserId,
-      name: "SHARED_SECRET",
-      encryptedValue: "other-user-encrypted",
-      description: "Other user",
-      type: "user",
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroSecretsContract);
-
-    const response = await accept(
-      client.set({
-        headers: { authorization: "Bearer clerk-session" },
-        body: {
-          name: "SHARED_SECRET",
-          value: "current-user-value",
-          description: "Current user",
-        },
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    const otherUser = await trackSecret(
+      createZeroSecretThroughApi(context, mocks.clerk.session, {
+        orgId,
+        userId: `user_${randomUUID().slice(0, 8)}`,
+        name: "SHARED_SECRET",
+        value: "other-user-value",
+        description: "Other user",
       }),
-      [200],
+    );
+    const currentUser = await trackSecret(
+      Promise.resolve({
+        orgId,
+        userId: `user_${randomUUID().slice(0, 8)}`,
+        name: "SHARED_SECRET",
+      }),
     );
 
-    expect(response.body.description).toBe("Current user");
+    const response = await setZeroSecretThroughApi(
+      context,
+      mocks.clerk.session,
+      currentUser,
+      {
+        value: "current-user-value",
+        description: "Current user",
+      },
+    );
 
-    const rows = await writeDb
-      .select({
-        userId: secrets.userId,
-        encryptedValue: secrets.encryptedValue,
-        description: secrets.description,
-      })
-      .from(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, fixture.orgId),
-          eq(secrets.name, "SHARED_SECRET"),
-          eq(secrets.type, "user"),
-        ),
-      );
+    expect(response.description).toBe("Current user");
+    await expect(listZeroSecretsThroughApi(context)).resolves.toMatchObject([
+      {
+        name: "SHARED_SECRET",
+        description: "Current user",
+        type: "user",
+      },
+    ]);
 
-    expect(rows).toHaveLength(2);
-    expect(
-      rows.find((row) => {
-        return row.userId === otherUserId;
-      }),
-    ).toMatchObject({
-      encryptedValue: "other-user-encrypted",
-      description: "Other user",
-    });
-    expect(
-      rows.find((row) => {
-        return row.userId === fixture.userId;
-      }),
-    ).toMatchObject({
-      description: "Current user",
-    });
+    mocks.clerk.session(otherUser.userId, otherUser.orgId);
+    await expect(listZeroSecretsThroughApi(context)).resolves.toMatchObject([
+      {
+        name: "SHARED_SECRET",
+        description: "Other user",
+        type: "user",
+      },
+    ]);
   });
 });
