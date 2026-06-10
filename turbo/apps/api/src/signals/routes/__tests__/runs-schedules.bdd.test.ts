@@ -175,6 +175,50 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
     expect(missingContext.body.error.code).toBe("NOT_FOUND");
   });
 
+  it("keeps official runner held-session heartbeat and empty polling visible through public endpoints", async () => {
+    const api = createRunsSchedulesApi(context);
+    const heldSessionStates = [
+      {
+        sessionId: "session-bdd-held",
+        lastCompletedAt: new Date(now()).toISOString(),
+      },
+    ];
+
+    const heartbeat = await api.requestHeartbeatRunner(true, [200], {
+      heldSessionStates,
+    });
+    if (heartbeat.status !== 200) {
+      throw new Error(
+        `Expected runner heartbeat to succeed, got ${heartbeat.status}`,
+      );
+    }
+    expect(heartbeat.body.ok).toBeTruthy();
+
+    const emptyWithoutProfiles = await api.requestPollRunner(
+      true,
+      { group: "vm0/test" },
+      [200],
+    );
+    if (emptyWithoutProfiles.status !== 200) {
+      throw new Error(
+        `Expected empty poll to succeed, got ${emptyWithoutProfiles.status}`,
+      );
+    }
+    expect(emptyWithoutProfiles.body.job).toBeNull();
+
+    const emptyHeldSessionPoll = await api.requestPollRunner(
+      true,
+      { group: "vm0/test", heldSessionStates },
+      [200],
+    );
+    if (emptyHeldSessionPoll.status !== 200) {
+      throw new Error(
+        `Expected held-session poll to succeed, got ${emptyHeldSessionPoll.status}`,
+      );
+    }
+    expect(emptyHeldSessionPoll.body.job).toBeNull();
+  });
+
   it("keeps missing run detail and context hidden for another organization", async () => {
     const bdd = createBddApi(context);
     const api = createRunsSchedulesApi(context);

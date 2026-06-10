@@ -1,13 +1,14 @@
 // helper gap:
-// - Paid media completion needs org credits plus usage pricing. No public API
-//   helper in this BDD slice can grant credits or seed pricing, so these tests
-//   cover the visible no-credit/provider-boundary responses and read APIs.
+// - Paid media completion uses Stripe webhook-granted credits and real usage
+//   pricing. Full provider matrices still stay out of this BDD slice.
 // - Billing settlement needs Stripe webhooks or checkout completion that grants
 //   entitlements. This file asserts the route-visible checkout, portal, invoice,
 //   redeem, status, and usage surfaces without direct database fixtures.
 // - Banking success needs a current zero run, banking connection, account grant,
 //   and provider account state. This file covers the public credential gate and
 //   records the success-chain gap instead of seeding banking tables.
+
+import { randomUUID } from "node:crypto";
 
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -22,9 +23,22 @@ import {
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 const appUrl = "http://localhost:3002";
+type ApiUuid = `${string}-${string}-${string}-${string}-${string}`;
+
+function apiUuid(value: string): ApiUuid {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  ) {
+    throw new Error(`Expected API UUID, received ${value}`);
+  }
+  return value as ApiUuid;
+}
 
 function testActors() {
   const base = createBddApi(context);
@@ -271,6 +285,188 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
     expect(finalStatus.credits).toBe(0);
     expect(finalStatus.hasSubscription).toBeFalsy();
   });
+
+  it("grants Stripe checkout and invoice credits idempotently through webhook-visible billing status", async () => {
+    const { api, admin } = testActors();
+    await completeVisibleOnboarding(api, admin);
+    if (!admin.orgId) {
+      throw new Error("Expected billing webhook test user to have an org");
+    }
+
+    const webhooks = createWebhookCallbackApi(context);
+    webhooks.configureStripeWebhookSecret();
+
+    const checkoutSessionId = `cs_bdd_credit_${randomUUID()}`;
+    webhooks.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_checkout_${randomUUID()}`,
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: checkoutSessionId,
+          invoice: null,
+          subscription: null,
+          customer: null,
+          metadata: {
+            purpose: "credit_purchase",
+            orgId: admin.orgId,
+            creditsAmountMode: "amount_total",
+          },
+          amount_total: 2500,
+          payment_status: "paid",
+        },
+      },
+    });
+    const checkout = await webhooks.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(checkout.body).toBe("OK");
+
+    const afterCheckout = await api.readBillingStatus(admin);
+    expect(afterCheckout.credits).toBe(25_000);
+
+    webhooks.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_checkout_duplicate_${randomUUID()}`,
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: checkoutSessionId,
+          invoice: null,
+          subscription: null,
+          customer: null,
+          metadata: {
+            purpose: "credit_purchase",
+            orgId: admin.orgId,
+            creditsAmountMode: "amount_total",
+          },
+          amount_total: 2500,
+          payment_status: "paid",
+        },
+      },
+    });
+    const duplicateCheckout = await webhooks.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(duplicateCheckout.body).toBe("OK");
+
+    const afterDuplicateCheckout = await api.readBillingStatus(admin);
+    expect(afterDuplicateCheckout.credits).toBe(25_000);
+
+    const autoRechargeInvoiceId = `in_bdd_auto_${randomUUID()}`;
+    webhooks.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_auto_${randomUUID()}`,
+      type: "invoice.paid",
+      data: {
+        object: {
+          id: autoRechargeInvoiceId,
+          customer: null,
+          metadata: {
+            type: "auto_recharge",
+            orgId: admin.orgId,
+            creditsAmount: "3000",
+          },
+          subtotal: null,
+          lines: { data: [] },
+          parent: null,
+        },
+      },
+    });
+    const autoRecharge = await webhooks.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(autoRecharge.body).toBe("OK");
+
+    const afterAutoRecharge = await api.readBillingStatus(admin);
+    expect(afterAutoRecharge.credits).toBe(28_000);
+
+    webhooks.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_auto_duplicate_${randomUUID()}`,
+      type: "invoice.paid",
+      data: {
+        object: {
+          id: autoRechargeInvoiceId,
+          customer: null,
+          metadata: {
+            type: "auto_recharge",
+            orgId: admin.orgId,
+            creditsAmount: "3000",
+          },
+          subtotal: null,
+          lines: { data: [] },
+          parent: null,
+        },
+      },
+    });
+    const duplicateAutoRecharge = await webhooks.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(duplicateAutoRecharge.body).toBe("OK");
+
+    const afterDuplicateAutoRecharge = await api.readBillingStatus(admin);
+    expect(afterDuplicateAutoRecharge.credits).toBe(28_000);
+
+    const creditPurchaseInvoiceId = `in_bdd_credit_${randomUUID()}`;
+    webhooks.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_invoice_${randomUUID()}`,
+      type: "invoice.paid",
+      data: {
+        object: {
+          id: creditPurchaseInvoiceId,
+          customer: null,
+          metadata: {
+            type: "credit_purchase",
+            orgId: admin.orgId,
+          },
+          subtotal: 1200,
+          lines: { data: [] },
+          parent: null,
+        },
+      },
+    });
+    const invoicePurchase = await webhooks.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(invoicePurchase.body).toBe("OK");
+
+    const afterInvoicePurchase = await api.readBillingStatus(admin);
+    expect(afterInvoicePurchase.credits).toBe(40_000);
+
+    webhooks.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_invoice_duplicate_${randomUUID()}`,
+      type: "invoice.paid",
+      data: {
+        object: {
+          id: creditPurchaseInvoiceId,
+          customer: null,
+          metadata: {
+            type: "credit_purchase",
+            orgId: admin.orgId,
+          },
+          subtotal: 1200,
+          lines: { data: [] },
+          parent: null,
+        },
+      },
+    });
+    const duplicateInvoicePurchase = await webhooks.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(duplicateInvoicePurchase.body).toBe("OK");
+
+    const finalStatus = await api.readBillingStatus(admin);
+    expect(finalStatus.credits).toBe(40_000);
+  });
 });
 
 describe("BILL-02: usage, insights, attribution, model stats, and usage cron reads", () => {
@@ -368,6 +564,134 @@ describe("BILL-02: usage, insights, attribution, model stats, and usage cron rea
 });
 
 describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status APIs", () => {
+  it("queues and completes an image generation through Stripe credits, Fal webhook, and status GET", async () => {
+    const { api, admin } = testActors();
+    await completeVisibleOnboarding(api, admin);
+    if (!admin.orgId) {
+      throw new Error("Expected media generation test user to have an org");
+    }
+
+    const webhooks = createWebhookCallbackApi(context);
+    webhooks.configureStripeWebhookSecret();
+    webhooks.acceptNextStripeWebhookEvent({
+      id: `evt_bdd_media_credit_${randomUUID()}`,
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: `cs_bdd_media_credit_${randomUUID()}`,
+          invoice: null,
+          subscription: null,
+          customer: null,
+          metadata: {
+            purpose: "credit_purchase",
+            orgId: admin.orgId,
+            creditsAmount: "1000000",
+          },
+          payment_status: "paid",
+        },
+      },
+    });
+    const credits = await webhooks.requestStripeWebhook(
+      "{}",
+      { "stripe-signature": "valid-signature" },
+      [200],
+    );
+    expect(credits.body).toBe("OK");
+
+    const afterCredits = await api.readBillingStatus(admin);
+    expect(afterCredits.credits).toBe(1_000_000);
+
+    context.mocks.ably.createTokenRequest.mockResolvedValueOnce({
+      keyName: "ably-key",
+      timestamp: 1_700_000_000,
+      capability: JSON.stringify({ [`user:${admin.userId}`]: ["subscribe"] }),
+      nonce: "nonce",
+      mac: "mac",
+    });
+    context.mocks.s3.send.mockResolvedValue({});
+    server.use(
+      http.post("https://queue.fal.run/*", () => {
+        return HttpResponse.json({
+          request_id: `fal_bdd_${randomUUID()}`,
+          status_url: "https://queue.fal.run/status/bdd-image",
+          response_url: "https://queue.fal.run/response/bdd-image",
+        });
+      }),
+      http.get("https://assets.example.test/generated-bdd-image.png", () => {
+        return new HttpResponse(new Uint8Array([137, 80, 78, 71]).buffer, {
+          status: 200,
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const queued = await api.requestImageIoGenerate(
+      admin,
+      { prompt: "a compact billing usage chart" },
+      [202],
+    );
+    if (queued.status !== 202) {
+      throw new Error(
+        `Expected image generation to queue, got ${queued.status}`,
+      );
+    }
+    const generationId = apiUuid(queued.body.generationId);
+    expect(queued.body).toMatchObject({
+      type: "image",
+      status: "queued",
+    });
+
+    const running = await api.readBuiltInGeneration(admin, generationId, [200]);
+    if (running.status !== 200) {
+      throw new Error(`Expected running generation, got ${running.status}`);
+    }
+    expect(running.body).toMatchObject({
+      generationId,
+      type: "image",
+      status: "running",
+    });
+
+    const completed = await webhooks.requestFalGenerationWebhook({
+      generationId,
+      token: webhooks.falGenerationWebhookToken(generationId),
+      body: {
+        status: "COMPLETED",
+        payload: {
+          images: [
+            {
+              url: "https://assets.example.test/generated-bdd-image.png",
+              content_type: "image/png",
+              width: 1024,
+              height: 1024,
+            },
+          ],
+          prompt: "a compact billing usage chart",
+          seed: 123,
+        },
+      },
+      statuses: [200],
+    });
+    expect(completed.body).toBe("OK");
+
+    const finalGeneration = await api.readBuiltInGeneration(
+      admin,
+      generationId,
+      [200],
+    );
+    if (finalGeneration.status !== 200) {
+      throw new Error(
+        `Expected completed generation, got ${finalGeneration.status}`,
+      );
+    }
+    expect(finalGeneration.body.status).toBe("completed");
+    expect(finalGeneration.body.result).toMatchObject({
+      provider: "fal",
+      outputFormat: "png",
+      imageSize: "1024x1024",
+      seed: 123,
+    });
+  });
+
   it("chains media quota, generation gates, TTS, and status reads through API-visible state", async () => {
     const { api, admin } = testActors();
     await completeVisibleOnboarding(api, admin);

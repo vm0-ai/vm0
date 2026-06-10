@@ -160,6 +160,7 @@ function runnerHeartbeatBody(
   args: {
     readonly runnerId?: string;
     readonly group?: string;
+    readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
   } = {},
 ): RunnerHeartbeatBody {
   return {
@@ -173,7 +174,7 @@ function runnerHeartbeatBody(
     allocatedVcpu: 0,
     allocatedMemoryMb: 0,
     runningCount: 0,
-    heldSessionStates: [],
+    heldSessionStates: args.heldSessionStates ?? [],
     mode: "running",
   };
 }
@@ -344,7 +345,10 @@ export function createRunsSchedulesApi(context: TestContext) {
     async requestHeartbeatRunner(
       validAuth: boolean,
       statuses: readonly (200 | 400 | 401 | 500)[],
-      args: { readonly group?: string } = {},
+      args: {
+        readonly group?: string;
+        readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
+      } = {},
     ) {
       return await accept(
         setupApp({ context })(runnersHeartbeatContract).heartbeat({
