@@ -991,6 +991,76 @@ describe("POST /api/zero/memory/dev-refresh", () => {
     });
   });
 
+  it("returns skipped when the current user has no memory artifact", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      devRefreshClient().refresh({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ skipped: true });
+  });
+
+  it("returns skipped when the current user cannot view memory", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    await store.set(
+      seedMemoryStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        s3Key: `orgs/${fixture.orgId}/users/${fixture.userId}/memory/v1`,
+        headVersionId: `v1-${randomUUID()}`,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      devRefreshClient().refresh({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ skipped: true });
+  });
+
+  it("returns skipped when memory starts after the refresh window", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    await enableMemoryViewer(fixture);
+    const versionId = `v1-${randomUUID()}`;
+    await store.set(
+      seedMemoryStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        s3Key: `orgs/${fixture.orgId}/users/${fixture.userId}/memory/v1`,
+        headVersionId: versionId,
+        updatedAt: new Date("2999-01-04T00:00:00.000Z"),
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    await db
+      .update(storageVersions)
+      .set({ createdAt: new Date("2999-01-04T00:00:00.000Z") })
+      .where(eq(storageVersions.id, versionId));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      devRefreshClient().refresh({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ skipped: true });
+  });
+
   it("force-regenerates only the current user's memory summaries", async () => {
     const current = await seedTwoVersionsNoMock();
     const other = await seedTwoVersionsNoMock();

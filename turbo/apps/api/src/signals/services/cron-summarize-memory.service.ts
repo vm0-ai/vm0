@@ -347,11 +347,6 @@ export const summarizeMemory$ = command(
     const now = nowDate();
 
     const memoryStorages = await loadMemoryStorages(db, signal);
-    if (memoryStorages.length === 0) {
-      L.debug("No memory artifacts to summarize");
-      return { skipped: true };
-    }
-
     const timezoneMap = await resolveUserTimezones(
       db,
       memoryStorages.map((row) => {

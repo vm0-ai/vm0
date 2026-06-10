@@ -658,6 +658,46 @@ describe("POST /api/test/slack-state", () => {
     });
   });
 
+  it("keeps a preexisting starter grant when seeding the default Slack agent", async () => {
+    mockEnv("ENV", "development");
+    const id = suffix();
+    const teamId = `T_EXISTING_GRANT_${id}`;
+    const orgId = `org_existing_grant_${id}`;
+    const userId = `user_existing_grant_${id}`;
+    await trackSlackSeedFixture(Promise.resolve({ teamId, orgId }));
+    await writeDb.insert(creditExpiresRecord).values({
+      orgId,
+      source: "starter_grant",
+      stripeInvoiceId: null,
+      amount: 7000,
+      remaining: 4000,
+      expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+    });
+    mockTestUserMembership(userId, orgId);
+
+    const response = await postSlackState({
+      team_id: teamId,
+      slack_user_id: "U_E2E_EXISTING_GRANT",
+      seed_default_agent: true,
+    });
+    const body = await readJson<TestSlackStatePostResponse>(response);
+
+    expect(response.status).toBe(200);
+    expect(typeof body.default_agent_id).toBe("string");
+    await expect(
+      writeDb
+        .select({
+          source: creditExpiresRecord.source,
+          amount: creditExpiresRecord.amount,
+          remaining: creditExpiresRecord.remaining,
+        })
+        .from(creditExpiresRecord)
+        .where(eq(creditExpiresRecord.orgId, orgId)),
+    ).resolves.toStrictEqual([
+      { source: "starter_grant", amount: 7000, remaining: 4000 },
+    ]);
+  });
+
   it("is idempotent for existing installations, connections, and default agents", async () => {
     mockEnv("ENV", "development");
     const id = suffix();
