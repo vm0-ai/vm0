@@ -312,8 +312,7 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
     results
 }
 
-/// If this is a session-start event, capture the session id and persist the
-/// session-history-path metadata files for checkpoint use.
+/// Capture or repair the session metadata files needed by checkpoint.
 ///
 /// Both frameworks emit a single id-bearing event near the top of their
 /// JSONL stream:
@@ -331,6 +330,7 @@ pub(crate) fn capture_session_metadata(event: &Value) {
         Framework::Codex => extract_codex_thread_id(event),
     };
     let Some((session_id, history_path_payload)) = parsed else {
+        repair_missing_session_history_marker_from_existing_session();
         return;
     };
 
@@ -371,11 +371,49 @@ pub(crate) fn capture_session_metadata(event: &Value) {
     write_session_history_marker(&history_path_payload);
 }
 
-fn ensure_session_history_marker(history_path_payload: &str) {
-    if std::path::Path::new(paths::session_history_path_file()).exists() {
+fn repair_missing_session_history_marker_from_existing_session() {
+    if !should_write_session_history_marker() {
         return;
     }
-    write_session_history_marker(history_path_payload);
+    let session_id = match std::fs::read_to_string(paths::session_id_file()) {
+        Ok(session_id) => session_id.trim().to_string(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            log_error!(
+                LOG_TAG,
+                "Failed to read existing session ID from {}: {e}",
+                paths::session_id_file()
+            );
+            return;
+        }
+    };
+    if session_id.is_empty() {
+        return;
+    }
+    if let Some(history_path_payload) = history_path_payload_for_session_id(&session_id) {
+        write_session_history_marker(&history_path_payload);
+    }
+}
+
+fn ensure_session_history_marker(history_path_payload: &str) {
+    if should_write_session_history_marker() {
+        write_session_history_marker(history_path_payload);
+    }
+}
+
+fn should_write_session_history_marker() -> bool {
+    match std::fs::read_to_string(paths::session_history_path_file()) {
+        Ok(existing) => existing.trim().is_empty(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        Err(e) => {
+            log_error!(
+                LOG_TAG,
+                "Failed to read existing session history marker from {}: {e}",
+                paths::session_history_path_file()
+            );
+            false
+        }
+    }
 }
 
 fn write_session_history_marker(history_path_payload: &str) {
@@ -393,6 +431,16 @@ fn write_session_history_marker(history_path_payload: &str) {
     }
 }
 
+fn history_path_payload_for_session_id(session_id: &str) -> Option<String> {
+    match Framework::from_env() {
+        Framework::ClaudeCode => Some(claude_history_path_payload(session_id)),
+        Framework::Codex => {
+            let thread_id = crate::session_history::canonical_codex_thread_id(session_id)?;
+            Some(codex_history_marker_payload(&thread_id))
+        }
+    }
+}
+
 /// Claude variant — matches `system/init` and computes the project-scoped
 /// jsonl path under `$HOME/.claude/projects/-{cwd}/`.
 fn extract_claude_session_id(event: &Value) -> Option<(String, String)> {
@@ -406,13 +454,19 @@ fn extract_claude_session_id(event: &Value) -> Option<(String, String)> {
         return None;
     }
 
+    Some((
+        session_id.to_string(),
+        claude_history_path_payload(session_id),
+    ))
+}
+
+fn claude_history_path_payload(session_id: &str) -> String {
     let home = env::home_dir();
     let project_name = paths::CANONICAL_WORKING_DIR
         .strip_prefix('/')
         .unwrap_or(paths::CANONICAL_WORKING_DIR)
         .replace('/', "-");
-    let history_path = format!("{home}/.claude/projects/-{project_name}/{session_id}.jsonl");
-    Some((session_id.to_string(), history_path))
+    format!("{home}/.claude/projects/-{project_name}/{session_id}.jsonl")
 }
 
 /// Codex variant — matches `thread.started` and emits a `CODEX_SEARCH:`
@@ -424,10 +478,14 @@ fn extract_codex_thread_id(event: &Value) -> Option<(String, String)> {
     }
     let thread_id = event.get("thread_id").and_then(|v| v.as_str())?;
     let thread_id = crate::session_history::canonical_codex_thread_id(thread_id)?;
+    let marker = codex_history_marker_payload(&thread_id);
 
-    let home = env::home_dir();
-    let marker = format!("CODEX_SEARCH:{home}/.codex/sessions:{thread_id}");
     Some((thread_id, marker))
+}
+
+fn codex_history_marker_payload(thread_id: &str) -> String {
+    let home = env::home_dir();
+    format!("CODEX_SEARCH:{home}/.codex/sessions:{thread_id}")
 }
 
 #[cfg(test)]
