@@ -1241,9 +1241,9 @@ async fn gc_versions(
             .unwrap_or("service lock")
             .to_string();
         let service_lock = if dry_run {
-            match service_lock_path.try_exists() {
-                Ok(false) => None,
-                Ok(true) => match probe_existing_lock(&service_lock_path) {
+            match std::fs::symlink_metadata(&service_lock_path) {
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Ok(_) => match probe_existing_lock(&service_lock_path) {
                     ExistingLockProbe::Free(lock) => Some(lock),
                     ExistingLockProbe::Missing => None,
                     ExistingLockProbe::Held => {
@@ -1257,7 +1257,7 @@ async fn gc_versions(
                 },
                 Err(e) => {
                     warn!(
-                        "version {name}: cannot check service lock {} before dry-run ({e}), skipping",
+                        "version {name}: cannot inspect service lock {} before dry-run ({e}), skipping",
                         service_lock_path.display()
                     );
                     continue;
@@ -2890,6 +2890,42 @@ mod tests {
         assert!(
             runners_dir.join(version).exists(),
             "dry-run should skip locked version config dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn gc_versions_dry_run_skips_dangling_service_lock_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+        let version = "v1.0.0";
+        let unit = service::unit_name(version).unwrap();
+
+        std::fs::create_dir_all(bin_dir.join(version)).unwrap();
+        std::fs::create_dir_all(runners_dir.join(version)).unwrap();
+        age_version_past_gc_min_age(&home, version);
+
+        let service_lock_path = home.service_lock(&unit);
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+        std::os::unix::fs::symlink(dir.path().join("missing-lock-target"), &service_lock_path)
+            .unwrap();
+
+        let removed = gc_versions(&home, true, None, None).await.unwrap();
+
+        assert!(
+            removed.is_empty(),
+            "dry-run should match real delete mode and skip unsafe service locks"
+        );
+        assert!(bin_dir.join(version).exists());
+        assert!(runners_dir.join(version).exists());
+        assert!(
+            std::fs::symlink_metadata(&service_lock_path)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "dry-run should not touch the suspicious lock path"
         );
     }
 
