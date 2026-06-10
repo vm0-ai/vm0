@@ -457,3 +457,32 @@ round (60% reduction). No per-file coverage regression.
 
 Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
 `pnpm exec prettier --check` all clean.
+
+### Round 5 — RUNNER-01 + AGENT-01 list/read chain BDD
+
+Migrated 3 more route families to BDD shape. Continues
+`zero-queue-position` (RUNNER-01) and adds `zero-agents-list` and
+`zero-composes-list` (AGENT-01).
+
+- `zero-queue-position.bdd.test.ts` — 7 legacy `it()`s → 2 BDD
+  `it()`s (auth boundary + a gwt-wt-wt chain that exercises
+  queued / unqueued / cross-user / cross-org / unknown id in one
+  shared session). The 400-missing-runId boundary test uses
+  `app.request` directly because the contract requires runId.
+- `zero-agents-list.bdd.test.ts` — 6 legacy `it()`s → 2 BDD
+  `it()`s (auth boundary + a gwt-wt-wt chain that exercises
+  empty → seeded (via helper) → POSTed (via the public POST
+  /api/zero/agents contract) → cross-org isolated). The POST step
+  is the first chained BDD test that uses another public route as
+  part of the Given.
+- `zero-composes-list.bdd.test.ts` — 6 legacy `it()`s → 2 BDD
+  `it()`s (auth boundary + a gwt-wt-wt chain that exercises
+  empty → populated (ordered) → cross-org isolated → sandbox
+  token accepted). All assertions are on the contract's
+  `zeroComposesListContract.list` response.
+
+Net test count: 19 legacy `it()`s → 6 BDD `it()`s across this
+round (68% reduction). No per-file coverage regression.
+
+Quality gates: `pnpm -F api lint`, `pnpm -F api check-types`,
+`pnpm exec prettier --check` all clean.
