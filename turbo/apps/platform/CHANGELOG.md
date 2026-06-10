@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.430.1](https://github.com/vm0-ai/vm0/compare/app-v0.430.0...app-v0.430.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* align ticketmaster connector icon blue ([#16930](https://github.com/vm0-ai/vm0/issues/16930)) ([ab3bfc9](https://github.com/vm0-ai/vm0/commit/ab3bfc9b28c820c7454484c1db52735efaf6945d))
+* align wandb connector icon ([#16943](https://github.com/vm0-ai/vm0/issues/16943)) ([d64c3b9](https://github.com/vm0-ai/vm0/commit/d64c3b933f6da2eda9ec9527d614b5eea431c0fd))
+* make youtube icon self contained ([#16957](https://github.com/vm0-ai/vm0/issues/16957)) ([b23c009](https://github.com/vm0-ai/vm0/commit/b23c00908413dd0ef7d9cedf2e2ca5c1a3c459a7))
+* normalize stripe connector icon colors ([#16923](https://github.com/vm0-ai/vm0/issues/16923)) ([49605a1](https://github.com/vm0-ai/vm0/commit/49605a1c1135e7cb68178481756411025c2bf316))
+* normalize supabase connector icon svg attributes ([#16924](https://github.com/vm0-ai/vm0/issues/16924)) ([50f4deb](https://github.com/vm0-ai/vm0/commit/50f4deb7442518a03f2a6e2e98fac38b22c47f8d))
+* normalize supadata connector icon colors ([#16926](https://github.com/vm0-ai/vm0/issues/16926)) ([08e22a0](https://github.com/vm0-ai/vm0/commit/08e22a0f3d5f9ffc565f0b1c8419a0470fcdb073))
+* normalize twenty connector icon ([#16941](https://github.com/vm0-ai/vm0/issues/16941)) ([0f010bb](https://github.com/vm0-ai/vm0/commit/0f010bbb7571620eb66b1207913df89d3dcdb8b2))
+* normalize vercel connector icon ([#16942](https://github.com/vm0-ai/vm0/issues/16942)) ([15e3dd6](https://github.com/vm0-ai/vm0/commit/15e3dd6d5c37c114c969b3e92a2493cea13ae511))
+* preserve testrail connector icon color ([#16929](https://github.com/vm0-ai/vm0/issues/16929)) ([a13331e](https://github.com/vm0-ai/vm0/commit/a13331e8121dbf4bb63783a819edb73b09a1f6a2))
+* rebuild streak connector icon ([#16914](https://github.com/vm0-ai/vm0/issues/16914)) ([1b998ea](https://github.com/vm0-ai/vm0/commit/1b998eae2eca172da3c244c281cbef9c8fa30f17))
+* replace supermemory connector icon fill ([#16928](https://github.com/vm0-ai/vm0/issues/16928)) ([5496048](https://github.com/vm0-ai/vm0/commit/5496048444250bbdd953213dff6ee3e9d92adc25))
+* replace together connector icon ([#16936](https://github.com/vm0-ai/vm0/issues/16936)) ([2b125f8](https://github.com/vm0-ai/vm0/commit/2b125f882fea1a9cdfc1f62f3b321b4c9a25ec6c))
+* replace tripo connector icon ([#16939](https://github.com/vm0-ai/vm0/issues/16939)) ([98a8c25](https://github.com/vm0-ai/vm0/commit/98a8c25f2ad57630f4d483efec570623aa4e04a6))
+* replace weread connector icon ([#16952](https://github.com/vm0-ai/vm0/issues/16952)) ([1b9475e](https://github.com/vm0-ai/vm0/commit/1b9475e48068728be35cafa1f518126c8880547d))
+* replace whale alert connector icon ([#16953](https://github.com/vm0-ai/vm0/issues/16953)) ([225ff88](https://github.com/vm0-ai/vm0/commit/225ff88a31f48719e83f87d4b3345decd4a0b4d6))
+* replace wix connector icon ([#16954](https://github.com/vm0-ai/vm0/issues/16954)) ([f4cb729](https://github.com/vm0-ai/vm0/commit/f4cb729c0667987d1840ad53c5dfd92042f4fe83))
+* replace workos connector icon ([#16955](https://github.com/vm0-ai/vm0/issues/16955)) ([05560cd](https://github.com/vm0-ai/vm0/commit/05560cdbe6d62bf31208b093309c2bfa22df6517))
+* replace zapier connector icon ([#16958](https://github.com/vm0-ai/vm0/issues/16958)) ([387c943](https://github.com/vm0-ai/vm0/commit/387c9435e1fb2762e3219cd143912a7eb897a41a))
+* replace zep connector icon ([#16964](https://github.com/vm0-ai/vm0/issues/16964)) ([059a8cb](https://github.com/vm0-ai/vm0/commit/059a8cbf0b9ba01361e45f9dad68b69d97ba567f))
+* replace zeptomail connector icon ([#16965](https://github.com/vm0-ai/vm0/issues/16965)) ([8d7448e](https://github.com/vm0-ai/vm0/commit/8d7448e93a6e61933e51824fb30ce339628c6164))
+* replace zoom connector icon ([#16966](https://github.com/vm0-ai/vm0/issues/16966)) ([2e2c935](https://github.com/vm0-ai/vm0/commit/2e2c935267a41cfa6c8749da4bd461223e527576))
+* update strava connector icon ([#16909](https://github.com/vm0-ai/vm0/issues/16909)) ([5607222](https://github.com/vm0-ai/vm0/commit/5607222d39fc4c879d4a491a57d5d7aa6263b757))
+* update zendesk connector icon color ([#16963](https://github.com/vm0-ai/vm0/issues/16963)) ([4d2ce07](https://github.com/vm0-ai/vm0/commit/4d2ce07bab9274e29ac57743054d097928139a50))
+* use explicit color for x icon ([#16956](https://github.com/vm0-ai/vm0/issues/16956)) ([994b31d](https://github.com/vm0-ai/vm0/commit/994b31d9ad2d19995c5748c6100245eaced71b60))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.75.0
+    * @vm0/connectors bumped to 1.57.0
+    * @vm0/core bumped to 8.320.1
+
 ## [0.430.0](https://github.com/vm0-ai/vm0/compare/app-v0.429.0...app-v0.430.0) (2026-06-09)
 
 

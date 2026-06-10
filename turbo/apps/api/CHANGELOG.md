@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.120.0](https://github.com/vm0-ai/vm0/compare/api-v1.119.0...api-v1.120.0) (2026-06-09)
+
+
+### Features
+
+* **api:** dual-write schedule mutations to new tables + backfill ([#16921](https://github.com/vm0-ai/vm0/issues/16921)) ([55690e3](https://github.com/vm0-ai/vm0/commit/55690e3ce9d76ca9139e97a9f5beb0303ee148c7))
+* **cli:** add zero video transcribe command with timestamped STT output ([#16799](https://github.com/vm0-ai/vm0/issues/16799)) ([365c0db](https://github.com/vm0-ai/vm0/commit/365c0db4ac494869778f7a7c62671e2715fc3b54))
+* support connector output variables ([#16901](https://github.com/vm0-ai/vm0/issues/16901)) ([edfd55b](https://github.com/vm0-ai/vm0/commit/edfd55b3a37b611deaf9f5eac9d4bf3326e4bcda))
+
+
+### Bug Fixes
+
+* comment when github labels start runs ([#16913](https://github.com/vm0-ai/vm0/issues/16913)) ([4b49481](https://github.com/vm0-ai/vm0/commit/4b494816da2b363000e51408a2b40b6b6d6fbb67))
+* grant custom credits from invoices ([#16330](https://github.com/vm0-ai/vm0/issues/16330)) ([09d8bcd](https://github.com/vm0-ai/vm0/commit/09d8bcda7f8534ad9ca8d3b213c26ac7c607b94b))
+* store aws connector regions as variables ([#16944](https://github.com/vm0-ai/vm0/issues/16944)) ([72947d7](https://github.com/vm0-ai/vm0/commit/72947d75f508ea99a40f5e1082a6829e6ed51d6f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.75.0
+    * @vm0/connectors bumped to 1.57.0
+    * @vm0/core bumped to 8.320.1
+    * @vm0/db bumped to 1.38.0
+
 ## [1.119.0](https://github.com/vm0-ai/vm0/compare/api-v1.118.0...api-v1.119.0) (2026-06-09)
 
 
