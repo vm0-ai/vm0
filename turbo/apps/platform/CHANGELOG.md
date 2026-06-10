@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.431.1](https://github.com/vm0-ai/vm0/compare/app-v0.431.0...app-v0.431.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* close settings dialog when clicking a credit-balance usage row ([#16994](https://github.com/vm0-ai/vm0/issues/16994)) ([946f5d2](https://github.com/vm0-ai/vm0/commit/946f5d2bf0608f43a93b6e0a94658f498c924d14))
+* **platform:** generate complete presentation scripts ([#16927](https://github.com/vm0-ai/vm0/issues/16927)) ([45254d9](https://github.com/vm0-ai/vm0/commit/45254d9501bac6cb0195ff1508b354d960fb18d6))
+* update canva connector icon ([#17025](https://github.com/vm0-ai/vm0/issues/17025)) ([971af95](https://github.com/vm0-ai/vm0/commit/971af9545ef02b27c99b4e6724a92b49cf6da2cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.78.0
+    * @vm0/core bumped to 8.321.1
+
 ## [0.431.0](https://github.com/vm0-ai/vm0/compare/app-v0.430.2...app-v0.431.0) (2026-06-10)
 
 

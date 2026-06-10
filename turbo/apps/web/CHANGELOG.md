@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.420.0](https://github.com/vm0-ai/vm0/compare/web-v12.419.0...web-v12.420.0) (2026-06-10)
+
+
+### Features
+
+* **api:** trigger completion callbacks restore live schedule semantics ([#17013](https://github.com/vm0-ai/vm0/issues/17013)) ([5c8740d](https://github.com/vm0-ai/vm0/commit/5c8740da92319b3f626cba70321e7f9f97ee38b8))
+
+
+### Bug Fixes
+
+* **platform:** generate complete presentation scripts ([#16927](https://github.com/vm0-ai/vm0/issues/16927)) ([45254d9](https://github.com/vm0-ai/vm0/commit/45254d9501bac6cb0195ff1508b354d960fb18d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.78.0
+    * @vm0/core bumped to 8.321.1
+
 ## [12.419.0](https://github.com/vm0-ai/vm0/compare/web-v12.418.3...web-v12.419.0) (2026-06-10)
 
 

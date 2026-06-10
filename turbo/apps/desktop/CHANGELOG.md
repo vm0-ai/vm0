@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.6.0...desktop-v0.7.0) (2026-06-10)
+
+
+### Features
+
+* add desktop auth startup loading state ([#17019](https://github.com/vm0-ai/vm0/issues/17019)) ([08b8ccb](https://github.com/vm0-ai/vm0/commit/08b8ccbbb3751047e7914638c6083b9a36d3837a))
+
 ## [0.6.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.5.0...desktop-v0.6.0) (2026-06-10)
 
 
