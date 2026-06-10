@@ -1,5 +1,3 @@
-use base64::Engine as _;
-
 use crate::protocol::ProtocolMessage;
 
 pub(super) fn message_targets_channel(msg: &ProtocolMessage, channel: &str) -> bool {
@@ -13,6 +11,9 @@ pub(super) fn decode_data(data: serde_json::Value, encoding: Option<&str>) -> se
     if encoding.is_empty() {
         return data;
     }
+    if encoding.split('/').any(|layer| layer == "base64") {
+        return data;
+    }
     let mut result = data;
     for layer in encoding.rsplit('/') {
         match layer {
@@ -23,27 +24,6 @@ pub(super) fn decode_data(data: serde_json::Value, encoding: Option<&str>) -> se
                         Err(e) => {
                             // Intentional fallback: return raw data rather than failing the message.
                             tracing::warn!("Failed to decode JSON encoding layer: {e}");
-                            return result;
-                        }
-                    }
-                }
-            }
-            "base64" => {
-                // serde_json::Value has no binary type, so we represent decoded
-                // bytes as a JSON array of numbers (e.g. [104, 101, 108, ...]).
-                // In practice this branch is rarely hit: Ably's REST->Realtime
-                // bridge consumes the encoding, so binary data arrives as
-                // msgpack Binary (handled by rmpv_to_json -> base64 string).
-                if let serde_json::Value::String(ref s) = result {
-                    match base64::engine::general_purpose::STANDARD.decode(s) {
-                        Ok(bytes) => {
-                            result = serde_json::Value::Array(
-                                bytes.into_iter().map(|b| b.into()).collect(),
-                            );
-                        }
-                        Err(e) => {
-                            // Intentional fallback: return raw data rather than failing the message.
-                            tracing::warn!("Failed to decode base64 encoding layer: {e}");
                             return result;
                         }
                     }
@@ -100,12 +80,29 @@ mod tests {
     fn decode_data_base64_encoding() {
         // "hello" in base64
         let data = serde_json::json!("aGVsbG8=");
-        let result = decode_data(data, Some("base64"));
-        assert_eq!(result, serde_json::json!([104, 101, 108, 108, 111]));
+        let result = decode_data(data.clone(), Some("base64"));
+        assert_eq!(result, data);
     }
 
     #[test]
-    fn decode_data_base64_invalid() {
+    fn decode_data_large_base64_encoding_stays_string() {
+        let data = serde_json::json!("A".repeat(4096));
+        let result = decode_data(data.clone(), Some("base64"));
+        assert_eq!(result, data);
+        assert!(result.is_string());
+    }
+
+    #[test]
+    fn decode_data_stacked_base64_encoding_stays_string() {
+        let data = serde_json::json!("eyJydW5JZCI6InV1aWQtMTIzIn0=");
+        for encoding in ["json/base64", "base64/json", "utf-8/base64"] {
+            let result = decode_data(data.clone(), Some(encoding));
+            assert_eq!(result, data, "encoding {encoding} should stay compact");
+        }
+    }
+
+    #[test]
+    fn decode_data_invalid_base64_encoding_stays_string() {
         let data = serde_json::json!("not-valid-base64!!!");
         let result = decode_data(data.clone(), Some("base64"));
         assert_eq!(result, data);
