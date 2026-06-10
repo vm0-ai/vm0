@@ -26,13 +26,17 @@ import {
   webhookTelemetryContract,
   webhookUsageEventContract,
 } from "@vm0/api-contracts/contracts/webhooks";
+import { HttpResponse, http } from "msw";
+import type StripeSDK from "stripe";
 import { Webhook } from "svix";
 import type { z } from "zod";
 
 import { createApp } from "../../../../app-factory";
 import { env, mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
+import { server } from "../../../../mocks/server";
 import { generateSandboxToken } from "../../../auth/tokens";
+import { mockStripeClient } from "../../../external/stripe-client";
 import {
   accept,
   setupApp,
@@ -102,6 +106,18 @@ interface GithubWebhookResponse {
 
 type BuiltInGenerationProvider = "fal" | "byteplus";
 const RESEND_WEBHOOK_SECRET = "whsec_test";
+const GOOGLE_ADS_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_ADS_UPLOAD_URL =
+  "https://googleads.googleapis.com/v24/customers/1001302527:uploadClickConversions";
+
+interface StripeWebhookResponse {
+  readonly status: 200 | 500;
+  readonly body: unknown;
+}
+
+interface GoogleAdsUploadCapture {
+  readonly uploads: readonly unknown[];
+}
 
 function serializedTsRestBody(body: unknown): string {
   return JSON.stringify(body);
@@ -226,6 +242,92 @@ export function createWebhookCallbackApi(context: TestContext) {
 
     configureStripeWebhookSecret(): void {
       mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
+    },
+
+    /**
+     * Full Stripe billing Given for webhook chains: price map, one-time
+     * campaign registry, webhook secret, and the mocked Stripe SDK client.
+     * Uses the same price ids as `grantProEntitlement`, so the two can be
+     * combined in any order within a test.
+     */
+    configureStripeBillingEnv(): void {
+      mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+      mockEnv(
+        "ZERO_PRICE",
+        JSON.stringify({ pro: ["price_bdd_pro"], team: ["price_bdd_team"] }),
+      );
+      mockEnv(
+        "ZERO_ONE_TIME_CAMPAIGN",
+        JSON.stringify({
+          ZERO100: {
+            priceId: "price_bdd_campaign",
+            couponId: "coupon_bdd_campaign",
+          },
+        }),
+      );
+      mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
+    },
+
+    /**
+     * Posts one signed Stripe event through the public webhook route. The
+     * `constructEvent` trust boundary is mocked once per call so later posts
+     * never leak a stale event. Raw request (not ts-rest) so processing 500s
+     * stay assertable.
+     */
+    async postStripeEvent(
+      event: unknown,
+      statuses: readonly (200 | 500)[],
+    ): Promise<StripeWebhookResponse> {
+      context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
+      const response = await createApp({ signal: context.signal }).request(
+        "/api/webhooks/stripe",
+        {
+          method: "POST",
+          headers: { "stripe-signature": "t=1,v1=bdd" },
+          body: serializedTsRestBody(event),
+        },
+      );
+      const body = await parseRawResponseBody(response);
+      const status = response.status;
+      if ((status !== 200 && status !== 500) || !statuses.includes(status)) {
+        throw new Error(
+          `Expected Stripe webhook status in [${statuses.join(", ")}], received ${status}: ${JSON.stringify(body)}`,
+        );
+      }
+      return { status, body };
+    },
+
+    configureGoogleAdsConversionEnv(): void {
+      mockOptionalEnv("GOOGLE_ADS_OFFLINE_CUSTOMER_ID", "100-130-2527");
+      mockOptionalEnv("GOOGLE_ADS_OFFLINE_DEVELOPER_TOKEN", "bdd-dev-token");
+      mockOptionalEnv("GOOGLE_ADS_OFFLINE_CLIENT_ID", "bdd-ads-client-id");
+      mockOptionalEnv(
+        "GOOGLE_ADS_OFFLINE_CLIENT_SECRET",
+        "bdd-ads-client-secret",
+      );
+      mockOptionalEnv("GOOGLE_ADS_OFFLINE_REFRESH_TOKEN", "bdd-refresh-token");
+      mockOptionalEnv(
+        "GOOGLE_ADS_FREE_TRIAL_CONVERSION_ACTION_ID",
+        "7615812424",
+      );
+      mockOptionalEnv(
+        "GOOGLE_ADS_PAID_SUBSCRIBER_CONVERSION_ACTION_ID",
+        "9876543210",
+      );
+    },
+
+    captureGoogleAdsUploads(): GoogleAdsUploadCapture {
+      const uploads: unknown[] = [];
+      server.use(
+        http.post(GOOGLE_ADS_TOKEN_URL, () => {
+          return HttpResponse.json({ access_token: "bdd-ads-access-token" });
+        }),
+        http.post(GOOGLE_ADS_UPLOAD_URL, async ({ request }) => {
+          uploads.push(await request.json());
+          return HttpResponse.json({ results: [], jobId: "bdd-ads-job" });
+        }),
+      );
+      return { uploads };
     },
 
     acceptNextStripeWebhookEvent(event: unknown): void {

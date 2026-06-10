@@ -103,6 +103,12 @@ interface GithubIssueApiCapture {
   lastCommentId(): string;
 }
 
+interface GithubIssueHistoryComment {
+  readonly id: number;
+  readonly login: string;
+  readonly body: string;
+}
+
 interface RecordedCallbackDelivery {
   readonly body: string;
   readonly signature: string | null;
@@ -406,6 +412,9 @@ export function mockGithubRemoteUninstall(): RecordedRemoteUninstall {
  */
 export function captureGithubIssueApi(
   remoteInstallationId: string,
+  options: {
+    readonly commentHistory?: readonly GithubIssueHistoryComment[];
+  } = {},
 ): GithubIssueApiCapture {
   const comments: CapturedIssueComment[] = [];
   const reactionDeletes: CapturedReactionDelete[] = [];
@@ -425,7 +434,16 @@ export function captureGithubIssueApi(
     http.get(
       "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
       () => {
-        return HttpResponse.json([]);
+        return HttpResponse.json(
+          (options.commentHistory ?? []).map((comment) => {
+            return {
+              id: comment.id,
+              user: { login: comment.login, type: "User" },
+              body: comment.body,
+              created_at: "2026-05-20T00:00:00Z",
+            };
+          }),
+        );
       },
     ),
     http.post(

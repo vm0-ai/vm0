@@ -2,9 +2,20 @@ import { createHmac, randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
 import type { z } from "zod";
+import {
+  apiKeysByIdContract,
+  apiKeysContract,
+} from "@vm0/api-contracts/contracts/api-keys";
+import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
+import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import {
+  zeroUserPermissionGrantsContract,
+  type UpsertUserPermissionGrantRequest,
+  type UserPermissionGrantResponse,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
   automationRunContract,
   automationsByNameContract,
@@ -66,12 +77,17 @@ import {
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import { generateSandboxToken } from "../../../auth/tokens";
 import { mockStripeClient } from "../../../external/stripe-client";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
 type ZeroRunRequest = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
+type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
+type ComposeContent = z.infer<
+  (typeof composesMainContract.create)["body"]
+>["content"];
 type CreateAutomationRequest = z.infer<
   (typeof automationsMainContract.create)["body"]
 >;
@@ -217,6 +233,7 @@ export function createRunsSchedulesApi(context: TestContext) {
     async grantProEntitlement(actor: ApiTestUser): Promise<{
       readonly customerId: string;
       readonly subscriptionId: string;
+      readonly invoiceId: string;
     }> {
       mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
       mockEnv(
@@ -236,6 +253,7 @@ export function createRunsSchedulesApi(context: TestContext) {
       const suffix = randomUUID().slice(0, 8);
       const customerId = `cus_bdd_${suffix}`;
       const subscriptionId = `sub_bdd_${suffix}`;
+      const invoiceId = `in_bdd_${suffix}`;
       context.mocks.stripe.customers.retrieve.mockResolvedValue({
         id: customerId,
         metadata: { orgId: actor.orgId },
@@ -255,7 +273,7 @@ export function createRunsSchedulesApi(context: TestContext) {
         type: "invoice.paid",
         data: {
           object: {
-            id: `in_bdd_${suffix}`,
+            id: invoiceId,
             customer: customerId,
             metadata: {},
             parent: { subscription_details: { subscription: subscriptionId } },
@@ -292,7 +310,7 @@ export function createRunsSchedulesApi(context: TestContext) {
           `Entitlement grant did not reach pro tier: ${billingStatus.body.tier}`,
         );
       }
-      return { customerId, subscriptionId };
+      return { customerId, subscriptionId, invoiceId };
     },
 
     async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
@@ -312,6 +330,141 @@ export function createRunsSchedulesApi(context: TestContext) {
           headers: runnerHeaders(true),
           params: { id: runId },
           body: {},
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async createApiKey(actor: ApiTestUser): Promise<{
+      readonly id: string;
+      readonly token: string;
+    }> {
+      const response = await accept(
+        setupApp({ context })(apiKeysContract).create({
+          headers: authenticate(context, actor),
+          body: {
+            name: `bdd-runner-key-${randomUUID().slice(0, 8)}`,
+            expiresInDays: 30,
+          },
+        }),
+        [201],
+      );
+      return { id: response.body.id, token: response.body.token };
+    },
+
+    async revokeApiKey(actor: ApiTestUser, id: string): Promise<void> {
+      await accept(
+        setupApp({ context })(apiKeysByIdContract).delete({
+          headers: authenticate(context, actor),
+          params: { id },
+        }),
+        [204],
+      );
+    },
+
+    async requestPollRunnerAs(
+      authorization: string | undefined,
+      body: RunnerPollBody,
+      statuses: readonly (200 | 400 | 401 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(runnersPollContract).poll({
+          headers: authorization === undefined ? {} : { authorization },
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestClaimRunnerJobAs(
+      authorization: string | undefined,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(runnersJobClaimContract).claim({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { id: runId },
+          body: {},
+        }),
+        statuses,
+      );
+    },
+
+    async requestRunnerRealtimeTokenAs(
+      authorization: string | undefined,
+      body: RunnerRealtimeTokenBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(runnerRealtimeTokenContract).create({
+          headers: authorization === undefined ? {} : { authorization },
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    /**
+     * Signs a sandbox webhook token for an API-created run, so sandbox
+     * report webhooks (heartbeat/complete/...) can act on runs that were
+     * never claimed by a runner.
+     */
+    sandboxTokenForRun(actor: ApiTestUser, runId: string): string {
+      if (!actor.orgId) {
+        throw new Error("Sandbox run tokens require an org-scoped actor");
+      }
+      return generateSandboxToken(actor.userId, runId, actor.orgId);
+    },
+
+    async createCompose(
+      actor: ApiTestUser,
+      content: ComposeContent,
+    ): Promise<{ readonly composeId: string; readonly name: string }> {
+      const response = await accept(
+        setupApp({ context })(composesMainContract).create({
+          headers: authenticate(context, actor),
+          body: { content },
+        }),
+        [200, 201],
+      );
+      return { composeId: response.body.composeId, name: response.body.name };
+    },
+
+    async createDirectRun(actor: ApiTestUser, body: DirectRunRequest) {
+      const response = await accept(
+        setupApp({ context })(runsMainContract).create({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        [201],
+      );
+      return response.body;
+    },
+
+    async upsertUserPermissionGrant(
+      actor: ApiTestUser,
+      body: UpsertUserPermissionGrantRequest,
+    ): Promise<UserPermissionGrantResponse> {
+      const response = await accept(
+        setupApp({ context })(zeroUserPermissionGrantsContract).upsert({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async listUserPermissionGrants(
+      actor: ApiTestUser,
+      agentId: string,
+    ): Promise<readonly UserPermissionGrantResponse[]> {
+      const response = await accept(
+        setupApp({ context })(zeroUserPermissionGrantsContract).list({
+          headers: authenticate(context, actor),
+          query: { agentId },
         }),
         [200],
       );

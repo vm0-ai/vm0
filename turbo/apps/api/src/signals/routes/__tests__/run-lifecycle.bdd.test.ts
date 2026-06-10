@@ -366,6 +366,243 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
   });
 });
 
+describe("RUN-03: user-runner protocol and runner authentication", () => {
+  it("dispatches, scopes, and claims runs through user API keys", async () => {
+    const api = createRunsSchedulesApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const apiKey = await api.createApiKey(actor);
+    const bearer = `Bearer ${apiKey.token}`;
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "user runner job one",
+      modelProvider: "anthropic-api-key",
+    });
+    const polled = await api.requestPollRunnerAs(
+      bearer,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [200],
+    );
+    if (polled.status !== 200) {
+      throw new Error("Expected the user runner poll to succeed");
+    }
+    expect(polled.body.job?.runId).toBe(first.runId);
+
+    const claimed = await api.requestClaimRunnerJobAs(
+      bearer,
+      first.runId,
+      [200],
+    );
+    if (claimed.status !== 200) {
+      throw new Error("Expected the user runner claim to succeed");
+    }
+    expect(claimed.body.prompt).toBe("user runner job one");
+    expect(claimed.body.sandboxToken).not.toBe("");
+    const claimedRun = await api.readRun(actor, first.runId);
+    expect(claimedRun.status).toBe("running");
+
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "user runner job two",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const outsider = createBddApi(context).user();
+    const outsiderKey = await api.createApiKey(outsider);
+    const outsiderBearer = `Bearer ${outsiderKey.token}`;
+    const outsiderPoll = await api.requestPollRunnerAs(
+      outsiderBearer,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [200],
+    );
+    if (outsiderPoll.status !== 200) {
+      throw new Error("Expected the outsider poll to succeed");
+    }
+    expect(outsiderPoll.body.job ?? null).toBeNull();
+    const crossClaim = await api.requestClaimRunnerJobAs(
+      outsiderBearer,
+      second.runId,
+      [403],
+    );
+    expectApiError(crossClaim.body);
+    expect(crossClaim.body.error.message).toBe("Job does not belong to user");
+
+    const tokenRequest = {
+      keyName: "bdd-key",
+      timestamp: 1_700_000_000_000,
+      capability: `{"runner-group:${runnerGroup}":["subscribe"]}`,
+      nonce: "bdd-nonce",
+      mac: "bdd-mac",
+    };
+    context.mocks.ably.createTokenRequest.mockResolvedValue(tokenRequest);
+    const realtime = await api.requestRunnerRealtimeTokenAs(
+      bearer,
+      { group: runnerGroup },
+      [200],
+    );
+    expect(realtime.body).toStrictEqual(tokenRequest);
+    const deniedRealtime = await api.requestRunnerRealtimeTokenAs(
+      bearer,
+      { group: "wrong-org/default" },
+      [403],
+    );
+    expectApiError(deniedRealtime.body);
+    expect(deniedRealtime.body.error.message).toBe(
+      "Only vm0/* runner groups are supported",
+    );
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await clearAllDetached();
+    const settled = await api.readRunQueue(actor);
+    expect(settled.body.concurrency.active).toBe(0);
+  });
+
+  it("rejects runner calls with malformed, revoked, or wrong runner credentials", async () => {
+    const api = createRunsSchedulesApi(context);
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const pollBody = { group: "vm0/bdd-auth", profiles: ["vm0/default"] };
+
+    const rejectedAuthorizations = [
+      "Basic vm0_official_credentials",
+      "Bearer not-a-runner-token",
+      "Bearer vm0_pat_not-a-valid-jwt",
+      "Bearer vm0_official_too-short",
+      `Bearer vm0_official_${"f".repeat(64)}`,
+    ];
+    for (const authorization of rejectedAuthorizations) {
+      const poll = await api.requestPollRunnerAs(
+        authorization,
+        pollBody,
+        [401],
+      );
+      expectApiError(poll.body);
+      expect(poll.body.error.message).toBe("Authentication required");
+    }
+
+    const apiKey = await api.createApiKey(actor);
+    const bearer = `Bearer ${apiKey.token}`;
+    await api.requestPollRunnerAs(bearer, pollBody, [200]);
+
+    await api.revokeApiKey(actor, apiKey.id);
+    const revokedPoll = await api.requestPollRunnerAs(bearer, pollBody, [401]);
+    expectApiError(revokedPoll.body);
+    const revokedClaim = await api.requestClaimRunnerJobAs(
+      bearer,
+      randomUUID(),
+      [401],
+    );
+    expectApiError(revokedClaim.body);
+    expect(revokedClaim.body.error.message).toBe("Not authenticated");
+    const revokedRealtime = await api.requestRunnerRealtimeTokenAs(
+      bearer,
+      { group: "vm0/bdd-auth" },
+      [401],
+    );
+    expectApiError(revokedRealtime.body);
+    expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
+  });
+
+  it("drops queued jobs whose runs reached a terminal state before the claim", async () => {
+    const api = createRunsSchedulesApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "terminal before claim",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(run.status).toBe("pending");
+
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+    };
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "sandbox crashed before claim",
+        lastEventSequence: 0,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await clearAllDetached();
+    const failed = await api.readRun(actor, run.runId);
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe("sandbox crashed before claim");
+
+    const claim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(claim.body);
+    expect(claim.body.error.message).toBe("Run not found");
+
+    const reclaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(reclaim.body);
+    expect(reclaim.body.error.message).toBe("Job not found in queue");
+  });
+
+  it("returns null claim secretValues for direct compose runs without stored secrets", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    // A plain compose carries inline environment values but no body, model
+    // provider, or connector secrets, so no encrypted secrets map is stored
+    // with the queued job.
+    const composeName = `bdd-no-secrets-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "claim without stored secrets",
+    });
+    expect(run.status).toBe("pending");
+
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.secretValues).toBeNull();
+    expect(claim.prompt).toBe("claim without stored secrets");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+
+    // A compose pinned to a non-vm0 runner group fails dispatch at creation.
+    const foreignName = `bdd-foreign-${randomUUID().slice(0, 8)}`;
+    const foreignCompose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [foreignName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+          experimental_runner: { group: "other/test" },
+        },
+      },
+    });
+    const failedRun = await api.createDirectRun(actor, {
+      agentComposeId: foreignCompose.composeId,
+      prompt: "dispatch to a foreign runner group",
+    });
+    expect(failedRun.status).toBe("failed");
+    expect(failedRun.error).toBe("Only vm0/* runner groups are supported");
+  });
+});
+
 describe("HOOK-01/RUN-03: terminal run callbacks dispatch on cancellation", () => {
   it("delivers, fails, and retries chat run callbacks through cancellation side effects", async () => {
     const api = createRunsSchedulesApi(context);

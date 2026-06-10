@@ -1160,6 +1160,83 @@ function issuesLabeledEvent(args: {
   });
 }
 
+interface GithubSubjectEventArgs {
+  readonly remoteInstallationId: string;
+  readonly repo: string;
+  readonly issueNumber: number;
+  readonly action: string;
+  readonly labels: readonly string[];
+  readonly label?: string;
+  readonly issueTitle?: string;
+  readonly issueBody?: string | null;
+  readonly issueUser?: GithubWebhookSender;
+  readonly sender: GithubWebhookSender;
+}
+
+function githubSubjectEvent(
+  subjectKey: "issue" | "pull_request",
+  args: GithubSubjectEventArgs,
+): string {
+  const sender = webhookSender(args.sender);
+  const issueUser = webhookSender(args.issueUser ?? args.sender);
+  return JSON.stringify({
+    action: args.action,
+    [subjectKey]: {
+      number: args.issueNumber,
+      title: args.issueTitle ?? `BDD issue ${args.issueNumber}`,
+      body:
+        args.issueBody === undefined
+          ? "Please handle this issue."
+          : args.issueBody,
+      labels: args.labels.map((name, index) => {
+        return { id: index + 1, name };
+      }),
+      user: issueUser,
+    },
+    ...(args.label === undefined ? {} : { label: { id: 1, name: args.label } }),
+    repository: { full_name: args.repo },
+    installation: { id: Number(args.remoteInstallationId) },
+    sender,
+  });
+}
+
+function issuesEvent(args: GithubSubjectEventArgs): string {
+  return githubSubjectEvent("issue", args);
+}
+
+function pullRequestEvent(args: GithubSubjectEventArgs): string {
+  return githubSubjectEvent("pull_request", args);
+}
+
+function installationEvent(args: {
+  readonly action: string;
+  readonly installationId: string;
+  readonly targetId: string;
+}): string {
+  return JSON.stringify({
+    action: args.action,
+    installation: {
+      id: Number(args.installationId),
+      account: {
+        id: Number(args.targetId),
+        login: "bdd-org",
+        type: "Organization",
+      },
+    },
+    sender: { id: 4242, login: "bdd-sender" },
+  });
+}
+
+function latestComment(issueApi: {
+  readonly comments: readonly { readonly body: string }[];
+}): { readonly body: string } {
+  const comment = issueApi.comments[issueApi.comments.length - 1];
+  if (!comment) {
+    throw new Error("Expected a captured GitHub issue comment");
+  }
+  return comment;
+}
+
 function issueCommentEvent(args: {
   readonly remoteInstallationId: string;
   readonly repo: string;
@@ -1192,7 +1269,7 @@ function issueCommentEvent(args: {
 async function postGithubWebhook(
   webhooks: ReturnType<typeof createWebhookCallbackApi>,
   body: string,
-  event: "issues" | "issue_comment",
+  event: "issues" | "issue_comment" | "pull_request" | "installation",
 ): Promise<void> {
   await webhooks.requestGithubWebhook(
     body,
@@ -1704,5 +1781,572 @@ describe("HOOK-01/INT-03 G6: issue-label runs and signed internal callbacks", ()
       [404],
     );
     expect(unknownRun.body).toStrictEqual({ error: "Callback not found" });
+  });
+});
+
+describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
+  it("renders issue context and file blocks into label-dispatched runs", async () => {
+    const senderGithubUserId = newGithubUserId();
+    const harness = await githubRunActor(senderGithubUserId);
+    const { api, webhooks, gh, actor, runnerGroup, issueApi } = harness;
+    const repo = "bdd-org/bdd-label-dispatch";
+    const sender = { githubUserId: senderGithubUserId };
+    proxyGithubIssuesCallbackToApp(context);
+
+    await gh.createLabelListener(
+      actor,
+      {
+        labelName: "zero-dispatch",
+        triggerMode: "anyone",
+        prompt: "Handle the dispatched issue",
+        agentId: harness.secondAgentId,
+      },
+      [201],
+    );
+
+    // An opened issue carrying the matching label dispatches with the issue
+    // context and attachment file blocks rendered into the system prompt.
+    const fileUrl = "https://github.com/user-attachments/assets/abc123";
+    await postGithubWebhook(
+      webhooks,
+      issuesEvent({
+        remoteInstallationId: harness.remoteInstallationId,
+        repo,
+        issueNumber: 41,
+        action: "opened",
+        labels: ["enhancement", "zero-dispatch"],
+        issueBody: `Please inspect this attachment:\n\n![screenshot.png](${fileUrl})`,
+        sender,
+      }),
+      "issues",
+    );
+    expect(issueApi.comments).toHaveLength(1);
+    const startedComment = latestComment(issueApi);
+    expect(startedComment.body).toContain('received the "zero-dispatch" label');
+    const firstRunId = runIdFromAuditComment(startedComment.body);
+
+    await api.heartbeatRunner(runnerGroup);
+    const firstPoll = await api.pollRunner(runnerGroup);
+    expect(firstPoll.body.job?.runId).toBe(firstRunId);
+    expect(firstPoll.body.job?.prompt).toBe("Handle the dispatched issue");
+    const firstContext = firstPoll.body.job?.appendSystemPrompt ?? "";
+    expect(firstContext).toContain("# GitHub Issue Context");
+    expect(firstContext).toContain(
+      `Issue URL: https://github.com/${repo}/issues/41`,
+    );
+    expect(firstContext).toContain("- MSG_ID: issue:41");
+    expect(firstContext).toContain("Matched label: zero-dispatch");
+    expect(firstContext).toContain("[GitHub file]");
+    expect(firstContext).toContain(`[URL] ${fileUrl}`);
+    expect(firstContext).toContain("[FILENAME] screenshot.png");
+    expect(firstContext).not.toContain(`![screenshot.png](${fileUrl})`);
+    expect(firstContext).toContain("You are currently running inside: GitHub");
+    await api.requestCancelRun(actor, firstRunId, [200]);
+    await clearAllDetached();
+    await clearAllDetached();
+
+    // A null issue body falls back to the placeholder paragraph.
+    await postGithubWebhook(
+      webhooks,
+      issuesEvent({
+        remoteInstallationId: harness.remoteInstallationId,
+        repo,
+        issueNumber: 42,
+        action: "opened",
+        labels: ["zero-dispatch"],
+        issueTitle: "Fallback title",
+        issueBody: null,
+        sender,
+      }),
+      "issues",
+    );
+    const secondRunId = runIdFromAuditComment(latestComment(issueApi).body);
+    await api.heartbeatRunner(runnerGroup);
+    const secondPoll = await api.pollRunner(runnerGroup);
+    expect(secondPoll.body.job?.runId).toBe(secondRunId);
+    const secondContext = secondPoll.body.job?.appendSystemPrompt ?? "";
+    expect(secondContext).toContain("Title: Fallback title");
+    expect(secondContext).toContain("_No description provided._");
+    await api.requestCancelRun(actor, secondRunId, [200]);
+    await clearAllDetached();
+    await clearAllDetached();
+
+    // Non-matching labels and ignored actions never dispatch.
+    let commentCount = issueApi.comments.length;
+    await postGithubWebhook(
+      webhooks,
+      issuesEvent({
+        remoteInstallationId: harness.remoteInstallationId,
+        repo,
+        issueNumber: 43,
+        action: "labeled",
+        labels: ["zero-dispatch", "unrelated"],
+        label: "unrelated",
+        sender,
+      }),
+      "issues",
+    );
+    await postGithubWebhook(
+      webhooks,
+      issuesEvent({
+        remoteInstallationId: harness.remoteInstallationId,
+        repo,
+        issueNumber: 43,
+        action: "closed",
+        labels: ["zero-dispatch"],
+        sender,
+      }),
+      "issues",
+    );
+    expect(issueApi.comments).toHaveLength(commentCount);
+    const idlePoll = await api.pollRunner(runnerGroup);
+    expect(idlePoll.body.job ?? null).toBeNull();
+
+    // Labeled pull requests dispatch with pull-request context.
+    await postGithubWebhook(
+      webhooks,
+      pullRequestEvent({
+        remoteInstallationId: harness.remoteInstallationId,
+        repo,
+        issueNumber: 44,
+        action: "labeled",
+        labels: ["zero-dispatch"],
+        label: "zero-dispatch",
+        sender,
+      }),
+      "pull_request",
+    );
+    const prRunId = runIdFromAuditComment(latestComment(issueApi).body);
+    await api.heartbeatRunner(runnerGroup);
+    const prPoll = await api.pollRunner(runnerGroup);
+    expect(prPoll.body.job?.runId).toBe(prRunId);
+    const prContext = prPoll.body.job?.appendSystemPrompt ?? "";
+    expect(prContext).toContain("# GitHub Pull Request Context");
+    expect(prContext).toContain(
+      `Pull Request URL: https://github.com/${repo}/pull/44`,
+    );
+    await api.requestCancelRun(actor, prRunId, [200]);
+    await clearAllDetached();
+    await clearAllDetached();
+
+    // Creator-scoped listeners only fire for issues authored by the linked
+    // creator account.
+    await gh.createLabelListener(
+      actor,
+      {
+        labelName: "mine-only",
+        triggerMode: "created_by_me",
+        prompt: "Handle my own issue",
+        agentId: harness.secondAgentId,
+      },
+      [201],
+    );
+    const stranger = { githubUserId: newGithubUserId(), login: "stranger" };
+    commentCount = issueApi.comments.length;
+    await postGithubWebhook(
+      webhooks,
+      issuesEvent({
+        remoteInstallationId: harness.remoteInstallationId,
+        repo,
+        issueNumber: 45,
+        action: "labeled",
+        labels: ["mine-only"],
+        label: "mine-only",
+        issueUser: stranger,
+        sender: stranger,
+      }),
+      "issues",
+    );
+    expect(issueApi.comments).toHaveLength(commentCount);
+    const strangerPoll = await api.pollRunner(runnerGroup);
+    expect(strangerPoll.body.job ?? null).toBeNull();
+
+    await postGithubWebhook(
+      webhooks,
+      issuesEvent({
+        remoteInstallationId: harness.remoteInstallationId,
+        repo,
+        issueNumber: 46,
+        action: "labeled",
+        labels: ["mine-only"],
+        label: "mine-only",
+        issueUser: sender,
+        sender,
+      }),
+      "issues",
+    );
+    const creatorRunId = runIdFromAuditComment(latestComment(issueApi).body);
+    await api.heartbeatRunner(runnerGroup);
+    const creatorPoll = await api.pollRunner(runnerGroup);
+    expect(creatorPoll.body.job?.runId).toBe(creatorRunId);
+    expect(creatorPoll.body.job?.prompt).toBe("Handle my own issue");
+    await api.requestCancelRun(actor, creatorRunId, [200]);
+    await clearAllDetached();
+    await clearAllDetached();
+    const cancelled = await api.readRun(actor, creatorRunId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("reports rejected and failed label dispatches through comments and callbacks", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsSchedulesApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const gh = createGithubBddApi(context);
+
+    // An installed but never-entitled org turns the admission rejection into
+    // a formatted failure comment without creating a run.
+    const actor = bdd.user();
+    acceptGithubRunObjectStorage(context);
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    await bdd.setupOnboarding(actor, {
+      displayName: "BDD Unentitled GitHub Agent",
+    });
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Rejected Dispatch Agent",
+      visibility: "private",
+    });
+    const senderGithubUserId = newGithubUserId();
+    const install = await gh.installGithubApp(actor, agent.agentId, {
+      oauthCode: {
+        code: `g7b-${randomUUID().slice(0, 8)}`,
+        githubUserId: senderGithubUserId,
+      },
+    });
+    webhooks.configureGithubWebhookSecret();
+    const issueApi = captureGithubIssueApi(install.remoteInstallationId);
+    mockClerkMembership(context, actor, "org:admin");
+    await gh.createLabelListener(
+      actor,
+      {
+        labelName: "no-credits",
+        triggerMode: "anyone",
+        prompt: "Run without credits",
+        agentId: agent.agentId,
+      },
+      [201],
+    );
+
+    await postGithubWebhook(
+      webhooks,
+      issuesEvent({
+        remoteInstallationId: install.remoteInstallationId,
+        repo: "bdd-org/bdd-rejected",
+        issueNumber: 50,
+        action: "labeled",
+        labels: ["no-credits"],
+        label: "no-credits",
+        sender: { githubUserId: senderGithubUserId },
+      }),
+      "issues",
+    );
+    expect(issueApi.comments).toHaveLength(1);
+    const rejection = latestComment(issueApi);
+    expect(rejection.body).toContain("Insufficient credits");
+    expect(rejection.body).toContain("Add credits:");
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.concurrency.active).toBe(0);
+
+    // A listener targeting another member's private agent fails admission
+    // with a non-credit error that still surfaces as a failure comment.
+    const privateOwner = bdd.user({
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+    const privateAgent = await bdd.createAgent(privateOwner, {
+      displayName: "BDD Foreign Private Agent",
+      visibility: "private",
+    });
+    await gh.createLabelListener(
+      actor,
+      {
+        labelName: "foreign-agent",
+        triggerMode: "anyone",
+        prompt: "Run a foreign private agent",
+        agentId: privateAgent.agentId,
+      },
+      [201],
+    );
+    await postGithubWebhook(
+      webhooks,
+      issuesEvent({
+        remoteInstallationId: install.remoteInstallationId,
+        repo: "bdd-org/bdd-rejected",
+        issueNumber: 52,
+        action: "labeled",
+        labels: ["foreign-agent"],
+        label: "foreign-agent",
+        sender: { githubUserId: senderGithubUserId },
+      }),
+      "issues",
+    );
+    expect(issueApi.comments).toHaveLength(2);
+    expect(latestComment(issueApi).body).not.toContain("Add credits:");
+    expect((await api.readRunQueue(actor)).body.concurrency.active).toBe(0);
+
+    // An entitled org without a configured runner records the failed run and
+    // reports it through the signed callback instead of a started comment.
+    const entitled = bdd.user();
+    await api.grantProEntitlement(entitled);
+    await api.ensureOrgModelProvider(entitled);
+    const entitledAgent = await bdd.createAgent(entitled, {
+      displayName: "BDD Failed Dispatch Agent",
+      visibility: "private",
+    });
+    const entitledSenderId = newGithubUserId();
+    const entitledInstall = await gh.installGithubApp(
+      entitled,
+      entitledAgent.agentId,
+      {
+        oauthCode: {
+          code: `g7b2-${randomUUID().slice(0, 8)}`,
+          githubUserId: entitledSenderId,
+        },
+      },
+    );
+    webhooks.configureGithubWebhookSecret();
+    const entitledIssueApi = captureGithubIssueApi(
+      entitledInstall.remoteInstallationId,
+    );
+    const deliveries = captureGithubIssuesCallbackDeliveries(context);
+    await gh.createLabelListener(
+      entitled,
+      {
+        labelName: "no-runner",
+        triggerMode: "anyone",
+        prompt: "Run without a runner group",
+        agentId: entitledAgent.agentId,
+      },
+      [201],
+    );
+    // Without GitHub App credentials the dispatch proceeds tokenless (no
+    // reaction, no comment history, empty issue context); without a runner
+    // group the created run fails immediately.
+    mockOptionalEnv("GITHUB_APP_ID", undefined);
+    mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", undefined);
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
+
+    await postGithubWebhook(
+      webhooks,
+      issuesEvent({
+        remoteInstallationId: entitledInstall.remoteInstallationId,
+        repo: "bdd-org/bdd-failed",
+        issueNumber: 51,
+        action: "labeled",
+        labels: ["no-runner"],
+        label: "no-runner",
+        sender: { githubUserId: entitledSenderId },
+      }),
+      "issues",
+    );
+
+    expect(deliveries).toHaveLength(1);
+    const delivery = JSON.parse(deliveries[0]?.body ?? "{}") as Record<
+      string,
+      unknown
+    >;
+    expect(delivery).toMatchObject({
+      status: "failed",
+      error: "No executor configured: set RUNNER_DEFAULT_GROUP",
+    });
+    const failedRunId =
+      typeof delivery.runId === "string" ? delivery.runId : "";
+    const failedRun = await api.readRun(entitled, failedRunId);
+    expect(failedRun.status).toBe("failed");
+    expect(failedRun.error).toBe(
+      "No executor configured: set RUNNER_DEFAULT_GROUP",
+    );
+    // Without GitHub App credentials neither a started-work comment nor a
+    // callback-driven failure comment can be posted.
+    expect(entitledIssueApi.comments).toHaveLength(0);
+  });
+});
+
+describe("HOOK-02/INT-03 G8: bot mention dispatches", () => {
+  it("dispatches alias mentions with file blocks and connect links for unlinked senders", async () => {
+    const senderGithubUserId = newGithubUserId();
+    const harness = await githubRunActor(senderGithubUserId);
+    const { api, webhooks, actor, runnerGroup } = harness;
+    const repo = "bdd-org/bdd-mentions";
+    const sender = { githubUserId: senderGithubUserId };
+    proxyGithubIssuesCallbackToApp(context);
+    // Re-capture the issue API with earlier conversation history so the
+    // dispatched context renders prior comments (and drops the trigger).
+    const issueApi = captureGithubIssueApi(harness.remoteInstallationId, {
+      commentHistory: [
+        { id: 12, login: "maintainer", body: "Earlier discussion" },
+        { id: 900, login: "octocat", body: "@Zero please inspect" },
+      ],
+    });
+
+    // A linked user mentioning the @Zero alias dispatches a run whose prompt
+    // replaces comment file HTML with URL file blocks.
+    const fileUrl =
+      "https://github.com/user-attachments/assets/4a354666-2014-433a-82c3-dc6941d6f0ec";
+    await postGithubWebhook(
+      webhooks,
+      issueCommentEvent({
+        remoteInstallationId: harness.remoteInstallationId,
+        repo,
+        issueNumber: 9,
+        commentId: "900",
+        commentBody: `@Zero please inspect\n\n<img width="480" height="480" alt="Image" src="${fileUrl}">`,
+        sender,
+      }),
+      "issue_comment",
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const mentionPoll = await api.pollRunner(runnerGroup);
+    const mentionJob = mentionPoll.body.job;
+    if (!mentionJob) {
+      throw new Error("Expected the alias mention to dispatch a run");
+    }
+    expect(mentionJob.prompt).toContain("please inspect");
+    expect(mentionJob.prompt).not.toContain("@Zero");
+    expect(mentionJob.prompt).toContain("[GitHub file]");
+    expect(mentionJob.prompt).toContain(`[URL] ${fileUrl}`);
+    expect(mentionJob.prompt).not.toContain("<img");
+    expect(mentionJob.prompt).not.toContain("[FILENAME]");
+    expect(mentionJob.appendSystemPrompt).toContain(
+      `Matched trigger: @${GITHUB_APP_SLUG}[bot] mention`,
+    );
+    expect(mentionJob.appendSystemPrompt).toContain("- MSG_ID: issue:9");
+    // Prior comments render as context messages; the trigger comment is
+    // filtered out of the history.
+    expect(mentionJob.appendSystemPrompt).toContain("Earlier discussion");
+    expect(mentionJob.appendSystemPrompt).toContain("- MSG_ID: comment:12");
+    expect(mentionJob.appendSystemPrompt).not.toContain(
+      "- MSG_ID: comment:900",
+    );
+    await api.requestCancelRun(actor, mentionJob.runId, [200]);
+    await clearAllDetached();
+    await clearAllDetached();
+
+    // Mentions from unlinked senders receive a signed connect-link comment
+    // instead of a run.
+    const unlinked = {
+      githubUserId: newGithubUserId(),
+      login: "unlinked-user",
+    };
+    const beforeConnect = issueApi.comments.length;
+    await postGithubWebhook(
+      webhooks,
+      issueCommentEvent({
+        remoteInstallationId: harness.remoteInstallationId,
+        repo,
+        issueNumber: 9,
+        commentId: "901",
+        commentBody: "@Zero please help",
+        sender: unlinked,
+      }),
+      "issue_comment",
+    );
+    expect(issueApi.comments).toHaveLength(beforeConnect + 1);
+    const connectComment = latestComment(issueApi).body;
+    expect(connectComment).toContain("connect your GitHub account first");
+    const connectUrlText = connectComment.match(
+      /\[Connect GitHub\]\(([^)]+)\)/u,
+    )?.[1];
+    if (!connectUrlText) {
+      throw new Error("Expected a connect link in the comment");
+    }
+    const connectUrl = new URL(connectUrlText);
+    expect(connectUrl.origin).toBe(APP_ORIGIN);
+    expect(connectUrl.pathname).toBe("/github/connect");
+    expect(connectUrl.searchParams.get("installation")).toBe(
+      harness.remoteInstallationId,
+    );
+    expect(connectUrl.searchParams.get("ghUser")).toBe(unlinked.githubUserId);
+    expect(connectUrl.searchParams.get("ghLogin")).toBe("unlinked-user");
+    expect(connectUrl.searchParams.get("ts")).toMatch(/^\d+$/u);
+    expect(connectUrl.searchParams.get("sig")).toMatch(/^[0-9a-f]{64}$/u);
+    const unlinkedPoll = await api.pollRunner(runnerGroup);
+    expect(unlinkedPoll.body.job ?? null).toBeNull();
+
+    // Label and mention events for unknown installations are acknowledged
+    // without dispatching or commenting.
+    const unknownInstallationId = newRemoteInstallationId();
+    const beforeUnknown = issueApi.comments.length;
+    await postGithubWebhook(
+      webhooks,
+      issuesEvent({
+        remoteInstallationId: unknownInstallationId,
+        repo,
+        issueNumber: 10,
+        action: "labeled",
+        labels: ["zero-dispatch"],
+        label: "zero-dispatch",
+        sender,
+      }),
+      "issues",
+    );
+    await postGithubWebhook(
+      webhooks,
+      issueCommentEvent({
+        remoteInstallationId: unknownInstallationId,
+        repo,
+        issueNumber: 10,
+        commentId: "902",
+        commentBody: "@Zero anyone home?",
+        sender,
+      }),
+      "issue_comment",
+    );
+    expect(issueApi.comments).toHaveLength(beforeUnknown);
+    const unknownPoll = await api.pollRunner(runnerGroup);
+    expect(unknownPoll.body.job ?? null).toBeNull();
+  });
+});
+
+describe("HOOK-02/INT-03 G9: installation lifecycle webhooks", () => {
+  it("removes installations and notifies linked users on installation deleted events", async () => {
+    const bdd = createBddApi(context);
+    const gh = createGithubBddApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+
+    const actor = bdd.user();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Install Cleanup Agent",
+      visibility: "private",
+    });
+    const install = await gh.installGithubApp(actor, agent.agentId, {
+      oauthCode: {
+        code: `g9-${randomUUID().slice(0, 8)}`,
+        githubUserId: newGithubUserId(),
+      },
+    });
+    await gh.createLabelListener(
+      actor,
+      {
+        labelName: "cleanup-probe",
+        triggerMode: "anyone",
+        prompt: "Probe the cleanup",
+        agentId: agent.agentId,
+      },
+      [201],
+    );
+    webhooks.configureGithubWebhookSecret();
+
+    context.mocks.ably.publish.mockClear();
+    const body = installationEvent({
+      action: "deleted",
+      installationId: install.remoteInstallationId,
+      targetId: install.targetId,
+    });
+    const response = await webhooks.requestGithubWebhook(
+      body,
+      webhooks.signedGithubWebhookHeaders(body, "installation"),
+      [200],
+    );
+    expect(response.body).toBe("OK");
+    await clearAllDetached();
+
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "github:changed",
+      null,
+    );
+    const missing = await gh.requestReadInstallation(actor, [404]);
+    expect(missing.body.error.code).toBe("NOT_FOUND");
   });
 });

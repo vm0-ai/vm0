@@ -1,14 +1,151 @@
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { nowDate } from "../../../lib/time";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now, nowDate } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-helpers";
-import { expectApiError } from "./helpers/api-bdd";
+import { clearAllDetached } from "../../utils";
+import {
+  createBddApi,
+  expectApiError,
+  type ApiTestUser,
+} from "./helpers/api-bdd";
+import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
+import {
+  createRunsSchedulesApi,
+  uniqueScheduleName,
+} from "./helpers/api-bdd-runs-schedules";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 const api = createWebhookCallbackApi(context);
+
+function orgOf(actor: ApiTestUser): string {
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped actor");
+  }
+  return actor.orgId;
+}
+
+function epochSeconds(offsetDays: number): number {
+  return Math.floor(now() / 1000) + offsetDays * 86_400;
+}
+
+function isoOf(epoch: number): string {
+  return new Date(epoch * 1000).toISOString();
+}
+
+function stripeEvent(args: {
+  readonly type: string;
+  readonly object: Record<string, unknown>;
+  readonly previousAttributes?: Record<string, unknown>;
+}): Record<string, unknown> {
+  return {
+    id: `evt_bdd_${randomUUID()}`,
+    type: args.type,
+    created: Math.floor(now() / 1000),
+    data: {
+      object: args.object,
+      ...(args.previousAttributes === undefined
+        ? {}
+        : { previous_attributes: args.previousAttributes }),
+    },
+  };
+}
+
+function subscriptionLines(periodEndUnix: number): {
+  readonly data: readonly {
+    readonly period: { readonly end: number };
+    readonly parent: { readonly type: "subscription_item_details" };
+  }[];
+} {
+  return {
+    data: [
+      {
+        period: { end: periodEndUnix },
+        parent: { type: "subscription_item_details" },
+      },
+    ],
+  };
+}
+
+function proSubscription(args: {
+  readonly id: string;
+  readonly customerId: string;
+  readonly status?: string;
+  readonly trialEnd?: number;
+  readonly metadata?: Record<string, string>;
+}): Record<string, unknown> {
+  return {
+    id: args.id,
+    status: args.status ?? "active",
+    customer: args.customerId,
+    cancel_at: null,
+    cancel_at_period_end: false,
+    schedule: null,
+    trial_end: args.trialEnd ?? null,
+    metadata: args.metadata ?? {},
+    items: { data: [{ price: { id: "price_bdd_pro" } }] },
+  };
+}
+
+function commandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command === "object" &&
+    command !== null &&
+    "input" in command &&
+    typeof command.input === "object" &&
+    command.input !== null
+  ) {
+    return command.input as Record<string, unknown>;
+  }
+  return {};
+}
+
+function acceptGithubGrantRevocations(): void {
+  server.use(
+    http.delete("https://api.github.com/applications/:clientId/grant", () => {
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+}
+
+function acceptTelegramDomainProbes(): void {
+  server.use(
+    http.head("https://oauth.telegram.org/auth", () => {
+      return new HttpResponse(null, {
+        status: 200,
+        headers: { "content-length": "2001" },
+      });
+    }),
+  );
+}
+
+async function registerTelegramBot(
+  actor: ApiTestUser,
+  defaultAgentId: string,
+): Promise<string> {
+  const integrations = createBddIntegrationApi(context);
+  const telegramBotId = randomInt(1_000_000_000, 9_999_999_999);
+  const botToken = `${telegramBotId}:bdd-token-${randomUUID().slice(0, 8)}`;
+  acceptTelegramDomainProbes();
+  context.mocks.telegram.getMe.mockResolvedValue({
+    id: telegramBotId,
+    username: `bdd_bot_${telegramBotId}`,
+    can_read_all_group_messages: true,
+  });
+  await integrations.requestRegisterTelegramBot(
+    actor,
+    { botToken, defaultAgentId },
+    [201],
+  );
+  return botToken;
+}
 
 describe("WHCB-01: third-party webhook verification boundaries", () => {
   it("reports unconfigured third-party webhooks through public responses", async () => {
@@ -1091,5 +1228,1645 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     );
     expectApiError(malformedStorageCommit.body);
     expect(malformedStorageCommit.body.error.code).toBe("BAD_REQUEST");
+  });
+});
+
+describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
+  it("replays, expires, and auto-recharges subscription invoice credits", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsSchedulesApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const granted = await runs.grantProEntitlement(actor);
+
+    const baseline = await billing.readBillingStatus(actor);
+    expect(baseline.tier).toBe("pro");
+    expect(baseline.credits).toBe(20_000);
+    expect(baseline.creditGrants).toHaveLength(1);
+
+    // Redelivering the processed entitlement invoice grants nothing more.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: granted.invoiceId,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: { subscription: granted.subscriptionId },
+          },
+          lines: subscriptionLines(epochSeconds(30)),
+        },
+      }),
+      [200],
+    );
+    const afterReplay = await billing.readBillingStatus(actor);
+    expect(afterReplay.credits).toBe(20_000);
+    expect(afterReplay.creditGrants).toHaveLength(1);
+
+    // An invoice whose subscription period already ended grants credits that
+    // immediately count as expired-but-unsettled.
+    const staleEpoch = epochSeconds(-60);
+    const staleInvoiceId = `in_bdd_stale_${randomUUID().slice(0, 8)}`;
+    const staleInvoice = {
+      id: staleInvoiceId,
+      customer: granted.customerId,
+      metadata: {},
+      parent: {
+        subscription_details: { subscription: granted.subscriptionId },
+      },
+      lines: subscriptionLines(staleEpoch),
+    };
+    await api.postStripeEvent(
+      stripeEvent({ type: "invoice.paid", object: staleInvoice }),
+      [200],
+    );
+    const afterStale = await billing.readBillingStatus(actor);
+    expect(afterStale.credits).toBe(20_000);
+    expect(afterStale.creditGrants).toHaveLength(1);
+    expect(afterStale.currentPeriodEnd).toBe(isoOf(staleEpoch));
+
+    // The next renewal settles the expired grant before granting again.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_renewal_${randomUUID().slice(0, 8)}`,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: { subscription: granted.subscriptionId },
+          },
+          lines: subscriptionLines(epochSeconds(30)),
+        },
+      }),
+      [200],
+    );
+    const afterRenewal = await billing.readBillingStatus(actor);
+    expect(afterRenewal.credits).toBe(40_000);
+    expect(afterRenewal.creditGrants).toHaveLength(2);
+
+    // Concurrent duplicate deliveries of one invoice grant exactly once.
+    const concurrentInvoice = {
+      id: `in_bdd_concurrent_${randomUUID().slice(0, 8)}`,
+      customer: granted.customerId,
+      metadata: {},
+      parent: {
+        subscription_details: { subscription: granted.subscriptionId },
+      },
+      lines: subscriptionLines(epochSeconds(45)),
+    };
+    await Promise.all([
+      api.postStripeEvent(
+        stripeEvent({ type: "invoice.paid", object: concurrentInvoice }),
+        [200],
+      ),
+      api.postStripeEvent(
+        stripeEvent({ type: "invoice.paid", object: concurrentInvoice }),
+        [200],
+      ),
+    ]);
+    const afterConcurrent = await billing.readBillingStatus(actor);
+    expect(afterConcurrent.credits).toBe(60_000);
+    expect(afterConcurrent.creditGrants).toHaveLength(3);
+
+    // A stale invoice redelivered after later renewals hits the existing
+    // expires record and grants nothing.
+    await api.postStripeEvent(
+      stripeEvent({ type: "invoice.paid", object: staleInvoice }),
+      [200],
+    );
+    expect((await billing.readBillingStatus(actor)).credits).toBe(60_000);
+
+    // Invoices without a subscription line period fail loudly and roll back.
+    const broken = await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_broken_${randomUUID().slice(0, 8)}`,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: { subscription: granted.subscriptionId },
+          },
+          lines: { data: [] },
+        },
+      }),
+      [500],
+    );
+    expect(broken.body).toStrictEqual({ error: "Internal server error" });
+    expect((await billing.readBillingStatus(actor)).credits).toBe(60_000);
+
+    // Concurrent auto-recharge invoices grant the sentinel exactly once.
+    const autoRechargeInvoice = {
+      id: `in_bdd_auto_${randomUUID().slice(0, 8)}`,
+      customer: granted.customerId,
+      metadata: {
+        type: "auto_recharge",
+        orgId,
+        creditsAmount: "5000",
+      },
+      parent: null,
+    };
+    await Promise.all([
+      api.postStripeEvent(
+        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoice }),
+        [200],
+      ),
+      api.postStripeEvent(
+        stripeEvent({ type: "invoice.paid", object: autoRechargeInvoice }),
+        [200],
+      ),
+    ]);
+    const final = await billing.readBillingStatus(actor);
+    expect(final.credits).toBe(65_000);
+    const autoGrant = final.creditGrants.find((grant) => {
+      return grant.source === "auto_recharge";
+    });
+    expect(autoGrant?.amount).toBe(5000);
+    expect(autoGrant?.remaining).toBe(5000);
+    expect(
+      new Date(autoGrant?.expiresAt ?? "1970-01-01").getUTCFullYear(),
+    ).toBeGreaterThanOrEqual(2999);
+  });
+
+  it("grants, refreshes, and clamps trial credits from trial-period invoices", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    api.configureStripeBillingEnv();
+    await bdd.setupOnboarding(actor, { displayName: "BDD Trial Agent" });
+
+    const suffix = randomUUID().slice(0, 8);
+    const customerId = `cus_bdd_trial_${suffix}`;
+    const subscriptionId = `sub_bdd_trial_${suffix}`;
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      metadata: { orgId },
+    });
+
+    // The first trial invoice arrives before any binding: the customer is
+    // bound from its metadata and trial credits expire at the trial end.
+    const trialEnd1 = epochSeconds(7);
+    const periodEnd1 = epochSeconds(30);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      proSubscription({
+        id: subscriptionId,
+        customerId,
+        status: "trialing",
+        trialEnd: trialEnd1,
+      }),
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_trial1_${suffix}`,
+          customer: customerId,
+          metadata: {},
+          parent: { subscription_details: { subscription: subscriptionId } },
+          lines: subscriptionLines(periodEnd1),
+        },
+      }),
+      [200],
+    );
+    const grantedStatus = await billing.readBillingStatus(actor);
+    expect(grantedStatus.tier).toBe("pro");
+    expect(grantedStatus.credits).toBe(20_000);
+    expect(grantedStatus.subscriptionStatus).toBe("trialing");
+    expect(grantedStatus.currentPeriodEnd).toBe(isoOf(periodEnd1));
+    expect(grantedStatus.creditExpiry.nextExpiryDate).toBe(isoOf(trialEnd1));
+
+    // A later trial invoice refreshes the expiry without granting again.
+    const trialEnd2 = epochSeconds(14);
+    const periodEnd2 = epochSeconds(60);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      proSubscription({
+        id: subscriptionId,
+        customerId,
+        status: "trialing",
+        trialEnd: trialEnd2,
+      }),
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_trial2_${suffix}`,
+          customer: customerId,
+          metadata: {},
+          parent: { subscription_details: { subscription: subscriptionId } },
+          lines: subscriptionLines(periodEnd2),
+        },
+      }),
+      [200],
+    );
+    const refreshed = await billing.readBillingStatus(actor);
+    expect(refreshed.credits).toBe(20_000);
+    expect(refreshed.creditGrants).toHaveLength(1);
+    expect(refreshed.currentPeriodEnd).toBe(isoOf(periodEnd2));
+    expect(refreshed.creditExpiry.nextExpiryDate).toBe(isoOf(trialEnd2));
+
+    // Shortening the trial clamps the paid-through date and credit expiry.
+    const trialEnd3 = epochSeconds(10);
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: subscriptionId,
+          status: "trialing",
+          trial_end: trialEnd3,
+          cancel_at_period_end: false,
+          metadata: {},
+          items: {
+            data: [
+              { price: { id: "price_bdd_pro" }, current_period_end: trialEnd3 },
+            ],
+          },
+        },
+        previousAttributes: { trial_end: trialEnd2 },
+      }),
+      [200],
+    );
+    const clamped = await billing.readBillingStatus(actor);
+    expect(clamped.credits).toBe(20_000);
+    expect(clamped.currentPeriodEnd).toBe(isoOf(trialEnd3));
+    expect(clamped.creditExpiry.nextExpiryDate).toBe(isoOf(trialEnd3));
+
+    // A trialing checkout completion uploads the free-trial conversion.
+    api.configureGoogleAdsConversionEnv();
+    const ads = api.captureGoogleAdsUploads();
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      proSubscription({
+        id: subscriptionId,
+        customerId,
+        status: "trialing",
+        trialEnd: trialEnd3,
+        metadata: { gclid: "bdd-trial-gclid" },
+      }),
+    );
+    const trialSessionId = `cs_bdd_trial_${suffix}`;
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: trialSessionId,
+          subscription: subscriptionId,
+          customer: customerId,
+          metadata: null,
+        },
+      }),
+      [200],
+    );
+    expect(ads.uploads).toHaveLength(1);
+    expect(ads.uploads[0]).toMatchObject({
+      conversions: [
+        expect.objectContaining({
+          gclid: "bdd-trial-gclid",
+          orderId: trialSessionId,
+          conversionValue: 20,
+          conversionAction: "customers/1001302527/conversionActions/7615812424",
+          currencyCode: "USD",
+        }),
+      ],
+      partialFailure: true,
+    });
+  });
+
+  it("upgrades to team, drains the queue, and cancels the replaced pro subscription", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsSchedulesApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    const granted = await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Team Upgrade Agent",
+      visibility: "private",
+    });
+
+    const first = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "team upgrade run one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "team upgrade run two",
+      modelProvider: "anthropic-api-key",
+    });
+    const third = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "team upgrade run three",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(third.status).toBe("queued");
+    const queuedBefore = await runs.readRunQueue(actor);
+    expect(queuedBefore.body.concurrency.active).toBe(2);
+    expect(queuedBefore.body.queue).toHaveLength(1);
+
+    const suffix = randomUUID().slice(0, 8);
+    const teamSubscriptionId = `sub_bdd_team_${suffix}`;
+    const teamInvoiceId = `in_bdd_team_${suffix}`;
+    const teamSubscription = {
+      id: teamSubscriptionId,
+      status: "active",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: { data: [{ price: { id: "price_bdd_team" } }] },
+    };
+    context.mocks.stripe.subscriptions.retrieve
+      .mockResolvedValueOnce(teamSubscription)
+      .mockResolvedValueOnce(teamSubscription);
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [
+        {
+          id: teamSubscriptionId,
+          status: "active",
+          metadata: { orgId },
+          items: { data: [{ price: { id: "price_bdd_team" } }] },
+        },
+        {
+          id: granted.subscriptionId,
+          status: "active",
+          metadata: { orgId },
+          items: { data: [{ price: { id: "price_bdd_pro" } }] },
+        },
+      ],
+    });
+    context.mocks.stripe.subscriptions.cancel.mockResolvedValue({
+      id: granted.subscriptionId,
+    });
+
+    const teamInvoice = {
+      id: teamInvoiceId,
+      customer: granted.customerId,
+      metadata: {},
+      parent: { subscription_details: { subscription: teamSubscriptionId } },
+      lines: subscriptionLines(epochSeconds(30)),
+    };
+    await Promise.all([
+      api.postStripeEvent(
+        stripeEvent({ type: "invoice.paid", object: teamInvoice }),
+        [200],
+      ),
+      api.postStripeEvent(
+        stripeEvent({ type: "invoice.paid", object: teamInvoice }),
+        [200],
+      ),
+    ]);
+
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      granted.subscriptionId,
+      { invoice_now: false, prorate: false },
+    );
+    const upgraded = await billing.readBillingStatus(actor);
+    expect(upgraded.tier).toBe("team");
+    expect(upgraded.credits).toBe(140_000);
+    expect(
+      upgraded.creditGrants.filter((grant) => {
+        return grant.amount === 120_000;
+      }),
+    ).toHaveLength(1);
+
+    const drained = await runs.readRunQueue(actor);
+    expect(drained.body.concurrency.tier).toBe("team");
+    expect(drained.body.queue).toHaveLength(0);
+    expect(drained.body.concurrency.active).toBe(3);
+
+    // Redelivering the processed team invoice re-runs lingering-pro cleanup.
+    const cancelCallsBefore =
+      context.mocks.stripe.subscriptions.cancel.mock.calls.length;
+    await api.postStripeEvent(
+      stripeEvent({ type: "invoice.paid", object: teamInvoice }),
+      [200],
+    );
+    expect(
+      context.mocks.stripe.subscriptions.cancel.mock.calls.length,
+    ).toBeGreaterThan(cancelCallsBefore);
+    expect((await billing.readBillingStatus(actor)).credits).toBe(140_000);
+
+    // A lower-tier subscription invoice cannot replace the team subscription.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_lower_${suffix}`,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: {
+              subscription: `sub_bdd_lower_${suffix}`,
+            },
+          },
+          lines: subscriptionLines(epochSeconds(30)),
+        },
+      }),
+      [200],
+    );
+    const unchanged = await billing.readBillingStatus(actor);
+    expect(unchanged.tier).toBe("team");
+    expect(unchanged.credits).toBe(140_000);
+
+    // A downgrade-purpose setup checkout on the team org schedules the
+    // period-end downgrade to pro through a new subscription schedule.
+    const downgradeScheduleId = `sched_bdd_downgrade_${suffix}`;
+    const phaseStart = epochSeconds(0);
+    const phaseEnd = epochSeconds(30);
+    const discountId = `di_bdd_${suffix}`;
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: teamSubscriptionId,
+      status: "active",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      discounts: [discountId],
+      items: {
+        data: [
+          {
+            id: `si_bdd_team_${suffix}`,
+            current_period_start: phaseStart,
+            current_period_end: phaseEnd,
+            quantity: 1,
+            price: {
+              id: "price_bdd_team",
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    });
+    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValueOnce({
+      id: downgradeScheduleId,
+      current_phase: { start_date: phaseStart, end_date: phaseEnd },
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValueOnce({
+      id: downgradeScheduleId,
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_team_downgrade_${suffix}`,
+          mode: "setup",
+          subscription: null,
+          customer: granted.customerId,
+          setup_intent: {
+            id: `seti_bdd_team_${suffix}`,
+            payment_method: "pm_bdd_team_downgrade",
+          },
+          metadata: {
+            purpose: "billing_downgrade",
+            orgId,
+            subscriptionId: teamSubscriptionId,
+            targetTier: "pro",
+          },
+        },
+      }),
+      [200],
+    );
+    expect(
+      context.mocks.stripe.subscriptionSchedules.create,
+    ).toHaveBeenCalledWith({ from_subscription: teamSubscriptionId });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(downgradeScheduleId, {
+      end_behavior: "release",
+      proration_behavior: "none",
+      phases: [
+        {
+          start_date: phaseStart,
+          end_date: phaseEnd,
+          items: [{ price: "price_bdd_team", quantity: 1 }],
+          proration_behavior: "none",
+          discounts: [{ discount: discountId }],
+        },
+        {
+          start_date: phaseEnd,
+          duration: { interval: "month", interval_count: 1 },
+          items: [{ price: "price_bdd_pro", quantity: 1 }],
+          proration_behavior: "none",
+          discounts: [{ discount: discountId }],
+        },
+      ],
+    });
+    const downgradeScheduled = await billing.readBillingStatus(actor);
+    expect(downgradeScheduled.cancelAtPeriodEnd).toBeFalsy();
+    expect(downgradeScheduled.scheduledChange).toStrictEqual({
+      type: "downgrade",
+      targetTier: "pro",
+      effectiveDate: isoOf(phaseEnd),
+    });
+
+    // Deleting the team subscription suspends the organization.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.deleted",
+        object: { id: teamSubscriptionId, metadata: {} },
+      }),
+      [200],
+    );
+    const suspended = await billing.readBillingStatus(actor);
+    expect(suspended.tier).toBe("pro-suspend");
+    expect(suspended.subscriptionStatus).toBe("canceled");
+    expect(suspended.hasSubscription).toBeFalsy();
+    expect(suspended.scheduledChange).toBeNull();
+
+    await runs.requestCancelRun(actor, first.runId, [200]);
+    await runs.requestCancelRun(actor, second.runId, [200]);
+    await runs.requestCancelRun(actor, third.runId, [200]);
+    await clearAllDetached();
+    const settled = await runs.readRunQueue(actor);
+    expect(settled.body.concurrency.active).toBe(0);
+  });
+
+  it("binds checkout and dashboard subscriptions to orgs without double-binding", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    api.configureStripeBillingEnv();
+    await bdd.setupOnboarding(actor, { displayName: "BDD Binding Agent" });
+
+    const suffix = randomUUID().slice(0, 8);
+    const customerId = `cus_bdd_bind_${suffix}`;
+
+    // A dashboard-created subscription binds the customer from its metadata.
+    context.mocks.stripe.customers.retrieve.mockResolvedValueOnce({
+      id: customerId,
+      metadata: { orgId },
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.created",
+        object: {
+          id: `sub_bdd_dash_${suffix}`,
+          customer: customerId,
+          status: "active",
+          metadata: {},
+          cancel_at_period_end: false,
+          items: {
+            data: [
+              {
+                price: { id: "price_bdd_pro" },
+                current_period_end: epochSeconds(30),
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+    const bound = await billing.readBillingStatus(actor);
+    expect(bound.hasSubscription).toBeTruthy();
+    expect(bound.subscriptionStatus).toBe("active");
+    expect(bound.tier).toBe("pro-suspend");
+    expect(bound.currentPeriodEnd).toBeNull();
+
+    // An incomplete dashboard subscription is recorded without a paid tier.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.created",
+        object: {
+          id: `sub_bdd_incomplete_${suffix}`,
+          customer: customerId,
+          status: "incomplete",
+          metadata: {},
+          cancel_at_period_end: false,
+          items: { data: [{ price: { id: "price_bdd_pro" } }] },
+        },
+      }),
+      [200],
+    );
+    const incomplete = await billing.readBillingStatus(actor);
+    expect(incomplete.subscriptionStatus).toBe("incomplete");
+    expect(incomplete.tier).toBe("pro-suspend");
+
+    // A subscription checkout completion binds its subscription.
+    const checkoutSubscriptionId = `sub_bdd_checkout_${suffix}`;
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      proSubscription({ id: checkoutSubscriptionId, customerId }),
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_bind_${suffix}`,
+          subscription: checkoutSubscriptionId,
+          customer: customerId,
+          metadata: null,
+        },
+      }),
+      [200],
+    );
+    expect((await billing.readBillingStatus(actor)).subscriptionStatus).toBe(
+      "active",
+    );
+
+    // Redelivering the checkout for the stored subscription is idempotent.
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      proSubscription({ id: checkoutSubscriptionId, customerId }),
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_bind_redelivery_${suffix}`,
+          subscription: checkoutSubscriptionId,
+          customer: customerId,
+          metadata: null,
+        },
+      }),
+      [200],
+    );
+    expect((await billing.readBillingStatus(actor)).subscriptionStatus).toBe(
+      "active",
+    );
+
+    // A paid invoice grants the pro entitlement on the bound subscription.
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      proSubscription({ id: checkoutSubscriptionId, customerId }),
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_bind_${suffix}`,
+          customer: customerId,
+          metadata: {},
+          parent: {
+            subscription_details: { subscription: checkoutSubscriptionId },
+          },
+          lines: subscriptionLines(epochSeconds(30)),
+        },
+      }),
+      [200],
+    );
+    const entitled = await billing.readBillingStatus(actor);
+    expect(entitled.tier).toBe("pro");
+    expect(entitled.credits).toBe(20_000);
+
+    // A same-or-lower-tier checkout cannot replace the current subscription.
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      proSubscription({ id: `sub_bdd_lowtier_${suffix}`, customerId }),
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_lowtier_${suffix}`,
+          subscription: `sub_bdd_lowtier_${suffix}`,
+          customer: customerId,
+          metadata: null,
+        },
+      }),
+      [200],
+    );
+    const kept = await billing.readBillingStatus(actor);
+    expect(kept.tier).toBe("pro");
+    expect(kept.subscriptionStatus).toBe("active");
+    expect(kept.credits).toBe(20_000);
+
+    // Dashboard subscriptions for unknown customers are ignored.
+    context.mocks.stripe.customers.retrieve.mockResolvedValueOnce({
+      id: `cus_bdd_unknown_${suffix}`,
+      metadata: {},
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.created",
+        object: {
+          id: `sub_bdd_unknown_${suffix}`,
+          customer: `cus_bdd_unknown_${suffix}`,
+          status: "active",
+          metadata: {},
+          cancel_at_period_end: false,
+          items: { data: [{ price: { id: "price_bdd_pro" } }] },
+        },
+      }),
+      [200],
+    );
+    expect((await billing.readBillingStatus(actor)).tier).toBe("pro");
+
+    // Customer metadata cannot rebind an org bound to another customer.
+    context.mocks.stripe.customers.retrieve.mockResolvedValueOnce({
+      id: `cus_bdd_other_${suffix}`,
+      metadata: { orgId },
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.created",
+        object: {
+          id: `sub_bdd_rebind_${suffix}`,
+          customer: `cus_bdd_other_${suffix}`,
+          status: "active",
+          metadata: {},
+          cancel_at_period_end: false,
+          items: { data: [{ price: { id: "price_bdd_pro" } }] },
+        },
+      }),
+      [200],
+    );
+    const unmoved = await billing.readBillingStatus(actor);
+    expect(unmoved.tier).toBe("pro");
+    expect(unmoved.subscriptionStatus).toBe("active");
+
+    // invoice.paid for a never-onboarded org creates its metadata from Clerk.
+    const lateActor = bdd.user();
+    const lateOrgId = orgOf(lateActor);
+    const lateCustomerId = `cus_bdd_late_${suffix}`;
+    const lateSubscriptionId = `sub_bdd_late_${suffix}`;
+    context.mocks.stripe.customers.retrieve.mockResolvedValueOnce({
+      id: lateCustomerId,
+      metadata: { orgId: lateOrgId },
+    });
+    context.mocks.clerk.organizations.getOrganization.mockResolvedValueOnce({
+      id: lateOrgId,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      proSubscription({ id: lateSubscriptionId, customerId: lateCustomerId }),
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_late_${suffix}`,
+          customer: lateCustomerId,
+          metadata: {},
+          parent: {
+            subscription_details: { subscription: lateSubscriptionId },
+          },
+          lines: subscriptionLines(epochSeconds(30)),
+        },
+      }),
+      [200],
+    );
+    const lateStatus = await billing.readBillingStatus(lateActor);
+    expect(lateStatus.tier).toBe("pro");
+    expect(lateStatus.credits).toBe(20_000);
+    expect(lateStatus.hasSubscription).toBeTruthy();
+  });
+
+  it("grants one-time and custom credit purchases once payment settles", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    api.configureStripeBillingEnv();
+    await bdd.setupOnboarding(actor, { displayName: "BDD Credits Agent" });
+    const baselineCredits = (await billing.readBillingStatus(actor)).credits;
+
+    // A one-time checkout before payment settles grants nothing.
+    const suffix = randomUUID().slice(0, 8);
+    const oneTimeSessionId = `cs_bdd_once_${suffix}`;
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: oneTimeSessionId,
+          invoice: null,
+          subscription: null,
+          customer: null,
+          payment_status: "unpaid",
+          metadata: {
+            purpose: "one_time_purchase",
+            orgId,
+            campaignKey: "ZERO100",
+          },
+        },
+      }),
+      [200],
+    );
+    expect((await billing.readBillingStatus(actor)).credits).toBe(
+      baselineCredits,
+    );
+
+    // The async payment success grants the campaign credits once.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.async_payment_succeeded",
+        object: {
+          id: oneTimeSessionId,
+          invoice: null,
+          subscription: null,
+          customer: null,
+          payment_status: "paid",
+          metadata: {
+            purpose: "one_time_purchase",
+            orgId,
+            campaignKey: "ZERO100",
+          },
+        },
+      }),
+      [200],
+    );
+    const afterCampaign = await billing.readBillingStatus(actor);
+    expect(afterCampaign.credits).toBe(baselineCredits + 100_000);
+    const campaignGrant = afterCampaign.creditGrants.find((grant) => {
+      return grant.source === "one_time_purchase";
+    });
+    expect(campaignGrant?.amount).toBe(100_000);
+
+    // Legacy custom credit checkouts without an invoice grant immediately.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_legacy_${suffix}`,
+          invoice: null,
+          subscription: null,
+          customer: null,
+          payment_status: "paid",
+          amount_total: 10_000,
+          metadata: {
+            purpose: "credit_purchase",
+            orgId,
+            creditsAmountMode: "amount_total",
+          },
+        },
+      }),
+      [200],
+    );
+    expect((await billing.readBillingStatus(actor)).credits).toBe(
+      baselineCredits + 200_000,
+    );
+
+    // Invoice-backed custom credit checkouts defer to invoice.paid, which
+    // grants from the pre-discount subtotal.
+    const creditInvoiceId = `in_bdd_credit_${suffix}`;
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_invoice_${suffix}`,
+          invoice: creditInvoiceId,
+          subscription: null,
+          customer: null,
+          payment_status: "paid",
+          amount_subtotal: 10_000,
+          metadata: {
+            purpose: "credit_purchase",
+            orgId,
+            creditsAmountMode: "amount_subtotal",
+          },
+        },
+      }),
+      [200],
+    );
+    expect((await billing.readBillingStatus(actor)).credits).toBe(
+      baselineCredits + 200_000,
+    );
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: creditInvoiceId,
+          customer: null,
+          subtotal: 10_000,
+          metadata: {
+            type: "credit_purchase",
+            purpose: "credit_purchase",
+            orgId,
+            creditsAmountMode: "amount_subtotal",
+          },
+          parent: null,
+        },
+      }),
+      [200],
+    );
+    expect((await billing.readBillingStatus(actor)).credits).toBe(
+      baselineCredits + 300_000,
+    );
+  });
+
+  it("restores and schedules cancellations through setup checkouts and schedule webhooks", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsSchedulesApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const granted = await runs.grantProEntitlement(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const periodEnd = epochSeconds(30);
+
+    // The subscription is scheduled for cancellation in Stripe.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: granted.subscriptionId,
+          status: "active",
+          cancel_at_period_end: true,
+          metadata: {},
+          items: {
+            data: [
+              {
+                price: { id: "price_bdd_pro" },
+                current_period_end: periodEnd,
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+    const scheduled = await billing.readBillingStatus(actor);
+    expect(scheduled.cancelAtPeriodEnd).toBeTruthy();
+    expect(scheduled.scheduledChange).toStrictEqual({
+      type: "cancel",
+      targetTier: "pro-suspend",
+      effectiveDate: isoOf(periodEnd),
+    });
+
+    // Mismatched setup checkouts change nothing.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_wrong_mode_${suffix}`,
+          mode: "payment",
+          subscription: null,
+          customer: granted.customerId,
+          metadata: {
+            purpose: "billing_restore",
+            orgId,
+            subscriptionId: granted.subscriptionId,
+          },
+        },
+      }),
+      [200],
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_no_customer_${suffix}`,
+          mode: "setup",
+          subscription: null,
+          customer: null,
+          metadata: {
+            purpose: "billing_restore",
+            orgId,
+            subscriptionId: granted.subscriptionId,
+          },
+        },
+      }),
+      [200],
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_wrong_sub_${suffix}`,
+          mode: "setup",
+          subscription: null,
+          customer: granted.customerId,
+          setup_intent: { id: `seti_bdd_${suffix}`, payment_method: "pm_bdd" },
+          metadata: {
+            purpose: "billing_restore",
+            orgId,
+            subscriptionId: `sub_bdd_other_${suffix}`,
+          },
+        },
+      }),
+      [200],
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_bad_tier_${suffix}`,
+          mode: "setup",
+          subscription: null,
+          customer: granted.customerId,
+          metadata: {
+            purpose: "billing_downgrade",
+            orgId,
+            subscriptionId: granted.subscriptionId,
+            targetTier: "team",
+          },
+        },
+      }),
+      [200],
+    );
+    expect(
+      (await billing.readBillingStatus(actor)).cancelAtPeriodEnd,
+    ).toBeTruthy();
+
+    // A restore-purpose setup checkout sets the payment method and restores.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_restore_${suffix}`,
+          mode: "setup",
+          subscription: null,
+          customer: granted.customerId,
+          setup_intent: {
+            id: `seti_bdd_restore_${suffix}`,
+            payment_method: "pm_bdd_restore",
+          },
+          metadata: {
+            purpose: "billing_restore",
+            orgId,
+            subscriptionId: granted.subscriptionId,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.stripe.customers.update).toHaveBeenCalledWith(
+      granted.customerId,
+      { invoice_settings: { default_payment_method: "pm_bdd_restore" } },
+    );
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      granted.subscriptionId,
+      { cancel_at_period_end: false },
+    );
+    const restored = await billing.readBillingStatus(actor);
+    expect(restored.cancelAtPeriodEnd).toBeFalsy();
+    expect(restored.scheduledChange).toBeNull();
+
+    // A downgrade-purpose setup checkout (string setup intent refreshed via
+    // session retrieve) schedules the cancellation again.
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValueOnce({
+      id: `cs_bdd_downgrade_${suffix}`,
+      setup_intent: { payment_method: "pm_bdd_downgrade" },
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: granted.subscriptionId,
+      status: "active",
+      customer: granted.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: {},
+      items: {
+        data: [
+          {
+            id: `si_bdd_${suffix}`,
+            current_period_start: epochSeconds(0),
+            current_period_end: periodEnd,
+            quantity: 1,
+            price: {
+              id: "price_bdd_pro",
+              recurring: { interval: "month", interval_count: 1 },
+            },
+          },
+        ],
+      },
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_downgrade_${suffix}`,
+          mode: "setup",
+          subscription: null,
+          customer: granted.customerId,
+          setup_intent: `seti_bdd_downgrade_${suffix}`,
+          metadata: {
+            purpose: "billing_downgrade",
+            orgId,
+            subscriptionId: granted.subscriptionId,
+            targetTier: "pro-suspend",
+          },
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.stripe.customers.update).toHaveBeenCalledWith(
+      granted.customerId,
+      { invoice_settings: { default_payment_method: "pm_bdd_downgrade" } },
+    );
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      granted.subscriptionId,
+      { cancel_at_period_end: true },
+    );
+    const downgraded = await billing.readBillingStatus(actor);
+    expect(downgraded.cancelAtPeriodEnd).toBeTruthy();
+    expect(downgraded.scheduledChange?.type).toBe("cancel");
+
+    // A schedule-managed cancellation syncs the final schedule end.
+    const scheduleId = `sched_bdd_${suffix}`;
+    const finalEnd = epochSeconds(60);
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce({
+      id: scheduleId,
+      end_behavior: "cancel",
+      current_phase: { start_date: epochSeconds(0), end_date: periodEnd },
+      phases: [
+        { start_date: epochSeconds(0), end_date: periodEnd },
+        { start_date: periodEnd, end_date: finalEnd },
+      ],
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: granted.subscriptionId,
+          status: "active",
+          schedule: scheduleId,
+          cancel_at_period_end: false,
+          metadata: {},
+          items: {
+            data: [
+              {
+                price: { id: "price_bdd_pro" },
+                current_period_end: periodEnd,
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+    const scheduleManaged = await billing.readBillingStatus(actor);
+    expect(scheduleManaged.currentPeriodEnd).toBe(isoOf(finalEnd));
+    expect(scheduleManaged.scheduledChange).toStrictEqual({
+      type: "cancel",
+      targetTier: "pro-suspend",
+      effectiveDate: isoOf(finalEnd),
+    });
+
+    // Releasing the schedule clears the pending change entirely.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "subscription_schedule.released",
+        object: { id: scheduleId },
+      }),
+      [200],
+    );
+    const released = await billing.readBillingStatus(actor);
+    expect(released.cancelAtPeriodEnd).toBeFalsy();
+    expect(released.scheduledChange).toBeNull();
+
+    // A canceled schedule clears the pending schedule but keeps the
+    // cancellation flag visible until Stripe uncancels the subscription.
+    const secondScheduleId = `sched_bdd_second_${suffix}`;
+    const secondFinalEnd = epochSeconds(90);
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValueOnce({
+      id: secondScheduleId,
+      end_behavior: "cancel",
+      current_phase: { start_date: epochSeconds(0), end_date: periodEnd },
+      phases: [{ start_date: periodEnd, end_date: secondFinalEnd }],
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: granted.subscriptionId,
+          status: "active",
+          schedule: secondScheduleId,
+          cancel_at_period_end: false,
+          metadata: {},
+          items: {
+            data: [
+              {
+                price: { id: "price_bdd_pro" },
+                current_period_end: periodEnd,
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "subscription_schedule.canceled",
+        object: { id: secondScheduleId },
+      }),
+      [200],
+    );
+    const scheduleCanceled = await billing.readBillingStatus(actor);
+    expect(scheduleCanceled.scheduledChange?.type).toBe("cancel");
+    expect(scheduleCanceled.scheduledChange?.effectiveDate).toBe(
+      isoOf(secondFinalEnd),
+    );
+
+    // Uncancelling in Stripe clears the remaining cancellation flag.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: granted.subscriptionId,
+          status: "active",
+          cancel_at_period_end: false,
+          metadata: {},
+          items: { data: [{ price: { id: "price_bdd_pro" } }] },
+        },
+        previousAttributes: { cancel_at_period_end: true },
+      }),
+      [200],
+    );
+    const uncancelled = await billing.readBillingStatus(actor);
+    expect(uncancelled.cancelAtPeriodEnd).toBeFalsy();
+    expect(uncancelled.scheduledChange).toBeNull();
+  });
+
+  it("processes preview Stripe events only for the matching job ref", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsSchedulesApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const granted = await runs.grantProEntitlement(actor);
+    mockEnv("ENV", "preview");
+    mockOptionalEnv("VM0_PREVIEW_JOB_REF", "pr-bdd-123");
+
+    const mismatchedMetadata = {
+      vm0_environment: "preview",
+      job_ref: "pr-bdd-456",
+    };
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_preview_skip_${randomUUID().slice(0, 8)}`,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: {
+              subscription: granted.subscriptionId,
+              metadata: mismatchedMetadata,
+            },
+          },
+          lines: subscriptionLines(epochSeconds(30)),
+        },
+      }),
+      [200],
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "checkout.session.completed",
+        object: {
+          id: `cs_bdd_preview_skip_${randomUUID().slice(0, 8)}`,
+          subscription: granted.subscriptionId,
+          customer: granted.customerId,
+          metadata: mismatchedMetadata,
+        },
+      }),
+      [200],
+    );
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.created",
+        object: {
+          id: `sub_bdd_preview_skip_${randomUUID().slice(0, 8)}`,
+          customer: granted.customerId,
+          status: "active",
+          metadata: mismatchedMetadata,
+          cancel_at_period_end: false,
+          items: { data: [{ price: { id: "price_bdd_pro" } }] },
+        },
+      }),
+      [200],
+    );
+    const skipped = await billing.readBillingStatus(actor);
+    expect(skipped.credits).toBe(20_000);
+    expect(skipped.subscriptionStatus).toBe("active");
+
+    // The matching job ref processes normally.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_preview_match_${randomUUID().slice(0, 8)}`,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: {
+              subscription: granted.subscriptionId,
+              metadata: { vm0_environment: "preview", job_ref: "pr-bdd-123" },
+            },
+          },
+          lines: subscriptionLines(epochSeconds(45)),
+        },
+      }),
+      [200],
+    );
+    expect((await billing.readBillingStatus(actor)).credits).toBe(40_000);
+  });
+
+  it("uploads paid-subscriber conversions only for positive paid invoices", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsSchedulesApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const granted = await runs.grantProEntitlement(actor);
+    api.configureGoogleAdsConversionEnv();
+    const ads = api.captureGoogleAdsUploads();
+
+    const paidInvoiceId = `in_bdd_ads_paid_${randomUUID().slice(0, 8)}`;
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: paidInvoiceId,
+          customer: granted.customerId,
+          amount_paid: 12_345,
+          subtotal: 0,
+          metadata: {},
+          parent: {
+            subscription_details: {
+              subscription: granted.subscriptionId,
+              metadata: { gclid: "bdd-paid-gclid" },
+            },
+          },
+          lines: subscriptionLines(epochSeconds(30)),
+        },
+      }),
+      [200],
+    );
+    expect(ads.uploads).toHaveLength(1);
+    expect(ads.uploads[0]).toMatchObject({
+      conversions: [
+        expect.objectContaining({
+          gclid: "bdd-paid-gclid",
+          orderId: paidInvoiceId,
+          conversionValue: 123.45,
+          conversionAction: "customers/1001302527/conversionActions/9876543210",
+          currencyCode: "USD",
+          conversionEnvironment: "WEB",
+        }),
+      ],
+      partialFailure: true,
+    });
+    expect((await billing.readBillingStatus(actor)).credits).toBe(40_000);
+
+    // Zero-amount invoices grant credits but upload no conversion.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_ads_zero_${randomUUID().slice(0, 8)}`,
+          customer: granted.customerId,
+          amount_paid: 0,
+          subtotal: 10_000,
+          metadata: {},
+          parent: {
+            subscription_details: {
+              subscription: granted.subscriptionId,
+              metadata: { gclid: "bdd-zero-gclid" },
+            },
+          },
+          lines: subscriptionLines(epochSeconds(45)),
+        },
+      }),
+      [200],
+    );
+    expect(ads.uploads).toHaveLength(1);
+    expect((await billing.readBillingStatus(actor)).credits).toBe(60_000);
+  });
+});
+
+describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
+  it("cleans up organization state after a verified organization.deleted event", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsSchedulesApi(context);
+    const gh = createGithubBddApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    acceptGithubGrantRevocations();
+
+    const actor = bdd.user();
+    const granted = await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Org Teardown Agent",
+      visibility: "public",
+    });
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "survive until teardown",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(run.status).toBe("pending");
+
+    await gh.installGithubApp(actor, agent.agentId, {
+      oauthCode: {
+        code: `whcb08a-${randomUUID().slice(0, 8)}`,
+        githubUserId: newGithubUserId(),
+      },
+    });
+    const schedule = await runs.deploySchedule(actor, {
+      name: uniqueScheduleName("teardown"),
+      agentId: agent.agentId,
+      intervalSeconds: 3600,
+      prompt: "scheduled teardown probe",
+      timezone: "UTC",
+      enabled: false,
+    });
+    expect(schedule.schedule.name).toContain("teardown");
+    const botToken = await registerTelegramBot(actor, agent.agentId);
+    await runs.upsertUserPermissionGrant(actor, {
+      agentId: agent.agentId,
+      connectorRef: "slack",
+      permission: "channels:read",
+      action: "allow",
+    });
+    await expect(
+      runs.listUserPermissionGrants(actor, agent.agentId),
+    ).resolves.toHaveLength(1);
+    expect((await runs.listSchedules(actor)).schedules).toHaveLength(1);
+
+    // The first delivery hits a failing Stripe cancellation (a per-step
+    // failure the cleanup continues over) and then a failing org S3 listing,
+    // which aborts the rest of the cleanup without surfacing in the
+    // webhook response.
+    context.mocks.stripe.subscriptions.cancel.mockRejectedValueOnce(
+      new Error("stripe unavailable"),
+    );
+    context.mocks.s3.send.mockRejectedValueOnce(new Error("R2 unavailable"));
+    api.verifyNextClerkWebhook({
+      type: "organization.deleted",
+      data: { id: orgOf(actor) },
+    });
+    const firstDelivery = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(firstDelivery.body).toBe("OK");
+    await clearAllDetached();
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      granted.subscriptionId,
+    );
+    expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(botToken);
+    const survivingRun = await runs.requestReadRun(actor, run.runId, [200]);
+    expect(survivingRun.status).toBe(200);
+    // The onboarding default agent and the teardown agent both survive.
+    await expect(bdd.listAgents(actor)).resolves.toHaveLength(2);
+
+    // The redelivered event completes the teardown, deleting storage
+    // objects and all org-scoped resources.
+    const deletedS3Keys: string[] = [];
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const input = commandInput(command);
+      if (typeof input.Prefix === "string") {
+        return Promise.resolve({
+          Contents: [
+            {
+              Key: `${input.Prefix}/archive.bin`,
+              Size: 1,
+              LastModified: nowDate(),
+            },
+          ],
+        });
+      }
+      const removal = input.Delete as
+        | { readonly Objects?: readonly { readonly Key?: string }[] }
+        | undefined;
+      for (const object of removal?.Objects ?? []) {
+        if (object.Key) {
+          deletedS3Keys.push(object.Key);
+        }
+      }
+      return Promise.resolve({});
+    });
+    api.verifyNextClerkWebhook({
+      type: "organization.deleted",
+      data: { id: orgOf(actor) },
+    });
+    const redelivery = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(redelivery.body).toBe("OK");
+    await clearAllDetached();
+
+    expect(deletedS3Keys.length).toBeGreaterThan(0);
+    await runs.requestReadRun(actor, run.runId, [404]);
+    await expect(bdd.listAgents(actor)).resolves.toStrictEqual([]);
+    expect((await runs.listSchedules(actor)).schedules).toStrictEqual([]);
+
+    // An org without a live subscription skips the Stripe cancellation.
+    const cancelCalls =
+      context.mocks.stripe.subscriptions.cancel.mock.calls.length;
+    const plainActor = bdd.user();
+    await bdd.setupOnboarding(plainActor, {
+      displayName: "BDD Plain Teardown",
+    });
+    api.verifyNextClerkWebhook({
+      type: "organization.deleted",
+      data: { id: orgOf(plainActor) },
+    });
+    await api.requestClerkWebhook("{}", {}, [200]);
+    await clearAllDetached();
+    expect(context.mocks.stripe.subscriptions.cancel.mock.calls).toHaveLength(
+      cancelCalls,
+    );
+    await expect(bdd.listAgents(plainActor)).resolves.toStrictEqual([]);
+  });
+
+  it("cleans up user state after a verified user.deleted event", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsSchedulesApi(context);
+    const gh = createGithubBddApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    acceptGithubGrantRevocations();
+
+    const doomed = bdd.user();
+    await runs.grantProEntitlement(doomed);
+    await runs.ensureOrgModelProvider(doomed);
+    const peer = bdd.user({ orgId: doomed.orgId, orgRole: "org:member" });
+    const sharedAgent = await bdd.createAgent(peer, {
+      displayName: "BDD Shared Grant Agent",
+      visibility: "public",
+    });
+    const doomedAgent = await bdd.createAgent(doomed, {
+      displayName: "BDD Doomed Agent",
+      visibility: "private",
+    });
+
+    const doomedKey = await runs.createApiKey(doomed);
+    const doomedBearer = `Bearer ${doomedKey.token}`;
+    const livePoll = await runs.requestPollRunnerAs(
+      doomedBearer,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [200],
+    );
+    expect(livePoll.status).toBe(200);
+
+    const run = await runs.createRun(doomed, {
+      agentId: sharedAgent.agentId,
+      prompt: "user teardown run",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(run.status).toBe("pending");
+
+    // The installation's default agent is the peer's compose, so the
+    // installation itself survives the user teardown while the doomed
+    // user's GitHub link is removed.
+    await gh.installGithubApp(doomed, sharedAgent.agentId, {
+      oauthCode: {
+        code: `whcb08b-${randomUUID().slice(0, 8)}`,
+        githubUserId: newGithubUserId(),
+      },
+    });
+    expect((await gh.readInstallation(doomed)).isConnected).toBeTruthy();
+    const botToken = await registerTelegramBot(doomed, doomedAgent.agentId);
+
+    await runs.upsertUserPermissionGrant(doomed, {
+      agentId: sharedAgent.agentId,
+      connectorRef: "slack",
+      permission: "channels:read",
+      action: "allow",
+    });
+    await runs.upsertUserPermissionGrant(peer, {
+      agentId: sharedAgent.agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "deny",
+    });
+
+    // User storage cleanup is best-effort: a failing S3 listing must not
+    // stop the rest of the teardown.
+    context.mocks.s3.send.mockRejectedValue(new Error("R2 unavailable"));
+    api.verifyNextClerkWebhook({
+      type: "user.deleted",
+      data: { id: doomed.userId },
+    });
+    const response = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+    await clearAllDetached();
+    context.mocks.s3.send.mockResolvedValue({});
+
+    expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(botToken);
+    const revokedPoll = await runs.requestPollRunnerAs(
+      doomedBearer,
+      { group: runnerGroup, profiles: ["vm0/default"] },
+      [401],
+    );
+    expectApiError(revokedPoll.body);
+    await runs.requestReadRun(doomed, run.runId, [404]);
+    expect((await gh.readInstallation(doomed)).isConnected).toBeFalsy();
+    await expect(
+      runs.listUserPermissionGrants(doomed, sharedAgent.agentId),
+    ).resolves.toStrictEqual([]);
+    const peerGrants = await runs.listUserPermissionGrants(
+      peer,
+      sharedAgent.agentId,
+    );
+    expect(peerGrants).toHaveLength(1);
+    expect(peerGrants[0]).toMatchObject({
+      permission: "chat:write",
+      action: "deny",
+    });
   });
 });
