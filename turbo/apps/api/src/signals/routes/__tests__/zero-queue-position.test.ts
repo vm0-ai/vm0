@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import { createStore } from "ccstate";
 
-import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
   deleteQueuePositionRuns$,
@@ -22,37 +21,6 @@ const mocks = createZeroRouteMocks(context);
 describe("GET /api/zero/queue-position", () => {
   const track = createFixtureTracker<QueuePositionFixture>((fixture) => {
     return store.set(deleteQueuePositionRuns$, fixture, context.signal);
-  });
-
-  it("returns 401 when the request is unauthenticated", async () => {
-    const client = setupApp({ context })(zeroQueuePositionContract);
-
-    const response = await accept(
-      client.getPosition({
-        query: { runId: randomUUID() },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("returns 400 when runId is missing before auth", async () => {
-    const app = createApp({
-      signal: context.signal,
-    });
-
-    const response = await app.request("/api/zero/queue-position", {
-      method: "GET",
-    });
-
-    expect(response.status).toBe(400);
-    const body: unknown = await response.json();
-    expect(body).toMatchObject({
-      error: { code: "BAD_REQUEST" },
-    });
-    expect(JSON.stringify(body)).toContain("runId");
   });
 
   it("returns the queued run position within the org queue", async () => {
@@ -145,25 +113,6 @@ describe("GET /api/zero/queue-position", () => {
     const response = await accept(
       client.getPosition({
         query: { runId },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-
-    expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
-  it("returns 404 when an authenticated user requests an unknown run", async () => {
-    const fixture = await track(
-      store.set(seedQueuePositionRuns$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroQueuePositionContract);
-
-    const response = await accept(
-      client.getPosition({
-        query: { runId: randomUUID() },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [404],

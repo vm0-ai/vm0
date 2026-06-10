@@ -927,3 +927,22 @@ But every rejection \_before* the credit check is reachable.
   external scheduler (GAP-SCHEDULE-DEPLOY).
 - Coverage verified (source-only): `zero-schedules.ts` (68/26) and
   `zero-schedules.service.ts` (257/165) unchanged vs `main`. No regressions.
+
+### Round 37 — RUN READ/CANCEL/QUEUE REJECTIONS (CHAIN-RUN-READ-CANCEL-QUEUE, reduce-legacy)
+
+- Extended `createBddApi` with the `zeroRunsById`, `zeroRunsCancel`, and
+  `zeroQueuePosition` clients.
+- Added `zero-runs-read-cancel-queue.bdd.test.ts`: get-by-id rejects
+  unauthenticated/no-org 401, malformed-uuid 400, unknown-run 404, and a zero
+  token without `agent-run:read` 403; cancel rejects unauthenticated/no-org 401,
+  a zero token without `agent-run:write` 403, and unknown-run 404;
+  queue-position rejects a missing runId (400, raw request) and unauthenticated
+  401, and 404s an unknown run.
+- Reduced `zero-runs-by-id.test.ts` 7 -> 2, `zero-runs-cancel.test.ts` 18 -> 14,
+  `zero-queue-position.test.ts` 7 -> 4, removing the reachable rejections (and
+  orphaned `currentSecond`/token-builder helpers). The kept cases operate on
+  seeded runs (success, cross-user/cross-org, cancel scenarios) — runs need
+  credits with no API surface (GAP-RUN-CREDITS).
+- Coverage verified (source-only): `zero-queue-position.ts` (9/2),
+  `zero-runs-cancel.ts` (14/4), `queue-position.service.ts` (10/5), and
+  `zero-run-cancel.service.ts` (38/16) unchanged vs `main`. No regressions.

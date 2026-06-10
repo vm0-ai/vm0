@@ -12,7 +12,6 @@ import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now, nowDate } from "../../external/time";
 import { clearAllDetached } from "../../utils";
@@ -32,82 +31,9 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-function currentSecond(): number {
-  return Math.floor(now() / 1000);
-}
-
 describe("POST /api/zero/runs/:id/cancel", () => {
   const track = createFixtureTracker<UsageInsightFixture>((fixture) => {
     return store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  });
-
-  it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(zeroRunsCancelContract);
-    const response = await accept(
-      client.cancel({
-        params: { id: randomUUID() },
-        headers: {},
-      }),
-      [401],
-    );
-    expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
-  });
-
-  it("returns 401 when authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const client = setupApp({ context })(zeroRunsCancelContract);
-    const response = await accept(
-      client.cancel({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [401],
-    );
-    expect(response.body).toMatchObject({ error: { code: "UNAUTHORIZED" } });
-  });
-
-  it("returns 403 for sandbox token without agent-run:write capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const runId = `run_${randomUUID()}`;
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "sandbox",
-      userId,
-      orgId,
-      runId,
-      iat: seconds,
-      exp: seconds + 60,
-    });
-
-    const client = setupApp({ context })(zeroRunsCancelContract);
-    const response = await accept(
-      client.cancel({
-        params: { id: randomUUID() },
-        headers: { authorization: `Bearer ${token}` },
-      }),
-      [403],
-    );
-
-    expect(response.body.error.code).toBe("FORBIDDEN");
-    expect(response.body.error.message).toContain("agent-run:write");
-  });
-
-  it("returns 404 when run not found", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroRunsCancelContract);
-    const response = await accept(
-      client.cancel({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [404],
-    );
-    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("cancels a running run (DB read-after-write + Ably runner cancel)", async () => {

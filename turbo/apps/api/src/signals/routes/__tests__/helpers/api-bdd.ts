@@ -26,7 +26,12 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
-import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
+import {
+  zeroRunsByIdContract,
+  zeroRunsCancelContract,
+  zeroRunsMainContract,
+} from "@vm0/api-contracts/contracts/zero-runs";
+import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import {
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
@@ -204,6 +209,13 @@ export function createBddApi(context: TestContext) {
      * needs seeded credits with no API surface; only the pre-admission
      * rejections (auth/validation/credits/ownership) are reachable. */
     zeroRuns: setupApp({ context })(zeroRunsMainContract),
+    /** ts-rest client for `/api/zero/runs/:id` (get a run). Reading an actual
+     * run needs a seeded run; only auth/validation/not-found are reachable. */
+    zeroRunsById: setupApp({ context })(zeroRunsByIdContract),
+    /** ts-rest client for `/api/zero/runs/:id/cancel`. */
+    zeroRunsCancel: setupApp({ context })(zeroRunsCancelContract),
+    /** ts-rest client for `/api/zero/queue-position`. */
+    zeroQueuePosition: setupApp({ context })(zeroQueuePositionContract),
     /** ts-rest client for `/api/zero/schedules/:name/{enable,disable}`. Mutating
      * an actual schedule needs a deployed schedule (external scheduler); only
      * the not-found/validation/auth rejections are reachable. */
