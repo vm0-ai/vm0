@@ -1335,3 +1335,22 @@ First USAGE-family reduce.
   agent version (GAP-CONNECTOR-CONNECT); those stay in the kept legacy.
 - Reduced `zero-integrations-slack-status.test.ts` (14 -> 12).
 - Coverage verified (source-only): no regressions vs `main`.
+
+### Round 61 — SLACK SANDBOX MESSAGE/UPLOAD REJECTIONS (CHAIN-SLACK-SANDBOX-REJECTIONS, reduce-legacy)
+
+- Extended `createBddApi` with the `slackMessage`, `slackUploadInit` and
+  `slackUploadComplete` clients (the sandbox-facing
+  `/api/zero/integrations/slack/{message,upload-file/init,upload-file/complete}`
+  endpoints).
+- Added `zero-integrations-slack-sandbox-rejections.bdd.test.ts`: each endpoint
+  rejects a missing token (401) and a sandbox token without `slack:write` (403,
+  checked before any Slack call), via `api.sandboxAuth`.
+- The success / no-installation (404) / invalid-body (400) and
+  no-org-membership (401) cases need a zero token whose org has a seeded
+  membership + Slack installation (GAP-CONNECTOR-CONNECT), which the helper's
+  internal random orgIds cannot align with; those stay in the kept legacy.
+- Reduced `zero-integrations-slack-message.test.ts` (13 -> 11),
+  `zero-integrations-slack-upload-init.test.ts` (8 -> 6) and
+  `zero-integrations-slack-upload-complete.test.ts` (7 -> 5), each dropping the
+  now-unused local `sandboxToken` helper.
+- Coverage verified (source-only): no regressions vs `main`.

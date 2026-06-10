@@ -50,22 +50,6 @@ function zeroToken(args: {
   });
 }
 
-function sandboxToken(args: {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly runId: string;
-}): string {
-  const seconds = Math.floor(now() / 1000);
-  return signSandboxJwtForTests({
-    scope: "sandbox",
-    userId: args.userId,
-    orgId: args.orgId,
-    runId: args.runId,
-    iat: seconds,
-    exp: seconds + 60,
-  });
-}
-
 async function setRunSelectedModel(
   runId: string,
   selectedModel: string,
@@ -150,18 +134,6 @@ describe("POST /api/zero/integrations/slack/message", () => {
     return { ...base, slackWorkspaceId: fixture.slackWorkspaceId };
   }
 
-  it("returns 401 when no auth token is provided", async () => {
-    const client = setupApp({ context })(integrationsSlackMessageContract);
-    const response = await accept(
-      client.sendMessage({
-        body: { channel: "C123", text: "hello" },
-        headers: {},
-      }),
-      [401],
-    );
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
-  });
-
   it("returns 401 when the token has no active organization membership", async () => {
     context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
       data: [],
@@ -182,23 +154,6 @@ describe("POST /api/zero/integrations/slack/message", () => {
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
-  });
-
-  it("returns 403 when sandbox token lacks slack:write", async () => {
-    const orgId = `org_${randomUUID().slice(0, 8)}`;
-    const userId = `user_${randomUUID().slice(0, 8)}`;
-    const runId = `run_${randomUUID()}`;
-    const token = sandboxToken({ userId, orgId, runId });
-
-    const client = setupApp({ context })(integrationsSlackMessageContract);
-    const response = await accept(
-      client.sendMessage({
-        body: { channel: "C123", text: "hello" },
-        headers: { authorization: `Bearer ${token}` },
-      }),
-      [403],
-    );
-    expect(response.body.error.message).toContain("slack:write");
   });
 
   it("returns 404 when no Slack installation exists for org", async () => {

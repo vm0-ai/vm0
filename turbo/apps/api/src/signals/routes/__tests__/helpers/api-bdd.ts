@@ -57,6 +57,11 @@ import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-sla
 import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import {
+  integrationsSlackMessageContract,
+  integrationsSlackUploadInitContract,
+  integrationsSlackUploadCompleteContract,
+} from "@vm0/api-contracts/contracts/integrations";
+import {
   onboardingStatusContract,
   onboardingSetupContract,
 } from "@vm0/api-contracts/contracts/onboarding";
@@ -258,6 +263,15 @@ export function createBddApi(context: TestContext) {
      * connection (GAP-CONNECTOR-CONNECT); the auth and not-installed (install
      * URLs) cases are reachable directly. */
     slackIntegration: setupApp({ context })(zeroIntegrationsSlackContract),
+    /** ts-rest clients for the sandbox-facing Slack message + file-upload
+     * endpoints. Posting/uploading needs a seeded Slack installation reachable
+     * via a zero token whose org has a membership (GAP-CONNECTOR-CONNECT); the
+     * no-auth and missing-`slack:write`-capability rejections are reachable. */
+    slackMessage: setupApp({ context })(integrationsSlackMessageContract),
+    slackUploadInit: setupApp({ context })(integrationsSlackUploadInitContract),
+    slackUploadComplete: setupApp({ context })(
+      integrationsSlackUploadCompleteContract,
+    ),
     onboardingStatus: setupApp({ context })(onboardingStatusContract),
     /** ts-rest client for `/api/zero/onboarding/setup` (admin one-shot default
      * agent creation). Creating the default agent is free, so the happy path is
