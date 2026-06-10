@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.430.2](https://github.com/vm0-ai/vm0/compare/app-v0.430.1...app-v0.430.2) (2026-06-10)
+
+
+### Bug Fixes
+
+* use official aws connector icon ([#16975](https://github.com/vm0-ai/vm0/issues/16975)) ([f05b37c](https://github.com/vm0-ai/vm0/commit/f05b37cbf0dfb205fc0c3ef53c185737127b0e07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.76.0
+    * @vm0/connectors bumped to 1.58.0
+    * @vm0/core bumped to 8.320.2
+
 ## [0.430.1](https://github.com/vm0-ai/vm0/compare/app-v0.430.0...app-v0.430.1) (2026-06-09)
 
 

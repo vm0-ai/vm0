@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.121.0](https://github.com/vm0-ai/vm0/compare/api-v1.120.0...api-v1.121.0) (2026-06-10)
+
+
+### Features
+
+* add aws sigv4 firewall auth runtime ([#16876](https://github.com/vm0-ai/vm0/issues/16876)) ([1be4dfc](https://github.com/vm0-ai/vm0/commit/1be4dfc3b764a38a2759c0b0164ebb158f2ffe86))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.76.0
+    * @vm0/connectors bumped to 1.58.0
+    * @vm0/core bumped to 8.320.2
+    * @vm0/db bumped to 1.38.1
+
 ## [1.120.0](https://github.com/vm0-ai/vm0/compare/api-v1.119.0...api-v1.120.0) (2026-06-09)
 
 
